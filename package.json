@@ -10,10 +10,18 @@
     "build": "cd frontend && npm run build",
     "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install"
   },
-  "keywords": ["vue", "express", "fullstack"],
+  "keywords": [
+    "vue",
+    "express",
+    "fullstack"
+  ],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "daisyui": "^5.0.50"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.11"
   }
 }

@@ -5,11 +5,13 @@ const User = require('../models/User');
 // GET /api/users - Get all users
 router.get('/', async (req, res) => {
   try {
-    const users = await User.getAll();
+    const includeDeleted = req.query.includeDeleted === 'true';
+    const users = await User.getAll(includeDeleted);
     res.json({
       success: true,
       data: users,
       count: users.length
+
     });
   } catch (error) {
     res.status(500).json({
@@ -109,7 +111,7 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/users/:id - Delete user
+// DELETE /api/users/:id - Soft delete user
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -136,4 +138,30 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// PATCH /api/users/:id/restore - Restore soft deleted user
+router.patch('/:id/restore', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await User.restore(id);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: user,
+      message: 'User restored successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error restoring user',
+      error: error.message
+    });
+  }
+});
 module.exports = router;

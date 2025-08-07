@@ -3,7 +3,7 @@ const cors = require('cors');
 require('dotenv').config();
 
 // Import database configuration and models
-const { testConnection } = require('./config/database');
+const { testConnection, runMigrations } = require('./config/database');
 const User = require('./models/User');
 
 // Import routes
@@ -46,8 +46,8 @@ const startServer = async () => {
     // Test database connection
     await testConnection();
     
-    // Create/verify database tables
-    await User.createTable();
+    // Run database migrations
+    await runMigrations();
     
     // Start server
     app.listen(PORT, () => {

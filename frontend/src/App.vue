@@ -2,26 +2,26 @@
 import { ref, onMounted } from 'vue'
 import UserManager from './components/UserManager.vue'
 
-// // Theme management
-// const currentTheme = ref('light')
-// const themes = [
-//   'light', 'dark', 'cupcake', 'bumblebee', 'emerald', 'corporate',
-//   'synthwave', 'retro', 'cyberpunk', 'valentine', 'halloween', 'garden',
-//   'forest', 'aqua', 'lofi', 'pastel', 'fantasy', 'wireframe', 'black',
-//   'luxury', 'dracula', 'cmyk', 'autumn', 'business', 'acid', 'lemonade',
-//   'night', 'coffee', 'winter'
-// ]
+// Theme management
+const currentTheme = ref('light')
+const themes = [
+  'light', 'dark', 'cupcake', 'bumblebee', 'emerald', 'corporate',
+  'synthwave', 'retro', 'cyberpunk', 'valentine', 'halloween', 'garden',
+  'forest', 'aqua', 'lofi', 'pastel', 'fantasy', 'wireframe', 'black',
+  'luxury', 'dracula', 'cmyk', 'autumn', 'business', 'acid', 'lemonade',
+  'night', 'coffee', 'winter'
+]
 
-// const setTheme = (theme) => {
-//   currentTheme.value = theme
-//   document.documentElement.setAttribute('data-theme', theme)
-//   localStorage.setItem('theme', theme)
-// }
+const setTheme = (theme) => {
+  currentTheme.value = theme
+  document.documentElement.setAttribute('data-theme', theme)
+  localStorage.setItem('theme', theme)
+}
 
-// onMounted(() => {
-//   const savedTheme = localStorage.getItem('theme') || 'light'
-//   setTheme(savedTheme)
-// })
+onMounted(() => {
+  const savedTheme = localStorage.getItem('theme') || 'light'
+  setTheme(savedTheme)
+})
 </script>
 
 <template>

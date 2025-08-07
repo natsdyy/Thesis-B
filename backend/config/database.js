@@ -1,42 +1,34 @@
-const { Pool } = require('pg');
+const knex = require('knex');
+const knexConfig = require('../knexfile');
 require('dotenv').config();
 
-// Database configuration
-const dbConfig = {
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-};
+// Initialize Knex instance
+const environment = process.env.NODE_ENV || 'development';
+const db = knex(knexConfig[environment]);
 
-// Create connection pool
-const pool = new Pool(dbConfig);
-
-// Test database connection
+// Test database connection using Knex
 const testConnection = async () => {
   try {
-    const client = await pool.connect();
+    await db.raw('SELECT 1');
     console.log('✅ Database connected successfully');
-    client.release();
   } catch (err) {
     console.error('❌ Database connection error:', err.message);
   }
 };
 
-// Query helper function
-const query = async (text, params) => {
-  const client = await pool.connect();
+// Run migrations
+const runMigrations = async () => {
   try {
-    const result = await client.query(text, params);
-    return result;
+    await db.migrate.latest();
+    console.log('✅ Database migrations completed successfully');
   } catch (error) {
-    console.error('Database query error:', error);
+    console.error('❌ Migration error:', error);
     throw error;
-  } finally {
-    client.release();
   }
 };
 
 module.exports = {
-  pool,
-  query,
-  testConnection
+  db,
+  testConnection,
+  runMigrations
 };

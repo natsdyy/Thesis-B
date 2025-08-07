@@ -1,31 +1,17 @@
-const { query } = require('../config/database');
+const { db } = require('../config/database');
 
 class User {
-  // Create users table
-  static async createTable() {
-    const createTableQuery = `
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `;
-    
-    try {
-      await query(createTableQuery);
-      console.log('✅ Users table created/verified');
-    } catch (error) {
-      console.error('❌ Error creating users table:', error);
-    }
-  }
+  // Note: Table creation is now handled by Knex migrations
 
   // Get all users
-  static async getAll() {
+  static async getAll(includeDeleted = false) {
     try {
-      const result = await query('SELECT * FROM users ORDER BY created_at DESC');
-      return result.rows;
+      let query = db('users').select('*');
+      if(!includeDeleted){
+        query = query.whereNull('deleted_at');
+      }
+      const users = await query.orderBy('created_at', 'desc');
+      return users;
     } catch (error) {
       console.error('Error fetching users:', error);
       throw error;
@@ -35,8 +21,12 @@ class User {
   // Get user by ID
   static async getById(id) {
     try {
-      const result = await query('SELECT * FROM users WHERE id = $1', [id]);
-      return result.rows[0];
+      const user = await db('users')
+        .select('*')
+        .where('id', id)
+        .whereNull('deleted_at')
+        .first();
+      return user;
     } catch (error) {
       console.error('Error fetching user by ID:', error);
       throw error;
@@ -47,11 +37,15 @@ class User {
   static async create(userData) {
     const { name, email } = userData;
     try {
-      const result = await query(
-        'INSERT INTO users (name, email) VALUES ($1, $2) RETURNING *',
-        [name, email]
-      );
-      return result.rows[0];
+      const [user] = await db('users')
+        .insert({
+          name,
+          email,
+          created_at: db.fn.now(),
+          updated_at: db.fn.now()
+        })
+        .returning('*');
+      return user;
     } catch (error) {
       console.error('Error creating user:', error);
       throw error;
@@ -62,24 +56,54 @@ class User {
   static async update(id, userData) {
     const { name, email } = userData;
     try {
-      const result = await query(
-        'UPDATE users SET name = $1, email = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
-        [name, email, id]
-      );
-      return result.rows[0];
+      const [user] = await db('users')
+        .where('id', id)
+        .update({
+          name,
+          email,
+          updated_at: db.fn.now()
+        })
+        .returning('*');
+      return user;
     } catch (error) {
       console.error('Error updating user:', error);
       throw error;
     }
   }
 
-  // Delete user
+  // Soft delete user
   static async delete(id) {
     try {
-      const result = await query('DELETE FROM users WHERE id = $1 RETURNING *', [id]);
-      return result.rows[0];
+      const [user] = await db('users')
+        .where('id', id)
+        .update({
+          deleted_at: db.fn.now(),
+          updated_at: db.fn.now(),
+          is_active: false
+        })
+
+        .returning('*');
+      return user;
     } catch (error) {
       console.error('Error deleting user:', error);
+      throw error;
+    }
+  }
+
+  // Restore soft deleted user
+  static async restore(id) {
+    try {
+      const [user] = await db('users')
+        .where('id', id)
+        .update({
+          deleted_at: null,
+          updated_at: db.fn.now(),
+          is_active: true
+        })
+        .returning('*');
+      return user;
+    } catch (error) {
+      console.error('Error restoring user:', error);
       throw error;
     }
   }

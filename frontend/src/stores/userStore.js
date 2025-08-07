@@ -10,14 +10,16 @@ export const useUserStore = defineStore('user', () => {
   // Getters
   const userCount = computed(() => users.value.length)
   const hasUsers = computed(() => users.value.length > 0)
+  const deletedUsers = computed(() => users.value.filter(user => user.deleted_at))
 
   // Actions
-  const fetchUsers = async () => {
+  const fetchUsers = async (includeDeleted = false) => {
     loading.value = true
     error.value = null
     
     try {
-      const response = await fetch('http://localhost:5000/api/users')
+      const url = `http://localhost:5000/api/users${includeDeleted ? '?includeDeleted=true' : ''}`
+      const response = await fetch(url)
       const data = await response.json()
       
       if (data.success) {
@@ -50,6 +52,7 @@ export const useUserStore = defineStore('user', () => {
       
       if (data.success) {
         users.value.push(data.data)
+        users.value.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
         return data.data
       } else {
         throw new Error(data.message || 'Failed to create user')
@@ -122,6 +125,38 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  const restoreUser = async (id) => {
+    loading.value = true
+    error.value = null
+    
+    try {
+      const response = await fetch(`http://localhost:5000/api/users/${id}/restore`, {
+        method: 'PATCH',
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        const index = users.value.findIndex(user => user.id === id)
+        if (index !== -1) {
+          users.value[index] = data.data
+        }else{
+          users.value.push(data.data)
+        }
+        users.value.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        return true
+      } else {
+        throw new Error(data.message || 'Failed to restore user')
+      }
+    } catch (err) {
+      error.value = err.message
+      console.error('Error restoring user:', err)
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   const clearError = () => {
     error.value = null
   }
@@ -135,12 +170,14 @@ export const useUserStore = defineStore('user', () => {
     // Getters
     userCount,
     hasUsers,
+    deletedUsers,
     
     // Actions
     fetchUsers,
     createUser,
     updateUser,
     deleteUser,
+    restoreUser,
     clearError
   }
 })

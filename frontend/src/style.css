@@ -1,9 +1,34 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 @plugin "daisyui";
 
 /* Custom CSS for your application */
 body {
   margin: 0;
+  font-family: Poppins;
+}
+
+p {
+  font-family: Roboto;
+}
+
+@font-face {
+  font-family: Poppins;
+  src: url(./assets/font/Poppins-Regular.ttf);
+}
+
+@font-face {
+  font-family: Roboto;
+  src: url(./assets/font/Roboto-Regular.ttf);
+}
+
+@theme {
+  --font-poppins: Poppins;
+  --font-roboto: Roboto;
+
+  --color-primaryColor: #466114;
+  --color-secondaryColor: #aad36d;
+  --color-accentColor: #f9fafb;
+  --color-neutralColor: #000000;
 }
 
 #app {

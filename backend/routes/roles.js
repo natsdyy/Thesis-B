@@ -13,14 +13,18 @@ const { db } = require("../config/database");
  *           type: integer
  *           description: The auto-generated id of the role
  *           example: 1
- *         role_name:
+ *         role:
  *           type: string
  *           description: The name of the role
- *           example: "admin"
+ *           example: "Manager"
+ *         department:
+ *           type: string
+ *           description: The department the role belongs to
+ *           example: "Human Resource"
  *         description:
  *           type: string
  *           description: The description of the role
- *           example: "Administrator with full access"
+ *           example: "Manage the human resource department"
  *         created_at:
  *           type: string
  *           format: date-time
@@ -90,6 +94,7 @@ const { db } = require("../config/database");
  *                   type: string
  *                   example: "Database connection failed"
  */
+// Get all roles
 router.get("/", async (req, res) => {
   try {
     const includeDeleted = req.query.includeDeleted === "true";
@@ -165,6 +170,7 @@ router.get("/", async (req, res) => {
  *                 error:
  *                   type: string
  */
+// Get role by ID
 router.get("/:role_id", async (req, res) => {
   try {
     const { role_id } = req.params;
@@ -202,10 +208,10 @@ router.get("/:role_id", async (req, res) => {
  *           schema:
  *             type: object
  *             required:
- *               - role_name
+ *               - role
  *               - description
  *             properties:
- *               role_name:
+ *               role:
  *                 type: string
  *                 description: The name of the role
  *                 example: "manager"
@@ -271,40 +277,50 @@ router.get("/:role_id", async (req, res) => {
  *                 error:
  *                   type: string
  */
+// Create new role
 router.post("/", async (req, res) => {
   try {
-    const { role_name, description } = req.body;
+    const { role, department, description } = req.body;
 
     // Validate required fields
-    if (!role_name || !description) {
+    if (!role || !department || !description) {
       return res.status(400).json({
         success: false,
-        message: "Role name and description are required",
+        message: "Role name, department, and description are required",
+        code: "MISSING_FIELDS",
       });
     }
 
-    // Check if role already exists (case insensitive)
-    const existingRole = await db("user_roles")
-      .select("*")
-      .whereRaw("LOWER(role_name) = LOWER(?)", [role_name])
-      .whereNull("deleted_at")
-      .first();
-
-    if (existingRole) {
-      return res.status(409).json({
+    // Validate role name length and format
+    if (role.trim().length < 2) {
+      return res.status(400).json({
         success: false,
-        message: "Role with this name already exists",
+        message: "Role name must be at least 2 characters long",
+        code: "INVALID_ROLE_NAME",
       });
     }
 
     // Create role
-    const newRole = await Roles.create({ role_name, description });
+    const newRole = await Roles.create({
+      role: role.trim(),
+      department: department.trim(),
+      description: description.trim(),
+    });
+
     res.status(201).json({
       success: true,
       data: newRole,
       message: "Role created successfully",
     });
   } catch (error) {
+    if (error.code === "DUPLICATE_ROLE") {
+      return res.status(409).json({
+        success: false,
+        message: error.message,
+        code: "DUPLICATE_ROLE",
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: "Error creating role",
@@ -335,10 +351,10 @@ router.post("/", async (req, res) => {
  *           schema:
  *             type: object
  *             required:
- *               - role_name
+ *               - role
  *               - description
  *             properties:
- *               role_name:
+ *               role:
  *                 type: string
  *                 description: The name of the role
  *                 example: "senior_manager"
@@ -417,51 +433,59 @@ router.post("/", async (req, res) => {
  *                 error:
  *                   type: string
  */
+// Update role
 router.put("/:role_id", async (req, res) => {
   try {
     const { role_id } = req.params;
-    const { role_name, description } = req.body;
+    const { role, department, description } = req.body;
 
     // Validate required fields
-    if (!role_name || !description) {
+    if (!role || !department || !description) {
       return res.status(400).json({
         success: false,
-        message: "Role name and description are required",
+        message: "Role name, department, and description are required",
+        code: "MISSING_FIELDS",
       });
     }
 
-    // Check if role exists before updating
-    const currentRole = await Roles.getById(role_id);
-    if (!currentRole) {
-      return res.status(404).json({
+    // Validate role name length and format
+    if (role.trim().length < 2) {
+      return res.status(400).json({
         success: false,
-        message: "Role not found",
-      });
-    }
-
-    // Check if another role with the same name exists (excluding current role)
-    const existingRole = await db("user_roles")
-      .select("*")
-      .whereRaw("LOWER(role_name) = LOWER(?)", [role_name])
-      .whereNot("role_id", role_id)
-      .whereNull("deleted_at")
-      .first();
-
-    if (existingRole) {
-      return res.status(409).json({
-        success: false,
-        message: "Role with this name already exists",
+        message: "Role name must be at least 2 characters long",
+        code: "INVALID_ROLE_NAME",
       });
     }
 
     // Update role
-    const role = await Roles.update(role_id, { role_name, description });
+    const updatedRole = await Roles.update(role_id, {
+      role: role.trim(),
+      department: department.trim(),
+      description: description.trim(),
+    });
+
     res.json({
       success: true,
-      data: role,
+      data: updatedRole,
       message: "Role updated successfully",
     });
   } catch (error) {
+    if (error.code === "ROLE_NOT_FOUND") {
+      return res.status(404).json({
+        success: false,
+        message: error.message,
+        code: "ROLE_NOT_FOUND",
+      });
+    }
+
+    if (error.code === "DUPLICATE_ROLE") {
+      return res.status(409).json({
+        success: false,
+        message: error.message,
+        code: "DUPLICATE_ROLE",
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: "Error updating role",
@@ -530,22 +554,26 @@ router.put("/:role_id", async (req, res) => {
  *                 error:
  *                   type: string
  */
+// Delete role
 router.delete("/:role_id", async (req, res) => {
   try {
     const { role_id } = req.params;
-    const role = await Roles.delete(role_id);
-    if (!role) {
-      return res.status(404).json({
-        success: false,
-        message: "Role not found",
-      });
-    }
+    const deletedRole = await Roles.delete(role_id);
+
     res.json({
       success: true,
-      data: role,
+      data: deletedRole,
       message: "Role deleted successfully",
     });
   } catch (error) {
+    if (error.code === "ROLE_NOT_FOUND") {
+      return res.status(404).json({
+        success: false,
+        message: error.message,
+        code: "ROLE_NOT_FOUND",
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: "Error deleting role",
@@ -598,6 +626,32 @@ router.delete("/:role_id", async (req, res) => {
  *                 message:
  *                   type: string
  *                   example: "Role not found"
+ *       409:
+ *         description: Cannot restore due to duplicate
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Cannot restore: A role with this name already exists"
+ *       400:
+ *         description: Role is not deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Role is not deleted and cannot be restored"
  *       500:
  *         description: Server error
  *         content:
@@ -614,25 +668,102 @@ router.delete("/:role_id", async (req, res) => {
  *                 error:
  *                   type: string
  */
+// Restore role
 router.patch("/:role_id/restore", async (req, res) => {
   try {
     const { role_id } = req.params;
-    const role = await Roles.restore(role_id);
-    if (!role) {
-      return res.status(404).json({
-        success: false,
-        message: "Role not found",
-      });
-    }
+    const restoredRole = await Roles.restore(role_id);
+
     res.json({
       success: true,
-      data: role,
+      data: restoredRole,
       message: "Role restored successfully",
+    });
+  } catch (error) {
+    if (error.code === "ROLE_NOT_FOUND") {
+      return res.status(404).json({
+        success: false,
+        message: error.message,
+        code: "ROLE_NOT_FOUND",
+      });
+    }
+
+    if (error.code === "ROLE_NOT_DELETED") {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+        code: "ROLE_NOT_DELETED",
+      });
+    }
+
+    if (error.code === "DUPLICATE_ROLE") {
+      return res.status(409).json({
+        success: false,
+        message: error.message,
+        code: "DUPLICATE_ROLE",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Error restoring role",
+      error: error.message,
+    });
+  }
+});
+
+// Get roles by department
+router.get("/department/:department", async (req, res) => {
+  try {
+    const { department } = req.params;
+    const includeDeleted = req.query.includeDeleted === "true";
+    const roles = await Roles.getByDepartment(department, includeDeleted);
+
+    res.json({
+      success: true,
+      data: roles,
+      count: roles.length,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Error restoring role",
+      message: "Error fetching roles by department",
+      error: error.message,
+    });
+  }
+});
+
+// Get only deleted roles
+router.get("/deleted/list", async (req, res) => {
+  try {
+    const deletedRoles = await Roles.getDeleted();
+    res.json({
+      success: true,
+      data: deletedRoles,
+      count: deletedRoles.length,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching deleted roles",
+      error: error.message,
+    });
+  }
+});
+
+// Get role count
+router.get("/count/all", async (req, res) => {
+  try {
+    const includeDeleted = req.query.includeDeleted === "true";
+    const count = await Roles.getCount(includeDeleted);
+    res.json({
+      success: true,
+      count: count,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error getting role count",
       error: error.message,
     });
   }

@@ -39,6 +39,9 @@
 
   const selectedDepartment = ref('');
   const selectedRole = ref('');
+  const selectedPermissions = ref([]);
+
+  const availablePermissions = ref([]);
 
   // Modal state
   const modal = ref({
@@ -503,6 +506,30 @@
               </option>
             </select>
           </div>
+
+          <!-- Select Permissions -->
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">Select Permissions</span>
+            </label>
+
+            <div class="space-y-2">
+              <label
+                v-for="permission in availablePermissions"
+                :key="permission"
+                class="label cursor-pointer justify-start gap-3"
+              >
+                <input
+                  type="checkbox"
+                  class="checkbox checkbox-accent checkbox-xs"
+                  :value="permission"
+                  v-model="selectedPermissions"
+                />
+                <span class="label-text">{{ permission }}</span>
+              </label>
+            </div>
+          </div>
+
           <div class="form-control">
             <label class="label">
               <span class="label-text">Description</span>

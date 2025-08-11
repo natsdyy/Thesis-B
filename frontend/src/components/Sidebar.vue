@@ -1,66 +1,299 @@
 <template>
-  <div class="h-screen flex">
+  <div>
+    <!-- Mobile Menu Button -->
+    <div class="lg:hidden fixed top-4 left-4 z-50">
+      <button
+        @click="toggleMobileMenu"
+        class="btn btn-square bg-green-800 border-none btn-sm"
+      >
+        <Menu v-if="!isMobileMenuOpen" class="w-5 h-5" />
+        <X v-else class="w-5 h-5" />
+      </button>
+    </div>
+
+    <!-- Backdrop for mobile -->
+    <div
+      v-if="isMobileMenuOpen"
+      class="fixed inset-0 glass backdrop-blur-sm z-40 lg:hidden"
+      @click="closeMobileMenu"
+    ></div>
+
     <!-- Sidebar -->
     <aside
       :class="[
-        isMini ? 'w-20' : 'w-64',
-        'bg-base-200 p-4 transition-all duration-300 flex flex-col fixed h-screen',
+        'fixed top-0 left-0 h-screen bg-gradient-to-b from-green-800 to-green-900 shadow-xl z-40 transition-transform duration-300 ease-in-out',
+        'w-64 flex flex-col text-white min-h-screen',
+        isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full',
+        'lg:translate-x-0 lg:fixed lg:z-40',
       ]"
     >
-      <!-- Top: Logo + Toggle button -->
-      <div class="flex items-center justify-between">
-        <div class="flex items-center space-x-2">
-          <img src="/logo1.png" alt="Logo" class="w-8 h-8" />
-          <span v-if="!isMini" class="font-bold text-lg">MyApp</span>
+      <!-- Header -->
+      <div class="p-6 flex-shrink-0">
+        <div class="flex items-center space-x-3">
+          <div
+            class="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center"
+          >
+            <img src="/logo1.png" alt="logo" class="w-15 h-15 object-contain" />
+          </div>
+          <div class="flex-1">
+            <h1 class="font-bold text-lg text-white">
+              Countryside Steak House
+            </h1>
+          </div>
         </div>
-        <button class="btn btn-sm btn-ghost" @click="isMini = !isMini">
-          <span v-if="isMini">➡️</span>
-          <span v-else>⬅️</span>
-        </button>
       </div>
 
-      <!-- Menu -->
-      <ul class="menu bg-base-200 rounded-box mt-6 flex-1">
-        <li>
-          <a>
-            <span>🏠</span>
-            <span v-if="!isMini">Dashboard</span>
-          </a>
-        </li>
-        <li>
-          <a>
-            <span>📦</span>
-            <span v-if="!isMini">Products</span>
-          </a>
-        </li>
-        <li>
-          <a>
-            <span>📊</span>
-            <span v-if="!isMini">Reports</span>
-          </a>
-        </li>
-        <li>
-          <a>
-            <span>⚙</span>
-            <span v-if="!isMini">Settings</span>
-          </a>
-        </li>
-      </ul>
+      <!-- Navigation Menu -->
+      <nav class="flex-1 overflow-y-auto px-4 pb-4 min-h-0">
+        <!-- MENU Label -->
+        <div class="text-xs font-semibold text-white/60 mb-4 px-2">MENU</div>
+
+        <!-- Super Admin View: All departments as dropdowns -->
+        <template v-if="isSuperAdmin">
+          <div
+            v-for="(menus, department) in availableMenus"
+            :key="department"
+            class="mb-4"
+          >
+            <!-- Department Header with Collapse -->
+            <div class="collapse">
+              <input
+                type="checkbox"
+                class="collapse-toggle opacity-0 absolute"
+              />
+              <div
+                class="collapse-title px-2 py-3 cursor-pointer hover:bg-white/10 rounded-lg transition-colors duration-200 flex items-center justify-between min-h-0"
+              >
+                <div class="flex items-center space-x-3">
+                  <component
+                    :is="departmentIcons[department]"
+                    class="w-5 h-5 text-white"
+                  />
+                  <span class="text-white font-medium">{{ department }}</span>
+                </div>
+                <ChevronDown
+                  class="w-4 h-4 text-white/60 transition-transform duration-200"
+                />
+              </div>
+
+              <!-- Department Menu Items -->
+              <div class="collapse-content px-0 pb-0">
+                <div class="ml-8 space-y-1 mt-2">
+                  <button
+                    v-for="menu in menus"
+                    :key="menu.route"
+                    @click="navigateToRoute(menu.route)"
+                    :class="[
+                      'w-full text-left px-3 py-2 rounded-lg transition-all duration-200 text-sm',
+                      isActiveRoute(menu.route)
+                        ? 'bg-white/20 text-white font-medium'
+                        : 'text-white/80 hover:bg-white/10 hover:text-white',
+                    ]"
+                  >
+                    {{ menu.name }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Regular User View: Clean direct menu items (like your reference image) -->
+        <template v-else>
+          <div class="space-y-2">
+            <!-- Iterate through all menus for the user's department -->
+            <template
+              v-for="(menus, department) in availableMenus"
+              :key="department"
+            >
+              <template v-for="menu in menus" :key="menu.route">
+                <!-- Check if this menu has sub-items (like Employee Management) -->
+                <div v-if="menu.subItems && menu.subItems.length > 0">
+                  <!-- Parent menu with dropdown -->
+                  <div class="collapse">
+                    <input
+                      type="checkbox"
+                      class="collapse-toggle opacity-0 absolute"
+                      :id="`collapse-${menu.name}`"
+                    />
+                    <label
+                      :for="`collapse-${menu.name}`"
+                      class="collapse-title px-2 py-3 cursor-pointer hover:bg-white/10 rounded-lg transition-colors duration-200 flex items-center justify-between min-h-0"
+                    >
+                      <div class="flex items-center space-x-3">
+                        <component :is="menu.icon" class="w-5 h-5 text-white" />
+                        <span class="text-white font-medium">{{
+                          menu.name
+                        }}</span>
+                      </div>
+                      <ChevronDown
+                        class="w-4 h-4 text-white/60 transition-transform duration-200"
+                      />
+                    </label>
+
+                    <!-- Sub-menu items -->
+                    <div class="collapse-content px-0 pb-0">
+                      <div class="ml-8 space-y-1 mt-2">
+                        <button
+                          v-for="subItem in menu.subItems"
+                          :key="subItem.route"
+                          @click="navigateToRoute(subItem.route)"
+                          :class="[
+                            'w-full text-left px-3 py-2 rounded-lg transition-all duration-200 text-sm',
+                            isActiveRoute(subItem.route)
+                              ? 'bg-white/20 text-white font-medium'
+                              : 'text-white/80 hover:bg-white/10 hover:text-white',
+                          ]"
+                        >
+                          {{ subItem.name }}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Regular menu item (no sub-items) -->
+                <div v-else>
+                  <button
+                    @click="navigateToRoute(menu.route)"
+                    :class="[
+                      'w-full flex items-center space-x-3 px-2 py-3 rounded-lg transition-all duration-200',
+                      isActiveRoute(menu.route)
+                        ? 'bg-white/20 text-white font-medium'
+                        : 'text-white/80 hover:bg-white/10 hover:text-white',
+                    ]"
+                  >
+                    <component :is="menu.icon" class="w-5 h-5 text-white" />
+                    <span class="font-medium">{{ menu.name }}</span>
+                  </button>
+                </div>
+              </template>
+            </template>
+          </div>
+        </template>
+      </nav>
     </aside>
 
-    <!-- Main content -->
-    <main
-      class="flex-1 p-6 overflow-y-auto"
-      :class="isMini ? 'ml-20' : 'ml-64'"
-    >
-      <UserManager />
-    </main>
+    <!-- Spacer for desktop layout -->
+    <div class="hidden lg:block w-64 flex-shrink-0"></div>
   </div>
 </template>
 
 <script setup>
-  import UserManager from './UserManager.vue';
-  import { ref } from 'vue';
+  import { ref, computed, onMounted, onUnmounted } from 'vue';
+  import { useRoute, useRouter } from 'vue-router';
+  import { useAuthStore } from '../stores/authStore';
+  import { menusByDepartment, departmentIcons } from '../config/menus';
+  import { Menu, X, Building2, ChevronDown } from 'lucide-vue-next';
 
-  const isMini = ref(false);
+  // Stores and router
+  const authStore = useAuthStore();
+  const route = useRoute();
+  const router = useRouter();
+
+  // State
+  const isMobileMenuOpen = ref(false);
+
+  // Computed properties
+  const { isSuperAdmin, userDepartment, user } = authStore;
+
+  const availableMenus = computed(() => {
+    if (isSuperAdmin) {
+      // Super Admin sees all departments
+      return menusByDepartment;
+    } else if (userDepartment) {
+      // Regular users see only their department, excluding super admin only items
+      const filteredMenus = {};
+      Object.keys(menusByDepartment).forEach((dept) => {
+        const departmentMenus = menusByDepartment[dept].filter(
+          (menu) => !menu.superAdminOnly
+        );
+        if (departmentMenus.length > 0) {
+          filteredMenus[dept] = departmentMenus;
+        }
+      });
+
+      return userDepartment && filteredMenus[userDepartment]
+        ? { [userDepartment]: filteredMenus[userDepartment] }
+        : {};
+    }
+    return {};
+  });
+
+  const isActiveRoute = (menuRoute) => {
+    return route.path === menuRoute || route.path.startsWith(menuRoute + '/');
+  };
+
+  // Methods
+  const toggleMobileMenu = () => {
+    isMobileMenuOpen.value = !isMobileMenuOpen.value;
+  };
+
+  const closeMobileMenu = () => {
+    isMobileMenuOpen.value = false;
+  };
+
+  const navigateToRoute = (menuRoute) => {
+    router.push(menuRoute);
+    closeMobileMenu();
+  };
+
+  const checkScreenSize = () => {
+    if (window.innerWidth >= 1024) {
+      isMobileMenuOpen.value = false;
+    }
+  };
+
+  // Logout function
+  const logout = () => {
+    authStore.logout();
+    router.push('/login');
+  };
+
+  // Lifecycle
+  onMounted(() => {
+    checkScreenSize();
+    window.addEventListener('resize', checkScreenSize);
+  });
+
+  onUnmounted(() => {
+    window.removeEventListener('resize', checkScreenSize);
+  });
 </script>
+
+<style scoped>
+  /* Custom scrollbar for sidebar */
+  nav::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  nav::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  nav::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+  }
+
+  nav::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  /* Collapse functionality */
+  .collapse-toggle:checked ~ .collapse-title .w-4 {
+    transform: rotate(180deg);
+  }
+
+  .collapse-toggle:checked ~ .collapse-content {
+    max-height: 500px;
+    opacity: 1;
+  }
+
+  .collapse-content {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: all 0.3s ease;
+  }
+</style>

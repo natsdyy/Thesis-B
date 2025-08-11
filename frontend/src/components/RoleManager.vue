@@ -35,13 +35,48 @@
     role: '',
     department: '',
     description: '',
+    permissions: [],
   });
 
   const selectedDepartment = ref('');
   const selectedRole = ref('');
-  const selectedPermissions = ref([]);
+  const selectPermissions = ref([]);
 
-  const availablePermissions = ref([]);
+  const departmentPermissions = {
+    'Human Resource': [
+      'View Dashboard',
+      'Manage Attendance',
+      'Manage Employee',
+      'Manage Leave',
+      'Manage Payroll',
+    ],
+    Finance: [
+      'View Dashboard',
+      'Manage Inventory',
+      'Manage Purchase Order',
+      'Manage Sales Order',
+      'Manage Payment',
+    ],
+    'Supply Chain': [
+      'View Dashboard',
+      'Manage Inventory',
+      'Manage Purchase Order',
+      'Manage Supplier',
+      'Manage Payment',
+    ],
+    Production: [
+      'View Dashboard',
+      'Manage Production',
+      'Manage Quality Control',
+      'Manage Inventory',
+      'Manage Purchase Order',
+    ],
+    'Customer Relationship': ['View Dashboard', 'Manage Customer'],
+  };
+
+  const availablePermissions = computed(() => {
+    return departmentPermissions[selectedDepartment.value] || [];
+  });
 
   // Modal state
   const modal = ref({
@@ -198,6 +233,7 @@
       role: selectedRole.value,
       department: selectedDepartment.value,
       description: document.querySelector('textarea').value,
+      permissions: selectPermissions.value,
     };
     openModal('create');
   };
@@ -517,13 +553,13 @@
               <label
                 v-for="permission in availablePermissions"
                 :key="permission"
-                class="label cursor-pointer justify-start gap-3"
+                class="label cursor-pointer justify-between gap-3"
               >
                 <input
                   type="checkbox"
-                  class="checkbox checkbox-accent checkbox-xs"
+                  class="checkbox checkbox-neutral checkbox-xs"
                   :value="permission"
-                  v-model="selectedPermissions"
+                  v-model="selectPermissions"
                 />
                 <span class="label-text">{{ permission }}</span>
               </label>

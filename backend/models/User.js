@@ -47,7 +47,7 @@ class User {
         )
         .where("users.id", id)
         .first();
-      
+
       return user;
     } catch (error) {
       console.error("Error fetching user by ID:", error);
@@ -79,7 +79,7 @@ class User {
         .whereNull("users.deleted_at")
         .where("users.is_active", true)
         .first();
-      
+
       return user;
     } catch (error) {
       console.error("Error fetching user by email:", error);
@@ -99,7 +99,7 @@ class User {
   // Password validation helper
   static validatePassword(password) {
     const errors = [];
-    
+
     if (!password) {
       errors.push("Password is required");
     } else {
@@ -113,10 +113,10 @@ class User {
         errors.push("Password must contain at least one letter");
       }
     }
-    
+
     return {
       isValid: errors.length === 0,
-      errors
+      errors,
     };
   }
 
@@ -124,27 +124,47 @@ class User {
   static async validateUserRole(user) {
     try {
       if (!user) {
-        return { valid: false, reason: "User account not found", code: "USER_NOT_FOUND" };
+        return {
+          valid: false,
+          reason: "User account not found",
+          code: "USER_NOT_FOUND",
+        };
       }
 
       if (!user.role_id) {
-        return { valid: false, reason: "No role assigned to your account", code: "NO_ROLE_ASSIGNED" };
+        return {
+          valid: false,
+          reason: "No role assigned to your account",
+          code: "NO_ROLE_ASSIGNED",
+        };
       }
 
       // Check if role is deleted
       if (user.role_deleted_at) {
-        return { valid: false, reason: "Your assigned role has been removed", code: "ROLE_DELETED" };
+        return {
+          valid: false,
+          reason: "Your assigned role has been removed",
+          code: "ROLE_DELETED",
+        };
       }
 
       // Check if role is active
       if (user.role_is_active === false) {
-        return { valid: false, reason: "Your assigned role has been deactivated", code: "ROLE_DEACTIVATED" };
+        return {
+          valid: false,
+          reason: "Your assigned role has been deactivated",
+          code: "ROLE_DEACTIVATED",
+        };
       }
 
       return { valid: true, reason: null, code: "VALID" };
     } catch (error) {
       console.error("Error validating user role:", error);
-      return { valid: false, reason: "Unable to verify role permissions", code: "ROLE_VALIDATION_ERROR" };
+      return {
+        valid: false,
+        reason: "Unable to verify role permissions",
+        code: "ROLE_VALIDATION_ERROR",
+      };
     }
   }
 
@@ -161,14 +181,16 @@ class User {
       if (!name || name.trim().length === 0) {
         throw new Error("Name is required and cannot be empty");
       }
-      
+
       if (!email || !this.isValidEmail(email)) {
         throw new Error("Valid email address is required");
       }
 
       const passwordValidation = this.validatePassword(password);
       if (!passwordValidation.isValid) {
-        throw new Error(`Password validation failed: ${passwordValidation.errors.join(', ')}`);
+        throw new Error(
+          `Password validation failed: ${passwordValidation.errors.join(", ")}`
+        );
       }
 
       if (name.trim().length > 255) {
@@ -217,25 +239,27 @@ class User {
       return user;
     } catch (error) {
       console.error("Error creating user:", error);
-      
+
       // Handle specific database errors
-      if (error.code === '23505' && error.constraint === 'users_email_unique') {
+      if (error.code === "23505" && error.constraint === "users_email_unique") {
         throw new Error("An account with this email address already exists");
       }
-      
-      if (error.code === '23503') {
+
+      if (error.code === "23503") {
         throw new Error("Invalid role or department selected");
       }
-      
+
       // Re-throw validation errors
-      if (error.message.includes("validation failed") || 
-          error.message.includes("is required") ||
-          error.message.includes("already exists") ||
-          error.message.includes("Invalid role") ||
-          error.message.includes("Cannot assign")) {
+      if (
+        error.message.includes("validation failed") ||
+        error.message.includes("is required") ||
+        error.message.includes("already exists") ||
+        error.message.includes("Invalid role") ||
+        error.message.includes("Cannot assign")
+      ) {
         throw error;
       }
-      
+
       throw new Error("Failed to create user account. Please try again.");
     }
   }
@@ -251,7 +275,7 @@ class User {
       if (!name || name.trim().length === 0) {
         throw new Error("Name is required and cannot be empty");
       }
-      
+
       if (!email || !this.isValidEmail(email)) {
         throw new Error("Valid email address is required");
       }
@@ -305,29 +329,31 @@ class User {
           updated_at: new Date(),
         })
         .returning("*");
-      
+
       return user;
     } catch (error) {
       console.error("Error updating user:", error);
-      
+
       // Handle specific database errors
-      if (error.code === '23505' && error.constraint === 'users_email_unique') {
+      if (error.code === "23505" && error.constraint === "users_email_unique") {
         throw new Error("Another account is already using this email address");
       }
-      
-      if (error.code === '23503') {
+
+      if (error.code === "23503") {
         throw new Error("Invalid role or department selected");
       }
-      
+
       // Re-throw validation errors
-      if (error.message.includes("Invalid") || 
-          error.message.includes("is required") ||
-          error.message.includes("not found") ||
-          error.message.includes("already using") ||
-          error.message.includes("Cannot")) {
+      if (
+        error.message.includes("Invalid") ||
+        error.message.includes("is required") ||
+        error.message.includes("not found") ||
+        error.message.includes("already using") ||
+        error.message.includes("Cannot")
+      ) {
         throw error;
       }
-      
+
       throw new Error("Failed to update user account. Please try again.");
     }
   }
@@ -341,7 +367,9 @@ class User {
 
       const passwordValidation = this.validatePassword(newPassword);
       if (!passwordValidation.isValid) {
-        throw new Error(`Password validation failed: ${passwordValidation.errors.join(', ')}`);
+        throw new Error(
+          `Password validation failed: ${passwordValidation.errors.join(", ")}`
+        );
       }
 
       // Check if user exists
@@ -363,19 +391,21 @@ class User {
           updated_at: new Date(),
         })
         .returning("*");
-      
+
       return user;
     } catch (error) {
       console.error("Error updating password:", error);
-      
+
       // Re-throw validation errors
-      if (error.message.includes("Invalid") || 
-          error.message.includes("validation failed") ||
-          error.message.includes("not found") ||
-          error.message.includes("Cannot update")) {
+      if (
+        error.message.includes("Invalid") ||
+        error.message.includes("validation failed") ||
+        error.message.includes("not found") ||
+        error.message.includes("Cannot update")
+      ) {
         throw error;
       }
-      
+
       throw new Error("Failed to update password. Please try again.");
     }
   }
@@ -384,9 +414,11 @@ class User {
   static async verifyPassword(plainPassword, hashedPassword) {
     try {
       if (!plainPassword || !hashedPassword) {
-        throw new Error("Password verification requires both plain and hashed passwords");
+        throw new Error(
+          "Password verification requires both plain and hashed passwords"
+        );
       }
-      
+
       return await bcrypt.compare(plainPassword, hashedPassword);
     } catch (error) {
       console.error("Error verifying password:", error);
@@ -401,55 +433,60 @@ class User {
   static async authenticate(email, password) {
     try {
       if (!email || !password) {
-        return { 
-          success: false, 
+        return {
+          success: false,
           message: "Email and password are required",
-          code: "MISSING_CREDENTIALS"
+          code: "MISSING_CREDENTIALS",
         };
       }
 
       if (!this.isValidEmail(email)) {
-        return { 
-          success: false, 
+        return {
+          success: false,
           message: "Please enter a valid email address",
-          code: "INVALID_EMAIL_FORMAT"
+          code: "INVALID_EMAIL_FORMAT",
         };
       }
 
       const user = await this.getByEmail(email);
 
       if (!user) {
-        return { 
-          success: false, 
+        return {
+          success: false,
           message: "Invalid email or password",
-          code: "INVALID_CREDENTIALS"
+          code: "INVALID_CREDENTIALS",
         };
       }
 
       // Check if user account is active
       if (user.deleted_at) {
-        return { 
-          success: false, 
-          message: "Your account has been deactivated. Please contact your administrator.",
-          code: "ACCOUNT_DEACTIVATED"
+        return {
+          success: false,
+          message:
+            "Your account has been deactivated. Please contact your administrator.",
+          code: "ACCOUNT_DEACTIVATED",
         };
       }
 
       if (!user.is_active) {
-        return { 
-          success: false, 
-          message: "Your account is currently inactive. Please contact your administrator.",
-          code: "ACCOUNT_INACTIVE"
+        return {
+          success: false,
+          message:
+            "Your account is currently inactive. Please contact your administrator.",
+          code: "ACCOUNT_INACTIVE",
         };
       }
 
-      const isValidPassword = await this.verifyPassword(password, user.password);
+      const isValidPassword = await this.verifyPassword(
+        password,
+        user.password
+      );
 
       if (!isValidPassword) {
-        return { 
-          success: false, 
+        return {
+          success: false,
           message: "Invalid email or password",
-          code: "INVALID_CREDENTIALS"
+          code: "INVALID_CREDENTIALS",
         };
       }
 
@@ -459,16 +496,20 @@ class User {
         let message;
         switch (roleValidation.code) {
           case "NO_ROLE_ASSIGNED":
-            message = "No role has been assigned to your account. Please contact your administrator.";
+            message =
+              "No role has been assigned to your account. Please contact your administrator.";
             break;
           case "ROLE_DELETED":
-            message = "Your assigned role has been removed. Please contact your administrator for role reassignment.";
+            message =
+              "Your assigned role has been removed. Please contact your administrator for role reassignment.";
             break;
           case "ROLE_DEACTIVATED":
-            message = "Your assigned role has been temporarily deactivated. Please contact your administrator.";
+            message =
+              "Your assigned role has been temporarily deactivated. Please contact your administrator.";
             break;
           case "ROLE_VALIDATION_ERROR":
-            message = "Unable to verify your role permissions. Please try again or contact your administrator.";
+            message =
+              "Unable to verify your role permissions. Please try again or contact your administrator.";
             break;
           default:
             message = `Access denied: ${roleValidation.reason}. Please contact your administrator.`;
@@ -483,27 +524,28 @@ class User {
 
       // Remove password from returned user object
       const { password: _, ...userWithoutPassword } = user;
-      return { 
-        success: true, 
+      return {
+        success: true,
         user: userWithoutPassword,
         message: "Login successful",
-        code: "LOGIN_SUCCESS"
+        code: "LOGIN_SUCCESS",
       };
     } catch (error) {
       console.error("Error authenticating user:", error);
-      
+
       if (error.message === "Invalid email address format") {
-        return { 
-          success: false, 
+        return {
+          success: false,
           message: "Please enter a valid email address",
-          code: "INVALID_EMAIL_FORMAT"
+          code: "INVALID_EMAIL_FORMAT",
         };
       }
-      
-      return { 
-        success: false, 
-        message: "Authentication service is temporarily unavailable. Please try again.",
-        code: "AUTHENTICATION_ERROR"
+
+      return {
+        success: false,
+        message:
+          "Authentication service is temporarily unavailable. Please try again.",
+        code: "AUTHENTICATION_ERROR",
       };
     }
   }
@@ -566,16 +608,18 @@ class User {
       };
     } catch (error) {
       console.error("Error fetching user with permissions:", error);
-      
+
       // Re-throw specific errors
-      if (error.message.includes("Invalid user ID") ||
-          error.message.includes("not found") ||
-          error.message.includes("deactivated") ||
-          error.message.includes("inactive") ||
-          error.message.includes("Access denied")) {
+      if (
+        error.message.includes("Invalid user ID") ||
+        error.message.includes("not found") ||
+        error.message.includes("deactivated") ||
+        error.message.includes("inactive") ||
+        error.message.includes("Access denied")
+      ) {
         throw error;
       }
-      
+
       throw new Error("Failed to retrieve user permissions");
     }
   }
@@ -603,18 +647,20 @@ class User {
           is_active: false,
         })
         .returning("*");
-      
+
       return user;
     } catch (error) {
       console.error("Error deleting user:", error);
-      
+
       // Re-throw validation errors
-      if (error.message.includes("Invalid") || 
-          error.message.includes("not found") ||
-          error.message.includes("already deleted")) {
+      if (
+        error.message.includes("Invalid") ||
+        error.message.includes("not found") ||
+        error.message.includes("already deleted")
+      ) {
         throw error;
       }
-      
+
       throw new Error("Failed to delete user account. Please try again.");
     }
   }
@@ -643,18 +689,20 @@ class User {
           updated_at: new Date(),
         })
         .returning("*");
-      
+
       return user;
     } catch (error) {
       console.error("Error restoring user:", error);
-      
+
       // Re-throw validation errors
-      if (error.message.includes("Invalid") || 
-          error.message.includes("not found") ||
-          error.message.includes("cannot be restored")) {
+      if (
+        error.message.includes("Invalid") ||
+        error.message.includes("not found") ||
+        error.message.includes("cannot be restored")
+      ) {
         throw error;
       }
-      
+
       throw new Error("Failed to restore user account. Please try again.");
     }
   }

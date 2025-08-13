@@ -72,45 +72,102 @@ class Permission {
     }
   }
 
-  // Seed default permissions for your simplified structure
+  // Seed department-specific permissions
   static async seedDefaultPermissions() {
     try {
-      const defaultPermissions = [
-        { permission_name: "View Dashboard" },
-        { permission_name: "Manage Users" },
-        { permission_name: "Manage Roles" },
-        { permission_name: "Manage Attendance" },
-        { permission_name: "Manage Employee" },
-        { permission_name: "Manage Leave" },
-        { permission_name: "Manage Payroll" },
-        { permission_name: "Manage Inventory" },
-        { permission_name: "Manage Purchase Order" },
-        { permission_name: "Manage Sales Order" },
-        { permission_name: "Manage Payment" },
-        { permission_name: "Manage Supplier" },
-        { permission_name: "Manage Production" },
-        { permission_name: "Manage Quality Control" },
-        { permission_name: "Manage Customer" },
-      ];
+      const departmentPermissions = {
+        // System Administration
+        Admin: [
+          "Manage System Settings",
+          "Manage User Management",
+          "Manage Role Management",
+          "Manage Dashboard",
+          "Manage Branches",
+        ],
+
+        // Human Resource Department
+        "Human Resource": [
+          "Manage HR Dashboard",
+          "Manage Employees",
+          "View Employee Records",
+          "Manage  Attendance",
+          "View Attendance Reports",
+          "Manage Employee Leave",
+          "Approve Leave Requests",
+          "View Leave Reports",
+          "Manage Payroll",
+          "Process Payroll",
+          "View Payroll Reports",
+        ],
+
+        // Finance Department
+        Finance: ["Manage Finance Department"],
+
+        // Supply Chain Management
+        "Supply Chain": [
+          "Manage SCM Dashboard",
+          "Manage Inventory",
+          "View Inventory Reports",
+          "Manage Suppliers",
+          "View Supplier Records",
+          "Manage Purchase Orders",
+          "Approve Purchase Orders",
+          "View Purchase Reports",
+        ],
+
+        // Production Department
+        Production: [
+          "Manage Production Dashboard",
+          "View Production Reports",
+          "Manage Quality Control",
+          "View Quality Reports",
+          "Manage Production Schedule",
+          "View Production Status",
+          "Manage Equipment",
+        ],
+
+        // Customer Relationship Management
+        "Customer Relationship": [
+          "Manage CRM Dashboard",
+          "Manage Customers",
+          "View Customer Feedback",
+        ],
+      };
+
+      const allPermissions = [];
+
+      // Flatten all permissions into a single array
+      Object.values(departmentPermissions).forEach((permissions) => {
+        permissions.forEach((permission) => {
+          if (!allPermissions.includes(permission)) {
+            allPermissions.push(permission);
+          }
+        });
+      });
 
       const seededPermissions = [];
-      
-      for (const permData of defaultPermissions) {
+
+      for (const permissionName of allPermissions) {
         try {
           // Check if permission already exists
           const existingPermission = await db("user_permissions")
-            .where("permission_name", permData.permission_name)
+            .where("permission_name", permissionName)
             .first();
 
           if (!existingPermission) {
-            const newPermission = await this.create(permData);
+            const newPermission = await this.create({
+              permission_name: permissionName,
+            });
             seededPermissions.push(newPermission);
-            console.log(`✅ Created permission: ${permData.permission_name}`);
+            console.log(`✅ Created permission: ${permissionName}`);
           } else {
-            console.log(`⏭️  Permission already exists: ${permData.permission_name}`);
+            console.log(`⏭️  Permission already exists: ${permissionName}`);
           }
         } catch (error) {
-          console.error(`❌ Error creating permission ${permData.permission_name}:`, error.message);
+          console.error(
+            `❌ Error creating permission ${permissionName}:`,
+            error.message
+          );
         }
       }
 

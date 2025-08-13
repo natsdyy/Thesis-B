@@ -140,7 +140,7 @@
     class="min-h-screen relative bg-accentColor flex items-center justify-center p-4 overflow-hidden bg-[url(./logo1.png)] bg-contain bg-no-repeat bg-center"
   >
     <!-- Blurred background overlay -->
-    <div class="absolute inset-0 glass"></div>
+    <div class="absolute inset-0 glass bg-secondaryColor/10"></div>
 
     <!-- Back Button - positioned outside the card -->
     <button

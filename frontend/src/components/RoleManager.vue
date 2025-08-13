@@ -515,7 +515,6 @@
                 <th>Role</th>
                 <th>Department</th>
                 <th>Description</th>
-                <th>Permissions</th>
                 <th>Updated At</th>
                 <th>Actions</th>
               </tr>
@@ -543,12 +542,7 @@
                 </td>
                 <td>{{ role.department }}</td>
                 <td>{{ role.description }}</td>
-                <td>
-                  <div class="badge badge-outline" v-if="role.permissions">
-                    {{ role.permissions.length }} permissions
-                  </div>
-                  <div class="text-xs text-gray-500" v-else>Not loaded</div>
-                </td>
+
                 <td>{{ formatDate(role.updated_at) }}</td>
                 <td>
                   <div class="dropdown dropdown-left">

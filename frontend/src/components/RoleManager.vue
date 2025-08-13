@@ -78,6 +78,82 @@
     return departmentPermissions[selectedDepartment.value] || [];
   });
 
+  // Toast state
+  const toast = ref({ show: false, type: '', message: '' });
+
+  // Show toast helper
+  const showToast = (type, message) => {
+    toast.value = { show: true, type, message };
+    setTimeout(() => {
+      toast.value.show = false;
+    }, 3000); // hide after 3 seconds
+  };
+
+  const handleCreateRole = async () => {
+    if (
+      !newRole.value.role ||
+      !newRole.value.department ||
+      !newRole.value.description
+    ) {
+      error.value = 'Please fill in all fields';
+      showToast('error', 'Please fill in all fields');
+      return;
+    }
+
+    try {
+      await createRole({
+        role: newRole.value.role,
+        department: newRole.value.department,
+        description: newRole.value.description,
+      });
+
+      // Reset
+      newRole.value = { role: '', department: '', description: '' };
+      selectedDepartment.value = '';
+      selectedRole.value = '';
+
+      closeModal();
+      await fetchRoles(showDeleted.value);
+
+      showToast('success', 'Role created successfully');
+    } catch (err) {
+      showToast('error', 'Failed to create role');
+    }
+  };
+
+  const handleUpdateRole = async (roleId, updatedData) => {
+    try {
+      await updateRole(roleId, updatedData);
+      closeModal();
+      await fetchRoles(showDeleted.value);
+      showToast('success', 'Role updated successfully');
+    } catch (err) {
+      showToast('error', 'Failed to update role');
+    }
+  };
+
+  const handleDeleteRole = async (roleId) => {
+    try {
+      await deleteRole(roleId);
+      closeModal();
+      await fetchRoles(showDeleted.value);
+      showToast('error', 'Role deleted successfully');
+    } catch (err) {
+      showToast('error', 'Failed to delete role');
+    }
+  };
+
+  const handleRestoreRole = async (roleId) => {
+    try {
+      await restoreRole(roleId);
+      closeModal();
+      await fetchRoles(showDeleted.value);
+      showToast('success', 'Role restored successfully');
+    } catch (err) {
+      showToast('error', 'Failed to restore role');
+    }
+  };
+
   // Modal state
   const modal = ref({
     type: null, // 'edit', 'delete', 'restore'
@@ -112,66 +188,6 @@
   const availableRoles = computed(() => {
     return departmentRoles[selectedDepartment.value] || [];
   });
-
-  // Methods
-  const handleCreateRole = async () => {
-    if (
-      !newRole.value.role ||
-      !newRole.value.department ||
-      !newRole.value.description
-    ) {
-      error.value = 'Please fill in all fields';
-      return;
-    }
-
-    try {
-      await createRole({
-        role: newRole.value.role,
-        department: newRole.value.department,
-        description: newRole.value.description,
-      });
-
-      // Reset form
-      newRole.value = { role: '', department: '', description: '' };
-      selectedDepartment.value = '';
-      selectedRole.value = '';
-
-      closeModal();
-      await fetchRoles(showDeleted.value);
-    } catch (err) {
-      // Error handled by store
-    }
-  };
-
-  const handleUpdateRole = async (roleId, updatedData) => {
-    try {
-      await updateRole(roleId, updatedData);
-      closeModal();
-      await fetchRoles(showDeleted.value);
-    } catch (err) {
-      // Error handled by store
-    }
-  };
-
-  const handleDeleteRole = async (roleId) => {
-    try {
-      await deleteRole(roleId);
-      closeModal();
-      await fetchRoles(showDeleted.value);
-    } catch (err) {
-      // Error handled by store
-    }
-  };
-
-  const handleRestoreRole = async (roleId) => {
-    try {
-      await restoreRole(roleId);
-      closeModal();
-      await fetchRoles(showDeleted.value);
-    } catch (err) {
-      // Error handled by store
-    }
-  };
 
   // Modal methods
   const openModal = (type, role = null) => {
@@ -348,7 +364,7 @@
           <h2 class="card-title text-secondaryColor">Role List</h2>
           <div class="flex gap-2">
             <button
-              class="btn btn-outline btn-sm text-secondaryColor hover:bg-secondaryColor/10"
+              class="btn btn-outline btn-sm text-secondaryColor hover:bg-secondaryColor/10 font-thin hover:border-none hover:shadow-none"
               @click="fetchRoles(showDeleted)"
               :class="{ loading: loading }"
               :disabled="loading"
@@ -364,7 +380,7 @@
               Refresh
             </button>
             <button
-              class="btn btn-outline btn-sm text-secondaryColor hover:bg-secondaryColor/10"
+              class="btn btn-outline btn-sm text-secondaryColor hover:bg-secondaryColor/10 font-thin hover:border-none hover:shadow-none"
               @click="toggleDeletedRoles"
             >
               {{ showDeleted ? 'Show Active Roles' : 'Show Deleted Roles' }}
@@ -406,9 +422,9 @@
             class="table table-zebra text-black/50 border border-black/10 custom-zebra"
           >
             <thead class="text-secondaryColor">
-              <tr class="border border-black/10">
+              <tr class="bg-secondaryColor text-accentColor">
                 <th>ID</th>
-                <th>Role Name</th>
+                <th>Role</th>
                 <th>Department</th>
                 <th>Description</th>
                 <th>Updated At</th>
@@ -551,7 +567,7 @@
               <span class="label-text text-black/50">Select Role</span>
             </label>
             <select
-              class="select select-bordered w-full bg-white border border-black/10 text-black/50 cursor-pointer"
+              class="select select-bordered w-full bg-white border border-black/10 text-black/50 cursor-pointer disabled:bg-gray-200 disabled:text-black/50 disabled:border-none"
               v-model="selectedRole"
               :disabled="!selectedDepartment"
               required
@@ -602,7 +618,7 @@
           <div class="card-actions justify-end">
             <button
               type="submit"
-              class="btn bg-secondaryColor text-white font-thin"
+              class="btn bg-secondaryColor text-white font-thin border border-none"
               :class="{ loading: loading }"
               :disabled="loading || !selectedDepartment || !selectedRole"
             >
@@ -619,16 +635,21 @@
 
     <!-- Create Confirmation Modal -->
     <dialog id="confirm_modal" class="modal">
-      <div class="modal-box">
+      <div class="modal-box bg-accentColor text-black/50 shadow-lg">
         <h3 class="font-bold text-lg">Confirmation</h3>
         <p class="py-4">
           Are you sure you want to create this role? This action will add a new
           role to the system.
         </p>
         <div class="modal-action">
-          <button class="btn font-thin" @click="closeModal">Cancel</button>
           <button
-            class="btn bg-secondaryColor text-white font-thin"
+            class="btn btn-sm font-thin bg-gray-200 text-black/50 border border-none hover:bg-gray-300"
+            @click="closeModal"
+          >
+            Cancel
+          </button>
+          <button
+            class="btn btn-sm bg-secondaryColor text-white font-thin border border-none hover:bg-secondaryColor/80"
             @click="handleModalAction"
             :disabled="loading"
           >
@@ -644,7 +665,7 @@
 
     <!-- Universal Modal for Edit/Delete/Restore -->
     <dialog id="universal_modal" class="modal">
-      <div class="modal-box">
+      <div class="modal-box bg-accentColor text-black/50 shadow-lg">
         <!-- Edit Modal Content -->
         <template v-if="modal.type === 'edit'">
           <h3 class="text-lg font-bold mb-4">Edit Role</h3>
@@ -656,7 +677,7 @@
               <input
                 v-model="modal.data.role"
                 type="text"
-                class="input input-bordered w-full"
+                class="input input-bordered w-full bg-white border border-black/10 text-black/50 cursor-pointer"
                 required
               />
             </div>
@@ -666,7 +687,7 @@
               >
               <select
                 v-model="modal.data.department"
-                class="select select-bordered w-full"
+                class="select select-bordered w-full bg-white border border-black/10 text-black/50 cursor-pointer"
                 required
               >
                 <option
@@ -684,15 +705,22 @@
               >
               <textarea
                 v-model="modal.data.description"
-                class="textarea textarea-bordered w-full"
+                class="textarea textarea-bordered w-full bg-white border border-black/10 text-black/50 cursor-pointer"
                 rows="3"
                 required
               ></textarea>
             </div>
             <div class="modal-action">
               <button
+                type="button"
+                class="btn btn-outline font-thin btn-sm bg-gray-200 text-black/50 border border-none hover:bg-gray-300"
+                @click="closeModal"
+              >
+                Cancel
+              </button>
+              <button
                 type="submit"
-                class="btn bg-secondaryColor font-thin"
+                class="btn bg-secondaryColor font-thin border border-none hover:bg-secondaryColor/80 btn-sm"
                 :disabled="loading"
               >
                 <span
@@ -700,13 +728,6 @@
                   v-if="loading"
                 ></span>
                 {{ loading ? 'Saving...' : 'Save' }}
-              </button>
-              <button
-                type="button"
-                class="btn btn-outline font-thin"
-                @click="closeModal"
-              >
-                Cancel
               </button>
             </div>
           </form>
@@ -726,7 +747,14 @@
           <div class="modal-action">
             <button
               type="button"
-              class="btn btn-error font-thin"
+              class="btn btn-outline font-thin btn-sm bg-gray-200 text-black/50 border border-none hover:bg-gray-300 hover:shadow-none"
+              @click="closeModal"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              class="btn btn-error font-thin btn-sm"
               @click="handleModalAction"
               :disabled="loading"
             >
@@ -735,13 +763,6 @@
                 v-if="loading"
               ></span>
               {{ loading ? 'Deleting...' : 'Delete' }}
-            </button>
-            <button
-              type="button"
-              class="btn btn-outline font-thin"
-              @click="closeModal"
-            >
-              Cancel
             </button>
           </div>
         </template>
@@ -760,7 +781,7 @@
           <div class="modal-action">
             <button
               type="button"
-              class="btn btn-success font-thin"
+              class="btn btn-success font-thin btn-sm"
               @click="handleModalAction"
               :disabled="loading"
             >
@@ -772,7 +793,7 @@
             </button>
             <button
               type="button"
-              class="btn btn-outline font-thin"
+              class="btn btn-outline font-thin btn-sm"
               @click="closeModal"
             >
               Cancel
@@ -782,6 +803,31 @@
       </div>
     </dialog>
   </div>
+
+  <!-- Toast Notification -->
+  <transition
+    enter-active-class="transform transition ease-out duration-300"
+    enter-from-class="translate-x-full opacity-0"
+    enter-to-class="translate-x-0 opacity-100"
+    leave-active-class="transform transition ease-in duration-300"
+    leave-from-class="translate-x-0 opacity-100"
+    leave-to-class="translate-x-full opacity-0"
+  >
+    <div class="toast toast-end" v-if="toast.show">
+      <div
+        v-if="toast.type === 'success'"
+        class="alert alert-success shadow-lg"
+      >
+        <span>{{ toast.message }}</span>
+      </div>
+      <div
+        v-else-if="toast.type === 'error'"
+        class="alert alert-error shadow-lg"
+      >
+        <span>{{ toast.message }}</span>
+      </div>
+    </div>
+  </transition>
 </template>
 
 <style scoped>

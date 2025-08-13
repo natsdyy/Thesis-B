@@ -46,7 +46,7 @@
       <!-- Navigation Menu -->
       <nav class="flex-1 overflow-y-auto px-4 pb-4 min-h-0">
         <!-- MENU Label -->
-        <div class="text-xs font-semibold text-white/60 mb-4 px-2">MENU</div>
+        <div class="text-xs text-white/60 mb-4 px-2">MENU</div>
 
         <!-- Super Admin View: All departments as dropdowns -->
         <template v-if="isSuperAdmin">

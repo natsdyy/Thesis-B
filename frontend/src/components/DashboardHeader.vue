@@ -16,7 +16,7 @@
       <nav class="flex items-center space-x-2 text-sm">
         <router-link
           to="/dashboard"
-          class="text-green-600 hover:text-green-700 transition-colors"
+          class="text-primaryColor hover:text-primaryColor/80 transition-colors"
         >
           Home
         </router-link>
@@ -36,7 +36,7 @@
         >
           <!-- User Avatar -->
           <div
-            class="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center"
+            class="w-8 h-8 rounded-full bg-primaryColor flex items-center justify-center"
           >
             <span class="text-sm font-medium text-white">
               {{ user?.name?.charAt(0) || 'J' }}
@@ -66,7 +66,7 @@
           <li class="px-3 py-2 border-b border-gray-100 mb-2">
             <div class="flex items-center space-x-3">
               <div
-                class="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center"
+                class="w-10 h-10 rounded-full bg-primaryColor flex items-center justify-center"
               >
                 <span class="text-sm font-medium text-white">
                   {{ user?.name?.charAt(0) || 'J' }}
@@ -88,7 +88,7 @@
             <a
               class="flex items-center space-x-3 px-3 py-2 hover:bg-gray-50 rounded-md transition-colors"
             >
-              <User class="w-4 h-4 text-green-600" />
+              <User class="w-4 h-4 text-primaryColor" />
               <span class="text-sm text-gray-700">Profile</span>
             </a>
           </li>
@@ -97,7 +97,7 @@
             <a
               class="flex items-center space-x-3 px-3 py-2 hover:bg-gray-50 rounded-md transition-colors"
             >
-              <Settings class="w-4 h-4 text-green-600" />
+              <Settings class="w-4 h-4 text-primaryColor" />
               <span class="text-sm text-gray-700">Account Settings</span>
             </a>
           </li>
@@ -106,7 +106,7 @@
             <a
               class="flex items-center space-x-3 px-3 py-2 hover:bg-gray-50 rounded-md transition-colors"
             >
-              <Clock class="w-4 h-4 text-green-600" />
+              <Clock class="w-4 h-4 text-primaryColor" />
               <span class="text-sm text-gray-700">Attendance</span>
             </a>
           </li>

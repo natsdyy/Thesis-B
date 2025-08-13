@@ -4,7 +4,7 @@
     <div class="lg:hidden fixed top-4 left-4 z-50">
       <button
         @click="toggleMobileMenu"
-        class="btn btn-square bg-green-800 border-none btn-sm"
+        class="btn btn-square bg-primaryColor border-none btn-sm"
       >
         <Menu v-if="!isMobileMenuOpen" class="w-5 h-5" />
         <X v-else class="w-5 h-5" />
@@ -14,14 +14,14 @@
     <!-- Backdrop for mobile -->
     <div
       v-if="isMobileMenuOpen"
-      class="fixed inset-0 glass backdrop-blur-sm z-40 lg:hidden"
+      class="fixed inset-0 bg-primaryColor/50 backdrop-blur-sm z-40 lg:hidden"
       @click="closeMobileMenu"
     ></div>
 
     <!-- Sidebar -->
     <aside
       :class="[
-        'fixed top-0 left-0 h-screen bg-gradient-to-b from-green-800 to-green-900 shadow-xl z-40 transition-transform duration-300 ease-in-out',
+        'fixed top-0 left-0 h-screen bg-primaryColor shadow-xl z-40 transition-transform duration-300 ease-in-out',
         'w-64 flex flex-col text-white min-h-screen',
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full',
         'lg:translate-x-0 lg:fixed lg:z-40',

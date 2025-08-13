@@ -146,7 +146,7 @@
                   for="email"
                   class="absolute left-0 -top-3.5 text-gray-600 text-sm font-poppins transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-focus:-top-3.5 peer-focus:text-primaryColor peer-focus:text-sm"
                 >
-                  Email<span class="text-red-500">*</span>
+                  Email
                 </label>
               </div>
             </div>
@@ -169,7 +169,7 @@
                   for="password"
                   class="absolute left-0 -top-3.5 text-gray-600 text-sm font-poppins transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-focus:-top-3.5 peer-focus:text-primaryColor peer-focus:text-sm"
                 >
-                  Password<span class="text-red-500">*</span>
+                  Password
                 </label>
                 <button
                   type="button"
@@ -265,7 +265,7 @@
                 for="email-mobile"
                 class="absolute left-0 -top-3.5 text-gray-600 text-sm font-poppins transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-focus:-top-3.5 peer-focus:text-primaryColor peer-focus:text-sm"
               >
-                Email<span class="text-red-500">*</span>
+                Email
               </label>
             </div>
           </div>
@@ -285,7 +285,7 @@
                 for="password-mobile"
                 class="absolute left-0 -top-3.5 text-gray-600 text-sm font-poppins transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-focus:-top-3.5 peer-focus:text-primaryColor peer-focus:text-sm"
               >
-                Password<span class="text-red-500">*</span>
+                Password
               </label>
               <button
                 type="button"

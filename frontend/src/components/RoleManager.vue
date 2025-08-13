@@ -260,7 +260,7 @@
 </script>
 
 <template>
-  <div class="container mx-auto p-6 max-w-4xl">
+  <div class="container mx-auto p-6 max-w-6xl">
     <!-- Header -->
     <div class="text-center mb-8">
       <h1 class="text-4xl font-bold mb-2 text-secondaryColor">
@@ -272,31 +272,33 @@
     </div>
 
     <!-- Stats -->
-    <div class="stats shadow w-full mb-6">
+    <div class="stats shadow w-full mb-6 bg-accentColor">
       <div class="stat">
-        <div class="stat-figure text-primary">
-          <UserLock class="w-8 h-8" />
+        <div class="stat-figure">
+          <UserLock class="w-8 h-8 text-secondaryColor" />
         </div>
-        <div class="stat-title" v-if="!showDeleted">Total Roles</div>
-        <div class="stat-title" v-else>Total Deleted Roles</div>
-        <div class="stat-value text-primary" v-if="!showDeleted">
+        <div class="stat-title text-black/50" v-if="!showDeleted">
+          Total Roles
+        </div>
+        <div class="stat-title text-black/50" v-else>Total Deleted Roles</div>
+        <div class="stat-value text-secondaryColor" v-if="!showDeleted">
           {{ roleCount }}
         </div>
-        <div class="stat-value text-primary" v-else>
+        <div class="stat-value text-secondaryColor" v-else>
           {{ deletedRoles.length }}
         </div>
-        <div class="stat-desc">
+        <div class="stat-desc text-black/50">
           {{ hasRoles ? 'Roles configured' : 'No roles yet' }}
         </div>
       </div>
 
       <div class="stat">
-        <div class="stat-figure text-secondary">
+        <div class="stat-figure">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
             viewBox="0 0 24 24"
-            class="inline-block w-8 h-8 stroke-current"
+            class="inline-block w-8 h-8 stroke-current text-secondaryColor"
           >
             <path
               stroke-linecap="round"
@@ -306,11 +308,11 @@
             ></path>
           </svg>
         </div>
-        <div class="stat-title">Status</div>
+        <div class="stat-title text-black/50">Status</div>
         <div class="stat-value text-secondaryColor">
           {{ loading ? 'Loading...' : 'Ready' }}
         </div>
-        <div class="stat-desc">
+        <div class="stat-desc text-black/50">
           {{ loading ? 'Please wait' : 'System operational' }}
         </div>
       </div>
@@ -340,25 +342,31 @@
     </div>
 
     <!-- Role List -->
-    <div class="card bg-base-100 shadow-xl mb-6">
+    <div class="card bg-accentColor shadow-xl mb-6 border border-black/10">
       <div class="card-body">
         <div class="flex justify-between items-center mb-4">
-          <h2 class="card-title">Role List</h2>
+          <h2 class="card-title text-secondaryColor">Role List</h2>
           <div class="flex gap-2">
             <button
-              class="btn btn-outline btn-sm"
+              class="btn btn-outline btn-sm text-secondaryColor hover:bg-secondaryColor/10"
               @click="fetchRoles(showDeleted)"
               :class="{ loading: loading }"
               :disabled="loading"
             >
-              <RefreshCcw v-if="!loading" class="w-4 h-4 mr-2" />
+              <RefreshCcw
+                v-if="!loading"
+                class="w-4 h-4 mr-2 text-secondaryColor"
+              />
               <span
                 class="loading loading-spinner loading-xs"
                 v-if="loading"
               ></span>
               Refresh
             </button>
-            <button class="btn btn-outline btn-sm" @click="toggleDeletedRoles">
+            <button
+              class="btn btn-outline btn-sm text-secondaryColor hover:bg-secondaryColor/10"
+              @click="toggleDeletedRoles"
+            >
               {{ showDeleted ? 'Show Active Roles' : 'Show Deleted Roles' }}
             </button>
           </div>
@@ -370,9 +378,11 @@
 
         <div v-else-if="!hasRoles && !showDeleted" class="text-center py-8">
           <div class="mb-4 items-center justify-center flex">
-            <UserLock class="w-16 h-16 text-base-content/30" />
+            <UserLock class="w-16 h-16 text-primaryColor" />
           </div>
-          <h3 class="text-lg font-semibold mb-2">No active roles found</h3>
+          <h3 class="text-lg font-semibold mb-2 text-secondaryColor">
+            No active roles found
+          </h3>
           <p class="text-base-content/70">
             Add your first role using the form below.
           </p>
@@ -383,16 +393,20 @@
           v-else-if="showDeleted && deletedRoles.length === 0"
         >
           <div class="mb-4 items-center justify-center flex">
-            <UserLock class="w-16 h-16 text-base-content/30" />
+            <UserLock class="w-16 h-16 text-secondaryColor" />
           </div>
-          <h3 class="text-lg font-semibold mb-2">No deleted roles found</h3>
-          <p class="text-base-content/70">No deleted roles found.</p>
+          <h3 class="text-lg font-semibold mb-2 text-secondaryColor">
+            No deleted roles found
+          </h3>
+          <p class="text-secondaryColor">No deleted roles found.</p>
         </div>
 
-        <div v-else class="overflow-x-auto">
-          <table class="table table-zebra">
-            <thead>
-              <tr>
+        <div v-else class="overflow-x-auto bg-accentColor">
+          <table
+            class="table table-zebra text-black/50 border border-black/10 custom-zebra"
+          >
+            <thead class="text-secondaryColor">
+              <tr class="border border-black/10">
                 <th>ID</th>
                 <th>Role Name</th>
                 <th>Department</th>
@@ -414,7 +428,7 @@
                       <div
                         class="bg-neutral-focus text-neutral-content rounded-full w-8"
                       >
-                        <span class="text-xs">{{
+                        <span class="text-xs text-black/50">{{
                           role.role?.charAt(0).toUpperCase()
                         }}</span>
                       </div>
@@ -427,7 +441,10 @@
                 <td>{{ formatDate(role.updated_at) }}</td>
                 <td>
                   <div class="dropdown dropdown-left">
-                    <label tabindex="0" class="btn btn-ghost btn-xs">
+                    <label
+                      tabindex="0"
+                      class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
+                    >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         class="h-4 w-4"
@@ -445,17 +462,17 @@
                     </label>
                     <ul
                       tabindex="0"
-                      class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52"
+                      class="dropdown-content z-[1] menu p-2 shadow bg-accentColor rounded-box w-52 border border-black/10"
                     >
-                      <li v-if="!role.deleted_at">
+                      <li v-if="!role.deleted_at" class="hover:bg-black/10">
                         <a @click="editRole(role)">Edit</a>
                       </li>
-                      <li v-if="!role.deleted_at">
+                      <li v-if="!role.deleted_at" class="hover:bg-black/10">
                         <a @click="confirmDelete(role)" class="text-error"
                           >Delete</a
                         >
                       </li>
-                      <li v-else>
+                      <li v-else class="hover:bg-black/10">
                         <a @click="confirmRestore(role)" class="text-success"
                           >Restore</a
                         >
@@ -469,9 +486,9 @@
         </div>
 
         <!-- Pagination -->
-        <div class="join mt-4 justify-center" v-if="totalPages > 1">
+        <div class="join mt-4 justify-end space-x-1" v-if="totalPages > 1">
           <button
-            class="join-item btn font-thin"
+            class="join-item btn font-thin !bg-gray-200 text-black/50 btn-sm"
             :disabled="currentPage <= 1"
             @click="currentPage--"
             :class="{ 'btn-disabled': currentPage <= 1 }"
@@ -480,17 +497,20 @@
           </button>
 
           <button
-            class="join-item btn font-thin"
+            class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm"
             v-for="page in totalPages"
             :key="page"
-            :class="{ 'btn-active': currentPage === page }"
+            :class="{
+              'btn-active': currentPage === page,
+              '!bg-secondaryColor text-white': currentPage === page,
+            }"
             @click="currentPage = page"
           >
             {{ page }}
           </button>
 
           <button
-            class="join-item btn font-thin"
+            class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
             :disabled="currentPage >= totalPages"
             @click="currentPage++"
             :class="{ 'btn-disabled': currentPage >= totalPages }"
@@ -502,16 +522,16 @@
     </div>
 
     <!-- Create New Role -->
-    <div class="card bg-base-100 shadow-xl mb-6">
+    <div class="card bg-accentColor shadow-xl mb-6">
       <div class="card-body">
-        <h2 class="card-title">Create New Role</h2>
+        <h2 class="card-title text-secondaryColor">Create New Role</h2>
         <form @submit.prevent="handleFormSubmit" class="space-y-4">
           <div class="form-control">
             <label class="label">
-              <span class="label-text">Select Department</span>
+              <span class="label-text text-black/50">Select Department</span>
             </label>
             <select
-              class="select select-bordered w-full"
+              class="select select-bordered w-full bg-white border border-black/10 text-black/50 cursor-pointer"
               v-model="selectedDepartment"
               @change="selectedRole = ''"
               required
@@ -528,10 +548,10 @@
           </div>
           <div class="form-control">
             <label class="label">
-              <span class="label-text">Select Role</span>
+              <span class="label-text text-black/50">Select Role</span>
             </label>
             <select
-              class="select select-bordered w-full"
+              class="select select-bordered w-full bg-white border border-black/10 text-black/50 cursor-pointer"
               v-model="selectedRole"
               :disabled="!selectedDepartment"
               required
@@ -546,7 +566,7 @@
           <!-- Select Permissions -->
           <div class="form-control">
             <label class="label">
-              <span class="label-text">Select Permissions</span>
+              <span class="label-text text-black/50">Select Permissions</span>
             </label>
 
             <div class="space-y-2">
@@ -557,21 +577,23 @@
               >
                 <input
                   type="checkbox"
-                  class="checkbox checkbox-neutral checkbox-xs"
+                  class="checkbox checkbox-neutral checkbox-xs bg-white border border-black/10 cursor-pointer checked:bg-secondaryColor checked:text-white checked:border-none"
                   :value="permission"
                   v-model="selectPermissions"
                 />
-                <span class="label-text">{{ permission }}</span>
+                <span class="label-text text-black/50 mr-5">{{
+                  permission
+                }}</span>
               </label>
             </div>
           </div>
 
           <div class="form-control">
             <label class="label">
-              <span class="label-text">Description</span>
+              <span class="label-text text-black/50">Description</span>
             </label>
             <textarea
-              class="textarea textarea-bordered w-full"
+              class="textarea textarea-bordered w-full bg-white border border-black/10 text-black/50 cursor-pointer"
               rows="3"
               placeholder="Enter role description"
               required
@@ -761,3 +783,12 @@
     </dialog>
   </div>
 </template>
+
+<style scoped>
+  .custom-zebra tbody tr:nth-child(even) {
+    background-color: var(--accentColor);
+  }
+  .custom-zebra tbody tr:nth-child(odd) {
+    background-color: rgba(0, 0, 0, 0.03);
+  }
+</style>

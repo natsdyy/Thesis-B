@@ -9,6 +9,9 @@ const User = require("./models/User");
 // Import routes
 const userRoutes = require("./routes/users");
 const roleRoutes = require("./routes/roles");
+const permissionRoutes = require("./routes/permissions");
+const rolePermissionRoutes = require("./routes/rolePermissions");
+const authRoutes = require("./routes/auth");
 const { serve, setup } = require("./config/swagger");
 
 const app = express();
@@ -17,59 +20,59 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-// Basic route
-app.get("/", (req, res) => {
-  res.json({ message: "Express server is running!" });
-});
+// API Routes
+app.use("/api/users", userRoutes);
+app.use("/api/roles", roleRoutes);
+app.use("/api/permissions", permissionRoutes);
+app.use("/api/role-permissions", rolePermissionRoutes);
+app.use("/api/auth", authRoutes);
 
-// API routes
+// Swagger documentation
+app.use("/api-docs", serve, setup);
+
+// Health check endpoint
 app.get("/api/health", (req, res) => {
-  res.json({ status: "OK", message: "Backend server is healthy" });
+  res.json({
+    success: true,
+    message: "Server is running",
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Database health check
-app.get("/api/db-health", async (req, res) => {
+app.get("/api/health/db", async (req, res) => {
   try {
     await testConnection();
-    res.json({ status: "OK", message: "Database connection is healthy" });
+    res.json({
+      success: true,
+      message: "Database connection is healthy",
+      timestamp: new Date().toISOString(),
+    });
   } catch (error) {
     res.status(500).json({
-      status: "ERROR",
+      success: false,
       message: "Database connection failed",
       error: error.message,
+      timestamp: new Date().toISOString(),
     });
   }
 });
 
-// User routes
-app.use("/api/users", userRoutes);
-app.use("/api/roles", roleRoutes);
-app.use("/api-docs", serve, setup);
-// Initialize database and start server
-const startServer = async () => {
+// Start server
+app.listen(PORT, async () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(
+    `API Documentation available at http://localhost:${PORT}/api-docs`
+  );
+
   try {
-    // Test database connection
     await testConnection();
+    console.log("✅ Database connected successfully");
 
-    // Run database migrations
     await runMigrations();
-
-    // Start server
-    app.listen(PORT, () => {
-      console.log(`🚀 Server is running on port ${PORT}`);
-      console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-      console.log(
-        `🗄️  Database health: http://localhost:${PORT}/api/db-health`
-      );
-      console.log(`👥 Users API: http://localhost:${PORT}/api/users`);
-      console.log(`👥 Roles API: http://localhost:${PORT}/api/roles`);
-    });
+    console.log("✅ Database migrations completed");
   } catch (error) {
-    console.error("❌ Failed to start server:", error);
-    process.exit(1);
+    console.error("❌ Database connection failed:", error.message);
   }
-};
-
-startServer();
+});

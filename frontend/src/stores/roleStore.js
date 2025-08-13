@@ -1,239 +1,441 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import axios from 'axios';
 
-export const useRoleStore = defineStore('role', () => {
-  // State
-  const roles = ref([]);
-  const loading = ref(false);
-  const error = ref(null);
+const API_BASE_URL = 'http://localhost:5000/api';
 
-  // Getters
-  const roleCount = computed(
-    () => roles.value.filter((role) => !role.deleted_at).length
-  );
-  const hasRoles = computed(() => roles.value.length > 0);
-  const deletedRoles = computed(() =>
-    roles.value.filter((role) => role.deleted_at)
-  );
-  const activeRoles = computed(() =>
-    roles.value.filter((role) => !role.deleted_at)
-  );
+export const useRoleStore = defineStore('role', {
+  state: () => ({
+    roles: [],
+    deletedRoles: [],
+    loading: false,
+    error: null,
+  }),
 
-  // Get roles by department
-  const getRolesByDepartment = computed(() => {
-    return (department) => {
-      return roles.value.filter(
-        (role) => !role.deleted_at && role.department === department
-      );
-    };
-  });
+  getters: {
+    hasRoles: (state) => state.roles.length > 0,
+    roleCount: (state) => state.roles.filter((role) => !role.deleted_at).length,
+    activeRoles: (state) => state.roles.filter((role) => !role.deleted_at),
+    getRoleById: (state) => (id) =>
+      state.roles.find((role) => role.role_id === id),
+    getRolesByDepartment: (state) => (department) =>
+      state.roles.filter(
+        (role) =>
+          role.department.toLowerCase() === department.toLowerCase() &&
+          !role.deleted_at
+      ),
+  },
 
-  // Actions
-  const fetchRoles = async (includeDeleted = false) => {
-    loading.value = true;
-    error.value = null;
+  actions: {
+    async fetchRoles(includeDeleted = false) {
+      this.loading = true;
+      this.error = null;
+      try {
+        const response = await axios.get(`${API_BASE_URL}/roles`, {
+          params: { includeDeleted },
+        });
+        this.roles = response.data.data;
 
-    try {
-      const url = `http://localhost:5000/api/roles${includeDeleted ? '?includeDeleted=true' : ''}`;
-      const response = await fetch(url);
-      const data = await response.json();
-
-      if (data.success) {
-        roles.value = data.data;
-      } else {
-        throw new Error(data.message || 'Failed to fetch roles');
+        if (includeDeleted) {
+          this.deletedRoles = this.roles.filter((role) => role.deleted_at);
+        } else {
+          // Fetch deleted roles separately if needed
+          const deletedResponse = await axios.get(
+            `${API_BASE_URL}/roles/deleted/list`
+          );
+          this.deletedRoles = deletedResponse.data.data;
+        }
+      } catch (error) {
+        this.error =
+          error.response?.data?.message || 'Failed to fetch roles';
+        console.error('Error fetching roles:', error);
+      } finally {
+        this.loading = false;
       }
-    } catch (err) {
-      error.value = err.message;
-      console.error('Error fetching roles:', err);
-    } finally {
-      loading.value = false;
-    }
-  };
+    },
 
-  const createRole = async (roleData) => {
-    loading.value = true;
-    error.value = null;
+    async fetchRolesWithPermissions(includeDeleted = false) {
+      this.loading = true;
+      this.error = null;
+      try {
+        const response = await axios.get(
+          `${API_BASE_URL}/roles/with-permissions/all`,
+          {
+            params: { includeDeleted },
+          }
+        );
+        this.roles = response.data.data;
+      } catch (error) {
+        this.error =
+          error.response?.data?.message ||
+          'Failed to fetch roles with permissions';
+        console.error('Error fetching roles with permissions:', error);
+      } finally {
+        this.loading = false;
+      }
+    },
 
-    try {
-      const response = await fetch('http://localhost:5000/api/roles', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          role: roleData.role,
-          department: roleData.department,
-          description: roleData.description,
-        }),
+    async getRoleWithPermissions(roleId) {
+      this.loading = true;
+      this.error = null;
+      try {
+        const response = await axios.get(
+          `${API_BASE_URL}/roles/${roleId}/permissions`
+        );
+        return response.data.data;
+      } catch (error) {
+        this.error =
+          error.response?.data?.message ||
+          'Failed to fetch role with permissions';
+        console.error('Error fetching role with permissions:', error);
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async createRole(roleData) {
+      this.loading = true;
+      this.error = null;
+      try {
+        const response = await axios.post(`${API_BASE_URL}/roles`, roleData);
+        this.roles.push(response.data.data);
+        return response.data.data;
+      } catch (error) {
+        this.error = error.response?.data?.message || 'Failed to create role';
+        console.error('Error creating role:', error);
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async createRoleWithPermissions(roleData) {
+      this.loading = true;
+      this.error = null;
+      try {
+        const response = await axios.post(
+          `${API_BASE_URL}/roles/with-permissions`,
+          roleData
+        );
+        this.roles.push(response.data.data);
+        return response.data.data;
+      } catch (error) {
+        this.error =
+          error.response?.data?.message ||
+          'Failed to create role with permissions';
+        console.error('Error creating role with permissions:', error);
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async updateRole(roleId, roleData) {
+      this.loading = true;
+      this.error = null;
+      try {
+        const response = await axios.put(
+          `${API_BASE_URL}/roles/${roleId}`,
+          roleData
+        );
+        const index = this.roles.findIndex((role) => role.role_id === roleId);
+        if (index !== -1) {
+          this.roles[index] = response.data.data;
+        }
+        return response.data.data;
+      } catch (error) {
+        this.error = error.response?.data?.message || 'Failed to update role';
+        console.error('Error updating role:', error);
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async updateRoleWithPermissions(roleId, roleData) {
+      this.loading = true;
+      this.error = null;
+      try {
+        const response = await axios.put(
+          `${API_BASE_URL}/roles/${roleId}/permissions`,
+          roleData
+        );
+        const index = this.roles.findIndex((role) => role.role_id === roleId);
+        if (index !== -1) {
+          this.roles[index] = response.data.data;
+        }
+        return response.data.data;
+      } catch (error) {
+        this.error =
+          error.response?.data?.message ||
+          'Failed to update role with permissions';
+        console.error('Error updating role with permissions:', error);
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async deleteRole(roleId) {
+      this.loading = true;
+      this.error = null;
+      try {
+        const response = await axios.delete(`${API_BASE_URL}/roles/${roleId}`);
+        const index = this.roles.findIndex((role) => role.role_id === roleId);
+        if (index !== -1) {
+          this.roles[index] = response.data.data;
+        }
+        return response.data.data;
+      } catch (error) {
+        this.error = error.response?.data?.message || 'Failed to delete role';
+        console.error('Error deleting role:', error);
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async restoreRole(roleId) {
+      this.loading = true;
+      this.error = null;
+      try {
+        const response = await axios.patch(
+          `${API_BASE_URL}/roles/${roleId}/restore`
+        );
+        const index = this.roles.findIndex((role) => role.role_id === roleId);
+        if (index !== -1) {
+          this.roles[index] = response.data.data;
+        }
+        return response.data.data;
+      } catch (error) {
+        this.error = error.response?.data?.message || 'Failed to restore role';
+        console.error('Error restoring role:', error);
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async getRolesByDepartmentAPI(department, includeDeleted = false) {
+      this.loading = true;
+      this.error = null;
+      try {
+        const response = await axios.get(
+          `${API_BASE_URL}/roles/department/${encodeURIComponent(department)}`,
+          {
+            params: { includeDeleted },
+          }
+        );
+        return response.data.data;
+      } catch (error) {
+        this.error =
+          error.response?.data?.message ||
+          'Failed to fetch roles by department';
+        console.error('Error fetching roles by department:', error);
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async getRoleCount(includeDeleted = false) {
+      this.loading = true;
+      this.error = null;
+      try {
+        const response = await axios.get(`${API_BASE_URL}/roles/count/all`, {
+          params: { includeDeleted },
+        });
+        return response.data.count;
+      } catch (error) {
+        this.error = error.response?.data?.message || 'Failed to get role count';
+        console.error('Error getting role count:', error);
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async checkRolePermission(roleId, permissionName) {
+      this.loading = true;
+      this.error = null;
+      try {
+        const response = await axios.get(
+          `${API_BASE_URL}/roles/${roleId}/has-permission/${encodeURIComponent(
+            permissionName
+          )}`
+        );
+        return response.data.data.has_permission;
+      } catch (error) {
+        this.error =
+          error.response?.data?.message || 'Failed to check role permission';
+        console.error('Error checking role permission:', error);
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async getDeletedRoles() {
+      this.loading = true;
+      this.error = null;
+      try {
+        const response = await axios.get(`${API_BASE_URL}/roles/deleted/list`);
+        this.deletedRoles = response.data.data;
+        return response.data.data;
+      } catch (error) {
+        this.error =
+          error.response?.data?.message || 'Failed to fetch deleted roles';
+        console.error('Error fetching deleted roles:', error);
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    // Local state management methods
+    addRole(role) {
+      this.roles.push(role);
+    },
+
+    updateRoleInState(roleId, updatedRole) {
+      const index = this.roles.findIndex((role) => role.role_id === roleId);
+      if (index !== -1) {
+        this.roles[index] = { ...this.roles[index], ...updatedRole };
+      }
+    },
+
+    removeRoleFromState(roleId) {
+      this.roles = this.roles.filter((role) => role.role_id !== roleId);
+    },
+
+    markRoleAsDeleted(roleId) {
+      const index = this.roles.findIndex((role) => role.role_id === roleId);
+      if (index !== -1) {
+        this.roles[index].deleted_at = new Date().toISOString();
+        this.roles[index].is_active = false;
+      }
+    },
+
+    markRoleAsRestored(roleId) {
+      const index = this.roles.findIndex((role) => role.role_id === roleId);
+      if (index !== -1) {
+        this.roles[index].deleted_at = null;
+        this.roles[index].is_active = true;
+      }
+    },
+
+    // Utility methods
+    clearError() {
+      this.error = null;
+    },
+
+    clearRoles() {
+      this.roles = [];
+      this.deletedRoles = [];
+    },
+
+    setLoading(loading) {
+      this.loading = loading;
+    },
+
+    // Filter and search methods
+    filterRolesByStatus(includeDeleted = false) {
+      return includeDeleted
+        ? this.roles
+        : this.roles.filter((role) => !role.deleted_at);
+    },
+
+    searchRoles(searchTerm) {
+      if (!searchTerm) return this.roles;
+
+      const term = searchTerm.toLowerCase();
+      return this.roles.filter(
+        (role) =>
+          role.role.toLowerCase().includes(term) ||
+          role.department.toLowerCase().includes(term) ||
+          role.description.toLowerCase().includes(term)
+      );
+    },
+
+    // Department-specific methods
+    getDepartments() {
+      const departments = new Set();
+      this.roles.forEach((role) => {
+        if (!role.deleted_at) {
+          departments.add(role.department);
+        }
       });
+      return Array.from(departments).sort();
+    },
 
-      const data = await response.json();
+    getRoleCountByDepartment() {
+      const departmentCounts = {};
+      this.roles
+        .filter((role) => !role.deleted_at)
+        .forEach((role) => {
+          departmentCounts[role.department] =
+            (departmentCounts[role.department] || 0) + 1;
+        });
+      return departmentCounts;
+    },
 
-      if (data.success) {
-        roles.value.push(data.data);
-        return data.data;
-      } else {
-        throw new Error(data.message || 'Failed to create role');
+    // Permission-related methods
+    async bulkUpdateRolePermissions(updates) {
+      this.loading = true;
+      this.error = null;
+      try {
+        const promises = updates.map(({ roleId, permissionIds }) =>
+          this.updateRoleWithPermissions(roleId, { permission_ids: permissionIds })
+        );
+        const results = await Promise.all(promises);
+        return results;
+      } catch (error) {
+        this.error =
+          error.response?.data?.message ||
+          'Failed to bulk update role permissions';
+        console.error('Error bulk updating role permissions:', error);
+        throw error;
+      } finally {
+        this.loading = false;
       }
-    } catch (err) {
-      error.value = err.message;
-      console.error('Error creating role:', err);
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
+    },
 
-  const updateRole = async (roleId, roleData) => {
-    loading.value = true;
-    error.value = null;
+    // Validation methods
+    validateRoleData(roleData) {
+      const errors = [];
 
-    try {
-      const response = await fetch(
-        `http://localhost:5000/api/roles/${roleId}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            role: roleData.role,
-            department: roleData.department,
-            description: roleData.description,
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (data.success) {
-        const index = roles.value.findIndex((role) => role.role_id === roleId);
-        if (index !== -1) {
-          roles.value[index] = data.data;
-        }
-        return data.data;
-      } else {
-        throw new Error(data.message || 'Failed to update role');
+      if (!roleData.role || roleData.role.trim().length < 2) {
+        errors.push('Role name must be at least 2 characters long');
       }
-    } catch (err) {
-      error.value = err.message;
-      console.error('Error updating role:', err);
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
 
-  const deleteRole = async (roleId) => {
-    loading.value = true;
-    error.value = null;
-
-    try {
-      const response = await fetch(
-        `http://localhost:5000/api/roles/${roleId}`,
-        {
-          method: 'DELETE',
-        }
-      );
-
-      const data = await response.json();
-
-      if (data.success) {
-        const index = roles.value.findIndex((role) => role.role_id === roleId);
-        if (index !== -1) {
-          roles.value[index] = data.data;
-        }
-        return data.data;
-      } else {
-        throw new Error(data.message || 'Failed to delete role');
+      if (!roleData.department || roleData.department.trim().length === 0) {
+        errors.push('Department is required');
       }
-    } catch (err) {
-      error.value = err.message;
-      console.error('Error deleting role:', err);
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
 
-  const restoreRole = async (roleId) => {
-    loading.value = true;
-    error.value = null;
-
-    try {
-      const response = await fetch(
-        `http://localhost:5000/api/roles/${roleId}/restore`,
-        {
-          method: 'PATCH',
-        }
-      );
-
-      const data = await response.json();
-
-      if (data.success) {
-        const index = roles.value.findIndex((role) => role.role_id === roleId);
-        if (index !== -1) {
-          roles.value[index] = data.data;
-        }
-        return data.data;
-      } else {
-        throw new Error(data.message || 'Failed to restore role');
+      if (!roleData.description || roleData.description.trim().length < 5) {
+        errors.push('Description must be at least 5 characters long');
       }
-    } catch (err) {
-      error.value = err.message;
-      console.error('Error restoring role:', err);
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
 
-  const fetchRolesByDepartment = async (department, includeDeleted = false) => {
-    loading.value = true;
-    error.value = null;
+      return {
+        isValid: errors.length === 0,
+        errors,
+      };
+    },
 
-    try {
-      const url = `http://localhost:5000/api/roles/department/${encodeURIComponent(department)}${includeDeleted ? '?includeDeleted=true' : ''}`;
-      const response = await fetch(url);
-      const data = await response.json();
+    // Statistics methods
+    getRoleStatistics() {
+      const total = this.roles.length;
+      const active = this.roles.filter((role) => !role.deleted_at).length;
+      const deleted = this.roles.filter((role) => role.deleted_at).length;
+      const departments = this.getDepartments().length;
 
-      if (data.success) {
-        return data.data;
-      } else {
-        throw new Error(data.message || 'Failed to fetch roles by department');
-      }
-    } catch (err) {
-      error.value = err.message;
-      console.error('Error fetching roles by department:', err);
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const clearError = () => {
-    error.value = null;
-  };
-
-  return {
-    // State
-    roles,
-    loading,
-    error,
-    // Getters
-    roleCount,
-    hasRoles,
-    deletedRoles,
-    activeRoles,
-    getRolesByDepartment,
-    // Actions
-    fetchRoles,
-    createRole,
-    updateRole,
-    deleteRole,
-    restoreRole,
-    fetchRolesByDepartment,
-    clearError,
-  };
+      return {
+        total,
+        active,
+        deleted,
+        departments,
+        departmentCounts: this.getRoleCountByDepartment(),
+      };
+    },
+  },
 });

@@ -9,13 +9,18 @@
     "migrate": "knex migrate:latest --knexfile knexfile.js",
     "migrate:rollback": "knex migrate:rollback --knexfile knexfile.js",
     "migrate:status": "knex migrate:status --knexfile knexfile.js",
-    "migrate:make": "knex migrate:make --knexfile knexfile.js"
+    "migrate:make": "knex migrate:make --knexfile knexfile.js",
+    "seed:default": "node seeders/seedDefaultData.js",
+    "seed:users": "node seeders/createSuperAdmin.js",
+    "create:superadmin": "node scripts/createSuperAdminSimple.js",
+    "setup": "npm run migrate && npm run seed:default && npm run seed:users"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",

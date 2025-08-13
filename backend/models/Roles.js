@@ -31,6 +31,36 @@ class Roles {
     }
   }
 
+  // Get role with permissions
+  static async getByIdWithPermissions(role_id) {
+    try {
+      const role = await this.getById(role_id);
+      if (!role) {
+        return null;
+      }
+
+      const permissions = await db("user_permissions")
+        .select("user_permissions.*")
+        .join(
+          "role_permissions",
+          "user_permissions.permission_id",
+          "role_permissions.permission_id"
+        )
+        .where("role_permissions.role_id", role_id)
+        .where("role_permissions.is_active", true)
+        .whereNull("role_permissions.deleted_at")
+        .orderBy("user_permissions.permission_name", "asc");
+
+      return {
+        ...role,
+        permissions,
+      };
+    } catch (error) {
+      console.error("Error fetching role with permissions:", error);
+      throw error;
+    }
+  }
+
   // Check if role exists in department (case insensitive) - Helper method
   static async checkDuplicateRole(role, department, excludeRoleId = null) {
     try {
@@ -73,9 +103,9 @@ class Roles {
 
       const [newRole] = await db("user_roles")
         .insert({
-          role,
-          department,
-          description,
+          role: role.trim(),
+          department: department.trim(),
+          description: description.trim(),
           created_at: db.fn.now(),
           updated_at: db.fn.now(),
           is_active: true,
@@ -84,6 +114,46 @@ class Roles {
       return newRole;
     } catch (error) {
       console.error("Error creating role:", error);
+      throw error;
+    }
+  }
+
+  // Create role with permissions
+  static async createWithPermissions(roleData) {
+    const { role, department, description, permission_ids = [] } = roleData;
+
+    const trx = await db.transaction();
+    try {
+      // Create role
+      const [newRole] = await trx("user_roles")
+        .insert({
+          role: role.trim(),
+          department: department.trim(),
+          description: description.trim(),
+          created_at: db.fn.now(),
+          updated_at: db.fn.now(),
+          is_active: true,
+        })
+        .returning("*");
+
+      // Assign permissions if provided
+      if (permission_ids && permission_ids.length > 0) {
+        const rolePermissions = permission_ids.map((permission_id) => ({
+          role_id: newRole.role_id,
+          permission_id,
+          created_at: db.fn.now(),
+          updated_at: db.fn.now(),
+          is_active: true,
+        }));
+
+        await trx("role_permissions").insert(rolePermissions);
+      }
+
+      await trx.commit();
+      return await this.getByIdWithPermissions(newRole.role_id);
+    } catch (error) {
+      await trx.rollback();
+      console.error("Error creating role with permissions:", error);
       throw error;
     }
   }
@@ -118,15 +188,61 @@ class Roles {
       const [updatedRole] = await db("user_roles")
         .where("role_id", role_id)
         .update({
-          role,
-          department,
-          description,
+          role: role.trim(),
+          department: department.trim(),
+          description: description.trim(),
           updated_at: db.fn.now(),
         })
         .returning("*");
       return updatedRole;
     } catch (error) {
       console.error("Error updating role:", error);
+      throw error;
+    }
+  }
+
+  // Update role with permissions
+  static async updateWithPermissions(role_id, roleData) {
+    const { role, department, description, permission_ids = [] } = roleData;
+
+    const trx = await db.transaction();
+    try {
+      // Update role
+      const [updatedRole] = await trx("user_roles")
+        .where("role_id", role_id)
+        .update({
+          role: role.trim(),
+          department: department.trim(),
+          description: description.trim(),
+          updated_at: db.fn.now(),
+        })
+        .returning("*");
+
+      // Remove all current permissions for this role
+      await trx("role_permissions").where("role_id", role_id).update({
+        is_active: false,
+        deleted_at: db.fn.now(),
+        updated_at: db.fn.now(),
+      });
+
+      // Add new permissions
+      if (permission_ids && permission_ids.length > 0) {
+        const rolePermissions = permission_ids.map((permission_id) => ({
+          role_id: role_id,
+          permission_id,
+          created_at: db.fn.now(),
+          updated_at: db.fn.now(),
+          is_active: true,
+        }));
+
+        await trx("role_permissions").insert(rolePermissions);
+      }
+
+      await trx.commit();
+      return await this.getByIdWithPermissions(role_id);
+    } catch (error) {
+      await trx.rollback();
+      console.error("Error updating role with permissions:", error);
       throw error;
     }
   }
@@ -142,15 +258,31 @@ class Roles {
         throw error;
       }
 
-      const [deletedRole] = await db("user_roles")
-        .where("role_id", role_id)
-        .update({
+      const trx = await db.transaction();
+      try {
+        // Soft delete role
+        const [deletedRole] = await trx("user_roles")
+          .where("role_id", role_id)
+          .update({
+            deleted_at: db.fn.now(),
+            updated_at: db.fn.now(),
+            is_active: false,
+          })
+          .returning("*");
+
+        // Soft delete all role permissions
+        await trx("role_permissions").where("role_id", role_id).update({
           deleted_at: db.fn.now(),
           updated_at: db.fn.now(),
           is_active: false,
-        })
-        .returning("*");
-      return deletedRole;
+        });
+
+        await trx.commit();
+        return deletedRole;
+      } catch (error) {
+        await trx.rollback();
+        throw error;
+      }
     } catch (error) {
       console.error("Error deleting role:", error);
       throw error;
@@ -252,6 +384,49 @@ class Roles {
       return roles;
     } catch (error) {
       console.error("Error fetching roles by department:", error);
+      throw error;
+    }
+  }
+
+  // Get all roles with their permissions
+  static async getAllWithPermissions(includeDeleted = false) {
+    try {
+      const roles = await this.getAll(includeDeleted);
+
+      const rolesWithPermissions = [];
+      for (const role of roles) {
+        const roleWithPermissions = await this.getByIdWithPermissions(
+          role.role_id
+        );
+        rolesWithPermissions.push(roleWithPermissions);
+      }
+
+      return rolesWithPermissions;
+    } catch (error) {
+      console.error("Error fetching roles with permissions:", error);
+      throw error;
+    }
+  }
+
+  // Check if role has specific permission
+  static async hasPermission(role_id, permission_name) {
+    try {
+      const assignment = await db("role_permissions")
+        .select("role_permissions.*")
+        .join(
+          "user_permissions",
+          "role_permissions.permission_id",
+          "user_permissions.permission_id"
+        )
+        .where("role_permissions.role_id", role_id)
+        .where("user_permissions.permission_name", permission_name)
+        .where("role_permissions.is_active", true)
+        .whereNull("role_permissions.deleted_at")
+        .first();
+
+      return !!assignment;
+    } catch (error) {
+      console.error("Error checking role permission:", error);
       throw error;
     }
   }

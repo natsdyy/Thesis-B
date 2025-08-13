@@ -1,5 +1,8 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
+import axios from 'axios';
+
+const API_BASE_URL = 'http://localhost:5000/api';
 
 export const useAuthStore = defineStore('auth', () => {
   // State
@@ -12,6 +15,7 @@ export const useAuthStore = defineStore('auth', () => {
   const userRole = computed(() => user.value?.role || null);
   const userDepartment = computed(() => user.value?.department || null);
   const isSuperAdmin = computed(() => userRole.value === 'Super Admin');
+  const userPermissions = computed(() => user.value?.permissions || []);
 
   // Actions
   const login = async (credentials) => {
@@ -19,26 +23,26 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = null;
 
     try {
-      // Simulate API call - replace with actual API endpoint
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(credentials),
-      });
+      const response = await axios.post(
+        `${API_BASE_URL}/auth/login`,
+        credentials
+      );
 
-      const data = await response.json();
-
-      if (data.success) {
-        user.value = data.user;
+      if (response.data.success) {
+        user.value = response.data.data.user;
         isAuthenticated.value = true;
-        return data.user;
+
+        // Store in localStorage for persistence
+        localStorage.setItem('user', JSON.stringify(response.data.data.user));
+        localStorage.setItem('isAuthenticated', 'true');
+
+        return response.data.data.user;
       } else {
-        throw new Error(data.message || 'Login failed');
+        throw new Error(response.data.message || 'Login failed');
       }
     } catch (err) {
-      error.value = err.message;
+      error.value =
+        err.response?.data?.message || err.message || 'Login failed';
       throw err;
     } finally {
       loading.value = false;
@@ -49,40 +53,82 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null;
     isAuthenticated.value = false;
     error.value = null;
+
+    // Clear localStorage
+    localStorage.removeItem('user');
+    localStorage.removeItem('isAuthenticated');
   };
 
   const setUser = (userData) => {
     user.value = userData;
     isAuthenticated.value = true;
+
+    // Update localStorage
+    localStorage.setItem('user', JSON.stringify(userData));
+    localStorage.setItem('isAuthenticated', 'true');
   };
 
-  // Mock user for testing - remove in production
-  const setMockUser = (role, department = null) => {
-    const mockUsers = {
-      'Super Admin': {
-        id: 1,
-        name: 'John Doe',
-        email: 'admin@company.com',
-        role: 'Super Admin',
-        department: null,
-      },
-      'HR Manager': {
-        id: 2,
-        name: 'Jane Smith',
-        email: 'jane@company.com',
-        role: 'Manager',
-        department: 'Human Resource',
-      },
-      'SCM Staff': {
-        id: 3,
-        name: 'Bob Johnson',
-        email: 'bob@company.com',
-        role: 'Staff',
-        department: 'Supply Chain',
-      },
-    };
+  const validateSession = async () => {
+    if (!user.value?.id) {
+      return false;
+    }
 
-    setUser(mockUsers[role] || mockUsers['HR Manager']);
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/auth/validate-session`,
+        {
+          user_id: user.value.id,
+        }
+      );
+
+      if (response.data.success) {
+        // Update user data with latest info
+        user.value = response.data.data.user;
+        localStorage.setItem('user', JSON.stringify(response.data.data.user));
+        return true;
+      } else {
+        logout();
+        return false;
+      }
+    } catch (err) {
+      console.error('Session validation failed:', err);
+      logout();
+      return false;
+    }
+  };
+
+  const checkPermission = (permissionKey) => {
+    if (isSuperAdmin.value) return true;
+    return userPermissions.value.some(
+      (permission) => permission.permission_key === permissionKey
+    );
+  };
+
+  const hasAnyPermission = (permissionKeys) => {
+    if (isSuperAdmin.value) return true;
+    return permissionKeys.some((key) => checkPermission(key));
+  };
+
+  const initializeAuth = async () => {
+    const storedUser = localStorage.getItem('user');
+    const storedAuth = localStorage.getItem('isAuthenticated');
+
+    if (storedUser && storedAuth === 'true') {
+      try {
+        user.value = JSON.parse(storedUser);
+        isAuthenticated.value = true;
+
+        // Validate the session to ensure role is still active
+        const isValid = await validateSession();
+        if (!isValid) {
+          error.value =
+            'Your access has been revoked. Please contact your administrator.';
+        }
+      } catch (e) {
+        console.error('Error parsing stored user data:', e);
+        logout();
+      }
+    }
   };
 
   const clearError = () => {
@@ -100,12 +146,16 @@ export const useAuthStore = defineStore('auth', () => {
     userRole,
     userDepartment,
     isSuperAdmin,
+    userPermissions,
 
     // Actions
     login,
     logout,
     setUser,
-    setMockUser,
+    validateSession,
+    checkPermission,
+    hasAnyPermission,
+    initializeAuth,
     clearError,
   };
 });

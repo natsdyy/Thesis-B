@@ -14,59 +14,123 @@
   const errorMessage = ref('');
   const isLoading = ref(false);
 
-  // Mock credentials for each role
-  const mockCredentials = {
-    'Super Admin': {
-      email: 'admin@gmail.com',
-      password: 'admin123',
-    },
-    'HR Manager': {
-      email: 'hr@gmail.com',
-      password: 'hr123',
-    },
-    'SCM Staff': {
-      email: 'scm@gmail.com',
-      password: 'scm123',
-    },
-  };
-
   const togglePasswordVisibility = () => {
     showPassword.value = !showPassword.value;
   };
 
-  const validateCredentials = (email, password) => {
-    for (const [role, credentials] of Object.entries(mockCredentials)) {
-      if (credentials.email === email && credentials.password === password) {
-        return role;
+  // Enhanced error message mapping
+  const getErrorMessage = (error) => {
+    if (error.response?.data?.code) {
+      const code = error.response.data.code;
+      const message = error.response.data.message;
+
+      switch (code) {
+        case 'MISSING_CREDENTIALS':
+          return 'Please enter both email and password';
+        case 'MISSING_EMAIL':
+          return 'Please enter your email address';
+        case 'MISSING_PASSWORD':
+          return 'Please enter your password';
+        case 'EMPTY_EMAIL':
+          return 'Email address cannot be empty';
+        case 'EMPTY_PASSWORD':
+          return 'Password cannot be empty';
+        case 'INVALID_EMAIL_FORMAT':
+          return 'Please enter a valid email address';
+        case 'INVALID_CREDENTIALS':
+          return 'Invalid email or password. Please check your credentials and try again.';
+        case 'ACCOUNT_DEACTIVATED':
+          return 'Your account has been deactivated. Please contact your administrator.';
+        case 'ACCOUNT_INACTIVE':
+          return 'Your account is currently inactive. Please contact your administrator.';
+        case 'NO_ROLE_ASSIGNED':
+          return 'No role has been assigned to your account. Please contact your administrator.';
+        case 'ROLE_DELETED':
+          return 'Your assigned role has been removed. Please contact your administrator for role reassignment.';
+        case 'ROLE_DEACTIVATED':
+          return 'Your assigned role has been temporarily deactivated. Please contact your administrator.';
+        case 'ROLE_VALIDATION_ERROR':
+          return 'Unable to verify your role permissions. Please try again or contact your administrator.';
+        case 'AUTHENTICATION_ERROR':
+          return 'Authentication service is temporarily unavailable. Please try again.';
+        case 'ACCESS_DENIED':
+          return message || 'Access denied. Please contact your administrator.';
+        case 'USER_NOT_FOUND':
+          return 'User account not found. Please check your credentials.';
+        case 'INTERNAL_SERVER_ERROR':
+          return 'Service temporarily unavailable. Please try again later.';
+        default:
+          return message || 'Login failed. Please try again.';
       }
     }
-    return null;
+
+    // Fallback for other error types
+    if (error.response?.data?.message) {
+      return error.response.data.message;
+    }
+
+    if (error.message) {
+      return error.message;
+    }
+
+    return 'Login failed. Please try again.';
   };
 
   const login = async () => {
     errorMessage.value = '';
 
-    if (!email.value || !password.value) {
-      errorMessage.value = 'Please fill in all fields';
+    // Client-side validation
+    if (!email.value?.trim()) {
+      errorMessage.value = 'Please enter your email address';
+      return;
+    }
+
+    if (!password.value) {
+      errorMessage.value = 'Please enter your password';
+      return;
+    }
+
+    // Basic email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.value.trim())) {
+      errorMessage.value = 'Please enter a valid email address';
       return;
     }
 
     isLoading.value = true;
     await nextTick();
 
-    // Simulate API call delay
-    setTimeout(() => {
-      const userRole = validateCredentials(email.value, password.value);
+    try {
+      await authStore.login({
+        email: email.value.trim(),
+        password: password.value,
+      });
 
-      if (userRole) {
-        authStore.setMockUser(userRole);
-        router.push('/dashboard');
+      // Redirect based on user role/department
+      const userDepartment = authStore.userDepartment;
+      const userRole = authStore.userRole;
+
+      if (userRole === 'Super Admin' || userDepartment === 'Admin') {
+        router.push('/admin');
+      } else if (userDepartment === 'Human Resource') {
+        router.push('/hr');
+      } else if (userDepartment === 'Finance') {
+        router.push('/finance');
+      } else if (userDepartment === 'Supply Chain') {
+        router.push('/scm');
+      } else if (userDepartment === 'Production') {
+        router.push('/production');
+      } else if (userDepartment === 'Customer Relationship') {
+        router.push('/crm');
       } else {
-        errorMessage.value = 'Invalid email or password';
+        router.push('/dashboard');
       }
-
+    } catch (error) {
+      console.error('Login error:', error);
+      errorMessage.value = getErrorMessage(error);
+    } finally {
       isLoading.value = false;
-    }, 1000);
+    }
   };
 </script>
 

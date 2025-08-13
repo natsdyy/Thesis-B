@@ -50,7 +50,7 @@ router.get("/:id", async (req, res) => {
 // POST /api/users - Create new user
 router.post("/", async (req, res) => {
   try {
-    const { name, email } = req.body;
+    const { name, email, role_id, department, password } = req.body;
 
     if (!name || !email) {
       return res.status(400).json({
@@ -59,10 +59,17 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const user = await User.create({ name, email });
+    const newUser = await User.create({
+      name,
+      email,
+      password: password || "admin123",
+      role_id: role_id || null,
+      department: department || null,
+    });
+
     res.status(201).json({
       success: true,
-      data: user,
+      data: newUser,
       message: "User created successfully",
     });
   } catch (error) {
@@ -78,7 +85,7 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email } = req.body;
+    const { name, email, role_id, department } = req.body;
 
     if (!name || !email) {
       return res.status(400).json({
@@ -87,9 +94,14 @@ router.put("/:id", async (req, res) => {
       });
     }
 
-    const user = await User.update(id, { name, email });
+    const updatedUser = await User.update(id, {
+      name,
+      email,
+      role_id: role_id || null,
+      department: department || null,
+    });
 
-    if (!user) {
+    if (!updatedUser) {
       return res.status(404).json({
         success: false,
         message: "User not found",
@@ -98,7 +110,7 @@ router.put("/:id", async (req, res) => {
 
     res.json({
       success: true,
-      data: user,
+      data: updatedUser,
       message: "User updated successfully",
     });
   } catch (error) {
@@ -163,4 +175,32 @@ router.patch("/:id/restore", async (req, res) => {
     });
   }
 });
+
+// Add new endpoint to get user with permissions
+router.get("/:id/permissions", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userWithPermissions = await User.getWithPermissions(id);
+
+    if (!userWithPermissions) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: userWithPermissions,
+    });
+  } catch (error) {
+    console.error("Error fetching user with permissions:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+});
+
 module.exports = router;

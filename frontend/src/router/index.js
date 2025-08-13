@@ -128,46 +128,31 @@ const router = createRouter({
   },
 });
 
-// Navigation guards - Updated
-router.beforeEach((to, from, next) => {
+// Add a global navigation guard
+router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore();
 
-  // Allow access to login page
-  if (to.name === 'Login') {
-    // If already authenticated, redirect to dashboard
-    if (authStore.isAuthenticated) {
-      next('/dashboard');
-      return;
-    }
+  // Routes that don't require authentication
+  const publicRoutes = ['/', '/login'];
+
+  if (publicRoutes.includes(to.path)) {
     next();
     return;
   }
 
-  // Check if route requires authentication
-  if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    // Redirect to login page instead of auto-setting user
+  // Check if user is authenticated
+  if (!authStore.isAuthenticated || !authStore.user) {
     next('/login');
     return;
   }
 
-  // Check department access (only for non-Super Admin users)
-  if (to.meta.department && !authStore.isSuperAdmin) {
-    if (authStore.userDepartment !== to.meta.department) {
-      // User doesn't have access to this department
-      next('/dashboard');
-      return;
-    }
-  }
+  // Validate session for protected routes
+  const isValidSession = await authStore.validateSession();
 
-  // Check if route is super admin only
-  if (to.meta.superAdminOnly && !authStore.isSuperAdmin) {
-    next('/dashboard');
+  if (!isValidSession) {
+    // Session is invalid (role deleted/deactivated)
+    next('/login');
     return;
-  }
-
-  // Set page title
-  if (to.meta.title) {
-    document.title = `${to.meta.title} - Countryside Steak House`;
   }
 
   next();

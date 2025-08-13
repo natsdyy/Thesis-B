@@ -1,33 +1,57 @@
 <script setup>
-  import { ref, computed, onMounted } from 'vue';
-  import { UserLock, RefreshCcw } from 'lucide-vue-next';
+  import { ref, computed, onMounted, watch } from 'vue';
+  import { UserLock, RefreshCcw, Users } from 'lucide-vue-next';
   import { useRoleStore } from '../stores/roleStore';
+  import { usePermissionStore } from '../stores/permissionStore';
+  import { useRolePermissionStore } from '../stores/rolePermissionStore';
   import { storeToRefs } from 'pinia';
 
-  // Pinia store
+  // Stores
   const roleStore = useRoleStore();
+  const permissionStore = usePermissionStore();
+  const rolePermissionStore = useRolePermissionStore();
+
+  // Role store
   const { roles, loading, error, roleCount, hasRoles, deletedRoles } =
     storeToRefs(roleStore);
   const {
     fetchRoles,
-    createRole,
-    updateRole,
+    createRoleWithPermissions,
+    updateRoleWithPermissions,
     deleteRole,
     restoreRole,
-    clearError,
+    clearError: clearRoleError,
   } = roleStore;
+
+  // Permission store
+  const { permissions } = storeToRefs(permissionStore);
+  const { fetchPermissions } = permissionStore;
+
+  // Role-permission store
+  const { bulkAssignPermissionsToRole } = rolePermissionStore;
 
   // State management
   const currentPage = ref(1);
   const rolesPerPage = ref(5);
   const showDeleted = ref(false);
 
-  const departmentRoles = {
+  const departmentList = [
+    'Human Resource',
+    'Finance',
+    'Supply Chain',
+    'Production',
+    'Customer Relationship',
+    'Admin',
+  ];
+
+  // Department-specific role types
+  const departmentRoleTypes = {
     'Human Resource': ['Manager', 'Staff'],
     Finance: ['Manager', 'Staff'],
     'Supply Chain': ['Manager', 'Staff'],
     Production: ['Manager', 'Staff'],
     'Customer Relationship': ['Manager', 'Staff'],
+    Admin: ['Admin', 'Super Admin'],
   };
 
   // Form data
@@ -35,47 +59,71 @@
     role: '',
     department: '',
     description: '',
-    permissions: [],
+    permission_ids: [],
   });
 
   const selectedDepartment = ref('');
   const selectedRole = ref('');
-  const selectPermissions = ref([]);
+  const selectedPermissions = ref([]);
 
-  const departmentPermissions = {
-    'Human Resource': [
-      'View Dashboard',
-      'Manage Attendance',
-      'Manage Employee',
-      'Manage Leave',
-      'Manage Payroll',
-    ],
-    Finance: [
-      'View Dashboard',
-      'Manage Inventory',
-      'Manage Purchase Order',
-      'Manage Sales Order',
-      'Manage Payment',
-    ],
-    'Supply Chain': [
-      'View Dashboard',
-      'Manage Inventory',
-      'Manage Purchase Order',
-      'Manage Supplier',
-      'Manage Payment',
-    ],
-    Production: [
-      'View Dashboard',
-      'Manage Production',
-      'Manage Quality Control',
-      'Manage Inventory',
-      'Manage Purchase Order',
-    ],
-    'Customer Relationship': ['View Dashboard', 'Manage Customer'],
-  };
+  // Computed property for available role types based on selected department
+  const availableRoleTypes = computed(() => {
+    return departmentRoleTypes[selectedDepartment.value] || [];
+  });
+
+  // Group permissions by department/module for better organization
+  const departmentPermissions = computed(() => {
+    const grouped = {};
+    permissions.value.forEach((permission) => {
+      // Try to determine department from permission name
+      let department = 'General';
+
+      if (
+        permission.permission_name.toLowerCase().includes('employee') ||
+        permission.permission_name.toLowerCase().includes('attendance') ||
+        permission.permission_name.toLowerCase().includes('payroll') ||
+        permission.permission_name.toLowerCase().includes('leave')
+      ) {
+        department = 'Human Resource';
+      } else if (
+        permission.permission_name.toLowerCase().includes('inventory') ||
+        permission.permission_name.toLowerCase().includes('purchase') ||
+        permission.permission_name.toLowerCase().includes('sales') ||
+        permission.permission_name.toLowerCase().includes('payment')
+      ) {
+        department = 'Finance';
+      } else if (
+        permission.permission_name.toLowerCase().includes('supplier')
+      ) {
+        department = 'Supply Chain';
+      } else if (
+        permission.permission_name.toLowerCase().includes('production') ||
+        permission.permission_name.toLowerCase().includes('quality')
+      ) {
+        department = 'Production';
+      } else if (
+        permission.permission_name.toLowerCase().includes('customer')
+      ) {
+        department = 'Customer Relationship';
+      } else if (
+        permission.permission_name.toLowerCase().includes('user') ||
+        permission.permission_name.toLowerCase().includes('role') ||
+        permission.permission_name.toLowerCase().includes('permission') ||
+        permission.permission_name.toLowerCase().includes('setting')
+      ) {
+        department = 'Admin';
+      }
+
+      if (!grouped[department]) {
+        grouped[department] = [];
+      }
+      grouped[department].push(permission);
+    });
+    return grouped;
+  });
 
   const availablePermissions = computed(() => {
-    return departmentPermissions[selectedDepartment.value] || [];
+    return departmentPermissions.value[selectedDepartment.value] || [];
   });
 
   // Toast state
@@ -86,7 +134,7 @@
     toast.value = { show: true, type, message };
     setTimeout(() => {
       toast.value.show = false;
-    }, 3000); // hide after 3 seconds
+    }, 3000);
   };
 
   const handleCreateRole = async () => {
@@ -95,27 +143,32 @@
       !newRole.value.department ||
       !newRole.value.description
     ) {
-      error.value = 'Please fill in all fields';
       showToast('error', 'Please fill in all fields');
       return;
     }
 
     try {
-      await createRole({
+      await createRoleWithPermissions({
         role: newRole.value.role,
         department: newRole.value.department,
         description: newRole.value.description,
+        permission_ids: newRole.value.permission_ids,
       });
 
-      // Reset
-      newRole.value = { role: '', department: '', description: '' };
+      // Reset form
+      newRole.value = {
+        role: '',
+        department: '',
+        description: '',
+        permission_ids: [],
+      };
       selectedDepartment.value = '';
       selectedRole.value = '';
+      selectedPermissions.value = [];
 
       closeModal();
       await fetchRoles(showDeleted.value);
-
-      showToast('success', 'Role created successfully');
+      showToast('success', 'Role created successfully with permissions');
     } catch (err) {
       showToast('error', 'Failed to create role');
     }
@@ -123,7 +176,7 @@
 
   const handleUpdateRole = async (roleId, updatedData) => {
     try {
-      await updateRole(roleId, updatedData);
+      await updateRoleWithPermissions(roleId, updatedData);
       closeModal();
       await fetchRoles(showDeleted.value);
       showToast('success', 'Role updated successfully');
@@ -156,10 +209,10 @@
 
   // Modal state
   const modal = ref({
-    type: null, // 'edit', 'delete', 'restore'
+    type: null,
     show: false,
     role: null,
-    data: { role: '', department: '', description: '' },
+    data: { role: '', department: '', description: '', permission_ids: [] },
   });
 
   // Computed properties
@@ -185,12 +238,13 @@
     return Math.ceil(filteredRoles.value.length / rolesPerPage.value);
   });
 
-  const availableRoles = computed(() => {
-    return departmentRoles[selectedDepartment.value] || [];
+  // Available role types for editing based on department
+  const editAvailableRoleTypes = computed(() => {
+    return departmentRoleTypes[modal.value.data.department] || [];
   });
 
   // Modal methods
-  const openModal = (type, role = null) => {
+  const openModal = async (type, role = null) => {
     modal.value = {
       type,
       show: true,
@@ -200,9 +254,26 @@
             role: role.role,
             department: role.department,
             description: role.description,
+            permission_ids: role.permissions
+              ? role.permissions.map((p) => p.permission_id)
+              : [],
           }
-        : { role: '', department: '', description: '' },
+        : { role: '', department: '', description: '', permission_ids: [] },
     };
+
+    // If editing, load role permissions
+    if (type === 'edit' && role) {
+      try {
+        const roleWithPermissions = await roleStore.getRoleWithPermissions(
+          role.role_id
+        );
+        modal.value.data.permission_ids = roleWithPermissions.permissions.map(
+          (p) => p.permission_id
+        );
+      } catch (err) {
+        console.error('Failed to load role permissions:', err);
+      }
+    }
 
     if (type === 'create') {
       document.getElementById('confirm_modal').showModal();
@@ -218,7 +289,7 @@
       type: null,
       show: false,
       role: null,
-      data: { role: '', department: '', description: '' },
+      data: { role: '', department: '', description: '', permission_ids: [] },
     };
   };
 
@@ -249,7 +320,7 @@
       role: selectedRole.value,
       department: selectedDepartment.value,
       description: document.querySelector('textarea').value,
-      permissions: selectPermissions.value,
+      permission_ids: selectedPermissions.value,
     };
     openModal('create');
   };
@@ -269,9 +340,38 @@
     return new Date(dateString).toLocaleDateString();
   };
 
-  // Load roles on component mount
-  onMounted(() => {
-    fetchRoles(false);
+  // Initialize permissions and role when department changes
+  watch(selectedDepartment, (newDepartment) => {
+    selectedPermissions.value = [];
+    // Reset role selection if the current selected role is not available in the new department
+    if (!availableRoleTypes.value.includes(selectedRole.value)) {
+      selectedRole.value = '';
+    }
+  });
+
+  // Watch for department changes in edit modal
+  watch(
+    () => modal.value.data.department,
+    (newDepartment) => {
+      // Reset role selection if the current selected role is not available in the new department
+      if (!editAvailableRoleTypes.value.includes(modal.value.data.role)) {
+        modal.value.data.role = '';
+      }
+    }
+  );
+
+  // Watch for permission changes to update newRole
+  watch(
+    selectedPermissions,
+    (newPermissions) => {
+      newRole.value.permission_ids = newPermissions;
+    },
+    { deep: true }
+  );
+
+  // Load data on component mount
+  onMounted(async () => {
+    await Promise.all([fetchRoles(false), fetchPermissions()]);
   });
 </script>
 
@@ -280,10 +380,10 @@
     <!-- Header -->
     <div class="text-center mb-8">
       <h1 class="text-4xl font-bold mb-2 text-secondaryColor">
-        User Role Management
+        Role-Based Access Control
       </h1>
       <p class="text-base-content/70">
-        Manage roles with department-based permissions
+        Manage roles and permissions with department-based access control
       </p>
     </div>
 
@@ -310,19 +410,7 @@
 
       <div class="stat">
         <div class="stat-figure">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            class="inline-block w-8 h-8 stroke-current text-secondaryColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M13 10V3L4 14h7v7l9-11h-7z"
-            ></path>
-          </svg>
+          <Users class="w-8 h-8 text-secondaryColor" />
         </div>
         <div class="stat-title text-black/50">Status</div>
         <div class="stat-value text-secondaryColor">
@@ -351,7 +439,7 @@
       </svg>
       <span>{{ error }}</span>
       <div>
-        <button class="btn btn-sm btn-outline" @click="clearError">
+        <button class="btn btn-sm btn-outline" @click="clearRoleError">
           Dismiss
         </button>
       </div>
@@ -427,6 +515,7 @@
                 <th>Role</th>
                 <th>Department</th>
                 <th>Description</th>
+                <th>Permissions</th>
                 <th>Updated At</th>
                 <th>Actions</th>
               </tr>
@@ -454,6 +543,12 @@
                 </td>
                 <td>{{ role.department }}</td>
                 <td>{{ role.description }}</td>
+                <td>
+                  <div class="badge badge-outline" v-if="role.permissions">
+                    {{ role.permissions.length }} permissions
+                  </div>
+                  <div class="text-xs text-gray-500" v-else>Not loaded</div>
+                </td>
                 <td>{{ formatDate(role.updated_at) }}</td>
                 <td>
                   <div class="dropdown dropdown-left">
@@ -554,7 +649,7 @@
             >
               <option value="">Choose Department</option>
               <option
-                v-for="department in Object.keys(departmentRoles)"
+                v-for="department in departmentList"
                 :key="department"
                 :value="department"
               >
@@ -562,9 +657,10 @@
               </option>
             </select>
           </div>
+
           <div class="form-control">
             <label class="label">
-              <span class="label-text text-black/50">Select Role</span>
+              <span class="label-text text-black/50">Select Role Type</span>
             </label>
             <select
               class="select select-bordered w-full bg-white border border-black/10 text-black/50 cursor-pointer disabled:bg-gray-200 disabled:text-black/50 disabled:border-none"
@@ -572,35 +668,57 @@
               :disabled="!selectedDepartment"
               required
             >
-              <option value="">Choose Role</option>
-              <option v-for="role in availableRoles" :key="role" :value="role">
+              <option value="">Choose Role Type</option>
+              <option
+                v-for="role in availableRoleTypes"
+                :key="role"
+                :value="role"
+              >
                 {{ role }}
               </option>
             </select>
+            <div class="label" v-if="selectedDepartment">
+              <span class="label-text-alt text-gray-500">
+                Available for {{ selectedDepartment }}:
+                {{ availableRoleTypes.join(', ') }}
+              </span>
+            </div>
           </div>
 
           <!-- Select Permissions -->
-          <div class="form-control">
+          <div class="form-control" v-if="selectedDepartment">
             <label class="label">
               <span class="label-text text-black/50">Select Permissions</span>
             </label>
 
-            <div class="space-y-2">
+            <div
+              class="space-y-2 max-h-60 overflow-y-auto border border-black/10 rounded p-4 bg-white"
+            >
+              <div
+                v-if="availablePermissions.length === 0"
+                class="text-center text-gray-500 py-4"
+              >
+                No permissions available for this department
+              </div>
               <label
                 v-for="permission in availablePermissions"
-                :key="permission"
-                class="label cursor-pointer justify-between gap-3"
+                :key="permission.permission_id"
+                class="label cursor-pointer justify-start gap-3"
               >
                 <input
                   type="checkbox"
                   class="checkbox checkbox-neutral checkbox-xs bg-white border border-black/10 cursor-pointer checked:bg-secondaryColor checked:text-white checked:border-none"
-                  :value="permission"
-                  v-model="selectPermissions"
+                  :value="permission.permission_id"
+                  v-model="selectedPermissions"
                 />
-                <span class="label-text text-black/50 mr-5">{{
-                  permission
-                }}</span>
+                <span class="label-text text-black/50">
+                  {{ permission.permission_name }}
+                </span>
               </label>
+            </div>
+
+            <div class="text-sm text-gray-500 mt-2">
+              {{ selectedPermissions.length }} permission(s) selected
             </div>
           </div>
 
@@ -615,6 +733,7 @@
               required
             ></textarea>
           </div>
+
           <div class="card-actions justify-end">
             <button
               type="submit"
@@ -636,11 +755,18 @@
     <!-- Create Confirmation Modal -->
     <dialog id="confirm_modal" class="modal">
       <div class="modal-box bg-accentColor text-black/50 shadow-lg">
-        <h3 class="font-bold text-lg">Confirmation</h3>
-        <p class="py-4">
-          Are you sure you want to create this role? This action will add a new
-          role to the system.
-        </p>
+        <h3 class="font-bold text-lg">Create Role Confirmation</h3>
+        <div class="py-4">
+          <p class="mb-2">Are you sure you want to create this role?</p>
+          <div class="bg-white/10 p-3 rounded mt-3">
+            <p><strong>Role:</strong> {{ newRole.role }}</p>
+            <p><strong>Department:</strong> {{ newRole.department }}</p>
+            <p>
+              <strong>Permissions:</strong>
+              {{ newRole.permission_ids.length }} selected
+            </p>
+          </div>
+        </div>
         <div class="modal-action">
           <button
             class="btn btn-sm font-thin bg-gray-200 text-black/50 border border-none hover:bg-gray-300"
@@ -672,17 +798,6 @@
           <form @submit.prevent="handleModalAction">
             <div class="form-control mb-4">
               <label class="label"
-                ><span class="label-text">Role Name</span></label
-              >
-              <input
-                v-model="modal.data.role"
-                type="text"
-                class="input input-bordered w-full bg-white border border-black/10 text-black/50 cursor-pointer"
-                required
-              />
-            </div>
-            <div class="form-control mb-4">
-              <label class="label"
                 ><span class="label-text">Department</span></label
               >
               <select
@@ -691,7 +806,7 @@
                 required
               >
                 <option
-                  v-for="department in Object.keys(departmentRoles)"
+                  v-for="department in departmentList"
                   :key="department"
                   :value="department"
                 >
@@ -699,6 +814,33 @@
                 </option>
               </select>
             </div>
+
+            <div class="form-control mb-4">
+              <label class="label"
+                ><span class="label-text">Role Type</span></label
+              >
+              <select
+                v-model="modal.data.role"
+                class="select select-bordered w-full bg-white border border-black/10 text-black/50 cursor-pointer"
+                required
+              >
+                <option value="">Choose Role Type</option>
+                <option
+                  v-for="role in editAvailableRoleTypes"
+                  :key="role"
+                  :value="role"
+                >
+                  {{ role }}
+                </option>
+              </select>
+              <div class="label" v-if="modal.data.department">
+                <span class="label-text-alt text-gray-500">
+                  Available for {{ modal.data.department }}:
+                  {{ editAvailableRoleTypes.join(', ') }}
+                </span>
+              </div>
+            </div>
+
             <div class="form-control mb-4">
               <label class="label"
                 ><span class="label-text">Description</span></label
@@ -710,6 +852,33 @@
                 required
               ></textarea>
             </div>
+
+            <!-- Permissions for Edit -->
+            <div class="form-control mb-4">
+              <label class="label">
+                <span class="label-text">Permissions</span>
+              </label>
+              <div
+                class="space-y-2 max-h-40 overflow-y-auto border border-black/10 rounded p-4 bg-white"
+              >
+                <label
+                  v-for="permission in permissions"
+                  :key="permission.permission_id"
+                  class="label cursor-pointer justify-start gap-3"
+                >
+                  <input
+                    type="checkbox"
+                    class="checkbox checkbox-neutral checkbox-xs bg-white border border-black/10 cursor-pointer checked:bg-secondaryColor checked:text-white checked:border-none"
+                    :value="permission.permission_id"
+                    v-model="modal.data.permission_ids"
+                  />
+                  <span class="label-text text-black/50 text-sm">
+                    {{ permission.permission_name }}
+                  </span>
+                </label>
+              </div>
+            </div>
+
             <div class="modal-action">
               <button
                 type="button"

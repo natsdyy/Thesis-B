@@ -60,8 +60,10 @@
               <input
                 type="checkbox"
                 class="collapse-toggle opacity-0 absolute"
+                :id="`dept-collapse-${department}`"
               />
-              <div
+              <label
+                :for="`dept-collapse-${department}`"
                 class="collapse-title px-2 py-3 cursor-pointer hover:bg-white/10 rounded-lg transition-colors duration-200 flex items-center justify-between min-h-0"
               >
                 <div class="flex items-center space-x-3">
@@ -74,24 +76,79 @@
                 <ChevronDown
                   class="w-4 h-4 text-white/60 transition-transform duration-200"
                 />
-              </div>
+              </label>
 
               <!-- Department Menu Items -->
               <div class="collapse-content px-0 pb-0">
                 <div class="ml-8 space-y-1 mt-2">
-                  <button
-                    v-for="menu in menus"
-                    :key="menu.route"
-                    @click="navigateToRoute(menu.route)"
-                    :class="[
-                      'w-full text-left px-3 py-2 rounded-lg transition-all duration-200 text-sm',
-                      isActiveRoute(menu.route)
-                        ? 'bg-white/20 text-white font-medium'
-                        : 'text-white/80 hover:bg-white/10 hover:text-white',
-                    ]"
-                  >
-                    {{ menu.name }}
-                  </button>
+                  <template v-for="menu in menus" :key="menu.route">
+                    <!-- Check if this menu has sub-items (like Employee Management) -->
+                    <div
+                      v-if="menu.subItems && menu.subItems.length > 0"
+                      class="mb-2"
+                    >
+                      <!-- Parent menu with dropdown -->
+                      <div class="collapse">
+                        <input
+                          type="checkbox"
+                          class="collapse-toggle opacity-0 absolute"
+                          :id="`submenu-collapse-${menu.name.replace(/\s+/g, '-')}`"
+                        />
+                        <label
+                          :for="`submenu-collapse-${menu.name.replace(/\s+/g, '-')}`"
+                          class="collapse-title px-2 py-2 cursor-pointer hover:bg-white/10 rounded-lg transition-colors duration-200 flex items-center justify-between min-h-0"
+                        >
+                          <div class="flex items-center space-x-3">
+                            <component
+                              :is="menu.icon"
+                              class="w-4 h-4 text-white"
+                            />
+                            <span class="text-white text-sm font-medium">{{
+                              menu.name
+                            }}</span>
+                          </div>
+                          <ChevronDown
+                            class="w-3 h-3 text-white/60 transition-transform duration-200"
+                          />
+                        </label>
+
+                        <!-- Sub-menu items -->
+                        <div class="collapse-content px-0 pb-0">
+                          <div class="ml-6 space-y-1 mt-1">
+                            <button
+                              v-for="subItem in menu.subItems"
+                              :key="subItem.route"
+                              @click="navigateToRoute(subItem.route)"
+                              :class="[
+                                'w-full text-left px-2 py-1.5 rounded-lg transition-all duration-200 text-xs',
+                                isActiveRoute(subItem.route)
+                                  ? 'bg-white/20 text-white font-medium'
+                                  : 'text-white/80 hover:bg-white/10 hover:text-white',
+                              ]"
+                            >
+                              {{ subItem.name }}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Regular menu item (no sub-items) -->
+                    <div v-else>
+                      <button
+                        @click="navigateToRoute(menu.route)"
+                        :class="[
+                          'w-full text-left px-3 py-2 rounded-lg transition-all duration-200 text-sm flex items-center space-x-3',
+                          isActiveRoute(menu.route)
+                            ? 'bg-white/20 text-white font-medium'
+                            : 'text-white/80 hover:bg-white/10 hover:text-white',
+                        ]"
+                      >
+                        <component :is="menu.icon" class="w-4 h-4 text-white" />
+                        <span>{{ menu.name }}</span>
+                      </button>
+                    </div>
+                  </template>
                 </div>
               </div>
             </div>
@@ -281,7 +338,8 @@
   }
 
   /* Collapse functionality */
-  .collapse-toggle:checked ~ .collapse-title .w-4 {
+  .collapse-toggle:checked ~ .collapse-title .w-4,
+  .collapse-toggle:checked ~ .collapse-title .w-3 {
     transform: rotate(180deg);
   }
 

@@ -1,10 +1,10 @@
 <template>
-  <div class="container mx-auto p-6 max-w-4xl">
+  <div class="container mx-auto p-6 max-w-6xl">
     <!-- Header -->
     <div class="text-center mb-8">
       <h1 class="text-4xl font-bold text-primary mb-2">User Management</h1>
       <p class="text-base-content/70">
-        Manage users with Pinia + Tailwind + Daisy UI
+        Manage users with role assignments and departments
       </p>
     </div>
 
@@ -93,30 +93,84 @@
       <div class="card-body">
         <h2 class="card-title">Add New User</h2>
         <form @submit.prevent="handleCreateUser" class="space-y-4">
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Name</span>
-            </label>
-            <input
-              v-model="newUser.name"
-              type="text"
-              placeholder="Enter full name"
-              class="input input-bordered w-full"
-              required
-            />
-          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Name</span>
+              </label>
+              <input
+                v-model="newUser.name"
+                type="text"
+                placeholder="Enter full name"
+                class="input input-bordered w-full"
+                required
+              />
+            </div>
 
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Email</span>
-            </label>
-            <input
-              v-model="newUser.email"
-              type="email"
-              placeholder="Enter email address"
-              class="input input-bordered w-full"
-              required
-            />
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Email</span>
+              </label>
+              <input
+                v-model="newUser.email"
+                type="email"
+                placeholder="Enter email address"
+                class="input input-bordered w-full"
+                required
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Department</span>
+              </label>
+              <select
+                v-model="newUser.department"
+                class="select select-bordered w-full"
+              >
+                <option value="">Choose Department</option>
+                <option value="Human Resource">Human Resource</option>
+                <option value="Finance">Finance</option>
+                <option value="Supply Chain">Supply Chain</option>
+                <option value="Production">Production</option>
+                <option value="Customer Relationship">
+                  Customer Relationship
+                </option>
+                <option value="Admin">Admin</option>
+              </select>
+              <div class="label" v-if="newUser.department">
+                <span class="label-text-alt text-gray-500">
+                  Available roles for {{ newUser.department }}:
+                  {{ availableRoles.map((r) => r.role).join(', ') || 'None' }}
+                </span>
+              </div>
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Role</span>
+              </label>
+              <select
+                v-model="newUser.role_id"
+                class="select select-bordered w-full"
+                :disabled="!newUser.department"
+              >
+                <option value="">
+                  {{
+                    newUser.department
+                      ? 'Choose Role'
+                      : 'Select Department First'
+                  }}
+                </option>
+                <option
+                  v-for="role in availableRoles"
+                  :key="role.role_id"
+                  :value="role.role_id"
+                >
+                  {{ role.role }}
+                </option>
+              </select>
+            </div>
           </div>
 
           <div class="card-actions justify-end">
@@ -202,6 +256,8 @@
                 <th>ID</th>
                 <th>Name</th>
                 <th>Email</th>
+                <th>Department</th>
+                <th>Role</th>
                 <th>Created</th>
                 <th>Actions</th>
               </tr>
@@ -228,6 +284,16 @@
                   </div>
                 </td>
                 <td>{{ user.email }}</td>
+                <td>
+                  <div class="badge badge-ghost badge-sm">
+                    {{ user.department || 'No Department' }}
+                  </div>
+                </td>
+                <td>
+                  <div class="badge badge-primary badge-sm">
+                    {{ user.role || 'No Role' }}
+                  </div>
+                </td>
                 <td>{{ formatDate(user.created_at) }}</td>
                 <td>
                   <div class="dropdown dropdown-left">
@@ -254,7 +320,6 @@
                       <li v-if="!user.deleted_at">
                         <a @click="editUser(user)">Edit</a>
                       </li>
-
                       <li v-if="!user.deleted_at">
                         <a @click="confirmDelete(user)" class="text-error"
                           >Delete</a
@@ -274,6 +339,8 @@
         </div>
       </div>
     </div>
+
+    <!-- Pagination -->
     <div class="join mt-4 justify-center">
       <button
         class="join-item btn"
@@ -312,24 +379,80 @@
       <template v-if="modal.type === 'edit'">
         <h3 class="text-lg font-bold mb-4">Edit User</h3>
         <form @submit.prevent="handleModalAction">
-          <div class="form-control mb-4">
-            <label class="label"><span class="label-text">Name</span></label>
-            <input
-              v-model="modal.data.name"
-              type="text"
-              class="input input-bordered w-full"
-              required
-            />
+          <div class="grid grid-cols-1 gap-4">
+            <div class="form-control">
+              <label class="label"><span class="label-text">Name</span></label>
+              <input
+                v-model="modal.data.name"
+                type="text"
+                class="input input-bordered w-full"
+                required
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label"><span class="label-text">Email</span></label>
+              <input
+                v-model="modal.data.email"
+                type="email"
+                class="input input-bordered w-full"
+                required
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label"
+                ><span class="label-text">Department</span></label
+              >
+              <select
+                v-model="modal.data.department"
+                class="select select-bordered w-full"
+              >
+                <option value="">Choose Department</option>
+                <option value="Human Resource">Human Resource</option>
+                <option value="Finance">Finance</option>
+                <option value="Supply Chain">Supply Chain</option>
+                <option value="Production">Production</option>
+                <option value="Customer Relationship">
+                  Customer Relationship
+                </option>
+                <option value="Admin">Admin</option>
+              </select>
+              <div class="label" v-if="modal.data.department">
+                <span class="label-text-alt text-gray-500">
+                  Available roles for {{ modal.data.department }}:
+                  {{
+                    editAvailableRoles.map((r) => r.role).join(', ') || 'None'
+                  }}
+                </span>
+              </div>
+            </div>
+
+            <div class="form-control">
+              <label class="label"><span class="label-text">Role</span></label>
+              <select
+                v-model="modal.data.role_id"
+                class="select select-bordered w-full"
+                :disabled="!modal.data.department"
+              >
+                <option value="">
+                  {{
+                    modal.data.department
+                      ? 'Choose Role'
+                      : 'Select Department First'
+                  }}
+                </option>
+                <option
+                  v-for="role in editAvailableRoles"
+                  :key="role.role_id"
+                  :value="role.role_id"
+                >
+                  {{ role.role }}
+                </option>
+              </select>
+            </div>
           </div>
-          <div class="form-control mb-4">
-            <label class="label"><span class="label-text">Email</span></label>
-            <input
-              v-model="modal.data.email"
-              type="email"
-              class="input input-bordered w-full"
-              required
-            />
-          </div>
+
           <div class="modal-action">
             <button type="submit" class="btn btn-primary" :disabled="loading">
               {{ loading ? 'Saving...' : 'Save' }}
@@ -392,14 +515,19 @@
 </template>
 
 <script setup>
-  import { ref, onMounted, computed } from 'vue';
+  import { ref, onMounted, computed, watch } from 'vue';
   import { useUserStore } from '../stores/userStore';
+  import { useRoleStore } from '../stores/roleStore';
   import { storeToRefs } from 'pinia';
 
-  // Pinia store
+  // Stores
   const userStore = useUserStore();
+  const roleStore = useRoleStore();
+
   const { users, loading, error, userCount, hasUsers, deletedUsers } =
     storeToRefs(userStore);
+  const { roles } = storeToRefs(roleStore);
+
   const {
     fetchUsers,
     createUser,
@@ -409,65 +537,73 @@
     updateUser,
   } = userStore;
 
+  const { fetchRoles } = roleStore;
+
+  // Local state
   const currentPage = ref(1);
   const itemsPerPage = ref(5);
   const showDeleted = ref(false);
 
-  // Replace all the modal refs with a single modal state
+  // Modal state
   const modal = ref({
-    type: null, // 'edit', 'delete', 'restore'
+    type: null,
     show: false,
     user: null,
-    data: { name: '', email: '' },
+    data: { name: '', email: '', role_id: '', department: '' },
   });
 
-  // Simplified modal methods
-  const openModal = (type, user = null) => {
-    modal.value = {
-      type,
-      show: true,
-      user,
-      data: user
-        ? { name: user.name, email: user.email }
-        : { name: '', email: '' },
-    };
-    document.getElementById('universal_modal').showModal();
-  };
+  // New user form
+  const newUser = ref({
+    name: '',
+    email: '',
+    role_id: '',
+    department: '',
+  });
 
-  const closeModal = () => {
-    document.getElementById('universal_modal').close();
-    modal.value = {
-      type: null,
-      show: false,
-      user: null,
-      data: { name: '', email: '' },
-    };
-  };
-
-  const handleModalAction = async () => {
-    try {
-      switch (modal.value.type) {
-        case 'edit':
-          await updateUser(modal.value.user.id, modal.value.data);
-          break;
-        case 'delete':
-          await deleteUser(modal.value.user.id);
-          break;
-        case 'restore':
-          await restoreUser(modal.value.user.id);
-          break;
-      }
-      closeModal();
-      await fetchUsers(showDeleted.value);
-    } catch (err) {
-      // Error handled by store
+  // Computed - Filter roles based on selected department for new user form
+  const availableRoles = computed(() => {
+    if (!newUser.value.department) {
+      return [];
     }
-  };
+    return roles.value.filter(
+      (role) => !role.deleted_at && role.department === newUser.value.department
+    );
+  });
 
-  // Update the action methods
-  const editUser = (user) => openModal('edit', user);
-  const confirmDelete = (user) => openModal('delete', user);
-  const confirmRestore = (user) => openModal('restore', user);
+  // Computed - Filter roles based on selected department for edit modal
+  const editAvailableRoles = computed(() => {
+    if (!modal.value.data.department) {
+      return [];
+    }
+    return roles.value.filter(
+      (role) =>
+        !role.deleted_at && role.department === modal.value.data.department
+    );
+  });
+
+  // Watch for department changes in new user form
+  watch(
+    () => newUser.value.department,
+    (newDepartment) => {
+      // Reset role selection when department changes
+      newUser.value.role_id = '';
+    }
+  );
+
+  // Watch for department changes in edit modal
+  watch(
+    () => modal.value.data.department,
+    (newDepartment) => {
+      // Reset role selection if the current selected role is not available in the new department
+      if (
+        !editAvailableRoles.value.some(
+          (role) => role.role_id === modal.value.data.role_id
+        )
+      ) {
+        modal.value.data.role_id = '';
+      }
+    }
+  );
 
   const filteredUsers = computed(() => {
     const list = users.value || [];
@@ -491,30 +627,67 @@
     return Math.ceil(filteredUsers.value.length / itemsPerPage.value);
   });
 
-  // Local state
-  const newUser = ref({
-    name: '',
-    email: '',
-  });
+  // Modal methods
+  const openModal = (type, user = null) => {
+    modal.value = {
+      type,
+      show: true,
+      user,
+      data: user
+        ? {
+            name: user.name,
+            email: user.email,
+            role_id: user.role_id || '',
+            department: user.department || '',
+          }
+        : { name: '', email: '', role_id: '', department: '' },
+    };
+    document.getElementById('universal_modal').showModal();
+  };
 
-  // Methods
-  const handleCreateUser = async () => {
+  const closeModal = () => {
+    document.getElementById('universal_modal').close();
+    modal.value = {
+      type: null,
+      show: false,
+      user: null,
+      data: { name: '', email: '', role_id: '', department: '' },
+    };
+  };
+
+  const handleModalAction = async () => {
     try {
-      await createUser(newUser.value);
-      newUser.value = { name: '', email: '' };
+      switch (modal.value.type) {
+        case 'edit':
+          await updateUser(modal.value.user.id, modal.value.data);
+          break;
+        case 'delete':
+          await deleteUser(modal.value.user.id);
+          break;
+        case 'restore':
+          await restoreUser(modal.value.user.id);
+          break;
+      }
+      closeModal();
+      await fetchUsers(showDeleted.value);
     } catch (err) {
-      // Error is handled by the store
+      // Error handled by store
     }
   };
 
-  const handleUpdateUser = async () => {
+  // Action methods
+  const editUser = (user) => openModal('edit', user);
+  const confirmDelete = (user) => openModal('delete', user);
+  const confirmRestore = (user) => openModal('restore', user);
+
+  // Form methods
+  const handleCreateUser = async () => {
     try {
-      await updateUser(editUserData.value.id, {
-        name: editUserData.value.name,
-        email: editUserData.value.email,
+      await createUser({
+        ...newUser.value,
+        role_id: newUser.value.role_id || null,
       });
-      closeEditModal();
-      // Refresh the current view
+      newUser.value = { name: '', email: '', role_id: '', department: '' };
       await fetchUsers(showDeleted.value);
     } catch (err) {
       // Error is handled by the store
@@ -531,8 +704,8 @@
     return new Date(dateString).toLocaleDateString();
   };
 
-  // Load users on component mount
-  onMounted(() => {
-    fetchUsers(true);
+  // Load data on component mount
+  onMounted(async () => {
+    await Promise.all([fetchUsers(true), fetchRoles()]);
   });
 </script>

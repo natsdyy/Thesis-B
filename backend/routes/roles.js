@@ -769,4 +769,486 @@ router.get("/count/all", async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/roles/{role_id}/permissions:
+ *   get:
+ *     tags: [Roles]
+ *     summary: Get role with permissions
+ *     description: Retrieve a specific role along with all its assigned permissions
+ *     parameters:
+ *       - name: role_id
+ *         in: path
+ *         description: The ID of the role
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *     responses:
+ *       200:
+ *         description: Role with permissions retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/RoleWithPermissions'
+ *       404:
+ *         description: Role not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+// Get role with permissions
+router.get("/:role_id/permissions", async (req, res) => {
+  try {
+    const { role_id } = req.params;
+    const roleWithPermissions = await Roles.getByIdWithPermissions(role_id);
+
+    if (!roleWithPermissions) {
+      return res.status(404).json({
+        success: false,
+        message: "Role not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: roleWithPermissions,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching role with permissions",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/roles/with-permissions:
+ *   post:
+ *     tags: [Roles]
+ *     summary: Create role with permissions
+ *     description: Create a new role and assign permissions to it in one operation
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - role
+ *               - department
+ *               - description
+ *             properties:
+ *               role:
+ *                 type: string
+ *                 description: The name of the role
+ *                 example: "Senior Manager"
+ *               department:
+ *                 type: string
+ *                 description: The department the role belongs to
+ *                 example: "Human Resource"
+ *               description:
+ *                 type: string
+ *                 description: The description of the role
+ *                 example: "Senior manager with extended privileges"
+ *               permission_ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Array of permission IDs to assign to the role
+ *                 example: [1, 2, 3, 4, 5]
+ *           examples:
+ *             hr_manager:
+ *               summary: Create HR Manager with permissions
+ *               value:
+ *                 role: "Senior Manager"
+ *                 department: "Human Resource"
+ *                 description: "Senior HR manager with full HR permissions"
+ *                 permission_ids: [1, 2, 3, 4, 5]
+ *     responses:
+ *       201:
+ *         description: Role created successfully with permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Role created successfully with permissions"
+ *                 data:
+ *                   $ref: '#/components/schemas/RoleWithPermissions'
+ *       400:
+ *         description: Missing required fields or invalid data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: Role already exists in department
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+// Create role with permissions
+router.post("/with-permissions", async (req, res) => {
+  try {
+    const { role, department, description, permission_ids } = req.body;
+
+    // Validate required fields
+    if (!role || !department || !description) {
+      return res.status(400).json({
+        success: false,
+        message: "Role name, department, and description are required",
+        code: "MISSING_FIELDS",
+      });
+    }
+
+    // Validate role name length and format
+    if (role.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: "Role name must be at least 2 characters long",
+        code: "INVALID_ROLE_NAME",
+      });
+    }
+
+    // Create role with permissions
+    const newRole = await Roles.createWithPermissions({
+      role: role.trim(),
+      department: department.trim(),
+      description: description.trim(),
+      permission_ids: permission_ids || [],
+    });
+
+    res.status(201).json({
+      success: true,
+      data: newRole,
+      message: "Role created successfully with permissions",
+    });
+  } catch (error) {
+    if (error.code === "DUPLICATE_ROLE") {
+      return res.status(409).json({
+        success: false,
+        message: error.message,
+        code: "DUPLICATE_ROLE",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Error creating role with permissions",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/roles/{role_id}/permissions:
+ *   put:
+ *     tags: [Roles]
+ *     summary: Update role with permissions
+ *     description: Update a role's information and replace all its permissions in one operation
+ *     parameters:
+ *       - name: role_id
+ *         in: path
+ *         description: The ID of the role to update
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - role
+ *               - department
+ *               - description
+ *             properties:
+ *               role:
+ *                 type: string
+ *                 description: The updated name of the role
+ *                 example: "Updated Manager"
+ *               department:
+ *                 type: string
+ *                 description: The updated department
+ *                 example: "Human Resource"
+ *               description:
+ *                 type: string
+ *                 description: The updated description
+ *                 example: "Updated manager with new permissions"
+ *               permission_ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Array of permission IDs to assign (replaces existing)
+ *                 example: [1, 3, 5, 7]
+ *     responses:
+ *       200:
+ *         description: Role updated successfully with permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Role updated successfully with permissions"
+ *                 data:
+ *                   $ref: '#/components/schemas/RoleWithPermissions'
+ *       400:
+ *         description: Missing required fields or invalid data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Role not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: Role name already exists in department
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+// Update role with permissions
+router.put("/:role_id/permissions", async (req, res) => {
+  try {
+    const { role_id } = req.params;
+    const { role, department, description, permission_ids } = req.body;
+
+    // Validate required fields
+    if (!role || !department || !description) {
+      return res.status(400).json({
+        success: false,
+        message: "Role name, department, and description are required",
+        code: "MISSING_FIELDS",
+      });
+    }
+
+    // Validate role name length and format
+    if (role.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: "Role name must be at least 2 characters long",
+        code: "INVALID_ROLE_NAME",
+      });
+    }
+
+    // Update role with permissions
+    const updatedRole = await Roles.updateWithPermissions(role_id, {
+      role: role.trim(),
+      department: department.trim(),
+      description: description.trim(),
+      permission_ids: permission_ids || [],
+    });
+
+    res.json({
+      success: true,
+      data: updatedRole,
+      message: "Role updated successfully with permissions",
+    });
+  } catch (error) {
+    if (error.code === "ROLE_NOT_FOUND") {
+      return res.status(404).json({
+        success: false,
+        message: error.message,
+        code: "ROLE_NOT_FOUND",
+      });
+    }
+
+    if (error.code === "DUPLICATE_ROLE") {
+      return res.status(409).json({
+        success: false,
+        message: error.message,
+        code: "DUPLICATE_ROLE",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Error updating role with permissions",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/roles/with-permissions/all:
+ *   get:
+ *     tags: [Roles]
+ *     summary: Get all roles with permissions
+ *     description: Retrieve all roles along with their assigned permissions
+ *     parameters:
+ *       - name: includeDeleted
+ *         in: query
+ *         description: Include soft deleted roles
+ *         required: false
+ *         schema:
+ *           type: boolean
+ *           example: false
+ *     responses:
+ *       200:
+ *         description: All roles with permissions retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/RoleWithPermissions'
+ *                 count:
+ *                   type: integer
+ *                   example: 11
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+// Get all roles with their permissions
+router.get("/with-permissions/all", async (req, res) => {
+  try {
+    const includeDeleted = req.query.includeDeleted === "true";
+    const rolesWithPermissions =
+      await Roles.getAllWithPermissions(includeDeleted);
+
+    res.json({
+      success: true,
+      data: rolesWithPermissions,
+      count: rolesWithPermissions.length,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching roles with permissions",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/roles/{role_id}/has-permission/{permission_name}:
+ *   get:
+ *     tags: [Roles]
+ *     summary: Check if role has specific permission
+ *     description: Check whether a specific role has been assigned a specific permission
+ *     parameters:
+ *       - name: role_id
+ *         in: path
+ *         description: The ID of the role
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *       - name: permission_name
+ *         in: path
+ *         description: The name of the permission to check
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: "Manage Employee"
+ *     responses:
+ *       200:
+ *         description: Permission check completed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     role_id:
+ *                       type: integer
+ *                       example: 1
+ *                     permission_name:
+ *                       type: string
+ *                       example: "Manage Employee"
+ *                     has_permission:
+ *                       type: boolean
+ *                       example: true
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+// Check if role has specific permission
+router.get("/:role_id/has-permission/:permission_name", async (req, res) => {
+  try {
+    const { role_id, permission_name } = req.params;
+    const hasPermission = await Roles.hasPermission(role_id, permission_name);
+
+    res.json({
+      success: true,
+      data: {
+        role_id: parseInt(role_id),
+        permission_name,
+        has_permission: hasPermission,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error checking role permission",
+      error: error.message,
+    });
+  }
+});
+
 module.exports = router;

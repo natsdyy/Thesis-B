@@ -3,6 +3,7 @@
   import { UserLock, RefreshCcw, Users } from 'lucide-vue-next';
   import { useRoleStore } from '../stores/roleStore';
   import { storeToRefs } from 'pinia';
+  import { EllipsisVertical } from 'lucide-vue-next';
 
   // Stores
   const roleStore = useRoleStore();
@@ -308,15 +309,19 @@
       <h1 class="text-4xl font-bold mb-2 text-secondaryColor">
         Role-Based Access Control
       </h1>
-      <p class="text-base-content/70">
+      <p class="text-black/50">
         Manage roles with automatic permission assignment based on role
         hierarchy
       </p>
     </div>
 
     <!-- Stats -->
-    <div class="stats shadow w-full mb-6 bg-accentColor">
-      <div class="stat">
+    <div
+      class="stats shadow w-full mb-6 bg-accentColor stats-vertical lg:stats-horizontal"
+    >
+      <div
+        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed"
+      >
         <div class="stat-figure">
           <UserLock class="w-8 h-8 text-secondaryColor" />
         </div>
@@ -476,20 +481,7 @@
                       tabindex="0"
                       class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
                     >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-4 w-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M12 5v.01M12 12v.01M12 19v.01"
-                        />
-                      </svg>
+                      <EllipsisVertical class="w-4 h-4" />
                     </label>
                     <ul
                       tabindex="0"
@@ -519,7 +511,7 @@
         <!-- Pagination -->
         <div class="join mt-4 justify-end space-x-1" v-if="totalPages > 1">
           <button
-            class="join-item btn font-thin !bg-gray-200 text-black/50 btn-sm"
+            class="join-item btn font-thin !bg-gray-200 text-black/50 btn-sm border border-none"
             :disabled="currentPage <= 1"
             @click="currentPage--"
             :class="{ 'btn-disabled': currentPage <= 1 }"

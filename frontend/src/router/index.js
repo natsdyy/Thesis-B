@@ -15,12 +15,12 @@ import DashboardLayout from '../layouts/DashboardLayout.vue';
 // Import page components
 import HomePage from '../views/HomePage.vue';
 import NotFound from '../views/NotFound.vue';
-import Login from '../views/Login.vue'; // Add this import
+import Login from '../views/Login.vue';
 
 const routes = [
   {
     path: '/',
-    redirect: '/login', // Change this to redirect to login instead of dashboard
+    redirect: '/login',
   },
   // Add login route
   {
@@ -37,7 +37,7 @@ const routes = [
         path: '',
         name: 'Home',
         component: HomePage,
-        meta: { title: 'Dashboard', requiresAuth: true }, // Add requiresAuth
+        meta: { title: 'Dashboard', requiresAuth: true },
       },
     ],
   },
@@ -50,6 +50,7 @@ const routes = [
       title: 'Human Resource',
       department: 'Human Resource',
       requiresAuth: true,
+      requiresDepartmentAccess: true,
     },
   },
   // Supply Chain routes
@@ -61,6 +62,7 @@ const routes = [
       title: 'Supply Chain',
       department: 'Supply Chain',
       requiresAuth: true,
+      requiresDepartmentAccess: true,
     },
   },
   // Finance routes
@@ -72,6 +74,7 @@ const routes = [
       title: 'Finance',
       department: 'Finance',
       requiresAuth: true,
+      requiresDepartmentAccess: true,
     },
   },
   // Production routes
@@ -83,6 +86,7 @@ const routes = [
       title: 'Production',
       department: 'Production',
       requiresAuth: true,
+      requiresDepartmentAccess: true,
     },
   },
   // CRM routes
@@ -94,18 +98,20 @@ const routes = [
       title: 'Customer Relationship',
       department: 'Customer Relationship',
       requiresAuth: true,
+      requiresDepartmentAccess: true,
     },
   },
-  // Admin routes (Super Admin only)
+  // Admin routes (Super Admin and Admin department only)
   {
     path: '/admin',
     component: DashboardLayout,
     children: adminRoutes,
     meta: {
       title: 'Administration',
-      department: 'Administration',
+      department: 'Admin',
       requiresAuth: true,
-      superAdminOnly: true,
+      requiresDepartmentAccess: true,
+      adminOnly: true, // Only Admin department users and Super Admin
     },
   },
   // 404 Not Found
@@ -127,6 +133,28 @@ const router = createRouter({
     }
   },
 });
+
+// Helper function to check department access
+function canAccessDepartment(userRole, userDepartment, routeDepartment) {
+  // Super Admin can access everything
+  if (userRole === 'Super Admin') {
+    return true;
+  }
+
+  // Users can only access their own department
+  return userDepartment === routeDepartment;
+}
+
+// Helper function to check admin access
+function canAccessAdminRoutes(userRole, userDepartment) {
+  // Super Admin can access everything
+  if (userRole === 'Super Admin') {
+    return true;
+  }
+
+  // Only Admin department users can access admin routes
+  return userDepartment === 'Admin';
+}
 
 // Add a global navigation guard
 router.beforeEach(async (to, from, next) => {
@@ -155,7 +183,65 @@ router.beforeEach(async (to, from, next) => {
     return;
   }
 
+  // Get user information
+  const userRole = authStore.userRole;
+  const userDepartment = authStore.userDepartment;
+
+  // Check if route requires authentication
+  if (to.meta.requiresAuth && (!authStore.isAuthenticated || !authStore.user)) {
+    next('/login');
+    return;
+  }
+
+  // Check department access for routes that require it
+  if (to.meta.requiresDepartmentAccess && to.meta.department) {
+    const routeDepartment = to.meta.department;
+
+    if (!canAccessDepartment(userRole, userDepartment, routeDepartment)) {
+      // Redirect to their own department dashboard or main dashboard
+      const userDashboard = getUserDashboardRoute(userDepartment);
+
+      // Show an error message
+      console.warn(
+        `Access denied: User ${userRole} from ${userDepartment} department cannot access ${routeDepartment} routes`
+      );
+
+      next(userDashboard);
+      return;
+    }
+  }
+
+  // Check admin access for admin routes
+  if (to.meta.adminOnly) {
+    if (!canAccessAdminRoutes(userRole, userDepartment)) {
+      // Redirect to their own department dashboard
+      const userDashboard = getUserDashboardRoute(userDepartment);
+
+      // Show an error message
+      console.warn(
+        `Access denied: Only Admin department users and Super Admin can access admin routes`
+      );
+
+      next(userDashboard);
+      return;
+    }
+  }
+
   next();
 });
+
+// Helper function to get user's appropriate dashboard
+function getUserDashboardRoute(userDepartment) {
+  const departmentRoutes = {
+    'Human Resource': '/hr/dashboard',
+    Finance: '/finance/dashboard',
+    'Supply Chain': '/scm/dashboard',
+    Production: '/production/dashboard',
+    'Customer Relationship': '/crm/dashboard',
+    Admin: '/admin/dashboard',
+  };
+
+  return departmentRoutes[userDepartment] || '/dashboard';
+}
 
 export default router;

@@ -11,6 +11,7 @@ import {
   BarChart3,
   Shield,
   Settings,
+  ReceiptText,
 } from 'lucide-vue-next';
 
 export const menuItems = [
@@ -68,9 +69,9 @@ export const menuItems = [
     department: 'Supply Chain',
   },
   {
-    name: 'Procurement',
-    icon: ShoppingCart,
-    route: '/scm/procurement',
+    name: 'Request Supply',
+    icon: ReceiptText,
+    route: '/scm/request-supply',
     department: 'Supply Chain',
   },
   {

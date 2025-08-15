@@ -306,7 +306,7 @@
   <div class="container mx-auto p-6 max-w-6xl">
     <!-- Header -->
     <div class="text-center mb-8">
-      <h1 class="text-4xl font-bold mb-2 text-secondaryColor">
+      <h1 class="text-4xl font-bold mb-2 text-primaryColor text-shadow-lg">
         Role-Based Access Control
       </h1>
       <p class="text-black/50">
@@ -323,16 +323,16 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed"
       >
         <div class="stat-figure">
-          <UserLock class="w-8 h-8 text-secondaryColor" />
+          <UserLock class="w-8 h-8 text-primaryColor" />
         </div>
         <div class="stat-title text-black/50" v-if="!showDeleted">
           Total Roles
         </div>
         <div class="stat-title text-black/50" v-else>Total Deleted Roles</div>
-        <div class="stat-value text-secondaryColor" v-if="!showDeleted">
+        <div class="stat-value text-primaryColor" v-if="!showDeleted">
           {{ roleCount }}
         </div>
-        <div class="stat-value text-secondaryColor" v-else>
+        <div class="stat-value text-primaryColor" v-else>
           {{ deletedRoles.length }}
         </div>
         <div class="stat-desc text-black/50">
@@ -342,10 +342,10 @@
 
       <div class="stat">
         <div class="stat-figure">
-          <Users class="w-8 h-8 text-secondaryColor" />
+          <Users class="w-8 h-8 text-primaryColor" />
         </div>
         <div class="stat-title text-black/50">Status</div>
-        <div class="stat-value text-secondaryColor">
+        <div class="stat-value text-primaryColor">
           {{ loading ? 'Loading...' : 'Ready' }}
         </div>
         <div class="stat-desc text-black/50">
@@ -381,17 +381,17 @@
     <div class="card bg-accentColor shadow-xl mb-6 border border-black/10">
       <div class="card-body">
         <div class="flex justify-between items-center mb-4">
-          <h2 class="card-title text-secondaryColor">Role List</h2>
+          <h2 class="card-title text-primaryColor">Role List</h2>
           <div class="flex gap-2">
             <button
-              class="btn btn-outline btn-sm text-secondaryColor hover:bg-secondaryColor/10 font-thin hover:border-none hover:shadow-none"
+              class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
               @click="fetchRoles(showDeleted)"
               :class="{ loading: loading }"
               :disabled="loading"
             >
               <RefreshCcw
                 v-if="!loading"
-                class="w-4 h-4 mr-2 text-secondaryColor"
+                class="w-4 h-4 mr-2 text-primaryColor"
               />
               <span
                 class="loading loading-spinner loading-xs"
@@ -400,7 +400,7 @@
               Refresh
             </button>
             <button
-              class="btn btn-outline btn-sm text-secondaryColor hover:bg-secondaryColor/10 font-thin hover:border-none hover:shadow-none"
+              class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
               @click="toggleDeletedRoles"
             >
               {{ showDeleted ? 'Show Active Roles' : 'Show Deleted Roles' }}
@@ -416,7 +416,7 @@
           <div class="mb-4 items-center justify-center flex">
             <UserLock class="w-16 h-16 text-primaryColor" />
           </div>
-          <h3 class="text-lg font-semibold mb-2 text-secondaryColor">
+          <h3 class="text-lg font-semibold mb-2 text-primaryColor">
             No active roles found
           </h3>
           <p class="text-base-content/70">
@@ -429,20 +429,20 @@
           v-else-if="showDeleted && deletedRoles.length === 0"
         >
           <div class="mb-4 items-center justify-center flex">
-            <UserLock class="w-16 h-16 text-secondaryColor" />
+            <UserLock class="w-16 h-16 text-primaryColor" />
           </div>
-          <h3 class="text-lg font-semibold mb-2 text-secondaryColor">
+          <h3 class="text-lg font-semibold mb-2 text-primaryColor">
             No deleted roles found
           </h3>
-          <p class="text-secondaryColor">No deleted roles found.</p>
+          <p class="text-primaryColor">No deleted roles found.</p>
         </div>
 
         <div v-else class="overflow-x-auto bg-accentColor">
           <table
             class="table table-zebra text-black/50 border border-black/10 custom-zebra"
           >
-            <thead class="text-secondaryColor">
-              <tr class="bg-secondaryColor text-accentColor">
+            <thead class="text-primaryColor">
+              <tr class="bg-primaryColor text-accentColor">
                 <th>ID</th>
                 <th>Role</th>
                 <th>Department</th>
@@ -525,7 +525,7 @@
             :key="page"
             :class="{
               'btn-active': currentPage === page,
-              '!bg-secondaryColor text-white': currentPage === page,
+              '!bg-primaryColor text-white': currentPage === page,
             }"
             @click="currentPage = page"
           >
@@ -547,7 +547,7 @@
     <!-- Create New Role -->
     <div class="card bg-accentColor shadow-xl mb-6">
       <div class="card-body">
-        <h2 class="card-title text-secondaryColor">Create New Role</h2>
+        <h2 class="card-title text-primaryColor">Create New Role</h2>
         <p class="text-sm text-black/50 mb-4">
           Permissions will be automatically assigned based on role type and
           department hierarchy.
@@ -637,7 +637,7 @@
           <div class="card-actions justify-end">
             <button
               type="submit"
-              class="btn bg-secondaryColor text-white font-thin border border-none"
+              class="btn bg-primaryColor text-white font-thin border border-none"
               :class="{ loading: loading }"
               :disabled="loading || !selectedDepartment || !selectedRole"
             >
@@ -764,7 +764,7 @@
               </button>
               <button
                 type="submit"
-                class="btn bg-secondaryColor font-thin border border-none hover:bg-secondaryColor/80 btn-sm"
+                class="btn bg-primaryColor font-thin border border-none hover:bg-primaryColor/80 btn-sm shadow-none"
                 :disabled="loading"
               >
                 <span

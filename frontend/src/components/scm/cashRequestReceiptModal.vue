@@ -74,20 +74,20 @@
         <div class="flex justify-between items-center mt-2 text-black">
           <div class="flex items-center gap-2">
             <p class="text-sm">Requested & Received by:</p>
-            <p class="text-sm">John Doe</p>
+            <p class="text-sm">John Marco Paja</p>
           </div>
           <div class="flex items-center gap-2">
             <p class="text-sm">Approved & Released by:</p>
-            <p class="text-sm">John Doe</p>
+            <p class="text-sm">Ella Francince Callejas</p>
           </div>
         </div>
         <div class="flex justify-between mt-8 w-full">
           <div class="flex flex-col items-start">
-            <div class="border-b border-gray-400 w-[280px] mb-1"></div>
+            <div class="border-b border-black w-[280px] mb-1"></div>
             <div class="text-xs text-gray-600">Signature over printed name</div>
           </div>
           <div class="flex flex-col items-end">
-            <div class="border-b border-gray-400 w-[280px] mb-1"></div>
+            <div class="border-b border-black w-[280px] mb-1"></div>
             <div class="text-xs text-gray-600">Signature over printed name</div>
           </div>
         </div>

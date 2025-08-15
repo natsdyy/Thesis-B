@@ -312,6 +312,7 @@
   const editRequest = (request) => openModal('edit', request);
   const confirmSend = (request) => openModal('send', request);
   const confirmCancel = (request) => openModal('cancel', request);
+  const confirmViewRequest = (request) => openModal('viewRequest', request);
 
   const handleFormSubmit = (e) => {
     e.preventDefault();
@@ -372,6 +373,9 @@
       <h1 class="text-4xl font-bold text-primaryColor mb-2 text-shadow-xs">
         Request Supply
       </h1>
+      <p class="text-black/50">
+        Manage and track supply requests for Countryside Steakhouse.
+      </p>
     </div>
 
     <!-- Stats-->
@@ -552,7 +556,14 @@
                       class="dropdown-content z-[1] menu p-2 shadow bg-accentColor rounded-box w-52 border border-black/10"
                     >
                       <li class="hover:bg-black/10">
-                        <a @click="editRequest(request)" class="text-black/50"
+                        <a
+                          @click="confirmViewRequest(request)"
+                          class="text-primary"
+                          >View Request</a
+                        >
+                      </li>
+                      <li class="hover:bg-black/10">
+                        <a @click="editRequest(request)" class="text-warning"
                           >Edit</a
                         >
                       </li>
@@ -917,6 +928,31 @@
   <!-- Universal Modal for Edit/Send/Cancel -->
   <dialog id="universal_modal" class="modal">
     <div class="modal-box bg-accentColor text-black/50 shadow-lg">
+      <!-- View Request Modal Content -->
+      <template v-if="modal.type === 'viewRequest'">
+        <h3 class="text-lg font-bold mb-4">Request Details</h3>
+        <p>
+          Are you sure you want to view request
+          <strong>#{{ modal.request?.request_id }}</strong
+          >?
+        </p>
+        <div class="bg-white/10 p-3 rounded mt-3">
+          <p><strong>Type:</strong> {{ modal.request?.request_type }}</p>
+          <p>
+            <strong>Description:</strong>
+            {{ modal.request?.request_description }}
+          </p>
+        </div>
+        <div class="modal-action">
+          <button
+            type="button"
+            class="btn btn-outline font-thin btn-sm bg-gray-200 text-black/50 border border-none hover:bg-gray-300 shadow-none"
+            @click="closeModal"
+          >
+            Cancel
+          </button>
+        </div>
+      </template>
       <!-- Edit Modal Content -->
       <template v-if="modal.type === 'edit'">
         <h3 class="text-lg font-bold mb-4">Edit Request</h3>

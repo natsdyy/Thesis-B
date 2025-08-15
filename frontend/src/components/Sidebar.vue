@@ -14,7 +14,7 @@
     <!-- Backdrop for mobile -->
     <div
       v-if="isMobileMenuOpen"
-      class="fixed inset-0 bg-primaryColor/50 backdrop-blur-sm z-40 lg:hidden"
+      class="fixed inset-0 bg-primaryColor/10 backdrop-blur-sm z-40 lg:hidden"
       @click="closeMobileMenu"
     ></div>
 

@@ -1,5 +1,6 @@
 <script setup>
   import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+  import cashRequestReceiptModal from '../../components/scm/cashRequestReceiptModal.vue';
   import PikaDay from 'pikaday';
   import 'pikaday/css/pikaday.css';
   import {
@@ -24,6 +25,15 @@
   const requestModalCurrentPage = ref(1);
   const requestHistoryCurrentPage = ref(1);
   const requestHistoryPerPage = ref(10);
+
+  const showReceipt = ref(false);
+  const receiptData = ref(null);
+
+  function closeReceipt() {
+    showReceipt.value = false;
+    receiptData.value = null;
+  }
+
   const rowRequest = ref([
     {
       id: 1,
@@ -187,14 +197,14 @@
     };
 
     if (type === 'create') {
-      document.getElementById('confirm_modal').showModal();
+      document.getElementById('create_request_modal').showModal();
     } else {
       document.getElementById('universal_modal').showModal();
     }
   };
 
   const closeModal = () => {
-    document.getElementById('confirm_modal')?.close();
+    document.getElementById('create_request_modal')?.close();
     document.getElementById('universal_modal')?.close();
     modal.value = {
       type: null,
@@ -641,9 +651,15 @@
                 <td>{{ request.request_date }}</td>
                 <td>{{ request.total_amount }}</td>
                 <td>
-                  <p class="text-primaryColor cursor-pointer underline">
+                  <a
+                    class="text-primaryColor cursor-pointer underline"
+                    @click="
+                      showReceipt = true;
+                      receiptData = request;
+                    "
+                  >
                     view receipt
-                  </p>
+                  </a>
                 </td>
               </tr>
             </tbody>
@@ -692,8 +708,16 @@
     </div>
   </div>
 
-  <!-- Create Confirmation Modal -->
-  <dialog id="confirm_modal" class="modal">
+  <cashRequestReceiptModal
+    :cashRequestReceipt="{
+      show: showReceipt,
+      receipt: receiptData,
+      onClose: closeReceipt,
+    }"
+  />
+
+  <!-- Create Request Modal -->
+  <dialog id="create_request_modal" class="modal">
     <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-6xl">
       <h3 class="font-bold text-lg">Create Request</h3>
       <div class="overflow-x-auto">

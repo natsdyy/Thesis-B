@@ -680,7 +680,7 @@
     >
       <div class="card-body">
         <div class="flex justify-between items-center mb-4">
-          <h2 class="card-title text-success">
+          <h2 class="card-title text-primaryColor">
             Approved Requests - Awaiting Budget Release
           </h2>
           <div class="flex gap-2">
@@ -734,7 +734,7 @@
             class="table table-zebra text-black/50 border border-black/10 custom-zebra"
           >
             <thead class="text-secondaryColor">
-              <tr class="bg-success text-accentColor">
+              <tr class="bg-primaryColor text-accentColor">
                 <th>Request ID</th>
                 <th>Department</th>
                 <th>Requested By</th>
@@ -751,7 +751,7 @@
                 :key="request.request_id"
                 class="hover:bg-success/5"
               >
-                <td class="font-mono font-medium text-success">
+                <td class="font-mono font-medium text-black">
                   {{ request.request_id }}
                 </td>
                 <td>
@@ -774,7 +774,7 @@
                   </div>
                 </td>
                 <td class="text-wrap">{{ request.request_description }}</td>
-                <td class="font-semibold text-success">
+                <td class="font-semibold text-black">
                   ₱{{
                     request.total_amount.toLocaleString('en-PH', {
                       minimumFractionDigits: 2,

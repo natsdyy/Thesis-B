@@ -1,15 +1,36 @@
 <template>
   <header
-    class="bg-white shadow-sm border-b border-gray-200 px-4 py-3 flex items-center justify-between"
+    :class="[
+      'shadow-sm border-b px-4 py-3 flex items-center justify-between transition-colors duration-300',
+      themeStore.themeClasses.headerBg
+    ]"
   >
-    <!-- Left Section: Menu Button + Breadcrumb -->
+    <!-- Left Section: Theme Toggle + Menu Button + Breadcrumb -->
     <div class="flex items-center space-x-4">
+      <!-- Theme Toggle Button -->
+      <button
+        @click="toggleTheme"
+        :class="[
+          'p-2 rounded-lg transition-all duration-300 ease-in-out',
+          themeStore.themeClasses.hoverBg,
+          themeStore.themeClasses.textSecondary
+        ]"
+        :title="themeStore.isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'"
+      >
+        <Sun v-if="themeStore.isDarkMode" class="w-5 h-5 text-yellow-400 transition-transform duration-300" />
+        <Moon v-else class="w-5 h-5 text-indigo-600 transition-transform duration-300" />
+      </button>
+
       <!-- Mobile Menu Toggle -->
       <button
         @click="toggleSidebar"
-        class="lg:hidden p-2 rounded-md hover:bg-gray-100 transition-colors"
+        :class="[
+          'lg:hidden p-2 rounded-md transition-colors',
+          themeStore.themeClasses.hoverBg,
+          themeStore.themeClasses.textSecondary
+        ]"
       >
-        <Menu class="w-5 h-5 text-gray-600" />
+        <Menu class="w-5 h-5" />
       </button>
 
       <!-- Breadcrumb Navigation -->
@@ -20,8 +41,8 @@
         >
           Home
         </router-link>
-        <ChevronRight class="w-4 h-4 text-gray-400" />
-        <span class="text-gray-600">{{ currentPageTitle }}</span>
+        <ChevronRight :class="['w-4 h-4', themeStore.themeClasses.textMuted]" />
+        <span :class="themeStore.themeClasses.textSecondary">{{ currentPageTitle }}</span>
       </nav>
     </div>
 
@@ -32,7 +53,10 @@
         <div
           tabindex="0"
           role="button"
-          class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+          :class="[
+            'flex items-center space-x-3 p-2 rounded-lg transition-colors cursor-pointer',
+            themeStore.themeClasses.hoverBg
+          ]"
         >
           <!-- User Avatar -->
           <div
@@ -45,25 +69,29 @@
 
           <!-- User Info -->
           <div class="flex flex-col items-start">
-            <span class="text-sm font-medium text-gray-900">
+            <span :class="['text-sm font-medium', themeStore.themeClasses.textPrimary]">
               {{ user?.name || 'John Marco Paja' }}
             </span>
-            <span class="text-xs text-gray-500">
+            <span :class="['text-xs', themeStore.themeClasses.textMuted]">
               {{ user?.role || 'HR Manager' }}
             </span>
           </div>
 
           <!-- Dropdown Arrow -->
-          <ChevronDown class="w-4 h-4 text-gray-400" />
+          <ChevronDown :class="['w-4 h-4', themeStore.themeClasses.textMuted]" />
         </div>
 
         <!-- Dropdown Menu -->
         <ul
           tabindex="0"
-          class="dropdown-content menu bg-white rounded-lg shadow-lg border border-gray-200 w-64 p-2 mt-2"
+          :class="[
+            'dropdown-content menu rounded-lg shadow-lg border w-64 p-2 mt-2 transition-colors duration-300',
+            themeStore.themeClasses.cardBg,
+            themeStore.themeClasses.border
+          ]"
         >
           <!-- User Info Header -->
-          <li class="px-3 py-2 border-b border-gray-100 mb-2">
+          <li :class="['px-3 py-2 border-b mb-2', themeStore.themeClasses.borderLight]">
             <div class="flex items-center space-x-3">
               <div
                 class="w-10 h-10 rounded-full bg-primaryColor flex items-center justify-center"
@@ -73,10 +101,10 @@
                 </span>
               </div>
               <div>
-                <p class="font-medium text-gray-900">
+                <p :class="['font-medium', themeStore.themeClasses.textPrimary]">
                   {{ user?.name || 'John Marco Paja' }}
                 </p>
-                <p class="text-sm text-gray-500">
+                <p :class="['text-sm', themeStore.themeClasses.textMuted]">
                   {{ user?.email || 'john.paja@company.com' }}
                 </p>
               </div>
@@ -86,39 +114,48 @@
           <!-- Menu Items -->
           <li>
             <a
-              class="flex items-center space-x-3 px-3 py-2 hover:bg-gray-50 rounded-md transition-colors"
+              :class="[
+                'flex items-center space-x-3 px-3 py-2 rounded-md transition-colors',
+                themeStore.themeClasses.hoverBg
+              ]"
             >
               <User class="w-4 h-4 text-primaryColor" />
-              <span class="text-sm text-gray-700">Profile</span>
+              <span :class="['text-sm', themeStore.themeClasses.textSecondary]">Profile</span>
             </a>
           </li>
 
           <li>
             <a
-              class="flex items-center space-x-3 px-3 py-2 hover:bg-gray-50 rounded-md transition-colors"
+              :class="[
+                'flex items-center space-x-3 px-3 py-2 rounded-md transition-colors',
+                themeStore.themeClasses.hoverBg
+              ]"
             >
               <Settings class="w-4 h-4 text-primaryColor" />
-              <span class="text-sm text-gray-700">Account Settings</span>
+              <span :class="['text-sm', themeStore.themeClasses.textSecondary]">Account Settings</span>
             </a>
           </li>
 
           <li>
             <a
-              class="flex items-center space-x-3 px-3 py-2 hover:bg-gray-50 rounded-md transition-colors"
+              :class="[
+                'flex items-center space-x-3 px-3 py-2 rounded-md transition-colors',
+                themeStore.themeClasses.hoverBg
+              ]"
             >
               <Clock class="w-4 h-4 text-primaryColor" />
-              <span class="text-sm text-gray-700">Attendance</span>
+              <span :class="['text-sm', themeStore.themeClasses.textSecondary]">Attendance</span>
             </a>
           </li>
 
           <!-- Divider -->
-          <li class="border-t border-gray-100 mt-2 pt-2">
+          <li :class="['border-t mt-2 pt-2', themeStore.themeClasses.borderLight]">
             <a
               @click="logout"
-              class="flex items-center space-x-3 px-3 py-2 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
+              class="flex items-center space-x-3 px-3 py-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors cursor-pointer"
             >
               <LogOut class="w-4 h-4 text-red-600" />
-              <span class="text-sm text-red-700">Log Out</span>
+              <span class="text-sm text-red-700 dark:text-red-400">Log Out</span>
             </a>
           </li>
         </ul>
@@ -131,6 +168,7 @@
   import { computed } from 'vue';
   import { useRoute, useRouter } from 'vue-router';
   import { useAuthStore } from '../stores/authStore';
+  import { useThemeStore } from '../stores/themeStore';
   import {
     Menu,
     ChevronRight,
@@ -139,6 +177,8 @@
     Settings,
     Clock,
     LogOut,
+    Sun,
+    Moon,
   } from 'lucide-vue-next';
 
   // Define emits for parent communication
@@ -146,6 +186,7 @@
 
   // Stores and router
   const authStore = useAuthStore();
+  const themeStore = useThemeStore();
   const route = useRoute();
   const router = useRouter();
 
@@ -173,6 +214,10 @@
   // Methods
   const toggleSidebar = () => {
     emit('toggle-sidebar');
+  };
+
+  const toggleTheme = () => {
+    themeStore.toggleTheme();
   };
 
   const logout = () => {

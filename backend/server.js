@@ -12,6 +12,7 @@ const roleRoutes = require("./routes/roles");
 const permissionRoutes = require("./routes/permissions");
 const rolePermissionRoutes = require("./routes/rolePermissions");
 const authRoutes = require("./routes/auth");
+const branchRoutes = require("./routes/branches");
 const { serve, setup } = require("./config/swagger");
 
 const app = express();
@@ -27,6 +28,7 @@ app.use("/api/roles", roleRoutes);
 app.use("/api/permissions", permissionRoutes);
 app.use("/api/role-permissions", rolePermissionRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/branches", branchRoutes);
 
 // Swagger documentation
 app.use("/api-docs", serve, setup);

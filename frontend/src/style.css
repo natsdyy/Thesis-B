@@ -5,10 +5,45 @@
 body {
   margin: 0;
   font-family: Poppins;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 p {
   font-family: Roboto;
+}
+
+/* Dark mode table styles */
+.table-zebra-dark tbody tr:nth-child(even) {
+  background-color: rgba(75, 85, 99, 0.3);
+}
+
+.table-zebra-dark tbody tr:hover {
+  background-color: rgba(75, 85, 99, 0.5);
+}
+
+/* Theme transition */
+* {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #374151;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #6B7280;
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #9CA3AF;
 }
 
 @font-face {

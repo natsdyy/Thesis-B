@@ -164,6 +164,13 @@ export const menuItems = [
     superAdminOnly: true,
   },
   {
+    name: 'Branch Management',
+    icon: Shield,
+    route: '/admin/branches',
+    department: 'Administration',
+    superAdminOnly: true,
+  },
+  {
     name: 'System Settings',
     icon: Settings,
     route: '/admin/settings',

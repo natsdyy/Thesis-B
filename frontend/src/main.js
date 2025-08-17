@@ -4,6 +4,7 @@ import router from './router';
 import './style.css';
 import App from './App.vue';
 import { useAuthStore } from './stores/authStore';
+import { useThemeStore } from './stores/themeStore';
 import PikaDay from 'pikaday';
 
 const app = createApp(App);
@@ -15,6 +16,11 @@ app.use(router);
 // Initialize authentication
 const authStore = useAuthStore();
 authStore.initializeAuth();
+
+// Initialize theme system
+const themeStore = useThemeStore();
+themeStore.initializeTheme();
+themeStore.watchSystemTheme();
 
 // Initialize PikaDay
 const pikaDay = new PikaDay({

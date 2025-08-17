@@ -69,3 +69,14 @@ p {
 #app {
   min-height: 100vh;
 }
+
+/* Custom toggle switch styling */
+.toggle:checked {
+  background-color: #466114 !important;
+  border-color: #466114 !important;
+}
+
+.toggle:checked:hover {
+  background-color: #3a5211 !important;
+  border-color: #3a5211 !important;
+}

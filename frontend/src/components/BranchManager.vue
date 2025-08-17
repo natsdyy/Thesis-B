@@ -2,7 +2,7 @@
   <div class="container mx-auto p-6 max-w-6xl">
     <!-- Header -->
     <div class="text-center mb-8">
-      <h1 class="text-4xl font-bold text-primary mb-2">Branch Management</h1>
+      <h1 class="text-4xl font-bold text-primaryColor mb-2">Branch Management</h1>
       <p class="text-base-content/70">
         Manage organization branches and locations
       </p>
@@ -10,7 +10,7 @@
 
     <!-- Add Branch Button -->
     <div class="flex justify-end mb-6">
-      <button @click="openCreateModal" class="btn btn-primary">
+      <button @click="openCreateModal" class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none">
         <Plus class="w-4 h-4 mr-2" />
         Add Branch
       </button>
@@ -19,11 +19,11 @@
     <!-- Stats -->
     <div class="stats shadow w-full mb-6">
       <div class="stat">
-        <div class="stat-figure text-primary">
+        <div class="stat-figure text-primaryColor">
           <Building2 class="w-8 h-8" />
         </div>
         <div class="stat-title">Total Branches</div>
-        <div class="stat-value text-primary">{{ branchStats.total_branches }}</div>
+        <div class="stat-value text-primaryColor">{{ branchStats.total_branches }}</div>
         <div class="stat-desc">All branches</div>
       </div>
 
@@ -74,7 +74,7 @@
           <option value="active">Active Only</option>
           <option value="inactive">Inactive Only</option>
         </select>
-        <button @click="loadBranches" class="btn btn-outline">
+        <button @click="loadBranches" class="btn btn-outline text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white">
           <RefreshCw class="w-4 h-4 mr-2" />
           Refresh
         </button>
@@ -163,7 +163,7 @@
                         type="checkbox"
                         :checked="branch.is_active"
                         @change="toggleBranchStatus(branch.id)"
-                        class="toggle toggle-primary"
+                        class="toggle"
                       />
                     </label>
                   </div>
@@ -205,7 +205,7 @@
           <p class="text-base-content/50 mb-4">
             {{ searchQuery ? 'Try adjusting your search criteria' : 'Get started by creating your first branch' }}
           </p>
-          <button v-if="!searchQuery" @click="openCreateModal" class="btn btn-primary">
+          <button v-if="!searchQuery" @click="openCreateModal" class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none">
             <Plus class="w-4 h-4 mr-2" />
             Add First Branch
           </button>
@@ -389,7 +389,7 @@
               <input
                 v-model="branchForm.is_active"
                 type="checkbox"
-                class="toggle toggle-primary"
+                class="toggle"
               />
               <span class="label-text">Active Branch</span>
             </label>
@@ -401,7 +401,7 @@
             </button>
             <button
               type="submit"
-              class="btn btn-primary"
+              class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none"
               :disabled="branchStore.loading"
             >
               <span v-if="branchStore.loading" class="loading loading-spinner loading-sm"></span>

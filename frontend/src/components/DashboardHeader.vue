@@ -17,8 +17,8 @@
         ]"
         :title="themeStore.isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'"
       >
-        <Sun v-if="themeStore.isDarkMode" class="w-5 h-5 text-yellow-400 transition-transform duration-300" />
-        <Moon v-else class="w-5 h-5 text-indigo-600 transition-transform duration-300" />
+        <Sun v-if="themeStore.isDarkMode" class="w-5 h-5 text-white transition-transform duration-300" />
+        <Moon v-else class="w-5 h-5 text-primaryColor transition-transform duration-300" />
       </button>
 
       <!-- Mobile Menu Toggle -->

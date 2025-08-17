@@ -2,11 +2,13 @@
   import { ref, computed, onMounted, watch } from 'vue';
   import { UserLock, RefreshCcw, Users } from 'lucide-vue-next';
   import { useRoleStore } from '../stores/roleStore';
+  import { useThemeStore } from '../stores/themeStore';
   import { storeToRefs } from 'pinia';
   import { EllipsisVertical } from 'lucide-vue-next';
 
   // Stores
   const roleStore = useRoleStore();
+  const themeStore = useThemeStore();
 
   // Role store
   const { roles, loading, error, roleCount, hasRoles, deletedRoles } =
@@ -306,10 +308,10 @@
   <div class="container mx-auto p-6 max-w-6xl">
     <!-- Header -->
     <div class="text-center mb-8">
-      <h1 class="text-4xl font-bold mb-2 text-primaryColor text-shadow-lg">
+      <h1 class="text-4xl font-bold mb-2 text-primaryColor">
         Role-Based Access Control
       </h1>
-      <p class="text-black/50">
+      <p :class="themeStore.themeClasses.textSecondary">
         Manage roles with automatic permission assignment based on role
         hierarchy
       </p>
@@ -317,25 +319,31 @@
 
     <!-- Stats -->
     <div
-      class="stats shadow w-full mb-6 bg-accentColor stats-vertical lg:stats-horizontal"
+      :class="[
+        'stats shadow w-full mb-6 stats-vertical lg:stats-horizontal transition-colors duration-300',
+        themeStore.themeClasses.cardBg
+      ]"
     >
       <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed"
+        :class="[
+          'stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:border-dashed',
+          themeStore.themeClasses.border
+        ]"
       >
         <div class="stat-figure">
           <UserLock class="w-8 h-8 text-primaryColor" />
         </div>
-        <div class="stat-title text-black/50" v-if="!showDeleted">
+        <div :class="themeStore.themeClasses.textSecondary" v-if="!showDeleted">
           Total Roles
         </div>
-        <div class="stat-title text-black/50" v-else>Total Deleted Roles</div>
+        <div :class="themeStore.themeClasses.textSecondary" v-else>Total Deleted Roles</div>
         <div class="stat-value text-primaryColor" v-if="!showDeleted">
           {{ roleCount }}
         </div>
         <div class="stat-value text-primaryColor" v-else>
           {{ deletedRoles.length }}
         </div>
-        <div class="stat-desc text-black/50">
+        <div :class="themeStore.themeClasses.textSecondary">
           {{ hasRoles ? 'Roles configured' : 'No roles yet' }}
         </div>
       </div>
@@ -344,11 +352,11 @@
         <div class="stat-figure">
           <Users class="w-8 h-8 text-primaryColor" />
         </div>
-        <div class="stat-title text-black/50">Status</div>
+        <div :class="themeStore.themeClasses.textSecondary">Status</div>
         <div class="stat-value text-primaryColor">
           {{ loading ? 'Loading...' : 'Ready' }}
         </div>
-        <div class="stat-desc text-black/50">
+        <div :class="themeStore.themeClasses.textSecondary">
           {{ loading ? 'Please wait' : 'System operational' }}
         </div>
       </div>
@@ -371,14 +379,18 @@
       </svg>
       <span>{{ error }}</span>
       <div>
-        <button class="btn btn-sm btn-outline" @click="clearRoleError">
+        <button class="btn btn-sm btn-outline text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white" @click="clearRoleError">
           Dismiss
         </button>
       </div>
     </div>
 
     <!-- Role List -->
-    <div class="card bg-accentColor shadow-xl mb-6 border border-black/10">
+    <div :class="[
+      'card shadow-xl mb-6 border transition-colors duration-300',
+      themeStore.themeClasses.cardBg,
+      themeStore.themeClasses.border
+    ]">
       <div class="card-body">
         <div class="flex justify-between items-center mb-4">
           <h2 class="card-title text-primaryColor">Role List</h2>
@@ -437,9 +449,15 @@
           <p class="text-primaryColor">No deleted roles found.</p>
         </div>
 
-        <div v-else class="overflow-x-auto bg-accentColor">
+        <div v-else :class="['overflow-x-auto transition-colors duration-300', themeStore.themeClasses.cardBg]">
           <table
-            class="table table-zebra text-black/50 border border-black/10 custom-zebra"
+            :class="[
+              'table transition-colors duration-300',
+              themeStore.isDarkMode ? 'table-zebra-dark' : 'table-zebra',
+              themeStore.themeClasses.textSecondary,
+              'border',
+              themeStore.themeClasses.border
+            ]"
           >
             <thead class="text-primaryColor">
               <tr class="bg-primaryColor text-accentColor">
@@ -545,20 +563,26 @@
     </div>
 
     <!-- Create New Role -->
-    <div class="card bg-accentColor shadow-xl mb-6">
+    <div :class="[
+      'card shadow-xl mb-6 transition-colors duration-300',
+      themeStore.themeClasses.cardBg
+    ]">
       <div class="card-body">
         <h2 class="card-title text-primaryColor">Create New Role</h2>
-        <p class="text-sm text-black/50 mb-4">
+        <p :class="['text-sm mb-4', themeStore.themeClasses.textSecondary]">
           Permissions will be automatically assigned based on role type and
           department hierarchy.
         </p>
         <form @submit.prevent="handleFormSubmit" class="space-y-4">
           <div class="form-control">
             <label class="label">
-              <span class="label-text text-black/50">Select Department</span>
+              <span :class="['label-text', themeStore.themeClasses.textSecondary]">Select Department</span>
             </label>
             <select
-              class="select select-bordered w-full bg-white border border-black/10 text-black/50 cursor-pointer"
+              :class="[
+                'select select-bordered w-full cursor-pointer transition-colors duration-300',
+                themeStore.themeClasses.input
+              ]"
               v-model="selectedDepartment"
               @change="selectedRole = ''"
               required
@@ -576,10 +600,14 @@
 
           <div class="form-control">
             <label class="label">
-              <span class="label-text text-black/50">Role Type</span>
+              <span :class="['label-text', themeStore.themeClasses.textSecondary]">Role Type</span>
             </label>
             <select
-              class="select select-bordered w-full bg-white border border-black/10 text-black/50 disabled:bg-gray-200 disabled:text-black/50 disabled:border-none"
+              :class="[
+                'select select-bordered w-full transition-colors duration-300',
+                themeStore.themeClasses.input,
+                'disabled:bg-gray-200 disabled:text-gray-500 disabled:border-none'
+              ]"
               v-model="selectedRole"
               :disabled="!selectedDepartment"
               required
@@ -597,10 +625,13 @@
 
           <div class="form-control">
             <label class="label">
-              <span class="label-text text-black/50">Description</span>
+              <span :class="['label-text', themeStore.themeClasses.textSecondary]">Description</span>
             </label>
             <textarea
-              class="textarea textarea-bordered w-full bg-white border border-black/10 text-black/50 cursor-pointer"
+              :class="[
+                'textarea textarea-bordered w-full cursor-pointer transition-colors duration-300',
+                themeStore.themeClasses.input
+              ]"
               rows="3"
               placeholder="Description will be auto-generated..."
               required
@@ -654,7 +685,10 @@
 
     <!-- Create Confirmation Modal -->
     <dialog id="confirm_modal" class="modal">
-      <div class="modal-box bg-accentColor text-black/50 shadow-lg">
+      <div :class="[
+        'modal-box shadow-lg transition-colors duration-300',
+        themeStore.themeClasses.modal
+      ]">
         <h3 class="font-bold text-lg">Create Role Confirmation</h3>
         <div class="py-4">
           <p class="mb-2">Are you sure you want to create this role?</p>
@@ -692,7 +726,10 @@
 
     <!-- Universal Modal for Edit/Delete/Restore -->
     <dialog id="universal_modal" class="modal">
-      <div class="modal-box bg-accentColor text-black/50 shadow-lg">
+      <div :class="[
+        'modal-box shadow-lg transition-colors duration-300',
+        themeStore.themeClasses.modal
+      ]">
         <!-- Edit Modal Content -->
         <template v-if="modal.type === 'edit'">
           <h3 class="text-lg font-bold mb-4">Edit Role</h3>
@@ -757,7 +794,7 @@
             <div class="modal-action">
               <button
                 type="button"
-                class="btn btn-outline font-thin btn-sm bg-gray-200 text-black/50 border border-none hover:bg-gray-300"
+                class="btn btn-outline font-thin btn-sm text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
                 @click="closeModal"
               >
                 Cancel
@@ -837,7 +874,7 @@
             </button>
             <button
               type="button"
-              class="btn btn-outline font-thin btn-sm"
+              class="btn btn-outline font-thin btn-sm text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
               @click="closeModal"
             >
               Cancel

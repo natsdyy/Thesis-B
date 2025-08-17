@@ -32,7 +32,7 @@
   <div class="space-y-6">
     <div class="flex justify-between items-center">
       <h1 class="text-3xl font-bold">Employee Management</h1>
-      <button class="btn btn-primary">
+      <button class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none">
         <Plus class="w-4 h-4 mr-2" />
         Add Employee
       </button>

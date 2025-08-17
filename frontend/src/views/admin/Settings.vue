@@ -44,7 +44,7 @@
         </div>
 
         <div class="card-actions justify-end mt-6">
-          <button class="btn btn-primary">Save Settings</button>
+          <button class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none">Save Settings</button>
         </div>
       </div>
     </div>

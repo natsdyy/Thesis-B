@@ -37,22 +37,22 @@
         <div class="flex gap-2 flex-wrap">
           <button
             @click="authStore.setMockUser('Super Admin')"
-            class="btn btn-primary btn-sm"
+            class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none btn-sm"
           >
             Set Super Admin
           </button>
-          <button
-            @click="authStore.setMockUser('HR Manager')"
-            class="btn btn-secondary btn-sm"
-          >
-            Set HR Manager
-          </button>
-          <button
-            @click="authStore.setMockUser('SCM Staff')"
-            class="btn btn-accent btn-sm"
-          >
-            Set SCM Staff
-          </button>
+                     <button
+             @click="authStore.setMockUser('HR Manager')"
+             class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none btn-sm"
+           >
+             Set HR Manager
+           </button>
+           <button
+             @click="authStore.setMockUser('SCM Staff')"
+             class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none btn-sm"
+           >
+             Set SCM Staff
+           </button>
         </div>
       </div>
     </div>

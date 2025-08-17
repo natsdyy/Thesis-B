@@ -20,7 +20,7 @@
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50">
+  <div class="min-h-screen bg-accentColor">
     <!-- Sidebar -->
     <Sidebar />
 
@@ -30,7 +30,7 @@
       <DashboardHeader />
 
       <!-- Page Content -->
-      <main class="p-6">
+      <main class="p-6 bg-secondaryColor/15">
         <RouterView />
       </main>
     </div>

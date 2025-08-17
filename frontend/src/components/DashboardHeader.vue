@@ -1,13 +1,13 @@
 <template>
   <header
-    class="bg-white shadow-sm border-b border-gray-200 px-4 py-3 flex items-center justify-between"
+    class="bg-secondaryColor/15 shadow-sm border-b border-gray-200 px-4 py-3 flex items-center justify-between"
   >
     <!-- Left Section: Menu Button + Breadcrumb -->
     <div class="flex items-center space-x-4">
       <!-- Mobile Menu Toggle -->
       <button
         @click="toggleSidebar"
-        class="lg:hidden p-2 rounded-md hover:bg-gray-100 transition-colors"
+        class="lg:hidden p-2 rounded-md hover:bg-secondaryColor/50 transition-colors"
       >
         <Menu class="w-5 h-5 text-gray-600" />
       </button>

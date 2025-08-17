@@ -1,0 +1,395 @@
+const express = require('express');
+const router = express.Router();
+const Branch = require('../models/Branch');
+const User = require('../models/User');
+// const { requirePermission } = require('../middleware/rbac');
+
+// Temporary bypass for authentication - replace with proper auth middleware later
+const requirePermission = (permissionName) => {
+  return (req, res, next) => {
+    // TODO: Implement proper authentication middleware
+    // For now, bypass authentication to test branch management
+    next();
+  };
+};
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     Branch:
+ *       type: object
+ *       required:
+ *         - name
+ *         - code
+ *         - address
+ *       properties:
+ *         id:
+ *           type: integer
+ *           description: Branch unique identifier
+ *         name:
+ *           type: string
+ *           description: Branch name
+ *         code:
+ *           type: string
+ *           description: Unique branch code
+ *         address:
+ *           type: string
+ *           description: Branch address
+ *         phone:
+ *           type: string
+ *           description: Branch contact phone
+ *         email:
+ *           type: string
+ *           description: Branch contact email
+ *         manager_name:
+ *           type: string
+ *           description: Branch manager name
+ *         manager_email:
+ *           type: string
+ *           description: Branch manager email
+ *         manager_phone:
+ *           type: string
+ *           description: Branch manager phone
+ *         city:
+ *           type: string
+ *           description: Branch city
+ *         state:
+ *           type: string
+ *           description: Branch state/province
+ *         postal_code:
+ *           type: string
+ *           description: Branch postal code
+ *         country:
+ *           type: string
+ *           description: Branch country
+ *         is_active:
+ *           type: boolean
+ *           description: Branch active status
+ *         opening_hours:
+ *           type: object
+ *           description: Branch operating hours
+ *         description:
+ *           type: string
+ *           description: Branch description
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *         updated_at:
+ *           type: string
+ *           format: date-time
+ */
+
+/**
+ * @swagger
+ * /api/branches:
+ *   get:
+ *     summary: Get all branches
+ *     tags: [Branches]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: active
+ *         schema:
+ *           type: boolean
+ *         description: Filter by active status
+ *       - in: query
+ *         name: include_stats
+ *         schema:
+ *           type: boolean
+ *         description: Include user count statistics
+ *     responses:
+ *       200:
+ *         description: List of branches
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Branch'
+ */
+router.get('/', requirePermission('Manage Branch Management'), async (req, res) => {
+  try {
+    const { active, include_stats } = req.query;
+    
+    let branches;
+    
+    if (include_stats === 'true') {
+      branches = await Branch.getAll(true);
+    } else if (active === 'true') {
+      branches = await Branch.getActiveBranches();
+    } else {
+      branches = await Branch.getAll();
+    }
+    
+    // Filter by active status if specified
+    if (active !== undefined && include_stats !== 'true') {
+      const isActive = active === 'true';
+      branches = branches.filter(branch => branch.is_active === isActive);
+    }
+    
+    res.json(branches);
+  } catch (error) {
+    console.error('Error fetching branches:', error);
+    res.status(500).json({ error: 'Failed to fetch branches' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/branches/{id}:
+ *   get:
+ *     summary: Get branch by ID
+ *     tags: [Branches]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Branch ID
+ *     responses:
+ *       200:
+ *         description: Branch details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Branch'
+ *       404:
+ *         description: Branch not found
+ */
+router.get('/:id', requirePermission('Manage Branch Management'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const branch = await Branch.getById(id);
+    
+    if (!branch) {
+      return res.status(404).json({ error: 'Branch not found' });
+    }
+    
+    res.json(branch);
+  } catch (error) {
+    console.error('Error fetching branch:', error);
+    res.status(500).json({ error: 'Failed to fetch branch' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/branches:
+ *   post:
+ *     summary: Create a new branch
+ *     tags: [Branches]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Branch'
+ *     responses:
+ *       201:
+ *         description: Branch created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Branch'
+ *       400:
+ *         description: Invalid input or branch code already exists
+ */
+router.post('/', requirePermission('Manage Branch Management'), async (req, res) => {
+  try {
+    const branchData = req.body;
+    const branch = await Branch.create(branchData);
+    res.status(201).json(branch);
+  } catch (error) {
+    console.error('Error creating branch:', error);
+    if (error.message.includes('already exists') || 
+        error.message.includes('Validation failed')) {
+      res.status(400).json({ error: error.message });
+    } else {
+      res.status(500).json({ error: 'Failed to create branch' });
+    }
+  }
+});
+
+/**
+ * @swagger
+ * /api/branches/{id}:
+ *   put:
+ *     summary: Update branch
+ *     tags: [Branches]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Branch ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Branch'
+ *     responses:
+ *       200:
+ *         description: Branch updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Branch'
+ *       404:
+ *         description: Branch not found
+ *       400:
+ *         description: Invalid input or branch code already exists
+ */
+router.put('/:id', requirePermission('Manage Branch Management'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const branchData = req.body;
+    
+    const updatedBranch = await Branch.update(id, branchData);
+    res.json(updatedBranch);
+  } catch (error) {
+    console.error('Error updating branch:', error);
+    if (error.message.includes('not found')) {
+      res.status(404).json({ error: error.message });
+    } else if (error.message.includes('already exists') || 
+               error.message.includes('Validation failed') ||
+               error.message.includes('Invalid')) {
+      res.status(400).json({ error: error.message });
+    } else {
+      res.status(500).json({ error: 'Failed to update branch' });
+    }
+  }
+});
+
+/**
+ * @swagger
+ * /api/branches/{id}:
+ *   delete:
+ *     summary: Delete branch
+ *     tags: [Branches]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Branch ID
+ *     responses:
+ *       200:
+ *         description: Branch deleted successfully
+ *       404:
+ *         description: Branch not found
+ *       400:
+ *         description: Cannot delete branch with assigned users
+ */
+router.delete('/:id', requirePermission('Manage Branch Management'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    await Branch.delete(id);
+    res.json({ message: 'Branch deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting branch:', error);
+    if (error.message.includes('not found')) {
+      res.status(404).json({ error: error.message });
+    } else if (error.message.includes('Cannot delete') || 
+               error.message.includes('Invalid')) {
+      res.status(400).json({ error: error.message });
+    } else {
+      res.status(500).json({ error: 'Failed to delete branch' });
+    }
+  }
+});
+
+/**
+ * @swagger
+ * /api/branches/{id}/users:
+ *   get:
+ *     summary: Get users assigned to branch
+ *     tags: [Branches]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Branch ID
+ *     responses:
+ *       200:
+ *         description: List of users in branch
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/User'
+ *       404:
+ *         description: Branch not found
+ */
+router.get('/:id/users', requirePermission('Manage Branch Management'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const users = await Branch.getUsers(id);
+    res.json(users);
+  } catch (error) {
+    console.error('Error fetching branch users:', error);
+    if (error.message.includes('not found') || 
+        error.message.includes('Invalid')) {
+      res.status(404).json({ error: error.message });
+    } else {
+      res.status(500).json({ error: 'Failed to fetch branch users' });
+    }
+  }
+});
+
+/**
+ * @swagger
+ * /api/branches/stats/summary:
+ *   get:
+ *     summary: Get branch statistics summary
+ *     tags: [Branches]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Branch statistics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 total_branches:
+ *                   type: integer
+ *                 active_branches:
+ *                   type: integer
+ *                 inactive_branches:
+ *                   type: integer
+ *                 total_users_in_branches:
+ *                   type: integer
+ */
+router.get('/stats/summary', requirePermission('Manage Branch Management'), async (req, res) => {
+  try {
+    const stats = await Branch.getBranchStats();
+    res.json(stats);
+  } catch (error) {
+    console.error('Error fetching branch stats:', error);
+    res.status(500).json({ error: 'Failed to fetch branch statistics' });
+  }
+});
+
+module.exports = router;

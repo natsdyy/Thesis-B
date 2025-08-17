@@ -3,8 +3,10 @@
   import Sidebar from '../components/Sidebar.vue';
   import DashboardHeader from '../components/DashboardHeader.vue';
   import { useRoute } from 'vue-router';
+  import { useThemeStore } from '../stores/themeStore';
 
   const route = useRoute();
+  const themeStore = useThemeStore();
 
   // Mobile menu state
   const isMobileMenuOpen = ref(false);
@@ -20,7 +22,7 @@
 </script>
 
 <template>
-  <div class="min-h-screen bg-accentColor">
+  <div :class="['min-h-screen transition-colors duration-300', themeStore.themeClasses.mainBg]">
     <!-- Sidebar -->
     <Sidebar />
 
@@ -30,7 +32,7 @@
       <DashboardHeader />
 
       <!-- Page Content -->
-      <main class="p-6 bg-secondaryColor/15">
+      <main :class="['p-6 transition-colors duration-300', themeStore.themeClasses.textPrimary]">
         <RouterView />
       </main>
     </div>

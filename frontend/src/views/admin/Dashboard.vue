@@ -43,12 +43,23 @@
           <div class="stat-desc">Active departments</div>
         </div>
       </div>
+
+      <div class="stats shadow">
+        <div class="stat">
+          <div class="stat-figure text-warning">
+            <MapPin class="w-8 h-8" />
+          </div>
+          <div class="stat-title">Branches</div>
+          <div class="stat-value text-warning">{{ branchStats.active_branches || 0 }}</div>
+          <div class="stat-desc">Active branches</div>
+        </div>
+      </div>
     </div>
 
     <!-- Quick Actions -->
     <div class="mt-8">
       <h2 class="text-2xl font-bold mb-4">Quick Actions</h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <router-link
           to="/admin/users"
           class="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow"
@@ -71,6 +82,19 @@
             <h3 class="card-title">Manage Roles</h3>
             <p class="text-sm text-base-content/70">
               Configure user roles and permissions
+            </p>
+          </div>
+        </router-link>
+
+        <router-link
+          to="/admin/branches"
+          class="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow"
+        >
+          <div class="card-body items-center text-center">
+            <MapPin class="w-12 h-12 text-warning mb-2" />
+            <h3 class="card-title">Manage Branches</h3>
+            <p class="text-sm text-base-content/70">
+              Add and manage organization branches
             </p>
           </div>
         </router-link>
@@ -101,11 +125,35 @@
 </template>
 
 <script setup>
+  import { ref, onMounted } from 'vue'
   import {
     Users,
     UserCog,
     Settings,
     Building2,
     BarChart3,
-  } from 'lucide-vue-next';
+    MapPin,
+  } from 'lucide-vue-next'
+  import { useBranchStore } from '../../stores/branchStore'
+
+  const branchStore = useBranchStore()
+  const branchStats = ref({
+    active_branches: 0,
+    total_branches: 0,
+    inactive_branches: 0,
+    total_users_in_branches: 0
+  })
+
+  const loadBranchStats = async () => {
+    try {
+      const stats = await branchStore.fetchBranchStats()
+      branchStats.value = stats
+    } catch (error) {
+      console.error('Failed to load branch statistics:', error)
+    }
+  }
+
+  onMounted(() => {
+    loadBranchStats()
+  })
 </script>

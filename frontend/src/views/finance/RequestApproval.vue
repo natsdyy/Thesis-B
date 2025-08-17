@@ -626,6 +626,23 @@
         confirmClass: 'btn-primary bg-primaryColor',
         onConfirm: () => handleEditRequest(data.request_id),
       },
+      // NEW: Send Back for Revision
+      sendBack: {
+        title: 'Send Back for Revision',
+        message: `Are you sure you want to send request #${data?.request_id} back to SCM for revision?`,
+        confirmText: 'Send Back',
+        confirmClass: 'btn-info',
+        onConfirm: () =>
+          handleSendBackRequest(data.request_id, modal.value.data.remarks),
+      },
+      // NEW: Budget Release
+      budgetRelease: {
+        title: 'Release Budget',
+        message: `Are you sure you want to release budget for request #${data?.request_id}?`,
+        confirmText: 'Release Budget',
+        confirmClass: 'btn-success',
+        onConfirm: () => handleBudgetRelease(data.request_id),
+      },
     };
 
     const config = { ...configs[type], ...customConfig };
@@ -805,11 +822,113 @@
     }
   };
 
+  // NEW: Send Back for Revision function
+  const handleSendBackRequest = async (requestId, remarks) => {
+    loading.value = true;
+    try {
+      // Validation
+      if (!remarks || remarks.trim() === '') {
+        showToast(
+          'error',
+          'Please provide remarks for sending back the request'
+        );
+        return;
+      }
+
+      // Simulate API call
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Find the request
+      const requestIndex = allRequests.value.findIndex(
+        (r) => r.request_id === requestId
+      );
+
+      if (requestIndex !== -1) {
+        const request = allRequests.value[requestIndex];
+
+        // Add to history
+        requestHistory.value.unshift({
+          request_id: request.request_id,
+          request_description: request.request_description,
+          request_date: request.request_date,
+          request_status: 'Sent Back',
+          total_amount: request.total_amount,
+          sent_back_by: 'Finance Manager',
+          sent_back_at: new Date().toISOString(),
+          remarks: remarks.trim(),
+          revision_count: (request.revision_count || 0) + 1,
+        });
+
+        // Remove from pending requests (in real app, this would update status and notify SCM)
+        allRequests.value.splice(requestIndex, 1);
+      }
+
+      closeModal();
+      showToast(
+        'success',
+        `Request #${requestId} sent back to SCM for revision`
+      );
+    } catch (err) {
+      showToast('error', 'Failed to send back request');
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // NEW: Budget Release function
+  const handleBudgetRelease = async (requestId) => {
+    loading.value = true;
+    try {
+      // Simulate API call
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Find the approved request
+      const requestIndex = approvedRequests.value.findIndex(
+        (r) => r.request_id === requestId
+      );
+
+      if (requestIndex !== -1) {
+        const request = approvedRequests.value[requestIndex];
+
+        // Add to request history with Budget Released status
+        requestHistory.value.unshift({
+          request_id: request.request_id,
+          request_description: request.request_description,
+          request_date: request.request_date,
+          request_status: 'Budget Released',
+          total_amount: request.total_amount,
+          approved_by: request.approved_by,
+          approved_at: request.approved_at,
+          released_by: 'Finance Manager',
+          released_at: new Date().toISOString(),
+          remarks: request.finance_remarks,
+        });
+
+        // Remove from approved requests
+        approvedRequests.value.splice(requestIndex, 1);
+      }
+
+      closeModal();
+      showToast(
+        'success',
+        `Budget released successfully for request #${requestId}`
+      );
+    } catch (err) {
+      showToast('error', 'Failed to release budget');
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   // Action methods
   const viewRequest = (request) => openModal('viewRequest', request);
   const editRequest = (request) => openModal('edit', request);
   const approveRequest = (request) => openModal('approve', request);
   const rejectRequest = (request) => openModal('reject', request);
+  const sendBackRequest = (request) => openModal('sendBack', request); // NEW
+  const releaseBudget = (request) => openModal('budgetRelease', request); // NEW
 
   // Add missing functions for backward compatibility
   const fetchRequests = async () => {
@@ -876,7 +995,12 @@
   };
 
   // History status options for filtering
-  const historyStatusOptions = ['Approved', 'Rejected'];
+  const historyStatusOptions = [
+    'Approved',
+    'Rejected',
+    'Sent Back',
+    'Budget Released',
+  ];
 
   // Smart pagination helper
   const getPageRange = () => {
@@ -1256,6 +1380,11 @@
                         >
                       </li>
                       <li class="hover:bg-black/10">
+                        <a @click="sendBackRequest(request)" class="text-info"
+                          >Send Back for Revision</a
+                        >
+                      </li>
+                      <li class="hover:bg-black/10">
                         <a @click="rejectRequest(request)" class="text-error"
                           >Reject</a
                         >
@@ -1370,35 +1499,40 @@
 
         <!-- Items Table -->
         <div class="overflow-x-auto mb-4">
-          <table class="table table-xs text-black custom-zebra">
+          <table class="table table-xs text-black">
             <thead class="text-black bg-primaryColor">
-              <tr class="text-accentColor border border-black/10">
-                <th class="border border-black/10">Item No.</th>
-                <th class="border border-black/10">Item Name</th>
-                <th class="border border-black/10">Quantity</th>
-                <th class="border border-black/10">Unit</th>
-                <th class="border border-black/10">Type</th>
-                <th class="border border-black/10">Unit Price</th>
-                <th class="border border-black/10">Amount (₱)</th>
+              <tr class="border border-black text-accentColor">
+                <th class="border border-black">Item No.</th>
+                <th class="border border-black">Item Name</th>
+                <th class="border border-black">Quantity</th>
+                <th class="border border-black">Unit</th>
+                <th class="border border-black">Type</th>
+                <th class="border border-black">Unit Price</th>
+                <th class="border border-black">Amount (₱)</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="item in modal.request?.items || []" :key="item.id">
-                <td class="border border-black/10">{{ item.id }}</td>
-                <td class="border border-black/10">{{ item.item_name }}</td>
-                <td class="border border-black/10">{{ item.item_quantity }}</td>
-                <td class="border border-black/10">{{ item.item_unit }}</td>
-                <td class="border border-black/10">{{ item.item_type }}</td>
-                <td class="border border-black/10">
+                <td class="border border-black">{{ item.id }}</td>
+                <td class="border border-black">{{ item.item_name }}</td>
+                <td class="border border-black">{{ item.item_quantity }}</td>
+                <td class="border border-black">{{ item.item_unit }}</td>
+                <td class="border border-black">{{ item.item_type }}</td>
+                <td class="border border-black">
                   ₱{{ item.item_unitPrice.toFixed(2) }}
                 </td>
-                <td class="border border-black/10">
+                <td class="border border-black">
                   ₱{{ item.item_amount.toFixed(2) }}
                 </td>
               </tr>
-              <tr class="border border-black/10">
-                <td colspan="6" class="text-right font-semibold">Total</td>
-                <td class="font-semibold border border-black/10">
+              <tr class="border border-black">
+                <td
+                  colspan="6"
+                  class="text-right font-semibold border border-black"
+                >
+                  Total
+                </td>
+                <td class="font-semibold border border-black">
                   ₱{{ modal.request?.total_amount.toFixed(2) }}
                 </td>
               </tr>
@@ -1541,6 +1675,69 @@
           </button>
         </div>
       </template>
+
+      <!-- Send Back Modal Content -->
+      <template v-if="modal.type === 'sendBack'">
+        <h3 class="text-lg font-bold mb-4 text-info">Send Back for Revision</h3>
+        <p>
+          Are you sure you want to send request
+          <strong>#{{ modal.request?.request_id }}</strong> back to SCM for
+          revision?
+        </p>
+        <div class="bg-white/10 p-3 rounded mt-3">
+          <p><strong>Department:</strong> {{ modal.request?.department }}</p>
+          <p>
+            <strong>Requested By:</strong> {{ modal.request?.requested_by }}
+          </p>
+          <p>
+            <strong>Description:</strong>
+            {{ modal.request?.request_description }}
+          </p>
+          <p>
+            <strong>Total Amount:</strong> ₱{{
+              modal.request?.total_amount.toLocaleString('en-PH')
+            }}
+          </p>
+        </div>
+
+        <!-- Required remarks for sending back -->
+        <div class="form-control mt-4">
+          <label class="label">
+            <span class="label-text text-black/70"
+              >Revision Remarks <span class="text-red-500">*</span></span
+            >
+          </label>
+          <textarea
+            v-model="modal.data.remarks"
+            class="textarea textarea-bordered w-full bg-white border-primaryColor/30 text-black/70"
+            rows="3"
+            placeholder="Please specify what needs to be revised..."
+            required
+          ></textarea>
+        </div>
+
+        <div class="modal-action">
+          <button
+            type="button"
+            class="btn btn-outline font-thin btn-sm bg-gray-200 text-black/50 border border-none hover:bg-gray-300"
+            @click="closeModal"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn btn-info font-thin btn-sm"
+            @click="openConfirmModal('sendBack', modal.request)"
+            :disabled="loading || !modal.data.remarks?.trim()"
+          >
+            <span
+              class="loading loading-spinner loading-xs"
+              v-if="loading"
+            ></span>
+            {{ loading ? 'Sending Back...' : 'Send Back to SCM' }}
+          </button>
+        </div>
+      </template>
     </div>
   </dialog>
 
@@ -1621,18 +1818,14 @@
         ></textarea>
       </div>
 
-      <!-- Items Section (Editable) -->
+      <!-- Items Section (Finance can only modify existing items) -->
       <div class="mb-6">
         <div class="flex justify-between items-center mb-4">
           <h4 class="text-lg font-semibold text-primaryColor">Request Items</h4>
           <div class="flex gap-2">
-            <button
-              class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
-              @click="addRowRequest"
-            >
-              <Plus class="w-4 h-4 mr-1" />
-              Add Item
-            </button>
+            <div class="text-sm text-black/60 italic">
+              * Finance can only modify existing items, not add new ones
+            </div>
           </div>
         </div>
 
@@ -1739,10 +1932,11 @@
                 </td>
 
                 <td class="text-center">
+                  <!-- Finance cannot remove items, only modify them -->
                   <button
-                    class="btn btn-ghost btn-xs text-error hover:bg-error/10 rounded-full"
-                    @click="removeRowRequest(row.id)"
-                    :disabled="rowRequest.length <= 1"
+                    class="btn btn-ghost btn-xs text-gray-400 cursor-not-allowed rounded-full"
+                    disabled
+                    title="Finance cannot remove items from requests"
                   >
                     <X class="w-4 h-4" />
                   </button>
@@ -2117,6 +2311,10 @@
                       request.request_status === 'Approved',
                     'bg-error/20 text-error':
                       request.request_status === 'Rejected',
+                    'bg-info/20 text-info':
+                      request.request_status === 'Sent Back',
+                    'bg-success/20 text-success':
+                      request.request_status === 'Budget Released',
                   }"
                 >
                   {{ request.request_status }}

@@ -13,6 +13,7 @@ import {
   Settings,
   ReceiptText,
   Store,
+  PhilippinePeso,
 } from 'lucide-vue-next';
 
 export const menuItems = [
@@ -102,9 +103,9 @@ export const menuItems = [
     department: 'Finance',
   },
   {
-    name: 'Budget',
-    icon: DollarSign,
-    route: '/finance/budget',
+    name: 'Budget Release',
+    icon: PhilippinePeso,
+    route: '/finance/budget-release',
     department: 'Finance',
   },
 

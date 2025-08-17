@@ -19,6 +19,10 @@
     Download,
     TrendingUp,
     TrendingDown,
+    DollarSign,
+    FileCheck,
+    Info,
+    PhilippinePeso,
   } from 'lucide-vue-next';
 
   const loading = ref(false);
@@ -1014,6 +1018,60 @@
   const updateItemAmount = (item) => {
     item.item_amount = (item.item_quantity || 0) * (item.item_unitPrice || 0);
   };
+
+  // Add these new reactive variables
+  const budgetReleases = ref([
+    {
+      request_id: 2025081501,
+      request_description: 'IT equipment for branch upgrade',
+      released_amount: 125000.0,
+      released_at: '2025-01-15T09:00:00Z',
+      released_by: 'Finance Manager',
+      awaiting_receipt: true,
+    },
+  ]);
+
+  // Add this computed property
+  const pendingReceipts = computed(() => {
+    return budgetReleases.value.filter((r) => r.awaiting_receipt);
+  });
+
+  // Add this new function
+  const confirmReceipt = async (requestId) => {
+    loading.value = true;
+    try {
+      // Simulate API call
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Find the budget release
+      const releaseIndex = budgetReleases.value.findIndex(
+        (r) => r.request_id === requestId
+      );
+
+      if (releaseIndex !== -1) {
+        const release = budgetReleases.value[releaseIndex];
+
+        // Move to request history as completed
+        requestHistory.value.unshift({
+          request_id: release.request_id,
+          request_description: release.request_description,
+          request_date: new Date().toISOString().split('T')[0],
+          request_status: 'Completed',
+          total_amount: release.released_amount,
+          receipt: 'confirmed',
+        });
+
+        // Remove from pending receipts
+        budgetReleases.value.splice(releaseIndex, 1);
+      }
+
+      showToast('success', `Receipt confirmed for request #${requestId}`);
+    } catch (err) {
+      showToast('error', 'Failed to confirm receipt');
+    } finally {
+      loading.value = false;
+    }
+  };
 </script>
 
 <template>
@@ -1122,6 +1180,98 @@
               ? 'Rejected requests configured'
               : 'No rejected requests yet'
           }}
+        </div>
+      </div>
+
+      <div
+        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
+      >
+        <div class="stat-figure">
+          <DollarSign class="w-8 h-8 text-success" />
+        </div>
+        <div class="stat-title text-black/50">Awaiting Receipt</div>
+        <div class="stat-value text-success">
+          {{ pendingReceipts.length }}
+        </div>
+        <div class="stat-desc text-black/50">Budget released by Finance</div>
+      </div>
+    </div>
+
+    <!-- Add this new section in the template after the stats -->
+    <!-- Budget Release Receipt Section - Only appears when Finance has released budget -->
+    <div
+      class="card bg-success/5 border-success/20 shadow-xl mb-6 border mx-auto"
+      v-if="pendingReceipts.length > 0"
+    >
+      <div class="card-body">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="card-title text-success">
+            <PhilippinePeso class="w-6 h-6 mr-2 text-success" />
+            Budget Released - Confirm Receipt
+          </h2>
+          <div class="badge badge-success badge-md badge-outline">
+            {{ pendingReceipts.length }} Pending
+          </div>
+        </div>
+
+        <div class="alert alert-info mb-4">
+          <Info class="w-6 h-6 mr-2" />
+          <span
+            >Finance has released the budget for the following requests. Please
+            confirm receipt to complete the process.</span
+          >
+        </div>
+
+        <div class="overflow-x-auto">
+          <table
+            class="table table-zebra text-black/50 border border-success/20 custom-zebra"
+          >
+            <thead class="text-accentColor">
+              <tr class="bg-success text-accentColor">
+                <th>Request ID</th>
+                <th>Description</th>
+                <th>Released Amount</th>
+                <th>Released Date</th>
+                <th>Released By</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="release in pendingReceipts"
+                :key="release.request_id"
+                class="hover:bg-success/10"
+              >
+                <td class="font-mono font-medium text-success">
+                  {{ release.request_id }}
+                </td>
+                <td class="text-wrap">{{ release.request_description }}</td>
+                <td class="font-semibold text-success">
+                  ₱{{
+                    release.released_amount.toLocaleString('en-PH', {
+                      minimumFractionDigits: 2,
+                    })
+                  }}
+                </td>
+                <td>
+                  {{
+                    new Date(release.released_at).toLocaleDateString('en-PH')
+                  }}
+                </td>
+                <td>{{ release.released_by }}</td>
+                <td>
+                  <button
+                    class="btn btn-sm bg-success text-white font-thin border-none hover:bg-success/80"
+                    @click="confirmReceipt(release.request_id)"
+                    :disabled="loading"
+                  >
+                    <FileCheck class="w-4 h-4 mr-1" />
+                    {{ loading ? 'Confirming...' : 'Confirm Receipt' }}
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

@@ -742,7 +742,7 @@
                 <th class="w-1/4">Description</th>
                 <th>Amount</th>
                 <th>Approved Date</th>
-                <th>Actions</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>

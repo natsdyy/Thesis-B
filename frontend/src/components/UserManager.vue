@@ -132,10 +132,10 @@
               />
             </div>
 
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Department</span>
-              </label>
+                         <div class="form-control">
+               <label class="label">
+                 <span :class="['label-text', themeStore.themeClasses.textSecondary]">Department</span>
+               </label>
               <select
                 v-model="newUser.department"
                 class="select select-bordered w-full"
@@ -158,10 +158,10 @@
               </div>
             </div>
 
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Role</span>
-              </label>
+                         <div class="form-control">
+               <label class="label">
+                 <span :class="['label-text', themeStore.themeClasses.textSecondary]">Role</span>
+               </label>
               <select
                 v-model="newUser.role_id"
                 class="select select-bordered w-full"

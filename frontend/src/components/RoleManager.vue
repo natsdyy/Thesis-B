@@ -3,6 +3,7 @@
   import { UserLock, RefreshCcw, Users } from 'lucide-vue-next';
   import { useRoleStore } from '../stores/roleStore';
   import { useThemeStore } from '../stores/themeStore';
+  import { openaiService } from '../services/openaiService';
   import { storeToRefs } from 'pinia';
   import { EllipsisVertical } from 'lucide-vue-next';
 
@@ -52,6 +53,9 @@
     department: '',
     description: '',
   });
+  
+  // Grammar correction state
+  const grammarLoading = ref(false);
 
   const selectedDepartment = ref('');
   const selectedRole = ref('');
@@ -266,9 +270,179 @@
     currentPage.value = 1;
   };
 
+  // Grammar correction function
+  const correctGrammar = async () => {
+    if (!newRole.value.description.trim()) return;
+    
+    grammarLoading.value = true;
+    try {
+      // Try OpenAI first
+      try {
+        const correctedText = await openaiService.correctGrammar(
+          newRole.value.description,
+          'role'
+        );
+        
+        newRole.value.description = correctedText;
+        showToast('success', '✨ OpenAI AI auto-correction applied successfully!');
+        return;
+        
+      } catch (openaiError) {
+        console.log('🤖 OpenAI correction failed, trying LanguageTool:', openaiError.message);
+        
+        // Try LanguageTool as second option
+        try {
+          const correctedText = await openaiService.correctGrammarWithLanguageTool(
+            newRole.value.description
+          );
+          
+          newRole.value.description = correctedText;
+          showToast('success', '🔧 LanguageTool auto-correction applied successfully!');
+          
+          // Show user feedback about LanguageTool
+          showToast('info', '🔧 OpenAI unavailable. Applied LanguageTool correction instead.');
+          return;
+          
+        } catch (languageToolError) {
+          console.log('🔧 LanguageTool correction failed, using local fallback:', languageToolError.message);
+          
+          // Final fallback to local correction
+          let correctedText = newRole.value.description;
+        
+        correctedText = correctedText
+          .replace(/\s+/g, ' ').trim()
+          .replace(/\s+([,.!?;:)])/g, '$1')
+          .replace(/([,.!?;:])\s*([a-zA-Z])/g, '$1 $2')
+          .replace(/\s*[""]\s*/g, '"').replace(/\s*['']\s*/g, "'")
+          .replace(/(\w)\s+'\s*(\w)/g, "$1'$2")
+          .replace(/^[a-z]/, match => match.toUpperCase())
+          .replace(/([.!?]\s+)([a-z])/g, (match, punct, letter) => punct + letter.toUpperCase())
+          .replace(/\bi\b/g, 'I')
+          .replace(/\bcan\s*t\b/gi, "can't")
+          .replace(/\bdon\s*t\b/gi, "don't")
+          .replace(/\bwon\s*t\b/gi, "won't")
+          .replace(/\bit\s*s\b/gi, "it's")
+          .replace(/\byou\s*re\b/gi, "you're")
+          .replace(/\ba\s+([aeiouAEIOU])/g, 'an $1')
+          .replace(/\ban\s+([^aeiouAEIOU])/g, 'a $1')
+          .replace(/\balot\b/gi, 'a lot')
+          .replace(/\buser\s+management\b/gi, 'user management')
+          .replace(/\brole\s+management\b/gi, 'role management')
+          .replace(/\baccess\s+control\b/gi, 'access control')
+          .replace(/\s+/g, ' ').trim();
+        
+        if (correctedText && !correctedText.match(/[.!?]$/)) {
+          if (correctedText.length > 10 && 
+              (correctedText.includes(' is ') || correctedText.includes(' allows ') || 
+               correctedText.includes(' manages ') || correctedText.includes(' provides '))) {
+            correctedText += '.';
+          }
+        }
+        
+                  newRole.value.description = correctedText;
+          showToast('success', '📝 Local fallback auto-correction applied successfully!');
+          
+          // Show user feedback about local fallback
+          showToast('info', '📝 Both AI services unavailable. Applied local correction instead.');
+        }
+      }
+      
+    } catch (error) {
+      showToast('error', 'Failed to correct text');
+    } finally {
+      grammarLoading.value = false;
+    }
+  };
+
+  // AI-powered grammar correction for modal
+  const correctModalGrammar = async () => {
+    if (!modal.value.data.description.trim()) return;
+    
+    grammarLoading.value = true;
+    try {
+      // Try OpenAI first
+      try {
+        const correctedText = await openaiService.correctGrammar(
+          modal.value.data.description,
+          'role'
+        );
+        
+        modal.value.data.description = correctedText;
+        showToast('success', '✨ AI auto-correction applied successfully!');
+        return;
+        
+      } catch (openaiError) {
+        console.log('🤖 OpenAI correction failed, trying LanguageTool:', openaiError.message);
+        
+        // Try LanguageTool as second option
+        try {
+          const correctedText = await openaiService.correctGrammarWithLanguageTool(
+            modal.value.data.description
+          );
+          
+          modal.value.data.description = correctedText;
+          showToast('success', '🔧 LanguageTool auto-correction applied successfully!');
+          
+          // Show user feedback about LanguageTool
+          showToast('info', '🔧 OpenAI unavailable. Applied LanguageTool correction instead.');
+          return;
+          
+        } catch (languageToolError) {
+          console.log('🔧 LanguageTool correction failed, using local fallback:', languageToolError.message);
+          
+          // Final fallback to local correction
+          let correctedText = modal.value.data.description;
+        
+        correctedText = correctedText
+          .replace(/\s+/g, ' ').trim()
+          .replace(/\s+([,.!?;:)])/g, '$1')
+          .replace(/([,.!?;:])\s*([a-zA-Z])/g, '$1 $2')
+          .replace(/\s*[""]\s*/g, '"').replace(/\s*['']\s*/g, "'")
+          .replace(/(\w)\s+'\s*(\w)/g, "$1'$2")
+          .replace(/^[a-z]/, match => match.toUpperCase())
+          .replace(/([.!?]\s+)([a-z])/g, (match, punct, letter) => punct + letter.toUpperCase())
+          .replace(/\bi\b/g, 'I')
+          .replace(/\bcan\s*t\b/gi, "can't")
+          .replace(/\bdon\s*t\b/gi, "don't")
+          .replace(/\bwon\s*t\b/gi, "won't")
+          .replace(/\bit\s*s\b/gi, "it's")
+          .replace(/\byou\s*re\b/gi, "you're")
+          .replace(/\ba\s+([aeiouAEIOU])/g, 'an $1')
+          .replace(/\ban\s+([^aeiouAEIOU])/g, 'a $1')
+          .replace(/\balot\b/gi, 'a lot')
+          .replace(/\buser\s+management\b/gi, 'user management')
+          .replace(/\brole\s+management\b/gi, 'role management')
+          .replace(/\baccess\s+control\b/gi, 'access control')
+          .replace(/\s+/g, ' ').trim();
+        
+        if (correctedText && !correctedText.match(/[.!?]$/)) {
+          if (correctedText.length > 10 && 
+              (correctedText.includes(' is ') || correctedText.includes(' allows ') || 
+               correctedText.includes(' manages ') || correctedText.includes(' provides '))) {
+            correctedText += '.';
+          }
+        }
+        
+        modal.value.data.description = correctedText;
+        showToast('success', '📝 Local fallback auto-correction applied successfully!');
+        
+        // Show user feedback about local fallback
+        showToast('info', '📝 Both AI services unavailable. Applied local correction instead.');
+        }
+      }
+      
+    } catch (error) {
+      showToast('error', 'Failed to correct text');
+    } finally {
+      grammarLoading.value = false;
+    }
+  };
+
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString();
   };
+
+
 
   // Watch for department/role changes to auto-generate description
   watch([selectedDepartment, selectedRole], () => {
@@ -627,15 +801,30 @@
             <label class="label">
               <span :class="['label-text', themeStore.themeClasses.textSecondary]">Description</span>
             </label>
-            <textarea
-              :class="[
-                'textarea textarea-bordered w-full cursor-pointer transition-colors duration-300',
-                themeStore.themeClasses.input
-              ]"
-              rows="3"
-              placeholder="Description will be auto-generated..."
-              required
-            ></textarea>
+            <div class="relative">
+              <textarea
+                v-model="newRole.description"
+                :class="[
+                  'textarea textarea-bordered w-full cursor-pointer transition-colors duration-300',
+                  themeStore.themeClasses.input
+                ]"
+                rows="3"
+                placeholder="Description will be auto-generated..."
+                required
+              ></textarea>
+              <button
+                type="button"
+                @click="correctGrammar"
+                :disabled="!newRole.description || grammarLoading"
+                class="absolute top-2 right-2 btn btn-xs bg-primaryColor text-white hover:bg-primaryColor/80 border-none"
+                title="Auto Correction"
+              >
+                <span v-if="grammarLoading" class="loading loading-spinner loading-xs"></span>
+                <span v-else>✓</span>
+                Auto Correction
+              </button>
+
+            </div>
           </div>
 
           <!-- Permission Info -->
@@ -783,12 +972,25 @@
               <label class="label"
                 ><span class="label-text">Description</span></label
               >
-              <textarea
-                v-model="modal.data.description"
-                class="textarea textarea-bordered w-full bg-white border border-black/10 text-black/50 cursor-pointer"
-                rows="3"
-                required
-              ></textarea>
+              <div class="relative">
+                <textarea
+                  v-model="modal.data.description"
+                  class="textarea textarea-bordered w-full bg-white border border-black/10 text-black/50 cursor-pointer"
+                  rows="3"
+                  required
+                ></textarea>
+                <button
+                  type="button"
+                  @click="correctModalGrammar"
+                  :disabled="!modal.data.description || grammarLoading"
+                  class="absolute top-2 right-2 btn btn-xs bg-primaryColor text-white hover:bg-primaryColor/80 border-none"
+                  title="Auto Correction"
+                >
+                  <span v-if="grammarLoading" class="loading loading-spinner loading-xs"></span>
+                  <span v-else>✓</span>
+                  Auto Correction
+                </button>
+              </div>
             </div>
 
             <div class="modal-action">

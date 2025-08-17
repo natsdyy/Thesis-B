@@ -27,8 +27,8 @@ class Branch {
       errors.push('Invalid email format');
     }
 
-    if (data.manager_email && !this.isValidEmail(data.manager_email)) {
-      errors.push('Invalid manager email format');
+    if (data.manager_id && (typeof data.manager_id !== 'number' || data.manager_id <= 0)) {
+      errors.push('Invalid manager ID');
     }
 
     return {
@@ -46,7 +46,14 @@ class Branch {
   static async getAll(includeStats = false) {
     try {
       let branches = await db('branches')
-        .orderBy('name');
+        .leftJoin('users', 'branches.manager_id', 'users.id')
+        .select(
+          'branches.*',
+          'users.name as manager_name',
+          'users.email as manager_email',
+          'users.department as manager_department'
+        )
+        .orderBy('branches.name');
 
       if (includeStats) {
         // Add user count for each branch
@@ -74,7 +81,14 @@ class Branch {
       }
 
       const branch = await db('branches')
-        .where('id', id)
+        .leftJoin('users', 'branches.manager_id', 'users.id')
+        .select(
+          'branches.*',
+          'users.name as manager_name',
+          'users.email as manager_email',
+          'users.department as manager_department'
+        )
+        .where('branches.id', id)
         .first();
 
       if (branch) {
@@ -146,9 +160,7 @@ class Branch {
         address: branchData.address.trim(),
         phone: branchData.phone?.trim() || null,
         email: branchData.email?.trim() || null,
-        manager_name: branchData.manager_name?.trim() || null,
-        manager_email: branchData.manager_email?.trim() || null,
-        manager_phone: branchData.manager_phone?.trim() || null,
+        manager_id: branchData.manager_id || null,
         city: branchData.city?.trim() || null,
         state: branchData.state?.trim() || null,
         postal_code: branchData.postal_code?.trim() || null,
@@ -221,9 +233,7 @@ class Branch {
         address: branchData.address.trim(),
         phone: branchData.phone?.trim() || null,
         email: branchData.email?.trim() || null,
-        manager_name: branchData.manager_name?.trim() || null,
-        manager_email: branchData.manager_email?.trim() || null,
-        manager_phone: branchData.manager_phone?.trim() || null,
+        manager_id: branchData.manager_id || null,
         city: branchData.city?.trim() || null,
         state: branchData.state?.trim() || null,
         postal_code: branchData.postal_code?.trim() || null,

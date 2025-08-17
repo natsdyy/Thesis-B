@@ -288,21 +288,25 @@
 
   const quickDateOptions = ref(getQuickDateOptions());
 
-  // Update quick date options with counts
+  // Update quick date options with counts - excludes cancelled requests
   const updateQuickDateCounts = () => {
     quickDateOptions.value.forEach((option) => {
       option.count = allRequests.value.filter(
-        (request) => request.request_date === option.date
+        (request) =>
+          request.request_date === option.date &&
+          request.request_status === 'Pending' &&
+          request.request_status !== 'Cancelled' // Exclude cancelled requests from count
       ).length;
     });
   };
 
-  // Enhanced computed properties for filtered requests
+  // Enhanced computed properties for filtered requests - excludes cancelled requests
   const filteredRequestsByDate = computed(() => {
     return allRequests.value.filter(
       (request) =>
         request.request_date === requestListFilter.value.selectedDate &&
-        request.request_status === 'Pending'
+        request.request_status === 'Pending' &&
+        request.request_status !== 'Cancelled' // Auto-filter cancelled requests
     );
   });
 
@@ -1064,7 +1068,13 @@
         </div>
         <div class="stat-title text-black/50">Pending Requests</div>
         <div class="stat-value text-primaryColor">
-          {{ allRequests.filter((r) => r.request_status === 'Pending').length }}
+          {{
+            allRequests.filter(
+              (r) =>
+                r.request_status === 'Pending' &&
+                r.request_status !== 'Cancelled'
+            ).length
+          }}
         </div>
         <div class="stat-desc text-black/50">
           {{ hasRequests ? 'Awaiting review' : 'No pending requests' }}

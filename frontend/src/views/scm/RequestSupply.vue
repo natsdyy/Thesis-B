@@ -306,19 +306,23 @@
 
   const quickDateOptions = ref(getQuickDateOptions());
 
-  // Update quick date options with counts
+  // Update quick date options with counts - excludes cancelled requests
   const updateQuickDateCounts = () => {
     quickDateOptions.value.forEach((option) => {
       option.count = allRequests.value.filter(
-        (request) => request.request_date === option.date
+        (request) =>
+          request.request_date === option.date &&
+          request.request_status !== 'Cancelled' // Exclude cancelled requests from count
       ).length;
     });
   };
 
-  // Enhanced computed properties for filtered requests
+  // Enhanced computed properties for filtered requests - excludes cancelled requests
   const filteredRequestsByDate = computed(() => {
     return allRequests.value.filter(
-      (request) => request.request_date === requestListFilter.value.selectedDate
+      (request) =>
+        request.request_date === requestListFilter.value.selectedDate &&
+        request.request_status !== 'Cancelled' // Hide cancelled requests from main view
     );
   });
 
@@ -481,7 +485,7 @@
     );
   });
 
-  // Simple stats
+  // Simple stats - includes cancelled requests
   const requestHistoryStats = computed(() => {
     const completed = filteredRequestHistory.value.filter(
       (r) => r.request_status === 'Completed'
@@ -489,12 +493,16 @@
     const rejected = filteredRequestHistory.value.filter(
       (r) => r.request_status === 'Rejected'
     );
+    const cancelled = filteredRequestHistory.value.filter(
+      (r) => r.request_status === 'Cancelled'
+    );
     const totalAmount = completed.reduce((sum, r) => sum + r.total_amount, 0);
 
     return {
       total: filteredRequestHistory.value.length,
       completed: completed.length,
       rejected: rejected.length,
+      cancelled: cancelled.length,
       totalAmount,
     };
   });
@@ -851,10 +859,34 @@
       // Simulate API call
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // Remove request from the list (or mark as cancelled)
-      allRequests.value = allRequests.value.filter(
-        (r) => r.request_id !== requestId
+      // Mark request as cancelled instead of removing it
+      const requestIndex = allRequests.value.findIndex(
+        (r) => r.request_id === requestId
       );
+
+      if (requestIndex !== -1) {
+        const request = allRequests.value[requestIndex];
+
+        // Update request status
+        allRequests.value[requestIndex] = {
+          ...request,
+          request_status: 'Cancelled',
+          cancelled_at: new Date().toISOString(),
+          cancelled_by: 'SCM User', // In real app, get from auth store
+        };
+
+        // Add to request history for tracking
+        requestHistory.value.unshift({
+          request_id: request.request_id,
+          request_description: request.request_description,
+          request_date: request.request_date,
+          request_status: 'Cancelled',
+          total_amount: request.total_amount,
+          cancelled_by: 'SCM User',
+          cancelled_at: new Date().toISOString(),
+          remarks: 'Request cancelled by SCM department',
+        });
+      }
 
       closeModal();
       showToast('error', 'Request cancelled successfully');
@@ -1019,6 +1051,15 @@
     item.item_amount = (item.item_quantity || 0) * (item.item_unitPrice || 0);
   };
 
+  // History status options for filtering - includes Cancelled
+  const historyStatusOptions = [
+    'Pending',
+    'Sent',
+    'Completed',
+    'Rejected',
+    'Cancelled',
+  ];
+
   // Add these new reactive variables
   const budgetReleases = ref([
     {
@@ -1027,7 +1068,21 @@
       released_amount: 125000.0,
       released_at: '2025-01-15T09:00:00Z',
       released_by: 'Finance Manager',
+      department: 'SCM',
+      priority: 'High',
       awaiting_receipt: true,
+      release_id: 'BR2025004',
+    },
+    {
+      request_id: 2025081502,
+      request_description: 'Cleaning supplies for all branches',
+      released_amount: 15000.0,
+      released_at: '2025-01-14T11:30:00Z',
+      released_by: 'Finance Manager',
+      department: 'SCM',
+      priority: 'Normal',
+      awaiting_receipt: true,
+      release_id: 'BR2025005',
     },
   ]);
 
@@ -2814,9 +2869,11 @@
 
               <td class="font-semibold text-left">
                 ₱{{
-                  request.total_amount.toLocaleString('en-PH', {
-                    minimumFractionDigits: 2,
-                  })
+                  request.total_amount
+                    ? request.total_amount.toLocaleString('en-PH', {
+                        minimumFractionDigits: 2,
+                      })
+                    : '0.00'
                 }}
               </td>
 

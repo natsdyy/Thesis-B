@@ -12,6 +12,7 @@ import {
   Shield,
   Settings,
   ReceiptText,
+  Store,
 } from 'lucide-vue-next';
 
 export const menuItems = [
@@ -88,7 +89,12 @@ export const menuItems = [
     route: '/finance/dashboard',
     department: 'Finance',
   },
-
+  {
+    name: 'Request Approval',
+    icon: ReceiptText,
+    route: '/finance/request-approval',
+    department: 'Finance',
+  },
   {
     name: 'Accounting',
     icon: BarChart3,
@@ -166,7 +172,7 @@ export const menuItems = [
   },
   {
     name: 'Branch Management',
-    icon: Shield,
+    icon: Store,
     route: '/admin/branches',
     department: 'Administration',
     superAdminOnly: true,

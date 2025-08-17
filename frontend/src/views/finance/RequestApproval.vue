@@ -1,6 +1,5 @@
 <script setup>
   import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
-  import cashRequestReceiptModal from '../../components/scm/cashRequestReceiptModal.vue';
   import PikaDay from 'pikaday';
   import 'pikaday/css/pikaday.css';
   import {
@@ -19,10 +18,12 @@
     Download,
     TrendingUp,
     TrendingDown,
+    Edit,
+    FileText,
   } from 'lucide-vue-next';
 
   const loading = ref(false);
-  const hasRequests = ref(true); // Set to true since we have mock data
+  const hasRequests = ref(true);
   const hasApprovedRequests = ref(true);
   const hasPendingRequests = ref(true);
   const hasRejectedRequests = ref(true);
@@ -33,14 +34,6 @@
   const requestHistoryCurrentPage = ref(1);
   const requestHistoryPerPage = ref(10);
 
-  const showReceipt = ref(false);
-  const receiptData = ref(null);
-
-  function closeReceipt() {
-    showReceipt.value = false;
-    receiptData.value = null;
-  }
-
   const rowRequest = ref([
     {
       id: 1,
@@ -48,7 +41,7 @@
       item_quantity: 0,
       item_unit: '',
       item_type: '',
-      item_unitPrice: 0, // Fixed: consistent naming
+      item_unitPrice: 0,
       item_amount: 0,
     },
   ]);
@@ -60,100 +53,140 @@
       item_quantity: 0,
       item_unit: '',
       item_type: '',
-      item_unitPrice: 0, // Fixed: changed from item_price to item_unitPrice
+      item_unitPrice: 0,
       item_amount: 0,
     });
   };
 
-  // Enhanced mock data with different dates for testing
+  // Mock data for pending requests from SCM
   const allRequests = ref([
     {
       request_id: 2025081401,
-      request_date: new Date().toISOString().split('T')[0], // Today
-      request_description: 'Office supplies needed',
-      request_status: 'Approved',
+      request_date: new Date().toISOString().split('T')[0],
+      request_description: 'Office supplies needed for branch operations',
+      request_status: 'Pending',
+      department: 'SCM',
+      requested_by: 'John Doe',
+      priority: 'Normal',
       created_at: new Date().toISOString(),
+      sent_at: new Date().toISOString(),
+      total_amount: 15750.5,
+      items: [
+        {
+          id: 1,
+          item_name: 'A4 Paper',
+          item_quantity: 10,
+          item_unit: 'REAM',
+          item_type: 'Office Supplies',
+          item_unitPrice: 250.0,
+          item_amount: 2500.0,
+        },
+        {
+          id: 2,
+          item_name: 'Ballpoint Pens',
+          item_quantity: 50,
+          item_unit: 'PC',
+          item_type: 'Office Supplies',
+          item_unitPrice: 15.0,
+          item_amount: 750.0,
+        },
+      ],
     },
     {
       request_id: 2025081402,
       request_date: new Date(Date.now() - 24 * 60 * 60 * 1000)
         .toISOString()
-        .split('T')[0], // Yesterday
-      request_description: 'Raw materials for production',
-      request_status: 'Rejected',
+        .split('T')[0],
+      request_description: 'Raw materials for kitchen operations',
+      request_status: 'Pending',
+      department: 'SCM',
+      requested_by: 'Jane Smith',
+      priority: 'High',
       created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+      sent_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+      total_amount: 45000.0,
+      items: [
+        {
+          id: 1,
+          item_name: 'Premium Beef',
+          item_quantity: 20,
+          item_unit: 'KG',
+          item_type: 'Raw Meat',
+          item_unitPrice: 800.0,
+          item_amount: 16000.0,
+        },
+        {
+          id: 2,
+          item_name: 'Fresh Vegetables',
+          item_quantity: 15,
+          item_unit: 'KG',
+          item_type: 'Ingredient',
+          item_unitPrice: 150.0,
+          item_amount: 2250.0,
+        },
+      ],
     },
     {
       request_id: 2025081403,
-      request_date: new Date().toISOString().split('T')[0], // Today
-      request_description: 'Maintenance service request',
+      request_date: new Date().toISOString().split('T')[0],
+      request_description: 'Kitchen equipment maintenance and replacement',
       request_status: 'Pending',
+      department: 'SCM',
+      requested_by: 'Mike Johnson',
+      priority: 'Urgent',
       created_at: new Date().toISOString(),
-    },
-    {
-      request_id: 2025081404,
-      request_date: new Date(Date.now() + 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split('T')[0], // Tomorrow
-      request_description:
-        'Office supplies needed for the office, including pens, paper, and other office supplies.',
-      request_status: 'To Request',
-      created_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      request_id: 2025081405,
-      request_date: new Date().toISOString().split('T')[0], // Today
-      request_description: 'Kitchen equipment maintenance',
-      request_status: 'To Request',
-      created_at: new Date().toISOString(),
+      sent_at: new Date().toISOString(),
+      total_amount: 28500.75,
+      items: [
+        {
+          id: 1,
+          item_name: 'Industrial Blender',
+          item_quantity: 2,
+          item_unit: 'PC',
+          item_type: 'Kitchen Equipment',
+          item_unitPrice: 12500.0,
+          item_amount: 25000.0,
+        },
+      ],
     },
   ]);
 
-  // Mock data for request history
+  // Mock data for request history (approved/rejected)
   const requestHistory = ref([
     {
-      request_id: 2025081401,
-      request_description: 'Office supplies needed',
-      request_date: '2025-01-01',
-      request_status: 'Completed',
-      total_amount: 15750.5,
-      receipt: 'receipt1.jpg',
+      request_id: 2025081301,
+      request_description: 'Office supplies for Q1',
+      request_date: '2025-01-10',
+      request_status: 'Approved',
+      total_amount: 12750.5,
+      approved_by: 'Finance Manager',
+      approved_at: '2025-01-11T10:30:00Z',
+      remarks: 'Approved as requested',
     },
     {
-      request_id: 2025081402,
-      request_description: 'Raw materials for production',
-      request_date: '2025-01-02',
-      request_status: 'Completed',
-      total_amount: 45000.0,
-      receipt: 'receipt2.jpg',
-    },
-    {
-      request_id: 2025081403,
-      request_description: 'Kitchen equipment maintenance and replacement',
-      request_date: '2025-01-03',
+      request_id: 2025081302,
+      request_description: 'Premium kitchen equipment',
+      request_date: '2025-01-09',
       request_status: 'Rejected',
-      total_amount: 28500.75,
-      receipt: null,
+      total_amount: 85000.0,
+      rejected_by: 'Finance Manager',
+      rejected_at: '2025-01-10T14:20:00Z',
+      remarks:
+        'Budget exceeded for this quarter. Please resubmit with lower cost alternatives.',
     },
     {
-      request_id: 2025081404,
+      request_id: 2025081303,
       request_description: 'Cleaning supplies for all branches',
-      request_date: '2025-01-04',
-      request_status: 'Rejected',
+      request_date: '2025-01-08',
+      request_status: 'Approved',
       total_amount: 8200.25,
-      receipt: null,
-    },
-    {
-      request_id: 2025081405,
-      request_description: 'IT equipment and software licenses',
-      request_date: '2025-01-05',
-      request_status: 'Completed',
-      total_amount: 125000.0,
-      receipt: 'receipt3.jpg',
+      approved_by: 'Finance Manager',
+      approved_at: '2025-01-09T09:15:00Z',
+      remarks: 'Approved with quantity adjustments',
     },
   ]);
 
-  // Modal state management (similar to RoleManager)
+  // Modal state management
   const modal = ref({
     type: null,
     show: false,
@@ -162,19 +195,20 @@
       request_type: '',
       request_description: '',
       request_date: '',
+      remarks: '',
     },
   });
 
-  // Enhanced form data for new/edit request
-  const requestForm = ref({
-    request_id: null,
-    request_type: '',
-    request_description: '',
-    request_date: new Date().toISOString().split('T')[0],
-    priority: 'Normal',
-    department: 'SCM',
-    requested_by: 'Current User', // In real app, get from auth store
-    items: [],
+  // Enhanced confirmation modal state
+  const confirmModal = ref({
+    show: false,
+    type: '',
+    title: '',
+    message: '',
+    confirmText: '',
+    confirmClass: '',
+    data: null,
+    onConfirm: null,
   });
 
   // Request history filter
@@ -186,54 +220,6 @@
     sortBy: 'request_date',
     sortOrder: 'desc',
   });
-
-  // Enhanced request types with categories
-  const requestCategories = [
-    {
-      category: 'Equipment',
-      types: [
-        'Kitchen Equipment',
-        'Office Equipment',
-        'Service Equipment',
-        'Cleaning Equipment',
-      ],
-    },
-    {
-      category: 'Materials',
-      types: [
-        'Raw Materials',
-        'Ingredients',
-        'Office Supplies',
-        'Cleaning Supplies',
-      ],
-    },
-    {
-      category: 'Services',
-      types: [
-        'Maintenance Service',
-        'Cleaning Service',
-        'IT Service',
-        'Consulting Service',
-      ],
-    },
-    {
-      category: 'Beverages',
-      types: [
-        'Water',
-        'Soft Drinks',
-        'Juices',
-        'Alcoholic Beverages',
-        'Coffee & Tea',
-        'Other',
-      ],
-    },
-  ];
-
-  const priorities = ['Low', 'Normal', 'High', 'Urgent'];
-  const departments = ['SCM', 'Finance', 'HR', 'Production', 'Admin', 'Branch'];
-  const branches = ['Branch 1', 'Branch 2', 'Branch 3', 'Branch 4', 'Branch 5'];
-  const selectedDepartment = ref('');
-  const selectedBranch = ref('');
 
   // Toast state
   const toast = ref({ show: false, type: '', message: '' });
@@ -271,7 +257,7 @@
 
   // Request List Date Filter
   const requestListFilter = ref({
-    selectedDate: getPhilippineDateString(), // Default to today (Philippine time)
+    selectedDate: getPhilippineDateString(),
     showDatePicker: false,
   });
 
@@ -314,13 +300,17 @@
   // Enhanced computed properties for filtered requests
   const filteredRequestsByDate = computed(() => {
     return allRequests.value.filter(
-      (request) => request.request_date === requestListFilter.value.selectedDate
+      (request) =>
+        request.request_date === requestListFilter.value.selectedDate &&
+        request.request_status === 'Pending'
     );
   });
 
   const sortedRequests = computed(() => {
     return [...filteredRequestsByDate.value].sort(
-      (a, b) => new Date(b.created_at) - new Date(a.created_at)
+      (a, b) =>
+        new Date(b.sent_at || b.created_at) -
+        new Date(a.sent_at || a.created_at)
     );
   });
 
@@ -336,13 +326,13 @@
   // Date filter methods
   const selectQuickDate = (dateOption) => {
     requestListFilter.value.selectedDate = dateOption.date;
-    currentPage.value = 1; // Reset to first page when changing date
+    currentPage.value = 1;
     requestListFilter.value.showDatePicker = false;
   };
 
   const selectCustomDate = (event) => {
     requestListFilter.value.selectedDate = event.target.value;
-    currentPage.value = 1; // Reset to first page when changing date
+    currentPage.value = 1;
     requestListFilter.value.showDatePicker = false;
   };
 
@@ -385,7 +375,7 @@
     { deep: true, immediate: true }
   );
 
-  // Fixed computed properties
+  // Fixed computed properties for modal pagination
   const paginatedRequestModal = computed(() => {
     const start =
       (requestModalCurrentPage.value - 1) * rowRequestModalPerPage.value;
@@ -479,17 +469,17 @@
 
   // Simple stats
   const requestHistoryStats = computed(() => {
-    const completed = filteredRequestHistory.value.filter(
-      (r) => r.request_status === 'Completed'
+    const approved = filteredRequestHistory.value.filter(
+      (r) => r.request_status === 'Approved'
     );
     const rejected = filteredRequestHistory.value.filter(
       (r) => r.request_status === 'Rejected'
     );
-    const totalAmount = completed.reduce((sum, r) => sum + r.total_amount, 0);
+    const totalAmount = approved.reduce((sum, r) => sum + r.total_amount, 0);
 
     return {
       total: filteredRequestHistory.value.length,
-      completed: completed.length,
+      approved: approved.length,
       rejected: rejected.length,
       totalAmount,
     };
@@ -516,7 +506,14 @@
 
   // Export to CSV
   const exportToCSV = () => {
-    const headers = ['Request ID', 'Date', 'Description', 'Status', 'Amount'];
+    const headers = [
+      'Request ID',
+      'Date',
+      'Description',
+      'Status',
+      'Amount',
+      'Remarks',
+    ];
     const csvContent = [
       headers.join(','),
       ...filteredRequestHistory.value.map((request) =>
@@ -526,6 +523,7 @@
           `"${request.request_description.replace(/"/g, '""')}"`,
           request.request_status,
           request.total_amount,
+          `"${(request.remarks || '').replace(/"/g, '""')}"`,
         ].join(',')
       ),
     ].join('\n');
@@ -536,7 +534,7 @@
     link.setAttribute('href', url);
     link.setAttribute(
       'download',
-      `request_history_${new Date().toISOString().split('T')[0]}.csv`
+      `finance_request_history_${new Date().toISOString().split('T')[0]}.csv`
     );
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
@@ -553,7 +551,7 @@
     { deep: true }
   );
 
-  // Modal methods (similar to RoleManager)
+  // Modal methods
   const openModal = async (type, request = null) => {
     modal.value = {
       type,
@@ -561,17 +559,25 @@
       request,
       data: request
         ? {
-            request_type: request.request_type,
+            request_type: request.request_type || '',
             request_description: request.request_description,
             request_date: request.request_date,
+            remarks: '',
           }
-        : { request_type: '', request_description: '', request_date: '' },
+        : {
+            request_type: '',
+            request_description: '',
+            request_date: '',
+            remarks: '',
+          },
     };
 
     // Initialize form based on action type
-    initializeRequestForm(request);
+    if (type === 'edit' && request) {
+      initializeRequestForm(request);
+    }
 
-    if (type === 'create' || type === 'edit') {
+    if (type === 'edit') {
       document.getElementById('request_form_modal').showModal();
     } else {
       document.getElementById('universal_modal').showModal();
@@ -586,59 +592,39 @@
       type: null,
       show: false,
       request: null,
-      data: { request_type: '', request_description: '', request_date: '' },
+      data: {
+        request_type: '',
+        request_description: '',
+        request_date: '',
+        remarks: '',
+      },
     };
   };
-
-  // Enhanced confirmation modal state
-  const confirmModal = ref({
-    show: false,
-    type: '',
-    title: '',
-    message: '',
-    confirmText: '',
-    confirmClass: '',
-    data: null,
-    onConfirm: null,
-  });
 
   // Enhanced confirmation modal functions
   const openConfirmModal = (type, data = null, customConfig = {}) => {
     const configs = {
-      create: {
-        title: 'Create Request',
-        message: 'Are you sure you want to create this request?',
-        confirmText: 'Create',
-        confirmClass: 'btn-primary bg-primaryColor',
-        onConfirm: () => handleCreateRequest(),
+      approve: {
+        title: 'Approve Request',
+        message: `Are you sure you want to approve request #${data?.request_id}?`,
+        confirmText: 'Approve',
+        confirmClass: 'btn-success',
+        onConfirm: () => handleApproveRequest(data.request_id),
+      },
+      reject: {
+        title: 'Reject Request',
+        message: `Are you sure you want to reject request #${data?.request_id}?`,
+        confirmText: 'Reject',
+        confirmClass: 'btn-error',
+        onConfirm: () =>
+          handleRejectRequest(data.request_id, modal.value.data.remarks),
       },
       edit: {
         title: 'Update Request',
         message: `Are you sure you want to update request #${data?.request_id}?`,
         confirmText: 'Update',
         confirmClass: 'btn-primary bg-primaryColor',
-        onConfirm: () => handleUpdateRequest(data.request_id, modal.value.data),
-      },
-      send: {
-        title: 'Send Request',
-        message: `Are you sure you want to send request #${data?.request_id}? This will submit the request for approval.`,
-        confirmText: 'Send',
-        confirmClass: 'btn-success',
-        onConfirm: () => handleSendRequest(data.request_id),
-      },
-      cancel: {
-        title: 'Cancel Request',
-        message: `Are you sure you want to cancel request #${data?.request_id}? This action cannot be undone.`,
-        confirmText: 'Cancel Request',
-        confirmClass: 'btn-error',
-        onConfirm: () => handleCancelRequest(data.request_id),
-      },
-      delete: {
-        title: 'Delete Request',
-        message: `Are you sure you want to permanently delete request #${data?.request_id}? This action cannot be undone.`,
-        confirmText: 'Delete',
-        confirmClass: 'btn-error',
-        onConfirm: () => handleDeleteRequest(data.request_id),
+        onConfirm: () => handleEditRequest(data.request_id),
       },
     };
 
@@ -678,99 +664,102 @@
         await confirmModal.value.onConfirm();
         closeConfirmModal();
       } catch (error) {
-        // Error is handled by individual functions
         console.error('Confirmation action failed:', error);
       }
     }
   };
 
-  // Enhanced request handling functions
-  const handleCreateRequest = async () => {
+  // Finance-specific request handling functions
+  const handleApproveRequest = async (requestId) => {
     loading.value = true;
     try {
-      // Enhanced validation
-      if (!requestForm.value.request_type.trim()) {
-        showToast('error', 'Please select a request type');
-        return;
-      }
-
-      if (!requestForm.value.request_description.trim()) {
-        showToast('error', 'Please enter a request description');
-        return;
-      }
-
-      if (!requestForm.value.request_date) {
-        showToast('error', 'Please select a request date');
-        return;
-      }
-
-      const validItems = rowRequest.value.filter(
-        (row) =>
-          row.item_name.trim() &&
-          row.item_quantity > 0 &&
-          row.item_unitPrice > 0
-      );
-
-      if (validItems.length === 0) {
-        showToast(
-          'error',
-          'Please add at least one valid item with name, quantity, and price'
-        );
-        return;
-      }
-
       // Simulate API call
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // Create new request with enhanced data
-      const newRequestData = {
-        request_id: Date.now(),
-        request_type: requestForm.value.request_type,
-        request_description: requestForm.value.request_description,
-        request_date: requestForm.value.request_date,
-        priority: requestForm.value.priority,
-        department: requestForm.value.department,
-        requested_by: requestForm.value.requested_by,
-        request_status: 'To Request',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        items: validItems.map((item) => ({
-          ...item,
-          item_amount: item.item_quantity * item.item_unitPrice,
-        })),
-        total_amount: parseFloat(totalAmount.value),
-        item_count: validItems.length,
-      };
+      // Find the request
+      const requestIndex = allRequests.value.findIndex(
+        (r) => r.request_id === requestId
+      );
 
-      allRequests.value.unshift(newRequestData);
+      if (requestIndex !== -1) {
+        const request = allRequests.value[requestIndex];
+
+        // Add to history
+        requestHistory.value.unshift({
+          request_id: request.request_id,
+          request_description: request.request_description,
+          request_date: request.request_date,
+          request_status: 'Approved',
+          total_amount: request.total_amount,
+          approved_by: 'Finance Manager', // In real app, get from auth store
+          approved_at: new Date().toISOString(),
+          remarks: modal.value.data.remarks || 'Approved as requested',
+        });
+
+        // Remove from pending requests
+        allRequests.value.splice(requestIndex, 1);
+      }
 
       closeModal();
-      showToast(
-        'success',
-        `Request created successfully with ${validItems.length} items`
-      );
+      showToast('success', `Request #${requestId} approved successfully`);
     } catch (err) {
-      showToast('error', 'Failed to create request');
+      showToast('error', 'Failed to approve request');
       throw err;
     } finally {
       loading.value = false;
     }
   };
 
-  const handleUpdateRequest = async (requestId, updatedData) => {
+  const handleRejectRequest = async (requestId, remarks) => {
     loading.value = true;
     try {
-      // Enhanced validation (same as create)
-      if (!requestForm.value.request_type.trim()) {
-        showToast('error', 'Please select a request type');
+      // Validation
+      if (!remarks || remarks.trim() === '') {
+        showToast('error', 'Please provide remarks for rejection');
         return;
       }
 
-      if (!requestForm.value.request_description.trim()) {
-        showToast('error', 'Please enter a request description');
-        return;
+      // Simulate API call
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Find the request
+      const requestIndex = allRequests.value.findIndex(
+        (r) => r.request_id === requestId
+      );
+
+      if (requestIndex !== -1) {
+        const request = allRequests.value[requestIndex];
+
+        // Add to history
+        requestHistory.value.unshift({
+          request_id: request.request_id,
+          request_description: request.request_description,
+          request_date: request.request_date,
+          request_status: 'Rejected',
+          total_amount: request.total_amount,
+          rejected_by: 'Finance Manager', // In real app, get from auth store
+          rejected_at: new Date().toISOString(),
+          remarks: remarks.trim(),
+        });
+
+        // Remove from pending requests
+        allRequests.value.splice(requestIndex, 1);
       }
 
+      closeModal();
+      showToast('success', `Request #${requestId} rejected successfully`);
+    } catch (err) {
+      showToast('error', 'Failed to reject request');
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const handleEditRequest = async (requestId) => {
+    loading.value = true;
+    try {
+      // Validation
       const validItems = rowRequest.value.filter(
         (row) =>
           row.item_name.trim() &&
@@ -790,15 +779,13 @@
       const requestIndex = allRequests.value.findIndex(
         (r) => r.request_id === requestId
       );
+
       if (requestIndex !== -1) {
         allRequests.value[requestIndex] = {
           ...allRequests.value[requestIndex],
-          request_type: requestForm.value.request_type,
-          request_description: requestForm.value.request_description,
-          request_date: requestForm.value.request_date,
-          priority: requestForm.value.priority,
-          department: requestForm.value.department,
+          request_description: modal.value.data.request_description,
           updated_at: new Date().toISOString(),
+          updated_by: 'Finance Manager', // In real app, get from auth store
           items: validItems.map((item) => ({
             ...item,
             item_amount: item.item_quantity * item.item_unitPrice,
@@ -809,7 +796,7 @@
       }
 
       closeModal();
-      showToast('success', 'Request updated successfully');
+      showToast('success', `Request #${requestId} updated successfully`);
     } catch (err) {
       showToast('error', 'Failed to update request');
       throw err;
@@ -818,86 +805,11 @@
     }
   };
 
-  const handleSendRequest = async (requestId) => {
-    loading.value = true;
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Update request status
-      const requestIndex = allRequests.value.findIndex(
-        (r) => r.request_id === requestId
-      );
-      if (requestIndex !== -1) {
-        allRequests.value[requestIndex].request_status = 'Pending';
-      }
-
-      closeModal();
-      showToast('success', 'Request sent successfully');
-    } catch (err) {
-      showToast('error', 'Failed to send request');
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const handleCancelRequest = async (requestId) => {
-    loading.value = true;
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Remove request from the list (or mark as cancelled)
-      allRequests.value = allRequests.value.filter(
-        (r) => r.request_id !== requestId
-      );
-
-      closeModal();
-      showToast('error', 'Request cancelled successfully');
-    } catch (err) {
-      showToast('error', 'Failed to cancel request');
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const handleDeleteRequest = async (requestId) => {
-    loading.value = true;
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Remove request from the list
-      allRequests.value = allRequests.value.filter(
-        (r) => r.request_id !== requestId
-      );
-
-      showToast('success', 'Request deleted successfully');
-    } catch (err) {
-      showToast('error', 'Failed to delete request');
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
   // Action methods
+  const viewRequest = (request) => openModal('viewRequest', request);
   const editRequest = (request) => openModal('edit', request);
-  const confirmSend = (request) => openConfirmModal('send', request);
-  const confirmCancel = (request) => openConfirmModal('cancel', request);
-  const confirmDelete = (request) => openConfirmModal('delete', request);
-  const confirmViewRequest = (request) => openModal('viewRequest', request);
-
-  const handleFormSubmit = (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    newRequest.value = {
-      request_type: formData.get('request_type'),
-      request_description: formData.get('request_description'),
-      request_date: formData.get('request_date'),
-    };
-    openModal('create');
-  };
+  const approveRequest = (request) => openModal('approve', request);
+  const rejectRequest = (request) => openModal('reject', request);
 
   // Add missing functions for backward compatibility
   const fetchRequests = async () => {
@@ -905,14 +817,16 @@
     try {
       // Simulate API call
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      // In real implementation, fetch data from API
+      // In real implementation, fetch pending requests from API
     } finally {
       loading.value = false;
     }
   };
 
   const removeRowRequest = (id) => {
-    rowRequest.value = rowRequest.value.filter((row) => row.id !== id);
+    if (rowRequest.value.length > 1) {
+      rowRequest.value = rowRequest.value.filter((row) => row.id !== id);
+    }
   };
 
   const totalAmount = computed(() => {
@@ -924,63 +838,20 @@
     return total.toFixed(2);
   });
 
-  let requestDatePicker = null;
-  const requestDate = ref('');
-  onMounted(() => {
-    requestDatePicker = new PikaDay({
-      field: document.getElementById('request_date_history'),
-      format: 'YYYY-MM-DD',
-      onSelect: () => {
-        requestDate.value = requestDatePicker.toString();
-      },
-    });
-  });
-  onBeforeUnmount(() => {
-    if (requestDatePicker) requestDatePicker.destroy();
-  });
-
-  // Enhanced form data for new/edit request
+  // Enhanced form data for edit request
   const initializeRequestForm = (request = null) => {
-    if (request) {
-      // Editing existing request
-      requestForm.value = {
-        request_id: request.request_id,
-        request_type: request.request_type || '',
-        request_description: request.request_description || '',
-        request_date:
-          request.request_date || new Date().toISOString().split('T')[0],
-        priority: request.priority || 'Normal',
-        department: request.department || 'SCM',
-        requested_by: request.requested_by || 'Current User',
-        items: request.items || [],
-      };
-
+    if (request && request.items) {
       // Update rowRequest with existing items
-      if (request.items && request.items.length > 0) {
-        rowRequest.value = request.items.map((item, index) => ({
-          id: index + 1,
-          item_name: item.item_name || '',
-          item_quantity: item.item_quantity || 0,
-          item_unit: item.item_unit || '',
-          item_type: item.item_type || '',
-          item_unitPrice: item.item_unitPrice || 0,
-          item_amount: (item.item_quantity || 0) * (item.item_unitPrice || 0),
-        }));
-      } else {
-        resetItemRows();
-      }
+      rowRequest.value = request.items.map((item, index) => ({
+        id: index + 1,
+        item_name: item.item_name || '',
+        item_quantity: item.item_quantity || 0,
+        item_unit: item.item_unit || '',
+        item_type: item.item_type || '',
+        item_unitPrice: item.item_unitPrice || 0,
+        item_amount: (item.item_quantity || 0) * (item.item_unitPrice || 0),
+      }));
     } else {
-      // Creating new request
-      requestForm.value = {
-        request_id: null,
-        request_type: '',
-        request_description: '',
-        request_date: new Date().toISOString().split('T')[0],
-        priority: 'Normal',
-        department: 'SCM',
-        requested_by: 'Current User',
-        items: [],
-      };
       resetItemRows();
     }
   };
@@ -999,21 +870,50 @@
     ];
   };
 
-  // Clear filters
-  const clearHistoryFilters = () => {
-    requestHistoryFilter.value = {
-      startDate: '',
-      endDate: '',
-      status: '',
-      description: '',
-    };
-    requestHistoryCurrentPage.value = 1;
-  };
-
   // Auto-calculate item amounts when quantity or price changes
   const updateItemAmount = (item) => {
     item.item_amount = (item.item_quantity || 0) * (item.item_unitPrice || 0);
   };
+
+  // History status options for filtering
+  const historyStatusOptions = ['Approved', 'Rejected'];
+
+  // Smart pagination helper
+  const getPageRange = () => {
+    const current = requestHistoryCurrentPage.value;
+    const total = totalPagesRequestHistory.value;
+    const range = [];
+
+    // Show pages around current page
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+
+    for (let i = start; i <= end; i++) {
+      if (i !== 1 && i !== total) {
+        range.push(i);
+      }
+    }
+
+    return range;
+  };
+
+  // Date picker setup
+  let requestDatePicker = null;
+  const requestDate = ref('');
+
+  onMounted(() => {
+    requestDatePicker = new PikaDay({
+      field: document.getElementById('request_date_history'),
+      format: 'YYYY-MM-DD',
+      onSelect: () => {
+        requestDate.value = requestDatePicker.toString();
+      },
+    });
+  });
+
+  onBeforeUnmount(() => {
+    if (requestDatePicker) requestDatePicker.destroy();
+  });
 </script>
 
 <template>
@@ -1021,10 +921,10 @@
     <!-- Header -->
     <div class="text-center mb-8">
       <h1 class="text-4xl font-bold text-primaryColor mb-2 text-shadow-xs">
-        Request Supply
+        Request Approval
       </h1>
       <p class="text-black/50">
-        Manage and track supply requests for Countryside Steakhouse.
+        Review and approve supply requests from SCM Department.
       </p>
     </div>
 
@@ -1038,29 +938,12 @@
         <div class="stat-figure">
           <ReceiptText class="w-8 h-8 text-primaryColor" />
         </div>
-        <div class="stat-title text-black/50">Total Requests</div>
+        <div class="stat-title text-black/50">Pending Requests</div>
         <div class="stat-value text-primaryColor">
-          {{ allRequests.length }}
+          {{ allRequests.filter((r) => r.request_status === 'Pending').length }}
         </div>
         <div class="stat-desc text-black/50">
-          {{ hasRequests ? 'Requests configured' : 'No requests yet' }}
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <Send class="w-8 h-8 text-info" />
-        </div>
-        <div class="stat-title text-black/50">To Request</div>
-        <div class="stat-value text-info">
-          {{
-            allRequests.filter((r) => r.request_status === 'To Request').length
-          }}
-        </div>
-        <div class="stat-desc text-black/50">
-          {{ hasRequests ? 'Requests configured' : 'No requests yet' }}
+          {{ hasRequests ? 'Awaiting review' : 'No pending requests' }}
         </div>
       </div>
 
@@ -1070,16 +953,16 @@
         <div class="stat-figure">
           <CheckCircle class="w-8 h-8 text-success" />
         </div>
-        <div class="stat-title text-black/50">Total Approved Requests</div>
+        <div class="stat-title text-black/50">Total Approved</div>
         <div class="stat-value text-success">
           {{
-            allRequests.filter((r) => r.request_status === 'Approved').length
+            requestHistory.filter((r) => r.request_status === 'Approved').length
           }}
         </div>
         <div class="stat-desc text-black/50">
           {{
             hasApprovedRequests
-              ? 'Approved requests configured'
+              ? 'Approved requests'
               : 'No approved requests yet'
           }}
         </div>
@@ -1089,17 +972,19 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <Clock class="w-8 h-8 text-warning" />
+          <XCircle class="w-8 h-8 text-error" />
         </div>
-        <div class="stat-title text-black/50">Total Pending Requests</div>
-        <div class="stat-value text-warning">
-          {{ allRequests.filter((r) => r.request_status === 'Pending').length }}
+        <div class="stat-title text-black/50">Total Rejected</div>
+        <div class="stat-value text-error">
+          {{
+            requestHistory.filter((r) => r.request_status === 'Rejected').length
+          }}
         </div>
         <div class="stat-desc text-black/50">
           {{
-            hasPendingRequests
-              ? 'Pending requests configured'
-              : 'No pending requests yet'
+            hasRejectedRequests
+              ? 'Rejected requests'
+              : 'No rejected requests yet'
           }}
         </div>
       </div>
@@ -1108,21 +993,13 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <XCircle class="w-8 h-8 text-error" />
+          <FileText class="w-8 h-8 text-info" />
         </div>
-        <div class="stat-title text-black/50">Total Rejected Requests</div>
-        <div class="stat-value text-error">
-          {{
-            allRequests.filter((r) => r.request_status === 'Rejected').length
-          }}
+        <div class="stat-title text-black/50">Total Value Approved</div>
+        <div class="stat-value text-info">
+          ₱{{ requestHistoryStats.totalAmount.toLocaleString('en-PH') }}
         </div>
-        <div class="stat-desc text-black/50">
-          {{
-            hasRejectedRequests
-              ? 'Rejected requests configured'
-              : 'No rejected requests yet'
-          }}
-        </div>
+        <div class="stat-desc text-black/50">Finance approved amount</div>
       </div>
     </div>
 
@@ -1132,7 +1009,7 @@
     >
       <div class="card-body">
         <div class="flex justify-between items-center mb-4">
-          <h2 class="card-title text-primaryColor">Request List</h2>
+          <h2 class="card-title text-primaryColor">Pending Requests</h2>
           <div class="flex gap-2">
             <button
               class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
@@ -1149,13 +1026,6 @@
                 v-if="loading"
               ></span>
               Refresh
-            </button>
-            <button
-              class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
-              @click="openModal('create')"
-            >
-              <Plus class="w-4 h-4 mr-2 text-primaryColor" />
-              Add Request
             </button>
           </div>
         </div>
@@ -1200,7 +1070,7 @@
                 >
                   {{ option.label }}
                   <span
-                    class="badge badge-xs ml-1 bg-secondaryColor border-none b"
+                    class="badge badge-xs ml-1 bg-secondaryColor border-none"
                     :class="
                       requestListFilter.selectedDate === option.date
                         ? 'badge-ghost'
@@ -1282,20 +1152,12 @@
             <ReceiptText class="w-16 h-16 text-primaryColor" />
           </div>
           <h3 class="text-lg font-semibold mb-2 text-primaryColor">
-            No requests found for
+            No pending requests for
             {{ formatPhilippineDate(requestListFilter.selectedDate) }}
           </h3>
           <p class="text-black/50 mb-4">
-            Try selecting a different date or create a new request for this
-            date.
+            Try selecting a different date to view pending requests.
           </p>
-          <button
-            class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
-            @click="openModal('create')"
-          >
-            <Plus class="w-4 h-4 mr-2" />
-            Add Request for This Date
-          </button>
         </div>
 
         <!-- Table List -->
@@ -1306,9 +1168,12 @@
             <thead class="text-secondaryColor">
               <tr class="bg-primaryColor text-accentColor">
                 <th>Request ID</th>
-                <th>Request Date</th>
+                <th>Department</th>
+                <th>Requested By</th>
+                <th>Priority</th>
                 <th class="w-1/4">Request Description</th>
-                <th>Request Status</th>
+                <th>Total Amount</th>
+                <th>Request Date</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -1318,40 +1183,49 @@
                 :key="request.request_id"
                 class="hover:bg-secondaryColor/10"
               >
-                <td>{{ request.request_id }}</td>
+                <td class="font-mono font-medium text-primaryColor">
+                  {{ request.request_id }}
+                </td>
+                <td>
+                  <div class="badge badge-outline badge-sm">
+                    {{ request.department }}
+                  </div>
+                </td>
+                <td>{{ request.requested_by }}</td>
+                <td>
+                  <div
+                    class="badge badge-sm border-none"
+                    :class="{
+                      'bg-error/20 text-error': request.priority === 'Urgent',
+                      'bg-warning/20 text-warning': request.priority === 'High',
+                      'bg-info/20 text-info': request.priority === 'Normal',
+                      'bg-success/20 text-success': request.priority === 'Low',
+                    }"
+                  >
+                    {{ request.priority }}
+                  </div>
+                </td>
+                <td class="text-wrap">{{ request.request_description }}</td>
+                <td class="font-semibold">
+                  ₱{{
+                    request.total_amount.toLocaleString('en-PH', {
+                      minimumFractionDigits: 2,
+                    })
+                  }}
+                </td>
                 <td>
                   <div class="flex flex-col">
                     <span>{{ request.request_date }}</span>
                     <span class="text-xs text-black/40">
+                      Sent:
                       {{
-                        new Date(request.created_at).toLocaleTimeString(
-                          'en-PH',
-                          {
-                            timeZone: 'Asia/Manila',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          }
-                        )
+                        new Date(request.sent_at).toLocaleTimeString('en-PH', {
+                          timeZone: 'Asia/Manila',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
                       }}
                     </span>
-                  </div>
-                </td>
-                <td class="text-wrap">{{ request.request_description }}</td>
-                <td>
-                  <div
-                    class="badge badge-sm badge-soft border-none"
-                    :class="{
-                      'bg-info/10 text-info':
-                        request.request_status === 'To Request',
-                      'bg-success/10 text-success':
-                        request.request_status === 'Approved',
-                      'bg-error/10 text-error':
-                        request.request_status === 'Rejected',
-                      'bg-warning/10 text-warning':
-                        request.request_status === 'Pending',
-                    }"
-                  >
-                    {{ request.request_status }}
                   </div>
                 </td>
                 <td>
@@ -1367,42 +1241,23 @@
                       class="dropdown-content z-[1] menu p-2 shadow bg-accentColor rounded-box w-52 border border-black/10"
                     >
                       <li class="hover:bg-black/10">
-                        <a
-                          @click="confirmViewRequest(request)"
-                          class="text-primary"
-                          >View Request</a
+                        <a @click="viewRequest(request)" class="text-primary"
+                          >View Details</a
                         >
                       </li>
-                      <li
-                        class="hover:bg-black/10"
-                        v-if="request.request_status === 'To Request'"
-                      >
+                      <li class="hover:bg-black/10">
                         <a @click="editRequest(request)" class="text-warning"
-                          >Edit</a
+                          >Edit Request</a
                         >
                       </li>
-                      <li
-                        class="hover:bg-black/10"
-                        v-if="request.request_status === 'To Request'"
-                      >
-                        <a @click="confirmSend(request)" class="text-success"
-                          >Send Request</a
+                      <li class="hover:bg-black/10">
+                        <a @click="approveRequest(request)" class="text-success"
+                          >Approve</a
                         >
                       </li>
-                      <li
-                        class="hover:bg-black/10"
-                        v-if="request.request_status === 'Pending'"
-                      >
-                        <a @click="confirmCancel(request)" class="text-error"
-                          >Cancel Request</a
-                        >
-                      </li>
-                      <li
-                        class="hover:bg-black/10"
-                        v-if="request.request_status === 'To Request'"
-                      >
-                        <a @click="confirmDelete(request)" class="text-error"
-                          >Delete Request</a
+                      <li class="hover:bg-black/10">
+                        <a @click="rejectRequest(request)" class="text-error"
+                          >Reject</a
                         >
                       </li>
                     </ul>
@@ -1467,563 +1322,140 @@
     </div>
   </div>
 
-  <cashRequestReceiptModal
-    :cashRequestReceipt="{
-      show: showReceipt,
-      receipt: receiptData,
-      onClose: closeReceipt,
-    }"
-  />
-
-  <!-- Create Request Modal -->
-  <dialog id="create_request_modal" class="modal">
-    <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-6xl">
-      <h3 class="font-bold text-lg">Create Request</h3>
-      <div class="overflow-x-auto">
-        <table
-          class="table table-sm table-zebra text-black/50 border border-black/10 custom-zebra"
-        >
-          <thead class="text-primaryColor">
-            <tr class="bg-primaryColor text-accentColor">
-              <th>Item No.</th>
-              <th>Item Name</th>
-              <th>Quantity</th>
-              <th>Unit</th>
-              <th>Type</th>
-              <th>Unit Price</th>
-              <th>Amount (₱)</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in paginatedRequestModal" :key="row.id">
-              <td>{{ row.id }}</td>
-
-              <td>
-                <input
-                  type="text"
-                  v-model="row.item_name"
-                  placeholder="Type here"
-                  class="input input-xs input-ghost focus:bg-accentColor focus:border-primaryColor focus:text-black"
-                />
-              </td>
-
-              <td>
-                <input
-                  type="number"
-                  v-model.number="row.item_quantity"
-                  placeholder="0"
-                  min="0"
-                  class="input input-xs input-ghost focus:bg-accentColor focus:border-primaryColor focus:text-black"
-                />
-              </td>
-
-              <td>
-                <select v-model="row.item_unit">
-                  <option value="" disabled selected>Select Unit</option>
-                  <option value="PC">PC/s</option>
-                  <option value="KG">KG</option>
-                  <option value="L">L</option>
-                  <option value="BOX">BOX</option>
-                  <option value="CASE">CASE</option>
-                  <option value="REAM">REAM</option>
-                  <option value="PC/S">PC/S</option>
-                </select>
-              </td>
-
-              <td>
-                <select v-model="row.item_type">
-                  <option value="" disabled selected>Select Type</option>
-                  <option value="Ingredient">Ingredient</option>
-                  <option value="Beverages">Beverages</option>
-                  <option value="Raw Meat">Raw Meat</option>
-                  <option value="Kitchen Equipment">Kitchen Equipment</option>
-                  <option value="Cleaning Supplies">Cleaning Supplies</option>
-                  <option value="Office Supplies">Office Supplies</option>
-                  <option value="Service Equipment">Service Equipment</option>
-                  <option value="Other">Other</option>
-                </select>
-              </td>
-              <td>
-                <input
-                  type="number"
-                  v-model.number="row.item_unitPrice"
-                  placeholder="0"
-                  min="0"
-                  step="0.01"
-                  class="input input-xs input-ghost focus:bg-accentColor focus:border-primaryColor focus:text-black"
-                />
-              </td>
-              <td>
-                <p class="text-sm text-black">
-                  {{
-                    (
-                      (Number(row.item_unitPrice) || 0) *
-                      (Number(row.item_quantity) || 0)
-                    ).toFixed(2)
-                  }}
-                </p>
-              </td>
-              <td class="flex justify-center">
-                <button
-                  class="btn btn-ghost btn-xs text-error hover:bg-error/10 rounded-full hover:border-error/10 hover:border-2"
-                  @click="removeRowRequest(row.id)"
-                >
-                  <X class="w-4 h-4" />
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <!-- Request Item Pagination -->
-        <div
-          class="join mt-4 justify-end space-x-1"
-          v-if="rowRequest.length > rowRequestModalPerPage"
-        >
-          <button
-            class="join-item btn font-thin !bg-gray-200 text-black/50 btn-xs border border-none hover:bg-gray-300"
-            :disabled="requestModalCurrentPage <= 1"
-            @click="requestModalCurrentPage--"
-            :class="{ 'btn-disabled': requestModalCurrentPage <= 1 }"
-          >
-            « Prev
-          </button>
-
-          <button
-            class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-xs shadow-none"
-            v-for="page in totalPagesRequestModal"
-            :key="page"
-            :class="{
-              'btn-active': requestModalCurrentPage === page,
-              '!bg-primaryColor text-white': requestModalCurrentPage === page,
-            }"
-            @click="requestModalCurrentPage = page"
-          >
-            {{ page }}
-          </button>
-
-          <button
-            class="join-item btn font-thin btn-xs !bg-gray-200 text-black/50 border border-none"
-            :disabled="
-              requestModalCurrentPage >=
-              Math.ceil(rowRequest.length / rowRequestModalPerPage)
-            "
-            @click="requestModalCurrentPage++"
-            :class="{
-              'btn-disabled':
-                requestModalCurrentPage >=
-                Math.ceil(rowRequest.length / rowRequestModalPerPage),
-            }"
-          >
-            Next »
-          </button>
-        </div>
-        <div class="flex justify-between mt-4">
-          <div class="flex justify-start">
-            <button
-              class="btn btn-sm bg-primaryColor text-white font-thin border border-none hover:bg-primaryColor/80 shadow-none"
-              @click="addRowRequest"
-            >
-              <Plus class="w-4 h-4 mr-2 text-white" />
-              Add Item
-            </button>
-          </div>
-          <div class="flex space-x-0.5 items-center">
-            <p class="flex items-center text-xs font-semibold text-black">
-              TOTAL
-            </p>
-            <div class="flex justify-end gap-2 w-50 bg-gray-200 rounded-xs p-1">
-              <p class="text-sm text-black">₱</p>
-              <p class="text-sm text-black">{{ totalAmount }}</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Request Description -->
-        <div class="form-control mb-4 mt-4">
-          <label class="label">
-            <span class="label-text text-black/50">Request Description</span>
-          </label>
-          <textarea
-            v-model="modal.data.request_description"
-            class="textarea textarea-bordered w-full bg-white border border-black/10 text-black/50 cursor-pointer"
-            rows="3"
-            required
-          ></textarea>
-        </div>
-      </div>
-      <div class="modal-action">
-        <button
-          class="btn btn-sm font-thin bg-gray-200 text-black/50 border border-none hover:bg-gray-300 shadow-none"
-          @click="closeModal"
-        >
-          Cancel
-        </button>
-        <button
-          class="btn btn-sm bg-primaryColor text-white font-thin border border-none hover:bg-primaryColor/80 shadow-none"
-          @click="openConfirmModal('create')"
-        >
-          Create
-        </button>
-      </div>
-    </div>
-  </dialog>
-
-  <!-- Enhanced Confirmation Modal -->
-  <dialog id="confirmation_modal" class="modal">
-    <div class="modal-box bg-accentColor text-black/50 shadow-lg">
-      <h3 class="font-bold text-lg mb-4">{{ confirmModal.title }}</h3>
-
-      <div class="py-4">
-        <p class="mb-4">{{ confirmModal.message }}</p>
-
-        <!-- Show additional details for certain actions -->
-        <div
-          v-if="
-            confirmModal.data &&
-            (confirmModal.type === 'send' ||
-              confirmModal.type === 'cancel' ||
-              confirmModal.type === 'delete')
-          "
-          class="bg-white/10 p-3 rounded mt-3"
-        >
-          <p class="text-sm">
-            <strong>Description:</strong>
-            {{ confirmModal.data.request_description }}
-          </p>
-          <p class="text-sm">
-            <strong>Status:</strong> {{ confirmModal.data.request_status }}
-          </p>
-          <p class="text-sm">
-            <strong>Date:</strong> {{ confirmModal.data.request_date }}
-          </p>
-        </div>
-
-        <!-- Show warning for destructive actions -->
-        <div
-          v-if="
-            confirmModal.type === 'cancel' || confirmModal.type === 'delete'
-          "
-          class="alert alert-warning mt-3"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="stroke-current shrink-0 h-6 w-6"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
-            />
-          </svg>
-          <span class="text-sm">This action cannot be undone!</span>
-        </div>
-      </div>
-
-      <div class="modal-action">
-        <button
-          class="btn btn-sm font-thin bg-gray-200 text-black/50 border border-none hover:bg-gray-300 shadow-none"
-          @click="closeConfirmModal"
-          :disabled="loading"
-        >
-          Cancel
-        </button>
-        <button
-          class="btn btn-sm font-thin border border-none shadow-none text-white"
-          :class="confirmModal.confirmClass"
-          @click="handleConfirmAction"
-          :disabled="loading"
-        >
-          <span
-            class="loading loading-spinner loading-xs"
-            v-if="loading"
-          ></span>
-          {{ loading ? 'Processing...' : confirmModal.confirmText }}
-        </button>
-      </div>
-    </div>
-  </dialog>
-
-  <!-- Universal Modal for Edit/Send/Cancel -->
+  <!-- Universal Modal for View/Approve/Reject -->
   <dialog id="universal_modal" class="modal">
     <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-6xl">
       <!-- View Request Modal Content -->
       <template v-if="modal.type === 'viewRequest'">
         <h3 class="text-lg font-bold mb-4 text-black">Request Details</h3>
-        <div class="overflow-x-auto">
-          <table class="table table-xs text-black">
+
+        <!-- Request Information -->
+        <div
+          class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 p-4 bg-white/5 rounded-lg"
+        >
+          <div>
+            <span class="text-sm text-black/60">Request ID:</span>
+            <p class="font-mono font-medium text-primaryColor">
+              {{ modal.request?.request_id }}
+            </p>
+          </div>
+          <div>
+            <span class="text-sm text-black/60">Department:</span>
+            <p class="font-medium">{{ modal.request?.department }}</p>
+          </div>
+          <div>
+            <span class="text-sm text-black/60">Requested By:</span>
+            <p class="font-medium">{{ modal.request?.requested_by }}</p>
+          </div>
+          <div>
+            <span class="text-sm text-black/60">Priority:</span>
+            <div
+              class="badge badge-sm border-none mt-1"
+              :class="{
+                'bg-error/20 text-error': modal.request?.priority === 'Urgent',
+                'bg-warning/20 text-warning':
+                  modal.request?.priority === 'High',
+                'bg-info/20 text-info': modal.request?.priority === 'Normal',
+                'bg-success/20 text-success': modal.request?.priority === 'Low',
+              }"
+            >
+              {{ modal.request?.priority }}
+            </div>
+          </div>
+          <div class="md:col-span-2">
+            <span class="text-sm text-black/60">Description:</span>
+            <p class="font-medium">{{ modal.request?.request_description }}</p>
+          </div>
+        </div>
+
+        <!-- Items Table -->
+        <div class="overflow-x-auto mb-4">
+          <table class="table table-xs text-black custom-zebra">
             <thead class="text-black bg-primaryColor">
-              <tr class="border border-black text-accentColor">
-                <th class="border border-black">Item No.</th>
-                <th class="border border-black">Item Name</th>
-                <th class="border border-black">Quantity</th>
-                <th class="border border-black">Unit</th>
-                <th class="border border-black">Type</th>
-                <th class="border border-black">Unit Price</th>
-                <th class="border border-black">Amount (₱)</th>
+              <tr class="text-accentColor border border-black/10">
+                <th class="border border-black/10">Item No.</th>
+                <th class="border border-black/10">Item Name</th>
+                <th class="border border-black/10">Quantity</th>
+                <th class="border border-black/10">Unit</th>
+                <th class="border border-black/10">Type</th>
+                <th class="border border-black/10">Unit Price</th>
+                <th class="border border-black/10">Amount (₱)</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in paginatedRequestModal" :key="row.id">
-                <td class="border border-black">{{ row.id }}</td>
-                <td class="border border-black">{{ row.item_name }}</td>
-                <td class="border border-black">{{ row.item_quantity }}</td>
-                <td class="border border-black">{{ row.item_unit }}</td>
-                <td class="border border-black">{{ row.item_type }}</td>
-                <td class="border border-black">{{ row.item_unitPrice }}</td>
-                <td class="border border-black">{{ row.item_amount }}</td>
-              </tr>
-              <tr class="border border-black">
-                <td
-                  colspan="6"
-                  class="text-right font-semibold border border-black"
-                >
-                  Total
+              <tr v-for="item in modal.request?.items || []" :key="item.id">
+                <td class="border border-black/10">{{ item.id }}</td>
+                <td class="border border-black/10">{{ item.item_name }}</td>
+                <td class="border border-black/10">{{ item.item_quantity }}</td>
+                <td class="border border-black/10">{{ item.item_unit }}</td>
+                <td class="border border-black/10">{{ item.item_type }}</td>
+                <td class="border border-black/10">
+                  ₱{{ item.item_unitPrice.toFixed(2) }}
                 </td>
-                <td class="font-semibold border border-black">
-                  ₱ {{ totalAmount }}
+                <td class="border border-black/10">
+                  ₱{{ item.item_amount.toFixed(2) }}
+                </td>
+              </tr>
+              <tr class="border border-black/10">
+                <td colspan="6" class="text-right font-semibold">Total</td>
+                <td class="font-semibold border border-black/10">
+                  ₱{{ modal.request?.total_amount.toFixed(2) }}
                 </td>
               </tr>
             </tbody>
           </table>
-          <div class="mt-4">
-            <p class="text-sm text-black/50">
-              Description: {{ modal.request?.request_description }}
-            </p>
-          </div>
         </div>
+
         <div class="modal-action">
           <button
             type="button"
             class="btn btn-outline font-thin btn-sm bg-gray-200 text-black/50 border border-none hover:bg-gray-300 shadow-none"
             @click="closeModal"
           >
-            Cancel
-          </button>
-        </div>
-      </template>
-      <!-- Edit Modal Content -->
-      <template v-if="modal.type === 'edit'">
-        <h3 class="text-lg font-bold mb-4 text-black">Edit Request</h3>
-        <div class="overflow-x-auto">
-          <table
-            class="table table-sm table-zebra text-black/50 border border-black/10 custom-zebra"
-          >
-            <thead class="text-primaryColor">
-              <tr class="bg-primaryColor text-accentColor">
-                <th>Item No.</th>
-                <th>Item Name</th>
-                <th>Quantity</th>
-                <th>Unit</th>
-                <th>Type</th>
-                <th>Unit Price</th>
-                <th>Amount (₱)</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in paginatedRequestModal" :key="row.id">
-                <td>{{ row.id }}</td>
-
-                <td>
-                  <input
-                    type="text"
-                    v-model="row.item_name"
-                    placeholder="Type here"
-                    class="input input-xs input-ghost focus:bg-accentColor focus:border-primaryColor focus:text-black"
-                  />
-                </td>
-
-                <td>
-                  <input
-                    type="number"
-                    v-model.number="row.item_quantity"
-                    placeholder="0"
-                    min="0"
-                    class="input input-xs input-ghost focus:bg-accentColor focus:border-primaryColor focus:text-black"
-                  />
-                </td>
-
-                <td>
-                  <select v-model="row.item_unit">
-                    <option value="" disabled selected>Select Unit</option>
-                    <option value="PC">PC/s</option>
-                    <option value="KG">KG</option>
-                    <option value="L">L</option>
-                    <option value="BOX">BOX</option>
-                    <option value="CASE">CASE</option>
-                    <option value="REAM">REAM</option>
-                    <option value="PC/S">PC/S</option>
-                  </select>
-                </td>
-
-                <td>
-                  <select v-model="row.item_type">
-                    <option value="" disabled selected>Select Type</option>
-                    <option value="Ingredient">Ingredient</option>
-                    <option value="Beverages">Beverages</option>
-                    <option value="Raw Meat">Raw Meat</option>
-                    <option value="Kitchen Equipment">Kitchen Equipment</option>
-                    <option value="Cleaning Supplies">Cleaning Supplies</option>
-                    <option value="Office Supplies">Office Supplies</option>
-                    <option value="Service Equipment">Service Equipment</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    v-model.number="row.item_unitPrice"
-                    placeholder="0"
-                    min="0"
-                    step="0.01"
-                    class="input input-xs input-ghost focus:bg-accentColor focus:border-primaryColor focus:text-black"
-                  />
-                </td>
-                <td>
-                  <p class="text-sm text-black">
-                    {{
-                      (
-                        (Number(row.item_unitPrice) || 0) *
-                        (Number(row.item_quantity) || 0)
-                      ).toFixed(2)
-                    }}
-                  </p>
-                </td>
-                <td class="flex justify-center">
-                  <X
-                    class="w-4 h-4 text-error cursor-pointer hover:bg-error/10 hover:border-error/10 hover:border-2 hover:rounded-full"
-                    @click="removeRowRequest(row.id)"
-                  />
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          <!-- Edit Request Item Pagination -->
-          <div
-            class="join mt-4 justify-end space-x-1"
-            v-if="rowRequest.length > rowRequestModalPerPage"
-          >
-            <button
-              class="join-item btn font-thin !bg-gray-200 text-black/50 btn-xs border border-none hover:bg-gray-300"
-              :disabled="requestModalCurrentPage <= 1"
-              @click="requestModalCurrentPage--"
-              :class="{ 'btn-disabled': requestModalCurrentPage <= 1 }"
-            >
-              « Prev
-            </button>
-
-            <button
-              class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-xs shadow-none"
-              v-for="page in totalPagesRequestModal"
-              :key="page"
-              :class="{
-                'btn-active': requestModalCurrentPage === page,
-                '!bg-primaryColor text-white': requestModalCurrentPage === page,
-              }"
-              @click="requestModalCurrentPage = page"
-            >
-              {{ page }}
-            </button>
-
-            <button
-              class="join-item btn font-thin btn-xs !bg-gray-200 text-black/50 border border-none"
-              :disabled="
-                requestModalCurrentPage >=
-                Math.ceil(rowRequest.length / rowRequestModalPerPage)
-              "
-              @click="requestModalCurrentPage++"
-              :class="{
-                'btn-disabled':
-                  requestModalCurrentPage >=
-                  Math.ceil(rowRequest.length / rowRequestModalPerPage),
-              }"
-            >
-              Next »
-            </button>
-          </div>
-          <div class="flex justify-between mt-4">
-            <div class="flex justify-start">
-              <button
-                class="btn btn-sm bg-primaryColor text-white font-thin border border-none hover:bg-primaryColor/80 shadow-none"
-                @click="addRowRequest"
-              >
-                <Plus class="w-4 h-4 mr-2 text-white" />
-                Add More Item
-              </button>
-            </div>
-            <div class="flex space-x-0.5 items-center">
-              <p class="flex items-center text-xs font-semibold text-black">
-                TOTAL
-              </p>
-              <div
-                class="flex justify-end gap-2 w-50 bg-gray-200 rounded-xs p-1"
-              >
-                <p class="text-sm text-black">₱</p>
-                <p class="text-sm text-black">{{ totalAmount }}</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Request Description -->
-          <div class="form-control mb-4 mt-4">
-            <label class="label">
-              <span class="label-text text-black/50">Request Description</span>
-            </label>
-            <textarea
-              v-model="modal.data.request_description"
-              class="textarea textarea-bordered w-full bg-white border border-black/10 text-black/50 cursor-pointer"
-              rows="3"
-              required
-            ></textarea>
-          </div>
-        </div>
-
-        <div class="modal-action">
-          <button
-            type="button"
-            class="btn btn-outline font-thin btn-sm bg-gray-200 text-black/50 border border-none hover:bg-gray-300"
-            @click="closeModal"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            class="btn bg-primaryColor font-thin border border-none hover:bg-primaryColor/80 btn-sm text-white"
-            :disabled="loading"
-          >
-            <span
-              class="loading loading-spinner loading-xs"
-              v-if="loading"
-            ></span>
-            {{ loading ? 'Saving...' : 'Save' }}
+            Close
           </button>
         </div>
       </template>
 
-      <!-- Send Modal Content -->
-      <template v-if="modal.type === 'send'">
-        <h3 class="text-lg font-bold mb-4">Send Request</h3>
+      <!-- Approve Modal Content -->
+      <template v-if="modal.type === 'approve'">
+        <h3 class="text-lg font-bold mb-4 text-success">Approve Request</h3>
         <p>
-          Are you sure you want to send request
+          Are you sure you want to approve request
           <strong>#{{ modal.request?.request_id }}</strong
           >?
         </p>
         <div class="bg-white/10 p-3 rounded mt-3">
-          <p><strong>Type:</strong> {{ modal.request?.request_type }}</p>
+          <p><strong>Department:</strong> {{ modal.request?.department }}</p>
+          <p>
+            <strong>Requested By:</strong> {{ modal.request?.requested_by }}
+          </p>
           <p>
             <strong>Description:</strong>
             {{ modal.request?.request_description }}
           </p>
+          <p>
+            <strong>Total Amount:</strong> ₱{{
+              modal.request?.total_amount.toLocaleString('en-PH')
+            }}
+          </p>
         </div>
-        <p class="text-sm text-gray-500 mt-2">
-          This request will be sent to the Finance Department for approval.
-        </p>
+
+        <!-- Optional remarks for approval -->
+        <div class="form-control mt-4">
+          <label class="label">
+            <span class="label-text text-black/70"
+              >Approval Remarks (Optional)</span
+            >
+          </label>
+          <textarea
+            v-model="modal.data.remarks"
+            class="textarea textarea-bordered w-full bg-white border-primaryColor/30 text-black/70"
+            rows="2"
+            placeholder="Add any comments about this approval..."
+          ></textarea>
+        </div>
+
         <div class="modal-action">
           <button
             type="button"
@@ -2035,36 +1467,58 @@
           <button
             type="button"
             class="btn btn-success font-thin btn-sm"
-            @click="handleModalAction"
+            @click="openConfirmModal('approve', modal.request)"
             :disabled="loading"
           >
             <span
               class="loading loading-spinner loading-xs"
               v-if="loading"
             ></span>
-            {{ loading ? 'Sending...' : 'Send Request' }}
+            {{ loading ? 'Approving...' : 'Approve Request' }}
           </button>
         </div>
       </template>
 
-      <!-- Cancel Modal Content -->
-      <template v-if="modal.type === 'cancel'">
-        <h3 class="text-lg font-bold mb-4">Cancel Request</h3>
+      <!-- Reject Modal Content -->
+      <template v-if="modal.type === 'reject'">
+        <h3 class="text-lg font-bold mb-4 text-error">Reject Request</h3>
         <p>
-          Are you sure you want to cancel request
+          Are you sure you want to reject request
           <strong>#{{ modal.request?.request_id }}</strong
           >?
         </p>
         <div class="bg-white/10 p-3 rounded mt-3">
-          <p><strong>Type:</strong> {{ modal.request?.request_type }}</p>
+          <p><strong>Department:</strong> {{ modal.request?.department }}</p>
+          <p>
+            <strong>Requested By:</strong> {{ modal.request?.requested_by }}
+          </p>
           <p>
             <strong>Description:</strong>
             {{ modal.request?.request_description }}
           </p>
+          <p>
+            <strong>Total Amount:</strong> ₱{{
+              modal.request?.total_amount.toLocaleString('en-PH')
+            }}
+          </p>
         </div>
-        <p class="text-sm text-gray-500 mt-2">
-          This action will permanently remove the request.
-        </p>
+
+        <!-- Required remarks for rejection -->
+        <div class="form-control mt-4">
+          <label class="label">
+            <span class="label-text text-black/70"
+              >Rejection Remarks <span class="text-red-500">*</span></span
+            >
+          </label>
+          <textarea
+            v-model="modal.data.remarks"
+            class="textarea textarea-bordered w-full bg-white border-primaryColor/30 text-black/70"
+            rows="3"
+            placeholder="Please provide a reason for rejection..."
+            required
+          ></textarea>
+        </div>
+
         <div class="modal-action">
           <button
             type="button"
@@ -2076,124 +1530,41 @@
           <button
             type="button"
             class="btn btn-error font-thin btn-sm"
-            @click="handleModalAction"
-            :disabled="loading"
+            @click="openConfirmModal('reject', modal.request)"
+            :disabled="loading || !modal.data.remarks?.trim()"
           >
             <span
               class="loading loading-spinner loading-xs"
               v-if="loading"
             ></span>
-            {{ loading ? 'Cancelling...' : 'Cancel Request' }}
+            {{ loading ? 'Rejecting...' : 'Reject Request' }}
           </button>
         </div>
       </template>
     </div>
   </dialog>
 
-  <!-- Enhanced Request Form Modal -->
+  <!-- Enhanced Request Form Modal for Editing -->
   <dialog id="request_form_modal" class="modal">
     <div
       class="modal-box bg-accentColor text-black/50 shadow-lg max-w-7xl max-h-[90vh] overflow-y-auto"
     >
       <h3 class="font-bold text-lg mb-4 text-primaryColor">
-        {{ modal.type === 'create' ? 'Create New Request' : 'Edit Request' }}
+        Edit Request #{{ modal.request?.request_id }}
       </h3>
 
-      <!-- Request Information Form -->
+      <!-- Request Information (Read-only) -->
       <div
         class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6 p-4 bg-white/5 rounded-lg"
       >
         <div class="form-control">
           <label class="label">
-            <span class="label-text text-black/70 font-medium"
-              >Request Type <span class="text-red-500">*</span></span
-            >
-          </label>
-          <select
-            v-model="requestForm.request_type"
-            class="select select-bordered bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-            required
-          >
-            <option value="" disabled>Select Request Type</option>
-            <optgroup
-              v-for="category in requestCategories"
-              :key="category.category"
-              :label="category.category"
-            >
-              <option v-for="type in category.types" :key="type" :value="type">
-                {{ type }}
-              </option>
-            </optgroup>
-          </select>
-        </div>
-
-        <div class="form-control">
-          <label class="label">
-            <span class="label-text text-black/70 font-medium"
-              >Select Priority <span class="text-red-500">*</span></span
-            >
-          </label>
-          <select
-            v-model="requestForm.priority"
-            class="select select-bordered bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-          >
-            <option
-              v-for="priority in priorities"
-              :key="priority"
-              :value="priority"
-            >
-              {{ priority }}
-            </option>
-          </select>
-        </div>
-
-        <div class="form-control">
-          <label class="label">
-            <span class="label-text text-black/70 font-medium"
-              >Department <span class="text-red-500">*</span></span
-            >
-          </label>
-          <select
-            v-model="requestForm.department"
-            class="select select-bordered bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-          >
-            <option v-for="dept in departments" :key="dept" :value="dept">
-              {{ dept }}
-            </option>
-          </select>
-
-          <template v-if="requestForm.department === 'Branch'">
-            <div class="flex flex-col gap-2">
-              <label class="label">
-                <span class="label-text text-black/70 font-medium">Branch</span>
-              </label>
-              <select
-                v-model="requestForm.branch"
-                class="select select-bordered bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-              >
-                <option
-                  v-for="branch in branches"
-                  :key="branch"
-                  :value="branch"
-                >
-                  {{ branch }}
-                </option>
-              </select>
-            </div>
-          </template>
-        </div>
-
-        <div class="form-control">
-          <label class="label">
-            <span class="label-text text-black/70 font-medium"
-              >Request Date <span class="text-red-500">*</span></span
-            >
+            <span class="label-text text-black/70 font-medium">Department</span>
           </label>
           <input
-            v-model="requestForm.request_date"
-            type="date"
-            class="input input-bordered bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-            required
+            :value="modal.request?.department"
+            class="input input-bordered bg-gray-100 border-primaryColor/30 text-black/70"
+            readonly
           />
         </div>
 
@@ -2204,31 +1575,53 @@
             >
           </label>
           <input
-            v-model="requestForm.requested_by"
-            type="text"
-            class="input input-bordered bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+            :value="modal.request?.requested_by"
+            class="input input-bordered bg-gray-100 border-primaryColor/30 text-black/70"
+            readonly
+          />
+        </div>
+
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text text-black/70 font-medium">Priority</span>
+          </label>
+          <input
+            :value="modal.request?.priority"
+            class="input input-bordered bg-gray-100 border-primaryColor/30 text-black/70"
+            readonly
+          />
+        </div>
+
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text text-black/70 font-medium"
+              >Request Date</span
+            >
+          </label>
+          <input
+            :value="modal.request?.request_date"
+            class="input input-bordered bg-gray-100 border-primaryColor/30 text-black/70"
             readonly
           />
         </div>
       </div>
 
-      <!-- Request Description -->
+      <!-- Request Description (Editable) -->
       <div class="form-control mb-6">
         <label class="label">
           <span class="label-text text-black/70 font-medium"
-            >Request Description <span class="text-red-500">*</span></span
+            >Request Description</span
           >
         </label>
         <textarea
-          v-model="requestForm.request_description"
+          v-model="modal.data.request_description"
           class="textarea textarea-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
           rows="3"
           placeholder="Describe the purpose and details of this request..."
-          required
         ></textarea>
       </div>
 
-      <!-- Items Section -->
+      <!-- Items Section (Editable) -->
       <div class="mb-6">
         <div class="flex justify-between items-center mb-4">
           <h4 class="text-lg font-semibold text-primaryColor">Request Items</h4>
@@ -2413,18 +1806,86 @@
         </button>
         <button
           class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
-          @click="
-            modal.type === 'create'
-              ? openConfirmModal('create')
-              : openConfirmModal('edit', modal.request)
-          "
+          @click="openConfirmModal('edit', modal.request)"
           :disabled="loading"
         >
           <span
             class="loading loading-spinner loading-xs mr-2"
             v-if="loading"
           ></span>
-          {{ modal.type === 'create' ? 'Create Request' : 'Update Request' }}
+          Update Request
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Enhanced Confirmation Modal -->
+  <dialog id="confirmation_modal" class="modal">
+    <div class="modal-box bg-accentColor text-black/50 shadow-lg">
+      <h3 class="font-bold text-lg mb-4">{{ confirmModal.title }}</h3>
+
+      <div class="py-4">
+        <p class="mb-4">{{ confirmModal.message }}</p>
+
+        <!-- Show additional details for certain actions -->
+        <div v-if="confirmModal.data" class="bg-white/10 p-3 rounded mt-3">
+          <p class="text-sm">
+            <strong>Description:</strong>
+            {{ confirmModal.data.request_description }}
+          </p>
+          <p class="text-sm">
+            <strong>Department:</strong> {{ confirmModal.data.department }}
+          </p>
+          <p class="text-sm">
+            <strong>Total Amount:</strong> ₱{{
+              confirmModal.data.total_amount?.toLocaleString('en-PH')
+            }}
+          </p>
+        </div>
+
+        <!-- Show warning for reject action -->
+        <div
+          v-if="confirmModal.type === 'reject'"
+          class="alert alert-warning mt-3"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="stroke-current shrink-0 h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+            />
+          </svg>
+          <span class="text-sm"
+            >This will reject the request and notify SCM department.</span
+          >
+        </div>
+      </div>
+
+      <div class="modal-action">
+        <button
+          class="btn btn-sm font-thin bg-gray-200 text-black/50 border border-none hover:bg-gray-300 shadow-none"
+          @click="closeConfirmModal"
+          :disabled="loading"
+        >
+          Cancel
+        </button>
+        <button
+          class="btn btn-sm font-thin border border-none shadow-none text-white"
+          :class="confirmModal.confirmClass"
+          @click="handleConfirmAction"
+          :disabled="loading"
+        >
+          <span
+            class="loading loading-spinner loading-xs"
+            v-if="loading"
+          ></span>
+          {{ loading ? 'Processing...' : confirmModal.confirmText }}
         </button>
       </div>
     </div>
@@ -2449,9 +1910,9 @@
               }}</strong></span
             >
             <span
-              >Completed:
+              >Approved:
               <strong class="text-success">{{
-                requestHistoryStats.completed
+                requestHistoryStats.approved
               }}</strong></span
             >
             <span
@@ -2584,7 +2045,7 @@
               <th class="w-28">Date</th>
               <th class="w-24">Status</th>
               <th class="w-32">Amount</th>
-              <th class="w-24">Receipt</th>
+              <th class="min-w-48">Remarks</th>
             </tr>
           </thead>
           <tbody>
@@ -2653,7 +2114,7 @@
                   class="badge badge-sm border-none font-medium"
                   :class="{
                     'bg-success/20 text-success':
-                      request.request_status === 'Completed',
+                      request.request_status === 'Approved',
                     'bg-error/20 text-error':
                       request.request_status === 'Rejected',
                   }"
@@ -2670,20 +2131,14 @@
                 }}
               </td>
 
-              <td>
-                <a
-                  v-if="
-                    request.request_status === 'Completed' && request.receipt
-                  "
-                  class="text-primaryColor cursor-pointer underline hover:text-primaryColor/80 text-sm font-medium"
-                  @click="
-                    showReceipt = true;
-                    receiptData = request;
-                  "
-                >
-                  View Receipt
-                </a>
-                <span v-else class="text-black/30 text-sm">N/A</span>
+              <td
+                class="!whitespace-normal !sm:max-w-sm !md:max-w-md !break-words"
+              >
+                <div class="tooltip tooltip-top" :data-tip="request.remarks">
+                  <p class="text-sm">
+                    {{ request.remarks || 'N/A' }}
+                  </p>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -2825,27 +2280,6 @@
     </div>
   </transition>
 </template>
-
-<script>
-  // Smart pagination helper
-  const getPageRange = () => {
-    const current = requestHistoryCurrentPage.value;
-    const total = totalPagesRequestHistory.value;
-    const range = [];
-
-    // Show pages around current page
-    const start = Math.max(2, current - 1);
-    const end = Math.min(total - 1, current + 1);
-
-    for (let i = start; i <= end; i++) {
-      if (i !== 1 && i !== total) {
-        range.push(i);
-      }
-    }
-
-    return range;
-  };
-</script>
 
 <style scoped>
   .custom-zebra tbody tr:nth-child(even) {

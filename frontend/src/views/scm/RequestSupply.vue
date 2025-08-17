@@ -1187,7 +1187,7 @@
                 <button
                   v-for="option in quickDateOptions"
                   :key="option.date"
-                  class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor"
+                  class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
                   :class="{
                     'bg-primaryColor text-white':
                       requestListFilter.selectedDate === option.date,
@@ -2476,15 +2476,15 @@
       <div class="mb-6">
         <!-- Search Bar with Sort -->
         <div class="flex flex-col md:flex-row gap-4 mb-4">
-          <div class="flex-1 relative">
+          <div class="flex-1 relativ">
             <Search
-              class="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-black/40"
+              class="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 !text-black"
             />
             <input
               v-model="requestHistoryFilter.searchQuery"
               type="text"
               placeholder="Search by description or request ID..."
-              class="input input-sm input-bordered bg-white border-primaryColor/30 text-black/70 pl-10 w-full"
+              class="input input-sm input-bordered bg-white border-primaryColor/30 text-black/70 pl-10 w-full shadow-none"
             />
           </div>
 

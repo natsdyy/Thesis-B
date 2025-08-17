@@ -89,6 +89,12 @@ export const menuItems = [
     department: 'Finance',
   },
   {
+    name: 'Request Supply',
+    icon: ReceiptText,
+    route: '/finance/request-supply',
+    department: 'Finance',
+  },
+  {
     name: 'Accounting',
     icon: BarChart3,
     route: '/finance/accounting',

@@ -12,6 +12,7 @@
     Plus,
     EllipsisVertical,
     X,
+    Send,
   } from 'lucide-vue-next';
 
   const loading = ref(false);
@@ -20,7 +21,7 @@
   const hasPendingRequests = ref(true);
   const hasRejectedRequests = ref(true);
   const currentPage = ref(1);
-  const requestsPerPage = ref(5);
+  const requestsPerPage = ref(10);
   const rowRequestModalPerPage = ref(5);
   const requestModalCurrentPage = ref(1);
   const requestHistoryCurrentPage = ref(1);
@@ -63,26 +64,31 @@
     {
       request_id: 2025081401,
       request_date: '2025-01-01',
-      request_type: 'Equipment',
       request_description: 'Office supplies needed',
       request_status: 'Approved',
       created_at: '2025-01-01T10:00:00Z',
     },
     {
       request_id: 2025081402,
-      request_date: '2025-01-02',
-      request_type: 'Material',
+      request_date: '2025-01-01',
       request_description: 'Raw materials for production',
       request_status: 'Rejected',
       created_at: '2025-01-02T11:00:00Z',
     },
     {
       request_id: 2025081403,
-      request_date: '2025-01-03',
-      request_type: 'Service',
+      request_date: '2025-01-01',
       request_description: 'Maintenance service request',
       request_status: 'Pending',
       created_at: '2025-01-03T12:00:00Z',
+    },
+    {
+      request_id: 2025081404,
+      request_date: '2025-01-01',
+      request_description:
+        'Office supplies needed for the office, including pens, paper, and other office supplies.',
+      request_status: 'To Request',
+      created_at: '2025-01-04T13:00:00Z',
     },
   ]);
 
@@ -401,6 +407,23 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed"
       >
         <div class="stat-figure">
+          <Send class="w-8 h-8 text-info" />
+        </div>
+        <div class="stat-title text-black/50">To Request</div>
+        <div class="stat-value text-info">
+          {{
+            allRequests.filter((r) => r.request_status === 'To Request').length
+          }}
+        </div>
+        <div class="stat-desc text-black/50">
+          {{ hasRequests ? 'Requests configured' : 'No requests yet' }}
+        </div>
+      </div>
+
+      <div
+        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed"
+      >
+        <div class="stat-figure">
           <CheckCircle class="w-8 h-8 text-success" />
         </div>
         <div class="stat-title text-black/50">Total Approved Requests</div>
@@ -512,8 +535,7 @@
               <tr class="bg-primaryColor text-accentColor">
                 <th>Request ID</th>
                 <th>Request Date</th>
-                <th>Request Type</th>
-                <th>Request Description</th>
+                <th class="w-1/4">Request Description</th>
                 <th>Request Status</th>
                 <th>Actions</th>
               </tr>
@@ -526,12 +548,13 @@
               >
                 <td>{{ request.request_id }}</td>
                 <td>{{ request.request_date }}</td>
-                <td>{{ request.request_type }}</td>
-                <td>{{ request.request_description }}</td>
+                <td class="text-wrap">{{ request.request_description }}</td>
                 <td>
                   <div
                     class="badge badge-sm badge-soft border-none"
                     :class="{
+                      'bg-info/10 text-info':
+                        request.request_status === 'To Request',
                       'bg-success/10 text-success':
                         request.request_status === 'Approved',
                       'bg-error/10 text-error':
@@ -927,21 +950,51 @@
 
   <!-- Universal Modal for Edit/Send/Cancel -->
   <dialog id="universal_modal" class="modal">
-    <div class="modal-box bg-accentColor text-black/50 shadow-lg">
+    <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-6xl">
       <!-- View Request Modal Content -->
       <template v-if="modal.type === 'viewRequest'">
-        <h3 class="text-lg font-bold mb-4">Request Details</h3>
-        <p>
-          Are you sure you want to view request
-          <strong>#{{ modal.request?.request_id }}</strong
-          >?
-        </p>
-        <div class="bg-white/10 p-3 rounded mt-3">
-          <p><strong>Type:</strong> {{ modal.request?.request_type }}</p>
-          <p>
-            <strong>Description:</strong>
-            {{ modal.request?.request_description }}
-          </p>
+        <h3 class="text-lg font-bold mb-4 text-black">Request Details</h3>
+        <div class="overflow-x-auto">
+          <table class="table table-xs text-black">
+            <thead class="text-black bg-primaryColor">
+              <tr class="border border-black text-accentColor">
+                <th class="border border-black">Item No.</th>
+                <th class="border border-black">Item Name</th>
+                <th class="border border-black">Quantity</th>
+                <th class="border border-black">Unit</th>
+                <th class="border border-black">Type</th>
+                <th class="border border-black">Unit Price</th>
+                <th class="border border-black">Amount (₱)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in paginatedRequestModal" :key="row.id">
+                <td class="border border-black">{{ row.id }}</td>
+                <td class="border border-black">{{ row.item_name }}</td>
+                <td class="border border-black">{{ row.item_quantity }}</td>
+                <td class="border border-black">{{ row.item_unit }}</td>
+                <td class="border border-black">{{ row.item_type }}</td>
+                <td class="border border-black">{{ row.item_unitPrice }}</td>
+                <td class="border border-black">{{ row.item_amount }}</td>
+              </tr>
+              <tr class="border border-black">
+                <td
+                  colspan="6"
+                  class="text-right font-semibold border border-black"
+                >
+                  Total
+                </td>
+                <td class="font-semibold border border-black">
+                  ₱ {{ totalAmount }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="mt-4">
+            <p class="text-sm text-black/50">
+              Description: {{ modal.request?.request_description }}
+            </p>
+          </div>
         </div>
         <div class="modal-action">
           <button
@@ -955,38 +1008,172 @@
       </template>
       <!-- Edit Modal Content -->
       <template v-if="modal.type === 'edit'">
-        <h3 class="text-lg font-bold mb-4">Edit Request</h3>
-        <form @submit.prevent="handleModalAction">
-          <div class="form-control mb-4">
-            <label class="label">
-              <span class="label-text text-black/50">Request Type</span>
-            </label>
-            <select
-              v-model="modal.data.request_type"
-              class="select select-bordered w-full bg-white border border-black/10 text-black/50 cursor-pointer"
-              required
+        <h3 class="text-lg font-bold mb-4 text-black">Edit Request</h3>
+        <div class="overflow-x-auto">
+          <table
+            class="table table-sm table-zebra text-black/50 border border-black/10 custom-zebra"
+          >
+            <thead class="text-primaryColor">
+              <tr class="bg-primaryColor text-accentColor">
+                <th>Item No.</th>
+                <th>Item Name</th>
+                <th>Quantity</th>
+                <th>Unit</th>
+                <th>Type</th>
+                <th>Unit Price</th>
+                <th>Amount (₱)</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in paginatedRequestModal" :key="row.id">
+                <td>{{ row.id }}</td>
+
+                <td>
+                  <input
+                    type="text"
+                    v-model="row.item_name"
+                    placeholder="Type here"
+                    class="input input-xs input-ghost focus:bg-accentColor focus:border-primaryColor focus:text-black"
+                  />
+                </td>
+
+                <td>
+                  <input
+                    type="number"
+                    v-model.number="row.item_quantity"
+                    placeholder="0"
+                    min="0"
+                    class="input input-xs input-ghost focus:bg-accentColor focus:border-primaryColor focus:text-black"
+                  />
+                </td>
+
+                <td>
+                  <select v-model="row.item_unit">
+                    <option value="" disabled selected>Select Unit</option>
+                    <option value="PC">PC/s</option>
+                    <option value="KG">KG</option>
+                    <option value="L">L</option>
+                    <option value="BOX">BOX</option>
+                    <option value="CASE">CASE</option>
+                    <option value="REAM">REAM</option>
+                    <option value="PC/S">PC/S</option>
+                  </select>
+                </td>
+
+                <td>
+                  <select v-model="row.item_type">
+                    <option value="" disabled selected>Select Type</option>
+                    <option value="Ingredient">Ingredient</option>
+                    <option value="Beverages">Beverages</option>
+                    <option value="Raw Meat">Raw Meat</option>
+                    <option value="Kitchen Equipment">Kitchen Equipment</option>
+                    <option value="Cleaning Supplies">Cleaning Supplies</option>
+                    <option value="Office Supplies">Office Supplies</option>
+                    <option value="Service Equipment">Service Equipment</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    v-model.number="row.item_unitPrice"
+                    placeholder="0"
+                    min="0"
+                    step="0.01"
+                    class="input input-xs input-ghost focus:bg-accentColor focus:border-primaryColor focus:text-black"
+                  />
+                </td>
+                <td>
+                  <p class="text-sm text-black">
+                    {{
+                      (
+                        (Number(row.item_unitPrice) || 0) *
+                        (Number(row.item_quantity) || 0)
+                      ).toFixed(2)
+                    }}
+                  </p>
+                </td>
+                <td class="flex justify-center">
+                  <X
+                    class="w-4 h-4 text-error cursor-pointer hover:bg-error/10 hover:border-error/10 hover:border-2 hover:rounded-full"
+                    @click="removeRowRequest(row.id)"
+                  />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- Edit Request Item Pagination -->
+          <div
+            class="join mt-4 justify-end space-x-1"
+            v-if="rowRequest.length > rowRequestModalPerPage"
+          >
+            <button
+              class="join-item btn font-thin !bg-gray-200 text-black/50 btn-xs border border-none hover:bg-gray-300"
+              :disabled="requestModalCurrentPage <= 1"
+              @click="requestModalCurrentPage--"
+              :class="{ 'btn-disabled': requestModalCurrentPage <= 1 }"
             >
-              <option v-for="type in requestTypes" :key="type" :value="type">
-                {{ type }}
-              </option>
-            </select>
+              « Prev
+            </button>
+
+            <button
+              class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-xs shadow-none"
+              v-for="page in totalPagesRequestModal"
+              :key="page"
+              :class="{
+                'btn-active': requestModalCurrentPage === page,
+                '!bg-primaryColor text-white': requestModalCurrentPage === page,
+              }"
+              @click="requestModalCurrentPage = page"
+            >
+              {{ page }}
+            </button>
+
+            <button
+              class="join-item btn font-thin btn-xs !bg-gray-200 text-black/50 border border-none"
+              :disabled="
+                requestModalCurrentPage >=
+                Math.ceil(rowRequest.length / rowRequestModalPerPage)
+              "
+              @click="requestModalCurrentPage++"
+              :class="{
+                'btn-disabled':
+                  requestModalCurrentPage >=
+                  Math.ceil(rowRequest.length / rowRequestModalPerPage),
+              }"
+            >
+              Next »
+            </button>
+          </div>
+          <div class="flex justify-between mt-4">
+            <div class="flex justify-start">
+              <button
+                class="btn btn-sm bg-primaryColor text-white font-thin border border-none hover:bg-primaryColor/80 shadow-none"
+                @click="addRowRequest"
+              >
+                <Plus class="w-4 h-4 mr-2 text-white" />
+                Add More Item
+              </button>
+            </div>
+            <div class="flex space-x-0.5 items-center">
+              <p class="flex items-center text-xs font-semibold text-black">
+                TOTAL
+              </p>
+              <div
+                class="flex justify-end gap-2 w-50 bg-gray-200 rounded-xs p-1"
+              >
+                <p class="text-sm text-black">₱</p>
+                <p class="text-sm text-black">{{ totalAmount }}</p>
+              </div>
+            </div>
           </div>
 
-          <div class="form-control mb-4">
+          <!-- Request Description -->
+          <div class="form-control mb-4 mt-4">
             <label class="label">
-              <span class="label-text text-black/50">Request Date</span>
-            </label>
-            <input
-              v-model="modal.data.request_date"
-              type="date"
-              class="input input-bordered w-full bg-white border border-black/10 text-black/50"
-              required
-            />
-          </div>
-
-          <div class="form-control mb-4">
-            <label class="label">
-              <span class="label-text text-black/50">Description</span>
+              <span class="label-text text-black/50">Request Description</span>
             </label>
             <textarea
               v-model="modal.data.request_description"
@@ -995,28 +1182,28 @@
               required
             ></textarea>
           </div>
+        </div>
 
-          <div class="modal-action">
-            <button
-              type="button"
-              class="btn btn-outline font-thin btn-sm bg-gray-200 text-black/50 border border-none hover:bg-gray-300"
-              @click="closeModal"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              class="btn bg-primaryColor font-thin border border-none hover:bg-primaryColor/80 btn-sm text-white"
-              :disabled="loading"
-            >
-              <span
-                class="loading loading-spinner loading-xs"
-                v-if="loading"
-              ></span>
-              {{ loading ? 'Saving...' : 'Save' }}
-            </button>
-          </div>
-        </form>
+        <div class="modal-action">
+          <button
+            type="button"
+            class="btn btn-outline font-thin btn-sm bg-gray-200 text-black/50 border border-none hover:bg-gray-300"
+            @click="closeModal"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="btn bg-primaryColor font-thin border border-none hover:bg-primaryColor/80 btn-sm text-white"
+            :disabled="loading"
+          >
+            <span
+              class="loading loading-spinner loading-xs"
+              v-if="loading"
+            ></span>
+            {{ loading ? 'Saving...' : 'Save' }}
+          </button>
+        </div>
       </template>
 
       <!-- Send Modal Content -->

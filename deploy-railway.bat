@@ -65,31 +65,19 @@ if "%JWT_SECRET%"=="" (
 )
 railway variables set JWT_SECRET="%JWT_SECRET%"
 
-REM Deploy backend
-echo 🚀 Deploying backend to Railway...
-cd backend
-railway up
-if %errorlevel% neq 0 (
-    echo ❌ Backend deployment failed
-    cd ..
-    pause
-    exit /b 1
-)
-echo ✅ Backend deployed successfully
-cd ..
-
-REM Deploy frontend
-echo 🎨 Deploying frontend to Railway...
-cd frontend
-railway up
-if %errorlevel% neq 0 (
-    echo ❌ Frontend deployment failed
-    cd ..
-    pause
-    exit /b 1
-)
-echo ✅ Frontend deployed successfully
-cd ..
+echo.
+echo ⚠️  IMPORTANT: You need to deploy backend and frontend as SEPARATE services in Railway!
+echo.
+echo 📋 Manual Deployment Steps:
+echo    1. Go to your Railway project dashboard
+echo    2. Create BACKEND service with root directory: /backend
+echo    3. Create FRONTEND service with root directory: /frontend
+echo    4. Set environment variables for each service
+echo    5. Deploy both services
+echo.
+echo 📖 See RAILWAY_FIXED_DEPLOYMENT.md for detailed steps
+echo.
+pause
 
 REM Run database migrations
 echo 🔄 Running database migrations...

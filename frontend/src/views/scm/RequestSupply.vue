@@ -1,5 +1,8 @@
 <script setup>
   import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
+  import { useSupplyRequestStore } from '../../stores/supplyRequestStore.js';
+  import { useBudgetReleaseStore } from '../../stores/budgetReleaseStore.js';
+  import { useAuthStore } from '../../stores/authStore.js';
   import cashRequestReceiptModal from '../../components/scm/cashRequestReceiptModal.vue';
   import PikaDay from 'pikaday';
   import 'pikaday/css/pikaday.css';
@@ -25,11 +28,13 @@
     PhilippinePeso,
   } from 'lucide-vue-next';
 
+  // Stores
+  const supplyRequestStore = useSupplyRequestStore();
+  const budgetReleaseStore = useBudgetReleaseStore();
+  const authStore = useAuthStore();
+
+  // Local state
   const loading = ref(false);
-  const hasRequests = ref(true); // Set to true since we have mock data
-  const hasApprovedRequests = ref(true);
-  const hasPendingRequests = ref(true);
-  const hasRejectedRequests = ref(true);
   const currentPage = ref(1);
   const requestsPerPage = ref(10);
   const rowRequestModalPerPage = ref(5);
@@ -45,6 +50,7 @@
     receiptData.value = null;
   }
 
+  // Form data for request items
   const rowRequest = ref([
     {
       id: 1,
@@ -52,7 +58,7 @@
       item_quantity: 0,
       item_unit: '',
       item_type: '',
-      item_unitPrice: 0, // Fixed: consistent naming
+      item_unitPrice: 0,
       item_amount: 0,
     },
   ]);
@@ -64,100 +70,18 @@
       item_quantity: 0,
       item_unit: '',
       item_type: '',
-      item_unitPrice: 0, // Fixed: changed from item_price to item_unitPrice
+      item_unitPrice: 0,
       item_amount: 0,
     });
   };
 
-  // Enhanced mock data with different dates for testing
-  const allRequests = ref([
-    {
-      request_id: 2025081401,
-      request_date: new Date().toISOString().split('T')[0], // Today
-      request_description: 'Office supplies needed',
-      request_status: 'Approved',
-      created_at: new Date().toISOString(),
-    },
-    {
-      request_id: 2025081402,
-      request_date: new Date(Date.now() - 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split('T')[0], // Yesterday
-      request_description: 'Raw materials for production',
-      request_status: 'Rejected',
-      created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      request_id: 2025081403,
-      request_date: new Date().toISOString().split('T')[0], // Today
-      request_description: 'Maintenance service request',
-      request_status: 'Pending',
-      created_at: new Date().toISOString(),
-    },
-    {
-      request_id: 2025081404,
-      request_date: new Date(Date.now() + 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split('T')[0], // Tomorrow
-      request_description:
-        'Office supplies needed for the office, including pens, paper, and other office supplies.',
-      request_status: 'To Request',
-      created_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      request_id: 2025081405,
-      request_date: new Date().toISOString().split('T')[0], // Today
-      request_description: 'Kitchen equipment maintenance',
-      request_status: 'To Request',
-      created_at: new Date().toISOString(),
-    },
-  ]);
+  const removeRowRequest = (id) => {
+    if (rowRequest.value.length > 1) {
+      rowRequest.value = rowRequest.value.filter((row) => row.id !== id);
+    }
+  };
 
-  // Mock data for request history
-  const requestHistory = ref([
-    {
-      request_id: 2025081401,
-      request_description: 'Office supplies needed',
-      request_date: '2025-01-01',
-      request_status: 'Completed',
-      total_amount: 15750.5,
-      receipt: 'receipt1.jpg',
-    },
-    {
-      request_id: 2025081402,
-      request_description: 'Raw materials for production',
-      request_date: '2025-01-02',
-      request_status: 'Completed',
-      total_amount: 45000.0,
-      receipt: 'receipt2.jpg',
-    },
-    {
-      request_id: 2025081403,
-      request_description: 'Kitchen equipment maintenance and replacement',
-      request_date: '2025-01-03',
-      request_status: 'Rejected',
-      total_amount: 28500.75,
-      receipt: null,
-    },
-    {
-      request_id: 2025081404,
-      request_description: 'Cleaning supplies for all branches',
-      request_date: '2025-01-04',
-      request_status: 'Rejected',
-      total_amount: 8200.25,
-      receipt: null,
-    },
-    {
-      request_id: 2025081405,
-      request_description: 'IT equipment and software licenses',
-      request_date: '2025-01-05',
-      request_status: 'Completed',
-      total_amount: 125000.0,
-      receipt: 'receipt3.jpg',
-    },
-  ]);
-
-  // Modal state management (similar to RoleManager)
+  // Modal state management
   const modal = ref({
     type: null,
     show: false,
@@ -177,7 +101,7 @@
     request_date: new Date().toISOString().split('T')[0],
     priority: 'Normal',
     department: 'SCM',
-    requested_by: 'Current User', // In real app, get from auth store
+    requested_by: 'Current User',
     items: [],
   });
 
@@ -236,8 +160,6 @@
   const priorities = ['Low', 'Normal', 'High', 'Urgent'];
   const departments = ['SCM', 'Finance', 'HR', 'Production', 'Admin', 'Branch'];
   const branches = ['Branch 1', 'Branch 2', 'Branch 3', 'Branch 4', 'Branch 5'];
-  const selectedDepartment = ref('');
-  const selectedBranch = ref('');
 
   // Toast state
   const toast = ref({ show: false, type: '', message: '' });
@@ -253,7 +175,7 @@
   // Philippine Time helper functions
   const getPhilippineTime = () => {
     return new Date(
-      new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' })
+      new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' })
     );
   };
 
@@ -275,7 +197,7 @@
 
   // Request List Date Filter
   const requestListFilter = ref({
-    selectedDate: getPhilippineDateString(), // Default to today (Philippine time)
+    selectedDate: getPhilippineDateString(),
     showDatePicker: false,
   });
 
@@ -306,24 +228,57 @@
 
   const quickDateOptions = ref(getQuickDateOptions());
 
-  // Update quick date options with counts - excludes cancelled requests
+  // Computed properties using store data
+  const allRequests = computed(() => supplyRequestStore.requests);
+  const pendingReceipts = computed(() => budgetReleaseStore.pendingReceipts);
+
+  // Add these missing computed properties
+  const requestStats = computed(() => supplyRequestStore.stats);
+  const hasRequests = computed(() => allRequests.value.length > 0);
+  const hasApprovedRequests = computed(() =>
+    allRequests.value.some((r) => r.request_status === 'Approved')
+  );
+  const hasPendingRequests = computed(() =>
+    allRequests.value.some((r) => r.request_status === 'Pending')
+  );
+  const hasRejectedRequests = computed(() =>
+    allRequests.value.some((r) => r.request_status === 'Rejected')
+  );
+
+  // Enhanced loading state management
+  const isLoading = computed(
+    () =>
+      supplyRequestStore.loading || budgetReleaseStore.loading || loading.value
+  );
+
+  // Update quick date options with counts
   const updateQuickDateCounts = () => {
     quickDateOptions.value.forEach((option) => {
-      option.count = allRequests.value.filter(
-        (request) =>
-          request.request_date === option.date &&
-          request.request_status !== 'Cancelled' // Exclude cancelled requests from count
-      ).length;
+      option.count = allRequests.value.filter((request) => {
+        // Convert backend date to YYYY-MM-DD format for comparison
+        const requestDate = new Date(request.request_date);
+        const requestDateString = requestDate.toISOString().split('T')[0];
+
+        return (
+          requestDateString === option.date &&
+          request.request_status !== 'Cancelled'
+        );
+      }).length;
     });
   };
 
-  // Enhanced computed properties for filtered requests - excludes cancelled requests
+  // Enhanced computed properties for filtered requests
   const filteredRequestsByDate = computed(() => {
-    return allRequests.value.filter(
-      (request) =>
-        request.request_date === requestListFilter.value.selectedDate &&
-        request.request_status !== 'Cancelled' // Hide cancelled requests from main view
-    );
+    return allRequests.value.filter((request) => {
+      // Convert backend date to YYYY-MM-DD format for comparison
+      const requestDate = new Date(request.request_date);
+      const requestDateString = requestDate.toISOString().split('T')[0];
+
+      return (
+        requestDateString === requestListFilter.value.selectedDate &&
+        request.request_status !== 'Cancelled'
+      );
+    });
   });
 
   const sortedRequests = computed(() => {
@@ -341,74 +296,17 @@
     return Math.ceil(sortedRequests.value.length / requestsPerPage.value);
   });
 
-  // Date filter methods
-  const selectQuickDate = (dateOption) => {
-    requestListFilter.value.selectedDate = dateOption.date;
-    currentPage.value = 1; // Reset to first page when changing date
-    requestListFilter.value.showDatePicker = false;
-  };
-
-  const selectCustomDate = (event) => {
-    requestListFilter.value.selectedDate = event.target.value;
-    currentPage.value = 1; // Reset to first page when changing date
-    requestListFilter.value.showDatePicker = false;
-  };
-
-  const toggleDatePicker = () => {
-    requestListFilter.value.showDatePicker =
-      !requestListFilter.value.showDatePicker;
-  };
-
-  const goToPreviousDay = () => {
-    const currentDate = new Date(
-      requestListFilter.value.selectedDate + 'T00:00:00'
+  // Request history computed properties
+  const requestHistory = computed(() => {
+    return allRequests.value.filter((request) =>
+      ['Completed', 'Rejected', 'Cancelled'].includes(request.request_status)
     );
-    const previousDay = new Date(currentDate.getTime() - 24 * 60 * 60 * 1000);
-    requestListFilter.value.selectedDate = previousDay
-      .toISOString()
-      .split('T')[0];
-    currentPage.value = 1;
-  };
-
-  const goToNextDay = () => {
-    const currentDate = new Date(
-      requestListFilter.value.selectedDate + 'T00:00:00'
-    );
-    const nextDay = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000);
-    requestListFilter.value.selectedDate = nextDay.toISOString().split('T')[0];
-    currentPage.value = 1;
-  };
-
-  const goToToday = () => {
-    requestListFilter.value.selectedDate = getPhilippineDateString();
-    currentPage.value = 1;
-  };
-
-  // Watch for changes and update counts
-  watch(
-    [allRequests, requestListFilter],
-    () => {
-      updateQuickDateCounts();
-    },
-    { deep: true, immediate: true }
-  );
-
-  // Fixed computed properties
-  const paginatedRequestModal = computed(() => {
-    const start =
-      (requestModalCurrentPage.value - 1) * rowRequestModalPerPage.value;
-    return rowRequest.value.slice(start, start + rowRequestModalPerPage.value);
   });
 
-  const totalPagesRequestModal = computed(() => {
-    return Math.ceil(rowRequest.value.length / rowRequestModalPerPage.value);
-  });
-
-  // Request history filtering
   const filteredRequestHistory = computed(() => {
     let filtered = [...requestHistory.value];
 
-    // Date range filter
+    // Apply filters
     if (requestHistoryFilter.value.startDate) {
       filtered = filtered.filter(
         (request) =>
@@ -425,7 +323,6 @@
       );
     }
 
-    // Status filter
     if (requestHistoryFilter.value.status) {
       filtered = filtered.filter(
         (request) =>
@@ -433,7 +330,6 @@
       );
     }
 
-    // Search filter
     if (requestHistoryFilter.value.searchQuery) {
       const query = requestHistoryFilter.value.searchQuery.toLowerCase();
       filtered = filtered.filter(
@@ -469,7 +365,6 @@
     return filtered;
   });
 
-  // Updated computed properties with performance optimization
   const paginatedRequestHistory = computed(() => {
     const start =
       (requestHistoryCurrentPage.value - 1) * requestHistoryPerPage.value;
@@ -485,7 +380,7 @@
     );
   });
 
-  // Simple stats - includes cancelled requests
+  // Stats computed properties
   const requestHistoryStats = computed(() => {
     const completed = filteredRequestHistory.value.filter(
       (r) => r.request_status === 'Completed'
@@ -496,7 +391,10 @@
     const cancelled = filteredRequestHistory.value.filter(
       (r) => r.request_status === 'Cancelled'
     );
-    const totalAmount = completed.reduce((sum, r) => sum + r.total_amount, 0);
+    const totalAmount = completed.reduce(
+      (sum, r) => sum + (r.total_amount || 0),
+      0
+    );
 
     return {
       total: filteredRequestHistory.value.length,
@@ -507,100 +405,278 @@
     };
   });
 
-  // Clear all filters
-  const clearAllHistoryFilters = () => {
-    requestHistoryFilter.value = {
-      startDate: '',
-      endDate: '',
-      status: '',
-      searchQuery: '',
-      sortBy: 'request_date',
-      sortOrder: 'desc',
-    };
-    requestHistoryCurrentPage.value = 1;
-  };
+  // Enhanced request handling functions using stores
+  const handleCreateRequest = async () => {
+    loading.value = true;
+    try {
+      // Enhanced validation
+      if (!requestForm.value.request_type.trim()) {
+        showToast('error', 'Please select a request type');
+        return;
+      }
 
-  // Toggle sort order
-  const toggleSortOrder = () => {
-    requestHistoryFilter.value.sortOrder =
-      requestHistoryFilter.value.sortOrder === 'asc' ? 'desc' : 'asc';
-  };
+      if (!requestForm.value.request_description.trim()) {
+        showToast('error', 'Please enter a request description');
+        return;
+      }
 
-  // Export to CSV
-  const exportToCSV = () => {
-    const headers = ['Request ID', 'Date', 'Description', 'Status', 'Amount'];
-    const csvContent = [
-      headers.join(','),
-      ...filteredRequestHistory.value.map((request) =>
-        [
-          request.request_id,
-          request.request_date,
-          `"${request.request_description.replace(/"/g, '""')}"`,
-          request.request_status,
-          request.total_amount,
-        ].join(',')
-      ),
-    ].join('\n');
+      if (!requestForm.value.request_date) {
+        showToast('error', 'Please select a request date');
+        return;
+      }
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute(
-      'download',
-      `request_history_${new Date().toISOString().split('T')[0]}.csv`
-    );
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+      const validItems = rowRequest.value.filter(
+        (row) =>
+          row.item_name.trim() &&
+          row.item_quantity > 0 &&
+          row.item_unitPrice > 0
+      );
 
-  // Auto-reset pagination when filters change
-  watch(
-    requestHistoryFilter,
-    () => {
-      requestHistoryCurrentPage.value = 1;
-    },
-    { deep: true }
-  );
+      if (validItems.length === 0) {
+        showToast(
+          'error',
+          'Please add at least one valid item with name, quantity, and price'
+        );
+        return;
+      }
 
-  // Modal methods (similar to RoleManager)
-  const openModal = async (type, request = null) => {
-    modal.value = {
-      type,
-      show: true,
-      request,
-      data: request
-        ? {
-            request_type: request.request_type,
-            request_description: request.request_description,
-            request_date: request.request_date,
-          }
-        : { request_type: '', request_description: '', request_date: '' },
-    };
+      // Use store to create request
+      const requestData = {
+        request_type: requestForm.value.request_type,
+        request_description: requestForm.value.request_description,
+        request_date: requestForm.value.request_date,
+        priority: requestForm.value.priority,
+        department: requestForm.value.department,
+        requested_by: authStore.user?.name || requestForm.value.requested_by,
+      };
 
-    // Initialize form based on action type
-    initializeRequestForm(request);
+      await supplyRequestStore.createRequest(requestData, validItems);
 
-    if (type === 'create' || type === 'edit') {
-      document.getElementById('request_form_modal').showModal();
-    } else {
-      document.getElementById('universal_modal').showModal();
+      closeModal();
+      showToast(
+        'success',
+        `Request created successfully with ${validItems.length} items`
+      );
+
+      // Refresh data
+      await fetchRequests();
+    } catch (err) {
+      showToast('error', err.message || 'Failed to create request');
+    } finally {
+      loading.value = false;
     }
   };
 
-  const closeModal = () => {
-    document.getElementById('request_form_modal')?.close();
-    document.getElementById('universal_modal')?.close();
-    document.getElementById('confirmation_modal')?.close();
-    modal.value = {
-      type: null,
-      show: false,
-      request: null,
-      data: { request_type: '', request_description: '', request_date: '' },
-    };
+  const handleUpdateRequest = async (requestId) => {
+    loading.value = true;
+    try {
+      // Enhanced validation
+      if (!requestForm.value.request_type.trim()) {
+        showToast('error', 'Please select a request type');
+        return;
+      }
+
+      if (!requestForm.value.request_description.trim()) {
+        showToast('error', 'Please enter a request description');
+        return;
+      }
+
+      const validItems = rowRequest.value.filter(
+        (row) =>
+          row.item_name.trim() &&
+          row.item_quantity > 0 &&
+          row.item_unitPrice > 0
+      );
+
+      if (validItems.length === 0) {
+        showToast('error', 'Please add at least one valid item');
+        return;
+      }
+
+      // Find the request in store
+      const request = allRequests.value.find((r) => r.request_id === requestId);
+      if (!request) {
+        showToast('error', 'Request not found');
+        return;
+      }
+
+      const requestData = {
+        request_type: requestForm.value.request_type,
+        request_description: requestForm.value.request_description,
+        request_date: requestForm.value.request_date,
+        priority: requestForm.value.priority,
+        department: requestForm.value.department,
+      };
+
+      await supplyRequestStore.updateRequest(
+        request.id,
+        requestData,
+        validItems
+      );
+
+      closeModal();
+      showToast('success', 'Request updated successfully');
+
+      // Refresh data
+      await fetchRequests();
+    } catch (err) {
+      showToast('error', err.message || 'Failed to update request');
+    } finally {
+      loading.value = false;
+    }
   };
+
+  const handleSendRequest = async (requestId) => {
+    loading.value = true;
+    try {
+      const request = allRequests.value.find((r) => r.request_id === requestId);
+      if (!request) {
+        showToast('error', 'Request not found');
+        return;
+      }
+
+      await supplyRequestStore.sendRequest(
+        request.id,
+        authStore.user?.name || 'SCM User'
+      );
+
+      closeModal();
+      showToast('success', 'Request sent successfully');
+
+      // Refresh data
+      await fetchRequests();
+    } catch (err) {
+      showToast('error', err.message || 'Failed to send request');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const handleCancelRequest = async (requestId) => {
+    loading.value = true;
+    try {
+      const request = allRequests.value.find((r) => r.request_id === requestId);
+      if (!request) {
+        showToast('error', 'Request not found');
+        return;
+      }
+
+      await supplyRequestStore.cancelRequest(
+        request.id,
+        authStore.user?.name || 'SCM User'
+      );
+
+      closeModal();
+      showToast('success', 'Request cancelled successfully');
+
+      // Refresh data
+      await fetchRequests();
+    } catch (err) {
+      showToast('error', err.message || 'Failed to cancel request');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const handleDeleteRequest = async (requestId) => {
+    loading.value = true;
+    try {
+      const request = allRequests.value.find((r) => r.request_id === requestId);
+      if (!request) {
+        showToast('error', 'Request not found');
+        return;
+      }
+
+      await supplyRequestStore.deleteRequest(request.id);
+
+      showToast('success', 'Request deleted successfully');
+
+      // Refresh data
+      await fetchRequests();
+    } catch (err) {
+      showToast('error', err.message || 'Failed to delete request');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Confirm receipt function using store
+  const confirmReceipt = async (requestId) => {
+    loading.value = true;
+    try {
+      // Find the budget release
+      const release = pendingReceipts.value.find(
+        (r) => r.request_id === requestId
+      );
+      if (!release) {
+        showToast('error', 'Budget release not found');
+        return;
+      }
+
+      await budgetReleaseStore.confirmReceipt(
+        release.id,
+        authStore.user?.name || 'SCM User'
+      );
+
+      showToast('success', `Receipt confirmed for request #${requestId}`);
+
+      // Refresh data
+      await fetchPendingReceipts();
+      await fetchRequests();
+    } catch (err) {
+      showToast('error', err.message || 'Failed to confirm receipt');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Data fetching functions
+  const fetchRequests = async () => {
+    loading.value = true;
+    try {
+      await supplyRequestStore.fetchRequests({ department: 'SCM' });
+      await supplyRequestStore.fetchStats({ department: 'SCM' });
+
+      // Debug: Log the fetched data
+      console.log('Fetched requests:', supplyRequestStore.requests);
+      debugDateFiltering();
+
+      updateQuickDateCounts();
+    } catch (err) {
+      console.error('Fetch error:', err);
+      showToast('error', err.message || 'Failed to fetch requests');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const fetchPendingReceipts = async () => {
+    try {
+      await budgetReleaseStore.fetchPendingReceipts('SCM');
+    } catch (err) {
+      console.error('Error fetching pending receipts:', err);
+    }
+  };
+
+  // Computed properties for pagination
+  const paginatedRequestModal = computed(() => {
+    const start =
+      (requestModalCurrentPage.value - 1) * rowRequestModalPerPage.value;
+    return rowRequest.value.slice(start, start + rowRequestModalPerPage.value);
+  });
+
+  const totalPagesRequestModal = computed(() => {
+    return Math.ceil(rowRequest.value.length / rowRequestModalPerPage.value);
+  });
+
+  const totalAmount = computed(() => {
+    const total = rowRequest.value.reduce((acc, row) => {
+      const price = Number(row.item_unitPrice) || 0;
+      const quantity = Number(row.item_quantity) || 0;
+      return acc + price * quantity;
+    }, 0);
+    return total.toFixed(2);
+  });
 
   // Enhanced confirmation modal state
   const confirmModal = ref({
@@ -629,7 +705,7 @@
         message: `Are you sure you want to update request #${data?.request_id}?`,
         confirmText: 'Update',
         confirmClass: 'btn-primary bg-primaryColor',
-        onConfirm: () => handleUpdateRequest(data.request_id, modal.value.data),
+        onConfirm: () => handleUpdateRequest(data.request_id),
       },
       send: {
         title: 'Send Request',
@@ -690,292 +766,70 @@
         await confirmModal.value.onConfirm();
         closeConfirmModal();
       } catch (error) {
-        // Error is handled by individual functions
         console.error('Confirmation action failed:', error);
       }
     }
   };
 
-  // Enhanced request handling functions
-  const handleCreateRequest = async () => {
-    loading.value = true;
-    try {
-      // Enhanced validation
-      if (!requestForm.value.request_type.trim()) {
-        showToast('error', 'Please select a request type');
-        return;
-      }
-
-      if (!requestForm.value.request_description.trim()) {
-        showToast('error', 'Please enter a request description');
-        return;
-      }
-
-      if (!requestForm.value.request_date) {
-        showToast('error', 'Please select a request date');
-        return;
-      }
-
-      const validItems = rowRequest.value.filter(
-        (row) =>
-          row.item_name.trim() &&
-          row.item_quantity > 0 &&
-          row.item_unitPrice > 0
-      );
-
-      if (validItems.length === 0) {
-        showToast(
-          'error',
-          'Please add at least one valid item with name, quantity, and price'
-        );
-        return;
-      }
-
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Create new request with enhanced data
-      const newRequestData = {
-        request_id: Date.now(),
-        request_type: requestForm.value.request_type,
-        request_description: requestForm.value.request_description,
-        request_date: requestForm.value.request_date,
-        priority: requestForm.value.priority,
-        department: requestForm.value.department,
-        requested_by: requestForm.value.requested_by,
-        request_status: 'To Request',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        items: validItems.map((item) => ({
-          ...item,
-          item_amount: item.item_quantity * item.item_unitPrice,
-        })),
-        total_amount: parseFloat(totalAmount.value),
-        item_count: validItems.length,
-      };
-
-      allRequests.value.unshift(newRequestData);
-
-      closeModal();
-      showToast(
-        'success',
-        `Request created successfully with ${validItems.length} items`
-      );
-    } catch (err) {
-      showToast('error', 'Failed to create request');
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const handleUpdateRequest = async (requestId, updatedData) => {
-    loading.value = true;
-    try {
-      // Enhanced validation (same as create)
-      if (!requestForm.value.request_type.trim()) {
-        showToast('error', 'Please select a request type');
-        return;
-      }
-
-      if (!requestForm.value.request_description.trim()) {
-        showToast('error', 'Please enter a request description');
-        return;
-      }
-
-      const validItems = rowRequest.value.filter(
-        (row) =>
-          row.item_name.trim() &&
-          row.item_quantity > 0 &&
-          row.item_unitPrice > 0
-      );
-
-      if (validItems.length === 0) {
-        showToast('error', 'Please add at least one valid item');
-        return;
-      }
-
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Update request in the list
-      const requestIndex = allRequests.value.findIndex(
-        (r) => r.request_id === requestId
-      );
-      if (requestIndex !== -1) {
-        allRequests.value[requestIndex] = {
-          ...allRequests.value[requestIndex],
-          request_type: requestForm.value.request_type,
-          request_description: requestForm.value.request_description,
-          request_date: requestForm.value.request_date,
-          priority: requestForm.value.priority,
-          department: requestForm.value.department,
-          updated_at: new Date().toISOString(),
-          items: validItems.map((item) => ({
-            ...item,
-            item_amount: item.item_quantity * item.item_unitPrice,
-          })),
-          total_amount: parseFloat(totalAmount.value),
-          item_count: validItems.length,
-        };
-      }
-
-      closeModal();
-      showToast('success', 'Request updated successfully');
-    } catch (err) {
-      showToast('error', 'Failed to update request');
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const handleSendRequest = async (requestId) => {
-    loading.value = true;
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Update request status
-      const requestIndex = allRequests.value.findIndex(
-        (r) => r.request_id === requestId
-      );
-      if (requestIndex !== -1) {
-        allRequests.value[requestIndex].request_status = 'Pending';
-      }
-
-      closeModal();
-      showToast('success', 'Request sent successfully');
-    } catch (err) {
-      showToast('error', 'Failed to send request');
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const handleCancelRequest = async (requestId) => {
-    loading.value = true;
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Mark request as cancelled instead of removing it
-      const requestIndex = allRequests.value.findIndex(
-        (r) => r.request_id === requestId
-      );
-
-      if (requestIndex !== -1) {
-        const request = allRequests.value[requestIndex];
-
-        // Update request status
-        allRequests.value[requestIndex] = {
-          ...request,
-          request_status: 'Cancelled',
-          cancelled_at: new Date().toISOString(),
-          cancelled_by: 'SCM User', // In real app, get from auth store
-        };
-
-        // Add to request history for tracking
-        requestHistory.value.unshift({
-          request_id: request.request_id,
-          request_description: request.request_description,
-          request_date: request.request_date,
-          request_status: 'Cancelled',
-          total_amount: request.total_amount,
-          cancelled_by: 'SCM User',
-          cancelled_at: new Date().toISOString(),
-          remarks: 'Request cancelled by SCM department',
-        });
-      }
-
-      closeModal();
-      showToast('error', 'Request cancelled successfully');
-    } catch (err) {
-      showToast('error', 'Failed to cancel request');
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const handleDeleteRequest = async (requestId) => {
-    loading.value = true;
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Remove request from the list
-      allRequests.value = allRequests.value.filter(
-        (r) => r.request_id !== requestId
-      );
-
-      showToast('success', 'Request deleted successfully');
-    } catch (err) {
-      showToast('error', 'Failed to delete request');
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  // Action methods
-  const editRequest = (request) => openModal('edit', request);
-  const confirmSend = (request) => openConfirmModal('send', request);
-  const confirmCancel = (request) => openConfirmModal('cancel', request);
-  const confirmDelete = (request) => openConfirmModal('delete', request);
-  const confirmViewRequest = (request) => openModal('viewRequest', request);
-
-  const handleFormSubmit = (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    newRequest.value = {
-      request_type: formData.get('request_type'),
-      request_description: formData.get('request_description'),
-      request_date: formData.get('request_date'),
+  // Modal methods
+  const openModal = async (type, request = null) => {
+    modal.value = {
+      type,
+      show: true,
+      request,
+      data: request
+        ? {
+            request_type: request.request_type,
+            request_description: request.request_description,
+            request_date: request.request_date,
+          }
+        : { request_type: '', request_description: '', request_date: '' },
     };
-    openModal('create');
-  };
 
-  // Add missing functions for backward compatibility
-  const fetchRequests = async () => {
-    loading.value = true;
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      // In real implementation, fetch data from API
-    } finally {
-      loading.value = false;
+    // If editing or viewing, fetch the full request details including items
+    if (request && (type === 'edit' || type === 'viewRequest')) {
+      try {
+        loading.value = true;
+        // Fetch full request details with items
+        const fullRequest = await supplyRequestStore.fetchRequestByRequestId(
+          request.request_id
+        );
+
+        // Initialize form with full data including items
+        initializeRequestForm(fullRequest);
+        modal.value.request = fullRequest;
+      } catch (error) {
+        console.error('Error fetching request details:', error);
+        showToast('error', 'Failed to load request details');
+        // Fallback to basic initialization
+        initializeRequestForm(request);
+      } finally {
+        loading.value = false;
+      }
+    } else {
+      initializeRequestForm(request);
+    }
+
+    if (type === 'create' || type === 'edit') {
+      document.getElementById('request_form_modal').showModal();
+    } else {
+      document.getElementById('universal_modal').showModal();
     }
   };
 
-  const removeRowRequest = (id) => {
-    rowRequest.value = rowRequest.value.filter((row) => row.id !== id);
+  const closeModal = () => {
+    document.getElementById('request_form_modal')?.close();
+    document.getElementById('universal_modal')?.close();
+    document.getElementById('confirmation_modal')?.close();
+    modal.value = {
+      type: null,
+      show: false,
+      request: null,
+      data: { request_type: '', request_description: '', request_date: '' },
+    };
   };
 
-  const totalAmount = computed(() => {
-    const total = rowRequest.value.reduce((acc, row) => {
-      const price = Number(row.item_unitPrice) || 0;
-      const quantity = Number(row.item_quantity) || 0;
-      return acc + price * quantity;
-    }, 0);
-    return total.toFixed(2);
-  });
-
-  let requestDatePicker = null;
-  const requestDate = ref('');
-  onMounted(() => {
-    requestDatePicker = new PikaDay({
-      field: document.getElementById('request_date_history'),
-      format: 'YYYY-MM-DD',
-      onSelect: () => {
-        requestDate.value = requestDatePicker.toString();
-      },
-    });
-  });
-  onBeforeUnmount(() => {
-    if (requestDatePicker) requestDatePicker.destroy();
-  });
-
-  // Enhanced form data for new/edit request
+  // Initialize request form
   const initializeRequestForm = (request = null) => {
     if (request) {
       // Editing existing request
@@ -987,20 +841,27 @@
           request.request_date || new Date().toISOString().split('T')[0],
         priority: request.priority || 'Normal',
         department: request.department || 'SCM',
-        requested_by: request.requested_by || 'Current User',
+        requested_by:
+          request.requested_by || authStore.user?.name || 'Current User',
         items: request.items || [],
       };
 
       // Update rowRequest with existing items
-      if (request.items && request.items.length > 0) {
+      if (
+        request.items &&
+        Array.isArray(request.items) &&
+        request.items.length > 0
+      ) {
         rowRequest.value = request.items.map((item, index) => ({
           id: index + 1,
           item_name: item.item_name || '',
           item_quantity: item.item_quantity || 0,
           item_unit: item.item_unit || '',
           item_type: item.item_type || '',
-          item_unitPrice: item.item_unitPrice || 0,
-          item_amount: (item.item_quantity || 0) * (item.item_unitPrice || 0),
+          item_unitPrice: item.item_unit_price || item.item_unitPrice || 0,
+          item_amount:
+            (item.item_quantity || 0) *
+            (item.item_unit_price || item.item_unitPrice || 0),
         }));
       } else {
         resetItemRows();
@@ -1014,7 +875,7 @@
         request_date: new Date().toISOString().split('T')[0],
         priority: 'Normal',
         department: 'SCM',
-        requested_by: 'Current User',
+        requested_by: authStore.user?.name || 'Current User',
         items: [],
       };
       resetItemRows();
@@ -1035,23 +896,111 @@
     ];
   };
 
-  // Clear filters
-  const clearHistoryFilters = () => {
-    requestHistoryFilter.value = {
-      startDate: '',
-      endDate: '',
-      status: '',
-      description: '',
-    };
-    requestHistoryCurrentPage.value = 1;
-  };
-
   // Auto-calculate item amounts when quantity or price changes
   const updateItemAmount = (item) => {
     item.item_amount = (item.item_quantity || 0) * (item.item_unitPrice || 0);
   };
 
-  // History status options for filtering - includes Cancelled
+  // Date filter methods
+  const selectQuickDate = (dateOption) => {
+    requestListFilter.value.selectedDate = dateOption.date;
+    currentPage.value = 1;
+    requestListFilter.value.showDatePicker = false;
+  };
+
+  const selectCustomDate = (event) => {
+    requestListFilter.value.selectedDate = event.target.value;
+    currentPage.value = 1;
+    requestListFilter.value.showDatePicker = false;
+  };
+
+  const toggleDatePicker = () => {
+    requestListFilter.value.showDatePicker =
+      !requestListFilter.value.showDatePicker;
+  };
+
+  const goToPreviousDay = () => {
+    const currentDate = new Date(
+      requestListFilter.value.selectedDate + 'T00:00:00'
+    );
+    const previousDay = new Date(currentDate.getTime() - 24 * 60 * 60 * 1000);
+    requestListFilter.value.selectedDate = previousDay
+      .toISOString()
+      .split('T')[0];
+    currentPage.value = 1;
+  };
+
+  const goToNextDay = () => {
+    const currentDate = new Date(
+      requestListFilter.value.selectedDate + 'T00:00:00'
+    );
+    const nextDay = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000);
+    requestListFilter.value.selectedDate = nextDay.toISOString().split('T')[0];
+    currentPage.value = 1;
+  };
+
+  const goToToday = () => {
+    requestListFilter.value.selectedDate = getPhilippineDateString();
+    currentPage.value = 1;
+  };
+
+  // Action methods
+  const editRequest = (request) => openModal('edit', request);
+  const confirmSend = (request) => openConfirmModal('send', request);
+  const confirmCancel = (request) => openConfirmModal('cancel', request);
+  const confirmDelete = (request) => openConfirmModal('delete', request);
+  const confirmViewRequest = (request) => openModal('viewRequest', request);
+
+  // Clear filters
+  const clearAllHistoryFilters = () => {
+    requestHistoryFilter.value = {
+      startDate: '',
+      endDate: '',
+      status: '',
+      searchQuery: '',
+      sortBy: 'request_date',
+      sortOrder: 'desc',
+    };
+    requestHistoryCurrentPage.value = 1;
+  };
+
+  // Toggle sort order
+  const toggleSortOrder = () => {
+    requestHistoryFilter.value.sortOrder =
+      requestHistoryFilter.value.sortOrder === 'asc' ? 'desc' : 'asc';
+  };
+
+  // Export to CSV
+  const exportToCSV = () => {
+    const headers = ['Request ID', 'Date', 'Description', 'Status', 'Amount'];
+    const csvContent = [
+      headers.join(','),
+      ...filteredRequestHistory.value.map((request) =>
+        [
+          request.request_id,
+          request.request_date,
+          `"${request.request_description.replace(/"/g, '""')}"`,
+          request.request_status,
+          request.total_amount,
+        ].join(',')
+      ),
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute(
+      'download',
+      `request_history_${new Date().toISOString().split('T')[0]}.csv`
+    );
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // History status options for filtering
   const historyStatusOptions = [
     'Pending',
     'Sent',
@@ -1060,72 +1009,167 @@
     'Cancelled',
   ];
 
-  // Add these new reactive variables
-  const budgetReleases = ref([
-    {
-      request_id: 2025081501,
-      request_description: 'IT equipment for branch upgrade',
-      released_amount: 125000.0,
-      released_at: '2025-01-15T09:00:00Z',
-      released_by: 'Finance Manager',
-      department: 'SCM',
-      priority: 'High',
-      awaiting_receipt: true,
-      release_id: 'BR2025004',
+  // Watch for changes and update counts
+  watch(
+    [allRequests, requestListFilter],
+    () => {
+      console.log('=== Date Filtering Debug ===');
+      console.log('Selected date:', requestListFilter.value.selectedDate);
+      console.log('All requests with dates:');
+      allRequests.value.forEach((r) => {
+        const backendDate = r.request_date;
+        const convertedDate = new Date(backendDate).toISOString().split('T')[0];
+        console.log(
+          `Request ${r.request_id}: ${backendDate} -> ${convertedDate}`
+        );
+      });
+      updateQuickDateCounts();
     },
-    {
-      request_id: 2025081502,
-      request_description: 'Cleaning supplies for all branches',
-      released_amount: 15000.0,
-      released_at: '2025-01-14T11:30:00Z',
-      released_by: 'Finance Manager',
-      department: 'SCM',
-      priority: 'Normal',
-      awaiting_receipt: true,
-      release_id: 'BR2025005',
-    },
-  ]);
+    { deep: true, immediate: true }
+  );
 
-  // Add this computed property
-  const pendingReceipts = computed(() => {
-    return budgetReleases.value.filter((r) => r.awaiting_receipt);
+  // Auto-reset pagination when filters change
+  watch(
+    requestHistoryFilter,
+    () => {
+      requestHistoryCurrentPage.value = 1;
+    },
+    { deep: true }
+  );
+
+  // Date picker setup
+  let requestDatePicker = null;
+  const requestDate = ref('');
+
+  onMounted(async () => {
+    // Initialize data
+    await fetchRequests();
+    await fetchPendingReceipts();
+
+    // Setup date picker
+    requestDatePicker = new PikaDay({
+      field: document.getElementById('request_date_history'),
+      format: 'YYYY-MM-DD',
+      onSelect: () => {
+        requestDate.value = requestDatePicker.toString();
+      },
+    });
   });
 
-  // Add this new function
-  const confirmReceipt = async (requestId) => {
-    loading.value = true;
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+  onBeforeUnmount(() => {
+    if (requestDatePicker) requestDatePicker.destroy();
+  });
 
-      // Find the budget release
-      const releaseIndex = budgetReleases.value.findIndex(
-        (r) => r.request_id === requestId
-      );
+  // Update stats display to use store stats
+  const statsDisplay = computed(() => ({
+    total: supplyRequestStore.stats.total_requests || allRequests.value.length,
+    toRequest:
+      supplyRequestStore.stats.to_request ||
+      allRequests.value.filter((r) => r.request_status === 'To Request').length,
+    pending:
+      supplyRequestStore.stats.pending ||
+      allRequests.value.filter((r) => r.request_status === 'Pending').length,
+    approved:
+      supplyRequestStore.stats.approved ||
+      allRequests.value.filter((r) => r.request_status === 'Approved').length,
+    rejected:
+      supplyRequestStore.stats.rejected ||
+      allRequests.value.filter((r) => r.request_status === 'Rejected').length,
+  }));
 
-      if (releaseIndex !== -1) {
-        const release = budgetReleases.value[releaseIndex];
+  // Enhanced error handling
+  const handleStoreError = (error, operation) => {
+    console.error(`Error during ${operation}:`, error);
+    showToast('error', error.message || `Failed to ${operation}`);
+  };
 
-        // Move to request history as completed
-        requestHistory.value.unshift({
-          request_id: release.request_id,
-          request_description: release.request_description,
-          request_date: new Date().toISOString().split('T')[0],
-          request_status: 'Completed',
-          total_amount: release.released_amount,
-          receipt: 'confirmed',
-        });
-
-        // Remove from pending receipts
-        budgetReleases.value.splice(releaseIndex, 1);
+  // Watch for store errors
+  watch(
+    [supplyRequestStore.error, budgetReleaseStore.error],
+    ([supplyError, budgetError]) => {
+      if (supplyError) {
+        handleStoreError(supplyError, 'supply request operation');
+        supplyRequestStore.error = null; // Clear error after handling
       }
+      if (budgetError) {
+        handleStoreError(budgetError, 'budget release operation');
+        budgetReleaseStore.clearError(); // Use store method to clear error
+      }
+    }
+  );
 
-      showToast('success', `Receipt confirmed for request #${requestId}`);
-    } catch (err) {
-      showToast('error', 'Failed to confirm receipt');
+  // Enhanced data refresh with error handling
+  const refreshAllData = async () => {
+    try {
+      loading.value = true;
+      await Promise.all([fetchRequests(), fetchPendingReceipts()]);
+    } catch (error) {
+      handleStoreError(error, 'refresh data');
     } finally {
       loading.value = false;
     }
+  };
+
+  // Auto-refresh data periodically (optional)
+  let refreshInterval;
+  onMounted(() => {
+    // Set up auto-refresh every 5 minutes
+    refreshInterval = setInterval(refreshAllData, 5 * 60 * 1000);
+  });
+
+  onBeforeUnmount(() => {
+    if (refreshInterval) {
+      clearInterval(refreshInterval);
+    }
+  });
+
+  // Add more comprehensive stats using backend data
+  const enhancedStats = computed(() => ({
+    totalRequests: allRequests.value.length,
+    toRequest: allRequests.value.filter(
+      (r) => r.request_status === 'To Request'
+    ).length,
+    pending: allRequests.value.filter((r) => r.request_status === 'Pending')
+      .length,
+    approved: allRequests.value.filter((r) => r.request_status === 'Approved')
+      .length,
+    rejected: allRequests.value.filter((r) => r.request_status === 'Rejected')
+      .length,
+    totalAmount: allRequests.value.reduce(
+      (sum, r) => sum + parseFloat(r.total_amount || 0),
+      0
+    ),
+    totalItems: allRequests.value.reduce(
+      (sum, r) => sum + parseInt(r.item_count || 0),
+      0
+    ),
+  }));
+
+  // Fix 4: Debug the date issue
+  const debugDateFiltering = () => {
+    console.log('Current selected date:', requestListFilter.value.selectedDate);
+    console.log(
+      'All requests:',
+      allRequests.value.map((r) => ({
+        id: r.request_id,
+        date: r.request_date,
+        convertedDate: new Date(r.request_date).toISOString().split('T')[0],
+      }))
+    );
+    console.log('Quick date options:', quickDateOptions.value);
+  };
+
+  const showReceiptModal = async (request) => {
+    // If items are not present, fetch full request details
+    if (!request.items || request.items.length === 0) {
+      const fullRequest = await supplyRequestStore.fetchRequestByRequestId(
+        request.request_id
+      );
+      receiptData.value = fullRequest;
+    } else {
+      receiptData.value = request;
+    }
+    showReceipt.value = true;
   };
 </script>
 
@@ -1153,7 +1197,7 @@
         </div>
         <div class="stat-title text-black/50">Total Requests</div>
         <div class="stat-value text-primaryColor">
-          {{ allRequests.length }}
+          {{ requestStats.total_requests || allRequests.length }}
         </div>
         <div class="stat-desc text-black/50">
           {{ hasRequests ? 'Requests configured' : 'No requests yet' }}
@@ -1169,6 +1213,7 @@
         <div class="stat-title text-black/50">To Request</div>
         <div class="stat-value text-info">
           {{
+            requestStats.to_request ||
             allRequests.filter((r) => r.request_status === 'To Request').length
           }}
         </div>
@@ -1186,6 +1231,7 @@
         <div class="stat-title text-black/50">Total Approved Requests</div>
         <div class="stat-value text-success">
           {{
+            requestStats.approved ||
             allRequests.filter((r) => r.request_status === 'Approved').length
           }}
         </div>
@@ -1206,7 +1252,10 @@
         </div>
         <div class="stat-title text-black/50">Total Pending Requests</div>
         <div class="stat-value text-warning">
-          {{ allRequests.filter((r) => r.request_status === 'Pending').length }}
+          {{
+            requestStats.pending ||
+            allRequests.filter((r) => r.request_status === 'Pending').length
+          }}
         </div>
         <div class="stat-desc text-black/50">
           {{
@@ -1226,6 +1275,7 @@
         <div class="stat-title text-black/50">Total Rejected Requests</div>
         <div class="stat-value text-error">
           {{
+            requestStats.rejected ||
             allRequests.filter((r) => r.request_status === 'Rejected').length
           }}
         </div>
@@ -1513,6 +1563,9 @@
                 <th>Request ID</th>
                 <th>Request Date</th>
                 <th class="w-1/4">Request Description</th>
+                <th>Total Amount</th>
+                <th>Items</th>
+                <th>Priority</th>
                 <th>Request Status</th>
                 <th>Actions</th>
               </tr>
@@ -1523,25 +1576,58 @@
                 :key="request.request_id"
                 class="hover:bg-secondaryColor/10"
               >
-                <td>{{ request.request_id }}</td>
+                <td class="font-mono font-medium">{{ request.request_id }}</td>
                 <td>
                   <div class="flex flex-col">
-                    <span>{{ request.request_date }}</span>
+                    <span>{{ formatDate(request.request_date) }}</span>
                     <span class="text-xs text-black/40">
-                      {{
-                        new Date(request.created_at).toLocaleTimeString(
-                          'en-PH',
-                          {
-                            timeZone: 'Asia/Manila',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          }
-                        )
-                      }}
+                      {{ formatTime(request.created_at) }}
                     </span>
                   </div>
                 </td>
-                <td class="text-wrap">{{ request.request_description }}</td>
+                <td class="text-wrap">
+                  <div>
+                    <p class="font-medium">{{ request.request_description }}</p>
+                    <p class="text-xs text-black/50">
+                      {{ request.request_type }}
+                    </p>
+                  </div>
+                </td>
+                <!-- Add total amount column -->
+                <td class="font-semibold text-primaryColor">
+                  ₱{{
+                    parseFloat(request.total_amount || 0).toLocaleString(
+                      'en-PH',
+                      {
+                        minimumFractionDigits: 2,
+                      }
+                    )
+                  }}
+                </td>
+                <!-- Add item count -->
+                <td class="text-center">
+                  <span
+                    class="badge badge-sm bg-primaryColor/10 text-primaryColor"
+                  >
+                    {{ request.item_count }} item{{
+                      request.item_count !== '1' ? 's' : ''
+                    }}
+                  </span>
+                </td>
+                <!-- Add priority -->
+                <td>
+                  <div
+                    class="badge badge-sm border-none"
+                    :class="{
+                      'bg-error/10 text-error': request.priority === 'Urgent',
+                      'bg-warning/10 text-warning': request.priority === 'High',
+                      'bg-info/10 text-info': request.priority === 'Normal',
+                      'bg-success/10 text-success': request.priority === 'Low',
+                    }"
+                  >
+                    {{ request.priority }}
+                  </div>
+                </td>
                 <td>
                   <div
                     class="badge badge-sm badge-soft border-none"
@@ -1580,7 +1666,10 @@
                       </li>
                       <li
                         class="hover:bg-black/10"
-                        v-if="request.request_status === 'To Request'"
+                        v-if="
+                          request.request_status === 'To Request' ||
+                          request.request_status === 'Sent Back'
+                        "
                       >
                         <a @click="editRequest(request)" class="text-warning"
                           >Edit</a
@@ -1588,7 +1677,10 @@
                       </li>
                       <li
                         class="hover:bg-black/10"
-                        v-if="request.request_status === 'To Request'"
+                        v-if="
+                          request.request_status === 'To Request' ||
+                          request.request_status === 'Sent Back'
+                        "
                       >
                         <a @click="confirmSend(request)" class="text-success"
                           >Send Request</a
@@ -1604,7 +1696,10 @@
                       </li>
                       <li
                         class="hover:bg-black/10"
-                        v-if="request.request_status === 'To Request'"
+                        v-if="
+                          request.request_status === 'To Request' ||
+                          request.request_status === 'Sent Back'
+                        "
                       >
                         <a @click="confirmDelete(request)" class="text-error"
                           >Delete Request</a
@@ -1915,14 +2010,9 @@
 
                 <td>
                   <a
-                    v-if="
-                      request.request_status === 'Completed' && request.receipt
-                    "
+                    v-if="request.request_status === 'Completed'"
                     class="text-primaryColor cursor-pointer underline hover:text-primaryColor/80 text-sm font-medium"
-                    @click="
-                      showReceipt = true;
-                      receiptData = request;
-                    "
+                    @click="showReceiptModal(request)"
                   >
                     View Receipt
                   </a>
@@ -3054,6 +3144,62 @@
 
     return range;
   };
+
+  // Add helper functions for better date/time formatting
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-PH', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'Asia/Manila',
+    });
+  };
+
+  const formatTime = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('en-PH', {
+      timeZone: 'Asia/Manila',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  // Enhanced filtering to work with backend date format
+  const filteredRequestsByDate = computed(() => {
+    return allRequests.value.filter((request) => {
+      // Convert backend date to YYYY-MM-DD format for comparison
+      const requestDate = new Date(request.request_date);
+      const requestDateString = requestDate.toISOString().split('T')[0];
+
+      return (
+        requestDateString === requestListFilter.value.selectedDate &&
+        request.request_status !== 'Cancelled'
+      );
+    });
+  });
+
+  // Add more comprehensive stats using backend data
+  const enhancedStats = computed(() => ({
+    totalRequests: allRequests.value.length,
+    toRequest: allRequests.value.filter(
+      (r) => r.request_status === 'To Request'
+    ).length,
+    pending: allRequests.value.filter((r) => r.request_status === 'Pending')
+      .length,
+    approved: allRequests.value.filter((r) => r.request_status === 'Approved')
+      .length,
+    rejected: allRequests.value.filter((r) => r.request_status === 'Rejected')
+      .length,
+    totalAmount: allRequests.value.reduce(
+      (sum, r) => sum + parseFloat(r.total_amount || 0),
+      0
+    ),
+    totalItems: allRequests.value.reduce(
+      (sum, r) => sum + parseInt(r.item_count || 0),
+      0
+    ),
+  }));
 </script>
 
 <style scoped>

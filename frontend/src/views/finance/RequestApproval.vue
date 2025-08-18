@@ -1,5 +1,9 @@
 <script setup>
   import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
+  import { useSupplyRequestStore } from '../../stores/supplyRequestStore.js';
+  import { useBudgetReleaseStore } from '../../stores/budgetReleaseStore.js';
+  import { useAuthStore } from '../../stores/authStore.js';
+  import cashRequestReceiptModal from '../../components/scm/cashRequestReceiptModal.vue';
   import PikaDay from 'pikaday';
   import 'pikaday/css/pikaday.css';
   import {
@@ -18,15 +22,20 @@
     Download,
     TrendingUp,
     TrendingDown,
-    Edit,
+    DollarSign,
+    FileCheck,
+    Info,
+    PhilippinePeso,
     FileText,
   } from 'lucide-vue-next';
 
+  // Stores
+  const supplyRequestStore = useSupplyRequestStore();
+  const budgetReleaseStore = useBudgetReleaseStore();
+  const authStore = useAuthStore();
+
+  // Local state
   const loading = ref(false);
-  const hasRequests = ref(true);
-  const hasApprovedRequests = ref(true);
-  const hasPendingRequests = ref(true);
-  const hasRejectedRequests = ref(true);
   const currentPage = ref(1);
   const requestsPerPage = ref(10);
   const rowRequestModalPerPage = ref(5);
@@ -34,6 +43,15 @@
   const requestHistoryCurrentPage = ref(1);
   const requestHistoryPerPage = ref(10);
 
+  const showReceipt = ref(false);
+  const receiptData = ref(null);
+
+  function closeReceipt() {
+    showReceipt.value = false;
+    receiptData.value = null;
+  }
+
+  // Form data for request items
   const rowRequest = ref([
     {
       id: 1,
@@ -58,133 +76,11 @@
     });
   };
 
-  // Mock data for pending requests from SCM
-  const allRequests = ref([
-    {
-      request_id: 2025081401,
-      request_date: new Date().toISOString().split('T')[0],
-      request_description: 'Office supplies needed for branch operations',
-      request_status: 'Pending',
-      department: 'SCM',
-      requested_by: 'John Doe',
-      priority: 'Normal',
-      created_at: new Date().toISOString(),
-      sent_at: new Date().toISOString(),
-      total_amount: 15750.5,
-      items: [
-        {
-          id: 1,
-          item_name: 'A4 Paper',
-          item_quantity: 10,
-          item_unit: 'REAM',
-          item_type: 'Office Supplies',
-          item_unitPrice: 250.0,
-          item_amount: 2500.0,
-        },
-        {
-          id: 2,
-          item_name: 'Ballpoint Pens',
-          item_quantity: 50,
-          item_unit: 'PC',
-          item_type: 'Office Supplies',
-          item_unitPrice: 15.0,
-          item_amount: 750.0,
-        },
-      ],
-    },
-    {
-      request_id: 2025081402,
-      request_date: new Date(Date.now() - 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split('T')[0],
-      request_description: 'Raw materials for kitchen operations',
-      request_status: 'Pending',
-      department: 'SCM',
-      requested_by: 'Jane Smith',
-      priority: 'High',
-      created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-      sent_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-      total_amount: 45000.0,
-      items: [
-        {
-          id: 1,
-          item_name: 'Premium Beef',
-          item_quantity: 20,
-          item_unit: 'KG',
-          item_type: 'Raw Meat',
-          item_unitPrice: 800.0,
-          item_amount: 16000.0,
-        },
-        {
-          id: 2,
-          item_name: 'Fresh Vegetables',
-          item_quantity: 15,
-          item_unit: 'KG',
-          item_type: 'Ingredient',
-          item_unitPrice: 150.0,
-          item_amount: 2250.0,
-        },
-      ],
-    },
-    {
-      request_id: 2025081403,
-      request_date: new Date().toISOString().split('T')[0],
-      request_description: 'Kitchen equipment maintenance and replacement',
-      request_status: 'Pending',
-      department: 'SCM',
-      requested_by: 'Mike Johnson',
-      priority: 'Urgent',
-      created_at: new Date().toISOString(),
-      sent_at: new Date().toISOString(),
-      total_amount: 28500.75,
-      items: [
-        {
-          id: 1,
-          item_name: 'Industrial Blender',
-          item_quantity: 2,
-          item_unit: 'PC',
-          item_type: 'Kitchen Equipment',
-          item_unitPrice: 12500.0,
-          item_amount: 25000.0,
-        },
-      ],
-    },
-  ]);
-
-  // Mock data for request history (approved/rejected)
-  const requestHistory = ref([
-    {
-      request_id: 2025081301,
-      request_description: 'Office supplies for Q1',
-      request_date: '2025-01-10',
-      request_status: 'Approved',
-      total_amount: 12750.5,
-      approved_by: 'Finance Manager',
-      approved_at: '2025-01-11T10:30:00Z',
-      remarks: 'Approved as requested',
-    },
-    {
-      request_id: 2025081302,
-      request_description: 'Premium kitchen equipment',
-      request_date: '2025-01-09',
-      request_status: 'Rejected',
-      total_amount: 85000.0,
-      rejected_by: 'Finance Manager',
-      rejected_at: '2025-01-10T14:20:00Z',
-      remarks:
-        'Budget exceeded for this quarter. Please resubmit with lower cost alternatives.',
-    },
-    {
-      request_id: 2025081303,
-      request_description: 'Cleaning supplies for all branches',
-      request_date: '2025-01-08',
-      request_status: 'Approved',
-      total_amount: 8200.25,
-      approved_by: 'Finance Manager',
-      approved_at: '2025-01-09T09:15:00Z',
-      remarks: 'Approved with quantity adjustments',
-    },
-  ]);
+  const removeRowRequest = (id) => {
+    if (rowRequest.value.length > 1) {
+      rowRequest.value = rowRequest.value.filter((row) => row.id !== id);
+    }
+  };
 
   // Modal state management
   const modal = ref({
@@ -199,16 +95,16 @@
     },
   });
 
-  // Enhanced confirmation modal state
-  const confirmModal = ref({
-    show: false,
-    type: '',
-    title: '',
-    message: '',
-    confirmText: '',
-    confirmClass: '',
-    data: null,
-    onConfirm: null,
+  // Enhanced form data for new/edit request
+  const requestForm = ref({
+    request_id: null,
+    request_type: '',
+    request_description: '',
+    request_date: new Date().toISOString().split('T')[0],
+    priority: 'Normal',
+    department: 'Finance',
+    requested_by: 'Current User',
+    items: [],
   });
 
   // Request history filter
@@ -220,6 +116,52 @@
     sortBy: 'request_date',
     sortOrder: 'desc',
   });
+
+  // Enhanced request types with categories
+  const requestCategories = [
+    {
+      category: 'Equipment',
+      types: [
+        'Kitchen Equipment',
+        'Office Equipment',
+        'Service Equipment',
+        'Cleaning Equipment',
+      ],
+    },
+    {
+      category: 'Materials',
+      types: [
+        'Raw Materials',
+        'Ingredients',
+        'Office Supplies',
+        'Cleaning Supplies',
+      ],
+    },
+    {
+      category: 'Services',
+      types: [
+        'Maintenance Service',
+        'Cleaning Service',
+        'IT Service',
+        'Consulting Service',
+      ],
+    },
+    {
+      category: 'Beverages',
+      types: [
+        'Water',
+        'Soft Drinks',
+        'Juices',
+        'Alcoholic Beverages',
+        'Coffee & Tea',
+        'Other',
+      ],
+    },
+  ];
+
+  const priorities = ['Low', 'Normal', 'High', 'Urgent'];
+  const departments = ['SCM', 'Finance', 'HR', 'Production', 'Admin', 'Branch'];
+  const branches = ['Branch 1', 'Branch 2', 'Branch 3', 'Branch 4', 'Branch 5'];
 
   // Toast state
   const toast = ref({ show: false, type: '', message: '' });
@@ -235,7 +177,7 @@
   // Philippine Time helper functions
   const getPhilippineTime = () => {
     return new Date(
-      new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' })
+      new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' })
     );
   };
 
@@ -288,33 +230,54 @@
 
   const quickDateOptions = ref(getQuickDateOptions());
 
-  // Update quick date options with counts - excludes cancelled requests
+  // Computed properties using store data
+  const allRequests = computed(() => supplyRequestStore.requests);
+  const pendingReceipts = computed(() => budgetReleaseStore.pendingReceipts);
+  const requestStats = computed(() => supplyRequestStore.stats);
+
+  // Add missing computed properties
+  const hasRequests = computed(() => allRequests.value.length > 0);
+  const hasApprovedRequests = computed(() =>
+    allRequests.value.some((r) => r.request_status === 'Approved')
+  );
+  const hasPendingRequests = computed(() =>
+    allRequests.value.some((r) => r.request_status === 'Pending')
+  );
+  const hasRejectedRequests = computed(() =>
+    allRequests.value.some((r) => r.request_status === 'Rejected')
+  );
+
+  // Filter for pending requests only (Finance should see only pending requests)
+  const pendingRequestsOnly = computed(() => {
+    return allRequests.value.filter(
+      (request) => request.request_status === 'Pending'
+    );
+  });
+
+  // Update quick date options with counts (for pending requests)
   const updateQuickDateCounts = () => {
     quickDateOptions.value.forEach((option) => {
-      option.count = allRequests.value.filter(
-        (request) =>
-          request.request_date === option.date &&
-          request.request_status === 'Pending' &&
-          request.request_status !== 'Cancelled' // Exclude cancelled requests from count
-      ).length;
+      option.count = pendingRequestsOnly.value.filter((request) => {
+        const requestDate = new Date(request.request_date);
+        const requestDateString = requestDate.toISOString().split('T')[0];
+        return requestDateString === option.date;
+      }).length;
     });
   };
 
-  // Enhanced computed properties for filtered requests - excludes cancelled requests
+  // Enhanced computed properties for filtered requests
   const filteredRequestsByDate = computed(() => {
-    return allRequests.value.filter(
-      (request) =>
-        request.request_date === requestListFilter.value.selectedDate &&
-        request.request_status === 'Pending' &&
-        request.request_status !== 'Cancelled' // Auto-filter cancelled requests
-    );
+    return pendingRequestsOnly.value.filter((request) => {
+      const requestDate = new Date(request.request_date);
+      const requestDateString = requestDate.toISOString().split('T')[0];
+
+      return requestDateString === requestListFilter.value.selectedDate;
+    });
   });
 
   const sortedRequests = computed(() => {
     return [...filteredRequestsByDate.value].sort(
-      (a, b) =>
-        new Date(b.sent_at || b.created_at) -
-        new Date(a.sent_at || a.created_at)
+      (a, b) => new Date(b.created_at) - new Date(a.created_at)
     );
   });
 
@@ -325,6 +288,480 @@
 
   const totalPages = computed(() => {
     return Math.ceil(sortedRequests.value.length / requestsPerPage.value);
+  });
+
+  // Request history computed properties (approved/rejected/sent back)
+  const requestHistory = computed(() => {
+    return allRequests.value.filter((request) =>
+      ['Approved', 'Rejected', 'Sent Back', 'Budget Released'].includes(
+        request.request_status
+      )
+    );
+  });
+
+  // Add missing functions for Finance operations
+  const handleApproveRequest = async (requestId) => {
+    loading.value = true;
+    try {
+      const request = allRequests.value.find((r) => r.request_id === requestId);
+      if (!request) {
+        showToast('error', 'Request not found');
+        return;
+      }
+
+      await supplyRequestStore.approveRequest(
+        request.id,
+        authStore.user?.name || 'Finance User',
+        modal.value.data.remarks || 'Request approved by Finance'
+      );
+
+      closeModal();
+      showToast('success', `Request #${requestId} approved successfully`);
+
+      // Refresh data
+      await fetchRequests();
+    } catch (err) {
+      showToast('error', err.message || 'Failed to approve request');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const handleRejectRequest = async (requestId) => {
+    loading.value = true;
+    try {
+      if (!modal.value.data.remarks?.trim()) {
+        showToast('error', 'Rejection remarks are required');
+        return;
+      }
+
+      const request = allRequests.value.find((r) => r.request_id === requestId);
+      if (!request) {
+        showToast('error', 'Request not found');
+        return;
+      }
+
+      await supplyRequestStore.rejectRequest(
+        request.id,
+        authStore.user?.name || 'Finance User',
+        modal.value.data.remarks
+      );
+
+      closeModal();
+      showToast('success', `Request #${requestId} rejected successfully`);
+
+      // Refresh data
+      await fetchRequests();
+    } catch (err) {
+      showToast('error', err.message || 'Failed to reject request');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const handleSendBackRequest = async (requestId) => {
+    loading.value = true;
+    try {
+      if (!modal.value.data.remarks?.trim()) {
+        showToast('error', 'Revision remarks are required');
+        return;
+      }
+
+      const request = allRequests.value.find((r) => r.request_id === requestId);
+      if (!request) {
+        showToast('error', 'Request not found');
+        return;
+      }
+
+      await supplyRequestStore.sendBackRequest(
+        request.id,
+        authStore.user?.name || 'Finance User',
+        modal.value.data.remarks
+      );
+
+      closeModal();
+      showToast('success', `Request #${requestId} sent back for revision`);
+
+      // Refresh data
+      await fetchRequests();
+    } catch (err) {
+      showToast('error', err.message || 'Failed to send back request');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Enhanced confirmation modal state
+  const confirmModal = ref({
+    show: false,
+    type: '',
+    title: '',
+    message: '',
+    confirmText: '',
+    confirmClass: '',
+    data: null,
+    onConfirm: null,
+  });
+
+  // Enhanced confirmation modal functions
+  const openConfirmModal = (type, data = null, customConfig = {}) => {
+    const configs = {
+      approve: {
+        title: 'Approve Request',
+        message: `Are you sure you want to approve request #${data?.request_id}?`,
+        confirmText: 'Approve',
+        confirmClass: 'btn-success',
+        onConfirm: () => handleApproveRequest(data.request_id),
+      },
+      reject: {
+        title: 'Reject Request',
+        message: `Are you sure you want to reject request #${data?.request_id}?`,
+        confirmText: 'Reject',
+        confirmClass: 'btn-error',
+        onConfirm: () => handleRejectRequest(data.request_id),
+      },
+      sendBack: {
+        title: 'Send Back for Revision',
+        message: `Are you sure you want to send request #${data?.request_id} back to SCM?`,
+        confirmText: 'Send Back',
+        confirmClass: 'btn-info',
+        onConfirm: () => handleSendBackRequest(data.request_id),
+      },
+      edit: {
+        title: 'Update Request',
+        message: `Are you sure you want to update request #${data?.request_id}?`,
+        confirmText: 'Update',
+        confirmClass: 'btn-primary bg-primaryColor',
+        onConfirm: () => handleUpdateRequest(data.request_id),
+      },
+    };
+
+    const config = { ...configs[type], ...customConfig };
+
+    confirmModal.value = {
+      show: true,
+      type,
+      title: config.title,
+      message: config.message,
+      confirmText: config.confirmText,
+      confirmClass: config.confirmClass,
+      data,
+      onConfirm: config.onConfirm,
+    };
+
+    document.getElementById('confirmation_modal').showModal();
+  };
+
+  const closeConfirmModal = () => {
+    document.getElementById('confirmation_modal')?.close();
+    confirmModal.value = {
+      show: false,
+      type: '',
+      title: '',
+      message: '',
+      confirmText: '',
+      confirmClass: '',
+      data: null,
+      onConfirm: null,
+    };
+  };
+
+  const handleConfirmAction = async () => {
+    if (confirmModal.value.onConfirm) {
+      try {
+        await confirmModal.value.onConfirm();
+        closeConfirmModal();
+      } catch (error) {
+        console.error('Confirmation action failed:', error);
+      }
+    }
+  };
+
+  // Modal methods
+  const openModal = async (type, request = null) => {
+    modal.value = {
+      type,
+      show: true,
+      request,
+      data: request
+        ? {
+            request_type: request.request_type,
+            request_description: request.request_description,
+            request_date: request.request_date,
+            remarks: '',
+          }
+        : {
+            request_type: '',
+            request_description: '',
+            request_date: '',
+            remarks: '',
+          },
+    };
+
+    // If viewing or editing, fetch the full request details including items
+    if (request && (type === 'edit' || type === 'viewRequest')) {
+      try {
+        loading.value = true;
+        // Fetch full request details with items
+        const fullRequest = await supplyRequestStore.fetchRequestByRequestId(
+          request.request_id
+        );
+
+        // Initialize form with full data including items
+        initializeRequestForm(fullRequest);
+        modal.value.request = fullRequest;
+      } catch (error) {
+        console.error('Error fetching request details:', error);
+        showToast('error', 'Failed to load request details');
+        // Fallback to basic initialization
+        initializeRequestForm(request);
+      } finally {
+        loading.value = false;
+      }
+    } else {
+      initializeRequestForm(request);
+    }
+
+    if (type === 'edit') {
+      document.getElementById('request_form_modal').showModal();
+    } else {
+      document.getElementById('universal_modal').showModal();
+    }
+  };
+
+  const closeModal = () => {
+    document.getElementById('request_form_modal')?.close();
+    document.getElementById('universal_modal')?.close();
+    document.getElementById('confirmation_modal')?.close();
+    modal.value = {
+      type: null,
+      show: false,
+      request: null,
+      data: {
+        request_type: '',
+        request_description: '',
+        request_date: '',
+        remarks: '',
+      },
+    };
+  };
+
+  // Initialize request form
+  const initializeRequestForm = (request = null) => {
+    if (request) {
+      // Editing existing request
+      requestForm.value = {
+        request_id: request.request_id,
+        request_type: request.request_type || '',
+        request_description: request.request_description || '',
+        request_date:
+          request.request_date || new Date().toISOString().split('T')[0],
+        priority: request.priority || 'Normal',
+        department: request.department || 'Finance',
+        requested_by:
+          request.requested_by || authStore.user?.name || 'Current User',
+        items: request.items || [],
+      };
+
+      // Update rowRequest with existing items
+      if (
+        request.items &&
+        Array.isArray(request.items) &&
+        request.items.length > 0
+      ) {
+        rowRequest.value = request.items.map((item, index) => ({
+          id: index + 1,
+          item_name: item.item_name || '',
+          item_quantity: item.item_quantity || 0,
+          item_unit: item.item_unit || '',
+          item_type: item.item_type || '',
+          item_unitPrice: item.item_unit_price || item.item_unitPrice || 0,
+          item_amount:
+            (item.item_quantity || 0) *
+            (item.item_unit_price || item.item_unitPrice || 0),
+        }));
+      } else {
+        resetItemRows();
+      }
+    } else {
+      // Creating new request
+      requestForm.value = {
+        request_id: null,
+        request_type: '',
+        request_description: '',
+        request_date: new Date().toISOString().split('T')[0],
+        priority: 'Normal',
+        department: 'Finance',
+        requested_by: authStore.user?.name || 'Current User',
+        items: [],
+      };
+      resetItemRows();
+    }
+  };
+
+  const resetItemRows = () => {
+    rowRequest.value = [
+      {
+        id: 1,
+        item_name: '',
+        item_quantity: 0,
+        item_unit: '',
+        item_type: '',
+        item_unitPrice: 0,
+        item_amount: 0,
+      },
+    ];
+  };
+
+  // Auto-calculate item amounts when quantity or price changes
+  const updateItemAmount = (item) => {
+    item.item_amount = (item.item_quantity || 0) * (item.item_unitPrice || 0);
+  };
+
+  // Data fetching functions using stores (Finance specific)
+  const fetchRequests = async () => {
+    loading.value = true;
+    try {
+      // Fetch all requests (Finance needs to see all departments' requests)
+      await supplyRequestStore.fetchRequests();
+      await supplyRequestStore.fetchStats();
+      updateQuickDateCounts();
+    } catch (err) {
+      showToast('error', err.message || 'Failed to fetch requests');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const fetchPendingReceipts = async () => {
+    try {
+      await budgetReleaseStore.fetchPendingReceipts();
+    } catch (err) {
+      console.error('Error fetching pending receipts:', err);
+    }
+  };
+
+  // Computed properties for pagination
+  const paginatedRequestModal = computed(() => {
+    const start =
+      (requestModalCurrentPage.value - 1) * rowRequestModalPerPage.value;
+    return rowRequest.value.slice(start, start + rowRequestModalPerPage.value);
+  });
+
+  const totalPagesRequestModal = computed(() => {
+    return Math.ceil(rowRequest.value.length / rowRequestModalPerPage.value);
+  });
+
+  const totalAmount = computed(() => {
+    const total = rowRequest.value.reduce((acc, row) => {
+      const price = Number(row.item_unitPrice) || 0;
+      const quantity = Number(row.item_quantity) || 0;
+      return acc + price * quantity;
+    }, 0);
+    return total.toFixed(2);
+  });
+
+  // Request history computed properties
+  const filteredRequestHistory = computed(() => {
+    let filtered = [...requestHistory.value];
+
+    // Apply filters
+    if (requestHistoryFilter.value.startDate) {
+      filtered = filtered.filter(
+        (request) =>
+          new Date(request.request_date) >=
+          new Date(requestHistoryFilter.value.startDate)
+      );
+    }
+
+    if (requestHistoryFilter.value.endDate) {
+      filtered = filtered.filter(
+        (request) =>
+          new Date(request.request_date) <=
+          new Date(requestHistoryFilter.value.endDate)
+      );
+    }
+
+    if (requestHistoryFilter.value.status) {
+      filtered = filtered.filter(
+        (request) =>
+          request.request_status === requestHistoryFilter.value.status
+      );
+    }
+
+    if (requestHistoryFilter.value.searchQuery) {
+      const query = requestHistoryFilter.value.searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (request) =>
+          request.request_description.toLowerCase().includes(query) ||
+          request.request_id.toString().includes(query)
+      );
+    }
+
+    // Sorting
+    filtered.sort((a, b) => {
+      const sortBy = requestHistoryFilter.value.sortBy;
+      const order = requestHistoryFilter.value.sortOrder === 'asc' ? 1 : -1;
+
+      let aVal = a[sortBy];
+      let bVal = b[sortBy];
+
+      if (sortBy === 'request_date') {
+        aVal = new Date(aVal);
+        bVal = new Date(bVal);
+      }
+
+      if (sortBy === 'total_amount' || sortBy === 'request_id') {
+        aVal = parseFloat(aVal) || 0;
+        bVal = parseFloat(bVal) || 0;
+      }
+
+      if (aVal < bVal) return -1 * order;
+      if (aVal > bVal) return 1 * order;
+      return 0;
+    });
+
+    return filtered;
+  });
+
+  const paginatedRequestHistory = computed(() => {
+    const start =
+      (requestHistoryCurrentPage.value - 1) * requestHistoryPerPage.value;
+    return filteredRequestHistory.value.slice(
+      start,
+      start + requestHistoryPerPage.value
+    );
+  });
+
+  const totalPagesRequestHistory = computed(() => {
+    return Math.ceil(
+      filteredRequestHistory.value.length / requestHistoryPerPage.value
+    );
+  });
+
+  // Stats computed properties
+  const requestHistoryStats = computed(() => {
+    const approved = filteredRequestHistory.value.filter(
+      (r) => r.request_status === 'Approved'
+    );
+    const rejected = filteredRequestHistory.value.filter(
+      (r) => r.request_status === 'Rejected'
+    );
+    const sentBack = filteredRequestHistory.value.filter(
+      (r) => r.request_status === 'Sent Back'
+    );
+    const totalAmount = approved.reduce(
+      (sum, r) => sum + (parseFloat(r.total_amount) || 0),
+      0
+    );
+
+    return {
+      total: filteredRequestHistory.value.length,
+      approved: approved.length,
+      rejected: rejected.length,
+      sentBack: sentBack.length,
+      totalAmount,
+    };
   });
 
   // Date filter methods
@@ -370,126 +807,14 @@
     currentPage.value = 1;
   };
 
-  // Watch for changes and update counts
-  watch(
-    [allRequests, requestListFilter],
-    () => {
-      updateQuickDateCounts();
-    },
-    { deep: true, immediate: true }
-  );
+  // Action methods for Finance
+  const viewRequest = (request) => openModal('viewRequest', request);
+  const editRequest = (request) => openModal('edit', request);
+  const approveRequest = (request) => openModal('approve', request);
+  const rejectRequest = (request) => openModal('reject', request);
+  const sendBackRequest = (request) => openModal('sendBack', request);
 
-  // Fixed computed properties for modal pagination
-  const paginatedRequestModal = computed(() => {
-    const start =
-      (requestModalCurrentPage.value - 1) * rowRequestModalPerPage.value;
-    return rowRequest.value.slice(start, start + rowRequestModalPerPage.value);
-  });
-
-  const totalPagesRequestModal = computed(() => {
-    return Math.ceil(rowRequest.value.length / rowRequestModalPerPage.value);
-  });
-
-  // Request history filtering
-  const filteredRequestHistory = computed(() => {
-    let filtered = [...requestHistory.value];
-
-    // Date range filter
-    if (requestHistoryFilter.value.startDate) {
-      filtered = filtered.filter(
-        (request) =>
-          new Date(request.request_date) >=
-          new Date(requestHistoryFilter.value.startDate)
-      );
-    }
-
-    if (requestHistoryFilter.value.endDate) {
-      filtered = filtered.filter(
-        (request) =>
-          new Date(request.request_date) <=
-          new Date(requestHistoryFilter.value.endDate)
-      );
-    }
-
-    // Status filter
-    if (requestHistoryFilter.value.status) {
-      filtered = filtered.filter(
-        (request) =>
-          request.request_status === requestHistoryFilter.value.status
-      );
-    }
-
-    // Search filter
-    if (requestHistoryFilter.value.searchQuery) {
-      const query = requestHistoryFilter.value.searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (request) =>
-          request.request_description.toLowerCase().includes(query) ||
-          request.request_id.toString().includes(query)
-      );
-    }
-
-    // Sorting
-    filtered.sort((a, b) => {
-      const sortBy = requestHistoryFilter.value.sortBy;
-      const order = requestHistoryFilter.value.sortOrder === 'asc' ? 1 : -1;
-
-      let aVal = a[sortBy];
-      let bVal = b[sortBy];
-
-      if (sortBy === 'request_date') {
-        aVal = new Date(aVal);
-        bVal = new Date(bVal);
-      }
-
-      if (sortBy === 'total_amount' || sortBy === 'request_id') {
-        aVal = parseFloat(aVal) || 0;
-        bVal = parseFloat(bVal) || 0;
-      }
-
-      if (aVal < bVal) return -1 * order;
-      if (aVal > bVal) return 1 * order;
-      return 0;
-    });
-
-    return filtered;
-  });
-
-  // Updated computed properties with performance optimization
-  const paginatedRequestHistory = computed(() => {
-    const start =
-      (requestHistoryCurrentPage.value - 1) * requestHistoryPerPage.value;
-    return filteredRequestHistory.value.slice(
-      start,
-      start + requestHistoryPerPage.value
-    );
-  });
-
-  const totalPagesRequestHistory = computed(() => {
-    return Math.ceil(
-      filteredRequestHistory.value.length / requestHistoryPerPage.value
-    );
-  });
-
-  // Simple stats
-  const requestHistoryStats = computed(() => {
-    const approved = filteredRequestHistory.value.filter(
-      (r) => r.request_status === 'Approved'
-    );
-    const rejected = filteredRequestHistory.value.filter(
-      (r) => r.request_status === 'Rejected'
-    );
-    const totalAmount = approved.reduce((sum, r) => sum + r.total_amount, 0);
-
-    return {
-      total: filteredRequestHistory.value.length,
-      approved: approved.length,
-      rejected: rejected.length,
-      totalAmount,
-    };
-  });
-
-  // Clear all filters
+  // Clear filters
   const clearAllHistoryFilters = () => {
     requestHistoryFilter.value = {
       startDate: '',
@@ -527,7 +852,7 @@
           `"${request.request_description.replace(/"/g, '""')}"`,
           request.request_status,
           request.total_amount,
-          `"${(request.remarks || '').replace(/"/g, '""')}"`,
+          `"${(request.finance_remarks || '').replace(/"/g, '""')}"`,
         ].join(',')
       ),
     ].join('\n');
@@ -546,6 +871,23 @@
     document.body.removeChild(link);
   };
 
+  // History status options for filtering (Finance specific)
+  const historyStatusOptions = [
+    'Approved',
+    'Rejected',
+    'Sent Back',
+    'Budget Released',
+  ];
+
+  // Watch for changes and update counts
+  watch(
+    [allRequests, requestListFilter],
+    () => {
+      updateQuickDateCounts();
+    },
+    { deep: true, immediate: true }
+  );
+
   // Auto-reset pagination when filters change
   watch(
     requestHistoryFilter,
@@ -555,456 +897,9 @@
     { deep: true }
   );
 
-  // Modal methods
-  const openModal = async (type, request = null) => {
-    modal.value = {
-      type,
-      show: true,
-      request,
-      data: request
-        ? {
-            request_type: request.request_type || '',
-            request_description: request.request_description,
-            request_date: request.request_date,
-            remarks: '',
-          }
-        : {
-            request_type: '',
-            request_description: '',
-            request_date: '',
-            remarks: '',
-          },
-    };
-
-    // Initialize form based on action type
-    if (type === 'edit' && request) {
-      initializeRequestForm(request);
-    }
-
-    if (type === 'edit') {
-      document.getElementById('request_form_modal').showModal();
-    } else {
-      document.getElementById('universal_modal').showModal();
-    }
-  };
-
-  const closeModal = () => {
-    document.getElementById('request_form_modal')?.close();
-    document.getElementById('universal_modal')?.close();
-    document.getElementById('confirmation_modal')?.close();
-    modal.value = {
-      type: null,
-      show: false,
-      request: null,
-      data: {
-        request_type: '',
-        request_description: '',
-        request_date: '',
-        remarks: '',
-      },
-    };
-  };
-
-  // Enhanced confirmation modal functions
-  const openConfirmModal = (type, data = null, customConfig = {}) => {
-    const configs = {
-      approve: {
-        title: 'Approve Request',
-        message: `Are you sure you want to approve request #${data?.request_id}?`,
-        confirmText: 'Approve',
-        confirmClass: 'btn-success',
-        onConfirm: () => handleApproveRequest(data.request_id),
-      },
-      reject: {
-        title: 'Reject Request',
-        message: `Are you sure you want to reject request #${data?.request_id}?`,
-        confirmText: 'Reject',
-        confirmClass: 'btn-error',
-        onConfirm: () =>
-          handleRejectRequest(data.request_id, modal.value.data.remarks),
-      },
-      edit: {
-        title: 'Update Request',
-        message: `Are you sure you want to update request #${data?.request_id}?`,
-        confirmText: 'Update',
-        confirmClass: 'btn-primary bg-primaryColor',
-        onConfirm: () => handleEditRequest(data.request_id),
-      },
-      // NEW: Send Back for Revision
-      sendBack: {
-        title: 'Send Back for Revision',
-        message: `Are you sure you want to send request #${data?.request_id} back to SCM for revision?`,
-        confirmText: 'Send Back',
-        confirmClass: 'btn-info',
-        onConfirm: () =>
-          handleSendBackRequest(data.request_id, modal.value.data.remarks),
-      },
-      // NEW: Budget Release
-      budgetRelease: {
-        title: 'Release Budget',
-        message: `Are you sure you want to release budget for request #${data?.request_id}?`,
-        confirmText: 'Release Budget',
-        confirmClass: 'btn-success',
-        onConfirm: () => handleBudgetRelease(data.request_id),
-      },
-    };
-
-    const config = { ...configs[type], ...customConfig };
-
-    confirmModal.value = {
-      show: true,
-      type,
-      title: config.title,
-      message: config.message,
-      confirmText: config.confirmText,
-      confirmClass: config.confirmClass,
-      data,
-      onConfirm: config.onConfirm,
-    };
-
-    document.getElementById('confirmation_modal').showModal();
-  };
-
-  const closeConfirmModal = () => {
-    document.getElementById('confirmation_modal')?.close();
-    confirmModal.value = {
-      show: false,
-      type: '',
-      title: '',
-      message: '',
-      confirmText: '',
-      confirmClass: '',
-      data: null,
-      onConfirm: null,
-    };
-  };
-
-  const handleConfirmAction = async () => {
-    if (confirmModal.value.onConfirm) {
-      try {
-        await confirmModal.value.onConfirm();
-        closeConfirmModal();
-      } catch (error) {
-        console.error('Confirmation action failed:', error);
-      }
-    }
-  };
-
-  // Finance-specific request handling functions
-  const handleApproveRequest = async (requestId) => {
-    loading.value = true;
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Find the request
-      const requestIndex = allRequests.value.findIndex(
-        (r) => r.request_id === requestId
-      );
-
-      if (requestIndex !== -1) {
-        const request = allRequests.value[requestIndex];
-
-        // Add to history
-        requestHistory.value.unshift({
-          request_id: request.request_id,
-          request_description: request.request_description,
-          request_date: request.request_date,
-          request_status: 'Approved',
-          total_amount: request.total_amount,
-          approved_by: 'Finance Manager', // In real app, get from auth store
-          approved_at: new Date().toISOString(),
-          remarks: modal.value.data.remarks || 'Approved as requested',
-        });
-
-        // Remove from pending requests
-        allRequests.value.splice(requestIndex, 1);
-      }
-
-      closeModal();
-      showToast('success', `Request #${requestId} approved successfully`);
-    } catch (err) {
-      showToast('error', 'Failed to approve request');
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const handleRejectRequest = async (requestId, remarks) => {
-    loading.value = true;
-    try {
-      // Validation
-      if (!remarks || remarks.trim() === '') {
-        showToast('error', 'Please provide remarks for rejection');
-        return;
-      }
-
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Find the request
-      const requestIndex = allRequests.value.findIndex(
-        (r) => r.request_id === requestId
-      );
-
-      if (requestIndex !== -1) {
-        const request = allRequests.value[requestIndex];
-
-        // Add to history
-        requestHistory.value.unshift({
-          request_id: request.request_id,
-          request_description: request.request_description,
-          request_date: request.request_date,
-          request_status: 'Rejected',
-          total_amount: request.total_amount,
-          rejected_by: 'Finance Manager', // In real app, get from auth store
-          rejected_at: new Date().toISOString(),
-          remarks: remarks.trim(),
-        });
-
-        // Remove from pending requests
-        allRequests.value.splice(requestIndex, 1);
-      }
-
-      closeModal();
-      showToast('success', `Request #${requestId} rejected successfully`);
-    } catch (err) {
-      showToast('error', 'Failed to reject request');
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const handleEditRequest = async (requestId) => {
-    loading.value = true;
-    try {
-      // Validation
-      const validItems = rowRequest.value.filter(
-        (row) =>
-          row.item_name.trim() &&
-          row.item_quantity > 0 &&
-          row.item_unitPrice > 0
-      );
-
-      if (validItems.length === 0) {
-        showToast('error', 'Please add at least one valid item');
-        return;
-      }
-
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Update request in the list
-      const requestIndex = allRequests.value.findIndex(
-        (r) => r.request_id === requestId
-      );
-
-      if (requestIndex !== -1) {
-        allRequests.value[requestIndex] = {
-          ...allRequests.value[requestIndex],
-          request_description: modal.value.data.request_description,
-          updated_at: new Date().toISOString(),
-          updated_by: 'Finance Manager', // In real app, get from auth store
-          items: validItems.map((item) => ({
-            ...item,
-            item_amount: item.item_quantity * item.item_unitPrice,
-          })),
-          total_amount: parseFloat(totalAmount.value),
-          item_count: validItems.length,
-        };
-      }
-
-      closeModal();
-      showToast('success', `Request #${requestId} updated successfully`);
-    } catch (err) {
-      showToast('error', 'Failed to update request');
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  // NEW: Send Back for Revision function
-  const handleSendBackRequest = async (requestId, remarks) => {
-    loading.value = true;
-    try {
-      // Validation
-      if (!remarks || remarks.trim() === '') {
-        showToast(
-          'error',
-          'Please provide remarks for sending back the request'
-        );
-        return;
-      }
-
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Find the request
-      const requestIndex = allRequests.value.findIndex(
-        (r) => r.request_id === requestId
-      );
-
-      if (requestIndex !== -1) {
-        const request = allRequests.value[requestIndex];
-
-        // Add to history
-        requestHistory.value.unshift({
-          request_id: request.request_id,
-          request_description: request.request_description,
-          request_date: request.request_date,
-          request_status: 'Sent Back',
-          total_amount: request.total_amount,
-          sent_back_by: 'Finance Manager',
-          sent_back_at: new Date().toISOString(),
-          remarks: remarks.trim(),
-          revision_count: (request.revision_count || 0) + 1,
-        });
-
-        // Remove from pending requests (in real app, this would update status and notify SCM)
-        allRequests.value.splice(requestIndex, 1);
-      }
-
-      closeModal();
-      showToast(
-        'success',
-        `Request #${requestId} sent back to SCM for revision`
-      );
-    } catch (err) {
-      showToast('error', 'Failed to send back request');
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  // NEW: Budget Release function
-  const handleBudgetRelease = async (requestId) => {
-    loading.value = true;
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Find the approved request
-      const requestIndex = approvedRequests.value.findIndex(
-        (r) => r.request_id === requestId
-      );
-
-      if (requestIndex !== -1) {
-        const request = approvedRequests.value[requestIndex];
-
-        // Add to request history with Budget Released status
-        requestHistory.value.unshift({
-          request_id: request.request_id,
-          request_description: request.request_description,
-          request_date: request.request_date,
-          request_status: 'Budget Released',
-          total_amount: request.total_amount,
-          approved_by: request.approved_by,
-          approved_at: request.approved_at,
-          released_by: 'Finance Manager',
-          released_at: new Date().toISOString(),
-          remarks: request.finance_remarks,
-        });
-
-        // Remove from approved requests
-        approvedRequests.value.splice(requestIndex, 1);
-      }
-
-      closeModal();
-      showToast(
-        'success',
-        `Budget released successfully for request #${requestId}`
-      );
-    } catch (err) {
-      showToast('error', 'Failed to release budget');
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  // Action methods
-  const viewRequest = (request) => openModal('viewRequest', request);
-  const editRequest = (request) => openModal('edit', request);
-  const approveRequest = (request) => openModal('approve', request);
-  const rejectRequest = (request) => openModal('reject', request);
-  const sendBackRequest = (request) => openModal('sendBack', request); // NEW
-  const releaseBudget = (request) => openModal('budgetRelease', request); // NEW
-
-  // Add missing functions for backward compatibility
-  const fetchRequests = async () => {
-    loading.value = true;
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      // In real implementation, fetch pending requests from API
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const removeRowRequest = (id) => {
-    if (rowRequest.value.length > 1) {
-      rowRequest.value = rowRequest.value.filter((row) => row.id !== id);
-    }
-  };
-
-  const totalAmount = computed(() => {
-    const total = rowRequest.value.reduce((acc, row) => {
-      const price = Number(row.item_unitPrice) || 0;
-      const quantity = Number(row.item_quantity) || 0;
-      return acc + price * quantity;
-    }, 0);
-    return total.toFixed(2);
-  });
-
-  // Enhanced form data for edit request
-  const initializeRequestForm = (request = null) => {
-    if (request && request.items) {
-      // Update rowRequest with existing items
-      rowRequest.value = request.items.map((item, index) => ({
-        id: index + 1,
-        item_name: item.item_name || '',
-        item_quantity: item.item_quantity || 0,
-        item_unit: item.item_unit || '',
-        item_type: item.item_type || '',
-        item_unitPrice: item.item_unitPrice || 0,
-        item_amount: (item.item_quantity || 0) * (item.item_unitPrice || 0),
-      }));
-    } else {
-      resetItemRows();
-    }
-  };
-
-  const resetItemRows = () => {
-    rowRequest.value = [
-      {
-        id: 1,
-        item_name: '',
-        item_quantity: 0,
-        item_unit: '',
-        item_type: '',
-        item_unitPrice: 0,
-        item_amount: 0,
-      },
-    ];
-  };
-
-  // Auto-calculate item amounts when quantity or price changes
-  const updateItemAmount = (item) => {
-    item.item_amount = (item.item_quantity || 0) * (item.item_unitPrice || 0);
-  };
-
-  // History status options for filtering
-  const historyStatusOptions = [
-    'Approved',
-    'Rejected',
-    'Sent Back',
-    'Budget Released',
-  ];
+  // Date picker setup
+  let requestDatePicker = null;
+  const requestDate = ref('');
 
   // Smart pagination helper
   const getPageRange = () => {
@@ -1025,11 +920,12 @@
     return range;
   };
 
-  // Date picker setup
-  let requestDatePicker = null;
-  const requestDate = ref('');
+  onMounted(async () => {
+    // Initialize data using stores
+    await fetchRequests();
+    await fetchPendingReceipts();
 
-  onMounted(() => {
+    // Setup date picker
     requestDatePicker = new PikaDay({
       field: document.getElementById('request_date_history'),
       format: 'YYYY-MM-DD',
@@ -1068,16 +964,10 @@
         </div>
         <div class="stat-title text-black/50">Pending Requests</div>
         <div class="stat-value text-primaryColor">
-          {{
-            allRequests.filter(
-              (r) =>
-                r.request_status === 'Pending' &&
-                r.request_status !== 'Cancelled'
-            ).length
-          }}
+          {{ pendingRequestsOnly.length }}
         </div>
         <div class="stat-desc text-black/50">
-          {{ hasRequests ? 'Awaiting review' : 'No pending requests' }}
+          {{ hasPendingRequests ? 'Awaiting review' : 'No pending requests' }}
         </div>
       </div>
 
@@ -1090,7 +980,8 @@
         <div class="stat-title text-black/50">Total Approved</div>
         <div class="stat-value text-success">
           {{
-            requestHistory.filter((r) => r.request_status === 'Approved').length
+            requestStats.approved ||
+            allRequests.filter((r) => r.request_status === 'Approved').length
           }}
         </div>
         <div class="stat-desc text-black/50">
@@ -1111,7 +1002,8 @@
         <div class="stat-title text-black/50">Total Rejected</div>
         <div class="stat-value text-error">
           {{
-            requestHistory.filter((r) => r.request_status === 'Rejected').length
+            requestStats.rejected ||
+            allRequests.filter((r) => r.request_status === 'Rejected').length
           }}
         </div>
         <div class="stat-desc text-black/50">
@@ -1131,7 +1023,12 @@
         </div>
         <div class="stat-title text-black/50">Total Value Approved</div>
         <div class="stat-value text-info">
-          ₱{{ requestHistoryStats.totalAmount.toLocaleString('en-PH') }}
+          ₱{{
+            (
+              requestStats.total_approved_amount ||
+              requestHistoryStats.totalAmount
+            ).toLocaleString('en-PH')
+          }}
         </div>
         <div class="stat-desc text-black/50">Finance approved amount</div>
       </div>
@@ -1342,22 +1239,30 @@
                 <td class="text-wrap">{{ request.request_description }}</td>
                 <td class="font-semibold">
                   ₱{{
-                    request.total_amount.toLocaleString('en-PH', {
-                      minimumFractionDigits: 2,
-                    })
+                    parseFloat(request.total_amount || 0).toLocaleString(
+                      'en-PH',
+                      {
+                        minimumFractionDigits: 2,
+                      }
+                    )
                   }}
                 </td>
                 <td>
                   <div class="flex flex-col">
-                    <span>{{ request.request_date }}</span>
+                    <span>{{
+                      new Date(request.request_date).toLocaleDateString('en-PH')
+                    }}</span>
                     <span class="text-xs text-black/40">
                       Sent:
                       {{
-                        new Date(request.sent_at).toLocaleTimeString('en-PH', {
-                          timeZone: 'Asia/Manila',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })
+                        new Date(request.created_at).toLocaleTimeString(
+                          'en-PH',
+                          {
+                            timeZone: 'Asia/Manila',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          }
+                        )
                       }}
                     </span>
                   </div>
@@ -1727,9 +1632,7 @@
           <div class="text-sm text-black/60 flex flex-wrap gap-4">
             <span>
               Showing
-              {{
-                (requestHistoryCurrentPage - 1) * requestHistoryPerPage + 1
-              }}
+              {{ (requestHistoryCurrentPage - 1) * requestHistoryPerPage + 1 }}
               to
               {{
                 Math.min(
@@ -1894,17 +1797,31 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="item in modal.request?.items || []" :key="item.id">
-                <td class="border border-black">{{ item.id }}</td>
+              <tr
+                v-for="(item, index) in modal.request?.items || []"
+                :key="item.id || index"
+              >
+                <td class="border border-black">{{ index + 1 }}</td>
                 <td class="border border-black">{{ item.item_name }}</td>
                 <td class="border border-black">{{ item.item_quantity }}</td>
                 <td class="border border-black">{{ item.item_unit }}</td>
                 <td class="border border-black">{{ item.item_type }}</td>
                 <td class="border border-black">
-                  ₱{{ item.item_unitPrice.toFixed(2) }}
+                  ₱{{
+                    parseFloat(
+                      item.item_unit_price || item.item_unitPrice || 0
+                    ).toFixed(2)
+                  }}
                 </td>
                 <td class="border border-black">
-                  ₱{{ item.item_amount.toFixed(2) }}
+                  ₱{{
+                    (
+                      parseFloat(item.item_quantity || 0) *
+                      parseFloat(
+                        item.item_unit_price || item.item_unitPrice || 0
+                      )
+                    ).toFixed(2)
+                  }}
                 </td>
               </tr>
               <tr class="border border-black">
@@ -1915,7 +1832,7 @@
                   Total
                 </td>
                 <td class="font-semibold border border-black">
-                  ₱{{ modal.request?.total_amount.toFixed(2) }}
+                  ₱{{ parseFloat(modal.request?.total_amount || 0).toFixed(2) }}
                 </td>
               </tr>
             </tbody>

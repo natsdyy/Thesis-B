@@ -5,7 +5,9 @@
 body {
   margin: 0;
   font-family: Poppins;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
 }
 
 p {
@@ -38,12 +40,12 @@ p {
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: #6B7280;
+  background: #6b7280;
   border-radius: 4px;
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: #9CA3AF;
+  background: #9ca3af;
 }
 
 @font-face {
@@ -61,8 +63,8 @@ p {
   --font-roboto: Roboto;
 
   --color-primaryColor: #466114;
-  --color-secondaryColor: #AAD36D;
-  --color-accentColor: #F9FAFB;
+  --color-secondaryColor: #aad36d;
+  --color-accentColor: #f9fafb;
   --color-neutralColor: #000000;
 }
 
@@ -79,4 +81,26 @@ p {
 .toggle:checked:hover {
   background-color: #3a5211 !important;
   border-color: #3a5211 !important;
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  #cash_request_receipt_modal,
+  #cash_request_receipt_modal * {
+    visibility: visible !important;
+  }
+  #cash_request_receipt_modal {
+    position: absolute !important;
+    left: 0;
+    top: 0;
+    width: 100vw;
+    background: white !important;
+    box-shadow: none !important;
+    z-index: 9999 !important;
+  }
+  .modal-action {
+    display: none !important;
+  }
 }

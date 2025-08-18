@@ -6,6 +6,10 @@
       onClose: { type: Function, required: true },
     },
   });
+
+  const printReceipt = () => {
+    window.print();
+  };
 </script>
 
 <template>
@@ -22,8 +26,18 @@
           <h3 class="font-bold text-lg">Countryside Steakhouse</h3>
         </div>
         <div class="flex flex-col items-end w-full">
-          <p class="text-xs">August 15, 2025 10:00 AM</p>
-          <p class="text-xs">Request ID: 1234567890</p>
+          <p class="text-xs">
+            {{
+              new Date(
+                cashRequestReceipt.receipt?.completed_at ||
+                  cashRequestReceipt.receipt?.updated_at ||
+                  Date.now()
+              ).toLocaleString('en-PH')
+            }}
+          </p>
+          <p class="text-xs">
+            Request ID: {{ cashRequestReceipt.receipt?.request_id }}
+          </p>
         </div>
       </div>
       <div class="overflow-x-auto">
@@ -40,14 +54,27 @@
             </tr>
           </thead>
           <tbody>
-            <tr class="border border-black">
-              <td class="border border-black">1</td>
-              <td class="border border-black">Item Name</td>
-              <td class="border border-black">1</td>
-              <td class="border border-black">Unit</td>
-              <td class="border border-black">Type</td>
-              <td class="border border-black">100</td>
-              <td class="border border-black">100</td>
+            <tr
+              v-for="(item, idx) in cashRequestReceipt.receipt?.items || []"
+              :key="item.id || idx"
+              class="border border-black"
+            >
+              <td class="border border-black">{{ idx + 1 }}</td>
+              <td class="border border-black">{{ item.item_name }}</td>
+              <td class="border border-black">{{ item.item_quantity }}</td>
+              <td class="border border-black">{{ item.item_unit }}</td>
+              <td class="border border-black">{{ item.item_type }}</td>
+              <td class="border border-black">
+                ₱{{ Number(item.item_unit_price).toFixed(2) }}
+              </td>
+              <td class="border border-black">
+                ₱{{
+                  Number(
+                    item.item_amount ||
+                      item.item_quantity * item.item_unit_price
+                  ).toFixed(2)
+                }}
+              </td>
             </tr>
             <tr class="border border-black">
               <td
@@ -57,7 +84,11 @@
                 Total
               </td>
               <td class="font-semibold border border-black">
-                ₱ {{ cashRequestReceipt.receipt.total_amount }}
+                ₱{{
+                  Number(cashRequestReceipt.receipt?.total_amount || 0).toFixed(
+                    2
+                  )
+                }}
               </td>
             </tr>
           </tbody>
@@ -67,18 +98,20 @@
           <h6 class="text-xs">Remarks:</h6>
           <textarea
             class="text-xs w-full h-20 border border-black/30 rounded-md p-2 text-black/50"
-          >
-          </textarea>
+            readonly
+          ></textarea>
         </div>
 
         <div class="flex justify-between items-center mt-2 text-black">
           <div class="flex items-center gap-2">
             <p class="text-sm">Requested & Received by:</p>
-            <p class="text-sm">John Marco Paja</p>
+            <p class="text-sm">
+              {{ cashRequestReceipt.receipt?.requested_by }}
+            </p>
           </div>
           <div class="flex items-center gap-2">
             <p class="text-sm">Approved & Released by:</p>
-            <p class="text-sm">Ella Francince Callejas</p>
+            <p class="text-sm">{{ cashRequestReceipt.receipt?.released_by }}</p>
           </div>
         </div>
         <div class="flex justify-between mt-8 w-full">
@@ -95,6 +128,7 @@
         <div class="modal-action flex gap-2 mt-10">
           <button
             class="btn btn-sm bg-primaryColor text-white font-thin border border-none hover:bg-primaryColor/80 shadow-none"
+            @click="printReceipt"
           >
             Print
           </button>

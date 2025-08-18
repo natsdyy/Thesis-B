@@ -28,133 +28,52 @@
     AlertCircle,
   } from 'lucide-vue-next';
 
+  // Stores
+  import { useSupplyRequestStore } from '../../stores/supplyRequestStore.js';
+  import { useBudgetReleaseStore } from '../../stores/budgetReleaseStore.js';
+  import { useAuthStore } from '../../stores/authStore.js';
+
+  // Stores
+  const supplyRequestStore = useSupplyRequestStore();
+  const budgetReleaseStore = useBudgetReleaseStore();
+  const authStore = useAuthStore();
+
+  // Local state
   const loading = ref(false);
   const currentPage = ref(1);
   const requestsPerPage = ref(10);
   const historyCurrentPage = ref(1);
   const historyPerPage = ref(10);
 
-  // Mock data for approved requests awaiting budget release
-  const approvedRequests = ref([
-    {
-      request_id: 2025081401,
-      request_date: new Date().toISOString().split('T')[0],
-      request_description: 'Office supplies needed for branch operations',
-      request_status: 'Approved',
-      department: 'SCM',
-      requested_by: 'John Doe',
-      priority: 'Normal',
-      created_at: new Date().toISOString(),
-      sent_at: new Date().toISOString(),
-      approved_at: new Date().toISOString(),
-      approved_by: 'Finance Manager',
-      total_amount: 15750.5,
-      finance_remarks: 'Approved as requested',
-      items: [
-        {
-          id: 1,
-          item_name: 'A4 Paper',
-          item_quantity: 10,
-          item_unit: 'REAM',
-          item_type: 'Office Supplies',
-          item_unitPrice: 250.0,
-          item_amount: 2500.0,
-        },
-        {
-          id: 2,
-          item_name: 'Ballpoint Pens',
-          item_quantity: 50,
-          item_unit: 'PC',
-          item_type: 'Office Supplies',
-          item_unitPrice: 15.0,
-          item_amount: 750.0,
-        },
-      ],
-    },
-    {
-      request_id: 2025081402,
-      request_date: new Date(Date.now() - 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split('T')[0],
-      request_description: 'Raw materials for kitchen operations',
-      request_status: 'Approved',
-      department: 'SCM',
-      requested_by: 'Jane Smith',
-      priority: 'High',
-      created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-      approved_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-      approved_by: 'Finance Manager',
-      total_amount: 45000.0,
-      finance_remarks: 'Approved with quantity adjustments',
-      items: [
-        {
-          id: 1,
-          item_name: 'Premium Beef',
-          item_quantity: 18, // Adjusted from 20
-          item_unit: 'KG',
-          item_type: 'Raw Meat',
-          item_unitPrice: 800.0,
-          item_amount: 14400.0,
-        },
-        {
-          id: 2,
-          item_name: 'Fresh Vegetables',
-          item_quantity: 15,
-          item_unit: 'KG',
-          item_type: 'Ingredient',
-          item_unitPrice: 150.0,
-          item_amount: 2250.0,
-        },
-      ],
-    },
-  ]);
+  // Update computed properties to use real store data
+  const approvedRequests = computed(() =>
+    supplyRequestStore.requests.filter((r) => r.request_status === 'Approved')
+  );
 
-  // Mock data for budget release history
-  const budgetReleaseHistory = ref([
-    {
-      release_id: 'BR2025001',
-      request_id: 2025081301,
-      request_description: 'Kitchen equipment upgrade',
-      released_amount: 85000.0,
-      released_by: 'Finance Manager',
-      released_at: '2025-01-12T14:30:00Z',
-      receipt_confirmed: true,
-      receipt_confirmed_by: 'SCM Manager',
-      receipt_confirmed_at: '2025-01-12T16:45:00Z',
-      department: 'SCM',
-      requested_by: 'Mike Wilson',
-      priority: 'Urgent',
-      approval_date: '2025-01-12T10:00:00Z',
-    },
-    {
-      release_id: 'BR2025002',
-      request_id: 2025081302,
-      request_description: 'Office supplies bulk order',
-      released_amount: 25000.0,
-      released_by: 'Finance Manager',
-      released_at: '2025-01-11T09:15:00Z',
-      receipt_confirmed: true,
-      receipt_confirmed_by: 'SCM Manager',
-      receipt_confirmed_at: '2025-01-11T11:30:00Z',
-      department: 'SCM',
-      requested_by: 'Sarah Davis',
-      priority: 'Normal',
-      approval_date: '2025-01-11T08:45:00Z',
-    },
-    {
-      release_id: 'BR2025003',
-      request_id: 2025081303,
-      request_description: 'Cleaning supplies for all branches',
-      released_amount: 8200.25,
-      released_by: 'Finance Manager',
-      released_at: '2025-01-10T11:20:00Z',
-      receipt_confirmed: false, // Still awaiting confirmation
-      department: 'SCM',
-      requested_by: 'Alice Johnson',
-      priority: 'Normal',
-      approval_date: '2025-01-10T09:30:00Z',
-    },
-  ]);
+  const budgetReleaseHistory = computed(() => budgetReleaseStore.releases);
+
+  // Enhanced budget release stats using real data
+  const budgetReleaseStats = computed(() => {
+    const allReleases = budgetReleaseHistory.value || [];
+    const confirmed = allReleases.filter((r) => r.receipt_confirmed);
+    const pending = allReleases.filter((r) => !r.receipt_confirmed);
+    const totalReleased = allReleases.reduce(
+      (sum, r) => sum + parseFloat(r.released_amount || 0),
+      0
+    );
+    const totalConfirmed = confirmed.reduce(
+      (sum, r) => sum + parseFloat(r.released_amount || 0),
+      0
+    );
+
+    return {
+      total: allReleases.length,
+      confirmed: confirmed.length,
+      pending: pending.length,
+      totalReleased,
+      totalConfirmed,
+    };
+  });
 
   // Modal state management
   const modal = ref({
@@ -243,109 +162,6 @@
     );
   });
 
-  // Budget release history filtering
-  const filteredBudgetHistory = computed(() => {
-    let filtered = [...budgetReleaseHistory.value];
-
-    // Date range filter
-    if (historyFilter.value.startDate) {
-      filtered = filtered.filter(
-        (release) =>
-          new Date(release.released_at) >=
-          new Date(historyFilter.value.startDate)
-      );
-    }
-
-    if (historyFilter.value.endDate) {
-      filtered = filtered.filter(
-        (release) =>
-          new Date(release.released_at) <= new Date(historyFilter.value.endDate)
-      );
-    }
-
-    // Receipt status filter
-    if (historyFilter.value.receiptStatus === 'confirmed') {
-      filtered = filtered.filter((release) => release.receipt_confirmed);
-    } else if (historyFilter.value.receiptStatus === 'pending') {
-      filtered = filtered.filter((release) => !release.receipt_confirmed);
-    }
-
-    // Search filter
-    if (historyFilter.value.searchQuery) {
-      const query = historyFilter.value.searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (release) =>
-          release.request_description.toLowerCase().includes(query) ||
-          release.request_id.toString().includes(query) ||
-          release.release_id.toLowerCase().includes(query) ||
-          release.requested_by.toLowerCase().includes(query)
-      );
-    }
-
-    // Sorting
-    filtered.sort((a, b) => {
-      const sortBy = historyFilter.value.sortBy;
-      const order = historyFilter.value.sortOrder === 'asc' ? 1 : -1;
-
-      let aVal = a[sortBy];
-      let bVal = b[sortBy];
-
-      if (sortBy === 'released_at' || sortBy === 'receipt_confirmed_at') {
-        aVal = new Date(aVal);
-        bVal = new Date(bVal);
-      }
-
-      if (sortBy === 'released_amount' || sortBy === 'request_id') {
-        aVal = parseFloat(aVal) || 0;
-        bVal = parseFloat(bVal) || 0;
-      }
-
-      if (aVal < bVal) return -1 * order;
-      if (aVal > bVal) return 1 * order;
-      return 0;
-    });
-
-    return filtered;
-  });
-
-  const paginatedBudgetHistory = computed(() => {
-    const start = (historyCurrentPage.value - 1) * historyPerPage.value;
-    return filteredBudgetHistory.value.slice(
-      start,
-      start + historyPerPage.value
-    );
-  });
-
-  const totalHistoryPages = computed(() => {
-    return Math.ceil(filteredBudgetHistory.value.length / historyPerPage.value);
-  });
-
-  // Budget release stats
-  const budgetReleaseStats = computed(() => {
-    const confirmed = filteredBudgetHistory.value.filter(
-      (r) => r.receipt_confirmed
-    );
-    const pending = filteredBudgetHistory.value.filter(
-      (r) => !r.receipt_confirmed
-    );
-    const totalReleased = filteredBudgetHistory.value.reduce(
-      (sum, r) => sum + r.released_amount,
-      0
-    );
-    const totalConfirmed = confirmed.reduce(
-      (sum, r) => sum + r.released_amount,
-      0
-    );
-
-    return {
-      total: filteredBudgetHistory.value.length,
-      confirmed: confirmed.length,
-      pending: pending.length,
-      totalReleased,
-      totalConfirmed,
-    };
-  });
-
   // Clear all filters
   const clearAllFilters = () => {
     historyFilter.value = {
@@ -425,11 +241,19 @@
     modal.value = {
       type,
       show: true,
-      request,
-      data: {
-        release_remarks: '',
-      },
+      request: null,
+      data: {},
     };
+
+    if (type === 'viewRequest' && request) {
+      // Fetch the full request details with items
+      const fullRequest = await supplyRequestStore.fetchRequestByRequestId(
+        request.request_id
+      );
+      modal.value.request = fullRequest;
+    } else {
+      modal.value.request = request;
+    }
 
     document.getElementById('universal_modal').showModal();
   };
@@ -500,53 +324,38 @@
     }
   };
 
-  // Budget release function
+  // Budget release function using real store
   const handleBudgetRelease = async (requestId) => {
     loading.value = true;
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
       // Find the approved request
-      const requestIndex = approvedRequests.value.findIndex(
+      const request = approvedRequests.value.find(
         (r) => r.request_id === requestId
       );
-
-      if (requestIndex !== -1) {
-        const request = approvedRequests.value[requestIndex];
-
-        // Generate release ID
-        const releaseId = `BR${new Date().getFullYear()}${String(budgetReleaseHistory.value.length + 1).padStart(3, '0')}`;
-
-        // Add to budget release history
-        budgetReleaseHistory.value.unshift({
-          release_id: releaseId,
-          request_id: request.request_id,
-          request_description: request.request_description,
-          released_amount: request.total_amount,
-          released_by: 'Finance Manager', // In real app, get from auth store
-          released_at: new Date().toISOString(),
-          receipt_confirmed: false,
-          department: request.department,
-          requested_by: request.requested_by,
-          priority: request.priority,
-          approval_date: request.approved_at,
-          release_remarks:
-            modal.value.data.release_remarks || 'Budget released as approved',
-        });
-
-        // Remove from approved requests
-        approvedRequests.value.splice(requestIndex, 1);
+      if (!request) {
+        showToast('error', 'Request not found');
+        return;
       }
+
+      // Use the store to release budget (pass an object!)
+      await budgetReleaseStore.releaseBudget({
+        supply_request_id: request.id, // numeric id
+        released_amount: Number(request.total_amount),
+        released_by: authStore.user?.name || 'Finance Manager',
+        release_remarks:
+          modal.value.data.release_remarks || 'Budget released as approved',
+      });
 
       closeModal();
       showToast(
         'success',
         `Budget released successfully for request #${requestId}. SCM will be notified.`
       );
+
+      // Refresh data
+      await fetchData();
     } catch (err) {
-      showToast('error', 'Failed to release budget');
-      throw err;
+      showToast('error', err.message || 'Failed to release budget');
     } finally {
       loading.value = false;
     }
@@ -556,13 +365,30 @@
   const viewRequest = (request) => openModal('viewRequest', request);
   const releaseBudget = (request) => openModal('release', request);
 
-  // Fetch functions
+  // Add data fetching functions
+  const fetchData = async () => {
+    loading.value = true;
+    try {
+      // Fetch approved requests and budget release history
+      await Promise.all([
+        supplyRequestStore.fetchRequests(),
+        budgetReleaseStore.fetchReleases(),
+        supplyRequestStore.fetchStats(),
+      ]);
+    } catch (err) {
+      showToast('error', err.message || 'Failed to fetch data');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Update the fetchApprovedRequests function
   const fetchApprovedRequests = async () => {
     loading.value = true;
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      // In real implementation, fetch approved requests from API
+      await supplyRequestStore.fetchRequests({ status: 'Approved' });
+    } catch (err) {
+      showToast('error', err.message || 'Failed to fetch approved requests');
     } finally {
       loading.value = false;
     }
@@ -589,7 +415,11 @@
   // Date picker setup
   let datePicker = null;
 
-  onMounted(() => {
+  onMounted(async () => {
+    // Initialize data using stores
+    await fetchData();
+
+    // Setup date picker
     datePicker = new PikaDay({
       field: document.getElementById('history_date_picker'),
       format: 'YYYY-MM-DD',
@@ -598,6 +428,63 @@
 
   onBeforeUnmount(() => {
     if (datePicker) datePicker.destroy();
+  });
+
+  // Computed properties for Budget Release History
+  const filteredBudgetHistory = computed(() => {
+    let filtered = [...(budgetReleaseHistory.value || [])];
+
+    // Filter by receipt status
+    if (historyFilter.value.receiptStatus === 'confirmed') {
+      filtered = filtered.filter((r) => r.receipt_confirmed);
+    } else if (historyFilter.value.receiptStatus === 'pending') {
+      filtered = filtered.filter((r) => !r.receipt_confirmed);
+    }
+
+    // Filter by search query
+    if (historyFilter.value.searchQuery) {
+      const q = historyFilter.value.searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (r) =>
+          (r.request_description || '').toLowerCase().includes(q) ||
+          (r.request_id || '').toString().toLowerCase().includes(q) ||
+          (r.release_id || '').toString().toLowerCase().includes(q)
+      );
+    }
+
+    // Filter by date range
+    if (historyFilter.value.startDate) {
+      filtered = filtered.filter(
+        (r) =>
+          new Date(r.released_at) >= new Date(historyFilter.value.startDate)
+      );
+    }
+    if (historyFilter.value.endDate) {
+      filtered = filtered.filter(
+        (r) => new Date(r.released_at) <= new Date(historyFilter.value.endDate)
+      );
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
+      const field = historyFilter.value.sortBy || 'released_at';
+      const order = historyFilter.value.sortOrder === 'asc' ? 1 : -1;
+      return (a[field] > b[field] ? 1 : -1) * order;
+    });
+
+    return filtered;
+  });
+
+  const paginatedBudgetHistory = computed(() => {
+    const start = (historyCurrentPage.value - 1) * historyPerPage.value;
+    return filteredBudgetHistory.value.slice(
+      start,
+      start + historyPerPage.value
+    );
+  });
+
+  const totalHistoryPages = computed(() => {
+    return Math.ceil(filteredBudgetHistory.value.length / historyPerPage.value);
   });
 </script>
 
@@ -638,7 +525,7 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <DollarSign class="w-8 h-8 text-success" />
+          <PhilippinePeso class="w-8 h-8 text-success" />
         </div>
         <div class="stat-title text-black/50">Total Released</div>
         <div class="stat-value text-success">
@@ -686,7 +573,7 @@
           <div class="flex gap-2">
             <button
               class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
-              @click="fetchApprovedRequests"
+              @click="fetchData"
               :class="{ loading: loading }"
               :disabled="loading"
             >
@@ -717,7 +604,7 @@
           class="text-center py-8"
         >
           <div class="mb-4 items-center justify-center flex">
-            <DollarSign class="w-16 h-16 text-primaryColor" />
+            <PhilippinePeso class="w-16 h-16 text-primaryColor" />
           </div>
           <h3 class="text-lg font-semibold mb-2 text-primaryColor">
             No approved requests awaiting budget release
@@ -970,7 +857,7 @@
             >
               All
               <span class="badge badge-xs ml-1 bg-secondaryColor border-none">
-                {{ budgetReleaseHistory.length }}
+                {{ budgetReleaseHistory?.length || 0 }}
               </span>
             </button>
 
@@ -1073,7 +960,11 @@
             </thead>
             <tbody>
               <!-- Empty State -->
-              <tr v-if="filteredBudgetHistory.length === 0">
+              <tr
+                v-if="
+                  filteredBudgetHistory && filteredBudgetHistory.length === 0
+                "
+              >
                 <td colspan="9" class="text-center py-12">
                   <div class="flex flex-col items-center gap-3">
                     <div
@@ -1335,17 +1226,13 @@
             </thead>
             <tbody>
               <tr v-for="item in modal.request?.items || []" :key="item.id">
-                <td class="border border-black">{{ item.id }}</td>
-                <td class="border border-black">{{ item.item_name }}</td>
-                <td class="border border-black">{{ item.item_quantity }}</td>
-                <td class="border border-black">{{ item.item_unit }}</td>
-                <td class="border border-black">{{ item.item_type }}</td>
-                <td class="border border-black">
-                  ₱{{ item.item_unitPrice.toFixed(2) }}
-                </td>
-                <td class="border border-black">
-                  ₱{{ item.item_amount.toFixed(2) }}
-                </td>
+                <td>{{ item.id }}</td>
+                <td>{{ item.item_name }}</td>
+                <td>{{ item.item_quantity }}</td>
+                <td>{{ item.item_unit }}</td>
+                <td>{{ item.item_type }}</td>
+                <td>₱{{ Number(item.item_unit_price).toFixed(2) }}</td>
+                <td>₱{{ Number(item.item_amount).toFixed(2) }}</td>
               </tr>
               <tr class="border border-black">
                 <td
@@ -1355,7 +1242,7 @@
                   Total
                 </td>
                 <td class="font-semibold border border-black">
-                  ₱{{ modal.request?.total_amount.toFixed(2) }}
+                  ₱{{ Number(modal.request?.total_amount || 0).toFixed(2) }}
                 </td>
               </tr>
             </tbody>

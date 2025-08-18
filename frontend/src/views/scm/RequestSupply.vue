@@ -1670,6 +1670,380 @@
         </div>
       </div>
     </div>
+    <!-- Request History with Improved UI -->
+    <div
+      class="card bg-accentColor shadow-xl mb-6 border border-black/10 mx-auto"
+    >
+      <div class="card-body">
+        <!-- Header with Simple Stats -->
+        <div
+          class="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-6"
+        >
+          <div>
+            <h2 class="card-title text-primaryColor mb-2">Request History</h2>
+            <div class="flex flex-wrap gap-4 text-sm text-black/60">
+              <span
+                >Total:
+                <strong class="text-primaryColor">{{
+                  requestHistoryStats.total
+                }}</strong></span
+              >
+              <span
+                >Completed:
+                <strong class="text-success">{{
+                  requestHistoryStats.completed
+                }}</strong></span
+              >
+              <span
+                >Rejected:
+                <strong class="text-error">{{
+                  requestHistoryStats.rejected
+                }}</strong></span
+              >
+            </div>
+          </div>
+
+          <div class="flex gap-2 mt-4 lg:mt-0">
+            <button
+              class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+              @click="exportToCSV"
+            >
+              <Download class="w-4 h-4 mr-2" />
+              Export CSV
+            </button>
+          </div>
+        </div>
+
+        <!-- Search and Filters -->
+        <div class="mb-6">
+          <!-- Search Bar with Sort -->
+          <div class="flex flex-col md:flex-row gap-4 mb-4">
+            <div class="flex-1 relative">
+              <Search
+                class="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 !text-black"
+              />
+              <input
+                v-model="requestHistoryFilter.searchQuery"
+                type="text"
+                placeholder="Search by description or request ID..."
+                class="input input-sm input-bordered bg-white border-primaryColor/30 text-black/70 pl-10 w-full shadow-none"
+              />
+            </div>
+
+            <div class="flex gap-2">
+              <button
+                class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10"
+                @click="toggleSortOrder"
+                :title="`Sort ${requestHistoryFilter.sortOrder === 'asc' ? 'Descending' : 'Ascending'}`"
+              >
+                <TrendingUp
+                  v-if="requestHistoryFilter.sortOrder === 'asc'"
+                  class="w-4 h-4"
+                />
+                <TrendingDown v-else class="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <!-- Status Quick Filters -->
+          <div class="flex flex-wrap gap-2 mb-4">
+            <button
+              v-for="status in historyStatusOptions"
+              :key="status"
+              class="btn btn-xs font-thin border border-primaryColor/30"
+              :class="{
+                'bg-primaryColor text-white':
+                  requestHistoryFilter.status === status,
+                'bg-white text-primaryColor hover:bg-primaryColor/10':
+                  requestHistoryFilter.status !== status,
+              }"
+              @click="
+                requestHistoryFilter.status =
+                  requestHistoryFilter.status === status ? '' : status
+              "
+            >
+              {{ status }}
+              <span class="badge badge-xs ml-1 bg-secondaryColor border-none">
+                {{
+                  requestHistory.filter((r) => r.request_status === status)
+                    .length
+                }}
+              </span>
+            </button>
+          </div>
+
+          <!-- Date Range Filters -->
+          <div
+            class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-white/5 rounded-lg border border-primaryColor/10"
+          >
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text text-black/70 text-sm">Start Date</span>
+              </label>
+              <input
+                v-model="requestHistoryFilter.startDate"
+                type="date"
+                class="input input-sm input-bordered bg-white border-primaryColor/30 text-black/70"
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text text-black/70 text-sm">End Date</span>
+              </label>
+              <input
+                v-model="requestHistoryFilter.endDate"
+                type="date"
+                class="input input-sm input-bordered bg-white border-primaryColor/30 text-black/70"
+              />
+            </div>
+
+            <div class="form-control flex justify-end">
+              <label class="label">
+                <span class="label-text text-black/70 text-sm">&nbsp;</span>
+              </label>
+              <button
+                class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                @click="clearAllHistoryFilters"
+              >
+                Clear Filters
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Improved Table Layout -->
+        <div class="overflow-x-auto bg-accentColor">
+          <table
+            class="table table-sm table-zebra text-black/50 border border-black/10 custom-zebra"
+          >
+            <thead class="text-secondaryColor">
+              <tr class="bg-primaryColor text-accentColor">
+                <th class="w-16">No.</th>
+                <th class="w-32">Request ID</th>
+                <th class="min-w-64">Description</th>
+                <th class="w-28">Date</th>
+                <th class="w-24">Status</th>
+                <th class="w-32">Amount</th>
+                <th class="w-24">Receipt</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Empty State -->
+              <tr v-if="filteredRequestHistory.length === 0">
+                <td colspan="7" class="text-center py-12">
+                  <div class="flex flex-col items-center gap-3">
+                    <div
+                      class="w-16 h-16 bg-black/5 rounded-full flex items-center justify-center"
+                    >
+                      <Search class="w-8 h-8 text-black/30" />
+                    </div>
+                    <div>
+                      <h3 class="font-semibold text-black/70 mb-1">
+                        No history found
+                      </h3>
+                      <p class="text-sm text-black/50 mb-3">
+                        No request history matches your current filters
+                      </p>
+                      <button
+                        class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                        @click="clearAllHistoryFilters"
+                      >
+                        Clear All Filters
+                      </button>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Data Rows -->
+              <tr
+                v-for="(request, index) in paginatedRequestHistory"
+                :key="request.request_id"
+                class="hover:bg-primaryColor/5"
+              >
+                <td class="font-medium text-center">
+                  {{
+                    (requestHistoryCurrentPage - 1) * requestHistoryPerPage +
+                    index +
+                    1
+                  }}
+                </td>
+
+                <td>
+                  <div class="font-mono text-sm font-medium text-primaryColor">
+                    {{ request.request_id }}
+                  </div>
+                </td>
+
+                <td class="max-w-xs">
+                  <div
+                    class="tooltip tooltip-top"
+                    :data-tip="request.request_description"
+                  >
+                    <p class="truncate font-medium">
+                      {{ request.request_description }}
+                    </p>
+                  </div>
+                </td>
+
+                <td class="text-sm">{{ request.request_date }}</td>
+
+                <td>
+                  <div
+                    class="badge badge-sm border-none font-medium"
+                    :class="{
+                      'bg-success/20 text-success':
+                        request.request_status === 'Completed',
+                      'bg-error/20 text-error':
+                        request.request_status === 'Rejected',
+                    }"
+                  >
+                    {{ request.request_status }}
+                  </div>
+                </td>
+
+                <td class="font-semibold text-left">
+                  ₱{{
+                    request.total_amount
+                      ? request.total_amount.toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                        })
+                      : '0.00'
+                  }}
+                </td>
+
+                <td>
+                  <a
+                    v-if="
+                      request.request_status === 'Completed' && request.receipt
+                    "
+                    class="text-primaryColor cursor-pointer underline hover:text-primaryColor/80 text-sm font-medium"
+                    @click="
+                      showReceipt = true;
+                      receiptData = request;
+                    "
+                  >
+                    View Receipt
+                  </a>
+                  <span v-else class="text-black/30 text-sm">N/A</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Smart Pagination -->
+        <div
+          class="flex flex-col lg:flex-row justify-between items-center mt-6 gap-4"
+          v-if="totalPagesRequestHistory > 1"
+        >
+          <!-- Summary -->
+          <div class="text-sm text-black/60 flex flex-wrap gap-4">
+            <span>
+              Showing
+              {{ (requestHistoryCurrentPage - 1) * requestHistoryPerPage + 1 }}
+              to
+              {{
+                Math.min(
+                  requestHistoryCurrentPage * requestHistoryPerPage,
+                  filteredRequestHistory.length
+                )
+              }}
+              of {{ filteredRequestHistory.length }} records
+            </span>
+            <span class="font-semibold text-primaryColor">
+              Total Value: ₱{{
+                requestHistoryStats.totalAmount.toLocaleString('en-PH')
+              }}
+            </span>
+          </div>
+
+          <!-- Pagination with Ellipsis -->
+          <div class="join space-x-1">
+            <button
+              class="join-item btn font-thin !bg-gray-200 text-black/50 btn-sm border border-none hover:bg-gray-300"
+              :disabled="requestHistoryCurrentPage <= 1"
+              @click="requestHistoryCurrentPage--"
+            >
+              « Prev
+            </button>
+
+            <!-- First page -->
+            <button
+              v-if="totalPagesRequestHistory > 1"
+              class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+              :class="{
+                'btn-active': requestHistoryCurrentPage === 1,
+                '!bg-primaryColor text-white': requestHistoryCurrentPage === 1,
+              }"
+              @click="requestHistoryCurrentPage = 1"
+            >
+              1
+            </button>
+
+            <!-- Ellipsis before current page group -->
+            <button
+              v-if="requestHistoryCurrentPage > 4"
+              class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+              disabled
+            >
+              ...
+            </button>
+
+            <!-- Current page group -->
+            <button
+              v-for="page in getPageRange()"
+              :key="page"
+              class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+              :class="{
+                'btn-active': requestHistoryCurrentPage === page,
+                '!bg-primaryColor text-white':
+                  requestHistoryCurrentPage === page,
+              }"
+              @click="requestHistoryCurrentPage = page"
+            >
+              {{ page }}
+            </button>
+
+            <!-- Ellipsis after current page group -->
+            <button
+              v-if="requestHistoryCurrentPage < totalPagesRequestHistory - 3"
+              class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+              disabled
+            >
+              ...
+            </button>
+
+            <!-- Last page -->
+            <button
+              v-if="
+                totalPagesRequestHistory > 1 &&
+                requestHistoryCurrentPage < totalPagesRequestHistory
+              "
+              class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+              :class="{
+                'btn-active':
+                  requestHistoryCurrentPage === totalPagesRequestHistory,
+                '!bg-primaryColor text-white':
+                  requestHistoryCurrentPage === totalPagesRequestHistory,
+              }"
+              @click="requestHistoryCurrentPage = totalPagesRequestHistory"
+            >
+              {{ totalPagesRequestHistory }}
+            </button>
+
+            <button
+              class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+              :disabled="requestHistoryCurrentPage >= totalPagesRequestHistory"
+              @click="requestHistoryCurrentPage++"
+            >
+              Next »
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <cashRequestReceiptModal
@@ -2634,378 +3008,6 @@
       </div>
     </div>
   </dialog>
-
-  <!-- Request History with Improved UI -->
-  <div
-    class="card bg-accentColor shadow-xl mb-6 border border-black/10 mx-auto w-[91%]"
-  >
-    <div class="card-body">
-      <!-- Header with Simple Stats -->
-      <div
-        class="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-6"
-      >
-        <div>
-          <h2 class="card-title text-primaryColor mb-2">Request History</h2>
-          <div class="flex flex-wrap gap-4 text-sm text-black/60">
-            <span
-              >Total:
-              <strong class="text-primaryColor">{{
-                requestHistoryStats.total
-              }}</strong></span
-            >
-            <span
-              >Completed:
-              <strong class="text-success">{{
-                requestHistoryStats.completed
-              }}</strong></span
-            >
-            <span
-              >Rejected:
-              <strong class="text-error">{{
-                requestHistoryStats.rejected
-              }}</strong></span
-            >
-          </div>
-        </div>
-
-        <div class="flex gap-2 mt-4 lg:mt-0">
-          <button
-            class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-            @click="exportToCSV"
-          >
-            <Download class="w-4 h-4 mr-2" />
-            Export CSV
-          </button>
-        </div>
-      </div>
-
-      <!-- Search and Filters -->
-      <div class="mb-6">
-        <!-- Search Bar with Sort -->
-        <div class="flex flex-col md:flex-row gap-4 mb-4">
-          <div class="flex-1 relative">
-            <Search
-              class="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 !text-black"
-            />
-            <input
-              v-model="requestHistoryFilter.searchQuery"
-              type="text"
-              placeholder="Search by description or request ID..."
-              class="input input-sm input-bordered bg-white border-primaryColor/30 text-black/70 pl-10 w-full shadow-none"
-            />
-          </div>
-
-          <div class="flex gap-2">
-            <button
-              class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10"
-              @click="toggleSortOrder"
-              :title="`Sort ${requestHistoryFilter.sortOrder === 'asc' ? 'Descending' : 'Ascending'}`"
-            >
-              <TrendingUp
-                v-if="requestHistoryFilter.sortOrder === 'asc'"
-                class="w-4 h-4"
-              />
-              <TrendingDown v-else class="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        <!-- Status Quick Filters -->
-        <div class="flex flex-wrap gap-2 mb-4">
-          <button
-            v-for="status in historyStatusOptions"
-            :key="status"
-            class="btn btn-xs font-thin border border-primaryColor/30"
-            :class="{
-              'bg-primaryColor text-white':
-                requestHistoryFilter.status === status,
-              'bg-white text-primaryColor hover:bg-primaryColor/10':
-                requestHistoryFilter.status !== status,
-            }"
-            @click="
-              requestHistoryFilter.status =
-                requestHistoryFilter.status === status ? '' : status
-            "
-          >
-            {{ status }}
-            <span class="badge badge-xs ml-1 bg-secondaryColor border-none">
-              {{
-                requestHistory.filter((r) => r.request_status === status).length
-              }}
-            </span>
-          </button>
-        </div>
-
-        <!-- Date Range Filters -->
-        <div
-          class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-white/5 rounded-lg border border-primaryColor/10"
-        >
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text text-black/70 text-sm">Start Date</span>
-            </label>
-            <input
-              v-model="requestHistoryFilter.startDate"
-              type="date"
-              class="input input-sm input-bordered bg-white border-primaryColor/30 text-black/70"
-            />
-          </div>
-
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text text-black/70 text-sm">End Date</span>
-            </label>
-            <input
-              v-model="requestHistoryFilter.endDate"
-              type="date"
-              class="input input-sm input-bordered bg-white border-primaryColor/30 text-black/70"
-            />
-          </div>
-
-          <div class="form-control flex justify-end">
-            <label class="label">
-              <span class="label-text text-black/70 text-sm">&nbsp;</span>
-            </label>
-            <button
-              class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-              @click="clearAllHistoryFilters"
-            >
-              Clear Filters
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Improved Table Layout -->
-      <div class="overflow-x-auto bg-accentColor">
-        <table
-          class="table table-sm table-zebra text-black/50 border border-black/10 custom-zebra"
-        >
-          <thead class="text-secondaryColor">
-            <tr class="bg-primaryColor text-accentColor">
-              <th class="w-16">No.</th>
-              <th class="w-32">Request ID</th>
-              <th class="min-w-64">Description</th>
-              <th class="w-28">Date</th>
-              <th class="w-24">Status</th>
-              <th class="w-32">Amount</th>
-              <th class="w-24">Receipt</th>
-            </tr>
-          </thead>
-          <tbody>
-            <!-- Empty State -->
-            <tr v-if="filteredRequestHistory.length === 0">
-              <td colspan="7" class="text-center py-12">
-                <div class="flex flex-col items-center gap-3">
-                  <div
-                    class="w-16 h-16 bg-black/5 rounded-full flex items-center justify-center"
-                  >
-                    <Search class="w-8 h-8 text-black/30" />
-                  </div>
-                  <div>
-                    <h3 class="font-semibold text-black/70 mb-1">
-                      No history found
-                    </h3>
-                    <p class="text-sm text-black/50 mb-3">
-                      No request history matches your current filters
-                    </p>
-                    <button
-                      class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                      @click="clearAllHistoryFilters"
-                    >
-                      Clear All Filters
-                    </button>
-                  </div>
-                </div>
-              </td>
-            </tr>
-
-            <!-- Data Rows -->
-            <tr
-              v-for="(request, index) in paginatedRequestHistory"
-              :key="request.request_id"
-              class="hover:bg-primaryColor/5"
-            >
-              <td class="font-medium text-center">
-                {{
-                  (requestHistoryCurrentPage - 1) * requestHistoryPerPage +
-                  index +
-                  1
-                }}
-              </td>
-
-              <td>
-                <div class="font-mono text-sm font-medium text-primaryColor">
-                  {{ request.request_id }}
-                </div>
-              </td>
-
-              <td class="max-w-xs">
-                <div
-                  class="tooltip tooltip-top"
-                  :data-tip="request.request_description"
-                >
-                  <p class="truncate font-medium">
-                    {{ request.request_description }}
-                  </p>
-                </div>
-              </td>
-
-              <td class="text-sm">{{ request.request_date }}</td>
-
-              <td>
-                <div
-                  class="badge badge-sm border-none font-medium"
-                  :class="{
-                    'bg-success/20 text-success':
-                      request.request_status === 'Completed',
-                    'bg-error/20 text-error':
-                      request.request_status === 'Rejected',
-                  }"
-                >
-                  {{ request.request_status }}
-                </div>
-              </td>
-
-              <td class="font-semibold text-left">
-                ₱{{
-                  request.total_amount
-                    ? request.total_amount.toLocaleString('en-PH', {
-                        minimumFractionDigits: 2,
-                      })
-                    : '0.00'
-                }}
-              </td>
-
-              <td>
-                <a
-                  v-if="
-                    request.request_status === 'Completed' && request.receipt
-                  "
-                  class="text-primaryColor cursor-pointer underline hover:text-primaryColor/80 text-sm font-medium"
-                  @click="
-                    showReceipt = true;
-                    receiptData = request;
-                  "
-                >
-                  View Receipt
-                </a>
-                <span v-else class="text-black/30 text-sm">N/A</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Smart Pagination -->
-      <div
-        class="flex flex-col lg:flex-row justify-between items-center mt-6 gap-4"
-        v-if="totalPagesRequestHistory > 1"
-      >
-        <!-- Summary -->
-        <div class="text-sm text-black/60 flex flex-wrap gap-4">
-          <span>
-            Showing
-            {{ (requestHistoryCurrentPage - 1) * requestHistoryPerPage + 1 }} to
-            {{
-              Math.min(
-                requestHistoryCurrentPage * requestHistoryPerPage,
-                filteredRequestHistory.length
-              )
-            }}
-            of {{ filteredRequestHistory.length }} records
-          </span>
-          <span class="font-semibold text-primaryColor">
-            Total Value: ₱{{
-              requestHistoryStats.totalAmount.toLocaleString('en-PH')
-            }}
-          </span>
-        </div>
-
-        <!-- Pagination with Ellipsis -->
-        <div class="join space-x-1">
-          <button
-            class="join-item btn font-thin !bg-gray-200 text-black/50 btn-sm border border-none hover:bg-gray-300"
-            :disabled="requestHistoryCurrentPage <= 1"
-            @click="requestHistoryCurrentPage--"
-          >
-            « Prev
-          </button>
-
-          <!-- First page -->
-          <button
-            v-if="totalPagesRequestHistory > 1"
-            class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
-            :class="{
-              'btn-active': requestHistoryCurrentPage === 1,
-              '!bg-primaryColor text-white': requestHistoryCurrentPage === 1,
-            }"
-            @click="requestHistoryCurrentPage = 1"
-          >
-            1
-          </button>
-
-          <!-- Ellipsis before current page group -->
-          <button
-            v-if="requestHistoryCurrentPage > 4"
-            class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
-            disabled
-          >
-            ...
-          </button>
-
-          <!-- Current page group -->
-          <button
-            v-for="page in getPageRange()"
-            :key="page"
-            class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
-            :class="{
-              'btn-active': requestHistoryCurrentPage === page,
-              '!bg-primaryColor text-white': requestHistoryCurrentPage === page,
-            }"
-            @click="requestHistoryCurrentPage = page"
-          >
-            {{ page }}
-          </button>
-
-          <!-- Ellipsis after current page group -->
-          <button
-            v-if="requestHistoryCurrentPage < totalPagesRequestHistory - 3"
-            class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
-            disabled
-          >
-            ...
-          </button>
-
-          <!-- Last page -->
-          <button
-            v-if="
-              totalPagesRequestHistory > 1 &&
-              requestHistoryCurrentPage < totalPagesRequestHistory
-            "
-            class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
-            :class="{
-              'btn-active':
-                requestHistoryCurrentPage === totalPagesRequestHistory,
-              '!bg-primaryColor text-white':
-                requestHistoryCurrentPage === totalPagesRequestHistory,
-            }"
-            @click="requestHistoryCurrentPage = totalPagesRequestHistory"
-          >
-            {{ totalPagesRequestHistory }}
-          </button>
-
-          <button
-            class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
-            :disabled="requestHistoryCurrentPage >= totalPagesRequestHistory"
-            @click="requestHistoryCurrentPage++"
-          >
-            Next »
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
 
   <!-- Toast Notification -->
   <transition

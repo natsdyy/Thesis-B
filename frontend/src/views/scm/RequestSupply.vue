@@ -269,8 +269,6 @@
   // Enhanced computed properties for filtered requests
   const filteredRequestsByDate = computed(() => {
     const selectedDate = requestListFilter.value.selectedDate;
-    console.log('=== Date Filtering Debug ===');
-    console.log('Selected date:', selectedDate);
 
     allRequests.value.forEach((r) => {
       // Convert UTC to Asia/Manila and get YYYY-MM-DD
@@ -282,9 +280,6 @@
       const normalized = manilaDate.toLocaleDateString('en-CA', {
         timeZone: 'Asia/Manila',
       });
-      console.log(
-        `Request ${r.request_id}: raw=${r.request_date}, manila=${normalized}, matches=${normalized === selectedDate}`
-      );
     });
 
     return allRequests.value.filter((request) => {
@@ -658,10 +653,6 @@
       await supplyRequestStore.fetchRequests({ department: 'SCM' });
       await supplyRequestStore.fetchStats({ department: 'SCM' });
 
-      // Debug: Log the fetched data
-      console.log('Fetched requests:', supplyRequestStore.requests);
-      debugDateFiltering();
-
       updateQuickDateCounts();
     } catch (err) {
       console.error('Fetch error:', err);
@@ -1033,15 +1024,9 @@
   watch(
     [allRequests, requestListFilter],
     () => {
-      console.log('=== Date Filtering Debug ===');
-      console.log('Selected date:', requestListFilter.value.selectedDate);
-      console.log('All requests with dates:');
       allRequests.value.forEach((r) => {
         const backendDate = r.request_date;
         const convertedDate = new Date(backendDate).toISOString().split('T')[0];
-        console.log(
-          `Request ${r.request_id}: ${backendDate} -> ${convertedDate}`
-        );
       });
       updateQuickDateCounts();
     },
@@ -1105,7 +1090,7 @@
 
   // Watch for store errors
   watch(
-    [supplyRequestStore.error, budgetReleaseStore.error],
+    [() => supplyRequestStore.error, () => budgetReleaseStore.error],
     ([supplyError, budgetError]) => {
       if (supplyError) {
         handleStoreError(supplyError, 'supply request operation');
@@ -1164,20 +1149,6 @@
       0
     ),
   }));
-
-  // Fix 4: Debug the date issue
-  const debugDateFiltering = () => {
-    console.log('Current selected date:', requestListFilter.value.selectedDate);
-    console.log(
-      'All requests:',
-      allRequests.value.map((r) => ({
-        id: r.request_id,
-        date: r.request_date,
-        convertedDate: new Date(r.request_date).toISOString().split('T')[0],
-      }))
-    );
-    console.log('Quick date options:', quickDateOptions.value);
-  };
 
   const showReceiptModal = async (request) => {
     // If items are not present, fetch full request details
@@ -3236,8 +3207,6 @@
   // Enhanced filtering to work with backend date format
   const filteredRequestsByDate = computed(() => {
     const selectedDate = requestListFilter.value.selectedDate;
-    console.log('=== Date Filtering Debug ===');
-    console.log('Selected date:', selectedDate);
 
     allRequests.value.forEach((r) => {
       // Convert UTC to Asia/Manila and get YYYY-MM-DD

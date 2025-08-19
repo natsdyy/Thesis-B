@@ -46,7 +46,8 @@ class SupplyRequest {
           "sr.revision_count",
           "sr.created_at",
           "sr.updated_at"
-        );
+        )
+        .whereNull("deleted_at");
 
       // Apply filters
       if (filters.status) {
@@ -95,7 +96,10 @@ class SupplyRequest {
         throw new Error("Invalid supply request ID provided");
       }
 
-      const request = await db("supply_requests").where("id", id).first();
+      const request = await db("supply_requests")
+        .where("id", id)
+        .whereNull("supply_requests.deleted_at")
+        .first();
 
       if (!request) {
         return null;
@@ -125,6 +129,7 @@ class SupplyRequest {
 
       const request = await db("supply_requests")
         .where("request_id", requestId)
+        .whereNull("supply_requests.deleted_at")
         .first();
 
       if (!request) {
@@ -349,8 +354,9 @@ class SupplyRequest {
           db.raw("COALESCE(SUM(sri.item_amount), 0) as calculated_total")
         )
         .where("sr.request_status", status)
-        .groupBy("sr.id")
-        .orderBy("sr.created_at", "desc");
+        .whereNull("deleted_at")
+        .groupBy("supply_requests.id")
+        .orderBy("supply_requests.created_at", "desc");
 
       return requests;
     } catch (error) {
@@ -361,9 +367,8 @@ class SupplyRequest {
 
   // Get dashboard statistics
   static async getStats(filters = {}) {
-    console.log(">>> getStats called with filters:", filters);
     try {
-      let query = db("supply_requests");
+      let query = db("supply_requests").whereNull("deleted_at");
       if (filters.department) {
         query = query.where("department", filters.department);
       }

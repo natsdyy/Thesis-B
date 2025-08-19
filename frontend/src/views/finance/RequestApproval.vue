@@ -197,6 +197,16 @@
     });
   };
 
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-PH', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'Asia/Manila',
+    });
+  };
+
   // Request List Date Filter
   const requestListFilter = ref({
     selectedDate: getPhilippineDateString(),
@@ -206,25 +216,19 @@
   // Quick date filter buttons
   const getQuickDateOptions = () => {
     const today = getPhilippineTime();
-    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-    const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+
+    // Use toLocaleDateString with 'en-CA' and Asia/Manila to get YYYY-MM-DD
+    const toYMD = (date) =>
+      date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 
     return [
-      {
-        label: 'Yesterday',
-        date: yesterday.toISOString().split('T')[0],
-        count: 0,
-      },
-      {
-        label: 'Today',
-        date: today.toISOString().split('T')[0],
-        count: 0,
-      },
-      {
-        label: 'Tomorrow',
-        date: tomorrow.toISOString().split('T')[0],
-        count: 0,
-      },
+      { label: 'Yesterday', date: toYMD(yesterday), count: 0 },
+      { label: 'Today', date: toYMD(today), count: 0 },
+      { label: 'Tomorrow', date: toYMD(tomorrow), count: 0 },
     ];
   };
 
@@ -258,9 +262,16 @@
   const updateQuickDateCounts = () => {
     quickDateOptions.value.forEach((option) => {
       option.count = pendingRequestsOnly.value.filter((request) => {
-        const requestDate = new Date(request.request_date);
-        const requestDateString = requestDate.toISOString().split('T')[0];
-        return requestDateString === option.date;
+        // Convert UTC to Asia/Manila and get YYYY-MM-DD
+        const manilaDate = new Date(
+          new Date(request.request_date).toLocaleString('en-US', {
+            timeZone: 'Asia/Manila',
+          })
+        );
+        const normalized = manilaDate.toLocaleDateString('en-CA', {
+          timeZone: 'Asia/Manila',
+        });
+        return normalized === option.date;
       }).length;
     });
   };
@@ -268,10 +279,15 @@
   // Enhanced computed properties for filtered requests
   const filteredRequestsByDate = computed(() => {
     return pendingRequestsOnly.value.filter((request) => {
-      const requestDate = new Date(request.request_date);
-      const requestDateString = requestDate.toISOString().split('T')[0];
-
-      return requestDateString === requestListFilter.value.selectedDate;
+      const manilaDate = new Date(
+        new Date(request.request_date).toLocaleString('en-US', {
+          timeZone: 'Asia/Manila',
+        })
+      );
+      const normalized = manilaDate.toLocaleDateString('en-CA', {
+        timeZone: 'Asia/Manila',
+      });
+      return normalized === requestListFilter.value.selectedDate;
     });
   });
 
@@ -938,6 +954,33 @@
   onBeforeUnmount(() => {
     if (requestDatePicker) requestDatePicker.destroy();
   });
+
+  const formatManilaDate = (dateString) => {
+    if (!dateString) return '';
+    const manilaDate = new Date(
+      new Date(dateString).toLocaleString('en-US', { timeZone: 'Asia/Manila' })
+    );
+    return manilaDate.toLocaleDateString('en-PH', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'Asia/Manila',
+    });
+  };
+
+  const formatManilaTime = (dateString) => {
+    if (!dateString) return '';
+    const manilaDate = new Date(
+      new Date(dateString).toLocaleString('en-US', { timeZone: 'Asia/Manila' })
+    );
+    return manilaDate.toLocaleTimeString('en-PH', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+      timeZone: 'Asia/Manila',
+    });
+  };
 </script>
 
 <template>
@@ -1249,21 +1292,10 @@
                 </td>
                 <td>
                   <div class="flex flex-col">
-                    <span>{{
-                      new Date(request.request_date).toLocaleDateString('en-PH')
-                    }}</span>
+                    <span>{{ formatManilaDate(request.request_date) }}</span>
                     <span class="text-xs text-black/40">
                       Sent:
-                      {{
-                        new Date(request.created_at).toLocaleTimeString(
-                          'en-PH',
-                          {
-                            timeZone: 'Asia/Manila',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          }
-                        )
-                      }}
+                      {{ formatManilaTime(request.created_at) }}
                     </span>
                   </div>
                 </td>
@@ -1581,7 +1613,15 @@
                   </div>
                 </td>
 
-                <td class="text-sm">{{ request.request_date }}</td>
+                <td class="text-sm">
+                  <div>
+                    <span>{{ formatManilaDate(request.approved_at) }}</span>
+                    <br />
+                    <span class="text-xs text-black/50">
+                      {{ formatManilaTime(request.approved_at) }}
+                    </span>
+                  </div>
+                </td>
 
                 <td>
                   <div
@@ -1785,8 +1825,8 @@
         <!-- Items Table -->
         <div class="overflow-x-auto mb-4">
           <table class="table table-xs text-black">
-            <thead class="text-black bg-primaryColor">
-              <tr class="border border-black text-accentColor">
+            <thead class="text-black">
+              <tr class="border border-black text-black">
                 <th class="border border-black">Item No.</th>
                 <th class="border border-black">Item Name</th>
                 <th class="border border-black">Quantity</th>
@@ -2464,10 +2504,5 @@
   /* Loading states */
   .table tbody tr:hover {
     transition: background-color 0.2s ease;
-  }
-
-  /* Empty state styling */
-  .table tbody tr td {
-    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
   }
 </style>

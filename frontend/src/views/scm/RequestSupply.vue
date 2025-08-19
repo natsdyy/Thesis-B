@@ -50,6 +50,19 @@
     receiptData.value = null;
   }
 
+  // Philippine Time helper functions
+  const getPhilippineTime = () => {
+    // Always get the current time in Asia/Manila
+    const now = new Date();
+    // Convert to Asia/Manila by using toLocaleString and then new Date
+    return new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  };
+
+  const getPhilippineDateString = (date = null) => {
+    const targetDate = date || getPhilippineTime();
+    return targetDate.toISOString().split('T')[0];
+  };
+
   // Form data for request items
   const rowRequest = ref([
     {
@@ -98,7 +111,7 @@
     request_id: null,
     request_type: '',
     request_description: '',
-    request_date: new Date().toISOString().split('T')[0],
+    request_date: getPhilippineDateString(),
     priority: 'Normal',
     department: 'SCM',
     requested_by: 'Current User',
@@ -172,18 +185,6 @@
     }, 3000);
   };
 
-  // Philippine Time helper functions
-  const getPhilippineTime = () => {
-    return new Date(
-      new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' })
-    );
-  };
-
-  const getPhilippineDateString = (date = null) => {
-    const targetDate = date || getPhilippineTime();
-    return targetDate.toISOString().split('T')[0];
-  };
-
   const formatPhilippineDate = (dateString) => {
     const date = new Date(dateString + 'T00:00:00');
     return date.toLocaleDateString('en-PH', {
@@ -204,25 +205,19 @@
   // Quick date filter buttons
   const getQuickDateOptions = () => {
     const today = getPhilippineTime();
-    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-    const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+
+    // Use toLocaleDateString with 'en-CA' and Asia/Manila to get YYYY-MM-DD
+    const toYMD = (date) =>
+      date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 
     return [
-      {
-        label: 'Yesterday',
-        date: yesterday.toISOString().split('T')[0],
-        count: 0,
-      },
-      {
-        label: 'Today',
-        date: today.toISOString().split('T')[0],
-        count: 0,
-      },
-      {
-        label: 'Tomorrow',
-        date: tomorrow.toISOString().split('T')[0],
-        count: 0,
-      },
+      { label: 'Yesterday', date: toYMD(yesterday), count: 0 },
+      { label: 'Today', date: toYMD(today), count: 0 },
+      { label: 'Tomorrow', date: toYMD(tomorrow), count: 0 },
     ];
   };
 
@@ -255,13 +250,17 @@
   const updateQuickDateCounts = () => {
     quickDateOptions.value.forEach((option) => {
       option.count = allRequests.value.filter((request) => {
-        // Convert backend date to YYYY-MM-DD format for comparison
-        const requestDate = new Date(request.request_date);
-        const requestDateString = requestDate.toISOString().split('T')[0];
-
+        // Convert UTC to Asia/Manila and get YYYY-MM-DD
+        const manilaDate = new Date(
+          new Date(request.request_date).toLocaleString('en-US', {
+            timeZone: 'Asia/Manila',
+          })
+        );
+        const normalized = manilaDate.toLocaleDateString('en-CA', {
+          timeZone: 'Asia/Manila',
+        });
         return (
-          requestDateString === option.date &&
-          request.request_status !== 'Cancelled'
+          normalized === option.date && request.request_status !== 'Cancelled'
         );
       }).length;
     });
@@ -269,14 +268,36 @@
 
   // Enhanced computed properties for filtered requests
   const filteredRequestsByDate = computed(() => {
-    return allRequests.value.filter((request) => {
-      // Convert backend date to YYYY-MM-DD format for comparison
-      const requestDate = new Date(request.request_date);
-      const requestDateString = requestDate.toISOString().split('T')[0];
+    const selectedDate = requestListFilter.value.selectedDate;
+    console.log('=== Date Filtering Debug ===');
+    console.log('Selected date:', selectedDate);
 
+    allRequests.value.forEach((r) => {
+      // Convert UTC to Asia/Manila and get YYYY-MM-DD
+      const manilaDate = new Date(
+        new Date(r.request_date).toLocaleString('en-US', {
+          timeZone: 'Asia/Manila',
+        })
+      );
+      const normalized = manilaDate.toLocaleDateString('en-CA', {
+        timeZone: 'Asia/Manila',
+      });
+      console.log(
+        `Request ${r.request_id}: raw=${r.request_date}, manila=${normalized}, matches=${normalized === selectedDate}`
+      );
+    });
+
+    return allRequests.value.filter((request) => {
+      const manilaDate = new Date(
+        new Date(request.request_date).toLocaleString('en-US', {
+          timeZone: 'Asia/Manila',
+        })
+      );
+      const normalized = manilaDate.toLocaleDateString('en-CA', {
+        timeZone: 'Asia/Manila',
+      });
       return (
-        requestDateString === requestListFilter.value.selectedDate &&
-        request.request_status !== 'Cancelled'
+        normalized === selectedDate && request.request_status !== 'Cancelled'
       );
     });
   });
@@ -837,8 +858,7 @@
         request_id: request.request_id,
         request_type: request.request_type || '',
         request_description: request.request_description || '',
-        request_date:
-          request.request_date || new Date().toISOString().split('T')[0],
+        request_date: request.request_date || getPhilippineDateString(),
         priority: request.priority || 'Normal',
         department: request.department || 'SCM',
         requested_by:
@@ -872,7 +892,7 @@
         request_id: null,
         request_type: '',
         request_description: '',
-        request_date: new Date().toISOString().split('T')[0],
+        request_date: getPhilippineDateString(),
         priority: 'Normal',
         department: 'SCM',
         requested_by: authStore.user?.name || 'Current User',
@@ -1171,6 +1191,33 @@
     }
     showReceipt.value = true;
   };
+
+  const formatManilaDate = (dateString) => {
+    if (!dateString) return '';
+    const manilaDate = new Date(
+      new Date(dateString).toLocaleString('en-US', { timeZone: 'Asia/Manila' })
+    );
+    return manilaDate.toLocaleDateString('en-PH', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'Asia/Manila',
+    });
+  };
+
+  const formatManilaTime = (dateString) => {
+    if (!dateString) return '';
+    const manilaDate = new Date(
+      new Date(dateString).toLocaleString('en-US', { timeZone: 'Asia/Manila' })
+    );
+    return manilaDate.toLocaleTimeString('en-PH', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+      timeZone: 'Asia/Manila',
+    });
+  };
 </script>
 
 <template>
@@ -1359,9 +1406,11 @@
                   }}
                 </td>
                 <td>
-                  {{
-                    new Date(release.released_at).toLocaleDateString('en-PH')
-                  }}
+                  <div>
+                    <span>{{ formatManilaDate(release.released_at) }}</span>
+                    <!-- Remove or comment out the time line -->
+                    <!-- <span class="text-xs text-black/50">{{ formatManilaTime(release.released_at) }}</span> -->
+                  </div>
                 </td>
                 <td>{{ release.released_by }}</td>
                 <td>
@@ -1579,10 +1628,9 @@
                 <td class="font-mono font-medium">{{ request.request_id }}</td>
                 <td>
                   <div class="flex flex-col">
-                    <span>{{ formatDate(request.request_date) }}</span>
-                    <span class="text-xs text-black/40">
-                      {{ formatTime(request.created_at) }}
-                    </span>
+                    <span>{{ formatManilaDate(request.request_date) }}</span>
+                    <!-- Remove or comment out the time line -->
+                    <!-- <span class="text-xs text-black/50">{{ formatManilaTime(request.request_date) }}</span> -->
                   </div>
                 </td>
                 <td class="text-wrap">
@@ -1982,7 +2030,13 @@
                   </div>
                 </td>
 
-                <td class="text-sm">{{ request.request_date }}</td>
+                <td class="text-sm">
+                  <div>
+                    <span>{{ formatManilaDate(request.request_date) }}</span>
+                    <!-- Remove or comment out the time line -->
+                    <!-- <span class="text-xs text-black/50">{{ formatManilaTime(request.request_date) }}</span> -->
+                  </div>
+                </td>
 
                 <td>
                   <div
@@ -2425,37 +2479,51 @@
         <h3 class="text-lg font-bold mb-4 text-black">Request Details</h3>
         <div class="overflow-x-auto">
           <table class="table table-xs text-black">
-            <thead class="text-black bg-primaryColor">
-              <tr class="border border-black text-accentColor">
-                <th class="border border-black">Item No.</th>
-                <th class="border border-black">Item Name</th>
-                <th class="border border-black">Quantity</th>
-                <th class="border border-black">Unit</th>
-                <th class="border border-black">Type</th>
-                <th class="border border-black">Unit Price</th>
-                <th class="border border-black">Amount (₱)</th>
+            <thead class="text-black">
+              <tr class="text-black border border-black/50">
+                <th class="text-black border border-black/50">Item No.</th>
+                <th class="text-black border border-black/50">Item Name</th>
+                <th class="text-black border border-black/50">Quantity</th>
+                <th class="text-black border border-black/50">Unit</th>
+                <th class="text-black border border-black/50">Type</th>
+                <th class="text-black border border-black/50">Unit Price</th>
+                <th class="text-black border border-black/50">Amount (₱)</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in paginatedRequestModal" :key="row.id">
-                <td class="border border-black">{{ row.id }}</td>
-                <td class="border border-black">{{ row.item_name }}</td>
-                <td class="border border-black">{{ row.item_quantity }}</td>
-                <td class="border border-black">{{ row.item_unit }}</td>
-                <td class="border border-black">{{ row.item_type }}</td>
-                <td class="border border-black">{{ row.item_unitPrice }}</td>
-                <td class="border border-black">{{ row.item_amount }}</td>
+              <tr
+                v-for="row in paginatedRequestModal"
+                :key="row.id"
+                class="border border-black/50"
+              >
+                <td class="">{{ row.id }}</td>
+                <td class="text-black border border-black/50">
+                  {{ row.item_name }}
+                </td>
+                <td class="text-black border border-black/50">
+                  {{ row.item_quantity }}
+                </td>
+                <td class="text-black border border-black/50">
+                  {{ row.item_unit }}
+                </td>
+                <td class="text-black border border-black/50">
+                  {{ row.item_type }}
+                </td>
+                <td class="text-black border border-black/50">
+                  {{ row.item_unitPrice }}
+                </td>
+                <td class="text-black border border-black/50">
+                  {{ row.item_amount }}
+                </td>
               </tr>
-              <tr class="border border-black">
+              <tr class="text-black border border-black/50">
                 <td
                   colspan="6"
-                  class="text-right font-semibold border border-black"
+                  class="text-right font-semibold border border-black/50"
                 >
                   Total
                 </td>
-                <td class="font-semibold border border-black">
-                  ₱ {{ totalAmount }}
-                </td>
+                <td class="font-semibold">₱ {{ totalAmount }}</td>
               </tr>
             </tbody>
           </table>
@@ -3167,14 +3235,36 @@
 
   // Enhanced filtering to work with backend date format
   const filteredRequestsByDate = computed(() => {
-    return allRequests.value.filter((request) => {
-      // Convert backend date to YYYY-MM-DD format for comparison
-      const requestDate = new Date(request.request_date);
-      const requestDateString = requestDate.toISOString().split('T')[0];
+    const selectedDate = requestListFilter.value.selectedDate;
+    console.log('=== Date Filtering Debug ===');
+    console.log('Selected date:', selectedDate);
 
+    allRequests.value.forEach((r) => {
+      // Convert UTC to Asia/Manila and get YYYY-MM-DD
+      const manilaDate = new Date(
+        new Date(r.request_date).toLocaleString('en-US', {
+          timeZone: 'Asia/Manila',
+        })
+      );
+      const normalized = manilaDate.toLocaleDateString('en-CA', {
+        timeZone: 'Asia/Manila',
+      });
+      console.log(
+        `Request ${r.request_id}: raw=${r.request_date}, manila=${normalized}, matches=${normalized === selectedDate}`
+      );
+    });
+
+    return allRequests.value.filter((request) => {
+      const manilaDate = new Date(
+        new Date(request.request_date).toLocaleString('en-US', {
+          timeZone: 'Asia/Manila',
+        })
+      );
+      const normalized = manilaDate.toLocaleDateString('en-CA', {
+        timeZone: 'Asia/Manila',
+      });
       return (
-        requestDateString === requestListFilter.value.selectedDate &&
-        request.request_status !== 'Cancelled'
+        normalized === selectedDate && request.request_status !== 'Cancelled'
       );
     });
   });
@@ -3256,10 +3346,5 @@
   /* Loading states */
   .table tbody tr:hover {
     transition: background-color 0.2s ease;
-  }
-
-  /* Empty state styling */
-  .table tbody tr td {
-    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
   }
 </style>

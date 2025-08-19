@@ -37,6 +37,18 @@ const options = {
         name: "Role-Permissions",
         description: "Role-Permission assignment endpoints",
       },
+      {
+        name: "Supply Requests",
+        description: "Supply request management endpoints",
+      },
+      {
+        name: "Budget Releases",
+        description: "Budget release management endpoints",
+      },
+      {
+        name: "Branches",
+        description: "Branch management endpoints",
+      },
     ],
     components: {
       schemas: {

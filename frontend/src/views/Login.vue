@@ -141,10 +141,12 @@
 <template>
   <!-- Background with blur effect -->
   <div
-    class="min-h-screen relative bg-accentColor flex items-center justify-center p-4 overflow-hidden bg-[url(./logo1.png)] bg-contain bg-no-repeat bg-center"
+    class="min-h-screen relative bg-accentColor flex items-center justify-center p-4 overflow-hidden bg-center"
   >
     <!-- Blurred background overlay -->
-    <div class="absolute inset-0 glass bg-secondaryColor/10"></div>
+    <div class="absolute inset-0 blur-lg bg-secondaryColor/10">
+      <img src="/logo1.png" alt="" class="w-full h-full object-contain" />
+    </div>
 
     <!-- Back Button - positioned outside the card -->
     <button
@@ -322,7 +324,7 @@
           <img
             src="/logo1.png"
             alt="Countryside Logo"
-            class="w-80 h-80 object-contain"
+            class="w-full h-full object-contain"
           />
         </div>
       </div>

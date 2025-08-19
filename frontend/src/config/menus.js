@@ -12,6 +12,8 @@ import {
   Shield,
   Settings,
   ReceiptText,
+  Store,
+  PhilippinePeso,
 } from 'lucide-vue-next';
 
 export const menuItems = [
@@ -89,15 +91,21 @@ export const menuItems = [
     department: 'Finance',
   },
   {
+    name: 'Request Approval',
+    icon: ReceiptText,
+    route: '/finance/request-approval',
+    department: 'Finance',
+  },
+  {
     name: 'Accounting',
     icon: BarChart3,
     route: '/finance/accounting',
     department: 'Finance',
   },
   {
-    name: 'Budget',
-    icon: DollarSign,
-    route: '/finance/budget',
+    name: 'Budget Release',
+    icon: PhilippinePeso,
+    route: '/finance/budget-release',
     department: 'Finance',
   },
 
@@ -165,7 +173,7 @@ export const menuItems = [
   },
   {
     name: 'Branch Management',
-    icon: Shield,
+    icon: Store,
     route: '/admin/branches',
     department: 'Administration',
     superAdminOnly: true,

@@ -13,13 +13,24 @@ const permissionRoutes = require("./routes/permissions");
 const rolePermissionRoutes = require("./routes/rolePermissions");
 const authRoutes = require("./routes/auth");
 const branchRoutes = require("./routes/branches");
+const supplyRequestRoutes = require("./routes/supplyRequest");
+const budgetReleaseRoutes = require("./routes/budgetRelease");
 const { serve, setup } = require("./config/swagger");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: process.env.CORS_ORIGIN || [
+      "http://localhost:5000",
+      "http://localhost:80",
+      "http://localhost:5173",
+    ],
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // API Routes
@@ -29,6 +40,8 @@ app.use("/api/permissions", permissionRoutes);
 app.use("/api/role-permissions", rolePermissionRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/branches", branchRoutes);
+app.use("/api/supply-requests", supplyRequestRoutes);
+app.use("/api/budget-releases", budgetReleaseRoutes);
 
 // Swagger documentation
 app.use("/api-docs", serve, setup);

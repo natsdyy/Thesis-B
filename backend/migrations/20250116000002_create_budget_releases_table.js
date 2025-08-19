@@ -2,7 +2,6 @@
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-<<<<<<< HEAD
 exports.up = function (knex) {
   return knex.schema.createTable("budget_releases", function (table) {
     table.increments("id").primary();
@@ -55,20 +54,6 @@ exports.up = function (knex) {
     table.index("supply_request_id", "idx_budget_releases_request_id");
     table.index("released_at", "idx_budget_releases_date");
     table.index("receipt_confirmed", "idx_budget_releases_confirmed");
-=======
-exports.up = function(knex) {
-  return knex.schema.createTable('budget_releases', function(table) {
-    table.increments('id').primary();
-    table.string('release_number').unique().notNullable();
-    table.date('release_date').notNullable();
-    table.integer('supply_request_id').unsigned().references('id').inTable('supply_requests');
-    table.integer('branch_id').unsigned().references('id').inTable('branches');
-    table.decimal('amount_released', 10, 2).notNullable();
-    table.string('status').defaultTo('Pending');
-    table.text('remarks');
-    table.integer('approved_by').unsigned().references('id').inTable('users');
-    table.timestamps(true, true);
->>>>>>> f9b8338ccee227920f0d00d7c674d084059303a3
   });
 };
 
@@ -76,13 +61,6 @@ exports.up = function(knex) {
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-<<<<<<< HEAD
 exports.down = function (knex) {
   return knex.schema.dropTable("budget_releases");
 };
-=======
-exports.down = function(knex) {
-  return knex.schema.dropTable('budget_releases');
-};
-
->>>>>>> f9b8338ccee227920f0d00d7c674d084059303a3

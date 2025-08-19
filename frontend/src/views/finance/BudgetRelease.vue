@@ -130,15 +130,39 @@
     return targetDate.toISOString().split('T')[0];
   };
 
-  const formatPhilippineDate = (dateString) => {
-    const date = new Date(dateString + 'T00:00:00');
-    return date.toLocaleDateString('en-PH', {
-      weekday: 'long',
+  const formatManilaDate = (dateString) => {
+    if (!dateString) return '';
+    const manilaDate = new Date(
+      new Date(dateString).toLocaleString('en-US', { timeZone: 'Asia/Manila' })
+    );
+    return manilaDate.toLocaleDateString('en-PH', {
       year: 'numeric',
-      month: 'long',
+      month: 'short',
       day: 'numeric',
       timeZone: 'Asia/Manila',
     });
+  };
+
+  const formatManilaTime = (dateString) => {
+    if (!dateString) return '';
+    const manilaDate = new Date(
+      new Date(dateString).toLocaleString('en-US', { timeZone: 'Asia/Manila' })
+    );
+    return manilaDate.toLocaleTimeString('en-PH', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+      timeZone: 'Asia/Manila',
+    });
+  };
+
+  // Helper to get YYYY-MM-DD in Asia/Manila
+  const toManilaYMD = (dateString) => {
+    const manilaDate = new Date(
+      new Date(dateString).toLocaleString('en-US', { timeZone: 'Asia/Manila' })
+    );
+    return manilaDate.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
   };
 
   // Computed properties for filtering and pagination
@@ -452,16 +476,15 @@
       );
     }
 
-    // Filter by date range
+    // Filter by date range (Asia/Manila)
     if (historyFilter.value.startDate) {
       filtered = filtered.filter(
-        (r) =>
-          new Date(r.released_at) >= new Date(historyFilter.value.startDate)
+        (r) => toManilaYMD(r.released_at) >= historyFilter.value.startDate
       );
     }
     if (historyFilter.value.endDate) {
       filtered = filtered.filter(
-        (r) => new Date(r.released_at) <= new Date(historyFilter.value.endDate)
+        (r) => toManilaYMD(r.released_at) <= historyFilter.value.endDate
       );
     }
 
@@ -1032,9 +1055,13 @@
                 </td>
 
                 <td class="text-sm">
-                  {{
-                    new Date(release.released_at).toLocaleDateString('en-PH')
-                  }}
+                  <div>
+                    <span>{{ formatManilaDate(release.released_at) }}</span>
+                    <br />
+                    <span class="text-xs text-black/50">
+                      {{ formatManilaTime(release.released_at) }}
+                    </span>
+                  </div>
                 </td>
 
                 <td class="text-sm">{{ release.released_by }}</td>
@@ -1052,13 +1079,16 @@
                 </td>
 
                 <td class="text-sm">
-                  {{
-                    release.receipt_confirmed_at
-                      ? new Date(
-                          release.receipt_confirmed_at
-                        ).toLocaleDateString('en-PH')
-                      : 'N/A'
-                  }}
+                  <div v-if="release.receipt_confirmed_at">
+                    <span>{{
+                      formatManilaDate(release.receipt_confirmed_at)
+                    }}</span>
+                    <br />
+                    <span class="text-xs text-black/50">
+                      {{ formatManilaTime(release.receipt_confirmed_at) }}
+                    </span>
+                  </div>
+                  <span v-else>N/A</span>
                 </td>
               </tr>
             </tbody>
@@ -1213,8 +1243,8 @@
         <!-- Items Table -->
         <div class="overflow-x-auto mb-4">
           <table class="table table-xs text-black">
-            <thead class="text-black bg-primaryColor">
-              <tr class="border border-black text-accentColor">
+            <thead class="text-black">
+              <tr class="border border-black text-black">
                 <th class="border border-black">Item No.</th>
                 <th class="border border-black">Item Name</th>
                 <th class="border border-black">Quantity</th>
@@ -1226,13 +1256,17 @@
             </thead>
             <tbody>
               <tr v-for="item in modal.request?.items || []" :key="item.id">
-                <td>{{ item.id }}</td>
-                <td>{{ item.item_name }}</td>
-                <td>{{ item.item_quantity }}</td>
-                <td>{{ item.item_unit }}</td>
-                <td>{{ item.item_type }}</td>
-                <td>₱{{ Number(item.item_unit_price).toFixed(2) }}</td>
-                <td>₱{{ Number(item.item_amount).toFixed(2) }}</td>
+                <td class="border border-black">{{ item.id }}</td>
+                <td class="border border-black">{{ item.item_name }}</td>
+                <td class="border border-black">{{ item.item_quantity }}</td>
+                <td class="border border-black">{{ item.item_unit }}</td>
+                <td class="border border-black">{{ item.item_type }}</td>
+                <td class="border border-black">
+                  ₱{{ Number(item.item_unit_price).toFixed(2) }}
+                </td>
+                <td class="border border-black">
+                  ₱{{ Number(item.item_amount).toFixed(2) }}
+                </td>
               </tr>
               <tr class="border border-black">
                 <td
@@ -1479,10 +1513,5 @@
   /* Loading states */
   .table tbody tr:hover {
     transition: background-color 0.2s ease;
-  }
-
-  /* Empty state styling */
-  .table tbody tr td {
-    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
   }
 </style>

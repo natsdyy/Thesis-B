@@ -20,7 +20,15 @@ import Login from '../views/Login.vue';
 const routes = [
   {
     path: '/',
-    redirect: '/login',
+    name: 'Home',
+    component: () => import('../crm/homepage.vue'),
+    meta: { title: 'Countryside Steakhouse - Home' },
+  },
+  {
+    path: '/home',
+    name: 'HomePage',
+    component: () => import('../crm/homepage.vue'),
+    meta: { title: 'Countryside Steakhouse - Home' },
   },
   // Add login route
   {
@@ -161,7 +169,7 @@ router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore();
 
   // Routes that don't require authentication
-  const publicRoutes = ['/', '/login'];
+  const publicRoutes = ['/', '/login', '/home'];
 
   if (publicRoutes.includes(to.path)) {
     next();

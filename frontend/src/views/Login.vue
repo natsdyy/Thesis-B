@@ -76,6 +76,10 @@
     return 'Login failed. Please try again.';
   };
 
+  const goBackHome = () => {
+    router.push('/home');
+  };
+
   const login = async () => {
     errorMessage.value = '';
 
@@ -146,7 +150,8 @@
 
     <!-- Back Button - positioned outside the card -->
     <button
-      class="absolute top-8 left-8 text-gray-600 hover:text-gray-800 transition-colors z-10 cursor-pointer"
+      @click="goBackHome"
+      class="absolute top-8 left-8 text-gray-600 hover:text-gray-800 transition-colors z-10 cursor-pointer flex items-center space-x-2 hover:bg-white/20 rounded-lg px-3 py-2"
     >
       <svg
         class="w-6 h-6"
@@ -161,6 +166,7 @@
           d="M10 19l-7-7m0 0l7-7m-7 7h18"
         ></path>
       </svg>
+      <span class="text-sm font-medium">Back to Home</span>
     </button>
 
     <!-- Desktop Layout -->
@@ -291,6 +297,27 @@
 
     <!-- Mobile Layout -->
     <div class="relative z-10 w-full max-w-md mx-auto lg:hidden mt-10">
+      <!-- Mobile Back Button -->
+      <button
+        @click="goBackHome"
+        class="absolute top-0 left-0 text-gray-600 hover:text-gray-800 transition-colors z-10 cursor-pointer flex items-center space-x-2 hover:bg-white/20 rounded-lg px-3 py-2 mb-4"
+      >
+        <svg
+          class="w-5 h-5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M10 19l-7-7m0 0l7-7m-7 7h18"
+          ></path>
+        </svg>
+        <span class="text-sm font-medium">Back to Home</span>
+      </button>
+      
       <!-- Mobile Logo Section -->
       <div class="flex justify-center mb-8">
         <div class="relative">

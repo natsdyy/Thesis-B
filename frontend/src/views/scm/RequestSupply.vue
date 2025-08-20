@@ -142,10 +142,13 @@
     {
       category: 'Materials',
       types: [
-        'Raw Materials',
-        'Ingredients',
-        'Office Supplies',
-        'Cleaning Supplies',
+        'Meat and Poultry',
+        'Fish and Seafood',
+        'Dairy and Eggs',
+        'Fruits and Vegetables',
+        'Beverages',
+        'Snacks and Confectionery',
+        'Other',
       ],
     },
     {
@@ -1408,7 +1411,7 @@
       <div class="card-body">
         <div class="flex justify-between items-center mb-4">
           <h2 class="card-title text-primaryColor">Request List</h2>
-          <div class="flex gap-2">
+          <div class="flex gap-2 md:flex-row flex-col">
             <button
               class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
               @click="fetchRequests"
@@ -3021,8 +3024,17 @@
                   >
                     <option value="" disabled>Category</option>
                     <option value="Ingredient">Ingredient</option>
-                    <option value="Beverages">Beverages</option>
                     <option value="Raw Meat">Raw Meat</option>
+                    <option value="Meat and Poultry">Meat and Poultry</option>
+                    <option value="Fish and Seafood">Fish and Seafood</option>
+                    <option value="Dairy and Eggs">Dairy and Eggs</option>
+                    <option value="Fruits and Vegetables">
+                      Fruits and Vegetables
+                    </option>
+                    <option value="Beverages">Beverages</option>
+                    <option value="Snacks and Confectionery">
+                      Snacks and Confectionery
+                    </option>
                     <option value="Kitchen Equipment">Kitchen Equipment</option>
                     <option value="Cleaning Supplies">Cleaning Supplies</option>
                     <option value="Office Supplies">Office Supplies</option>

@@ -145,7 +145,11 @@
   >
     <!-- Blurred background overlay -->
     <div class="absolute inset-0 blur-lg bg-secondaryColor/10">
-      <img src="/logo1.png" alt="" class="w-full h-full object-contain" />
+      <img
+        src="/logo1.png"
+        alt=""
+        class="w-full h-full object-cover lg:object-contain object-center"
+      />
     </div>
 
     <!-- Back Button - positioned outside the card -->
@@ -210,6 +214,8 @@
                   id="email"
                   v-model="email"
                   type="email"
+                  name="email"
+                  autocomplete="username"
                   class="input input-bordered w-full peer !border-0 !border-b-2 !border-gray-300 !rounded-none bg-transparent focus:!border-primaryColor focus:!outline-none px-0 py-3 placeholder-transparent"
                   :class="{ '!border-red-500': errorMessage }"
                   placeholder="johnmarco@gmail.com"
@@ -233,6 +239,8 @@
                   id="password"
                   v-model="password"
                   :type="showPassword ? 'text' : 'password'"
+                  name="password"
+                  autocomplete="current-password"
                   class="input input-bordered w-full peer !border-0 !border-b-2 !border-gray-300 !rounded-none bg-transparent focus:!border-primaryColor focus:!outline-none px-0 py-3 pr-10 placeholder-transparent"
                   :class="{ '!border-red-500': errorMessage }"
                   placeholder="lovekosi_e"
@@ -297,40 +305,15 @@
 
     <!-- Mobile Layout -->
     <div class="relative z-10 w-full max-w-md mx-auto lg:hidden mt-10">
-      <!-- Mobile Back Button -->
-      <button
-        @click="goBackHome"
-        class="absolute top-0 left-0 text-gray-600 hover:text-gray-800 transition-colors z-10 cursor-pointer flex items-center space-x-2 hover:bg-white/20 rounded-lg px-3 py-2 mb-4"
-      >
-        <svg
-          class="w-5 h-5"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M10 19l-7-7m0 0l7-7m-7 7h18"
-          ></path>
-        </svg>
-        <span class="text-sm font-medium">Back to Home</span>
-      </button>
-      
-      <!-- Mobile Logo Section -->
-      <div class="flex justify-center mb-8">
-        <div class="relative">
-          <img
-            src="/logo1.png"
-            alt="Countryside Logo"
-            class="w-full h-full object-contain"
-          />
-        </div>
+      <div class="flex justify-center">
+        <img
+          src="/logo1.png"
+          alt=""
+          class="w-70 h-70 object-cover object-center"
+        />
       </div>
-
       <!-- Mobile Login Card -->
-      <div class="bg-white rounded-2xl shadow-xl p-8">
+      <div class="bg-white rounded-2xl shadow-xl p-8 h-[500px] mt-10">
         <!-- Welcome Section -->
         <div class="text-center mb-8">
           <h1 class="text-2xl font-bold text-primaryColor mb-2 font-poppins">
@@ -350,6 +333,8 @@
                 id="email-mobile"
                 v-model="email"
                 type="email"
+                name="email"
+                autocomplete="username"
                 class="input input-bordered w-full peer !border-0 !border-b-2 !border-gray-300 !rounded-none bg-transparent focus:!border-primaryColor focus:!outline-none px-0 py-3 placeholder-transparent"
                 :class="{ '!border-red-500': errorMessage }"
                 placeholder="johnmarco@gmail.com"
@@ -370,6 +355,8 @@
                 id="password-mobile"
                 v-model="password"
                 :type="showPassword ? 'text' : 'password'"
+                name="password"
+                autocomplete="current-password"
                 class="input input-bordered w-full peer !border-0 !border-b-2 !border-gray-300 !rounded-none bg-transparent focus:!border-primaryColor focus:!outline-none px-0 py-3 pr-10 placeholder-transparent"
                 :class="{ '!border-red-500': errorMessage }"
                 placeholder="lovekosi_e"
@@ -414,7 +401,7 @@
             <button
               type="submit"
               :disabled="isLoading"
-              class="btn bg-primaryColor border-none hover:bg-primaryColor/80 font-poppins disabled:bg-primaryColor/50 text-white font-medium py-3 px-8 rounded-full transition-colors flex items-center justify-center shadow-lg cursor-pointer"
+              class="btn bg-primaryColor border-none hover:bg-primaryColor/80 font-poppins disabled:bg-primaryColor/50 text-white font-medium py-3 px-6 rounded-full transition-colors flex items-center justify-center shadow-lg cursor-pointer w-[50%]"
             >
               <template v-if="isLoading">
                 <span
@@ -470,11 +457,9 @@
 
   /* Mobile specific styles */
   @media (max-width: 1023px) {
+    /* Let the overlay image handle the background visuals */
     .min-h-screen {
-      background-image: url('/logo1.png');
-      background-size: contain;
-      background-position: top center;
-      background-repeat: no-repeat;
+      background-image: none;
     }
   }
 </style>

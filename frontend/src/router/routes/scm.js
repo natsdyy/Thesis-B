@@ -12,6 +12,12 @@ export default [
     meta: { title: 'Request Supply' },
   },
   {
+    path: 'purchase-order',
+    name: 'PurchaseOrder',
+    component: () => import('../../views/scm/PurchaseOrder.vue'),
+    meta: { title: 'Purchase Order' },
+  },
+  {
     path: 'inventory',
     name: 'Inventory',
     component: () => import('../../views/scm/Inventory.vue'),

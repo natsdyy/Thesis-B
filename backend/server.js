@@ -15,6 +15,9 @@ const authRoutes = require("./routes/auth");
 const branchRoutes = require("./routes/branches");
 const supplyRequestRoutes = require("./routes/supplyRequest");
 const budgetReleaseRoutes = require("./routes/budgetRelease");
+const purchaseOrderRoutes = require("./routes/purchaseOrders");
+const supplierRoutes = require("./routes/suppliers");
+const itemReturnRoutes = require("./routes/itemReturns");
 const { serve, setup } = require("./config/swagger");
 
 const app = express();
@@ -42,6 +45,9 @@ app.use("/api/auth", authRoutes);
 app.use("/api/branches", branchRoutes);
 app.use("/api/supply-requests", supplyRequestRoutes);
 app.use("/api/budget-releases", budgetReleaseRoutes);
+app.use("/api/purchase-orders", purchaseOrderRoutes);
+app.use("/api/suppliers", supplierRoutes);
+app.use("/api/item-returns", itemReturnRoutes);
 
 // Swagger documentation
 app.use("/api-docs", serve, setup);

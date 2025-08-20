@@ -142,10 +142,13 @@
     {
       category: 'Materials',
       types: [
-        'Raw Materials',
-        'Ingredients',
-        'Office Supplies',
-        'Cleaning Supplies',
+        'Meat and Poultry',
+        'Fish and Seafood',
+        'Dairy and Eggs',
+        'Fruits and Vegetables',
+        'Beverages',
+        'Snacks and Confectionery',
+        'Other',
       ],
     },
     {
@@ -3021,8 +3024,17 @@
                   >
                     <option value="" disabled>Category</option>
                     <option value="Ingredient">Ingredient</option>
-                    <option value="Beverages">Beverages</option>
                     <option value="Raw Meat">Raw Meat</option>
+                    <option value="Meat and Poultry">Meat and Poultry</option>
+                    <option value="Fish and Seafood">Fish and Seafood</option>
+                    <option value="Dairy and Eggs">Dairy and Eggs</option>
+                    <option value="Fruits and Vegetables">
+                      Fruits and Vegetables
+                    </option>
+                    <option value="Beverages">Beverages</option>
+                    <option value="Snacks and Confectionery">
+                      Snacks and Confectionery
+                    </option>
                     <option value="Kitchen Equipment">Kitchen Equipment</option>
                     <option value="Cleaning Supplies">Cleaning Supplies</option>
                     <option value="Office Supplies">Office Supplies</option>

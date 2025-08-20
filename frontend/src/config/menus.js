@@ -14,6 +14,7 @@ import {
   ReceiptText,
   Store,
   PhilippinePeso,
+  ShoppingBag,
 } from 'lucide-vue-next';
 
 export const menuItems = [
@@ -46,7 +47,7 @@ export const menuItems = [
   },
   {
     name: 'Payroll',
-    icon: DollarSign,
+    icon: PhilippinePeso,
     route: '/hr/payroll',
     department: 'Human Resource',
   },
@@ -74,6 +75,12 @@ export const menuItems = [
     name: 'Request Supply',
     icon: ReceiptText,
     route: '/scm/request-supply',
+    department: 'Supply Chain',
+  },
+  {
+    name: 'Purchase Order',
+    icon: ShoppingBag,
+    route: '/scm/purchase-order',
     department: 'Supply Chain',
   },
   {
@@ -200,7 +207,7 @@ export const menusByDepartment = menuItems.reduce((acc, item) => {
 export const departmentIcons = {
   'Human Resource': UserCog,
   'Supply Chain': Truck,
-  Finance: DollarSign,
+  Finance: PhilippinePeso,
   Production: Factory,
   'Customer Relationship': Users,
   Administration: Settings, // Add admin department icon

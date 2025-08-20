@@ -19,20 +19,14 @@
           themeStore.isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'
         "
       >
-        <Sun v-if="themeStore.isDarkMode" class="w-5 h-5 text-yellow-400 transition-transform duration-300" />
-        <Moon v-else class="w-5 h-5 text-indigo-600 transition-transform duration-300" />
-      </button>
-
-      <!-- Mobile Menu Toggle -->
-      <button
-        @click="toggleSidebar"
-        :class="[
-          'lg:hidden p-2 rounded-md transition-colors',
-          themeStore.themeClasses.hoverBg,
-          themeStore.themeClasses.textSecondary,
-        ]"
-      >
-        <Menu class="w-5 h-5" />
+        <Sun
+          v-if="themeStore.isDarkMode"
+          class="w-5 h-5 text-yellow-400 transition-transform duration-300"
+        />
+        <Moon
+          v-else
+          class="w-5 h-5 text-indigo-600 transition-transform duration-300"
+        />
       </button>
 
       <!-- Breadcrumb Navigation -->

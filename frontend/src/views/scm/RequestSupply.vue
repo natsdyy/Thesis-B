@@ -1408,7 +1408,7 @@
       <div class="card-body">
         <div class="flex justify-between items-center mb-4">
           <h2 class="card-title text-primaryColor">Request List</h2>
-          <div class="flex gap-2">
+          <div class="flex gap-2 md:flex-row flex-col">
             <button
               class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
               @click="fetchRequests"

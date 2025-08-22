@@ -9,6 +9,7 @@ const API_BASE_URL = apiConfig.baseURL;
 export const useSupplierStore = defineStore('supplier', () => {
   // State
   const suppliers = ref([]);
+  const deletedSuppliers = ref([]); // NEW: Store deleted suppliers
   const currentSupplier = ref(null);
   const loading = ref(false);
   const error = ref(null);
@@ -202,9 +203,94 @@ export const useSupplierStore = defineStore('supplier', () => {
     }
   };
 
+  const fetchActiveSuppliers = async () => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.get(`${API_BASE_URL}/suppliers/active`);
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch active suppliers'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to fetch active suppliers';
+      console.error('Error fetching active suppliers:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const restoreSupplier = async (id) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.patch(
+        `${API_BASE_URL}/suppliers/${id}/restore`
+      );
+
+      if (response.data.success) {
+        // Remove from deleted list and add back to main list
+        deletedSuppliers.value = deletedSuppliers.value.filter(
+          (s) => s.id !== id
+        );
+        suppliers.value.unshift(response.data.data);
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to restore supplier');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to restore supplier';
+      console.error('Error restoring supplier:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const fetchDeletedSuppliers = async () => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.get(`${API_BASE_URL}/suppliers/deleted`);
+
+      if (response.data.success) {
+        deletedSuppliers.value = response.data.data; // Store in state
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch deleted suppliers'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to fetch deleted suppliers';
+      console.error('Error fetching deleted suppliers:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   return {
     // State
     suppliers,
+    deletedSuppliers, // NEW
     currentSupplier,
     loading,
     error,
@@ -217,9 +303,12 @@ export const useSupplierStore = defineStore('supplier', () => {
     // Actions
     fetchSuppliers,
     fetchSupplierById,
+    fetchActiveSuppliers,
+    fetchDeletedSuppliers, // Make sure this is included
     createSupplier,
     updateSupplier,
     deleteSupplier,
+    restoreSupplier, // Make sure this is included
     fetchSuppliersWithStats,
   };
 });

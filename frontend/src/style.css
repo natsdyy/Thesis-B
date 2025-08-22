@@ -88,10 +88,17 @@ p {
     visibility: hidden !important;
   }
   #cash_request_receipt_modal,
-  #cash_request_receipt_modal * {
+  #cash_request_receipt_modal *,
+  #purchase_order_receipt_modal,
+  #purchase_order_receipt_modal *,
+  /* NEW: Return receipt modal */
+  #return_receipt_modal,
+  #return_receipt_modal * {
     visibility: visible !important;
   }
-  #cash_request_receipt_modal {
+  #cash_request_receipt_modal,
+  #purchase_order_receipt_modal,
+  #return_receipt_modal {
     position: absolute !important;
     left: 0;
     top: 0;

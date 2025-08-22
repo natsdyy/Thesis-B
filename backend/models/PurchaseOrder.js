@@ -1,4 +1,5 @@
 const { db } = require("../config/database");
+const Supplier = require("./Supplier");
 
 class PurchaseOrder {
   // Get all purchase orders with related data
@@ -103,6 +104,9 @@ class PurchaseOrder {
     const trx = await db.transaction();
 
     try {
+      // NEW: Validate supplier before creating PO
+      const supplier = await Supplier.validateForPurchaseOrder(supplierId);
+
       // Check if PO number can be reused
       const canReuse = await this.canReusePoNumber(poData.po_number);
       if (!canReuse) {
@@ -176,6 +180,11 @@ class PurchaseOrder {
     const trx = await db.transaction();
 
     try {
+      // NEW: Validate supplier before creating PO
+      const supplier = await Supplier.validateForPurchaseOrder(
+        poData.supplier_id
+      );
+
       // Check if PO number can be reused
       const canReuse = await this.canReusePoNumber(poData.po_number);
       if (!canReuse) {
@@ -229,6 +238,13 @@ class PurchaseOrder {
     const trx = await db.transaction();
 
     try {
+      // NEW: Validate supplier if it's being changed
+      if (poData.supplier_id) {
+        const supplier = await Supplier.validateForPurchaseOrder(
+          poData.supplier_id
+        );
+      }
+
       const [updatedPurchaseOrder] = await trx("purchase_orders")
         .where("id", id)
         .update({

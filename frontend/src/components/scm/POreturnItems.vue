@@ -4,7 +4,6 @@
     FileText,
     Search,
     Filter,
-    Download,
     RefreshCcw,
     Eye,
     Calendar,
@@ -14,6 +13,8 @@
     User,
     Package,
     DollarSign,
+    PhilippinePeso,
+    EllipsisVertical,
   } from 'lucide-vue-next';
   import { usePurchaseOrderStore } from '../../stores/purchaseOrderStore.js';
 
@@ -77,11 +78,16 @@
 
   const getStatusColor = (status) => {
     const colors = {
-      Pending: 'badge-warning',
-      Processed: 'badge-info',
-      Completed: 'badge-success',
+      Pending:
+        'badge badge-sm border-none font-medium bg-warning/20 text-warning',
+      Processed: 'badge badge-sm border-none font-medium bg-info/20 text-info',
+      Completed:
+        'badge badge-sm border-none font-medium bg-success/20 text-success',
     };
-    return colors[status] || 'badge-neutral';
+    return (
+      colors[status] ||
+      'badge badge-sm border-none font-medium bg-neutral/20 text-neutral'
+    );
   };
 
   const getReasonColor = (reason) => {
@@ -205,51 +211,6 @@
     currentPage.value = 1;
   };
 
-  const exportToCSV = () => {
-    const headers = [
-      'Return ID',
-      'Item Name',
-      'Return Quantity',
-      'Return Reason',
-      'Status',
-      'Logged By',
-      'Logged Date',
-      'Processed By',
-      'Processed Date',
-      'Notes',
-      'Return Value',
-    ];
-
-    const csvContent = [
-      headers.join(','),
-      ...filteredReturns.value.map((returnItem) =>
-        [
-          returnItem.id,
-          returnItem.item_name || 'N/A',
-          returnItem.return_quantity,
-          returnItem.return_reason,
-          returnItem.status,
-          returnItem.logged_by,
-          formatDate(returnItem.created_at),
-          returnItem.processed_by || 'N/A',
-          formatDate(returnItem.processed_at),
-          returnItem.notes || '',
-          returnItem.return_value || 0,
-        ].join(',')
-      ),
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `item_returns_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-
-    showToast('success', 'Return history exported to CSV');
-  };
-
   const viewReturnDetails = (returnItem) => {
     // Emit event to parent component to show detailed view
     emit('viewReturnDetails', returnItem);
@@ -283,6 +244,48 @@
     } catch (error) {
       showToast('error', error.message || 'Failed to cancel return');
     }
+  };
+
+  // NEW: Return receipt modal state
+  const returnReceiptModal = ref({
+    show: false,
+    item: null,
+    po: null,
+  });
+
+  // NEW: Open receipt (completed returns only)
+  const openReturnReceipt = async (returnItem) => {
+    if (returnItem.status !== 'Completed') {
+      showToast('error', 'Receipt is available only for completed returns');
+      return;
+    }
+    try {
+      loading.value = true;
+      // fetch PO for supplier/po_number context on receipt
+      const po = await purchaseOrderStore.fetchPurchaseOrderById(
+        returnItem.purchase_order_id
+      );
+      returnReceiptModal.value = {
+        show: true,
+        item: returnItem,
+        po,
+      };
+      document.getElementById('return_receipt_modal').showModal();
+    } catch (err) {
+      console.error('Failed to load PO for return receipt', err);
+      showToast('error', 'Failed to load receipt data');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const closeReturnReceipt = () => {
+    document.getElementById('return_receipt_modal')?.close();
+    returnReceiptModal.value = { show: false, item: null, po: null };
+  };
+
+  const printReturnReceipt = () => {
+    window.print();
   };
 
   // Lifecycle
@@ -359,10 +362,10 @@
 
         <div class="stat">
           <div class="stat-figure">
-            <DollarSign class="w-6 h-6 text-info" />
+            <PhilippinePeso class="w-6 h-6 text-black/80" />
           </div>
           <div class="stat-title text-black/50">Total Value</div>
-          <div class="stat-value text-info">
+          <div class="stat-value text-black/80">
             ₱{{ returnStats.totalValue.toLocaleString() }}
           </div>
         </div>
@@ -434,13 +437,6 @@
             <RefreshCcw class="w-4 h-4 mr-1" />
             Clear
           </button>
-          <button
-            class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
-            @click="exportToCSV"
-          >
-            <Download class="w-4 h-4 mr-1" />
-            Export
-          </button>
         </div>
       </div>
 
@@ -466,9 +462,9 @@
 
       <!-- Returns Table -->
       <div v-else class="overflow-x-auto">
-        <table class="table table-zebra w-full">
+        <table class="table table-zebra w-full table-xs">
           <thead>
-            <tr class="bg-primaryColor/10">
+            <tr class="border border-black">
               <th class="text-black font-semibold">Return ID</th>
               <th class="text-black font-semibold">Item</th>
               <th class="text-black font-semibold">Quantity</th>
@@ -483,7 +479,7 @@
             <tr
               v-for="returnItem in paginatedReturns"
               :key="returnItem.id"
-              class="hover:bg-base-200"
+              class="border border-black"
             >
               <td class="font-mono text-sm">#{{ returnItem.id }}</td>
               <td>
@@ -527,21 +523,13 @@
               </td>
               <td>
                 <div class="dropdown dropdown-left">
-                  <label tabindex="0" class="btn btn-ghost btn-xs"> ⋯ </label>
+                  <label tabindex="0" class="btn btn-ghost btn-xs">
+                    <EllipsisVertical class="w-4 h-4" />
+                  </label>
                   <ul
                     tabindex="0"
                     class="dropdown-content menu p-2 shadow bg-white rounded-box w-32 border border-black/10"
                   >
-                    <li>
-                      <a
-                        @click="viewReturnDetails(returnItem)"
-                        class="text-info"
-                      >
-                        <Eye class="w-4 h-4" />
-                        View Details
-                      </a>
-                    </li>
-
                     <!-- Complete Return (Pending or Processed) -->
                     <li
                       v-if="
@@ -556,12 +544,22 @@
                         Complete
                       </a>
                     </li>
-
                     <!-- Cancel Return (Pending only) -->
                     <li v-if="returnItem.status === 'Pending'">
                       <a @click="cancelReturn(returnItem)" class="text-error">
                         <AlertTriangle class="w-4 h-4" />
                         Cancel
+                      </a>
+                    </li>
+
+                    <!-- Add a “View Receipt” action for completed returns -->
+                    <li v-if="returnItem.status === 'Completed'">
+                      <a
+                        @click="openReturnReceipt(returnItem)"
+                        class="text-black/50"
+                      >
+                        <FileText class="w-4 h-4 text-black/50" />
+                        View Receipt
                       </a>
                     </li>
                   </ul>
@@ -623,6 +621,157 @@
       <span>{{ toast.message }}</span>
     </div>
   </div>
+
+  <!-- NEW: Return Receipt Modal -->
+  <dialog id="return_receipt_modal" class="modal">
+    <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-4xl">
+      <div class="flex justify-between items-center mb-2 text-black">
+        <div class="flex items-center gap-2 mb-2 w-full">
+          <img src="/logo1.png" alt="" class="w-10 h-10" />
+          <h3 class="font-bold text-lg">Countryside Steakhouse</h3>
+        </div>
+        <div class="flex flex-col items-end w-full">
+          <p class="text-xs">
+            {{
+              new Date(
+                returnReceiptModal.item?.processed_at ||
+                  returnReceiptModal.item?.created_at ||
+                  Date.now()
+              ).toLocaleString('en-PH')
+            }}
+          </p>
+          <p class="text-xs">
+            Return Receipt #: {{ returnReceiptModal.item?.id }}
+          </p>
+        </div>
+      </div>
+
+      <div v-if="returnReceiptModal.item" class="space-y-4">
+        <!-- Header -->
+        <div class="border-b border-black/20 pb-4">
+          <h4 class="font-semibold text-lg text-black">Return Receipt</h4>
+          <p class="text-sm text-black/70">
+            PO Number:
+            {{ returnReceiptModal.po?.po_number || 'N/A' }}
+          </p>
+          <p class="text-xs text-black/50">
+            Supplier: {{ returnReceiptModal.po?.supplier_name || 'N/A' }}
+          </p>
+          <p class="text-xs text-black/50">
+            Return Date:
+            {{
+              new Date(
+                returnReceiptModal.item.processed_at ||
+                  returnReceiptModal.item.created_at
+              ).toLocaleDateString('en-PH', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+              })
+            }}
+          </p>
+        </div>
+
+        <!-- Details Table -->
+        <div class="overflow-x-auto">
+          <table class="table table-xs text-black">
+            <thead class="text-black text-xs">
+              <tr class="border border-black">
+                <th class="border border-black">Item</th>
+                <th class="border border-black">Returned Qty</th>
+                <th class="border border-black">Reason</th>
+                <th class="border border-black">Processed By</th>
+                <th class="border border-black">Return Value (₱)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border border-black">
+                <td class="border border-black">
+                  {{ returnReceiptModal.item.item_name || 'N/A' }}
+                </td>
+                <td class="border border-black">
+                  {{ returnReceiptModal.item.return_quantity }}
+                </td>
+                <td class="border border-black">
+                  {{ returnReceiptModal.item.return_reason }}
+                </td>
+                <td class="border border-black">
+                  {{ returnReceiptModal.item.processed_by || 'N/A' }}
+                </td>
+                <td class="border border-black">
+                  ₱{{
+                    Number(returnReceiptModal.item.return_value || 0).toFixed(2)
+                  }}
+                </td>
+              </tr>
+              <tr class="border border-black">
+                <td
+                  colspan="4"
+                  class="text-right font-semibold border border-black"
+                >
+                  Total
+                </td>
+                <td class="font-semibold border border-black">
+                  ₱{{
+                    Number(returnReceiptModal.item.return_value || 0).toFixed(2)
+                  }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Notes -->
+        <div class="mt-4 text-black">
+          <h6 class="text-xs font-medium">Notes:</h6>
+          <textarea
+            class="text-xs w-full h-20 border border-black/30 rounded-md p-2 text-black/50"
+            readonly
+            :value="returnReceiptModal.item.notes || 'No notes provided'"
+          ></textarea>
+        </div>
+
+        <!-- Status -->
+        <div class="flex justify-between items-center">
+          <span class="text-sm text-black/70">Status:</span>
+          <span
+            class="badge badge-sm"
+            :class="getStatusColor(returnReceiptModal.item.status)"
+          >
+            {{ returnReceiptModal.item.status }}
+          </span>
+        </div>
+
+        <!-- Supplier/Receiver Signatures -->
+        <div class="flex justify-between mt-8 w-full">
+          <div class="flex flex-col items-start">
+            <div class="border-b border-black w-[280px] mb-1"></div>
+            <div class="text-xs text-gray-600">Supplier Signature</div>
+          </div>
+          <div class="flex flex-col items-end">
+            <div class="border-b border-black w-[280px] mb-1"></div>
+            <div class="text-xs text-gray-600">Received by</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-action flex gap-2 mt-6">
+        <button
+          class="btn btn-sm bg-primaryColor text-white font-thin border border-none hover:bg-primaryColor/80 shadow-none"
+          @click="printReturnReceipt"
+          :disabled="!returnReceiptModal.item"
+        >
+          Print Receipt
+        </button>
+        <button
+          class="btn btn-sm bg-gray-200 text-black/50 font-thin border border-none hover:bg-gray-300 shadow-none"
+          @click="closeReturnReceipt"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  </dialog>
 </template>
 
 <style scoped>
@@ -671,6 +820,93 @@
     .table th,
     .table td {
       padding: 0.5rem 0.25rem;
+    }
+  }
+
+  @media print {
+    body * {
+      visibility: hidden;
+    }
+    #return_receipt_modal,
+    #return_receipt_modal * {
+      visibility: visible;
+    }
+    #return_receipt_modal {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: white;
+      padding: 20px;
+      box-shadow: none;
+      border: none;
+    }
+    #return_receipt_modal .modal-box {
+      max-height: none;
+      overflow-y: visible;
+      padding: 0;
+      box-shadow: none;
+      border: none;
+    }
+    #return_receipt_modal .modal-action {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      gap: 10px;
+    }
+    #return_receipt_modal .modal-action button {
+      padding: 8px 15px;
+      font-size: 0.875rem;
+    }
+    #return_receipt_modal .modal-action button:first-child {
+      background-color: var(--primaryColor);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 15px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    #return_receipt_modal .modal-action button:last-child {
+      background-color: #e0e0e0;
+      color: #333;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 8px 15px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    #return_receipt_modal .modal-action button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    #return_receipt_modal .modal-action button:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+    #return_receipt_modal .modal-action button:active:not(:disabled) {
+      transform: scale(0.98);
+    }
+    #return_receipt_modal .modal-action button:focus {
+      outline: none;
+    }
+    #return_receipt_modal .modal-action button:focus-visible {
+      box-shadow:
+        0 0 0 3px var(--primaryColor),
+        0 0 0 6px var(--primaryColor);
+    }
+    #return_receipt_modal .modal-action button:active:not(:disabled) {
+      transform: scale(0.98);
+    }
+    #return_receipt_modal .modal-action button:focus {
+      outline: none;
+    }
+    #return_receipt_modal .modal-action button:focus-visible {
+      box-shadow:
+        0 0 0 3px var(--primaryColor),
+        0 0 0 6px var(--primaryColor);
     }
   }
 </style>

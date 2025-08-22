@@ -163,6 +163,94 @@ class Supplier {
       }
     }
   }
+
+  // NEW: Validate if supplier can be used in purchase orders
+  static async validateForPurchaseOrder(supplierId) {
+    try {
+      const supplier = await db("suppliers")
+        .where("id", supplierId)
+        .whereNull("deleted_at")
+        .first();
+
+      if (!supplier) {
+        throw new Error("Supplier not found or has been deleted");
+      }
+
+      if (supplier.status !== "Active") {
+        throw new Error(
+          `Cannot create purchase order with ${supplier.status.toLowerCase()} supplier: ${supplier.name}`
+        );
+      }
+
+      return supplier;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // NEW: Get only active suppliers for purchase orders
+  static async getActiveSuppliers() {
+    try {
+      return await db("suppliers")
+        .where("status", "Active")
+        .whereNull("deleted_at")
+        .orderBy("name");
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // NEW: Restore deleted supplier
+  static async restore(id) {
+    try {
+      if (!id || isNaN(id)) {
+        throw new Error("Invalid supplier ID provided");
+      }
+
+      const existingSupplier = await db("suppliers").where("id", id).first();
+      if (!existingSupplier) {
+        throw new Error("Supplier not found");
+      }
+
+      if (!existingSupplier.deleted_at) {
+        throw new Error("Supplier is not deleted and cannot be restored");
+      }
+
+      const [supplier] = await db("suppliers")
+        .where("id", id)
+        .update({
+          deleted_at: null,
+          updated_at: new Date(),
+        })
+        .returning("*");
+
+      return supplier;
+    } catch (error) {
+      console.error("Error restoring supplier:", error);
+
+      // Re-throw validation errors
+      if (
+        error.message.includes("Invalid") ||
+        error.message.includes("not found") ||
+        error.message.includes("cannot be restored")
+      ) {
+        throw error;
+      }
+
+      throw new Error("Failed to restore supplier. Please try again.");
+    }
+  }
+
+  // NEW: Get deleted suppliers
+  static async getDeletedSuppliers() {
+    try {
+      return await db("suppliers")
+        .whereNotNull("deleted_at")
+        .orderBy("deleted_at", "desc");
+    } catch (error) {
+      throw error;
+    }
+  }
 }
 
 module.exports = Supplier;

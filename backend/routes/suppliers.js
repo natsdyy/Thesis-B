@@ -41,7 +41,45 @@ router.get("/stats", async (req, res) => {
   }
 });
 
-// GET /api/suppliers/:id - Get supplier by ID
+// GET /api/suppliers/active - Get only active suppliers for PO creation
+router.get("/active", async (req, res) => {
+  try {
+    const suppliers = await Supplier.getActiveSuppliers();
+
+    res.json({
+      success: true,
+      data: suppliers,
+      count: suppliers.length,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching active suppliers",
+      error: error.message,
+    });
+  }
+});
+
+// GET /api/suppliers/deleted - Get deleted suppliers (MOVE THIS BEFORE /:id route)
+router.get("/deleted", async (req, res) => {
+  try {
+    const suppliers = await Supplier.getDeletedSuppliers();
+
+    res.json({
+      success: true,
+      data: suppliers,
+      count: suppliers.length,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching deleted suppliers",
+      error: error.message,
+    });
+  }
+});
+
+// GET /api/suppliers/:id - Get supplier by ID (MOVE THIS AFTER /deleted)
 router.get("/:id", async (req, res) => {
   try {
     const supplier = await Supplier.getById(req.params.id);
@@ -167,6 +205,33 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error deleting supplier",
+      error: error.message,
+    });
+  }
+});
+
+// PATCH /api/suppliers/:id/restore - Restore soft deleted supplier
+router.patch("/:id/restore", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const supplier = await Supplier.restore(id);
+
+    if (!supplier) {
+      return res.status(404).json({
+        success: false,
+        message: "Supplier not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: supplier,
+      message: "Supplier restored successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error restoring supplier",
       error: error.message,
     });
   }

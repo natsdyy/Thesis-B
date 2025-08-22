@@ -97,14 +97,14 @@
       >
         <div class="stat-figure">
           <PhilippinePeso
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-info"
+            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-black/80"
           />
         </div>
         <div class="stat-title text-black/50 text-xs sm:text-sm">
           Total Value
         </div>
         <div
-          class="stat-value text-info text-lg sm:text-xl lg:text-2xl xl:text-3xl"
+          class="stat-value text-black/80 text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
           ₱{{ orderStats.totalValue.toLocaleString() }}
         </div>
@@ -131,7 +131,7 @@
 
           <!-- Mobile: Stacked buttons -->
           <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-            <div class="grid grid-cols-2 sm:flex gap-2">
+            <div class="grid grid-cols-1 sm:flex gap-2">
               <button
                 class="btn btn-outline btn-xs sm:btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
                 @click="clearFilters"
@@ -141,16 +141,6 @@
                 />
                 <span class="hidden sm:inline">Clear Filters</span>
                 <span class="sm:hidden">Clear</span>
-              </button>
-              <button
-                class="btn btn-outline btn-xs sm:btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
-                @click="exportToCSV"
-              >
-                <Download
-                  class="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 text-primaryColor"
-                />
-                <span class="hidden sm:inline">Export CSV</span>
-                <span class="sm:hidden">Export</span>
               </button>
             </div>
             <button
@@ -1484,7 +1474,7 @@
   </dialog>
 
   <!-- Receipt Modal -->
-  <dialog id="receipt_modal" class="modal">
+  <dialog id="purchase_order_receipt_modal" class="modal">
     <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-6xl">
       <div class="flex justify-between items-center mb-2 text-black">
         <div class="flex items-center gap-2 mb-2 w-full">
@@ -1505,7 +1495,10 @@
         </div>
       </div>
 
-      <div v-if="receiptModal.order" class="space-y-4">
+      <div
+        v-if="receiptModal.order && receiptModal.order.items"
+        class="space-y-4"
+      >
         <!-- Order Header -->
         <div class="border-b border-black/20 pb-4">
           <h4 class="font-semibold text-lg text-black">
@@ -1538,15 +1531,15 @@
             </thead>
             <tbody>
               <tr
-                v-for="(item, idx) in receiptModal.order.items || []"
+                v-for="(item, idx) in receiptModal.order.items"
                 :key="item.id || idx"
                 class="border border-black"
               >
                 <td class="border border-black">{{ idx + 1 }}</td>
                 <td class="border border-black">
-                  {{ item.item_name || item.name }}
+                  {{ item.item_name || item.name || 'N/A' }}
                 </td>
-                <td class="border border-black">{{ item.quantity }}</td>
+                <td class="border border-black">{{ item.quantity || 0 }}</td>
                 <td class="border border-black">{{ item.unit || 'pcs' }}</td>
                 <td class="border border-black">
                   ₱{{ Number(item.unit_price || 0).toFixed(2) }}
@@ -1554,7 +1547,8 @@
                 <td class="border border-black">
                   ₱{{
                     Number(
-                      item.amount || item.quantity * (item.unit_price || 0)
+                      item.amount ||
+                        (item.quantity || 0) * (item.unit_price || 0)
                     ).toFixed(2)
                   }}
                 </td>
@@ -1625,10 +1619,27 @@
         </div>
       </div>
 
+      <!-- Loading state for receipt -->
+      <div v-else-if="loading" class="flex justify-center py-8">
+        <span class="loading loading-spinner loading-lg"></span>
+      </div>
+
+      <!-- Error state for receipt -->
+      <div v-else class="text-center py-8">
+        <div class="mb-4">
+          <AlertTriangle class="w-12 h-12 mx-auto text-error" />
+        </div>
+        <h4 class="text-lg font-semibold mb-2 text-error">No Receipt Data</h4>
+        <p class="text-base-content/60">
+          Unable to load receipt data for this purchase order.
+        </p>
+      </div>
+
       <div class="modal-action flex gap-2 mt-6">
         <button
           class="btn btn-sm bg-primaryColor text-white font-thin border border-none hover:bg-primaryColor/80 shadow-none"
           @click="printReceipt"
+          :disabled="!receiptModal.order || !receiptModal.order.items"
         >
           Print Receipt
         </button>
@@ -1649,10 +1660,10 @@
 
       <form @submit.prevent="showReturnConfirmation">
         <div class="form-control mb-4">
-          <label class="label">Item to Return</label>
+          <label class="label w-full">Item to Return</label>
           <select
             v-model="returnForm.item_id"
-            class="select select-bordered"
+            class="select select-bordered w-full"
             required
           >
             <option value="">Select Item</option>
@@ -1667,21 +1678,21 @@
         </div>
 
         <div class="form-control mb-4">
-          <label class="label">Quantity to Return</label>
+          <label class="label w-full">Quantity to Return</label>
           <input
             v-model.number="returnForm.quantity"
             type="number"
             min="1"
-            class="input input-bordered"
+            class="input input-bordered w-full"
             required
           />
         </div>
 
         <div class="form-control mb-4">
-          <label class="label">Return Reason</label>
+          <label class="label w-full">Return Reason</label>
           <select
             v-model="returnForm.reason"
-            class="select select-bordered"
+            class="select select-bordered w-full"
             required
           >
             <option value="">Select Reason</option>
@@ -1695,10 +1706,10 @@
         </div>
 
         <div class="form-control mb-4">
-          <label class="label">Notes</label>
+          <label class="label w-full">Notes</label>
           <textarea
             v-model="returnForm.notes"
-            class="textarea textarea-bordered"
+            class="textarea textarea-bordered w-full"
             rows="3"
             placeholder="Additional details about the return..."
           ></textarea>
@@ -1761,7 +1772,6 @@
     FileText,
     Plus,
     Search,
-    Download,
     RefreshCcw,
     Mail,
     Edit,
@@ -1815,14 +1825,22 @@
   // Utility functions
   const getStatusColor = (status) => {
     const colors = {
-      Draft: 'badge-warning',
-      Sent: 'badge-info',
-      Confirmed: 'badge-primary',
-      'In Progress': 'badge-secondary',
-      Completed: 'badge-success',
-      Cancelled: 'badge-error',
+      Draft:
+        'badge badge-sm border-none font-medium bg-warning/20 text-warning',
+      Sent: 'badge badge-sm border-none font-medium bg-info/20 text-info',
+      Confirmed:
+        'badge badge-sm border-none font-medium bg-primary/20 text-primary',
+      'In Progress':
+        'badge badge-sm border-none font-medium bg-secondary/20 text-secondary',
+      Completed:
+        'badge badge-sm border-none font-medium bg-success/20 text-success',
+      Cancelled:
+        'badge badge-sm border-none font-medium bg-error/20 text-error',
     };
-    return colors[status] || 'badge-neutral';
+    return (
+      colors[status] ||
+      'badge badge-sm border-none font-medium bg-neutral/20 text-neutral'
+    );
   };
 
   // Stores
@@ -1832,7 +1850,7 @@
 
   // Replace mock data with store data
   const mockPurchaseOrders = computed(() => purchaseOrderStore.purchaseOrders);
-  const suppliers = computed(() => supplierStore.suppliers);
+  const suppliers = computed(() => supplierStore.activeSuppliers); // Change this line
   const approvedSupplyRequests = computed(() =>
     supplyRequestStore.requestsByStatus('Completed')
   );
@@ -2309,7 +2327,7 @@
   };
 
   // Receipt modal methods
-  const openReceiptModal = (order) => {
+  const openReceiptModal = async (order) => {
     // Check if receipt can be viewed (only for completed orders)
     if (order.status !== 'Completed') {
       showToast(
@@ -2319,15 +2337,36 @@
       return;
     }
 
-    receiptModal.value = {
-      show: true,
-      order,
-    };
-    document.getElementById('receipt_modal').showModal();
+    try {
+      loading.value = true;
+
+      // Fetch the full purchase order details including items
+      const fullOrderDetails = await purchaseOrderStore.fetchPurchaseOrderById(
+        order.id
+      );
+
+      // Ensure the order has items data
+      if (!fullOrderDetails.items || fullOrderDetails.items.length === 0) {
+        showToast('error', 'No items found for this purchase order');
+        return;
+      }
+
+      receiptModal.value = {
+        show: true,
+        order: fullOrderDetails,
+      };
+
+      document.getElementById('purchase_order_receipt_modal').showModal();
+    } catch (error) {
+      console.error('Error fetching order details for receipt:', error);
+      showToast('error', 'Failed to load order details for receipt');
+    } finally {
+      loading.value = false;
+    }
   };
 
   const closeReceiptModal = () => {
-    document.getElementById('receipt_modal')?.close();
+    document.getElementById('purchase_order_receipt_modal')?.close();
     receiptModal.value = {
       show: false,
       order: null,
@@ -2674,43 +2713,6 @@
     { deep: true, immediate: true }
   );
 
-  const exportToCSV = () => {
-    const headers = [
-      'PO Number',
-      'Supplier',
-      'Order Date',
-      'Expected Delivery',
-      'Status',
-      'Total Amount',
-      'Notes',
-    ];
-
-    const csvContent = [
-      headers.join(','),
-      ...filteredOrders.value.map((order) =>
-        [
-          order.po_number,
-          order.supplier_name,
-          order.order_date,
-          order.expected_delivery || 'TBD',
-          order.status,
-          order.total_amount,
-          order.notes || '',
-        ].join(',')
-      ),
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `purchase_orders_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-
-    showToast('success', 'Purchase orders exported to CSV');
-  };
-
   // History-related computed properties
   const historyOrders = computed(() => {
     return purchaseOrderStore.purchaseOrders.filter(
@@ -2903,7 +2905,7 @@
       // Fetch all required data
       await Promise.all([
         purchaseOrderStore.fetchPurchaseOrders(),
-        supplierStore.fetchSuppliers(),
+        supplierStore.fetchActiveSuppliers(), // Change this line in onMounted
         supplyRequestStore.fetchRequests({ department: 'SCM' }),
         purchaseOrderStore.fetchStats(),
       ]);
@@ -3035,6 +3037,19 @@
   const viewReturnDetails = (returnItem) => {
     // You can implement a detailed view modal here
     console.log('View return details:', returnItem);
+  };
+
+  // In the script section, update the supplier fetching:
+
+  // Replace the existing supplier fetching with:
+  const fetchSuppliersForPO = async () => {
+    try {
+      const activeSuppliers = await supplierStore.fetchActiveSuppliers();
+      // Use activeSuppliers for the dropdown instead of all suppliers
+    } catch (error) {
+      console.error('Failed to load active suppliers:', error);
+      showToast('error', 'Failed to load suppliers');
+    }
   };
 </script>
 

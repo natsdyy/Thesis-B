@@ -78,25 +78,6 @@
       </div>
 
       <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <Clock class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-warning" />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">
-          Pending Review
-        </div>
-        <div
-          class="stat-value text-warning text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ supplierStats.pending }}
-        </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
-          Under evaluation
-        </div>
-      </div>
-
-      <div
         class="stat sm:!border sm:!border-l-0 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
@@ -133,7 +114,7 @@
 
           <!-- Mobile: Stacked buttons -->
           <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-            <div class="grid grid-cols-2 sm:flex gap-2">
+            <div class="grid grid-cols-1 sm:flex gap-2">
               <button
                 class="btn btn-outline btn-xs sm:btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
                 @click="clearFilters"
@@ -144,18 +125,24 @@
                 <span class="hidden sm:inline">Clear Filters</span>
                 <span class="sm:hidden">Clear</span>
               </button>
+              <!-- NEW: Toggle deleted suppliers view -->
               <button
                 class="btn btn-outline btn-xs sm:btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
-                @click="exportToCSV"
+                @click="toggleDeletedView"
               >
-                <Download
+                <Trash2
                   class="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 text-primaryColor"
                 />
-                <span class="hidden sm:inline">Export CSV</span>
-                <span class="sm:hidden">Export</span>
+                <span class="hidden sm:inline">
+                  {{ showDeleted ? 'Hide Deleted' : 'Show Deleted' }}
+                </span>
+                <span class="sm:hidden">
+                  {{ showDeleted ? 'Hide' : 'Show' }}
+                </span>
               </button>
             </div>
             <button
+              v-if="!showDeleted"
               class="btn btn-outline btn-xs sm:btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
               @click="openModal('create')"
             >
@@ -310,20 +297,33 @@
                         >View Details</a
                       >
                     </li>
-                    <li class="hover:bg-black/10">
-                      <a
-                        @click="openModal('edit', supplier)"
-                        class="text-warning text-xs sm:text-sm"
-                        >Edit</a
-                      >
-                    </li>
-                    <li class="hover:bg-black/10">
-                      <a
-                        @click="openConfirmModal('delete', supplier)"
-                        class="text-error text-xs sm:text-sm"
-                        >Delete</a
-                      >
-                    </li>
+                    <!-- Show different options based on deleted status -->
+                    <template v-if="!showDeleted">
+                      <li class="hover:bg-black/10">
+                        <a
+                          @click="openModal('edit', supplier)"
+                          class="text-warning text-xs sm:text-sm"
+                          >Edit</a
+                        >
+                      </li>
+                      <li class="hover:bg-black/10">
+                        <a
+                          @click="openConfirmModal('delete', supplier)"
+                          class="text-error text-xs sm:text-sm"
+                          >Delete</a
+                        >
+                      </li>
+                    </template>
+                    <!-- Show restore option for deleted suppliers -->
+                    <template v-else>
+                      <li class="hover:bg-black/10">
+                        <a
+                          @click="openConfirmModal('restore', supplier)"
+                          class="text-success text-xs sm:text-sm"
+                          >Restore</a
+                        >
+                      </li>
+                    </template>
                   </ul>
                 </div>
               </div>
@@ -698,7 +698,11 @@
           Cancel
         </button>
         <button
-          class="btn btn-sm btn-error font-thin border-none text-white w-full sm:w-auto"
+          class="btn btn-sm font-thin border-none text-white w-full sm:w-auto"
+          :class="{
+            'btn-error': confirmModal.type === 'delete',
+            'btn-success': confirmModal.type === 'restore',
+          }"
           @click="handleConfirmAction"
           :disabled="loading"
         >
@@ -706,7 +710,15 @@
             class="loading loading-spinner loading-xs"
             v-if="loading"
           ></span>
-          {{ loading ? 'Deleting...' : 'Delete Supplier' }}
+          {{
+            loading
+              ? confirmModal.type === 'delete'
+                ? 'Deleting...'
+                : 'Restoring...'
+              : confirmModal.type === 'delete'
+                ? 'Delete Supplier'
+                : 'Restore Supplier'
+          }}
         </button>
       </div>
     </div>
@@ -734,7 +746,7 @@
       >
         <span class="text-xs sm:text-sm">{{ toast.message }}</span>
       </div>
-  </div>
+    </div>
   </transition>
 </template>
 
@@ -748,7 +760,6 @@
     Eye,
     Search,
     Filter,
-    Download,
     RefreshCcw,
     Phone,
     Mail,
@@ -774,6 +785,7 @@
   const searchQuery = ref('');
   const statusFilter = ref('');
   const categoryFilter = ref('');
+  const showDeleted = ref(false); // NEW: Toggle for deleted suppliers view
 
   // Modal state
   const modal = ref({
@@ -818,11 +830,13 @@
     'Other',
   ];
 
-  const statuses = ['Active', 'Inactive', 'Pending'];
+  const statuses = ['Active', 'Inactive'];
 
   // Computed properties
   const filteredSuppliers = computed(() => {
-    let filtered = [...mockSuppliers.value];
+    let filtered = showDeleted.value
+      ? supplierStore.deletedSuppliers || []
+      : [...mockSuppliers.value];
 
     // Search filter
     if (searchQuery.value) {
@@ -836,8 +850,8 @@
       );
     }
 
-    // Status filter
-    if (statusFilter.value) {
+    // Status filter (only for non-deleted suppliers)
+    if (!showDeleted.value && statusFilter.value) {
       filtered = filtered.filter(
         (supplier) => supplier.status === statusFilter.value
       );
@@ -875,9 +889,6 @@
     const inactive = mockSuppliers.value.filter(
       (s) => s.status === 'Inactive'
     ).length;
-    const pending = mockSuppliers.value.filter(
-      (s) => s.status === 'Pending'
-    ).length;
     const totalOrders = mockSuppliers.value.reduce(
       (sum, s) => sum + (s.total_orders || 0),
       0
@@ -892,7 +903,6 @@
       total,
       active,
       inactive,
-      pending,
       totalOrders,
       avgRating: avgRating || 0,
     };
@@ -999,6 +1009,40 @@
     }
   };
 
+  // NEW: Handle restore supplier
+  const handleRestoreSupplier = async (supplier) => {
+    try {
+      await supplierStore.restoreSupplier(supplier.id);
+      showToast('success', 'Supplier restored successfully');
+      // Refresh the deleted suppliers list
+      await loadDeletedSuppliers();
+    } catch (err) {
+      showToast('error', err.message || 'Failed to restore supplier');
+    }
+  };
+
+  // NEW: Toggle deleted suppliers view
+  const toggleDeletedView = async () => {
+    showDeleted.value = !showDeleted.value;
+
+    if (showDeleted.value) {
+      await loadDeletedSuppliers();
+    }
+
+    // Reset filters and pagination
+    clearFilters();
+  };
+
+  // NEW: Load deleted suppliers
+  const loadDeletedSuppliers = async () => {
+    try {
+      await supplierStore.fetchDeletedSuppliers();
+    } catch (error) {
+      console.error('Failed to load deleted suppliers:', error);
+      showToast('error', 'Failed to load deleted suppliers');
+    }
+  };
+
   // Confirmation modal
   const confirmModal = ref({
     show: false,
@@ -1015,6 +1059,11 @@
         title: 'Delete Supplier',
         message: `Are you sure you want to delete ${supplier.name}? This action cannot be undone.`,
         onConfirm: () => handleDeleteSupplier(supplier),
+      },
+      restore: {
+        title: 'Restore Supplier',
+        message: `Are you sure you want to restore ${supplier.name}?`,
+        onConfirm: () => handleRestoreSupplier(supplier),
       },
     };
 
@@ -1060,52 +1109,6 @@
     statusFilter.value = '';
     categoryFilter.value = '';
     currentPage.value = 1;
-  };
-
-  // Export to CSV
-  const exportToCSV = () => {
-    const headers = [
-      'ID',
-      'Name',
-      'Contact Person',
-      'Email',
-      'Phone',
-      'Category',
-      'Status',
-      'Rating',
-      'Total Orders',
-    ];
-    const csvContent = [
-      headers.join(','),
-      ...filteredSuppliers.value.map((supplier) =>
-        [
-          supplier.id,
-          `"${supplier.name}"`,
-          `"${supplier.contact_person}"`,
-          supplier.email,
-          supplier.phone,
-          supplier.category,
-          supplier.status,
-          supplier.rating || 0,
-          supplier.total_orders || 0,
-        ].join(',')
-      ),
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute(
-      'download',
-      `suppliers_${new Date().toISOString().split('T')[0]}.csv`
-    );
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    showToast('success', 'Suppliers exported to CSV successfully');
   };
 
   // Helper functions

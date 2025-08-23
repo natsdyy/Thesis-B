@@ -36,7 +36,7 @@ router.get("/stats", async (req, res) => {
           "COUNT(CASE WHEN status IN ('Draft', 'Sent', 'Confirmed', 'In Progress') THEN 1 END) as pending"
         ),
         db.raw(
-          "COALESCE(SUM(CASE WHEN status != 'Cancelled' THEN total_amount ELSE 0 END), 0) as total_value"
+          "COALESCE(SUM(CASE WHEN status NOT IN ('Cancelled', 'Completed') THEN total_amount ELSE 0 END), 0) as total_value"
         )
       )
       .whereNull("deleted_at")

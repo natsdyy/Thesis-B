@@ -508,6 +508,52 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     }
   };
 
+  // Add these methods for supplier rating
+  const checkPurchaseOrderRating = async (purchaseOrderId) => {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/supplier-ratings/purchase-order/${purchaseOrderId}`
+      );
+
+      // If we get here, a rating exists
+      return response.data;
+    } catch (error) {
+      // If the error is 404 (not found), it means no rating exists
+      if (error.response && error.response.status === 404) {
+        // Return success: true with null data to indicate no rating exists
+        return { success: true, data: null };
+      }
+      console.error('Error checking purchase order rating:', error);
+      throw error;
+    }
+  };
+
+  const submitSupplierRating = async (ratingData) => {
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/supplier-ratings`,
+        ratingData
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error submitting supplier rating:', error);
+      throw error;
+    }
+  };
+
+  const updateSupplierRating = async (purchaseOrderId, ratingData) => {
+    try {
+      const response = await axios.put(
+        `${API_BASE_URL}/supplier-ratings/purchase-order/${purchaseOrderId}`,
+        ratingData
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error updating supplier rating:', error);
+      throw error;
+    }
+  };
+
   return {
     // State
     purchaseOrders,
@@ -540,5 +586,8 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     processItemReturn,
     completeItemReturn,
     cancelItemReturn,
+    checkPurchaseOrderRating,
+    submitSupplierRating,
+    updateSupplierRating,
   };
 });

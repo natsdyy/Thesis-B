@@ -176,6 +176,7 @@ export const useSupplierStore = defineStore('supplier', () => {
     }
   };
 
+  // Add this function to fetch suppliers with stats including ratings
   const fetchSuppliersWithStats = async () => {
     loading.value = true;
     error.value = null;
@@ -196,7 +197,6 @@ export const useSupplierStore = defineStore('supplier', () => {
         err.response?.data?.message ||
         err.message ||
         'Failed to fetch suppliers with stats';
-      console.error('Error fetching suppliers with stats:', err);
       throw err;
     } finally {
       loading.value = false;
@@ -211,6 +211,7 @@ export const useSupplierStore = defineStore('supplier', () => {
       const response = await axios.get(`${API_BASE_URL}/suppliers/active`);
 
       if (response.data.success) {
+        suppliers.value = response.data.data;
         return response.data.data;
       } else {
         throw new Error(

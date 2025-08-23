@@ -359,16 +359,6 @@
           <div class="stat-title text-black/50">Completed</div>
           <div class="stat-value text-success">{{ returnStats.completed }}</div>
         </div>
-
-        <div class="stat">
-          <div class="stat-figure">
-            <PhilippinePeso class="w-6 h-6 text-black/80" />
-          </div>
-          <div class="stat-title text-black/50">Total Value</div>
-          <div class="stat-value text-black/80">
-            ₱{{ returnStats.totalValue.toLocaleString() }}
-          </div>
-        </div>
       </div>
 
       <!-- Filters and Actions -->

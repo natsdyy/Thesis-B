@@ -131,36 +131,57 @@ class Supplier {
   // Get suppliers with purchase order statistics
   static async getSuppliersWithStats() {
     try {
-      // Use a simpler approach to avoid enum comparison issues
       const suppliers = await db("suppliers")
         .whereNull("deleted_at")
         .orderBy("name");
 
-      // Get stats for each supplier individually
-      for (let supplier of suppliers) {
-        const stats = await this.getSupplierStats(supplier.id);
-        supplier.total_orders = stats.total_orders;
-        supplier.last_order_date = stats.last_order_date;
-        supplier.avg_rating = stats.avg_rating;
+      // Check if supplier_ratings table exists
+      const tableExists = await db.schema.hasTable("supplier_ratings");
+
+      if (tableExists) {
+        // Get ratings for each supplier
+        for (let supplier of suppliers) {
+          // Get average rating
+          const ratingResult = await db("supplier_ratings")
+            .where("supplier_id", supplier.id)
+            .avg("rating as avg_rating")
+            .first();
+
+          // Convert to number instead of string
+          supplier.rating = ratingResult?.avg_rating
+            ? parseFloat(ratingResult.avg_rating)
+            : 0;
+
+          // Get total orders
+          const orderResult = await db("purchase_orders")
+            .where("supplier_id", supplier.id)
+            .whereNull("deleted_at")
+            .count("* as total_orders")
+            .first();
+
+          // Convert to number instead of string
+          supplier.total_orders = parseInt(orderResult?.total_orders) || 0;
+
+          // Get last order date
+          const lastOrderResult = await db("purchase_orders")
+            .where("supplier_id", supplier.id)
+            .whereNull("deleted_at")
+            .orderBy("created_at", "desc")
+            .first();
+
+          supplier.last_order_date = lastOrderResult?.created_at || null;
+        }
+      } else {
+        suppliers.forEach((supplier) => {
+          supplier.rating = 0;
+          supplier.total_orders = 0;
+          supplier.last_order_date = null;
+        });
       }
 
       return suppliers;
     } catch (error) {
-      // Fallback: return suppliers without stats if there's an error
-      try {
-        const suppliers = await db("suppliers")
-          .whereNull("deleted_at")
-          .orderBy("name");
-
-        return suppliers.map((supplier) => ({
-          ...supplier,
-          total_orders: 0,
-          last_order_date: null,
-          avg_rating: 0,
-        }));
-      } catch (fallbackError) {
-        throw fallbackError;
-      }
+      throw error;
     }
   }
 

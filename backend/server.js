@@ -18,6 +18,7 @@ const budgetReleaseRoutes = require("./routes/budgetRelease");
 const purchaseOrderRoutes = require("./routes/purchaseOrders");
 const supplierRoutes = require("./routes/suppliers");
 const itemReturnRoutes = require("./routes/itemReturns");
+const supplierRatingsRoutes = require("./routes/supplierRatings");
 const { serve, setup } = require("./config/swagger");
 
 const app = express();
@@ -48,6 +49,7 @@ app.use("/api/budget-releases", budgetReleaseRoutes);
 app.use("/api/purchase-orders", purchaseOrderRoutes);
 app.use("/api/suppliers", supplierRoutes);
 app.use("/api/item-returns", itemReturnRoutes);
+app.use("/api/supplier-ratings", supplierRatingsRoutes);
 
 // Swagger documentation
 app.use("/api-docs", serve, setup);

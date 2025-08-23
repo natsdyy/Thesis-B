@@ -176,6 +176,7 @@ export const useSupplierStore = defineStore('supplier', () => {
     }
   };
 
+  // Add this function to fetch suppliers with stats including ratings
   const fetchSuppliersWithStats = async () => {
     loading.value = true;
     error.value = null;
@@ -196,7 +197,6 @@ export const useSupplierStore = defineStore('supplier', () => {
         err.response?.data?.message ||
         err.message ||
         'Failed to fetch suppliers with stats';
-      console.error('Error fetching suppliers with stats:', err);
       throw err;
     } finally {
       loading.value = false;

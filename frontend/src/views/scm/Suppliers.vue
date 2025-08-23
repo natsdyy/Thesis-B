@@ -366,12 +366,12 @@
                   <span
                     class="font-medium"
                     :class="
-                      supplier.rating > 0 ? 'text-warning' : 'text-black/30'
+                      getSupplierRating(supplier) > 0
+                        ? 'text-warning'
+                        : 'text-black/30'
                     "
                   >
-                    {{
-                      supplier.rating > 0 ? supplier.rating.toFixed(1) : 'N/A'
-                    }}
+                    {{ getSupplierRatingDisplay(supplier) }}
                   </span>
                 </div>
               </div>
@@ -1104,11 +1104,14 @@
   };
 
   // Clear filters
-  const clearFilters = () => {
+  const clearFilters = async () => {
     searchQuery.value = '';
     statusFilter.value = '';
     categoryFilter.value = '';
     currentPage.value = 1;
+
+    // Also refresh the supplier data to get latest ratings
+    await refreshSupplierData();
   };
 
   // Helper functions
@@ -1159,12 +1162,49 @@
     return [current - 2, current - 1, current, current + 1, current + 2];
   };
 
+  // Add these helper functions in the script section
+  const getSupplierRating = (supplier) => {
+    // Handle both string and number types
+    const rating = supplier.rating;
+    if (rating === null || rating === undefined || rating === '') {
+      return 0;
+    }
+    return parseFloat(rating) || 0;
+  };
+
+  const getSupplierRatingDisplay = (supplier) => {
+    const rating = getSupplierRating(supplier);
+    return rating > 0 ? rating.toFixed(1) : 'N/A';
+  };
+
+  // Add this method after the existing methods
+  const refreshSupplierData = async () => {
+    try {
+      await supplierStore.fetchSuppliersWithStats();
+
+      // Debug: Check specific supplier ratings
+      supplierStore.suppliers.forEach((supplier) => {
+        const rating = getSupplierRating(supplier);
+      });
+
+      showToast('success', 'Supplier data refreshed successfully');
+    } catch (error) {
+      console.error('❌ Failed to refresh supplier data:', error);
+      showToast('error', 'Failed to refresh supplier data');
+    }
+  };
+
   // Load data on component mount
   onMounted(async () => {
     try {
       await supplierStore.fetchSuppliersWithStats();
+
+      // Debug: Check if ratings are present
+      const suppliersWithRatings = supplierStore.suppliers.filter(
+        (s) => s.rating > 0
+      );
     } catch (error) {
-      console.error('Failed to load suppliers:', error);
+      console.error('❌ Error loading suppliers:', error);
       showToast('error', 'Failed to load suppliers');
     }
   });

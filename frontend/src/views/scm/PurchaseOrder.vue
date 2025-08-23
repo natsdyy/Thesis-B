@@ -1959,8 +1959,16 @@
     @return-cancelled="handleReturnCancelled"
     @view-return-details="viewReturnDetails"
   />
-</template>
 
+  <!-- Supplier Rating Modal -->
+  <SupplierRatingModal
+    :show="ratingModal.show"
+    :purchase-order="ratingModal.purchaseOrder"
+    :supplier-name="ratingModal.supplierName"
+    @close="closeRatingModal"
+    @rating-submitted="handleRatingSubmitted"
+  />
+</template>
 <script setup>
   import { ref, computed, onMounted, watch, nextTick } from 'vue';
   import {
@@ -1990,6 +1998,7 @@
   import { useSupplierStore } from '../../stores/supplierStore.js';
   import { useSupplyRequestStore } from '../../stores/supplyRequestStore.js';
   import POreturnItems from '../../components/scm/POreturnItems.vue';
+  import SupplierRatingModal from '../../components/scm/SupplierRatingModal.vue';
 
   // Helper functions - Define these first
   const getPhilippineDateString = (date = null) => {
@@ -2773,8 +2782,15 @@
         return;
       }
 
-      // Preserve original values that shouldn't be changed unless explicitly modified
+      // Store the original order data before closing modal
       const originalOrder = modal.value.order;
+
+      // Validate that we have a valid original order
+      if (!originalOrder || !originalOrder.id) {
+        showToast('error', 'Invalid purchase order data');
+        return;
+      }
+
       const updatedData = {
         ...orderForm.value,
         // Ensure dates are preserved in their original format
@@ -2786,9 +2802,61 @@
 
       // Update order using store
       await purchaseOrderStore.updatePurchaseOrder(
-        modal.value.order.id,
+        originalOrder.id,
         updatedData
       );
+
+      // Check if status changed to "Completed" and show rating modal
+      if (
+        originalOrder.status !== 'Completed' &&
+        orderForm.value.status === 'Completed'
+      ) {
+        console.log(
+          'Status changed to Completed, checking for existing rating...'
+        );
+
+        try {
+          // Check if already rated
+          const existingRatingResponse =
+            await purchaseOrderStore.checkPurchaseOrderRating(originalOrder.id);
+
+          console.log('Existing rating response:', existingRatingResponse);
+
+          // Check if there's no existing rating (response.data should be null if no rating exists)
+          const hasExistingRating =
+            existingRatingResponse && existingRatingResponse.data;
+
+          if (!hasExistingRating) {
+            console.log('No existing rating found, showing rating modal...');
+            // Show rating modal after a short delay, using the stored originalOrder
+            setTimeout(() => {
+              // Ensure we have a valid purchase order object with all required properties
+              const ratingPurchaseOrder = {
+                ...originalOrder,
+                supplier_name:
+                  originalOrder.supplier_name ||
+                  getSupplierName(originalOrder.supplier_id),
+              };
+              openRatingModal(ratingPurchaseOrder);
+            }, 1000);
+          } else {
+            console.log('Purchase order already rated, skipping rating modal');
+          }
+        } catch (error) {
+          console.error('Error checking existing rating:', error);
+          // If there's an error checking, still show the rating modal
+          setTimeout(() => {
+            // Ensure we have a valid purchase order object with all required properties
+            const ratingPurchaseOrder = {
+              ...originalOrder,
+              supplier_name:
+                originalOrder.supplier_name ||
+                getSupplierName(originalOrder.supplier_id),
+            };
+            openRatingModal(ratingPurchaseOrder);
+          }, 1000);
+        }
+      }
 
       closeModal();
       showToast(
@@ -3792,6 +3860,82 @@
     }
 
     orderForm.value[fieldName] = value;
+  };
+
+  // Add this state for the rating modal
+  const ratingModal = ref({
+    show: false,
+    purchaseOrder: {}, // Initialize as an empty object
+    supplierName: '',
+  });
+
+  // Add these methods
+  const openRatingModal = (purchaseOrder) => {
+    console.log('Opening rating modal for purchase order:', purchaseOrder);
+
+    // Add comprehensive null check for purchaseOrder
+    if (!purchaseOrder || typeof purchaseOrder !== 'object') {
+      console.error(
+        'Purchase order is null or invalid, cannot open rating modal'
+      );
+      return;
+    }
+
+    // Ensure we have the required properties
+    if (!purchaseOrder.id || !purchaseOrder.supplier_id) {
+      console.error(
+        'Purchase order missing required properties (id or supplier_id)'
+      );
+      return;
+    }
+
+    // Get supplier name from the suppliers list if not available in purchaseOrder
+    let supplierName = purchaseOrder.supplier_name;
+    if (!supplierName) {
+      const supplier = suppliers.value.find(
+        (s) => s.id === purchaseOrder.supplier_id
+      );
+      supplierName = supplier ? supplier.name : 'Unknown Supplier';
+    }
+
+    ratingModal.value = {
+      show: true,
+      purchaseOrder: purchaseOrder,
+      supplierName: supplierName,
+    };
+
+    // Force the modal to open by triggering the component
+    nextTick(() => {
+      const modalElement = document.getElementById('supplier_rating_modal');
+      if (modalElement) {
+        modalElement.showModal();
+      }
+    });
+  };
+
+  const closeRatingModal = () => {
+    ratingModal.value = {
+      show: false,
+      purchaseOrder: {}, // Reset to an empty object
+      supplierName: '',
+    };
+  };
+
+  const handleRatingSubmitted = async (ratingData) => {
+    showToast(
+      'success',
+      `Thank you for rating ${ratingModal.value.supplierName}!`
+    );
+
+    // Refresh both purchase orders and supplier data to show updated ratings
+    try {
+      await Promise.all([
+        purchaseOrderStore.fetchPurchaseOrders(),
+        supplierStore.fetchSuppliersWithStats(), // Add this line to refresh supplier stats
+      ]);
+    } catch (error) {
+      console.error('Error refreshing data after rating:', error);
+    }
   };
 </script>
 

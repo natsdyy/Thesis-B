@@ -83,18 +83,32 @@ class PurchaseOrder {
   // Add this method to check if PO number can be reused (only if cancelled)
   static async canReusePoNumber(poNumber) {
     try {
+      console.log(`Checking if PO number ${poNumber} can be reused...`);
+
       const existing = await db("purchase_orders")
         .where("po_number", poNumber)
         .whereNull("deleted_at")
         .first();
 
+      console.log(`Existing PO found:`, existing);
+
       if (!existing) {
+        console.log(`No existing PO found, can reuse number ${poNumber}`);
         return true; // PO number doesn't exist, can be used
       }
 
+      console.log(`Existing PO status: "${existing.status}"`);
+      console.log(
+        `Status comparison: existing.status === "Cancelled" = ${existing.status === "Cancelled"}`
+      );
+
       // Only allow reuse if the existing PO is cancelled
-      return existing.status === "Cancelled";
+      const canReuse = existing.status === "Cancelled";
+      console.log(`Can reuse PO number ${poNumber}: ${canReuse}`);
+
+      return canReuse;
     } catch (error) {
+      console.error(`Error in canReusePoNumber:`, error);
       throw error;
     }
   }
@@ -139,7 +153,7 @@ class PurchaseOrder {
           po_number: poData.po_number,
           supplier_id: supplierId,
           supply_request_id: supplyRequestId,
-          status: "Draft",
+          status: poData.status || "Draft",
           total_amount: supplyRequestItems.reduce(
             (sum, item) => sum + parseFloat(item.item_amount),
             0

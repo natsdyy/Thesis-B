@@ -120,10 +120,8 @@
 
   // Request history filter
   const requestHistoryFilter = ref({
-    startDate: '',
-    endDate: '',
-    status: '',
     searchQuery: '',
+    status: '',
     sortBy: 'request_date',
     sortOrder: 'desc',
   });
@@ -322,39 +320,230 @@
     );
   });
 
-  const filteredRequestHistory = computed(() => {
+  // History-related reactive variables
+  const historyFilterType = ref('today'); // 'today', 'week', 'month', 'custom'
+  const showCustomMonthPicker = ref(false);
+  const customMonthPicker = ref({
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+  });
+
+  // Updated history filter options
+  const getHistoryFilterOptions = () => {
+    return [
+      { type: 'today', label: 'Today', count: 0 },
+      { type: 'week', label: 'This Week', count: 0 },
+      { type: 'month', label: 'This Month', count: 0 },
+    ];
+  };
+
+  const historyFilterOptions = ref(getHistoryFilterOptions());
+
+  // Helper functions for date calculations
+  const getStartOfWeek = (date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday as first day
+    return new Date(d.setDate(diff));
+  };
+
+  const getStartOfMonth = (date) => {
+    return new Date(date.getFullYear(), date.getMonth(), 1);
+  };
+
+  const getEndOfMonth = (date) => {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  };
+
+  const isDateInRange = (date, startDate, endDate) => {
+    const orderDate = new Date(date);
+    return orderDate >= startDate && orderDate <= endDate;
+  };
+
+  // Updated history filtering logic
+  const filteredRequestHistoryByDate = computed(() => {
     let filtered = [...requestHistory.value];
 
-    // Apply filters
-    if (requestHistoryFilter.value.startDate) {
-      filtered = filtered.filter(
-        (request) =>
-          new Date(request.request_date) >=
-          new Date(requestHistoryFilter.value.startDate)
-      );
+    // Apply date filtering based on filter type
+    if (historyFilterType.value) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      switch (historyFilterType.value) {
+        case 'today':
+          filtered = filtered.filter((request) => {
+            const requestDate = new Date(request.request_date);
+            requestDate.setHours(0, 0, 0, 0);
+            return requestDate.getTime() === today.getTime();
+          });
+          break;
+
+        case 'week':
+          const startOfWeek = getStartOfWeek(today);
+          const endOfWeek = new Date(today);
+          endOfWeek.setHours(23, 59, 59, 999);
+
+          filtered = filtered.filter((request) => {
+            const requestDate = new Date(request.request_date);
+            return isDateInRange(requestDate, startOfWeek, endOfWeek);
+          });
+          break;
+
+        case 'month':
+          const startOfMonth = getStartOfMonth(today);
+          const endOfMonth = new Date(today);
+          endOfMonth.setHours(23, 59, 59, 999);
+
+          filtered = filtered.filter((request) => {
+            const requestDate = new Date(request.request_date);
+            return isDateInRange(requestDate, startOfMonth, endOfMonth);
+          });
+          break;
+
+        case 'custom':
+          if (customMonthPicker.value.month && customMonthPicker.value.year) {
+            const startOfCustomMonth = new Date(
+              customMonthPicker.value.year,
+              customMonthPicker.value.month - 1,
+              1
+            );
+            const endOfCustomMonth = getEndOfMonth(startOfCustomMonth);
+            endOfCustomMonth.setHours(23, 59, 59, 999);
+
+            filtered = filtered.filter((request) => {
+              const requestDate = new Date(request.request_date);
+              return isDateInRange(
+                requestDate,
+                startOfCustomMonth,
+                endOfCustomMonth
+              );
+            });
+          }
+          break;
+      }
     }
 
-    if (requestHistoryFilter.value.endDate) {
-      filtered = filtered.filter(
-        (request) =>
-          new Date(request.request_date) <=
-          new Date(requestHistoryFilter.value.endDate)
-      );
-    }
+    return filtered;
+  });
 
-    if (requestHistoryFilter.value.status) {
-      filtered = filtered.filter(
-        (request) =>
-          request.request_status === requestHistoryFilter.value.status
-      );
-    }
+  // Update filter option counts
+  const updateHistoryFilterCounts = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
+    historyFilterOptions.value.forEach((option) => {
+      let count = 0;
+
+      switch (option.type) {
+        case 'today':
+          count = requestHistory.value.filter((request) => {
+            const requestDate = new Date(request.request_date);
+            requestDate.setHours(0, 0, 0, 0);
+            return requestDate.getTime() === today.getTime();
+          }).length;
+          break;
+
+        case 'week':
+          const startOfWeek = getStartOfWeek(today);
+          const endOfWeek = new Date(today);
+          endOfWeek.setHours(23, 59, 59, 999);
+
+          count = requestHistory.value.filter((request) => {
+            const requestDate = new Date(request.request_date);
+            return isDateInRange(requestDate, startOfWeek, endOfWeek);
+          }).length;
+          break;
+
+        case 'month':
+          const startOfMonth = getStartOfMonth(today);
+          const endOfMonth = new Date(today);
+          endOfMonth.setHours(23, 59, 59, 999);
+
+          count = requestHistory.value.filter((request) => {
+            const requestDate = new Date(request.request_date);
+            return isDateInRange(requestDate, startOfMonth, endOfMonth);
+          }).length;
+          break;
+      }
+
+      option.count = count;
+    });
+  };
+
+  // Filter selection methods
+  const selectHistoryFilter = (option) => {
+    historyFilterType.value = option.type;
+    requestHistoryCurrentPage.value = 1;
+    showCustomMonthPicker.value = false;
+  };
+
+  const toggleCustomMonthPicker = () => {
+    showCustomMonthPicker.value = !showCustomMonthPicker.value;
+    if (showCustomMonthPicker.value) {
+      historyFilterType.value = 'custom';
+    }
+  };
+
+  const applyCustomMonthFilter = () => {
+    historyFilterType.value = 'custom';
+    requestHistoryCurrentPage.value = 1;
+    showCustomMonthPicker.value = false;
+  };
+
+  const clearHistoryFilters = () => {
+    historyFilterType.value = 'today';
+    requestHistoryFilter.value.searchQuery = '';
+    requestHistoryFilter.value.status = '';
+    requestHistoryCurrentPage.value = 1;
+    showCustomMonthPicker.value = false;
+    customMonthPicker.value = {
+      month: new Date().getMonth() + 1,
+      year: new Date().getFullYear(),
+    };
+  };
+
+  // Display text for current filter
+  const getHistoryFilterDisplayText = () => {
+    switch (historyFilterType.value) {
+      case 'today':
+        return `Today (${formatDate(new Date())})`;
+      case 'week':
+        const startOfWeek = getStartOfWeek(new Date());
+        const endOfWeek = new Date();
+        return `This Week (${formatDate(startOfWeek)} - ${formatDate(endOfWeek)})`;
+      case 'month':
+        const startOfMonth = getStartOfMonth(new Date());
+        const endOfMonth = new Date();
+        return `This Month (${formatDate(startOfMonth)} - ${formatDate(endOfMonth)})`;
+      case 'custom':
+        const monthName = months.find(
+          (m) => m.value === customMonthPicker.value.month
+        )?.label;
+        return `${monthName} ${customMonthPicker.value.year}`;
+      default:
+        return 'All History';
+    }
+  };
+
+  // Update the filteredRequestHistory computed property
+  const filteredRequestHistory = computed(() => {
+    let filtered = [...filteredRequestHistoryByDate.value];
+
+    // Search filter
     if (requestHistoryFilter.value.searchQuery) {
       const query = requestHistoryFilter.value.searchQuery.toLowerCase();
       filtered = filtered.filter(
         (request) =>
           request.request_description.toLowerCase().includes(query) ||
           request.request_id.toString().includes(query)
+      );
+    }
+
+    // Status filter
+    if (requestHistoryFilter.value.status) {
+      filtered = filtered.filter(
+        (request) =>
+          request.request_status === requestHistoryFilter.value.status
       );
     }
 
@@ -657,6 +846,7 @@
       await supplyRequestStore.fetchStats({ department: 'SCM' });
 
       updateQuickDateCounts();
+      updateHistoryFilterCounts(); // Add this line
     } catch (err) {
       console.error('Fetch error:', err);
       showToast('error', err.message || 'Failed to fetch requests');
@@ -967,15 +1157,7 @@
 
   // Clear filters
   const clearAllHistoryFilters = () => {
-    requestHistoryFilter.value = {
-      startDate: '',
-      endDate: '',
-      status: '',
-      searchQuery: '',
-      sortBy: 'request_date',
-      sortOrder: 'desc',
-    };
-    requestHistoryCurrentPage.value = 1;
+    clearHistoryFilters();
   };
 
   // Toggle sort order
@@ -1032,6 +1214,16 @@
         const convertedDate = new Date(backendDate).toISOString().split('T')[0];
       });
       updateQuickDateCounts();
+      updateHistoryFilterCounts(); // Add this line
+    },
+    { deep: true, immediate: true }
+  );
+
+  // Add a new watcher specifically for history filter counts
+  watch(
+    [allRequests, historyFilterType],
+    () => {
+      updateHistoryFilterCounts();
     },
     { deep: true, immediate: true }
   );
@@ -1192,6 +1384,32 @@
       timeZone: 'Asia/Manila',
     });
   };
+
+  // Add these variables after the existing reactive variables
+  const months = [
+    { value: 1, label: 'Jan' },
+    { value: 2, label: 'Feb' },
+    { value: 3, label: 'Mar' },
+    { value: 4, label: 'Apr' },
+    { value: 5, label: 'May' },
+    { value: 6, label: 'Jun' },
+    { value: 7, label: 'Jul' },
+    { value: 8, label: 'Aug' },
+    { value: 9, label: 'Sep' },
+    { value: 10, label: 'Oct' },
+    { value: 11, label: 'Nov' },
+    { value: 12, label: 'Dec' },
+  ];
+
+  // Generate available years (current year and 5 years back)
+  const availableYears = computed(() => {
+    const currentYear = new Date().getFullYear();
+    const years = [];
+    for (let i = currentYear; i >= currentYear - 5; i--) {
+      years.push(i);
+    }
+    return years;
+  });
 </script>
 
 <template>
@@ -1798,26 +2016,6 @@
         >
           <div>
             <h2 class="card-title text-primaryColor mb-2">Request History</h2>
-            <div class="flex flex-wrap gap-4 text-sm text-black/60">
-              <span
-                >Total:
-                <strong class="text-primaryColor">{{
-                  requestHistoryStats.total
-                }}</strong></span
-              >
-              <span
-                >Completed:
-                <strong class="text-success">{{
-                  requestHistoryStats.completed
-                }}</strong></span
-              >
-              <span
-                >Rejected:
-                <strong class="text-error">{{
-                  requestHistoryStats.rejected
-                }}</strong></span
-              >
-            </div>
           </div>
 
           <div class="flex gap-2 mt-4 lg:mt-0">
@@ -1862,6 +2060,152 @@
             </div>
           </div>
 
+          <!-- History Date Filter Section -->
+          <div
+            class="mb-6 p-4 bg-white/5 rounded-lg border border-primaryColor/20"
+          >
+            <div
+              class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
+            >
+              <!-- Current Filter Display -->
+              <div class="flex items-center gap-3">
+                <Calendar class="w-5 h-5 text-primaryColor" />
+                <div>
+                  <h3 class="font-semibold text-primaryColor">
+                    {{ getHistoryFilterDisplayText() }}
+                  </h3>
+                  <p class="text-sm text-black/60">
+                    Showing {{ filteredRequestHistory.length }} request{{
+                      filteredRequestHistory.length !== 1 ? 's' : ''
+                    }}
+                  </p>
+                </div>
+              </div>
+
+              <!-- Filter Controls -->
+              <div class="flex flex-col sm:flex-row gap-3">
+                <!-- Quick Filter Buttons -->
+                <div class="flex gap-2 md:flex-row flex-col">
+                  <button
+                    v-for="option in historyFilterOptions"
+                    :key="option.type"
+                    class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
+                    :class="{
+                      'bg-primaryColor text-white':
+                        historyFilterType === option.type,
+                      'bg-white text-primaryColor hover:bg-primaryColor/10':
+                        historyFilterType !== option.type,
+                    }"
+                    @click="selectHistoryFilter(option)"
+                  >
+                    {{ option.label }}
+                    <span
+                      class="badge badge-xs ml-1 bg-secondaryColor border-none"
+                      :class="
+                        historyFilterType === option.type
+                          ? 'badge-ghost'
+                          : 'badge-primaryColor/10 text-primaryColor'
+                      "
+                    >
+                      {{ option.count }}
+                    </span>
+                  </button>
+                </div>
+
+                <!-- Custom Month Selection -->
+                <div class="flex items-center gap-2">
+                  <div class="relative">
+                    <button
+                      class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                      @click="toggleCustomMonthPicker"
+                    >
+                      <Calendar class="w-4 h-4 mr-1" />
+                      Custom Month
+                    </button>
+
+                    <!-- Custom Month Picker -->
+                    <div
+                      v-if="showCustomMonthPicker"
+                      class="absolute top-full left-0 mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10 p-3 min-w-64"
+                    >
+                      <div class="flex items-center justify-between mb-3">
+                        <h4 class="font-medium text-sm text-black">
+                          Select Month
+                        </h4>
+                        <button
+                          @click="showCustomMonthPicker = false"
+                          class="btn btn-ghost btn-xs"
+                        >
+                          <X class="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      <!-- Month Selection -->
+                      <div class="grid grid-cols-3 gap-2 mb-3">
+                        <button
+                          v-for="month in months"
+                          :key="month.value"
+                          class="btn btn-xs font-thin"
+                          :class="{
+                            'bg-primaryColor text-white':
+                              customMonthPicker.month === month.value,
+                            'btn-ghost':
+                              customMonthPicker.month !== month.value,
+                          }"
+                          @click="customMonthPicker.month = month.value"
+                        >
+                          {{ month.label }}
+                        </button>
+                      </div>
+
+                      <!-- Year Selection -->
+                      <div class="flex items-center gap-2 mb-3">
+                        <span class="text-sm text-black/70">Year:</span>
+                        <select
+                          v-model="customMonthPicker.year"
+                          class="select select-xs select-bordered bg-white border-primaryColor/30 text-black/70"
+                        >
+                          <option
+                            v-for="year in availableYears"
+                            :key="year"
+                            :value="year"
+                          >
+                            {{ year }}
+                          </option>
+                        </select>
+                      </div>
+
+                      <!-- Apply Button -->
+                      <div class="flex gap-2">
+                        <button
+                          @click="applyCustomMonthFilter"
+                          class="btn btn-xs bg-primaryColor text-white font-thin"
+                        >
+                          Apply
+                        </button>
+                        <button
+                          @click="showCustomMonthPicker = false"
+                          class="btn btn-xs btn-ghost font-thin"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Clear Filters Button -->
+                  <button
+                    class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                    @click="clearHistoryFilters"
+                  >
+                    <RefreshCcw class="w-4 h-4 mr-1" />
+                    Clear
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Status Quick Filters -->
           <div class="flex flex-wrap gap-2 mb-4">
             <button
@@ -1882,50 +2226,12 @@
               {{ status }}
               <span class="badge badge-xs ml-1 bg-secondaryColor border-none">
                 {{
-                  requestHistory.filter((r) => r.request_status === status)
-                    .length
+                  filteredRequestHistoryByDate.filter(
+                    (r) => r.request_status === status
+                  ).length
                 }}
               </span>
             </button>
-          </div>
-
-          <!-- Date Range Filters -->
-          <div
-            class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-white/5 rounded-lg border border-primaryColor/10"
-          >
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text text-black/70 text-sm">Start Date</span>
-              </label>
-              <input
-                v-model="requestHistoryFilter.startDate"
-                type="date"
-                class="input input-sm input-bordered bg-white border-primaryColor/30 text-black/70"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text text-black/70 text-sm">End Date</span>
-              </label>
-              <input
-                v-model="requestHistoryFilter.endDate"
-                type="date"
-                class="input input-sm input-bordered bg-white border-primaryColor/30 text-black/70"
-              />
-            </div>
-
-            <div class="form-control flex justify-end">
-              <label class="label">
-                <span class="label-text text-black/70 text-sm">&nbsp;</span>
-              </label>
-              <button
-                class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                @click="clearAllHistoryFilters"
-              >
-                Clear Filters
-              </button>
-            </div>
           </div>
         </div>
 
@@ -2068,7 +2374,8 @@
                   filteredRequestHistory.length
                 )
               }}
-              of {{ filteredRequestHistory.length }} records
+              of {{ filteredRequestHistory.length }} records for
+              {{ getHistoryFilterDisplayText() }}
             </span>
             <span class="font-semibold text-primaryColor">
               Total Value: ₱{{

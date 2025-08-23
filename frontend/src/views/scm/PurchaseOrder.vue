@@ -653,42 +653,42 @@
               <div
                 class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
               >
-                <!-- Current Date Display -->
+                <!-- Current Filter Display -->
                 <div class="flex items-center gap-3">
                   <Calendar class="w-5 h-5 text-primaryColor" />
                   <div>
                     <h3 class="font-semibold text-primaryColor">
-                      {{ formatPhilippineDate(historySelectedDate) }}
+                      {{ getHistoryFilterDisplayText() }}
                     </h3>
                     <p class="text-sm text-black/60">
-                      Showing {{ filteredHistoryByDate.length }} order{{
-                        filteredHistoryByDate.length !== 1 ? 's' : ''
+                      Showing {{ filteredHistory.length }} order{{
+                        filteredHistory.length !== 1 ? 's' : ''
                       }}
                     </p>
                   </div>
                 </div>
 
-                <!-- Date Navigation and Filter Controls -->
+                <!-- Filter Controls -->
                 <div class="flex flex-col sm:flex-row gap-3">
-                  <!-- Quick Date Buttons -->
+                  <!-- Quick Filter Buttons -->
                   <div class="flex gap-2 md:flex-row flex-col">
                     <button
-                      v-for="option in historyQuickDateOptions"
-                      :key="option.date"
+                      v-for="option in historyFilterOptions"
+                      :key="option.type"
                       class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
                       :class="{
                         'bg-primaryColor text-white':
-                          historySelectedDate === option.date,
+                          historyFilterType === option.type,
                         'bg-white text-primaryColor hover:bg-primaryColor/10':
-                          historySelectedDate !== option.date,
+                          historyFilterType !== option.type,
                       }"
-                      @click="selectHistoryQuickDate(option)"
+                      @click="selectHistoryFilter(option)"
                     >
                       {{ option.label }}
                       <span
                         class="badge badge-xs ml-1 bg-secondaryColor border-none"
                         :class="
-                          historySelectedDate === option.date
+                          historyFilterType === option.type
                             ? 'badge-ghost'
                             : 'badge-primaryColor/10 text-primaryColor'
                         "
@@ -698,54 +698,94 @@
                     </button>
                   </div>
 
-                  <!-- Date Navigation -->
-                  <div class="flex items-center gap-1">
-                    <button
-                      class="btn btn-sm btn-ghost text-primaryColor hover:bg-primaryColor/10"
-                      @click="goToPreviousHistoryDay"
-                      title="Previous Day"
-                    >
-                      ‹
-                    </button>
-
-                    <!-- Custom Date Picker -->
+                  <!-- Custom Month Selection -->
+                  <div class="flex items-center gap-2">
                     <div class="relative">
                       <button
                         class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                        @click="toggleHistoryDatePicker"
+                        @click="toggleCustomMonthPicker"
                       >
                         <Calendar class="w-4 h-4 mr-1" />
-                        Pick Date
+                        Custom Month
                       </button>
 
-                      <input
-                        v-if="showHistoryDatePicker"
-                        type="date"
-                        :value="historySelectedDate"
-                        @change="selectHistoryCustomDate"
-                        @blur="showHistoryDatePicker = false"
-                        class="absolute top-full left-0 mt-1 input input-sm input-bordered bg-white border-primaryColor/30 text-black/70 z-10"
-                        style="min-width: 150px"
-                      />
+                      <!-- Custom Month Picker -->
+                      <div
+                        v-if="showCustomMonthPicker"
+                        class="absolute top-full left-0 mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10 p-3 min-w-64"
+                      >
+                        <div class="flex items-center justify-between mb-3">
+                          <h4 class="font-medium text-sm text-black">
+                            Select Month
+                          </h4>
+                          <button
+                            @click="showCustomMonthPicker = false"
+                            class="btn btn-ghost btn-xs"
+                          >
+                            <X class="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        <!-- Month Selection -->
+                        <div class="grid grid-cols-3 gap-2 mb-3">
+                          <button
+                            v-for="month in months"
+                            :key="month.value"
+                            class="btn btn-xs font-thin"
+                            :class="{
+                              'bg-primaryColor text-white':
+                                customMonthPicker.month === month.value,
+                              'btn-ghost':
+                                customMonthPicker.month !== month.value,
+                            }"
+                            @click="customMonthPicker.month = month.value"
+                          >
+                            {{ month.label }}
+                          </button>
+                        </div>
+
+                        <!-- Year Selection -->
+                        <div class="flex items-center gap-2 mb-3">
+                          <span class="text-sm text-black/70">Year:</span>
+                          <select
+                            v-model="customMonthPicker.year"
+                            class="select select-xs select-bordered bg-white border-primaryColor/30 text-black/70"
+                          >
+                            <option
+                              v-for="year in availableYears"
+                              :key="year"
+                              :value="year"
+                            >
+                              {{ year }}
+                            </option>
+                          </select>
+                        </div>
+
+                        <!-- Apply Button -->
+                        <div class="flex gap-2">
+                          <button
+                            @click="applyCustomMonthFilter"
+                            class="btn btn-xs bg-primaryColor text-white font-thin"
+                          >
+                            Apply
+                          </button>
+                          <button
+                            @click="showCustomMonthPicker = false"
+                            class="btn btn-xs btn-ghost font-thin"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
                     </div>
 
-                    <button
-                      class="btn btn-sm btn-ghost text-primaryColor hover:bg-primaryColor/10"
-                      @click="goToNextHistoryDay"
-                      title="Next Day"
-                    >
-                      ›
-                    </button>
-
+                    <!-- Clear Filters Button -->
                     <button
                       class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                      @click="goToTodayHistory"
-                      :class="{
-                        'btn-disabled':
-                          historySelectedDate === getPhilippineDateString(),
-                      }"
+                      @click="clearHistoryFilters"
                     >
-                      Today
+                      <RefreshCcw class="w-4 h-4 mr-1" />
+                      Clear
                     </button>
                   </div>
                 </div>
@@ -992,7 +1032,7 @@
                 )
               }}
               of {{ filteredHistory.length }} orders for
-              {{ formatPhilippineDate(historySelectedDate) }}
+              {{ getHistoryFilterDisplayText() }}
             </div>
 
             <div class="join space-x-1">
@@ -1040,16 +1080,20 @@
     leave-from-class="translate-x-0 opacity-100"
     leave-to-class="translate-x-full opacity-0"
   >
-    <div class="toast toast-end sm:toast-end z-[100000]" v-if="toast.show">
+    <div
+      class="fixed top-4 right-4 z-[999999] max-w-xs sm:max-w-sm"
+      v-if="toast.show"
+      style="position: fixed !important; z-index: 999999 !important"
+    >
       <div
         v-if="toast.type === 'success'"
-        class="alert alert-success shadow-lg max-w-xs sm:max-w-sm"
+        class="alert alert-success shadow-lg"
       >
         <span class="text-xs sm:text-sm">{{ toast.message }}</span>
       </div>
       <div
         v-else-if="toast.type === 'error'"
-        class="alert alert-error shadow-lg max-w-xs sm:max-w-sm"
+        class="alert alert-error shadow-lg"
       >
         <span class="text-xs sm:text-sm">{{ toast.message }}</span>
       </div>
@@ -1094,7 +1138,7 @@
               />
               <button
                 type="button"
-                class="btn btn-outline"
+                class="btn btn-outline bg-primaryColor text-white font-thin"
                 @click="openSupplyRequestModal"
               >
                 <Link class="w-4 h-4 mr-1" />
@@ -1132,6 +1176,7 @@
               class="input input-bordered w-full"
               placeholder="Enter PO number"
               required
+              :disabled="modal.type === 'view' || modal.type === 'edit'"
             />
           </div>
 
@@ -1144,12 +1189,13 @@
               v-model="orderForm.supplier_id"
               class="select select-bordered w-full"
               required
+              :disabled="modal.type === 'view'"
             >
               <option value="">Select Supplier</option>
               <option
                 v-for="supplier in suppliers"
                 :key="supplier.id"
-                :value="supplier.id"
+                :value="String(supplier.id)"
               >
                 {{ supplier.name }}
               </option>
@@ -1160,35 +1206,90 @@
             <label class="label">
               <span class="label-text font-medium">Order Date</span>
               <span class="label-text-alt text-error">*</span>
+              <span
+                v-if="
+                  modal.type === 'edit' &&
+                  modal.order &&
+                  orderForm.order_date !== modal.order.order_date
+                "
+                class="label-text-alt text-warning"
+              >
+                Modified
+              </span>
             </label>
             <input
               v-model="orderForm.order_date"
               type="date"
               class="input input-bordered w-full"
               required
+              :disabled="modal.type === 'view'"
+              @change="handleFieldChange('order_date', $event.target.value)"
+              :class="{
+                'border-warning bg-warning/5':
+                  modal.type === 'edit' &&
+                  modal.order &&
+                  orderForm.order_date !== modal.order.order_date,
+              }"
             />
           </div>
 
           <div class="form-control">
             <label class="label">
               <span class="label-text font-medium">Expected Delivery</span>
+              <span
+                v-if="
+                  modal.type === 'edit' &&
+                  modal.order &&
+                  orderForm.expected_delivery !== modal.order.expected_delivery
+                "
+                class="label-text-alt text-warning"
+              >
+                Modified
+              </span>
             </label>
             <input
               v-model="orderForm.expected_delivery"
               type="date"
               class="input input-bordered w-full"
               placeholder="Select delivery date"
+              :disabled="modal.type === 'view'"
+              @change="
+                handleFieldChange('expected_delivery', $event.target.value)
+              "
+              :class="{
+                'border-warning bg-warning/5':
+                  modal.type === 'edit' &&
+                  modal.order &&
+                  orderForm.expected_delivery !== modal.order.expected_delivery,
+              }"
             />
           </div>
 
           <div class="form-control">
             <label class="label">
               <span class="label-text font-medium">Status</span>
+              <span
+                v-if="
+                  modal.type === 'edit' &&
+                  modal.order &&
+                  orderForm.status !== modal.order.status
+                "
+                class="label-text-alt text-warning"
+              >
+                Modified
+              </span>
             </label>
             <select
               v-model="orderForm.status"
               class="select select-bordered w-full"
               :disabled="modal.type === 'view'"
+              @change="handleFieldChange('status', $event.target.value)"
+              :class="{
+                'border-warning bg-warning/5':
+                  modal.type === 'edit' &&
+                  modal.order &&
+                  orderForm.status !== modal.order.status,
+              }"
             >
               <option value="Draft">Draft</option>
               <option value="Sent">Sent</option>
@@ -1208,6 +1309,7 @@
               step="0.01"
               class="input input-bordered w-full"
               placeholder="0.00"
+              :disabled="modal.type === 'view'"
             />
           </div>
         </div>
@@ -1221,6 +1323,7 @@
             class="textarea textarea-bordered w-full"
             rows="3"
             placeholder="Enter any additional notes..."
+            :disabled="modal.type === 'view'"
           ></textarea>
         </div>
 
@@ -1261,24 +1364,112 @@
           <div class="flex items-center gap-2">
             <Calendar class="w-4 h-4" />
             <span class="font-medium">
-              {{ formatPhilippineDate(supplyRequestModal.selectedDate) }}
+              {{ getSupplyRequestFilterDisplayText() }}
             </span>
           </div>
 
           <div class="flex gap-2">
             <button
-              v-for="option in supplyRequestQuickDateOptions"
-              :key="option.date"
+              v-for="option in supplyRequestFilterOptions"
+              :key="option.type"
               class="btn btn-xs font-thin"
               :class="{
                 'bg-primaryColor text-white':
-                  supplyRequestModal.selectedDate === option.date,
-                'btn-ghost': supplyRequestModal.selectedDate !== option.date,
+                  supplyRequestFilterType === option.type,
+                'btn-ghost': supplyRequestFilterType !== option.type,
               }"
-              @click="selectSupplyRequestQuickDate(option)"
+              @click="selectSupplyRequestFilter(option)"
             >
               {{ option.label }}
+              <span
+                class="badge badge-xs ml-1 bg-secondaryColor border-none"
+                :class="
+                  supplyRequestFilterType === option.type
+                    ? 'badge-ghost'
+                    : 'badge-primaryColor/10 text-primaryColor'
+                "
+              >
+                {{ option.count }}
+              </span>
             </button>
+
+            <!-- Custom Month Selection -->
+            <div class="relative">
+              <button
+                class="btn btn-xs btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                @click="toggleSupplyRequestCustomMonthPicker"
+              >
+                <Calendar class="w-3 h-3 mr-1" />
+                Custom Month
+              </button>
+
+              <!-- Custom Month Picker -->
+              <div
+                v-if="showSupplyRequestCustomMonthPicker"
+                class="absolute top-full left-0 mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10 p-3 min-w-64"
+              >
+                <div class="flex items-center justify-between mb-3">
+                  <h4 class="font-medium text-sm text-black">Select Month</h4>
+                  <button
+                    @click="showSupplyRequestCustomMonthPicker = false"
+                    class="btn btn-ghost btn-xs"
+                  >
+                    <X class="w-3 h-3" />
+                  </button>
+                </div>
+
+                <!-- Month Selection -->
+                <div class="grid grid-cols-3 gap-2 mb-3">
+                  <button
+                    v-for="month in months"
+                    :key="month.value"
+                    class="btn btn-xs font-thin"
+                    :class="{
+                      'bg-primaryColor text-white':
+                        supplyRequestCustomMonthPicker.month === month.value,
+                      'btn-ghost':
+                        supplyRequestCustomMonthPicker.month !== month.value,
+                    }"
+                    @click="supplyRequestCustomMonthPicker.month = month.value"
+                  >
+                    {{ month.label }}
+                  </button>
+                </div>
+
+                <!-- Year Selection -->
+                <div class="flex items-center gap-2 mb-3">
+                  <span class="text-sm text-black/70">Year:</span>
+                  <select
+                    v-model="supplyRequestCustomMonthPicker.year"
+                    class="select select-xs select-bordered bg-white border-primaryColor/30 text-black/70"
+                  >
+                    <option
+                      v-for="year in availableYears"
+                      :key="year"
+                      :value="year"
+                    >
+                      {{ year }}
+                    </option>
+                  </select>
+                </div>
+
+                <!-- Apply Button -->
+                <div class="flex gap-2">
+                  <button
+                    @click="applySupplyRequestCustomMonthFilter"
+                    class="btn btn-xs bg-primaryColor text-white font-thin"
+                  >
+                    Apply
+                  </button>
+                  <button
+                    @click="showSupplyRequestCustomMonthPicker = false"
+                    class="btn btn-xs btn-ghost font-thin"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1457,7 +1648,7 @@
         <h4 class="text-lg font-semibold mb-2">No Supply Requests Found</h4>
         <p class="text-base-content/60">
           No completed supply requests found for
-          {{ formatPhilippineDate(supplyRequestModal.selectedDate) }}
+          {{ getSupplyRequestFilterDisplayText() }}
         </p>
       </div>
 
@@ -1741,12 +1932,16 @@
       <p class="py-4">{{ confirmModal.message }}</p>
 
       <div class="modal-action">
-        <button type="button" class="btn" @click="closeConfirmModal">
+        <button
+          type="button"
+          class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none btn-sm"
+          @click="closeConfirmModal"
+        >
           Cancel
         </button>
         <button
           type="button"
-          class="btn btn-error"
+          class="btn bg-primaryColor text-white btn-sm font-thin border-none hover:bg-primaryColor/80"
           @click="handleConfirmAction"
         >
           Confirm
@@ -1767,7 +1962,7 @@
 </template>
 
 <script setup>
-  import { ref, computed, onMounted, watch } from 'vue';
+  import { ref, computed, onMounted, watch, nextTick } from 'vue';
   import {
     FileText,
     Plus,
@@ -1851,9 +2046,21 @@
   // Replace mock data with store data
   const mockPurchaseOrders = computed(() => purchaseOrderStore.purchaseOrders);
   const suppliers = computed(() => supplierStore.activeSuppliers); // Change this line
-  const approvedSupplyRequests = computed(() =>
-    supplyRequestStore.requestsByStatus('Completed')
-  );
+  const approvedSupplyRequests = computed(() => {
+    // Get all supply requests and filter out completed ones
+    const allRequests = supplyRequestStore.requestsByStatus('Completed');
+
+    // Filter out requests that already have a completed PO
+    return allRequests.filter((request) => {
+      // Check if there's already a completed PO for this request
+      const existingPO = purchaseOrderStore.purchaseOrders.find(
+        (po) => po.supply_request_id === request.id && po.status === 'Completed'
+      );
+
+      // Only show requests that don't have a completed PO
+      return !existingPO;
+    });
+  });
 
   // Update the stats computed property
   const orderStats = computed(() => purchaseOrderStore.stats);
@@ -1954,7 +2161,7 @@
   const historySelectedDate = ref(getPhilippineDateString());
   const showHistoryDatePicker = ref(false);
   const historyCurrentPage = ref(1);
-  const historyOrdersPerPage = ref(4);
+  const historyOrdersPerPage = ref(3);
 
   // Add quick date options for PO list
   const getQuickDateOptions = () => {
@@ -2136,23 +2343,6 @@
     return `${request.request_id} - ${request.request_description}`;
   });
 
-  // Filtered supply requests by date
-  const filteredSupplyRequestsByDate = computed(() => {
-    const selectedDate = supplyRequestModal.value.selectedDate;
-
-    return approvedSupplyRequests.value.filter((request) => {
-      const manilaDate = new Date(
-        new Date(request.request_date).toLocaleString('en-US', {
-          timeZone: 'Asia/Manila',
-        })
-      );
-      const normalized = manilaDate.toLocaleDateString('en-CA', {
-        timeZone: 'Asia/Manila',
-      });
-      return normalized === selectedDate;
-    });
-  });
-
   // Paginated supply requests
   const paginatedSupplyRequests = computed(() => {
     const start =
@@ -2188,49 +2378,6 @@
     });
   };
 
-  // Date filter methods
-  const selectSupplyRequestQuickDate = (dateOption) => {
-    supplyRequestModal.value.selectedDate = dateOption.date;
-    supplyRequestModal.value.currentPage = 1;
-    supplyRequestModal.value.showDatePicker = false;
-  };
-
-  const selectSupplyRequestCustomDate = (event) => {
-    supplyRequestModal.value.selectedDate = event.target.value;
-    supplyRequestModal.value.currentPage = 1;
-    supplyRequestModal.value.showDatePicker = false;
-  };
-
-  const toggleSupplyRequestDatePicker = () => {
-    supplyRequestModal.value.showDatePicker =
-      !supplyRequestModal.value.showDatePicker;
-  };
-
-  const goToPreviousSupplyRequestDay = () => {
-    const currentDate = new Date(
-      supplyRequestModal.value.selectedDate + 'T00:00:00'
-    );
-    const previousDay = new Date(currentDate.getTime() - 24 * 60 * 60 * 1000);
-    supplyRequestModal.value.selectedDate = previousDay
-      .toISOString()
-      .split('T')[0];
-    supplyRequestModal.value.currentPage = 1;
-  };
-
-  const goToNextSupplyRequestDay = () => {
-    const currentDate = new Date(
-      supplyRequestModal.value.selectedDate + 'T00:00:00'
-    );
-    const nextDay = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000);
-    supplyRequestModal.value.selectedDate = nextDay.toISOString().split('T')[0];
-    supplyRequestModal.value.currentPage = 1;
-  };
-
-  const goToTodaySupplyRequest = () => {
-    supplyRequestModal.value.selectedDate = getPhilippineDateString();
-    supplyRequestModal.value.currentPage = 1;
-  };
-
   // Modal methods
   const openModal = (type, order = null) => {
     modal.value = {
@@ -2240,11 +2387,139 @@
     };
 
     if (order) {
-      orderForm.value = { ...order };
+      // For edit mode, preserve all original values including dates and status
+      // Format dates properly for HTML date inputs (YYYY-MM-DD)
+      const formatDateForInput = (dateString) => {
+        if (!dateString) return '';
+
+        // Handle different date formats
+        let date;
+
+        // If it's already in YYYY-MM-DD format, return as is
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+          return dateString;
+        }
+
+        // Try to parse the date
+        try {
+          date = new Date(dateString);
+
+          // Check if the date is valid
+          if (isNaN(date.getTime())) {
+            console.warn('Invalid date:', dateString);
+            return '';
+          }
+
+          // Format as YYYY-MM-DD
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+
+          return `${year}-${month}-${day}`;
+        } catch (error) {
+          console.error('Error parsing date:', dateString, error);
+          return '';
+        }
+      };
+
+      // Debug logging
+      console.log('Opening edit modal with order:', order);
+      console.log('Original order_date:', order.order_date);
+      console.log('Original expected_delivery:', order.expected_delivery);
+      console.log(
+        'Order supplier_id:',
+        order.supplier_id,
+        'Type:',
+        typeof order.supplier_id
+      );
+
+      // Ensure suppliers are loaded before setting form values
+      const loadSuppliersAndSetForm = async () => {
+        try {
+          // Fetch suppliers if not already loaded
+          if (suppliers.value.length === 0) {
+            console.log('Suppliers not loaded, fetching...');
+            await supplierStore.fetchSuppliers();
+          }
+
+          console.log(
+            'Available suppliers after loading:',
+            suppliers.value.map((s) => ({
+              id: s.id,
+              name: s.name,
+              idType: typeof s.id,
+            }))
+          );
+
+          // Ensure supplier_id is converted to the correct type
+          const supplierId = order.supplier_id || order.supplierId;
+          const convertedSupplierId = supplierId ? String(supplierId) : '';
+
+          // Format dates
+          const formattedOrderDate = formatDateForInput(
+            order.order_date || order.orderDate
+          );
+          const formattedDeliveryDate = formatDateForInput(
+            order.expected_delivery || order.expectedDelivery
+          );
+
+          console.log('Formatted order_date:', formattedOrderDate);
+          console.log('Formatted expected_delivery:', formattedDeliveryDate);
+
+          // Set form values with comprehensive fallbacks
+          orderForm.value = {
+            po_number: order.po_number || order.poNumber || '',
+            supplier_id: convertedSupplierId,
+            supply_request_id:
+              order.supply_request_id || order.supplyRequestId || '',
+            order_date: formattedOrderDate,
+            expected_delivery: formattedDeliveryDate,
+            status: order.status || 'Draft',
+            total_amount: order.total_amount || order.totalAmount || 0,
+            notes: order.notes || '',
+          };
+
+          // Debug logging
+          console.log('Converted supplier_id:', convertedSupplierId);
+          console.log('Form values set:', orderForm.value);
+          console.log(
+            'Form supplier_id:',
+            orderForm.value.supplier_id,
+            'Type:',
+            typeof orderForm.value.supplier_id
+          );
+
+          // Force a reactive update
+          nextTick(() => {
+            console.log('Form values after nextTick:', orderForm.value);
+            console.log(
+              'Form supplier_id after nextTick:',
+              orderForm.value.supplier_id
+            );
+
+            // Check if the supplier exists in the dropdown
+            const supplierExists = suppliers.value.some(
+              (s) => String(s.id) === orderForm.value.supplier_id
+            );
+            console.log('Supplier exists in dropdown:', supplierExists);
+          });
+        } catch (error) {
+          console.error('Error loading suppliers:', error);
+          showToast('error', 'Failed to load suppliers');
+        }
+      };
+
+      // Load suppliers and set form
+      loadSuppliersAndSetForm();
     } else {
+      // For create mode, use default values
       resetForm();
       // Ensure order_date is set for new orders
-      orderForm.value.order_date = new Date().toISOString().split('T')[0];
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      orderForm.value.order_date = `${year}-${month}-${day}`;
     }
 
     document.getElementById('purchase_order_modal').showModal();
@@ -2498,14 +2773,28 @@
         return;
       }
 
+      // Preserve original values that shouldn't be changed unless explicitly modified
+      const originalOrder = modal.value.order;
+      const updatedData = {
+        ...orderForm.value,
+        // Ensure dates are preserved in their original format
+        order_date: orderForm.value.order_date,
+        expected_delivery: orderForm.value.expected_delivery || null,
+        // Preserve status unless explicitly changed
+        status: orderForm.value.status,
+      };
+
       // Update order using store
       await purchaseOrderStore.updatePurchaseOrder(
         modal.value.order.id,
-        orderForm.value
+        updatedData
       );
 
       closeModal();
-      showToast('success', 'Purchase order updated successfully');
+      showToast(
+        'success',
+        'Purchase order updated successfully with preserved dates and status'
+      );
     } catch (err) {
       showToast('error', err.message || 'Failed to update purchase order');
     } finally {
@@ -2590,7 +2879,7 @@
       },
       update: {
         title: 'Update Purchase Order',
-        message: `Are you sure you want to update ${orderForm.value.po_number}?`,
+        message: `Are you sure you want to update ${orderForm.value.po_number}? All changes will be preserved including dates and status.`,
         onConfirm: () => handleUpdateOrder(),
       },
       return: {
@@ -2720,64 +3009,250 @@
     );
   });
 
+  // Add these new reactive variables after the existing history-related variables
+  const historyFilterType = ref('today'); // 'today', 'week', 'month', 'custom'
+  const showCustomMonthPicker = ref(false);
+  const customMonthPicker = ref({
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+  });
+
+  // Define months for the custom month picker
+  const months = [
+    { value: 1, label: 'Jan' },
+    { value: 2, label: 'Feb' },
+    { value: 3, label: 'Mar' },
+    { value: 4, label: 'Apr' },
+    { value: 5, label: 'May' },
+    { value: 6, label: 'Jun' },
+    { value: 7, label: 'Jul' },
+    { value: 8, label: 'Aug' },
+    { value: 9, label: 'Sep' },
+    { value: 10, label: 'Oct' },
+    { value: 11, label: 'Nov' },
+    { value: 12, label: 'Dec' },
+  ];
+
+  // Generate available years (current year and 5 years back)
+  const availableYears = computed(() => {
+    const currentYear = new Date().getFullYear();
+    const years = [];
+    for (let i = currentYear; i >= currentYear - 5; i--) {
+      years.push(i);
+    }
+    return years;
+  });
+
+  // Updated history filter options
+  const getHistoryFilterOptions = () => {
+    return [
+      { type: 'today', label: 'Today', count: 0 },
+      { type: 'week', label: 'This Week', count: 0 },
+      { type: 'month', label: 'This Month', count: 0 },
+    ];
+  };
+
+  const historyFilterOptions = ref(getHistoryFilterOptions());
+
+  // Helper functions for date calculations
+  const getStartOfWeek = (date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday as first day
+    return new Date(d.setDate(diff));
+  };
+
+  const getStartOfMonth = (date) => {
+    return new Date(date.getFullYear(), date.getMonth(), 1);
+  };
+
+  const getEndOfMonth = (date) => {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  };
+
+  const isDateInRange = (date, startDate, endDate) => {
+    const orderDate = new Date(date);
+    return orderDate >= startDate && orderDate <= endDate;
+  };
+
+  // Updated history filtering logic
   const filteredHistoryByDate = computed(() => {
     let filtered = [...historyOrders.value];
 
-    // Date filter
-    if (historySelectedDate.value) {
-      filtered = filtered.filter((order) => {
-        const orderDate = new Date(
-          new Date(order.order_date).toLocaleString('en-US', {
-            timeZone: 'Asia/Manila',
-          })
-        );
-        const normalized = orderDate.toLocaleDateString('en-CA', {
-          timeZone: 'Asia/Manila',
-        });
-        return normalized === historySelectedDate.value;
-      });
+    // Apply date filtering based on filter type
+    if (historyFilterType.value) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      switch (historyFilterType.value) {
+        case 'today':
+          filtered = filtered.filter((order) => {
+            const orderDate = new Date(order.order_date);
+            orderDate.setHours(0, 0, 0, 0);
+            return orderDate.getTime() === today.getTime();
+          });
+          break;
+
+        case 'week':
+          const startOfWeek = getStartOfWeek(today);
+          const endOfWeek = new Date(today);
+          endOfWeek.setHours(23, 59, 59, 999);
+
+          filtered = filtered.filter((order) => {
+            const orderDate = new Date(order.order_date);
+            return isDateInRange(orderDate, startOfWeek, endOfWeek);
+          });
+          break;
+
+        case 'month':
+          const startOfMonth = getStartOfMonth(today);
+          const endOfMonth = new Date(today);
+          endOfMonth.setHours(23, 59, 59, 999);
+
+          filtered = filtered.filter((order) => {
+            const orderDate = new Date(order.order_date);
+            return isDateInRange(orderDate, startOfMonth, endOfMonth);
+          });
+          break;
+
+        case 'custom':
+          if (customMonthPicker.value.month && customMonthPicker.value.year) {
+            const startOfCustomMonth = new Date(
+              customMonthPicker.value.year,
+              customMonthPicker.value.month - 1,
+              1
+            );
+            const endOfCustomMonth = getEndOfMonth(startOfCustomMonth);
+            endOfCustomMonth.setHours(23, 59, 59, 999);
+
+            filtered = filtered.filter((order) => {
+              const orderDate = new Date(order.order_date);
+              return isDateInRange(
+                orderDate,
+                startOfCustomMonth,
+                endOfCustomMonth
+              );
+            });
+          }
+          break;
+      }
     }
 
     return filtered;
   });
 
-  const filteredHistory = computed(() => {
-    let filtered = [...filteredHistoryByDate.value];
+  // Update filter option counts
+  const updateHistoryFilterCounts = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-    // Search filter
-    if (historySearchQuery.value) {
-      const query = historySearchQuery.value.toLowerCase();
-      filtered = filtered.filter(
-        (order) =>
-          order.po_number.toLowerCase().includes(query) ||
-          order.supplier_name.toLowerCase().includes(query) ||
-          order.notes?.toLowerCase().includes(query) ||
-          order.supply_request_number?.toLowerCase().includes(query)
-      );
+    historyFilterOptions.value.forEach((option) => {
+      let count = 0;
+
+      switch (option.type) {
+        case 'today':
+          count = historyOrders.value.filter((order) => {
+            const orderDate = new Date(order.order_date);
+            orderDate.setHours(0, 0, 0, 0);
+            return orderDate.getTime() === today.getTime();
+          }).length;
+          break;
+
+        case 'week':
+          const startOfWeek = getStartOfWeek(today);
+          const endOfWeek = new Date(today);
+          endOfWeek.setHours(23, 59, 59, 999);
+
+          count = historyOrders.value.filter((order) => {
+            const orderDate = new Date(order.order_date);
+            return isDateInRange(orderDate, startOfWeek, endOfWeek);
+          }).length;
+          break;
+
+        case 'month':
+          const startOfMonth = getStartOfMonth(today);
+          const endOfMonth = new Date(today);
+          endOfMonth.setHours(23, 59, 59, 999);
+
+          count = historyOrders.value.filter((order) => {
+            const orderDate = new Date(order.order_date);
+            return isDateInRange(orderDate, startOfMonth, endOfMonth);
+          }).length;
+          break;
+      }
+
+      option.count = count;
+    });
+  };
+
+  // Filter selection methods
+  const selectHistoryFilter = (option) => {
+    historyFilterType.value = option.type;
+    historyCurrentPage.value = 1;
+    showCustomMonthPicker.value = false;
+  };
+
+  const toggleCustomMonthPicker = () => {
+    showCustomMonthPicker.value = !showCustomMonthPicker.value;
+    if (showCustomMonthPicker.value) {
+      historyFilterType.value = 'custom';
     }
+  };
 
-    // Status filter
-    if (historyStatusFilter.value) {
-      filtered = filtered.filter(
-        (order) => order.status === historyStatusFilter.value
-      );
+  const applyCustomMonthFilter = () => {
+    historyFilterType.value = 'custom';
+    historyCurrentPage.value = 1;
+    showCustomMonthPicker.value = false;
+  };
+
+  const clearHistoryFilters = () => {
+    historyFilterType.value = 'today';
+    historySearchQuery.value = '';
+    historyStatusFilter.value = '';
+    historySupplierFilter.value = '';
+    historyCurrentPage.value = 1;
+    showCustomMonthPicker.value = false;
+    customMonthPicker.value = {
+      month: new Date().getMonth() + 1,
+      year: new Date().getFullYear(),
+    };
+  };
+
+  // Display text for current filter
+  const getHistoryFilterDisplayText = () => {
+    switch (historyFilterType.value) {
+      case 'today':
+        return `Today (${formatDate(new Date())})`;
+      case 'week':
+        const startOfWeek = getStartOfWeek(new Date());
+        const endOfWeek = new Date();
+        return `This Week (${formatDate(startOfWeek)} - ${formatDate(endOfWeek)})`;
+      case 'month':
+        const startOfMonth = getStartOfMonth(new Date());
+        const endOfMonth = new Date();
+        return `This Month (${formatDate(startOfMonth)} - ${formatDate(endOfMonth)})`;
+      case 'custom':
+        const monthName = months.find(
+          (m) => m.value === customMonthPicker.value.month
+        )?.label;
+        return `${monthName} ${customMonthPicker.value.year}`;
+      default:
+        return 'All History';
     }
+  };
 
-    // Supplier filter
-    if (historySupplierFilter.value) {
-      filtered = filtered.filter(
-        (order) => order.supplier_name === historySupplierFilter.value
-      );
-    }
-
-    return filtered;
-  });
+  // Update watchers
+  watch(
+    [() => purchaseOrderStore.purchaseOrders],
+    () => {
+      updateHistoryFilterCounts();
+    },
+    { deep: true, immediate: true }
+  );
 
   const uniqueHistorySuppliersByDate = computed(() => {
     const supplierNames = [
-      ...new Set(
-        filteredHistoryByDate.value.map((order) => order.supplier_name)
-      ),
+      ...new Set(filteredHistory.value.map((order) => order.supplier_name)),
     ];
     return supplierNames.sort();
   });
@@ -2854,7 +3329,7 @@
 
   // Add watcher for history counts
   watch(
-    [() => purchaseOrderStore.purchaseOrders, historySelectedDate],
+    [() => purchaseOrderStore.purchaseOrders],
     () => {
       updateHistoryQuickDateCounts();
     },
@@ -2905,14 +3380,14 @@
       // Fetch all required data
       await Promise.all([
         purchaseOrderStore.fetchPurchaseOrders(),
-        supplierStore.fetchActiveSuppliers(), // Change this line in onMounted
+        supplierStore.fetchActiveSuppliers(),
         supplyRequestStore.fetchRequests({ department: 'SCM' }),
         purchaseOrderStore.fetchStats(),
       ]);
 
       // Update quick date counts for both PO list and supply requests
       updateQuickDateCountsHistory();
-      updateSupplyRequestQuickDateCounts();
+      updateSupplyRequestFilterCounts(); // Change this line
       updateHistoryQuickDateCounts();
 
       console.log('PurchaseOrder component mounted and data loaded');
@@ -2976,7 +3451,15 @@
       return;
     }
 
-    openConfirmModal('update');
+    // Show different message based on whether changes were made
+    if (hasFieldChanges.value) {
+      openConfirmModal('update');
+    } else {
+      showToast(
+        'info',
+        'No changes detected. Purchase order will remain unchanged.'
+      );
+    }
   };
 
   const showReturnConfirmation = () => {
@@ -3051,6 +3534,265 @@
       showToast('error', 'Failed to load suppliers');
     }
   };
+
+  // Add this computed property after the filteredHistoryByDate computed property
+  const filteredHistory = computed(() => {
+    let filtered = [...filteredHistoryByDate.value];
+
+    // Search filter
+    if (historySearchQuery.value) {
+      const query = historySearchQuery.value.toLowerCase();
+      filtered = filtered.filter(
+        (order) =>
+          order.po_number.toLowerCase().includes(query) ||
+          order.supplier_name.toLowerCase().includes(query) ||
+          order.notes?.toLowerCase().includes(query) ||
+          order.supply_request_number?.toLowerCase().includes(query)
+      );
+    }
+
+    // Status filter
+    if (historyStatusFilter.value) {
+      filtered = filtered.filter(
+        (order) => order.status === historyStatusFilter.value
+      );
+    }
+
+    // Supplier filter
+    if (historySupplierFilter.value) {
+      filtered = filtered.filter(
+        (order) => order.supplier_name === historySupplierFilter.value
+      );
+    }
+
+    return filtered;
+  });
+
+  const getSupplyRequestFilterOptions = () => {
+    return [
+      { type: 'today', label: 'Today', count: 0 },
+      { type: 'week', label: 'This Week', count: 0 },
+      { type: 'month', label: 'This Month', count: 0 },
+    ];
+  };
+
+  const supplyRequestFilterOptions = ref(getSupplyRequestFilterOptions());
+
+  const supplyRequestFilterType = ref('today'); // 'today', 'week', 'month'
+  const showSupplyRequestCustomMonthPicker = ref(false);
+  const supplyRequestCustomMonthPicker = ref({
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+  });
+
+  // Update the filteredSupplyRequestsByDate computed property
+  const filteredSupplyRequestsByDate = computed(() => {
+    let filtered = [...approvedSupplyRequests.value];
+
+    // Apply date filtering based on filter type
+    if (supplyRequestFilterType.value) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      switch (supplyRequestFilterType.value) {
+        case 'today':
+          filtered = filtered.filter((request) => {
+            const requestDate = new Date(request.request_date);
+            requestDate.setHours(0, 0, 0, 0);
+            return requestDate.getTime() === today.getTime();
+          });
+          break;
+
+        case 'week':
+          const startOfWeek = getStartOfWeek(today);
+          const endOfWeek = new Date(today);
+          endOfWeek.setHours(23, 59, 59, 999);
+
+          filtered = filtered.filter((request) => {
+            const requestDate = new Date(request.request_date);
+            return isDateInRange(requestDate, startOfWeek, endOfWeek);
+          });
+          break;
+
+        case 'month':
+          const startOfMonth = getStartOfMonth(today);
+          const endOfMonth = new Date(today);
+          endOfMonth.setHours(23, 59, 59, 999);
+
+          filtered = filtered.filter((request) => {
+            const requestDate = new Date(request.request_date);
+            return isDateInRange(requestDate, startOfMonth, endOfMonth);
+          });
+          break;
+
+        case 'custom':
+          if (
+            supplyRequestCustomMonthPicker.value.month &&
+            supplyRequestCustomMonthPicker.value.year
+          ) {
+            const startOfCustomMonth = new Date(
+              supplyRequestCustomMonthPicker.value.year,
+              supplyRequestCustomMonthPicker.value.month - 1,
+              1
+            );
+            const endOfCustomMonth = getEndOfMonth(startOfCustomMonth);
+            endOfCustomMonth.setHours(23, 59, 59, 999);
+
+            filtered = filtered.filter((request) => {
+              const requestDate = new Date(request.request_date);
+              return isDateInRange(
+                requestDate,
+                startOfCustomMonth,
+                endOfCustomMonth
+              );
+            });
+          }
+          break;
+      }
+    }
+
+    return filtered;
+  });
+
+  const updateSupplyRequestFilterCounts = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    supplyRequestFilterOptions.value.forEach((option) => {
+      let count = 0;
+
+      switch (option.type) {
+        case 'today':
+          count = approvedSupplyRequests.value.filter((request) => {
+            const requestDate = new Date(request.request_date);
+            requestDate.setHours(0, 0, 0, 0);
+            return requestDate.getTime() === today.getTime();
+          }).length;
+          break;
+
+        case 'week':
+          const startOfWeek = getStartOfWeek(today);
+          const endOfWeek = new Date(today);
+          endOfWeek.setHours(23, 59, 59, 999);
+
+          count = approvedSupplyRequests.value.filter((request) => {
+            const requestDate = new Date(request.request_date);
+            return isDateInRange(requestDate, startOfWeek, endOfWeek);
+          }).length;
+          break;
+
+        case 'month':
+          const startOfMonth = getStartOfMonth(today);
+          const endOfMonth = new Date(today);
+          endOfMonth.setHours(23, 59, 59, 999);
+
+          count = approvedSupplyRequests.value.filter((request) => {
+            const requestDate = new Date(request.request_date);
+            return isDateInRange(requestDate, startOfMonth, endOfMonth);
+          }).length;
+          break;
+      }
+
+      option.count = count;
+    });
+  };
+
+  // Add filter selection methods
+  const selectSupplyRequestFilter = (option) => {
+    supplyRequestFilterType.value = option.type;
+    supplyRequestModal.value.currentPage = 1;
+    showSupplyRequestCustomMonthPicker.value = false;
+  };
+
+  const toggleSupplyRequestCustomMonthPicker = () => {
+    showSupplyRequestCustomMonthPicker.value =
+      !showSupplyRequestCustomMonthPicker.value;
+    if (showSupplyRequestCustomMonthPicker.value) {
+      supplyRequestFilterType.value = 'custom';
+    }
+  };
+
+  const applySupplyRequestCustomMonthFilter = () => {
+    supplyRequestFilterType.value = 'custom';
+    supplyRequestModal.value.currentPage = 1;
+    showSupplyRequestCustomMonthPicker.value = false;
+  };
+
+  // Update the display text function
+  const getSupplyRequestFilterDisplayText = () => {
+    switch (supplyRequestFilterType.value) {
+      case 'today':
+        return `Today (${formatDate(new Date())})`;
+      case 'week':
+        const startOfWeek = getStartOfWeek(new Date());
+        const endOfWeek = new Date();
+        return `This Week (${formatDate(startOfWeek)} - ${formatDate(endOfWeek)})`;
+      case 'month':
+        const startOfMonth = getStartOfMonth(new Date());
+        const endOfMonth = new Date();
+        return `This Month (${formatDate(startOfMonth)} - ${formatDate(endOfMonth)})`;
+      case 'custom':
+        const monthName = months.find(
+          (m) => m.value === supplyRequestCustomMonthPicker.value.month
+        )?.label;
+        return `${monthName} ${supplyRequestCustomMonthPicker.value.year}`;
+      default:
+        return 'All Requests';
+    }
+  };
+
+  // Update the watcher to use the new function
+  watch(
+    [approvedSupplyRequests, supplyRequestFilterType],
+    () => {
+      updateSupplyRequestFilterCounts();
+    },
+    { deep: true, immediate: true }
+  );
+
+  // Add helper function for supplier names
+  const getSupplierName = (supplierId) => {
+    const supplier = suppliers.value.find((s) => s.id === supplierId);
+    return supplier ? supplier.name : 'Unknown Supplier';
+  };
+
+  // Add computed property to track field changes
+  const hasFieldChanges = computed(() => {
+    if (modal.value.type !== 'edit' || !modal.value.order) {
+      return false;
+    }
+
+    const original = modal.value.order;
+    const current = orderForm.value;
+
+    return (
+      current.po_number !== original.po_number ||
+      current.supplier_id !== original.supplier_id ||
+      current.order_date !== original.order_date ||
+      current.expected_delivery !== original.expected_delivery ||
+      current.status !== original.status ||
+      current.total_amount !== original.total_amount ||
+      current.notes !== original.notes
+    );
+  });
+
+  // Add function to handle field changes with visual feedback
+  const handleFieldChange = (fieldName, value) => {
+    const originalOrder = modal.value.order;
+    if (originalOrder && modal.value.type === 'edit') {
+      const originalValue = originalOrder[fieldName];
+      const hasChanged = value !== originalValue;
+
+      // Add visual feedback for changed fields (optional)
+      if (hasChanged) {
+        console.log(
+          `Field ${fieldName} changed from ${originalValue} to ${value}`
+        );
+      }
+    }
+
+    orderForm.value[fieldName] = value;
+  };
 </script>
 
 <style scoped>
@@ -3093,7 +3835,7 @@
 
   /* Toast positioning */
   .toast {
-    z-index: 100000; /* ensure above modals */
+    z-index: 999999; /* ensure above all modals and UI elements */
   }
 
   /* Dropdown improvements */

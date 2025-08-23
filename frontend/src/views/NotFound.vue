@@ -6,8 +6,10 @@
   <div class="min-h-screen flex items-center justify-center bg-primaryColor">
     <div class="text-center">
       <h1 class="text-9xl font-bold text-accentColor">404</h1>
-      <h2 class="text-2xl font-semibold mt-4">Page Not Found</h2>
-      <p class="text-base-content/70 mt-2">
+      <h2 class="text-2xl font-semibold mt-4 text-secondaryColor">
+        Page Not Found
+      </h2>
+      <p class="text-gray-200 mt-2">
         The page you're looking for doesn't exist.
       </p>
       <RouterLink

@@ -214,16 +214,13 @@ router.get("/", async (req, res) => {
  *         description: Server error
  */
 router.get("/stats", async (req, res) => {
-  console.log(">>> /api/supply-requests/stats endpoint HIT <<<");
   try {
     const filters = {
       department: req.query.department,
       dateFrom: req.query.dateFrom,
       dateTo: req.query.dateTo,
     };
-    console.log("Filters:", filters);
     const stats = await SupplyRequest.getStats(filters);
-    console.log("Stats result:", stats);
     res.json({
       success: true,
       data: stats,

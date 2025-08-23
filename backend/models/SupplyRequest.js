@@ -378,7 +378,6 @@ class SupplyRequest {
           filters.dateTo,
         ]);
       }
-      console.log("Stats query about to run");
       const stats = await query
         .select(
           db.raw("COUNT(*) as total_requests"),
@@ -411,7 +410,7 @@ class SupplyRequest {
           )
         )
         .first();
-      console.log("Stats query result:", stats);
+
       return stats;
     } catch (error) {
       console.error("Error fetching request statistics:", error);

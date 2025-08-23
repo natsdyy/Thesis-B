@@ -211,6 +211,7 @@ export const useSupplierStore = defineStore('supplier', () => {
       const response = await axios.get(`${API_BASE_URL}/suppliers/active`);
 
       if (response.data.success) {
+        suppliers.value = response.data.data;
         return response.data.data;
       } else {
         throw new Error(

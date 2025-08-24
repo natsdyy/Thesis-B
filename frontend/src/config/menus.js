@@ -68,7 +68,7 @@ export const menuItems = [
   {
     name: 'Inventory',
     icon: Package,
-    route: '/scm/inventory',
+    route: '/scm/main-inventory',
     department: 'Supply Chain',
   },
   {

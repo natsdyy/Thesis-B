@@ -18,9 +18,9 @@ export default [
     meta: { title: 'Purchase Order' },
   },
   {
-    path: 'inventory',
-    name: 'Inventory',
-    component: () => import('../../views/scm/Inventory.vue'),
+    path: 'main-inventory',
+    name: 'MainInventory',
+    component: () => import('../../views/scm/MainInventory.vue'),
     meta: { title: 'Inventory' },
   },
   {

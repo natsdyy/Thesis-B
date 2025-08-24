@@ -1,5 +1,6 @@
 const { db } = require("../config/database");
 const Supplier = require("./Supplier");
+const Inventory = require("./Inventory");
 
 class PurchaseOrder {
   // Get all purchase orders with related data
@@ -252,6 +253,13 @@ class PurchaseOrder {
     const trx = await db.transaction();
 
     try {
+      // Get the current purchase order to check for status changes
+      const currentOrder = await trx("purchase_orders").where("id", id).first();
+
+      if (!currentOrder) {
+        throw new Error("Purchase order not found");
+      }
+
       // NEW: Validate supplier if it's being changed
       if (poData.supplier_id) {
         const supplier = await Supplier.validateForPurchaseOrder(
@@ -270,6 +278,14 @@ class PurchaseOrder {
           updated_at: new Date(),
         })
         .returning("*");
+
+      // AUTO-INVENTORY INTEGRATION: When PO status changes to "Completed", add items to inventory
+      if (
+        currentOrder.status !== "Completed" &&
+        poData.status === "Completed"
+      ) {
+        await this.addToInventoryOnCompletion(trx, updatedPurchaseOrder);
+      }
 
       if (items) {
         // Delete existing items
@@ -426,6 +442,173 @@ class PurchaseOrder {
         completed_returns: 0,
       };
     }
+  }
+
+  // Auto-add items to inventory when PO is completed
+  static async addToInventoryOnCompletion(trx, purchaseOrder) {
+    try {
+      // Get PO items with supply request item type information
+      const poItems = await trx("purchase_order_items as poi")
+        .leftJoin(
+          "supply_request_items as sri",
+          "poi.supply_request_item_id",
+          "sri.id"
+        )
+        .select(
+          "poi.*",
+          "sri.item_type as supply_request_item_type" // Get the item_type from supply request
+        )
+        .where("poi.purchase_order_id", purchaseOrder.id)
+        .whereNull("poi.deleted_at");
+
+      if (poItems.length === 0) {
+        console.log(`No items found for PO ${purchaseOrder.po_number}`);
+        return;
+      }
+
+      // Get supplier info
+      const supplier = await trx("suppliers")
+        .where("id", purchaseOrder.supplier_id)
+        .first();
+
+      console.log(
+        `Adding ${poItems.length} items to inventory from PO ${purchaseOrder.po_number}`
+      );
+
+      for (const item of poItems) {
+        try {
+          // Use the item_type from supply request for exact matching
+          let itemType = null;
+
+          if (item.supply_request_item_type) {
+            // Try to find exact match by item_type from supply request
+            itemType = await trx("inventory_item_types as it")
+              .leftJoin("inventory_categories as ic", "it.category_id", "ic.id")
+              .select("it.*", "ic.name as category_name")
+              .where("it.name", item.supply_request_item_type)
+              .first();
+          }
+
+          // Fallback: Try fuzzy matching by item name if no exact match found
+          if (!itemType) {
+            itemType = await trx("inventory_item_types as it")
+              .leftJoin("inventory_categories as ic", "it.category_id", "ic.id")
+              .select("it.*", "ic.name as category_name")
+              .where("it.name", "like", `%${item.item_name}%`)
+              .orWhere("it.name", "ilike", `%${item.item_name.split(" ")[0]}%`)
+              .first();
+          }
+
+          if (!itemType) {
+            // Create a default item type if not found (Materials -> Other Materials)
+            const defaultCategory = await trx("inventory_categories")
+              .where("name", "Materials")
+              .first();
+
+            if (defaultCategory) {
+              const [newItemType] = await trx("inventory_item_types")
+                .insert({
+                  category_id: defaultCategory.id,
+                  name: item.item_name,
+                  description: `Auto-created from PO ${purchaseOrder.po_number}`,
+                  unit_of_measure: item.unit || "pieces",
+                  requires_expiry: false,
+                  requires_batch: false,
+                  is_active: true,
+                  created_at: new Date(),
+                  updated_at: new Date(),
+                })
+                .returning("*");
+
+              console.log(`Created new item type: ${item.item_name}`);
+
+              // Add to inventory with the new item type
+              await this.addInventoryItem(trx, {
+                item_type_id: newItemType.id,
+                supplier_id: purchaseOrder.supplier_id,
+                purchase_order_id: purchaseOrder.id,
+                quantity: item.quantity,
+                unit_cost: item.unit_price,
+                received_date: new Date(),
+                received_by: "Auto-PO System",
+                notes: `Auto-received from PO ${purchaseOrder.po_number}`,
+                reference_number: purchaseOrder.po_number,
+              });
+            }
+          } else {
+            console.log(
+              `Found item type: ${itemType.name} (Category: ${itemType.category_name})`
+            );
+
+            // Add to inventory with existing item type
+            await this.addInventoryItem(trx, {
+              item_type_id: itemType.id,
+              supplier_id: purchaseOrder.supplier_id,
+              purchase_order_id: purchaseOrder.id,
+              quantity: item.quantity,
+              unit_cost: item.unit_price,
+              received_date: new Date(),
+              received_by: "Auto-PO System",
+              notes: `Auto-received from PO ${purchaseOrder.po_number}`,
+              reference_number: purchaseOrder.po_number,
+            });
+          }
+        } catch (itemError) {
+          console.error(
+            `Error adding item ${item.item_name} to inventory:`,
+            itemError
+          );
+          // Continue with other items even if one fails
+        }
+      }
+
+      console.log(
+        `Successfully added inventory from PO ${purchaseOrder.po_number}`
+      );
+    } catch (error) {
+      console.error("Error adding items to inventory:", error);
+      throw error; // Re-throw to fail the transaction
+    }
+  }
+
+  // Helper method to add individual inventory item
+  static async addInventoryItem(trx, itemData) {
+    const [newItem] = await trx("inventory_items")
+      .insert({
+        item_type_id: itemData.item_type_id,
+        supplier_id: itemData.supplier_id || null,
+        purchase_order_id: itemData.purchase_order_id || null,
+        batch_number: itemData.batch_number || null,
+        quantity: itemData.quantity,
+        unit_cost: itemData.unit_cost,
+        total_value: itemData.quantity * itemData.unit_cost,
+        expiry_date: itemData.expiry_date || null,
+        received_date: itemData.received_date || new Date(),
+        status: "available",
+        notes: itemData.notes || null,
+        received_by: itemData.received_by,
+        created_at: new Date(),
+        updated_at: new Date(),
+      })
+      .returning("*");
+
+    // Log the transaction
+    await trx("inventory_transactions").insert({
+      inventory_item_id: newItem.id,
+      transaction_type: "receipt",
+      quantity: itemData.quantity,
+      unit_cost: itemData.unit_cost,
+      total_value: itemData.quantity * itemData.unit_cost,
+      reference_number: itemData.reference_number || null,
+      reason: "PO completion - automatic receipt",
+      notes: itemData.notes || null,
+      performed_by: itemData.received_by,
+      transaction_date: new Date(),
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+
+    return newItem;
   }
 }
 

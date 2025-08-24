@@ -771,9 +771,11 @@
     X,
   } from 'lucide-vue-next';
   import { useSupplierStore } from '../../stores/supplierStore.js';
+  import { useInventoryStore } from '../../stores/inventoryStore.js'; // Add this import
 
-  // Store
+  // Stores
   const supplierStore = useSupplierStore();
+  const inventoryStore = useInventoryStore(); // Add inventory store
 
   // Replace mock data with store data
   const mockSuppliers = computed(() => supplierStore.suppliers);
@@ -785,7 +787,7 @@
   const searchQuery = ref('');
   const statusFilter = ref('');
   const categoryFilter = ref('');
-  const showDeleted = ref(false); // NEW: Toggle for deleted suppliers view
+  const showDeleted = ref(false);
 
   // Modal state
   const modal = ref({
@@ -817,18 +819,11 @@
     }, 3000);
   };
 
-  // Categories and statuses
-  const categories = [
-    'Food & Beverages',
-    'Kitchen Equipment',
-    'Fresh Produce',
-    'Meat & Poultry',
-    'Office Supplies',
-    'Cleaning Supplies',
-    'Beverages',
-    'Technology',
-    'Other',
-  ];
+  // Centralized categories from inventory system
+  const categories = computed(() => {
+    const inventoryCategories = inventoryStore.categories || [];
+    return inventoryCategories.map((category) => category.name);
+  });
 
   const statuses = ['Active', 'Inactive'];
 
@@ -1197,7 +1192,11 @@
   // Load data on component mount
   onMounted(async () => {
     try {
-      await supplierStore.fetchSuppliersWithStats();
+      // Load both supplier and inventory data
+      await Promise.all([
+        supplierStore.fetchSuppliersWithStats(),
+        inventoryStore.fetchCategories(),
+      ]);
 
       // Debug: Check if ratings are present
       const suppliersWithRatings = supplierStore.suppliers.filter(

@@ -3180,7 +3180,7 @@
             </option>
           </select>
           <div class="label">
-            <span class="label-text-alt text-black/50">
+            <span class="label-text-alt text-black/50 text-sm">
               {{
                 selectedCategory
                   ? requestCategories.find(
@@ -3190,36 +3190,6 @@
               }}
             </span>
           </div>
-        </div>
-
-        <!-- Request Type Selection (Auto-populated based on category) -->
-        <div class="form-control">
-          <label class="label">
-            <span class="label-text text-black/70 font-medium"
-              >Request Type <span class="text-red-500">*</span></span
-            >
-          </label>
-          <select
-            v-model="requestForm.request_type"
-            class="select select-bordered bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-            required
-            :disabled="!selectedCategory"
-          >
-            <option value="" disabled>
-              {{
-                selectedCategory
-                  ? 'Select Request Type'
-                  : 'Select Category First'
-              }}
-            </option>
-            <option
-              v-for="itemType in availableItemTypes"
-              :key="itemType.id"
-              :value="itemType.name"
-            >
-              {{ itemType.name }}
-            </option>
-          </select>
         </div>
 
         <!-- Priority Selection -->
@@ -3332,7 +3302,7 @@
                 <th class="w-48">Item Name</th>
                 <th class="w-20">Qty</th>
                 <th class="w-24">Unit</th>
-                <th class="w-32">Category</th>
+                <th class="w-32">Type</th>
                 <th class="w-24">Unit Price</th>
                 <th class="w-24">Amount</th>
                 <th class="w-16">Action</th>
@@ -3384,7 +3354,7 @@
                     @change="onItemTypeChange(row)"
                     class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor"
                   >
-                    <option value="" disabled>Category</option>
+                    <option value="" disabled>Type</option>
                     <option
                       v-for="itemType in availableItemTypes"
                       :key="itemType.id"

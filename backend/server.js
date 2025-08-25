@@ -20,6 +20,7 @@ const supplierRoutes = require("./routes/suppliers");
 const itemReturnRoutes = require("./routes/itemReturns");
 const supplierRatingsRoutes = require("./routes/supplierRatings");
 const inventoryRoutes = require("./routes/inventory");
+const grnRoutes = require("./routes/grn");
 const { serve, setup } = require("./config/swagger");
 
 const app = express();
@@ -52,6 +53,7 @@ app.use("/api/suppliers", supplierRoutes);
 app.use("/api/item-returns", itemReturnRoutes);
 app.use("/api/supplier-ratings", supplierRatingsRoutes);
 app.use("/api/inventory", inventoryRoutes);
+app.use("/api/grn", grnRoutes);
 
 // Swagger documentation
 app.use("/api-docs", serve, setup);

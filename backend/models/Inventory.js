@@ -33,10 +33,12 @@ class Inventory {
     try {
       return await db("inventory_item_types as it")
         .leftJoin("inventory_categories as ic", "it.category_id", "ic.id")
+        .leftJoin("users as u", "it.approved_by", "u.id")
         .select(
           "it.*",
           "ic.name as category_name",
-          "ic.description as category_description"
+          "ic.description as category_description",
+          "u.name as approved_by_name"
         )
         .whereNull("it.deleted_at")
         .whereNull("ic.deleted_at")
@@ -46,6 +48,27 @@ class Inventory {
     } catch (error) {
       console.error("Error fetching all item types:", error);
       throw new Error("Failed to fetch item types");
+    }
+  }
+
+  // Get draft item types (pending approval)
+  static async getDraftItemTypes() {
+    try {
+      return await db("inventory_item_types as it")
+        .leftJoin("inventory_categories as ic", "it.category_id", "ic.id")
+        .select(
+          "it.*",
+          "ic.name as category_name",
+          "ic.description as category_description"
+        )
+        .whereNull("it.deleted_at")
+        .whereNull("ic.deleted_at")
+        .where("it.status", "draft")
+        .where("ic.is_active", true)
+        .orderBy(["ic.name", "it.name"]);
+    } catch (error) {
+      console.error("Error fetching draft item types:", error);
+      throw new Error("Failed to fetch draft item types");
     }
   }
 
@@ -62,6 +85,8 @@ class Inventory {
           "it.unit_of_measure",
           "it.requires_expiry",
           "it.requires_batch",
+          "it.first_received_at",
+          "it.receipts_count",
           "ic.name as category_name",
           "s.name as supplier_name"
         )
@@ -134,7 +159,19 @@ class Inventory {
 
   // Add inventory item (usually from PO receipt)
   static async addInventoryItem(itemData) {
+    const trx = await db.transaction();
     try {
+      // Read item type counters
+      const itemType = await trx("inventory_item_types")
+        .where("id", itemData.item_type_id)
+        .first();
+
+      if (!itemType) {
+        throw new Error("Invalid item_type_id");
+      }
+
+      const isFirstReceipt = parseInt(itemType.receipts_count || 0, 10) === 0;
+
       // Generate batch number if not provided
       const batchNumber =
         itemData.batch_number ||
@@ -144,12 +181,12 @@ class Inventory {
           itemData.received_date ? new Date(itemData.received_date) : new Date()
         );
 
-      const [newItem] = await db("inventory_items")
+      const [newItem] = await trx("inventory_items")
         .insert({
           item_type_id: itemData.item_type_id,
           supplier_id: itemData.supplier_id || null,
           purchase_order_id: itemData.purchase_order_id || null,
-          batch_number: batchNumber, // Use generated batch number
+          batch_number: batchNumber,
           quantity: itemData.quantity,
           unit_cost: itemData.unit_cost,
           total_value: itemData.quantity * itemData.unit_cost,
@@ -164,21 +201,41 @@ class Inventory {
         .returning("*");
 
       // Log the transaction
-      await this.logTransaction({
+      await trx("inventory_transactions").insert({
         inventory_item_id: newItem.id,
         transaction_type: "receipt",
         quantity: itemData.quantity,
         unit_cost: itemData.unit_cost,
         total_value: itemData.quantity * itemData.unit_cost,
         reference_number: itemData.reference_number || null,
-        reason: "Initial stock receipt",
+        reason: isFirstReceipt
+          ? "First receipt for this item type"
+          : "Replenishment",
         notes: itemData.notes || null,
         performed_by: itemData.received_by,
         transaction_date: new Date(),
+        is_first_receipt: isFirstReceipt,
+        created_at: new Date(),
+        updated_at: new Date(),
       });
 
+      // Update item type counters
+      const newReceiptsCount = parseInt(itemType.receipts_count || 0, 10) + 1;
+      const updates = {
+        receipts_count: newReceiptsCount,
+        updated_at: new Date(),
+      };
+      if (isFirstReceipt) {
+        updates.first_received_at = new Date();
+      }
+      await trx("inventory_item_types")
+        .where("id", itemData.item_type_id)
+        .update(updates);
+
+      await trx.commit();
       return newItem;
     } catch (error) {
+      await trx.rollback();
       console.error("Error adding inventory item:", error);
       throw new Error("Failed to add inventory item");
     }
@@ -387,6 +444,58 @@ class Inventory {
     } catch (error) {
       console.error("Error fetching inventory stats:", error);
       throw new Error("Failed to fetch inventory stats");
+    }
+  }
+
+  // Approve item type
+  static async approveItemType(itemTypeId, approvedBy, notes = null) {
+    try {
+      const [updatedItemType] = await db("inventory_item_types")
+        .where("id", itemTypeId)
+        .where("status", "draft")
+        .update({
+          status: "active",
+          approved_by: approvedBy,
+          approved_at: new Date(),
+          approval_notes: notes,
+          updated_at: new Date(),
+        })
+        .returning("*");
+
+      if (!updatedItemType) {
+        throw new Error("Item type not found or already approved");
+      }
+
+      return updatedItemType;
+    } catch (error) {
+      console.error("Error approving item type:", error);
+      throw new Error("Failed to approve item type");
+    }
+  }
+
+  // Reject item type
+  static async rejectItemType(itemTypeId, rejectedBy, notes = null) {
+    try {
+      const [updatedItemType] = await db("inventory_item_types")
+        .where("id", itemTypeId)
+        .where("status", "draft")
+        .update({
+          status: "discontinued",
+          approved_by: rejectedBy,
+          approved_at: new Date(),
+          approval_notes: notes,
+          updated_at: new Date(),
+        })
+        .returning("*");
+
+      if (!updatedItemType) {
+        throw new Error("Item type not found or already processed");
+      }
+
+      return updatedItemType;
+    } catch (error) {
+      console.error("Error rejecting item type:", error);
+      throw new Error("Failed to reject item type");
     }
   }
 }

@@ -29,4 +29,10 @@ export default [
     component: () => import('../../views/scm/Suppliers.vue'),
     meta: { title: 'Suppliers' },
   },
+  {
+    path: 'grn',
+    name: 'GRNManager',
+    component: () => import('../../views/scm/GRNManager.vue'),
+    meta: { title: 'Goods Receipt Notes' },
+  },
 ];

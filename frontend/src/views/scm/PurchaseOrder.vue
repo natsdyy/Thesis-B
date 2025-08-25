@@ -475,6 +475,17 @@
                           >Return Item</a
                         >
                       </li>
+                      <!-- Only show Create GRN for completed orders -->
+                      <li
+                        v-if="order.status === 'Completed'"
+                        class="hover:bg-black/10"
+                      >
+                        <a
+                          @click="createGRNFromPO(order)"
+                          class="text-success text-xs sm:text-sm"
+                          >Create GRN</a
+                        >
+                      </li>
                       <!-- Only show Cancel Order for non-cancelled orders -->
                       <li
                         v-if="order.status !== 'Cancelled'"
@@ -1950,6 +1961,61 @@
     </div>
   </dialog>
 
+  <!-- GRN Confirmation Modal -->
+  <dialog id="grn_confirm_modal" class="modal">
+    <div class="modal-box">
+      <h3 class="font-bold text-lg mb-4">Create Goods Receipt Note</h3>
+      <div class="py-4">
+        <p class="mb-4">
+          Are you sure you want to create a Goods Receipt Note (GRN) for:
+        </p>
+        <div class="bg-base-200 p-4 rounded-lg mb-4">
+          <div class="flex justify-between items-center mb-2">
+            <span class="font-medium">PO Number:</span>
+            <span class="text-primaryColor font-bold">{{
+              grnConfirmModal.order?.po_number
+            }}</span>
+          </div>
+          <div class="flex justify-between items-center mb-2">
+            <span class="font-medium">Supplier:</span>
+            <span>{{ grnConfirmModal.order?.supplier_name }}</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="font-medium">Items:</span>
+            <span>{{ grnConfirmModal.order?.item_count }} items</span>
+          </div>
+        </div>
+        <p class="text-sm text-black/60">
+          This will create a new GRN that you can use to manage the receipt and
+          quality inspection of these items.
+        </p>
+      </div>
+
+      <div class="modal-action">
+        <button
+          type="button"
+          class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none btn-sm"
+          @click="closeGRNConfirmModal"
+          :disabled="grnConfirmModal.loading"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="btn bg-primaryColor text-white btn-sm font-thin border-none hover:bg-primaryColor/80"
+          @click="confirmCreateGRN"
+          :disabled="grnConfirmModal.loading"
+        >
+          <span
+            v-if="grnConfirmModal.loading"
+            class="loading loading-spinner loading-xs mr-2"
+          ></span>
+          {{ grnConfirmModal.loading ? 'Creating GRN...' : 'Create GRN' }}
+        </button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Audit Trail Component - Direct usage without wrapper modal -->
   <POreturnItems
     :show="auditTrailModal.show"
@@ -1999,6 +2065,9 @@
   import { useSupplyRequestStore } from '../../stores/supplyRequestStore.js';
   import POreturnItems from '../../components/scm/POreturnItems.vue';
   import SupplierRatingModal from '../../components/scm/SupplierRatingModal.vue';
+  import { useRouter } from 'vue-router';
+
+  const router = useRouter();
 
   // Helper functions - Define these first
   const getPhilippineDateString = (date = null) => {
@@ -2152,8 +2221,14 @@
     'Cancelled',
   ];
 
-  // Active order statuses (exclude completed and cancelled)
-  const activeOrderStatuses = ['Draft', 'Sent', 'Confirmed', 'In Progress'];
+  // Active order statuses (include completed for GRN creation)
+  const activeOrderStatuses = [
+    'Draft',
+    'Sent',
+    'Confirmed',
+    'In Progress',
+    'Completed',
+  ];
 
   // History order statuses (only completed and cancelled)
   const historyOrderStatuses = ['Completed', 'Cancelled'];
@@ -2196,10 +2271,8 @@
   const filteredOrdersByDate = computed(() => {
     let filtered = [...purchaseOrderStore.purchaseOrders];
 
-    // Filter out completed and cancelled orders for active tab
-    filtered = filtered.filter(
-      (order) => order.status !== 'Completed' && order.status !== 'Cancelled'
-    );
+    // Only filter out cancelled orders for active tab (keep completed orders)
+    filtered = filtered.filter((order) => order.status !== 'Cancelled');
 
     // Date filter
     if (selectedDate.value) {
@@ -3937,6 +4010,74 @@
       console.error('Error refreshing data after rating:', error);
     }
   };
+
+  // Create GRN from completed PO
+  const createGRNFromPO = (order) => {
+    // Show confirmation modal first
+    grnConfirmModal.value = {
+      show: true,
+      order: order,
+      loading: false,
+    };
+    document.getElementById('grn_confirm_modal').showModal();
+  };
+
+  // Add the actual GRN creation function
+  const confirmCreateGRN = async () => {
+    const order = grnConfirmModal.value.order;
+
+    try {
+      grnConfirmModal.value.loading = true;
+
+      // Import the GRN store
+      const { useGRNStore } = await import('../../stores/grnStore.js');
+      const grnStore = useGRNStore();
+
+      // Get current user from auth store
+      const { useAuthStore } = await import('../../stores/authStore.js');
+      const authStore = useAuthStore();
+
+      const grnData = {
+        received_by: authStore.user.id,
+        received_date: new Date().toISOString().split('T')[0],
+        notes: `GRN created from PO ${order.po_number}`,
+        is_partial: false,
+      };
+
+      await grnStore.createGRNFromPO(order.id, grnData);
+
+      showToast(
+        'success',
+        `GRN created successfully from PO ${order.po_number}`
+      );
+
+      // Close modal and navigate to GRN page
+      closeGRNConfirmModal();
+      router.push('/scm/grn');
+    } catch (error) {
+      console.error('Error creating GRN:', error);
+      showToast('error', `Failed to create GRN: ${error.message}`);
+    } finally {
+      grnConfirmModal.value.loading = false;
+    }
+  };
+
+  // Add modal close function
+  const closeGRNConfirmModal = () => {
+    document.getElementById('grn_confirm_modal')?.close();
+    grnConfirmModal.value = {
+      show: false,
+      order: null,
+      loading: false,
+    };
+  };
+
+  // Add this state for the GRN confirmation modal
+  const grnConfirmModal = ref({
+    show: false,
+    order: null,
+    loading: false,
+  });
 </script>
 
 <style scoped>

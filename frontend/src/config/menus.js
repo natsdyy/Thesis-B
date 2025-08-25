@@ -89,6 +89,12 @@ export const menuItems = [
     route: '/scm/suppliers',
     department: 'Supply Chain',
   },
+  {
+    name: 'Goods Receipt Notes',
+    icon: ReceiptText,
+    route: '/scm/grn',
+    department: 'Supply Chain',
+  },
 
   // Finance Department
   {

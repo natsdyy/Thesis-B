@@ -36,6 +36,83 @@ router.get("/stats", async (req, res) => {
   }
 });
 
+// Get draft item types (pending approval)
+router.get("/item-types/draft", async (req, res) => {
+  try {
+    const draftItems = await Inventory.getDraftItemTypes();
+    res.json({
+      success: true,
+      data: draftItems,
+    });
+  } catch (error) {
+    console.error("Error fetching draft item types:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch draft item types",
+    });
+  }
+});
+
+// Approve item type
+router.patch("/item-types/:id/approve", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { approved_by, notes } = req.body;
+
+    if (!approved_by) {
+      return res.status(400).json({
+        success: false,
+        message: "approved_by is required",
+      });
+    }
+
+    const approvedItem = await Inventory.approveItemType(
+      id,
+      approved_by,
+      notes
+    );
+    res.json({
+      success: true,
+      data: approvedItem,
+      message: "Item type approved successfully",
+    });
+  } catch (error) {
+    console.error("Error approving item type:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to approve item type",
+    });
+  }
+});
+
+// Reject item type
+router.patch("/item-types/:id/reject", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rejected_by, notes } = req.body;
+
+    if (!rejected_by) {
+      return res.status(400).json({
+        success: false,
+        message: "rejected_by is required",
+      });
+    }
+
+    const rejectedItem = await Inventory.rejectItemType(id, rejected_by, notes);
+    res.json({
+      success: true,
+      data: rejectedItem,
+      message: "Item type rejected successfully",
+    });
+  } catch (error) {
+    console.error("Error rejecting item type:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to reject item type",
+    });
+  }
+});
+
 // Get item types by category
 router.get("/categories/:categoryId/item-types", async (req, res) => {
   try {

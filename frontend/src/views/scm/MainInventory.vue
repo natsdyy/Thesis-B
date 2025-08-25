@@ -794,6 +794,9 @@
           batches: [],
           expanded: expandedItems.value.has(batch.item_type_id),
           expiring_soon_count: 0,
+          receipts_count: 0, // Initialize receipts_count
+          first_received_at: null, // Initialize first_received_at
+          status: 'active', // Default to active
         };
       }
 
@@ -806,6 +809,19 @@
         if (daysUntilExpiry <= 7 && daysUntilExpiry > 0) {
           grouped[itemKey].expiring_soon_count++;
         }
+      }
+
+      // Update receipts_count and first_received_at
+      const itemType = itemTypes.value.find(
+        (type) => type.id === batch.item_type_id
+      );
+      if (itemType) {
+        grouped[itemKey].receipts_count = parseInt(
+          itemType.receipts_count || 0,
+          10
+        );
+        grouped[itemKey].first_received_at = itemType.first_received_at;
+        grouped[itemKey].status = itemType.status;
       }
     });
 
@@ -880,6 +896,7 @@
       expired: 'badge-sm border-none font-medium bg-error/20 text-error',
       damaged: 'badge-sm border-none font-medium bg-error/20 text-error',
       consumed: 'badge-sm border-none font-medium bg-neutral/20 text-neutral',
+      draft: 'badge-sm border-none font-medium bg-info/20 text-info',
     };
     return (
       colors[status] ||

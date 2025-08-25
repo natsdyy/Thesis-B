@@ -464,17 +464,7 @@
                           >Edit</a
                         >
                       </li>
-                      <!-- Only show Return Item for completed orders -->
-                      <li
-                        v-if="order.status === 'Completed'"
-                        class="hover:bg-black/10"
-                      >
-                        <a
-                          @click="openReturnModal(order)"
-                          class="text-error text-xs sm:text-sm"
-                          >Return Item</a
-                        >
-                      </li>
+                      <!-- Return Item action moved to GRN workflow -->
                       <!-- Only show Create GRN for completed orders -->
                       <li
                         v-if="order.status === 'Completed'"
@@ -936,17 +926,7 @@
                           >View Receipt</a
                         >
                       </li>
-                      <!-- Show Return Item for completed orders -->
-                      <li
-                        v-if="order.status === 'Completed'"
-                        class="hover:bg-black/10"
-                      >
-                        <a
-                          @click="openReturnModal(order)"
-                          class="text-error text-xs sm:text-sm"
-                          >Return Item</a
-                        >
-                      </li>
+                      <!-- Return Item action moved to GRN workflow -->
                     </ul>
                   </div>
                 </div>
@@ -3532,6 +3512,15 @@
       updateHistoryQuickDateCounts();
 
       console.log('PurchaseOrder component mounted and data loaded');
+
+      // If navigated with returnsForPO query, open the audit trail pre-filtered
+      try {
+        const route = router.currentRoute?.value;
+        const poIdFromQuery = route?.query?.returnsForPO;
+        if (poIdFromQuery) {
+          openAuditTrailModal(Number(poIdFromQuery));
+        }
+      } catch (_) {}
     } catch (error) {
       console.error('Error loading data:', error);
       showToast('error', 'Failed to load data');

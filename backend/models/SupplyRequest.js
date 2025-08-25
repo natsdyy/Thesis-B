@@ -546,6 +546,76 @@ class SupplyRequest {
       );
     }
   }
+
+  static async updateSupplyRequestItemsWithInventoryData() {
+    const trx = await db.transaction();
+
+    try {
+      // Get all supply request items that don't have inventory_item_type_id populated
+      const unmappedItems = await trx("supply_request_items as sri")
+        .leftJoin("inventory_item_types as iit", "sri.item_type", "iit.name")
+        .select(
+          "sri.id as supply_request_item_id",
+          "sri.item_type",
+          "iit.id as inventory_item_type_id",
+          "iit.name as inventory_item_type_name"
+        )
+        .whereNull("sri.inventory_item_type_id")
+        .whereNotNull("iit.id");
+
+      let updatedCount = 0;
+
+      // Update each unmapped item with inventory data
+      for (const item of unmappedItems) {
+        await trx("supply_request_items")
+          .where("id", item.supply_request_item_id)
+          .update({
+            inventory_item_type_id: item.inventory_item_type_id,
+            updated_at: new Date(),
+          });
+        updatedCount++;
+      }
+
+      // Also try to match by case-insensitive comparison for items that weren't matched
+      const remainingUnmapped = await trx("supply_request_items as sri")
+        .leftJoin(
+          "inventory_item_types as iit",
+          trx.raw("LOWER(sri.item_type) = LOWER(iit.name)")
+        )
+        .select(
+          "sri.id as supply_request_item_id",
+          "sri.item_type",
+          "iit.id as inventory_item_type_id",
+          "iit.name as inventory_item_type_name"
+        )
+        .whereNull("sri.inventory_item_type_id")
+        .whereNotNull("iit.id");
+
+      for (const item of remainingUnmapped) {
+        await trx("supply_request_items")
+          .where("id", item.supply_request_item_id)
+          .update({
+            inventory_item_type_id: item.inventory_item_type_id,
+            updated_at: new Date(),
+          });
+        updatedCount++;
+      }
+
+      await trx.commit();
+
+      console.log(
+        `Updated ${updatedCount} supply request items with inventory data`
+      );
+      return updatedCount;
+    } catch (error) {
+      await trx.rollback();
+      console.error(
+        "Error updating supply request items with inventory data:",
+        error
+      );
+      throw error;
+    }
+  }
 }
 
 module.exports = SupplyRequest;

@@ -257,4 +257,45 @@ router.post("/:id/bulk-inspect", async (req, res) => {
   }
 });
 
+// Update GRN items with inventory data from supply request
+router.post("/:id/update-inventory-data", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const updatedCount =
+      await GoodsReceiptNote.updateGRNItemsWithInventoryData(id);
+
+    res.json({
+      success: true,
+      message: `Updated ${updatedCount} items with inventory data`,
+      updatedCount,
+    });
+  } catch (error) {
+    console.error("Error updating GRN inventory data:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update inventory data",
+    });
+  }
+});
+
+// Debug route to check supply request data for a GRN
+router.get("/:id/debug-supply-data", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const debugData = await GoodsReceiptNote.debugSupplyRequestData(id);
+
+    res.json({
+      success: true,
+      data: debugData,
+    });
+  } catch (error) {
+    console.error("Error debugging supply request data:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to debug supply request data",
+    });
+  }
+});
+
 module.exports = router;

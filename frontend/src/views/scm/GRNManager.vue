@@ -253,6 +253,12 @@
                       View Details
                     </button>
                     <button
+                      class="btn btn-outline btn-sm text-info hover:bg-info/10 font-thin hover:border-none hover:shadow-none"
+                      @click="openReturnsForGRN(grn)"
+                    >
+                      View Returns
+                    </button>
+                    <button
                       v-if="grn.status === 'draft'"
                       class="btn btn-sm btn-primary text-white font-thin shadow-none"
                       @click="updateStatus(grn.id, 'pending_inspection')"
@@ -407,7 +413,21 @@
 
           <!-- GRN Items Table -->
           <div v-if="selectedGRN.items && selectedGRN.items.length > 0">
-            <h4 class="font-semibold mb-3">GRN Items</h4>
+            <div class="flex justify-between items-center mb-3">
+              <h4 class="font-semibold">GRN Items</h4>
+              <button
+                v-if="hasUnmappedItems"
+                class="btn btn-xs btn-info text-white"
+                @click="updateInventoryData"
+                :disabled="updatingInventoryData"
+              >
+                <span
+                  v-if="updatingInventoryData"
+                  class="loading loading-spinner loading-xs mr-1"
+                ></span>
+                Auto-Map from Request
+              </button>
+            </div>
             <div class="overflow-x-auto">
               <table class="table table-sm table-zebra">
                 <thead>
@@ -418,6 +438,7 @@
                     <th>Unit Cost</th>
                     <th>Total Value</th>
                     <th>Quality Status</th>
+                    <th>Inventory Category</th>
                     <th>Item Type</th>
                     <th>Inspected By</th>
                     <th></th>
@@ -430,7 +451,7 @@
                         {{ item.po_item_name || item.item_type_name || 'N/A' }}
                       </div>
                       <div class="text-xs opacity-60">
-                        {{ item.po_unit || 'pcs' }}
+                        {{ item.po_unit || item.item_unit_of_measure || 'pcs' }}
                       </div>
                     </td>
                     <td>{{ item.ordered_quantity || 0 }}</td>
@@ -445,12 +466,26 @@
                       </span>
                     </td>
                     <td>
-                      <div v-if="item.item_type_id">
+                      <!-- Show auto-populated category if available -->
+                      <div v-if="item.category_name">
                         <span
-                          class="badge badge-success/10 text-success border-none"
-                          >Mapped</span
+                          class="badge badge-info/10 text-info border-none text-xs"
                         >
+                          {{ item.category_name }}
+                        </span>
                       </div>
+                      <div v-else class="text-xs text-black/30">Not mapped</div>
+                    </td>
+                    <td>
+                      <!-- Show auto-populated item type if available -->
+                      <div v-if="item.item_type_id && item.item_type_name">
+                        <span
+                          class="badge badge-success/10 text-success border-none text-xs"
+                        >
+                          {{ item.item_type_name }}
+                        </span>
+                      </div>
+                      <!-- Manual mapping interface for unmapped items -->
                       <div v-else class="flex items-center gap-2">
                         <select
                           class="select select-bordered select-xs w-40"
@@ -523,6 +558,33 @@
               All items have passed quality inspection and are ready to be added
               to inventory.
             </p>
+
+            <!-- Auto-mapping information -->
+            <div class="alert alert-info mb-3">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                class="stroke-current shrink-0 w-6 h-6"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                ></path>
+              </svg>
+              <div>
+                <h3 class="font-bold">Inventory Auto-Mapping</h3>
+                <div class="text-xs">
+                  Items are automatically mapped to inventory categories and
+                  types based on the original supply request data. This ensures
+                  consistency and reduces manual work. Items that couldn't be
+                  auto-mapped will need manual mapping.
+                </div>
+              </div>
+            </div>
+
             <button
               class="btn btn-success btn-sm"
               @click="completeGRN(selectedGRN.id)"
@@ -607,6 +669,7 @@
   import { useAuthStore } from '../../stores/authStore.js';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
   import { storeToRefs } from 'pinia';
+  import { getApiUrl } from '../../config/api.js';
   import {
     RefreshCcw,
     Calendar,
@@ -812,6 +875,8 @@
     return selectedGRN.value.items.some((i) => !i.item_type_id);
   });
 
+  const updatingInventoryData = ref(false);
+
   // Toast state (same as PurchaseOrder.vue)
   const toast = ref({ show: false, type: '', message: '' });
 
@@ -882,7 +947,55 @@
       detailsLoading.value = true;
       await ensureTypesLoaded();
       selectedGRN.value = await fetchGRNById(id);
-      // initialize selections for unmapped items
+
+      // Check if there are unmapped items and automatically update inventory data
+      const hasUnmapped = selectedGRN.value.items?.some(
+        (it) => !it.item_type_id
+      );
+      if (hasUnmapped) {
+        try {
+          // First, update supply request items with inventory data
+          const supplyResponse = await fetch(
+            getApiUrl('supply-requests/update-inventory-data'),
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+
+          if (supplyResponse.ok) {
+            // Then update GRN items with inventory data
+            const grnResponse = await fetch(
+              getApiUrl(`grn/${id}/update-inventory-data`),
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+              }
+            );
+
+            if (grnResponse.ok) {
+              // Refresh the GRN details with updated data
+              selectedGRN.value = await fetchGRNById(id);
+              showToast(
+                'success',
+                'Inventory data auto-mapped from supply request'
+              );
+            }
+          }
+        } catch (updateError) {
+          console.warn(
+            'Auto-mapping failed, continuing with manual mapping:',
+            updateError
+          );
+          // Continue with manual mapping if auto-mapping fails
+        }
+      }
+
+      // initialize selections for unmapped items (if any remain)
       itemCategorySelections.value = {};
       itemTypeSelections.value = {};
       selectedGRN.value.items?.forEach((it) => {
@@ -891,12 +1004,50 @@
           itemTypeSelections.value[it.id] = '';
         }
       });
+
       document.getElementById('grn_details_modal').showModal();
     } catch (err) {
       console.error('Error viewing GRN details:', err);
       showToast('error', 'Failed to load GRN details');
     } finally {
       detailsLoading.value = false;
+    }
+  };
+
+  // Open returns audit trail for this GRN's PO using existing PO returns component route
+  const openReturnsForGRN = async (grn) => {
+    try {
+      if (!grn?.purchase_order_id) {
+        showToast('error', 'No related purchase order found');
+        return;
+      }
+      // Lazy import PO view store and open the existing returns modal there if needed
+      const { usePurchaseOrderStore } = await import(
+        '../../stores/purchaseOrderStore.js'
+      );
+      const poStore = usePurchaseOrderStore();
+      await poStore.fetchItemReturns(grn.purchase_order_id);
+      // Navigate to PO view and open returns filtered by PO via query param
+      // Or emit a global event; simplest is route nav with anchor
+      try {
+        const { useRouter } = await import('vue-router');
+        const router = useRouter?.();
+        if (router) {
+          router.push({
+            path: '/scm/purchase-order',
+            query: { returnsForPO: grn.purchase_order_id },
+          });
+          showToast('success', 'Opening returns for related PO');
+        } else {
+          showToast('success', 'Returns loaded for related PO');
+        }
+      } catch (_) {
+        // No router context here; just show toast
+        showToast('success', 'Returns loaded for related PO');
+      }
+    } catch (e) {
+      console.error('Failed to open returns for GRN', e);
+      showToast('error', 'Failed to open returns');
     }
   };
 
@@ -972,6 +1123,37 @@
       } finally {
         updatingStatus.value = null;
       }
+    }
+  };
+
+  const updateInventoryData = async () => {
+    try {
+      updatingInventoryData.value = true;
+
+      // Call the backend method to update GRN items with inventory data
+      const response = await fetch(
+        getApiUrl(`grn/${selectedGRN.value.id}/update-inventory-data`),
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to update inventory data');
+      }
+
+      // Refresh the GRN details
+      selectedGRN.value = await fetchGRNById(selectedGRN.value.id);
+
+      showToast('success', 'Inventory data updated successfully');
+    } catch (error) {
+      console.error('Error updating inventory data:', error);
+      showToast('error', 'Failed to update inventory data');
+    } finally {
+      updatingInventoryData.value = false;
     }
   };
 

@@ -1575,7 +1575,7 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <DollarSign class="w-8 h-8 text-success" />
+          <PhilippinePeso class="w-8 h-8 text-success" />
         </div>
         <div class="stat-title text-black/50">Awaiting Receipt</div>
         <div class="stat-value text-success">

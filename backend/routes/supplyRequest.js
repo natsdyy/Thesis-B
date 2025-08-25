@@ -701,4 +701,25 @@ router.get("/status/:status", async (req, res) => {
   }
 });
 
+// Add this route to update supply request items with inventory data
+router.post("/update-inventory-data", async (req, res) => {
+  try {
+    const updatedCount =
+      await SupplyRequest.updateSupplyRequestItemsWithInventoryData();
+
+    res.json({
+      success: true,
+      message: `Updated ${updatedCount} supply request items with inventory data`,
+      updatedCount,
+    });
+  } catch (error) {
+    console.error("Error updating supply request inventory data:", error);
+    res.status(500).json({
+      success: false,
+      message:
+        error.message || "Failed to update supply request inventory data",
+    });
+  }
+});
+
 module.exports = router;

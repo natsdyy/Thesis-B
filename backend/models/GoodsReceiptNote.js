@@ -1,4 +1,5 @@
 const { db } = require("../config/database");
+const SupplyRequest = require("./SupplyRequest");
 
 class GoodsReceiptNote {
   // Generate unique GRN number
@@ -74,7 +75,7 @@ class GoodsReceiptNote {
     }
   }
 
-  // Get GRN items
+  // Get GRN items with enhanced inventory data
   static async getItems(grnId) {
     try {
       return await db("grn_items as gi")
@@ -84,6 +85,7 @@ class GoodsReceiptNote {
           "poi.id"
         )
         .leftJoin("inventory_item_types as it", "gi.item_type_id", "it.id")
+        .leftJoin("inventory_categories as ic", "it.category_id", "ic.id")
         .leftJoin("users as u", "gi.inspected_by", "u.id")
         .select(
           "gi.*",
@@ -91,6 +93,9 @@ class GoodsReceiptNote {
           "poi.quantity as po_quantity",
           "poi.unit as po_unit",
           "it.name as item_type_name",
+          "it.unit_of_measure as item_unit_of_measure",
+          "ic.name as category_name",
+          "ic.description as category_description",
           "u.name as inspector_name"
         )
         .where("gi.grn_id", grnId)
@@ -101,7 +106,7 @@ class GoodsReceiptNote {
     }
   }
 
-  // Create GRN from PO
+  // Create GRN from PO with auto-populated inventory data
   static async createFromPO(purchaseOrderId, grnData) {
     const trx = await db.transaction();
 
@@ -130,14 +135,32 @@ class GoodsReceiptNote {
         })
         .returning("*");
 
-      const poItems = await trx("purchase_order_items")
-        .where("purchase_order_id", purchaseOrderId)
-        .whereNull("deleted_at");
+      // Enhanced query to get PO items with supply request inventory data
+      const poItemsWithInventoryData = await trx("purchase_order_items as poi")
+        .leftJoin(
+          "supply_request_items as sri",
+          "poi.supply_request_item_id",
+          "sri.id"
+        )
+        .leftJoin(
+          "inventory_item_types as iit",
+          "sri.inventory_item_type_id",
+          "iit.id"
+        )
+        .select(
+          "poi.*",
+          "sri.inventory_item_type_id",
+          "iit.name as item_type_name",
+          "iit.unit_of_measure as item_unit_of_measure"
+        )
+        .where("poi.purchase_order_id", purchaseOrderId)
+        .whereNull("poi.deleted_at");
 
-      const grnItems = poItems.map((item) => ({
+      const grnItems = poItemsWithInventoryData.map((item) => ({
         grn_id: grn.id,
         purchase_order_item_id: item.id,
-        item_type_id: null,
+        // Auto-populate item_type_id from supply request data
+        item_type_id: item.inventory_item_type_id || null,
         received_quantity: grnData.is_partial ? 0 : item.quantity,
         ordered_quantity: item.quantity,
         unit_cost: item.unit_price,
@@ -322,6 +345,48 @@ class GoodsReceiptNote {
         updated_at: new Date(),
       });
 
+      // If the item failed inspection, ensure an item return is recorded
+      if (result === "failed") {
+        // Load required context for creating an item return
+        const ctx = await trx("grn_items as gi")
+          .leftJoin("goods_receipt_notes as grn", "gi.grn_id", "grn.id")
+          .leftJoin(
+            "purchase_order_items as poi",
+            "gi.purchase_order_item_id",
+            "poi.id"
+          )
+          .select(
+            "grn.purchase_order_id as purchase_order_id",
+            "gi.purchase_order_item_id as purchase_order_item_id",
+            trx.ref("poi.quantity").as("po_quantity")
+          )
+          .where("gi.id", grnItemId)
+          .first();
+
+        if (ctx && ctx.purchase_order_id && ctx.purchase_order_item_id) {
+          // Avoid duplicate returns for the same PO item
+          const existing = await trx("item_returns")
+            .where({ purchase_order_item_id: ctx.purchase_order_item_id })
+            .whereNull("deleted_at")
+            .first();
+
+          if (!existing) {
+            await trx("item_returns").insert({
+              purchase_order_id: ctx.purchase_order_id,
+              purchase_order_item_id: ctx.purchase_order_item_id,
+              return_quantity:
+                updatedItem?.ordered_quantity || ctx.po_quantity || 0,
+              return_reason: "Quality Failed",
+              notes: notes || null,
+              logged_by: "Quality Inspection",
+              status: "Pending",
+              created_at: new Date(),
+              updated_at: new Date(),
+            });
+          }
+        }
+      }
+
       // Check if all items in the GRN have been inspected
       const allItems = await trx("grn_items")
         .where("grn_id", grnId)
@@ -403,6 +468,46 @@ class GoodsReceiptNote {
         });
       }
 
+      // If failed, create returns for all items
+      if (result === "failed") {
+        const ctxRows = await trx("grn_items as gi")
+          .leftJoin("goods_receipt_notes as grn", "gi.grn_id", "grn.id")
+          .leftJoin(
+            "purchase_order_items as poi",
+            "gi.purchase_order_item_id",
+            "poi.id"
+          )
+          .select(
+            "gi.id as grn_item_id",
+            "grn.purchase_order_id as purchase_order_id",
+            "gi.purchase_order_item_id as purchase_order_item_id",
+            trx.ref("poi.quantity").as("po_quantity")
+          )
+          .where("gi.grn_id", grnId);
+
+        for (const ctx of ctxRows) {
+          if (ctx.purchase_order_id && ctx.purchase_order_item_id) {
+            const exists = await trx("item_returns")
+              .where({ purchase_order_item_id: ctx.purchase_order_item_id })
+              .whereNull("deleted_at")
+              .first();
+            if (!exists) {
+              await trx("item_returns").insert({
+                purchase_order_id: ctx.purchase_order_id,
+                purchase_order_item_id: ctx.purchase_order_item_id,
+                return_quantity: ctx.po_quantity || 0,
+                return_reason: "Quality Failed",
+                notes: notes || null,
+                logged_by: "Quality Inspection",
+                status: "Pending",
+                created_at: new Date(),
+                updated_at: new Date(),
+              });
+            }
+          }
+        }
+      }
+
       // Update GRN status
       await trx("goods_receipt_notes").where("id", grnId).update({
         status: result,
@@ -463,6 +568,128 @@ class GoodsReceiptNote {
     } catch (error) {
       await trx.rollback();
       console.error("Error mapping GRN item type:", error);
+      throw error;
+    }
+  }
+
+  // Update existing GRN items with inventory data from supply request
+  static async updateGRNItemsWithInventoryData(grnId) {
+    const trx = await db.transaction();
+
+    try {
+      // First, try to update any supply request items that don't have inventory data
+      const supplyUpdated =
+        await SupplyRequest.updateSupplyRequestItemsWithInventoryData();
+      console.log(
+        `Updated ${supplyUpdated} supply request items with inventory data`
+      );
+
+      // Get GRN items that don't have item_type_id populated
+      const unmappedItems = await trx("grn_items as gi")
+        .leftJoin(
+          "purchase_order_items as poi",
+          "gi.purchase_order_item_id",
+          "poi.id"
+        )
+        .leftJoin(
+          "supply_request_items as sri",
+          "poi.supply_request_item_id",
+          "sri.id"
+        )
+        .leftJoin(
+          "inventory_item_types as iit",
+          "sri.inventory_item_type_id",
+          "iit.id"
+        )
+        .select(
+          "gi.id as grn_item_id",
+          "sri.inventory_item_type_id",
+          "iit.name as item_type_name",
+          "sri.item_type as supply_request_item_type",
+          "poi.item_name as po_item_name"
+        )
+        .where("gi.grn_id", grnId)
+        .whereNull("gi.item_type_id");
+
+      console.log(
+        `Found ${unmappedItems.length} unmapped GRN items:`,
+        unmappedItems
+      );
+
+      let updatedCount = 0;
+      // Update each unmapped item with inventory data
+      for (const item of unmappedItems) {
+        if (item.inventory_item_type_id) {
+          await trx("grn_items").where("id", item.grn_item_id).update({
+            item_type_id: item.inventory_item_type_id,
+            updated_at: new Date(),
+          });
+          updatedCount++;
+          console.log(
+            `Updated GRN item ${item.grn_item_id} (${item.po_item_name}) with inventory type ${item.item_type_name}`
+          );
+        } else {
+          console.log(
+            `No inventory type found for GRN item ${item.grn_item_id} (${item.po_item_name}), supply request item type: ${item.supply_request_item_type}`
+          );
+        }
+      }
+
+      await trx.commit();
+
+      console.log(
+        `Updated ${updatedCount} GRN items with inventory data for GRN ${grnId}`
+      );
+      return updatedCount;
+    } catch (error) {
+      await trx.rollback();
+      console.error("Error updating GRN items with inventory data:", error);
+      throw error;
+    }
+  }
+
+  // Debug method to check supply request inventory data
+  static async debugSupplyRequestData(grnId) {
+    try {
+      const grn = await db("goods_receipt_notes").where("id", grnId).first();
+
+      if (!grn) {
+        throw new Error("GRN not found");
+      }
+
+      const debugData = await db("grn_items as gi")
+        .leftJoin(
+          "purchase_order_items as poi",
+          "gi.purchase_order_item_id",
+          "poi.id"
+        )
+        .leftJoin(
+          "supply_request_items as sri",
+          "poi.supply_request_item_id",
+          "sri.id"
+        )
+        .leftJoin(
+          "inventory_item_types as iit",
+          "sri.inventory_item_type_id",
+          "iit.id"
+        )
+        .select(
+          "gi.id as grn_item_id",
+          "gi.item_type_id as current_item_type_id",
+          "poi.item_name as po_item_name",
+          "sri.item_type as supply_request_item_type",
+          "sri.inventory_item_type_id as supply_request_inventory_type_id",
+          "iit.name as inventory_item_type_name"
+        )
+        .where("gi.grn_id", grnId);
+
+      return {
+        grn_id: grnId,
+        purchase_order_id: grn.purchase_order_id,
+        items: debugData,
+      };
+    } catch (error) {
+      console.error("Error debugging supply request data:", error);
       throw error;
     }
   }

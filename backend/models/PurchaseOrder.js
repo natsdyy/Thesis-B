@@ -24,10 +24,18 @@ class PurchaseOrder {
 
       const purchaseOrders = await query.orderBy("po.created_at", "desc");
 
-      // Get items for each purchase order
+      // Get items and GRN count for each purchase order
       for (let po of purchaseOrders) {
         po.items = await this.getItems(po.id);
         po.item_count = po.items.length;
+
+        // Add GRN count
+        const grnCount = await db("goods_receipt_notes")
+          .where("purchase_order_id", po.id)
+          .whereNull("deleted_at")
+          .count("* as count")
+          .first();
+        po.grn_count = parseInt(grnCount.count);
       }
 
       return purchaseOrders;

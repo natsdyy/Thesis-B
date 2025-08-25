@@ -453,9 +453,12 @@
                           >View Receipt</a
                         >
                       </li>
-                      <!-- Only show Edit for non-cancelled orders -->
+                      <!-- Only show Edit for non-cancelled and non-completed orders -->
                       <li
-                        v-if="order.status !== 'Cancelled'"
+                        v-if="
+                          order.status !== 'Cancelled' &&
+                          order.status !== 'Completed'
+                        "
                         class="hover:bg-black/10"
                       >
                         <a
@@ -464,7 +467,6 @@
                           >Edit</a
                         >
                       </li>
-                      <!-- Return Item action moved to GRN workflow -->
                       <!-- Only show Create GRN for completed orders -->
                       <li
                         v-if="order.status === 'Completed'"
@@ -476,9 +478,12 @@
                           >Create GRN</a
                         >
                       </li>
-                      <!-- Only show Cancel Order for non-cancelled orders -->
+                      <!-- Only show Cancel Order for non-cancelled and non-completed orders -->
                       <li
-                        v-if="order.status !== 'Cancelled'"
+                        v-if="
+                          order.status !== 'Cancelled' &&
+                          order.status !== 'Completed'
+                        "
                         class="hover:bg-black/10"
                       >
                         <a

@@ -665,6 +665,7 @@
 
 <script setup>
   import { onMounted, ref, computed, watch } from 'vue';
+  import { useRouter } from 'vue-router';
   import { useGRNStore } from '../../stores/grnStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
@@ -681,6 +682,7 @@
     ClockFading,
   } from 'lucide-vue-next';
 
+  const router = useRouter();
   const grnStore = useGRNStore();
   const authStore = useAuthStore();
   const inventoryStore = useInventoryStore();
@@ -1027,24 +1029,13 @@
       );
       const poStore = usePurchaseOrderStore();
       await poStore.fetchItemReturns(grn.purchase_order_id);
-      // Navigate to PO view and open returns filtered by PO via query param
-      // Or emit a global event; simplest is route nav with anchor
-      try {
-        const { useRouter } = await import('vue-router');
-        const router = useRouter?.();
-        if (router) {
-          router.push({
-            path: '/scm/purchase-order',
-            query: { returnsForPO: grn.purchase_order_id },
-          });
-          showToast('success', 'Opening returns for related PO');
-        } else {
-          showToast('success', 'Returns loaded for related PO');
-        }
-      } catch (_) {
-        // No router context here; just show toast
-        showToast('success', 'Returns loaded for related PO');
-      }
+
+      // Use the router instance directly instead of trying to import it dynamically
+      router.push({
+        path: '/scm/purchase-order',
+        query: { returnsForPO: grn.purchase_order_id },
+      });
+      showToast('success', 'Opening returns for related PO');
     } catch (e) {
       console.error('Failed to open returns for GRN', e);
       showToast('error', 'Failed to open returns');

@@ -121,15 +121,35 @@ class Inventory {
     }
   }
 
+  static generateBatchNumber(itemTypeId, supplierId, date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hour = String(date.getHours()).padStart(2, "0");
+    const minute = String(date.getMinutes()).padStart(2, "0");
+
+    // Format: ITEM-SUPPLIER-YYYYMMDD-HHMM
+    return `ITEM-${itemTypeId}-${supplierId || "NONE"}-${year}${month}${day}-${hour}${minute}`;
+  }
+
   // Add inventory item (usually from PO receipt)
   static async addInventoryItem(itemData) {
     try {
+      // Generate batch number if not provided
+      const batchNumber =
+        itemData.batch_number ||
+        this.generateBatchNumber(
+          itemData.item_type_id,
+          itemData.supplier_id,
+          itemData.received_date ? new Date(itemData.received_date) : new Date()
+        );
+
       const [newItem] = await db("inventory_items")
         .insert({
           item_type_id: itemData.item_type_id,
           supplier_id: itemData.supplier_id || null,
           purchase_order_id: itemData.purchase_order_id || null,
-          batch_number: itemData.batch_number || null,
+          batch_number: batchNumber, // Use generated batch number
           quantity: itemData.quantity,
           unit_cost: itemData.unit_cost,
           total_value: itemData.quantity * itemData.unit_cost,

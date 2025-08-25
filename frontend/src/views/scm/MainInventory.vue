@@ -25,7 +25,7 @@
             class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-primaryColor"
           />
         </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">
+        <div class="stat-title text-black/50 !text-xs sm:text-sm">
           Total Items
         </div>
         <div
@@ -33,7 +33,7 @@
         >
           {{ stats.total_item_types || 0 }}
         </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
+        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
           Unique item types
         </div>
       </div>
@@ -52,7 +52,7 @@
         >
           {{ stats.total_inventory_entries || 0 }}
         </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
+        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
           Stock entries
         </div>
       </div>
@@ -65,7 +65,7 @@
             class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-warning"
           />
         </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">
+        <div class="stat-title text-black/50 !text-xs sm:text-sm">
           Expiring Soon
         </div>
         <div
@@ -73,7 +73,7 @@
         >
           {{ stats.expiring_soon_count || 0 }}
         </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
+        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
           Within 7 days
         </div>
       </div>
@@ -84,13 +84,13 @@
         <div class="stat-figure">
           <XCircle class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-error" />
         </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">Expired</div>
+        <div class="stat-title text-black/50 !text-xs sm:text-sm">Expired</div>
         <div
           class="stat-value text-error text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
           {{ stats.expired_count || 0 }}
         </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
+        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
           Items expired
         </div>
       </div>
@@ -103,7 +103,7 @@
             class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-black/80"
           />
         </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">
+        <div class="stat-title text-black/50 !text-xs sm:text-sm">
           Total Value
         </div>
         <div
@@ -111,7 +111,7 @@
         >
           ₱{{ (stats.total_available_value || 0).toLocaleString() }}
         </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
+        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
           Available stock
         </div>
       </div>
@@ -123,7 +123,7 @@
     >
       <button
         @click="openConsumptionModal"
-        class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor hover:text-white"
+        class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
         :disabled="loading"
       >
         <Minus class="w-4 h-4 mr-1" />
@@ -131,7 +131,7 @@
       </button>
       <button
         @click="openAdjustmentModal"
-        class="btn btn-sm btn-outline text-warning hover:bg-warning hover:text-white"
+        class="btn btn-outline btn-sm text-warning hover:bg-warning/10 font-thin hover:border-none hover:shadow-none"
         :disabled="loading"
       >
         <RefreshCcw class="w-4 h-4 mr-1" />
@@ -139,7 +139,7 @@
       </button>
       <button
         @click="refreshData"
-        class="btn btn-sm btn-outline text-info hover:bg-info hover:text-white"
+        class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
         :disabled="loading"
       >
         <RefreshCcw class="w-4 h-4 mr-1" />
@@ -256,7 +256,7 @@
 
             <!-- Search and Filters -->
             <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              <div class="join">
+              <div class="join w-full">
                 <input
                   v-model="searchQuery"
                   type="text"
@@ -284,91 +284,178 @@
             </div>
           </div>
 
-          <!-- Inventory Table -->
-          <div class="overflow-x-auto">
-            <table class="table table-zebra w-full">
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th>Category</th>
-                  <th>Quantity</th>
-                  <th>Unit Cost</th>
-                  <th>Total Value</th>
-                  <th>Supplier</th>
-                  <th>Expiry</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="item in paginatedInventory"
-                  :key="item.id"
-                  class="hover:bg-base-200"
-                >
-                  <td>
-                    <div>
-                      <div class="font-medium">{{ item.item_type_name }}</div>
-                      <div class="text-sm text-gray-500">
-                        {{ item.unit_of_measure }}
-                      </div>
+          <!-- Grouped Inventory Display -->
+          <div class="space-y-4">
+            <div
+              v-for="item in groupedInventory"
+              :key="item.id"
+              class="inventory-group border border-gray-200 rounded-lg overflow-hidden"
+            >
+              <!-- Item Header (Collapsible) -->
+              <div
+                class="item-header cursor-pointer hover:bg-base-200 transition-colors"
+                @click="toggleItem(item.id)"
+              >
+                <div class="flex justify-between items-center p-4 bg-base-100">
+                  <div class="flex-1">
+                    <h3 class="font-semibold text-primaryColor text-lg">
+                      {{ item.item_type_name }}
+                    </h3>
+                    <p class="text-sm text-gray-600">
+                      {{ item.category_name }} • {{ item.unit_of_measure }}
+                    </p>
+                  </div>
+                  <div class="text-right mr-4">
+                    <div class="text-xl font-bold text-primaryColor">
+                      {{ parseFloat(item.total_quantity).toLocaleString() }}
                     </div>
-                  </td>
-                  <td>{{ item.category_name }}</td>
-                  <td>
-                    <span class="font-medium">
-                      {{ parseFloat(item.quantity).toLocaleString() }}
-                    </span>
-                  </td>
-                  <td>₱{{ parseFloat(item.unit_cost).toLocaleString() }}</td>
-                  <td>₱{{ parseFloat(item.total_value).toLocaleString() }}</td>
-                  <td>{{ item.supplier_name || 'N/A' }}</td>
-                  <td>
+                    <div class="text-sm text-gray-600">Total Stock</div>
+                  </div>
+                  <div class="flex items-center gap-2">
                     <span
-                      v-if="item.expiry_date"
-                      :class="getExpiryColor(item.expiry_date)"
+                      v-if="item.expiring_soon_count > 0"
+                      class="badge badge-warning badge-sm"
                     >
-                      {{ formatDate(item.expiry_date) }}
+                      {{ item.expiring_soon_count }} expiring
                     </span>
-                    <span v-else class="text-gray-500">N/A</span>
-                  </td>
-                  <td>
-                    <span :class="getStatusColor(item.status)" class="badge">
-                      {{ item.status }}
-                    </span>
-                  </td>
-                  <td>
-                    <div class="dropdown dropdown-end">
-                      <button class="btn btn-ghost btn-xs">
-                        <EllipsisVertical class="w-4 h-4" />
-                      </button>
-                      <ul
-                        class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-52"
+                    <ChevronDown
+                      v-if="!item.expanded"
+                      class="w-5 h-5 text-gray-500"
+                    />
+                    <ChevronUp v-else class="w-5 h-5 text-gray-500" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Batch Details (Expandable) -->
+              <div v-if="item.expanded" class="batch-details bg-base-50">
+                <div class="overflow-x-auto">
+                  <table class="table table-zebra w-full table-xs">
+                    <thead>
+                      <tr class="bg-base-200">
+                        <th>Batch/Lot #</th>
+                        <th>Quantity</th>
+                        <th>Expiry Date</th>
+                        <th>Received Date</th>
+                        <th>Supplier</th>
+                        <th>Unit Cost</th>
+                        <th>Total Value</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="batch in item.batches"
+                        :key="batch.id"
+                        :class="getBatchRowClass(batch)"
+                        class="hover:bg-base-100"
                       >
-                        <li>
-                          <button @click="viewItemDetails(item)">
-                            <MessageSquare class="w-4 h-4" />
-                            View Details
-                          </button>
-                        </li>
-                        <li>
-                          <button @click="adjustItem(item)">
-                            <RefreshCcw class="w-4 h-4" />
-                            Adjust Stock
-                          </button>
-                        </li>
-                        <li>
-                          <button @click="consumeItem(item)">
-                            <Minus class="w-4 h-4" />
-                            Record Usage
-                          </button>
-                        </li>
-                      </ul>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+                        <td>
+                          <span class="font-mono text-sm">{{
+                            batch.batch_number || 'N/A'
+                          }}</span>
+                        </td>
+                        <td>
+                          <span class="font-medium">
+                            {{ parseFloat(batch.quantity).toLocaleString() }}
+                          </span>
+                        </td>
+                        <td>
+                          <span
+                            :class="getExpiryColor(batch.expiry_date)"
+                            class="font-medium"
+                          >
+                            {{ formatDate(batch.expiry_date) }}
+                          </span>
+                        </td>
+                        <td>
+                          <span class="text-sm text-gray-600">
+                            {{ formatDate(batch.received_date) }}
+                          </span>
+                        </td>
+                        <td>
+                          <span class="text-sm">{{
+                            batch.supplier_name || 'N/A'
+                          }}</span>
+                        </td>
+                        <td>
+                          <span class="text-sm"
+                            >₱{{
+                              parseFloat(batch.unit_cost || 0).toLocaleString()
+                            }}</span
+                          >
+                        </td>
+                        <td>
+                          <span class="font-medium"
+                            >₱{{
+                              parseFloat(
+                                batch.total_value || 0
+                              ).toLocaleString()
+                            }}</span
+                          >
+                        </td>
+                        <td>
+                          <span
+                            :class="getStatusColor(batch.status)"
+                            class="badge badge-xs"
+                          >
+                            {{ batch.status }}
+                          </span>
+                        </td>
+                        <td>
+                          <div class="dropdown dropdown-end">
+                            <button class="btn btn-ghost btn-xs">
+                              <EllipsisVertical class="w-3 h-3" />
+                            </button>
+                            <ul
+                              class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-40 z-50"
+                            >
+                              <li>
+                                <button
+                                  @click="consumeBatch(batch)"
+                                  class="text-sm"
+                                >
+                                  <Minus class="w-3 h-3 mr-1" />
+                                  Consume
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  @click="adjustBatch(batch)"
+                                  class="text-sm"
+                                >
+                                  <RefreshCcw class="w-3 h-3 mr-1" />
+                                  Adjust
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  @click="viewBatchDetails(batch)"
+                                  class="text-sm"
+                                >
+                                  <MessageSquare class="w-3 h-3 mr-1" />
+                                  Details
+                                </button>
+                              </li>
+                            </ul>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- Empty State -->
+            <div v-if="groupedInventory.length === 0" class="text-center py-12">
+              <Package class="w-16 h-16 mx-auto text-gray-400 mb-4" />
+              <h3 class="text-lg font-medium text-gray-600 mb-2">
+                No inventory found
+              </h3>
+              <p class="text-gray-500">Try adjusting your search or filters</p>
+            </div>
           </div>
 
           <!-- Pagination -->
@@ -636,6 +723,8 @@
     BarChart3,
     History,
     TrendingDown,
+    ChevronDown,
+    ChevronUp,
   } from 'lucide-vue-next';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
   import InventoryConsumptionModal from '../../components/scm/InventoryConsumptionModal.vue';
@@ -663,6 +752,7 @@
   const itemsPerPage = ref(12);
   const searchQuery = ref('');
   const categoryFilter = ref('');
+  const expandedItems = ref(new Set());
 
   // Modal state
   const modal = ref({
@@ -687,33 +777,71 @@
   // Toast state
   const toast = ref({ show: false, type: '', message: '' });
 
-  // Computed properties
-  const filteredInventory = computed(() => {
-    // Add null check to prevent "not iterable" error
-    let filtered = [...(currentInventory.value || [])];
+  // Computed properties for grouped inventory
+  const groupedInventory = computed(() => {
+    const grouped = {};
 
-    // Search filter
+    // Group inventory by item type
+    currentInventory.value?.forEach((batch) => {
+      const itemKey = batch.item_type_id;
+      if (!grouped[itemKey]) {
+        grouped[itemKey] = {
+          id: batch.item_type_id,
+          item_type_name: batch.item_type_name,
+          category_name: batch.category_name,
+          unit_of_measure: batch.unit_of_measure,
+          total_quantity: 0,
+          batches: [],
+          expanded: expandedItems.value.has(batch.item_type_id),
+          expiring_soon_count: 0,
+        };
+      }
+
+      grouped[itemKey].batches.push(batch);
+      grouped[itemKey].total_quantity += parseFloat(batch.quantity || 0);
+
+      // Count expiring soon items
+      if (batch.expiry_date) {
+        const daysUntilExpiry = getDaysUntilExpiry(batch.expiry_date);
+        if (daysUntilExpiry <= 7 && daysUntilExpiry > 0) {
+          grouped[itemKey].expiring_soon_count++;
+        }
+      }
+    });
+
+    // Sort batches by expiry date (FEFO - First Expired, First Out)
+    Object.values(grouped).forEach((item) => {
+      item.batches.sort((a, b) => {
+        if (!a.expiry_date && !b.expiry_date) return 0;
+        if (!a.expiry_date) return 1;
+        if (!b.expiry_date) return -1;
+        return new Date(a.expiry_date) - new Date(b.expiry_date);
+      });
+    });
+
+    // Filter based on search and category
+    let filtered = Object.values(grouped);
+
     if (searchQuery.value) {
       const query = searchQuery.value.toLowerCase();
       filtered = filtered.filter(
         (item) =>
           item.item_type_name?.toLowerCase().includes(query) ||
           item.category_name?.toLowerCase().includes(query) ||
-          item.supplier_name?.toLowerCase().includes(query) ||
-          item.batch_number?.toLowerCase().includes(query)
+          item.batches.some(
+            (batch) =>
+              batch.batch_number?.toLowerCase().includes(query) ||
+              batch.supplier_name?.toLowerCase().includes(query)
+          )
       );
     }
 
-    // Category filter - Add null check for categories
-    if (categoryFilter.value && categories.value) {
-      const selectedCategory = categories.value.find(
-        (cat) => cat.id == categoryFilter.value
+    if (categoryFilter.value) {
+      filtered = filtered.filter(
+        (item) =>
+          item.category_name ===
+          categories.value?.find((cat) => cat.id == categoryFilter.value)?.name
       );
-      if (selectedCategory) {
-        filtered = filtered.filter(
-          (item) => item.category_name === selectedCategory.name
-        );
-      }
     }
 
     return filtered;
@@ -721,11 +849,11 @@
 
   const paginatedInventory = computed(() => {
     const start = (currentPage.value - 1) * itemsPerPage.value;
-    return filteredInventory.value.slice(start, start + itemsPerPage.value);
+    return groupedInventory.value.slice(start, start + itemsPerPage.value);
   });
 
   const totalPages = computed(() => {
-    return Math.ceil(filteredInventory.value.length / itemsPerPage.value);
+    return Math.ceil(groupedInventory.value.length / itemsPerPage.value);
   });
 
   // Helper functions
@@ -738,28 +866,55 @@
     });
   };
 
+  const getDaysUntilExpiry = (expiryDate) => {
+    if (!expiryDate) return Infinity;
+    const today = new Date();
+    const expiry = new Date(expiryDate);
+    return Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+  };
+
   const getStatusColor = (status) => {
     const colors = {
-      available: 'badge-success',
-      reserved: 'badge-warning',
-      expired: 'badge-error',
-      damaged: 'badge-error',
-      consumed: 'badge-neutral',
+      available: 'badge-sm border-none font-medium bg-success/20 text-success',
+      reserved: 'badge-sm border-none font-medium bg-warning/20 text-warning',
+      expired: 'badge-sm border-none font-medium bg-error/20 text-error',
+      damaged: 'badge-sm border-none font-medium bg-error/20 text-error',
+      consumed: 'badge-sm border-none font-medium bg-neutral/20 text-neutral',
     };
-    return colors[status] || 'badge-neutral';
+    return (
+      colors[status] ||
+      'badge-sm border-none font-medium bg-neutral/20 text-neutral'
+    );
   };
 
   const getExpiryColor = (expiryDate) => {
-    if (!expiryDate) return 'text-black';
+    if (!expiryDate) return 'text-gray-500';
 
-    const today = new Date();
-    const expiry = new Date(expiryDate);
-    const daysUntilExpiry = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+    const daysUntilExpiry = getDaysUntilExpiry(expiryDate);
 
-    if (daysUntilExpiry < 0) return 'text-error';
+    if (daysUntilExpiry < 0) return 'text-error font-bold';
     if (daysUntilExpiry <= 3) return 'text-error';
     if (daysUntilExpiry <= 7) return 'text-warning';
     return 'text-success';
+  };
+
+  const getBatchRowClass = (batch) => {
+    if (!batch.expiry_date) return '';
+
+    const daysUntilExpiry = getDaysUntilExpiry(batch.expiry_date);
+    if (daysUntilExpiry < 0) return 'bg-error/10';
+    if (daysUntilExpiry <= 3) return 'bg-error/5';
+    if (daysUntilExpiry <= 7) return 'bg-warning/5';
+    return '';
+  };
+
+  // Toggle item expansion
+  const toggleItem = (itemId) => {
+    if (expandedItems.value.has(itemId)) {
+      expandedItems.value.delete(itemId);
+    } else {
+      expandedItems.value.add(itemId);
+    }
   };
 
   // Show toast helper
@@ -783,8 +938,23 @@
     modal.value = { type: null, show: false, item: null };
   };
 
+  // Batch-specific actions
+  const consumeBatch = (batch) => {
+    modal.value = { type: 'consumption', show: true, item: batch };
+  };
+
+  const adjustBatch = (batch) => {
+    modal.value = { type: 'adjustment', show: true, item: batch };
+  };
+
+  const viewBatchDetails = (batch) => {
+    showToast(
+      'info',
+      `Viewing details for batch ${batch.batch_number || 'N/A'}`
+    );
+  };
+
   const viewItemDetails = (item) => {
-    // TODO: Implement item details view
     showToast('info', `Viewing details for ${item.item_type_name}`);
   };
 

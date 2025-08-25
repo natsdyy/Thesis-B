@@ -573,12 +573,21 @@ class PurchaseOrder {
 
   // Helper method to add individual inventory item
   static async addInventoryItem(trx, itemData) {
+    // Generate batch number if not provided
+    const batchNumber =
+      itemData.batch_number ||
+      this.generateBatchNumber(
+        itemData.item_type_id,
+        itemData.supplier_id,
+        itemData.received_date ? new Date(itemData.received_date) : new Date()
+      );
+
     const [newItem] = await trx("inventory_items")
       .insert({
         item_type_id: itemData.item_type_id,
         supplier_id: itemData.supplier_id || null,
         purchase_order_id: itemData.purchase_order_id || null,
-        batch_number: itemData.batch_number || null,
+        batch_number: batchNumber, // Use generated batch number
         quantity: itemData.quantity,
         unit_cost: itemData.unit_cost,
         total_value: itemData.quantity * itemData.unit_cost,
@@ -609,6 +618,21 @@ class PurchaseOrder {
     });
 
     return newItem;
+  }
+
+  // Add this function at the top of the PurchaseOrder class
+  static generateBatchNumber(
+    itemTypeId,
+    supplierId,
+    poNumber,
+    date = new Date()
+  ) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+
+    // Format: PO-ITEM-SUPPLIER-YYYYMMDD
+    return `PO-${poNumber}-ITEM-${itemTypeId}-${supplierId || "NONE"}-${year}${month}${day}`;
   }
 }
 

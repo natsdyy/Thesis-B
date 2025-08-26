@@ -458,11 +458,8 @@
                       <div class="font-medium">
                         {{ item.po_item_name || item.item_type_name || 'N/A' }}
                       </div>
-                      <div class="text-xs opacity-60">
-                        {{ item.po_unit || item.item_unit_of_measure || 'pcs' }}
-                      </div>
                     </td>
-                    <td>{{ item.ordered_quantity || 0 }}</td>
+                    <td>{{ item.ordered_quantity || 0 }} /</td>
                     <td>{{ item.received_quantity || 0 }}</td>
                     <td>₱{{ (item.unit_cost || 0).toLocaleString() }}</td>
                     <td>₱{{ (item.total_value || 0).toLocaleString() }}</td>

@@ -1,3 +1,378 @@
+<script setup>
+  import { ref, computed, onMounted, watch } from 'vue';
+  import {
+    Package,
+    Plus,
+    Minus,
+    Search,
+    RefreshCcw,
+    Bell,
+    AlertTriangle,
+    XCircle,
+    CheckCircle,
+    EllipsisVertical,
+    MessageSquare,
+    PhilippinePeso,
+    BarChart3,
+    History,
+    TrendingDown,
+    ChevronDown,
+    ChevronUp,
+  } from 'lucide-vue-next';
+  import { useInventoryStore } from '../../stores/inventoryStore.js';
+  import InventoryConsumptionModal from '../../components/scm/InventoryConsumptionModal.vue';
+  import InventoryAdjustmentModal from '../../components/scm/InventoryAdjustmentModal.vue';
+
+  // Store
+  const inventoryStore = useInventoryStore();
+
+  // Access store values as computed properties
+  const categories = computed(() => inventoryStore.categories);
+  const itemTypes = computed(() => inventoryStore.itemTypes);
+  const currentInventory = computed(() => inventoryStore.currentInventory);
+  const inventorySummary = computed(() => inventoryStore.inventorySummary);
+  const stats = computed(() => inventoryStore.stats);
+  const expiringItems = computed(() => inventoryStore.expiringItems);
+  const lowStockItems = computed(() => inventoryStore.lowStockItems);
+  const loading = computed(() => inventoryStore.loading);
+  const error = computed(() => inventoryStore.error);
+  const alertsCount = computed(() => inventoryStore.alertsCount);
+
+  // Local state
+  const activeTab = ref('overview');
+  const alertTab = ref('expiring');
+  const currentPage = ref(1);
+  const itemsPerPage = ref(12);
+  const searchQuery = ref('');
+  const categoryFilter = ref('');
+  const expandedItems = ref(new Set());
+
+  // Modal state
+  const modal = ref({
+    type: null,
+    show: false,
+    item: null,
+  });
+
+  // Form data
+  const stockForm = ref({
+    category_id: '',
+    item_type_id: '',
+    item_name: '',
+    quantity: '',
+    unit_cost: '',
+    batch_number: '',
+    expiry_date: '',
+    notes: '',
+    supplier_id: null,
+    received_by: 'SCM User',
+  });
+
+  // Toast state
+  const toast = ref({ show: false, type: '', message: '' });
+
+  // Computed properties for grouped inventory
+  const groupedInventory = computed(() => {
+    const grouped = {};
+
+    // Group inventory by item type
+    currentInventory.value?.forEach((batch) => {
+      const itemKey = batch.item_type_id;
+      if (!grouped[itemKey]) {
+        grouped[itemKey] = {
+          id: batch.item_type_id,
+          item_type_name: batch.item_type_name,
+          category_name: batch.category_name,
+          unit_of_measure: batch.unit_of_measure,
+          total_quantity: 0,
+          batches: [],
+          expanded: expandedItems.value.has(batch.item_type_id),
+          expiring_soon_count: 0,
+          receipts_count: 0, // Initialize receipts_count
+          first_received_at: null, // Initialize first_received_at
+          status: 'active', // Default to active
+        };
+      }
+
+      grouped[itemKey].batches.push(batch);
+      grouped[itemKey].total_quantity += parseFloat(batch.quantity || 0);
+
+      // Count expiring soon items
+      if (batch.expiry_date) {
+        const daysUntilExpiry = getDaysUntilExpiry(batch.expiry_date);
+        if (daysUntilExpiry <= 7 && daysUntilExpiry > 0) {
+          grouped[itemKey].expiring_soon_count++;
+        }
+      }
+
+      // Update receipts_count and first_received_at
+      const itemType = itemTypes.value.find(
+        (type) => type.id === batch.item_type_id
+      );
+      if (itemType) {
+        grouped[itemKey].receipts_count = parseInt(
+          itemType.receipts_count || 0,
+          10
+        );
+        grouped[itemKey].first_received_at = itemType.first_received_at;
+        grouped[itemKey].status = itemType.status;
+      }
+    });
+
+    // Sort batches by expiry date (FEFO - First Expired, First Out)
+    Object.values(grouped).forEach((item) => {
+      item.batches.sort((a, b) => {
+        if (!a.expiry_date && !b.expiry_date) return 0;
+        if (!a.expiry_date) return 1;
+        if (!b.expiry_date) return -1;
+        return new Date(a.expiry_date) - new Date(b.expiry_date);
+      });
+    });
+
+    // Filter based on search and category
+    let filtered = Object.values(grouped);
+
+    if (searchQuery.value) {
+      const query = searchQuery.value.toLowerCase();
+      filtered = filtered.filter(
+        (item) =>
+          item.item_type_name?.toLowerCase().includes(query) ||
+          item.category_name?.toLowerCase().includes(query) ||
+          item.batches.some(
+            (batch) =>
+              batch.batch_number?.toLowerCase().includes(query) ||
+              batch.supplier_name?.toLowerCase().includes(query)
+          )
+      );
+    }
+
+    if (categoryFilter.value) {
+      filtered = filtered.filter(
+        (item) =>
+          item.category_name ===
+          categories.value?.find((cat) => cat.id == categoryFilter.value)?.name
+      );
+    }
+
+    return filtered;
+  });
+
+  const paginatedInventory = computed(() => {
+    const start = (currentPage.value - 1) * itemsPerPage.value;
+    return groupedInventory.value.slice(start, start + itemsPerPage.value);
+  });
+
+  const totalPages = computed(() => {
+    return Math.ceil(groupedInventory.value.length / itemsPerPage.value);
+  });
+
+  // Helper functions
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('en-PH', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const getDaysUntilExpiry = (expiryDate) => {
+    if (!expiryDate) return Infinity;
+    const today = new Date();
+    const expiry = new Date(expiryDate);
+    return Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+  };
+
+  const getStatusColor = (status) => {
+    const colors = {
+      available: 'badge-sm border-none font-medium bg-success/20 text-success',
+      reserved: 'badge-sm border-none font-medium bg-warning/20 text-warning',
+      expired: 'badge-sm border-none font-medium bg-error/20 text-error',
+      damaged: 'badge-sm border-none font-medium bg-error/20 text-error',
+      consumed: 'badge-sm border-none font-medium bg-neutral/20 text-neutral',
+      draft: 'badge-sm border-none font-medium bg-info/20 text-info',
+    };
+    return (
+      colors[status] ||
+      'badge-sm border-none font-medium bg-neutral/20 text-neutral'
+    );
+  };
+
+  const getExpiryColor = (expiryDate) => {
+    if (!expiryDate) return 'text-gray-500';
+
+    const daysUntilExpiry = getDaysUntilExpiry(expiryDate);
+
+    if (daysUntilExpiry < 0) return 'text-error font-bold';
+    if (daysUntilExpiry <= 3) return 'text-error';
+    if (daysUntilExpiry <= 7) return 'text-warning';
+    return 'text-success';
+  };
+
+  const getBatchRowClass = (batch) => {
+    if (!batch.expiry_date) return '';
+
+    const daysUntilExpiry = getDaysUntilExpiry(batch.expiry_date);
+    if (daysUntilExpiry < 0) return 'bg-error/10';
+    if (daysUntilExpiry <= 3) return 'bg-error/5';
+    if (daysUntilExpiry <= 7) return 'bg-warning/5';
+    return '';
+  };
+
+  // Toggle item expansion
+  const toggleItem = (itemId) => {
+    if (expandedItems.value.has(itemId)) {
+      expandedItems.value.delete(itemId);
+    } else {
+      expandedItems.value.add(itemId);
+    }
+  };
+
+  // Show toast helper
+  const showToast = (type, message) => {
+    toast.value = { show: true, type, message };
+    setTimeout(() => {
+      toast.value.show = false;
+    }, 3000);
+  };
+
+  // Modal functions
+  const openConsumptionModal = () => {
+    modal.value = { type: 'consumption', show: true, item: null };
+  };
+
+  const openAdjustmentModal = () => {
+    modal.value = { type: 'adjustment', show: true, item: null };
+  };
+
+  const closeModal = () => {
+    modal.value = { type: null, show: false, item: null };
+  };
+
+  // Batch-specific actions
+  const consumeBatch = (batch) => {
+    modal.value = { type: 'consumption', show: true, item: batch };
+  };
+
+  const adjustBatch = (batch) => {
+    modal.value = { type: 'adjustment', show: true, item: batch };
+  };
+
+  const viewBatchDetails = (batch) => {
+    showToast(
+      'info',
+      `Viewing details for batch ${batch.batch_number || 'N/A'}`
+    );
+  };
+
+  const viewItemDetails = (item) => {
+    showToast('info', `Viewing details for ${item.item_type_name}`);
+  };
+
+  const adjustItem = (item) => {
+    modal.value = { type: 'adjustment', show: true, item };
+  };
+
+  const consumeItem = (item) => {
+    modal.value = { type: 'consumption', show: true, item };
+  };
+
+  // Handle modal submissions
+  const handleConsumption = async (consumptionData) => {
+    try {
+      // TODO: Implement consumption logic
+      console.log('Consumption data:', consumptionData);
+      showToast('success', 'Usage recorded successfully');
+      closeModal();
+      await refreshData();
+    } catch (error) {
+      showToast('error', 'Failed to record usage');
+    }
+  };
+
+  const handleAdjustment = async (adjustmentData) => {
+    try {
+      // TODO: Implement adjustment logic
+      console.log('Adjustment data:', adjustmentData);
+      showToast('success', 'Stock adjusted successfully');
+      closeModal();
+      await refreshData();
+    } catch (error) {
+      showToast('error', 'Failed to adjust stock');
+    }
+  };
+
+  // Refresh data
+  const refreshData = async () => {
+    try {
+      await Promise.all([
+        inventoryStore.fetchCategories(),
+        inventoryStore.fetchItemTypes(),
+        inventoryStore.fetchCurrentInventory(),
+        inventoryStore.fetchInventorySummary(),
+        inventoryStore.fetchStats(),
+        inventoryStore.fetchExpiringItems(),
+        inventoryStore.fetchLowStockItems(),
+      ]);
+      showToast('success', 'Data refreshed successfully');
+    } catch (error) {
+      showToast('error', 'Failed to refresh data');
+    }
+  };
+
+  // Lifecycle
+  onMounted(async () => {
+    try {
+      await Promise.all([
+        inventoryStore.fetchCategories(),
+        inventoryStore.fetchItemTypes(),
+        inventoryStore.fetchCurrentInventory(),
+        inventoryStore.fetchInventorySummary(),
+        inventoryStore.fetchStats(),
+        inventoryStore.fetchExpiringItems(),
+        inventoryStore.fetchLowStockItems(),
+      ]);
+
+      // Add this debug logging
+      console.log('Debug - Categories:', categories.value);
+      console.log('Debug - Item Types:', itemTypes.value);
+      console.log('Debug - Current Inventory:', currentInventory.value);
+      console.log('Debug - Inventory Summary:', inventorySummary.value);
+      console.log('Debug - Stats:', stats.value);
+
+      // Add these additional debug logs
+      console.log('Debug - Store object:', inventoryStore);
+      console.log('Debug - Loading state:', loading.value);
+      console.log('Debug - Error state:', error.value);
+
+      // Test individual API calls
+      try {
+        console.log('Testing individual API calls...');
+        const categoriesResponse = await inventoryStore.fetchCategories();
+        console.log('Categories API response:', categoriesResponse);
+
+        const inventoryResponse = await inventoryStore.fetchCurrentInventory();
+        console.log('Inventory API response:', inventoryResponse);
+
+        console.log('After individual calls - Categories:', categories.value);
+        console.log(
+          'After individual calls - Inventory:',
+          currentInventory.value
+        );
+      } catch (err) {
+        console.error('API call error:', err);
+      }
+    } catch (error) {
+      showToast('error', 'Failed to load inventory data');
+    }
+  });
+
+  // Watch for search/filter changes to reset pagination
+  watch([searchQuery, categoryFilter], () => {
+    currentPage.value = 1;
+  });
+</script>
+
 <template>
   <div class="container mx-auto p-2 sm:p-4 lg:p-6 max-w-6xl">
     <!-- Header -->
@@ -92,27 +467,6 @@
         </div>
         <div class="stat-desc text-black/50 !text-xs sm:text-sm">
           Items expired
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <PhilippinePeso
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-black/80"
-          />
-        </div>
-        <div class="stat-title text-black/50 !text-xs sm:text-sm">
-          Total Value
-        </div>
-        <div
-          class="stat-value text-black/80 text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          ₱{{ (stats.total_available_value || 0).toLocaleString() }}
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Available stock
         </div>
       </div>
     </div>
@@ -710,381 +1064,6 @@
     </div>
   </div>
 </template>
-
-<script setup>
-  import { ref, computed, onMounted, watch } from 'vue';
-  import {
-    Package,
-    Plus,
-    Minus,
-    Search,
-    RefreshCcw,
-    Bell,
-    AlertTriangle,
-    XCircle,
-    CheckCircle,
-    EllipsisVertical,
-    MessageSquare,
-    PhilippinePeso,
-    BarChart3,
-    History,
-    TrendingDown,
-    ChevronDown,
-    ChevronUp,
-  } from 'lucide-vue-next';
-  import { useInventoryStore } from '../../stores/inventoryStore.js';
-  import InventoryConsumptionModal from '../../components/scm/InventoryConsumptionModal.vue';
-  import InventoryAdjustmentModal from '../../components/scm/InventoryAdjustmentModal.vue';
-
-  // Store
-  const inventoryStore = useInventoryStore();
-
-  // Access store values as computed properties
-  const categories = computed(() => inventoryStore.categories);
-  const itemTypes = computed(() => inventoryStore.itemTypes);
-  const currentInventory = computed(() => inventoryStore.currentInventory);
-  const inventorySummary = computed(() => inventoryStore.inventorySummary);
-  const stats = computed(() => inventoryStore.stats);
-  const expiringItems = computed(() => inventoryStore.expiringItems);
-  const lowStockItems = computed(() => inventoryStore.lowStockItems);
-  const loading = computed(() => inventoryStore.loading);
-  const error = computed(() => inventoryStore.error);
-  const alertsCount = computed(() => inventoryStore.alertsCount);
-
-  // Local state
-  const activeTab = ref('overview');
-  const alertTab = ref('expiring');
-  const currentPage = ref(1);
-  const itemsPerPage = ref(12);
-  const searchQuery = ref('');
-  const categoryFilter = ref('');
-  const expandedItems = ref(new Set());
-
-  // Modal state
-  const modal = ref({
-    type: null,
-    show: false,
-    item: null,
-  });
-
-  // Form data
-  const stockForm = ref({
-    category_id: '',
-    item_type_id: '',
-    item_name: '',
-    quantity: '',
-    unit_cost: '',
-    batch_number: '',
-    expiry_date: '',
-    notes: '',
-    supplier_id: null,
-    received_by: 'SCM User',
-  });
-
-  // Toast state
-  const toast = ref({ show: false, type: '', message: '' });
-
-  // Computed properties for grouped inventory
-  const groupedInventory = computed(() => {
-    const grouped = {};
-
-    // Group inventory by item type
-    currentInventory.value?.forEach((batch) => {
-      const itemKey = batch.item_type_id;
-      if (!grouped[itemKey]) {
-        grouped[itemKey] = {
-          id: batch.item_type_id,
-          item_type_name: batch.item_type_name,
-          category_name: batch.category_name,
-          unit_of_measure: batch.unit_of_measure,
-          total_quantity: 0,
-          batches: [],
-          expanded: expandedItems.value.has(batch.item_type_id),
-          expiring_soon_count: 0,
-          receipts_count: 0, // Initialize receipts_count
-          first_received_at: null, // Initialize first_received_at
-          status: 'active', // Default to active
-        };
-      }
-
-      grouped[itemKey].batches.push(batch);
-      grouped[itemKey].total_quantity += parseFloat(batch.quantity || 0);
-
-      // Count expiring soon items
-      if (batch.expiry_date) {
-        const daysUntilExpiry = getDaysUntilExpiry(batch.expiry_date);
-        if (daysUntilExpiry <= 7 && daysUntilExpiry > 0) {
-          grouped[itemKey].expiring_soon_count++;
-        }
-      }
-
-      // Update receipts_count and first_received_at
-      const itemType = itemTypes.value.find(
-        (type) => type.id === batch.item_type_id
-      );
-      if (itemType) {
-        grouped[itemKey].receipts_count = parseInt(
-          itemType.receipts_count || 0,
-          10
-        );
-        grouped[itemKey].first_received_at = itemType.first_received_at;
-        grouped[itemKey].status = itemType.status;
-      }
-    });
-
-    // Sort batches by expiry date (FEFO - First Expired, First Out)
-    Object.values(grouped).forEach((item) => {
-      item.batches.sort((a, b) => {
-        if (!a.expiry_date && !b.expiry_date) return 0;
-        if (!a.expiry_date) return 1;
-        if (!b.expiry_date) return -1;
-        return new Date(a.expiry_date) - new Date(b.expiry_date);
-      });
-    });
-
-    // Filter based on search and category
-    let filtered = Object.values(grouped);
-
-    if (searchQuery.value) {
-      const query = searchQuery.value.toLowerCase();
-      filtered = filtered.filter(
-        (item) =>
-          item.item_type_name?.toLowerCase().includes(query) ||
-          item.category_name?.toLowerCase().includes(query) ||
-          item.batches.some(
-            (batch) =>
-              batch.batch_number?.toLowerCase().includes(query) ||
-              batch.supplier_name?.toLowerCase().includes(query)
-          )
-      );
-    }
-
-    if (categoryFilter.value) {
-      filtered = filtered.filter(
-        (item) =>
-          item.category_name ===
-          categories.value?.find((cat) => cat.id == categoryFilter.value)?.name
-      );
-    }
-
-    return filtered;
-  });
-
-  const paginatedInventory = computed(() => {
-    const start = (currentPage.value - 1) * itemsPerPage.value;
-    return groupedInventory.value.slice(start, start + itemsPerPage.value);
-  });
-
-  const totalPages = computed(() => {
-    return Math.ceil(groupedInventory.value.length / itemsPerPage.value);
-  });
-
-  // Helper functions
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-PH', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
-
-  const getDaysUntilExpiry = (expiryDate) => {
-    if (!expiryDate) return Infinity;
-    const today = new Date();
-    const expiry = new Date(expiryDate);
-    return Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
-  };
-
-  const getStatusColor = (status) => {
-    const colors = {
-      available: 'badge-sm border-none font-medium bg-success/20 text-success',
-      reserved: 'badge-sm border-none font-medium bg-warning/20 text-warning',
-      expired: 'badge-sm border-none font-medium bg-error/20 text-error',
-      damaged: 'badge-sm border-none font-medium bg-error/20 text-error',
-      consumed: 'badge-sm border-none font-medium bg-neutral/20 text-neutral',
-      draft: 'badge-sm border-none font-medium bg-info/20 text-info',
-    };
-    return (
-      colors[status] ||
-      'badge-sm border-none font-medium bg-neutral/20 text-neutral'
-    );
-  };
-
-  const getExpiryColor = (expiryDate) => {
-    if (!expiryDate) return 'text-gray-500';
-
-    const daysUntilExpiry = getDaysUntilExpiry(expiryDate);
-
-    if (daysUntilExpiry < 0) return 'text-error font-bold';
-    if (daysUntilExpiry <= 3) return 'text-error';
-    if (daysUntilExpiry <= 7) return 'text-warning';
-    return 'text-success';
-  };
-
-  const getBatchRowClass = (batch) => {
-    if (!batch.expiry_date) return '';
-
-    const daysUntilExpiry = getDaysUntilExpiry(batch.expiry_date);
-    if (daysUntilExpiry < 0) return 'bg-error/10';
-    if (daysUntilExpiry <= 3) return 'bg-error/5';
-    if (daysUntilExpiry <= 7) return 'bg-warning/5';
-    return '';
-  };
-
-  // Toggle item expansion
-  const toggleItem = (itemId) => {
-    if (expandedItems.value.has(itemId)) {
-      expandedItems.value.delete(itemId);
-    } else {
-      expandedItems.value.add(itemId);
-    }
-  };
-
-  // Show toast helper
-  const showToast = (type, message) => {
-    toast.value = { show: true, type, message };
-    setTimeout(() => {
-      toast.value.show = false;
-    }, 3000);
-  };
-
-  // Modal functions
-  const openConsumptionModal = () => {
-    modal.value = { type: 'consumption', show: true, item: null };
-  };
-
-  const openAdjustmentModal = () => {
-    modal.value = { type: 'adjustment', show: true, item: null };
-  };
-
-  const closeModal = () => {
-    modal.value = { type: null, show: false, item: null };
-  };
-
-  // Batch-specific actions
-  const consumeBatch = (batch) => {
-    modal.value = { type: 'consumption', show: true, item: batch };
-  };
-
-  const adjustBatch = (batch) => {
-    modal.value = { type: 'adjustment', show: true, item: batch };
-  };
-
-  const viewBatchDetails = (batch) => {
-    showToast(
-      'info',
-      `Viewing details for batch ${batch.batch_number || 'N/A'}`
-    );
-  };
-
-  const viewItemDetails = (item) => {
-    showToast('info', `Viewing details for ${item.item_type_name}`);
-  };
-
-  const adjustItem = (item) => {
-    modal.value = { type: 'adjustment', show: true, item };
-  };
-
-  const consumeItem = (item) => {
-    modal.value = { type: 'consumption', show: true, item };
-  };
-
-  // Handle modal submissions
-  const handleConsumption = async (consumptionData) => {
-    try {
-      // TODO: Implement consumption logic
-      console.log('Consumption data:', consumptionData);
-      showToast('success', 'Usage recorded successfully');
-      closeModal();
-      await refreshData();
-    } catch (error) {
-      showToast('error', 'Failed to record usage');
-    }
-  };
-
-  const handleAdjustment = async (adjustmentData) => {
-    try {
-      // TODO: Implement adjustment logic
-      console.log('Adjustment data:', adjustmentData);
-      showToast('success', 'Stock adjusted successfully');
-      closeModal();
-      await refreshData();
-    } catch (error) {
-      showToast('error', 'Failed to adjust stock');
-    }
-  };
-
-  // Refresh data
-  const refreshData = async () => {
-    try {
-      await Promise.all([
-        inventoryStore.fetchCategories(),
-        inventoryStore.fetchItemTypes(),
-        inventoryStore.fetchCurrentInventory(),
-        inventoryStore.fetchInventorySummary(),
-        inventoryStore.fetchStats(),
-        inventoryStore.fetchExpiringItems(),
-        inventoryStore.fetchLowStockItems(),
-      ]);
-      showToast('success', 'Data refreshed successfully');
-    } catch (error) {
-      showToast('error', 'Failed to refresh data');
-    }
-  };
-
-  // Lifecycle
-  onMounted(async () => {
-    try {
-      await Promise.all([
-        inventoryStore.fetchCategories(),
-        inventoryStore.fetchItemTypes(),
-        inventoryStore.fetchCurrentInventory(),
-        inventoryStore.fetchInventorySummary(),
-        inventoryStore.fetchStats(),
-        inventoryStore.fetchExpiringItems(),
-        inventoryStore.fetchLowStockItems(),
-      ]);
-
-      // Add this debug logging
-      console.log('Debug - Categories:', categories.value);
-      console.log('Debug - Item Types:', itemTypes.value);
-      console.log('Debug - Current Inventory:', currentInventory.value);
-      console.log('Debug - Inventory Summary:', inventorySummary.value);
-      console.log('Debug - Stats:', stats.value);
-
-      // Add these additional debug logs
-      console.log('Debug - Store object:', inventoryStore);
-      console.log('Debug - Loading state:', loading.value);
-      console.log('Debug - Error state:', error.value);
-
-      // Test individual API calls
-      try {
-        console.log('Testing individual API calls...');
-        const categoriesResponse = await inventoryStore.fetchCategories();
-        console.log('Categories API response:', categoriesResponse);
-
-        const inventoryResponse = await inventoryStore.fetchCurrentInventory();
-        console.log('Inventory API response:', inventoryResponse);
-
-        console.log('After individual calls - Categories:', categories.value);
-        console.log(
-          'After individual calls - Inventory:',
-          currentInventory.value
-        );
-      } catch (err) {
-        console.error('API call error:', err);
-      }
-    } catch (error) {
-      showToast('error', 'Failed to load inventory data');
-    }
-  });
-
-  // Watch for search/filter changes to reset pagination
-  watch([searchQuery, categoryFilter], () => {
-    currentPage.value = 1;
-  });
-</script>
 
 <style scoped>
   /* Consistent styling with PO component */

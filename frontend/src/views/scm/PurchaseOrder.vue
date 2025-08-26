@@ -24,6 +24,12 @@
 
   const router = useRouter();
 
+  const getApiUrl = (endpoint) => {
+    const baseUrl =
+      import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+    return `${baseUrl}/${endpoint}`;
+  };
+
   // Helper functions
   const getPhilippineDateString = (date = null) => {
     const targetDate = date || new Date();
@@ -487,13 +493,52 @@
     year: new Date().getFullYear(),
   });
 
-  // Add this computed property to check if a GRN already exists for a PO
   const hasExistingGRN = computed(() => {
     return (order) => {
-      // Check if there's already a GRN for this purchase order
-      return order.grn_count > 0;
+      // If no GRNs exist, allow creation
+      if (order.grn_count === 0) {
+        return false;
+      }
+
+      // If there are GRNs, check their statuses
+      const grnStatuses = order.grn_statuses || [];
+
+      // Allow new GRN if:
+      // 1. All existing GRNs are failed (can retry after returns completed)
+      // 2. All existing GRNs are draft (can continue)
+      // 3. All existing GRNs are pending_inspection (can continue)
+      const allFailed = grnStatuses.every((status) => status === 'failed');
+      const allDraft = grnStatuses.every((status) => status === 'draft');
+      const allPendingInspection = grnStatuses.every(
+        (status) => status === 'pending_inspection'
+      );
+
+      // Don't allow if there's a completed or passed GRN
+      const hasCompleted = grnStatuses.some(
+        (status) => status === 'completed' || status === 'passed'
+      );
+
+      return hasCompleted && !allFailed && !allDraft && !allPendingInspection;
     };
   });
+
+  const checkGRNCreationEligibility = async (order) => {
+    try {
+      const response = await fetch(
+        getApiUrl(`purchase-orders/${order.id}/can-create-grn`)
+      );
+      const data = await response.json();
+
+      if (data.success) {
+        return data.data;
+      } else {
+        throw new Error(data.message || 'Failed to check GRN eligibility');
+      }
+    } catch (error) {
+      console.error('Error checking GRN eligibility:', error);
+      return { canCreate: false, reason: 'Error checking eligibility' };
+    }
+  };
 
   // Methods
   const getSupplierName = (supplierId) => {
@@ -502,6 +547,46 @@
   };
 
   const canReturnItems = (order) => order.status === 'Completed';
+
+  const hasPendingReturns = (order) => {
+    return order.has_pending_returns || false;
+  };
+
+  const canCreateNewGRN = (order) => {
+    // Check if there are pending returns
+    if (order.has_pending_returns) {
+      return false;
+    }
+
+    // Check if there are already passed or completed GRNs
+    if (order.grn_statuses && order.grn_statuses.length > 0) {
+      const hasPassedOrCompleted = order.grn_statuses.some(
+        (status) => status === 'passed' || status === 'completed'
+      );
+      if (hasPassedOrCompleted) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const getGRNCreationReason = (order) => {
+    if (order.has_pending_returns) {
+      return `Cannot create GRN: ${order.pending_returns_count} return(s) still pending completion`;
+    }
+
+    if (order.grn_statuses && order.grn_statuses.length > 0) {
+      const hasPassedOrCompleted = order.grn_statuses.some(
+        (status) => status === 'passed' || status === 'completed'
+      );
+      if (hasPassedOrCompleted) {
+        return 'Cannot create GRN: Items already received and processed';
+      }
+    }
+
+    return '';
+  };
 
   // Date navigation methods
   const selectQuickDate = (dateOption) => {
@@ -1255,37 +1340,63 @@
   };
 
   // GRN methods
-  const createGRNFromPO = (order) => {
-    grnConfirmModal.value = { show: true, order, loading: false };
-    document.getElementById('grn_confirm_modal').showModal();
+  // Update the createGRNFromPO method to use the correct endpoint
+  const createGRNFromPO = async (order) => {
+    try {
+      // Check if we can create a new GRN
+      const eligibility = await checkGRNCreationEligibility(order);
+
+      if (!eligibility.canCreate) {
+        showToast('error', eligibility.reason);
+        return;
+      }
+
+      // Show confirmation modal instead of directly creating
+      grnConfirmModal.value = {
+        show: true,
+        order: order,
+        loading: false,
+      };
+      document.getElementById('grn_confirm_modal').showModal();
+    } catch (error) {
+      console.error('Error creating GRN:', error);
+      showToast('error', error.message || 'Failed to create GRN');
+    }
   };
 
   const confirmCreateGRN = async () => {
     const order = grnConfirmModal.value.order;
     try {
       grnConfirmModal.value.loading = true;
-      const { useGRNStore } = await import('../../stores/grnStore.js');
-      const grnStore = useGRNStore();
       const { useAuthStore } = await import('../../stores/authStore.js');
       const authStore = useAuthStore();
 
-      const grnData = {
-        received_by: authStore.user.id,
-        received_date: new Date().toISOString().split('T')[0],
-        notes: `GRN created from PO ${order.po_number}`,
-        is_partial: false,
-      };
+      // Use the same endpoint as the original method
+      const response = await fetch(getApiUrl(`grn/from-po/${order.id}`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          received_by: authStore.user.id,
+          received_date: new Date().toISOString().split('T')[0],
+          notes: `GRN created from PO ${order.po_number}`,
+          is_partial: false,
+        }),
+      });
 
-      await grnStore.createGRNFromPO(order.id, grnData);
-      showToast(
-        'success',
-        `GRN created successfully from PO ${order.po_number}`
-      );
-      closeGRNConfirmModal();
-      router.push('/scm/grn');
+      const data = await response.json();
+
+      if (data.success) {
+        showToast('success', 'GRN created successfully!');
+        await purchaseOrderStore.fetchPurchaseOrders(); // Refresh the orders list
+        closeGRNConfirmModal();
+      } else {
+        throw new Error(data.message || 'Failed to create GRN');
+      }
     } catch (error) {
       console.error('Error creating GRN:', error);
-      showToast('error', `Failed to create GRN: ${error.message}`);
+      showToast('error', error.message || 'Failed to create GRN');
     } finally {
       grnConfirmModal.value.loading = false;
     }
@@ -1834,18 +1945,38 @@
                           >Edit</a
                         >
                       </li>
-                      <!-- Only show Create GRN for completed orders -->
+                      <!-- Only show Create GRN for completed orders without pending returns -->
                       <li
                         v-if="
-                          order.status === 'Completed' && !hasExistingGRN(order)
+                          order.status === 'Completed' && canCreateNewGRN(order)
                         "
                         class="hover:bg-black/10"
                       >
                         <a
                           @click="createGRNFromPO(order)"
                           class="text-success text-xs sm:text-sm"
-                          >Create GRN</a
                         >
+                          Create GRN
+                        </a>
+                      </li>
+                      <!-- Show disabled Create GRN for completed orders with pending returns -->
+                      <li
+                        v-if="
+                          order.status === 'Completed' &&
+                          !canCreateNewGRN(order)
+                        "
+                        class="hover:bg-black/10 opacity-50 cursor-not-allowed"
+                      >
+                        <a
+                          class="text-black/50 text-xs sm:text-sm cursor-not-allowed"
+                          :title="getGRNCreationReason(order)"
+                        >
+                          <span v-if="hasPendingReturns(order)">
+                            Create GRN ({{ order.pending_returns_count }}
+                            Returns Pending)
+                          </span>
+                          <span v-else> Create GRN (Already Processed) </span>
+                        </a>
                       </li>
                       <!-- Only show Cancel Order for non-cancelled and non-completed orders -->
                       <li
@@ -1930,14 +2061,7 @@
                   >
                     {{ order.status }}
                   </div>
-                  <!-- Show return indicator for completed orders -->
-                  <div
-                    v-if="order.status === 'Completed'"
-                    class="flex items-center text-xs text-success"
-                  >
-                    <AlertTriangle class="w-3 h-3 mr-1" />
-                    <span>Returns Available</span>
-                  </div>
+
                   <div class="flex items-center text-xs sm:text-sm">
                     <span class="text-black/70 mr-1">Delivery:</span>
                     <span

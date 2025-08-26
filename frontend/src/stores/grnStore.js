@@ -1,40 +1,90 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import axios from 'axios';
+import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = apiConfig.baseURL;
 
 export const useGRNStore = defineStore('grn', () => {
   // State
   const grns = ref([]);
   const loading = ref(false);
   const error = ref(null);
+  const lastFetchTime = ref(null);
+  const cacheTimeout = 5 * 60 * 1000; // 5 minutes
+
+  // Stats for better performance
+  const stats = ref({
+    total: 0,
+    draft: 0,
+    pending_inspection: 0,
+    passed: 0,
+    failed: 0,
+    completed: 0,
+    today: 0,
+    week: 0,
+    month: 0,
+  });
 
   // Getters
-  const grnCount = computed(() => grns.value.length);
-  const hasGRNs = computed(() => grns.value.length > 0);
-  const draftGRNs = computed(() =>
-    grns.value.filter((grn) => grn.status === 'draft')
-  );
-  const pendingInspectionGRNs = computed(() =>
-    grns.value.filter((grn) => grn.status === 'pending_inspection')
-  );
-  const completedGRNs = computed(() =>
-    grns.value.filter((grn) => grn.status === 'completed')
-  );
+  const grnCount = computed(() => stats.value.total);
+  const hasGRNs = computed(() => stats.value.total > 0);
+  const draftGRNs = computed(() => stats.value.draft);
+  const pendingInspectionGRNs = computed(() => stats.value.pending_inspection);
+  const completedGRNs = computed(() => stats.value.completed);
+
+  // Check if cache is still valid
+  const isCacheValid = computed(() => {
+    return (
+      lastFetchTime.value && Date.now() - lastFetchTime.value < cacheTimeout
+    );
+  });
 
   // Actions
   const fetchGRNs = async (filters = {}) => {
+    // Return cached data if still valid and no specific filters
+    if (isCacheValid.value && Object.keys(filters).length === 0) {
+      return grns.value;
+    }
+
     loading.value = true;
     error.value = null;
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/grn`, {
-        params: filters,
+      const params = new URLSearchParams();
+
+      // Add filters to params for server-side filtering
+      Object.keys(filters).forEach((key) => {
+        if (
+          filters[key] !== null &&
+          filters[key] !== undefined &&
+          filters[key] !== ''
+        ) {
+          params.append(key, filters[key]);
+        }
       });
+
+      const response = await axios.get(
+        `${API_BASE_URL}/grn?${params.toString()}`
+      );
 
       if (response.data.success) {
         grns.value = response.data.data || [];
+        stats.value = response.data.stats || {
+          total: grns.value.length,
+          draft: grns.value.filter((g) => g.status === 'draft').length,
+          pending_inspection: grns.value.filter(
+            (g) => g.status === 'pending_inspection'
+          ).length,
+          passed: grns.value.filter((g) => g.status === 'passed').length,
+          failed: grns.value.filter((g) => g.status === 'failed').length,
+          completed: grns.value.filter((g) => g.status === 'completed').length,
+          today: 0,
+          week: 0,
+          month: 0,
+        };
+        lastFetchTime.value = Date.now();
+        return grns.value;
       } else {
         throw new Error(response.data.message || 'Failed to fetch GRNs');
       }
@@ -42,9 +92,15 @@ export const useGRNStore = defineStore('grn', () => {
       error.value =
         err.response?.data?.message || err.message || 'Failed to fetch GRNs';
       console.error('Error fetching GRNs:', err);
+      throw err;
     } finally {
       loading.value = false;
     }
+  };
+
+  // Optimized fetch with stats
+  const fetchGRNsWithStats = async (filters = {}) => {
+    return await fetchGRNs({ ...filters, include_stats: true });
   };
 
   const fetchGRNById = async (id) => {
@@ -225,6 +281,7 @@ export const useGRNStore = defineStore('grn', () => {
     grns,
     loading,
     error,
+    stats,
 
     // Getters
     grnCount,
@@ -232,9 +289,11 @@ export const useGRNStore = defineStore('grn', () => {
     draftGRNs,
     pendingInspectionGRNs,
     completedGRNs,
+    isCacheValid,
 
     // Actions
     fetchGRNs,
+    fetchGRNsWithStats,
     fetchGRNById,
     createGRNFromPO,
     updateGRNStatus,

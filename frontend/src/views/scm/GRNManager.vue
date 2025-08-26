@@ -186,34 +186,42 @@
           <span class="loading loading-spinner loading-lg"></span>
         </div>
 
-        <div v-else-if="!hasGRNs" class="text-center py-8">
-          <div class="mb-4">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              class="w-16 h-16 mx-auto text-gray-400"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-              ></path>
-            </svg>
+        <div
+          v-else-if="!hasGRNs || filteredGrns.length === 0"
+          class="text-center py-8"
+        >
+          <div class="mb-4 items-center justify-center flex">
+            <ReceiptText class="w-12 h-12 sm:w-16 sm:h-16 text-primaryColor" />
           </div>
-          <h3 class="text-lg font-semibold text-gray-600 mb-2">
-            No GRNs Found
+          <h3 class="text-base sm:text-lg font-semibold mb-2 text-primaryColor">
+            {{
+              !hasGRNs
+                ? 'No goods receipt notes found'
+                : 'No GRNs match your criteria'
+            }}
           </h3>
-          <p class="text-gray-500 mb-4">
-            No goods receipt notes found. Create one from a completed purchase
-            order.
+          <p class="text-sm sm:text-base text-black/50 mb-4 px-4">
+            {{
+              !hasGRNs
+                ? 'No GRNs found. Create one from a completed purchase order.'
+                : `No GRNs found for ${grnFilterDisplayText}. Try adjusting your filter criteria.`
+            }}
           </p>
           <button
-            class="btn btn-primary"
+            v-if="!hasGRNs"
+            class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
             @click="$router.push('/scm/purchase-order')"
           >
+            <Plus class="w-4 h-4 mr-2" />
             Go to Purchase Orders
+          </button>
+          <button
+            v-else
+            class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
+            @click="grnFilterType = 'today'"
+          >
+            <RefreshCcw class="w-4 h-4 mr-2" />
+            Clear Filters
           </button>
         </div>
 
@@ -605,7 +613,7 @@
             v-if="selectedGRN.status === 'pending_inspection'"
             class="p-4 bg-info/10 rounded-lg"
           >
-            <h4 class="font-semibold text-info mb-2">
+            <h4 class="font-thin text-info mb-2">
               Quality Inspection Required
             </h4>
             <p class="text-sm text-info/80 mb-3">
@@ -660,6 +668,31 @@
         </div>
       </div>
     </dialog>
+
+    <!-- Confirmation Modal -->
+    <dialog id="confirmation_modal" class="modal">
+      <div class="modal-box">
+        <h3 class="font-bold text-lg mb-4">{{ confirmModal.title }}</h3>
+        <p class="py-4">{{ confirmModal.message }}</p>
+
+        <div class="modal-action">
+          <button
+            type="button"
+            class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none btn-sm"
+            @click="closeConfirmModal"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn bg-primaryColor text-white btn-sm font-thin border-none hover:bg-primaryColor/80"
+            @click="handleConfirmAction"
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
+    </dialog>
   </div>
 </template>
 
@@ -680,6 +713,7 @@
     AlertTriangle,
     GitPullRequestDraft,
     ClockFading,
+    Plus,
   } from 'lucide-vue-next';
 
   const router = useRouter();
@@ -687,119 +721,59 @@
   const authStore = useAuthStore();
   const inventoryStore = useInventoryStore();
 
-  // Use storeToRefs to ensure proper reactivity
-  const { grns, loading, error } = storeToRefs(grnStore);
+  // Use storeToRefs for reactivity
+  const { grns, loading, error, stats } = storeToRefs(grnStore);
 
-  // Date helpers for filtration
-  const getStartOfWeek = (date) => {
-    const d = new Date(date);
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday first
-    return new Date(d.setDate(diff));
-  };
-  const getStartOfMonth = (date) =>
-    new Date(date.getFullYear(), date.getMonth(), 1);
-  const getEndOfMonth = (date) =>
-    new Date(date.getFullYear(), date.getMonth() + 1, 0);
-  const isDateInRange = (date, start, end) => {
-    const d = new Date(date);
-    return d >= start && d <= end;
-  };
-
-  // Filtration state and options
-  const grnFilterType = ref('today'); // today | week | month
-
-  // Create local computed properties that are reactive to the store
+  // Calculate stats from actual GRN data since backend doesn't provide stats
   const grnCount = computed(() => grns.value.length);
   const hasGRNs = computed(() => grns.value.length > 0);
-  const draftGRNs = computed(() =>
-    grns.value.filter((grn) => grn.status === 'draft')
+  const draftGRNs = computed(
+    () => grns.value.filter((grn) => grn.status === 'draft').length
   );
-  const pendingInspectionGRNs = computed(() =>
-    grns.value.filter((grn) => grn.status === 'pending_inspection')
+  const pendingInspectionGRNs = computed(
+    () => grns.value.filter((grn) => grn.status === 'pending_inspection').length
   );
-  const completedGRNs = computed(() =>
-    grns.value.filter((grn) => grn.status === 'completed')
+  const completedGRNs = computed(
+    () => grns.value.filter((grn) => grn.status === 'completed').length
   );
 
-  // Filter counts
+  // Calculate date-based counts from actual GRN data
   const grnTodayCount = computed(() => {
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return grns.value.filter((g) => {
-      const d = new Date(
-        g.created_at ||
-          g.received_date ||
-          g.updated_at ||
-          g.createdAt ||
-          g.created_at
-      );
-      const dd = new Date(d);
-      dd.setHours(0, 0, 0, 0);
-      return dd.getTime() === today.getTime();
+    const todayStr = today.toISOString().split('T')[0];
+    return grns.value.filter((grn) => {
+      const grnDate = new Date(grn.created_at).toISOString().split('T')[0];
+      return grnDate === todayStr;
     }).length;
   });
+
   const grnWeekCount = computed(() => {
     const today = new Date();
-    const start = getStartOfWeek(today);
-    const end = new Date(today);
-    end.setHours(23, 59, 59, 999);
-    return grns.value.filter((g) =>
-      isDateInRange(
-        new Date(g.created_at || g.received_date || g.updated_at),
-        start,
-        end
-      )
-    ).length;
-  });
-  const grnMonthCount = computed(() => {
-    const today = new Date();
-    const start = getStartOfMonth(today);
-    const end = new Date(today);
-    end.setHours(23, 59, 59, 999);
-    return grns.value.filter((g) =>
-      isDateInRange(
-        new Date(g.created_at || g.received_date || g.updated_at),
-        start,
-        end
-      )
-    ).length;
+    const startOfWeek = getStartOfWeek(today);
+    const endOfWeek = new Date(today);
+    endOfWeek.setHours(23, 59, 59, 999);
+
+    return grns.value.filter((grn) => {
+      const grnDate = new Date(grn.created_at);
+      return grnDate >= startOfWeek && grnDate <= endOfWeek;
+    }).length;
   });
 
-  // Filtered GRNs for table
-  const filteredGrns = computed(() => {
-    if (!grns.value?.length) return [];
-    const now = new Date();
-    const end = new Date(now);
-    end.setHours(23, 59, 59, 999);
-    let start;
-    switch (grnFilterType.value) {
-      case 'week':
-        start = getStartOfWeek(now);
-        break;
-      case 'month':
-        start = getStartOfMonth(now);
-        break;
-      case 'today':
-      default:
-        start = new Date(now);
-        start.setHours(0, 0, 0, 0);
-        break;
-    }
-    return grns.value
-      .filter((g) =>
-        isDateInRange(
-          new Date(g.created_at || g.received_date || g.updated_at),
-          start,
-          end
-        )
-      )
-      .sort(
-        (a, b) =>
-          new Date(b.created_at || b.received_date) -
-          new Date(a.created_at || a.received_date)
-      );
+  const grnMonthCount = computed(() => {
+    const today = new Date();
+    const startOfMonth = getStartOfMonth(today);
+    const endOfMonth = new Date(today);
+    endOfMonth.setHours(23, 59, 59, 999);
+
+    return grns.value.filter((grn) => {
+      const grnDate = new Date(grn.created_at);
+      return grnDate >= startOfMonth && grnDate <= endOfMonth;
+    }).length;
   });
+
+  // Optimized filtering - use server-side filtering
+  const grnFilterType = ref('today');
+  const filteredGrns = computed(() => grns.value);
 
   // Pagination state and computed properties
   const currentPageGrn = ref(1);
@@ -853,9 +827,26 @@
     }
   });
 
+  // Date helpers for filtration
+  const getStartOfWeek = (date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday first
+    return new Date(d.setDate(diff));
+  };
+  const getStartOfMonth = (date) =>
+    new Date(date.getFullYear(), date.getMonth(), 1);
+  const getEndOfMonth = (date) =>
+    new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  const isDateInRange = (date, start, end) => {
+    const d = new Date(date);
+    return d >= start && d <= end;
+  };
+
   // Actions from store
   const {
     fetchGRNs,
+    fetchGRNsWithStats,
     fetchGRNById,
     updateGRNStatus,
     performBulkQualityInspection,
@@ -879,6 +870,15 @@
 
   const updatingInventoryData = ref(false);
 
+  // Confirmation modal state
+  const confirmModal = ref({
+    show: false,
+    type: '',
+    title: '',
+    message: '',
+    onConfirm: null,
+  });
+
   // Toast state (same as PurchaseOrder.vue)
   const toast = ref({ show: false, type: '', message: '' });
 
@@ -891,16 +891,22 @@
   };
 
   onMounted(async () => {
-    await Promise.all([
-      fetchGRNs(),
-      inventoryStore.fetchCategories?.(),
-      inventoryStore.fetchItemTypes?.(),
-    ]);
+    try {
+      // Single optimized call that includes stats
+      await grnStore.fetchGRNsWithStats();
+
+      // Load inventory data only when needed (lazy loading)
+      // This will be loaded when opening GRN details
+    } catch (err) {
+      console.error('Error loading GRN data:', err);
+    }
   });
 
+  // Optimized refresh - use cache when possible
   const refreshGRNs = async () => {
     try {
-      await fetchGRNs();
+      // Force refresh by clearing cache
+      await grnStore.fetchGRNs({ force_refresh: true });
       showToast('success', 'GRN list refreshed successfully');
     } catch (err) {
       showToast('error', 'Failed to refresh GRN list');
@@ -909,8 +915,7 @@
 
   const { fetchActiveItemTypes, mapGrnItemType } = grnStore;
 
-  const ensureTypesLoaded = async () => {
-    // Load categories and item types from inventory store
+  const ensureInventoryDataLoaded = async () => {
     if (!inventoryStore.categories || inventoryStore.categories.length === 0) {
       await inventoryStore.fetchCategories?.();
     }
@@ -947,7 +952,10 @@
   const viewGRNDetails = async (id) => {
     try {
       detailsLoading.value = true;
-      await ensureTypesLoaded();
+
+      // Load inventory data only when needed
+      await ensureInventoryDataLoaded();
+
       selectedGRN.value = await fetchGRNById(id);
 
       // Check if there are unmapped items and automatically update inventory data
@@ -1074,47 +1082,11 @@
   };
 
   const markAllAsPassed = async () => {
-    if (confirm('Are you sure you want to mark all items as passed?')) {
-      try {
-        updatingStatus.value = selectedGRN.value.id;
-        const updatedGRN = await performBulkQualityInspection(
-          selectedGRN.value.id,
-          'passed',
-          'All items passed quality inspection'
-        );
-        if (updatedGRN) {
-          selectedGRN.value = updatedGRN;
-          showToast('success', 'All items marked as passed!');
-        }
-      } catch (err) {
-        console.error('Error marking all items as passed:', err);
-        showToast('error', 'Failed to mark all items as passed');
-      } finally {
-        updatingStatus.value = null;
-      }
-    }
+    openConfirmModal('markPassed');
   };
 
   const markAllAsFailed = async () => {
-    if (confirm('Are you sure you want to mark all items as failed?')) {
-      try {
-        updatingStatus.value = selectedGRN.value.id;
-        const updatedGRN = await performBulkQualityInspection(
-          selectedGRN.value.id,
-          'failed',
-          'All items failed quality inspection'
-        );
-        if (updatedGRN) {
-          selectedGRN.value = updatedGRN;
-          showToast('success', 'All items marked as failed!');
-        }
-      } catch (err) {
-        console.error('Error marking all items as failed:', err);
-        showToast('error', 'Failed to mark all items as failed');
-      } finally {
-        updatingStatus.value = null;
-      }
-    }
+    openConfirmModal('markFailed');
   };
 
   const updateInventoryData = async () => {
@@ -1145,6 +1117,124 @@
       showToast('error', 'Failed to update inventory data');
     } finally {
       updatingInventoryData.value = false;
+    }
+  };
+
+  // Confirmation modal methods
+  const openConfirmModal = (type) => {
+    // Check if GRN is already completed
+    if (selectedGRN.value?.status === 'completed') {
+      showToast(
+        'error',
+        'Cannot modify quality inspection for completed GRN - items already added to inventory'
+      );
+      return;
+    }
+
+    const configs = {
+      markPassed: {
+        title: 'Mark All Items as Passed',
+        message:
+          'Are you sure you want to mark all items as passed? This will update the quality inspection status.',
+        onConfirm: () => performMarkAllAsPassed(),
+      },
+      markFailed: {
+        title: 'Mark All Items as Failed',
+        message:
+          'Are you sure you want to mark all items as failed? This will create returns for the received items and update the quality inspection status.',
+        onConfirm: () => performMarkAllAsFailed(),
+      },
+    };
+
+    const config = configs[type];
+    confirmModal.value = {
+      show: true,
+      type,
+      title: config.title,
+      message: config.message,
+      onConfirm: config.onConfirm,
+    };
+    document.getElementById('confirmation_modal').showModal();
+  };
+
+  const closeConfirmModal = () => {
+    document.getElementById('confirmation_modal')?.close();
+    confirmModal.value = {
+      show: false,
+      type: '',
+      title: '',
+      message: '',
+      onConfirm: null,
+    };
+  };
+
+  const handleConfirmAction = async () => {
+    if (confirmModal.value.onConfirm) {
+      try {
+        await confirmModal.value.onConfirm();
+        closeConfirmModal();
+      } catch (error) {
+        console.error('Confirmation action failed:', error);
+      }
+    }
+  };
+
+  // Wrapper methods for confirmation actions
+  const performMarkAllAsPassed = async () => {
+    try {
+      // Double-check GRN status before proceeding
+      if (selectedGRN.value?.status === 'completed') {
+        showToast(
+          'error',
+          'Cannot modify quality inspection for completed GRN'
+        );
+        return;
+      }
+
+      updatingStatus.value = selectedGRN.value.id;
+      const updatedGRN = await performBulkQualityInspection(
+        selectedGRN.value.id,
+        'passed',
+        'All items passed quality inspection'
+      );
+      if (updatedGRN) {
+        selectedGRN.value = updatedGRN;
+        showToast('success', 'All items marked as passed!');
+      }
+    } catch (err) {
+      console.error('Error marking all items as passed:', err);
+      showToast('error', 'Failed to mark all items as passed');
+    } finally {
+      updatingStatus.value = null;
+    }
+  };
+
+  const performMarkAllAsFailed = async () => {
+    try {
+      // Double-check GRN status before proceeding
+      if (selectedGRN.value?.status === 'completed') {
+        showToast(
+          'error',
+          'Cannot modify quality inspection for completed GRN'
+        );
+        return;
+      }
+
+      updatingStatus.value = selectedGRN.value.id;
+      const updatedGRN = await performBulkQualityInspection(
+        selectedGRN.value.id,
+        'failed',
+        'All items failed quality inspection'
+      );
+      if (updatedGRN) {
+        selectedGRN.value = updatedGRN;
+        showToast('success', 'All items marked as failed!');
+      }
+    } catch (err) {
+      console.error('Error marking all items as failed:', err);
+      showToast('error', 'Failed to mark all items as failed');
+    } finally {
+      updatingStatus.value = null;
     }
   };
 

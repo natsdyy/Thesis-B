@@ -334,6 +334,7 @@
                     <thead>
                       <tr class="bg-base-200">
                         <th>Batch/Lot #</th>
+                        <th>Item Name</th>
                         <th>Quantity</th>
                         <th>Expiry Date</th>
                         <th>Received Date</th>
@@ -355,6 +356,11 @@
                           <span class="font-mono text-sm">{{
                             batch.batch_number || 'N/A'
                           }}</span>
+                        </td>
+                        <td>
+                          <span class="font-medium">
+                            {{ batch.item_name || 'N/A' }}
+                          </span>
                         </td>
                         <td>
                           <span class="font-medium">
@@ -765,6 +771,7 @@
   const stockForm = ref({
     category_id: '',
     item_type_id: '',
+    item_name: '',
     quantity: '',
     unit_cost: '',
     batch_number: '',

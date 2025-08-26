@@ -36,11 +36,120 @@ class PurchaseOrder {
           .count("* as count")
           .first();
         po.grn_count = parseInt(grnCount.count);
+
+        const grnInfo = await db("goods_receipt_notes")
+          .where("purchase_order_id", po.id)
+          .whereNull("deleted_at")
+          .select("status")
+          .orderBy("created_at", "desc");
+
+        po.grn_count = grnInfo.length;
+        po.grn_statuses = grnInfo.map((grn) => grn.status);
+        po.latest_grn_status = grnInfo.length > 0 ? grnInfo[0].status : null;
+
+        // Check for pending returns
+        const pendingReturnsCount = await this.getPendingReturnsCount(po.id);
+        po.pending_returns_count = pendingReturnsCount;
+        po.has_pending_returns = pendingReturnsCount > 0;
       }
 
       return purchaseOrders;
     } catch (error) {
       throw error;
+    }
+  }
+
+  static async getPendingReturnsCount(purchaseOrderId) {
+    try {
+      const pendingReturns = await db("item_returns as ir")
+        .leftJoin(
+          "grn_items as gi",
+          "ir.purchase_order_item_id",
+          "gi.purchase_order_item_id"
+        )
+        .leftJoin("goods_receipt_notes as grn", "gi.grn_id", "grn.id")
+        .where("grn.purchase_order_id", purchaseOrderId)
+        .where("grn.status", "failed")
+        .where("ir.status", "!=", "Completed")
+        .whereNull("ir.deleted_at")
+        .count("* as count")
+        .first();
+
+      return parseInt(pendingReturns.count);
+    } catch (error) {
+      console.error("Error getting pending returns count:", error);
+      return 0;
+    }
+  }
+
+  static async canCreateNewGRN(purchaseOrderId) {
+    try {
+      // Get all GRNs for this PO
+      const grns = await db("goods_receipt_notes")
+        .where("purchase_order_id", purchaseOrderId)
+        .whereNull("deleted_at")
+        .select("id", "status")
+        .orderBy("created_at", "desc");
+
+      // If no GRNs exist, allow creation
+      if (grns.length === 0) {
+        return { canCreate: true, reason: "No existing GRNs" };
+      }
+
+      // Check if there are any failed GRNs
+      const failedGRNs = grns.filter((grn) => grn.status === "failed");
+
+      if (failedGRNs.length > 0) {
+        // Check if there are pending returns for failed GRNs
+        const pendingReturns = await db("item_returns as ir")
+          .leftJoin(
+            "grn_items as gi",
+            "ir.purchase_order_item_id",
+            "gi.purchase_order_item_id"
+          )
+          .leftJoin("goods_receipt_notes as grn", "gi.grn_id", "grn.id")
+          .where("grn.purchase_order_id", purchaseOrderId)
+          .where("grn.status", "failed")
+          .where("ir.status", "!=", "Completed")
+          .whereNull("ir.deleted_at")
+          .count("* as count")
+          .first();
+
+        const pendingReturnsCount = parseInt(pendingReturns.count);
+
+        if (pendingReturnsCount > 0) {
+          return {
+            canCreate: false,
+            reason: `Cannot create new GRN: ${pendingReturnsCount} return(s) still pending completion`,
+          };
+        }
+
+        return {
+          canCreate: true,
+          reason: "All returns from failed GRNs are completed",
+        };
+      }
+
+      // Check if there are completed or passed GRNs
+      const completedGRNs = grns.filter(
+        (grn) => grn.status === "completed" || grn.status === "passed"
+      );
+
+      if (completedGRNs.length > 0) {
+        return {
+          canCreate: false,
+          reason: "Cannot create new GRN: Items already received and processed",
+        };
+      }
+
+      // Allow creation for draft or pending_inspection GRNs
+      return {
+        canCreate: true,
+        reason: "Existing GRNs are in draft or pending inspection",
+      };
+    } catch (error) {
+      console.error("Error checking if PO can create new GRN:", error);
+      return { canCreate: false, reason: "Error checking GRN status" };
     }
   }
 

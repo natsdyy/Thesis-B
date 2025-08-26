@@ -201,6 +201,7 @@ router.post("/items", async (req, res) => {
   try {
     const itemData = {
       item_type_id: req.body.item_type_id,
+      item_name: req.body.item_name || null, // Add this line
       supplier_id: req.body.supplier_id || null,
       purchase_order_id: req.body.purchase_order_id || null,
       batch_number: req.body.batch_number || null,

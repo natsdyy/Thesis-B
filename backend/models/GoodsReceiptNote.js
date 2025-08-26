@@ -120,6 +120,15 @@ class GoodsReceiptNote {
         throw new Error("Purchase order not found or not completed");
       }
 
+      // Check if we can create a new GRN for this PO
+      const PurchaseOrder = require("./PurchaseOrder");
+      const canCreateCheck =
+        await PurchaseOrder.canCreateNewGRN(purchaseOrderId);
+
+      if (!canCreateCheck.canCreate) {
+        throw new Error(canCreateCheck.reason);
+      }
+
       const grnNumber = this.generateGRNNumber();
 
       const [grn] = await trx("goods_receipt_notes")
@@ -242,12 +251,24 @@ class GoodsReceiptNote {
   // Add items to inventory after GRN completion
   static async addToInventory(trx, grnId, addedBy) {
     try {
+      // Enhanced query to get GRN items with purchase order item names and inventory data
       const grnItems = await trx("grn_items as gi")
         .leftJoin("goods_receipt_notes as grn", "gi.grn_id", "grn.id")
         .leftJoin("purchase_orders as po", "grn.purchase_order_id", "po.id")
+        .leftJoin(
+          "purchase_order_items as poi",
+          "gi.purchase_order_item_id",
+          "poi.id"
+        )
+        .leftJoin("inventory_item_types as iit", "gi.item_type_id", "iit.id")
+        .leftJoin("inventory_categories as ic", "iit.category_id", "ic.id")
         .select(
           "gi.*",
           "po.supplier_id",
+          "poi.item_name as po_item_name", // Get the specific item name from PO
+          "poi.unit as po_unit", // Get the unit from PO
+          "iit.name as item_type_name", // Get the item type name
+          "ic.name as category_name", // Get the category name
           trx.ref("grn.purchase_order_id").as("purchase_order_id")
         )
         .where("gi.grn_id", grnId)
@@ -255,9 +276,13 @@ class GoodsReceiptNote {
 
       for (const item of grnItems) {
         if (item.received_quantity > 0 && item.item_type_id) {
+          // Create the item name by combining PO item name with unit
+          const itemName = `${item.po_item_name} ${item.po_unit}`;
+
           const [inventoryItem] = await trx("inventory_items")
             .insert({
               item_type_id: item.item_type_id,
+              item_name: itemName, // Use the specific item name from PO
               supplier_id: item.supplier_id,
               purchase_order_id: item.purchase_order_id,
               grn_id: grnId,
@@ -345,8 +370,20 @@ class GoodsReceiptNote {
         updated_at: new Date(),
       });
 
-      // If the item failed inspection, ensure an item return is recorded
+      // If the item failed inspection, ensure an item return is recorded (only if GRN not completed)
       if (result === "failed") {
+        // Check if GRN is already completed (items added to inventory)
+        const grnStatus = await trx("goods_receipt_notes")
+          .where("id", grnId)
+          .select("status")
+          .first();
+
+        if (grnStatus && grnStatus.status === "completed") {
+          console.warn(
+            `Cannot create returns for completed GRN ${grnId} - items already added to inventory`
+          );
+          return await this.getById(grnId);
+        }
         // Load required context for creating an item return
         const ctx = await trx("grn_items as gi")
           .leftJoin("goods_receipt_notes as grn", "gi.grn_id", "grn.id")
@@ -364,25 +401,33 @@ class GoodsReceiptNote {
           .first();
 
         if (ctx && ctx.purchase_order_id && ctx.purchase_order_item_id) {
-          // Avoid duplicate returns for the same PO item
-          const existing = await trx("item_returns")
-            .where({ purchase_order_item_id: ctx.purchase_order_item_id })
-            .whereNull("deleted_at")
+          // Only create return if the item was actually received in this GRN
+          const grnItem = await trx("grn_items")
+            .where("id", grnItemId)
+            .select("received_quantity")
             .first();
 
-          if (!existing) {
-            await trx("item_returns").insert({
-              purchase_order_id: ctx.purchase_order_id,
-              purchase_order_item_id: ctx.purchase_order_item_id,
-              return_quantity:
-                updatedItem?.ordered_quantity || ctx.po_quantity || 0,
-              return_reason: "Quality Failed",
-              notes: notes || null,
-              logged_by: "Quality Inspection",
-              status: "Pending",
-              created_at: new Date(),
-              updated_at: new Date(),
-            });
+          if (grnItem && grnItem.received_quantity > 0) {
+            // Check if a return already exists for this specific GRN item
+            const existing = await trx("item_returns")
+              .where("purchase_order_item_id", ctx.purchase_order_item_id)
+              .where("notes", "like", `%GRN-${grnId}%`)
+              .whereNull("deleted_at")
+              .first();
+
+            if (!existing) {
+              await trx("item_returns").insert({
+                purchase_order_id: ctx.purchase_order_id,
+                purchase_order_item_id: ctx.purchase_order_item_id,
+                return_quantity: Math.round(grnItem.received_quantity), // Convert decimal to integer
+                return_reason: "Poor Quality",
+                notes: `${notes || "Quality inspection failed"} (GRN-${grnId})`,
+                logged_by: "Quality Inspection",
+                status: "Pending",
+                created_at: new Date(),
+                updated_at: new Date(),
+              });
+            }
           }
         }
       }
@@ -468,8 +513,20 @@ class GoodsReceiptNote {
         });
       }
 
-      // If failed, create returns for all items
+      // If failed, create returns only for items received in this GRN (and not yet completed)
       if (result === "failed") {
+        // Check if GRN is already completed (items added to inventory)
+        const grnStatus = await trx("goods_receipt_notes")
+          .where("id", grnId)
+          .select("status")
+          .first();
+
+        if (grnStatus && grnStatus.status === "completed") {
+          console.warn(
+            `Cannot create returns for completed GRN ${grnId} - items already added to inventory`
+          );
+          return await this.getById(grnId);
+        }
         const ctxRows = await trx("grn_items as gi")
           .leftJoin("goods_receipt_notes as grn", "gi.grn_id", "grn.id")
           .leftJoin(
@@ -479,25 +536,33 @@ class GoodsReceiptNote {
           )
           .select(
             "gi.id as grn_item_id",
+            "gi.received_quantity as grn_received_quantity",
             "grn.purchase_order_id as purchase_order_id",
-            "gi.purchase_order_item_id as purchase_order_item_id",
-            trx.ref("poi.quantity").as("po_quantity")
+            "gi.purchase_order_item_id as purchase_order_item_id"
           )
-          .where("gi.grn_id", grnId);
+          .where("gi.grn_id", grnId)
+          .where("gi.received_quantity", ">", 0); // Only items actually received
 
         for (const ctx of ctxRows) {
-          if (ctx.purchase_order_id && ctx.purchase_order_item_id) {
+          if (
+            ctx.purchase_order_id &&
+            ctx.purchase_order_item_id &&
+            ctx.grn_received_quantity > 0
+          ) {
+            // Check if a return already exists for this specific GRN item
             const exists = await trx("item_returns")
-              .where({ purchase_order_item_id: ctx.purchase_order_item_id })
+              .where("purchase_order_item_id", ctx.purchase_order_item_id)
+              .where("notes", "like", `%GRN-${grnId}%`)
               .whereNull("deleted_at")
               .first();
+
             if (!exists) {
               await trx("item_returns").insert({
                 purchase_order_id: ctx.purchase_order_id,
                 purchase_order_item_id: ctx.purchase_order_item_id,
-                return_quantity: ctx.po_quantity || 0,
-                return_reason: "Quality Failed",
-                notes: notes || null,
+                return_quantity: Math.round(ctx.grn_received_quantity), // Convert decimal to integer
+                return_reason: "Poor Quality",
+                notes: `${notes || "Quality inspection failed"} (GRN-${grnId})`,
                 logged_by: "Quality Inspection",
                 status: "Pending",
                 created_at: new Date(),

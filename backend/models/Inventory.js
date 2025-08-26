@@ -81,6 +81,7 @@ class Inventory {
         .leftJoin("suppliers as s", "ii.supplier_id", "s.id")
         .select(
           "ii.*",
+          "ii.item_name", // Make sure this line is included
           "it.name as item_type_name",
           "it.unit_of_measure",
           "it.requires_expiry",
@@ -172,6 +173,11 @@ class Inventory {
 
       const isFirstReceipt = parseInt(itemType.receipts_count || 0, 10) === 0;
 
+      // Set default item_name if not provided
+      if (!itemData.item_name) {
+        itemData.item_name = itemType.name;
+      }
+
       // Generate batch number if not provided
       const batchNumber =
         itemData.batch_number ||
@@ -184,6 +190,7 @@ class Inventory {
       const [newItem] = await trx("inventory_items")
         .insert({
           item_type_id: itemData.item_type_id,
+          item_name: itemData.item_name, // Include item_name
           supplier_id: itemData.supplier_id || null,
           purchase_order_id: itemData.purchase_order_id || null,
           batch_number: batchNumber,
@@ -194,7 +201,7 @@ class Inventory {
           received_date: itemData.received_date || new Date(),
           status: "available",
           notes: itemData.notes || null,
-          received_by: itemData.received_by,
+          received_by: itemData.received_by || "System",
           created_at: new Date(),
           updated_at: new Date(),
         })

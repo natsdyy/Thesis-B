@@ -306,4 +306,23 @@ router.get("/:id", async (req, res) => {
     });
   }
 });
+
+router.get("/:id/can-create-grn", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const eligibility = await PurchaseOrder.canCreateNewGRN(id);
+
+    res.json({
+      success: true,
+      data: eligibility,
+    });
+  } catch (error) {
+    console.error("Error checking GRN creation eligibility:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to check GRN creation eligibility",
+    });
+  }
+});
 module.exports = router;

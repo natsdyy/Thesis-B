@@ -11,7 +11,7 @@ class GoodsReceiptNote {
     return `GRN${year}${month}${day}-${timestamp}`;
   }
 
-  // Get all GRNs with optional filters
+  // Get all GRNs with optional filters and stats
   static async getAll(filters = {}) {
     try {
       let query = db("goods_receipt_notes as grn")
@@ -38,6 +38,12 @@ class GoodsReceiptNote {
       for (let grn of grns) {
         grn.items = await this.getItems(grn.id);
         grn.item_count = grn.items.length;
+      }
+
+      // Calculate stats if requested
+      if (filters.include_stats) {
+        const stats = await this.getStats();
+        return { grns, stats };
       }
 
       return grns;
@@ -190,7 +196,7 @@ class GoodsReceiptNote {
     }
   }
 
-  // Update GRN status
+  // Update GRN status with stats recalculation
   static async updateStatus(id, status, updatedBy, notes = null) {
     const trx = await db.transaction();
 
@@ -239,8 +245,11 @@ class GoodsReceiptNote {
 
       await trx.commit();
 
-      // Return the full GRN data with joins (same as getById)
-      return await this.getById(id);
+      // Return the full GRN data with joins and updated stats
+      const fullGRN = await this.getById(id);
+      const stats = await this.updateStats();
+
+      return { grn: fullGRN, stats };
     } catch (error) {
       await trx.rollback();
       console.error("Error updating GRN status:", error);
@@ -333,7 +342,7 @@ class GoodsReceiptNote {
     return `GRN-${itemTypeId}-${supplierId || "NONE"}-${year}${month}${day}-${hour}${minute}`;
   }
 
-  // Quality inspection methods
+  // Quality inspection methods with stats update
   static async performQualityInspection(
     grnId,
     grnItemId,
@@ -382,7 +391,10 @@ class GoodsReceiptNote {
           console.warn(
             `Cannot create returns for completed GRN ${grnId} - items already added to inventory`
           );
-          return await this.getById(grnId);
+          await trx.commit();
+          const fullGRN = await this.getById(grnId);
+          const stats = await this.updateStats();
+          return { grn: fullGRN, stats };
         }
         // Load required context for creating an item return
         const ctx = await trx("grn_items as gi")
@@ -466,8 +478,10 @@ class GoodsReceiptNote {
 
       await trx.commit();
 
-      // Return the updated GRN with full data
-      return await this.getById(grnId);
+      // Return the updated GRN with full data and stats
+      const fullGRN = await this.getById(grnId);
+      const stats = await this.updateStats();
+      return { grn: fullGRN, stats };
     } catch (error) {
       await trx.rollback();
       console.error("Error performing quality inspection:", error);
@@ -475,7 +489,7 @@ class GoodsReceiptNote {
     }
   }
 
-  // Bulk quality inspection for all items in a GRN
+  // Bulk quality inspection for all items in a GRN with stats update
   static async performBulkQualityInspection(
     grnId,
     inspectorId,
@@ -525,7 +539,10 @@ class GoodsReceiptNote {
           console.warn(
             `Cannot create returns for completed GRN ${grnId} - items already added to inventory`
           );
-          return await this.getById(grnId);
+          await trx.commit();
+          const fullGRN = await this.getById(grnId);
+          const stats = await this.updateStats();
+          return { grn: fullGRN, stats };
         }
         const ctxRows = await trx("grn_items as gi")
           .leftJoin("goods_receipt_notes as grn", "gi.grn_id", "grn.id")
@@ -581,8 +598,10 @@ class GoodsReceiptNote {
 
       await trx.commit();
 
-      // Return the updated GRN with full data
-      return await this.getById(grnId);
+      // Return the updated GRN with full data and stats
+      const fullGRN = await this.getById(grnId);
+      const stats = await this.updateStats();
+      return { grn: fullGRN, stats };
     } catch (error) {
       await trx.rollback();
       console.error("Error performing bulk quality inspection:", error);
@@ -755,6 +774,72 @@ class GoodsReceiptNote {
       };
     } catch (error) {
       console.error("Error debugging supply request data:", error);
+      throw error;
+    }
+  }
+
+  // Get GRN statistics
+  static async getStats() {
+    try {
+      const today = new Date();
+      const startOfDay = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+      );
+      const startOfWeek = new Date(today);
+      startOfWeek.setDate(today.getDate() - today.getDay() + 1); // Monday
+      startOfWeek.setHours(0, 0, 0, 0);
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
+      const stats = await db("goods_receipt_notes")
+        .whereNull("deleted_at")
+        .select(
+          db.raw("COUNT(*) as total"),
+          db.raw("COUNT(CASE WHEN status = 'draft' THEN 1 END) as draft"),
+          db.raw(
+            "COUNT(CASE WHEN status = 'pending_inspection' THEN 1 END) as pending_inspection"
+          ),
+          db.raw("COUNT(CASE WHEN status = 'passed' THEN 1 END) as passed"),
+          db.raw("COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed"),
+          db.raw(
+            "COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed"
+          ),
+          db.raw("COUNT(CASE WHEN created_at >= ? THEN 1 END) as today", [
+            startOfDay,
+          ]),
+          db.raw("COUNT(CASE WHEN created_at >= ? THEN 1 END) as week", [
+            startOfWeek,
+          ]),
+          db.raw("COUNT(CASE WHEN created_at >= ? THEN 1 END) as month", [
+            startOfMonth,
+          ])
+        )
+        .first();
+
+      return {
+        total: parseInt(stats.total) || 0,
+        draft: parseInt(stats.draft) || 0,
+        pending_inspection: parseInt(stats.pending_inspection) || 0,
+        passed: parseInt(stats.passed) || 0,
+        failed: parseInt(stats.failed) || 0,
+        completed: parseInt(stats.completed) || 0,
+        today: parseInt(stats.today) || 0,
+        week: parseInt(stats.week) || 0,
+        month: parseInt(stats.month) || 0,
+      };
+    } catch (error) {
+      console.error("Error calculating GRN stats:", error);
+      throw new Error("Failed to calculate GRN statistics");
+    }
+  }
+
+  // Update stats after critical operations
+  static async updateStats() {
+    try {
+      return await this.getStats();
+    } catch (error) {
+      console.error("Error updating GRN stats:", error);
       throw error;
     }
   }

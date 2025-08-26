@@ -70,19 +70,28 @@ export const useGRNStore = defineStore('grn', () => {
 
       if (response.data.success) {
         grns.value = response.data.data || [];
-        stats.value = response.data.stats || {
-          total: grns.value.length,
-          draft: grns.value.filter((g) => g.status === 'draft').length,
-          pending_inspection: grns.value.filter(
-            (g) => g.status === 'pending_inspection'
-          ).length,
-          passed: grns.value.filter((g) => g.status === 'passed').length,
-          failed: grns.value.filter((g) => g.status === 'failed').length,
-          completed: grns.value.filter((g) => g.status === 'completed').length,
-          today: 0,
-          week: 0,
-          month: 0,
-        };
+
+        // Update stats if provided by backend
+        if (response.data.stats) {
+          stats.value = response.data.stats;
+        } else {
+          // Fallback to client-side calculation
+          stats.value = {
+            total: grns.value.length,
+            draft: grns.value.filter((g) => g.status === 'draft').length,
+            pending_inspection: grns.value.filter(
+              (g) => g.status === 'pending_inspection'
+            ).length,
+            passed: grns.value.filter((g) => g.status === 'passed').length,
+            failed: grns.value.filter((g) => g.status === 'failed').length,
+            completed: grns.value.filter((g) => g.status === 'completed')
+              .length,
+            today: 0,
+            week: 0,
+            month: 0,
+          };
+        }
+
         lastFetchTime.value = Date.now();
         return grns.value;
       } else {
@@ -101,6 +110,20 @@ export const useGRNStore = defineStore('grn', () => {
   // Optimized fetch with stats
   const fetchGRNsWithStats = async (filters = {}) => {
     return await fetchGRNs({ ...filters, include_stats: true });
+  };
+
+  // Fetch stats separately
+  const fetchStats = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/grn/stats`);
+      if (response.data.success) {
+        stats.value = response.data.data;
+        return stats.value;
+      }
+    } catch (err) {
+      console.error('Error fetching GRN stats:', err);
+      throw err;
+    }
   };
 
   const fetchGRNById = async (id) => {
@@ -169,6 +192,12 @@ export const useGRNStore = defineStore('grn', () => {
         if (index !== -1) {
           grns.value[index] = response.data.data;
         }
+
+        // Update stats if provided
+        if (response.data.stats) {
+          stats.value = response.data.stats;
+        }
+
         return response.data.data;
       } else {
         throw new Error(response.data.message || 'Failed to update GRN status');
@@ -187,7 +216,7 @@ export const useGRNStore = defineStore('grn', () => {
     error.value = null;
   };
 
-  // Quality inspection methods
+  // Quality inspection methods with stats update
   const performQualityInspection = async (
     grnId,
     grnItemId,
@@ -215,6 +244,12 @@ export const useGRNStore = defineStore('grn', () => {
         if (index !== -1) {
           grns.value[index] = updatedGRN;
         }
+
+        // Update stats if provided
+        if (response.data.stats) {
+          stats.value = response.data.stats;
+        }
+
         return updatedGRN;
       }
     } catch (err) {
@@ -244,6 +279,12 @@ export const useGRNStore = defineStore('grn', () => {
         if (index !== -1) {
           grns.value[index] = updatedGRN;
         }
+
+        // Update stats if provided
+        if (response.data.stats) {
+          stats.value = response.data.stats;
+        }
+
         return updatedGRN;
       }
     } catch (err) {
@@ -294,6 +335,7 @@ export const useGRNStore = defineStore('grn', () => {
     // Actions
     fetchGRNs,
     fetchGRNsWithStats,
+    fetchStats,
     fetchGRNById,
     createGRNFromPO,
     updateGRNStatus,

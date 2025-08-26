@@ -28,7 +28,7 @@
           <GitPullRequestDraft class="w-8 h-8" />
         </div>
         <div class="stat-title">Draft</div>
-        <div class="stat-value text-warning">{{ draftGRNs.length }}</div>
+        <div class="stat-value text-warning">{{ draftGRNs }}</div>
         <div class="stat-desc">Pending creation</div>
       </div>
 
@@ -38,7 +38,7 @@
         </div>
         <div class="stat-title">Pending Inspection</div>
         <div class="stat-value text-info">
-          {{ pendingInspectionGRNs.length }}
+          {{ pendingInspectionGRNs }}
         </div>
         <div class="stat-desc">Awaiting quality check</div>
       </div>
@@ -48,7 +48,7 @@
           <CheckCircle class="w-8 h-8" />
         </div>
         <div class="stat-title">Completed</div>
-        <div class="stat-value text-success">{{ completedGRNs.length }}</div>
+        <div class="stat-value text-success">{{ completedGRNs }}</div>
         <div class="stat-desc">Added to inventory</div>
       </div>
     </div>
@@ -141,7 +141,7 @@
                 @click="grnFilterType = 'today'"
               >
                 Today
-                <span class="badge badge-xs ml-1">{{ grnTodayCount }}</span>
+                <span class="badge badge-xs ml-1">{{ stats.today }}</span>
               </button>
               <button
                 class="join-item btn btn-xs sm:btn-sm font-thin border border-primaryColor/30"
@@ -151,7 +151,7 @@
                 @click="grnFilterType = 'week'"
               >
                 This Week
-                <span class="badge badge-xs ml-1">{{ grnWeekCount }}</span>
+                <span class="badge badge-xs ml-1">{{ stats.week }}</span>
               </button>
               <button
                 class="join-item btn btn-xs sm:btn-sm font-thin border border-primaryColor/30"
@@ -161,7 +161,7 @@
                 @click="grnFilterType = 'month'"
               >
                 This Month
-                <span class="badge badge-xs ml-1">{{ grnMonthCount }}</span>
+                <span class="badge badge-xs ml-1">{{ stats.month }}</span>
               </button>
             </div>
             <button
@@ -722,51 +722,16 @@
   const { grns, loading, error, stats } = storeToRefs(grnStore);
 
   // Calculate stats from actual GRN data since backend doesn't provide stats
-  const grnCount = computed(() => grns.value.length);
-  const hasGRNs = computed(() => grns.value.length > 0);
-  const draftGRNs = computed(
-    () => grns.value.filter((grn) => grn.status === 'draft').length
-  );
-  const pendingInspectionGRNs = computed(
-    () => grns.value.filter((grn) => grn.status === 'pending_inspection').length
-  );
-  const completedGRNs = computed(
-    () => grns.value.filter((grn) => grn.status === 'completed').length
-  );
+  const grnCount = computed(() => stats.value.total);
+  const hasGRNs = computed(() => stats.value.total > 0);
+  const draftGRNs = computed(() => stats.value.draft);
+  const pendingInspectionGRNs = computed(() => stats.value.pending_inspection);
+  const completedGRNs = computed(() => stats.value.completed);
 
-  // Calculate date-based counts from actual GRN data
-  const grnTodayCount = computed(() => {
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-    return grns.value.filter((grn) => {
-      const grnDate = new Date(grn.created_at).toISOString().split('T')[0];
-      return grnDate === todayStr;
-    }).length;
-  });
-
-  const grnWeekCount = computed(() => {
-    const today = new Date();
-    const startOfWeek = getStartOfWeek(today);
-    const endOfWeek = new Date(today);
-    endOfWeek.setHours(23, 59, 59, 999);
-
-    return grns.value.filter((grn) => {
-      const grnDate = new Date(grn.created_at);
-      return grnDate >= startOfWeek && grnDate <= endOfWeek;
-    }).length;
-  });
-
-  const grnMonthCount = computed(() => {
-    const today = new Date();
-    const startOfMonth = getStartOfMonth(today);
-    const endOfMonth = new Date(today);
-    endOfMonth.setHours(23, 59, 59, 999);
-
-    return grns.value.filter((grn) => {
-      const grnDate = new Date(grn.created_at);
-      return grnDate >= startOfMonth && grnDate <= endOfMonth;
-    }).length;
-  });
+  // Use backend stats for date-based counts
+  const grnTodayCount = computed(() => stats.value.today);
+  const grnWeekCount = computed(() => stats.value.week);
+  const grnMonthCount = computed(() => stats.value.month);
 
   // Optimized filtering - use server-side filtering
   const grnFilterType = ref('today');
@@ -902,8 +867,8 @@
   // Optimized refresh - use cache when possible
   const refreshGRNs = async () => {
     try {
-      // Force refresh by clearing cache
-      await grnStore.fetchGRNs({ force_refresh: true });
+      // Force refresh by clearing cache and fetching with stats
+      await grnStore.fetchGRNsWithStats({ force_refresh: true });
       showToast('success', 'GRN list refreshed successfully');
     } catch (err) {
       showToast('error', 'Failed to refresh GRN list');
@@ -1056,7 +1021,7 @@
     try {
       updatingStatus.value = id;
 
-      // Update the status
+      // Update the status - this now returns updated stats
       const updatedGRN = await updateGRNStatus(id, status, authStore.user.id);
 
       // Update the selected GRN if it's the same one

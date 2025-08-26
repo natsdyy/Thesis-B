@@ -1,3 +1,267 @@
+<script setup>
+  import { ref, computed, watch } from 'vue';
+  import { Plus, X, Package } from 'lucide-vue-next';
+
+  // Props
+  const props = defineProps({
+    show: {
+      type: Boolean,
+      default: false,
+    },
+    categories: {
+      type: Array,
+      default: () => [],
+    },
+    itemTypes: {
+      type: Array,
+      default: () => [],
+    },
+    currentInventory: {
+      type: Array,
+      default: () => [],
+    },
+    loading: {
+      type: Boolean,
+      default: false,
+    },
+  });
+
+  // Emits
+  const emit = defineEmits(['close', 'submit']);
+
+  // Local state
+  const usageType = ref('single');
+  const singleItem = ref({
+    category_id: '',
+    item_type_id: '',
+    inventory_item_id: '',
+    quantity: '',
+    reason: '',
+    reference_number: '',
+    notes: '',
+  });
+
+  const closeModal = () => {
+    resetForm();
+    const dlg = document.getElementById('inventory_consumption_modal');
+    if (dlg?.close) dlg.close();
+    emit('close');
+  };
+
+  watch(
+    () => props.show,
+    (newVal) => {
+      const dlg = document.getElementById('inventory_consumption_modal');
+      if (newVal) {
+        resetForm();
+        if (dlg?.showModal) dlg.showModal();
+      } else {
+        if (dlg?.close) dlg.close();
+      }
+    }
+  );
+
+  const bulkItems = ref([]);
+  const bulkReference = ref('');
+  const bulkNotes = ref('');
+
+  // Computed properties
+  const filteredItemTypes = computed(() => {
+    if (!singleItem.value.category_id) return [];
+    return props.itemTypes.filter(
+      (type) => type.category_id == singleItem.value.category_id
+    );
+  });
+
+  const availableStock = computed(() => {
+    if (!singleItem.value.item_type_id) return [];
+    return props.currentInventory.filter(
+      (item) =>
+        item.item_type_id == singleItem.value.item_type_id &&
+        item.status === 'available' &&
+        parseFloat(item.quantity) > 0
+    );
+  });
+
+  const selectedStock = computed(() => {
+    if (!singleItem.value.inventory_item_id) return null;
+    return props.currentInventory.find(
+      (item) => item.id == singleItem.value.inventory_item_id
+    );
+  });
+
+  // Helpers
+  const getAvailableQty = (inventory_item_id) => {
+    const s = props.currentInventory.find((i) => i.id == inventory_item_id);
+    return parseFloat(s?.quantity || 0);
+  };
+
+  // Single-mode validation message
+  const singleQtyError = computed(() => {
+    if (!selectedStock.value || singleItem.value.quantity === '') return '';
+    const qty = parseFloat(singleItem.value.quantity || 0);
+    if (isNaN(qty) || qty <= 0) return 'Quantity must be greater than 0';
+    if (qty > parseFloat(selectedStock.value.quantity || 0))
+      return `Exceeds available (${parseFloat(selectedStock.value.quantity || 0).toLocaleString()})`;
+    return '';
+  });
+
+  // Bulk-mode per-row validation messages
+  const bulkErrors = computed(() =>
+    bulkItems.value.map((it) => {
+      if (!it || !it.inventory_item_id || it.quantity === '') return '';
+      const qty = parseFloat(it.quantity || 0);
+      if (isNaN(qty) || qty <= 0) return 'Quantity must be greater than 0';
+      const avail = getAvailableQty(it.inventory_item_id);
+      if (qty > avail) return `Exceeds available (${avail.toLocaleString()})`;
+      return '';
+    })
+  );
+
+  const isFormValid = computed(() => {
+    if (usageType.value === 'single') {
+      if (
+        !singleItem.value.inventory_item_id ||
+        singleItem.value.quantity === '' ||
+        !singleItem.value.reason
+      )
+        return false;
+      return singleQtyError.value === '';
+    }
+    // bulk
+    if (bulkItems.value.length === 0) return false;
+    return bulkItems.value.every((it, idx) => {
+      if (!it.inventory_item_id || it.quantity === '' || !it.reason)
+        return false;
+      return bulkErrors.value[idx] === '';
+    });
+  });
+
+  // Methods
+  const formatStockOption = (stock) => {
+    const name = stock.item_name || stock.item_type_name || 'Unnamed Item';
+    const qty = parseFloat(stock.quantity).toLocaleString();
+    const batch = stock.batch_number ? ` (Batch: ${stock.batch_number})` : '';
+    const expiry = stock.expiry_date
+      ? ` - Exp: ${formatDate(stock.expiry_date)}`
+      : '';
+    return `${name} — ${qty} ${stock.unit_of_measure}${batch}${expiry}`;
+  };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+
+  const onCategoryChange = () => {
+    singleItem.value.item_type_id = '';
+    singleItem.value.inventory_item_id = '';
+  };
+
+  const onItemTypeChange = () => {
+    singleItem.value.inventory_item_id = '';
+  };
+
+  const addBulkItem = () => {
+    bulkItems.value.push({
+      category_id: '',
+      item_type_id: '',
+      inventory_item_id: '',
+      quantity: '',
+      reason: '',
+      notes: '',
+    });
+  };
+
+  const removeBulkItem = (index) => {
+    bulkItems.value.splice(index, 1);
+  };
+
+  const onBulkCategoryChange = (index) => {
+    bulkItems.value[index].item_type_id = '';
+    bulkItems.value[index].inventory_item_id = '';
+  };
+
+  const onBulkItemTypeChange = (index) => {
+    bulkItems.value[index].inventory_item_id = '';
+  };
+
+  const getBulkFilteredItemTypes = (categoryId) => {
+    if (!categoryId) return [];
+    return props.itemTypes.filter((type) => type.category_id == categoryId);
+  };
+
+  const getBulkAvailableStock = (itemTypeId) => {
+    if (!itemTypeId) return [];
+    return props.currentInventory.filter(
+      (item) =>
+        item.item_type_id == itemTypeId &&
+        item.status === 'available' &&
+        parseFloat(item.quantity) > 0
+    );
+  };
+
+  const resetForm = () => {
+    usageType.value = 'single';
+    singleItem.value = {
+      category_id: '',
+      item_type_id: '',
+      inventory_item_id: '',
+      quantity: '',
+      reason: '',
+      reference_number: '',
+      notes: '',
+    };
+    bulkItems.value = [];
+    bulkReference.value = '';
+    bulkNotes.value = '';
+  };
+
+  const handleSubmit = () => {
+    if (usageType.value === 'single') {
+      const consumptionData = {
+        items: [
+          {
+            inventory_item_id: singleItem.value.inventory_item_id,
+            quantity: parseFloat(singleItem.value.quantity),
+            reason: singleItem.value.reason,
+          },
+        ],
+        performed_by: 'SCM User',
+        reference_number: singleItem.value.reference_number,
+        notes: singleItem.value.notes,
+      };
+      emit('submit', consumptionData);
+    } else {
+      const consumptionData = {
+        items: bulkItems.value.map((item) => ({
+          inventory_item_id: item.inventory_item_id,
+          quantity: parseFloat(item.quantity),
+          reason: item.reason,
+          notes: item.notes,
+        })),
+        performed_by: 'SCM User',
+        reference_number: bulkReference.value,
+        notes: bulkNotes.value,
+      };
+      emit('submit', consumptionData);
+    }
+  };
+
+  // Watchers
+  watch(
+    () => props.show,
+    (newVal) => {
+      if (newVal) {
+        resetForm();
+      }
+    }
+  );
+</script>
+
 <template>
   <dialog id="inventory_consumption_modal" class="modal">
     <div class="modal-box max-w-3xl">
@@ -15,7 +279,7 @@
                 type="radio"
                 v-model="usageType"
                 value="single"
-                class="radio radio-primary"
+                class="radio radio-sm checked:text-primaryColor"
               />
               <span class="label-text ml-2">Single Item</span>
             </label>
@@ -24,7 +288,7 @@
                 type="radio"
                 v-model="usageType"
                 value="bulk"
-                class="radio radio-primary"
+                class="radio radio-sm checked:text-primaryColor"
               />
               <span class="label-text ml-2">Multiple Items</span>
             </label>
@@ -114,12 +378,24 @@
                 class="input input-bordered w-full"
                 placeholder="0.000"
                 required
+                @input="
+                  () => {
+                    const max = parseFloat(selectedStock?.quantity || 0);
+                    let v = parseFloat(singleItem.quantity || 0);
+                    if (isNaN(v) || v < 0) v = 0;
+                    if (v > max) v = max;
+                    singleItem.quantity = v ? v : '';
+                  }
+                "
               />
               <div class="label">
                 <span class="label-text-alt">
                   Available: {{ selectedStock?.quantity || 0 }}
                   {{ selectedStock?.unit_of_measure || '' }}
                 </span>
+                <span v-if="singleQtyError" class="label-text-alt text-error">{{
+                  singleQtyError
+                }}</span>
               </div>
             </div>
           </div>
@@ -291,7 +567,31 @@
                       min="0.001"
                       class="input input-bordered input-sm w-full"
                       placeholder="0.000"
+                      @input="
+                        () => {
+                          const max = getAvailableQty(item.inventory_item_id);
+                          let v = parseFloat(item.quantity || 0);
+                          if (isNaN(v) || v < 0) v = 0;
+                          if (v > max) v = max;
+                          item.quantity = v ? v : '';
+                        }
+                      "
                     />
+                    <div class="label">
+                      <span class="label-text-alt">
+                        Available:
+                        {{
+                          getAvailableQty(
+                            item.inventory_item_id
+                          ).toLocaleString()
+                        }}
+                      </span>
+                      <span
+                        class="label-text-alt text-error"
+                        v-if="bulkErrors[index]"
+                        >{{ bulkErrors[index] }}</span
+                      >
+                    </div>
                   </div>
 
                   <div class="form-control">
@@ -381,231 +681,6 @@
     </div>
   </dialog>
 </template>
-
-<script setup>
-  import { ref, computed, watch } from 'vue';
-  import { Plus, X, Package } from 'lucide-vue-next';
-
-  // Props
-  const props = defineProps({
-    show: {
-      type: Boolean,
-      default: false,
-    },
-    categories: {
-      type: Array,
-      default: () => [],
-    },
-    itemTypes: {
-      type: Array,
-      default: () => [],
-    },
-    currentInventory: {
-      type: Array,
-      default: () => [],
-    },
-    loading: {
-      type: Boolean,
-      default: false,
-    },
-  });
-
-  // Emits
-  const emit = defineEmits(['close', 'submit']);
-
-  // Local state
-  const usageType = ref('single');
-  const singleItem = ref({
-    category_id: '',
-    item_type_id: '',
-    inventory_item_id: '',
-    quantity: '',
-    reason: '',
-    reference_number: '',
-    notes: '',
-  });
-
-  const bulkItems = ref([]);
-  const bulkReference = ref('');
-  const bulkNotes = ref('');
-
-  // Computed properties
-  const filteredItemTypes = computed(() => {
-    if (!singleItem.value.category_id) return [];
-    return props.itemTypes.filter(
-      (type) => type.category_id == singleItem.value.category_id
-    );
-  });
-
-  const availableStock = computed(() => {
-    if (!singleItem.value.item_type_id) return [];
-    return props.currentInventory.filter(
-      (item) =>
-        item.item_type_id == singleItem.value.item_type_id &&
-        item.status === 'available' &&
-        parseFloat(item.quantity) > 0
-    );
-  });
-
-  const selectedStock = computed(() => {
-    if (!singleItem.value.inventory_item_id) return null;
-    return props.currentInventory.find(
-      (item) => item.id == singleItem.value.inventory_item_id
-    );
-  });
-
-  const isFormValid = computed(() => {
-    if (usageType.value === 'single') {
-      return (
-        singleItem.value.inventory_item_id &&
-        singleItem.value.quantity &&
-        singleItem.value.reason &&
-        parseFloat(singleItem.value.quantity) > 0 &&
-        parseFloat(singleItem.value.quantity) <=
-          (selectedStock.value?.quantity || 0)
-      );
-    } else {
-      return (
-        bulkItems.value.length > 0 &&
-        bulkItems.value.every(
-          (item) =>
-            item.inventory_item_id &&
-            item.quantity &&
-            item.reason &&
-            parseFloat(item.quantity) > 0
-        )
-      );
-    }
-  });
-
-  // Methods
-  const formatStockOption = (stock) => {
-    const qty = parseFloat(stock.quantity).toLocaleString();
-    const batch = stock.batch_number ? ` (Batch: ${stock.batch_number})` : '';
-    const expiry = stock.expiry_date
-      ? ` - Exp: ${formatDate(stock.expiry_date)}`
-      : '';
-    return `${qty} ${stock.unit_of_measure}${batch}${expiry}`;
-  };
-
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-PH', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
-
-  const onCategoryChange = () => {
-    singleItem.value.item_type_id = '';
-    singleItem.value.inventory_item_id = '';
-  };
-
-  const onItemTypeChange = () => {
-    singleItem.value.inventory_item_id = '';
-  };
-
-  const addBulkItem = () => {
-    bulkItems.value.push({
-      category_id: '',
-      item_type_id: '',
-      inventory_item_id: '',
-      quantity: '',
-      reason: '',
-      notes: '',
-    });
-  };
-
-  const removeBulkItem = (index) => {
-    bulkItems.value.splice(index, 1);
-  };
-
-  const onBulkCategoryChange = (index) => {
-    bulkItems.value[index].item_type_id = '';
-    bulkItems.value[index].inventory_item_id = '';
-  };
-
-  const onBulkItemTypeChange = (index) => {
-    bulkItems.value[index].inventory_item_id = '';
-  };
-
-  const getBulkFilteredItemTypes = (categoryId) => {
-    if (!categoryId) return [];
-    return props.itemTypes.filter((type) => type.category_id == categoryId);
-  };
-
-  const getBulkAvailableStock = (itemTypeId) => {
-    if (!itemTypeId) return [];
-    return props.currentInventory.filter(
-      (item) =>
-        item.item_type_id == itemTypeId &&
-        item.status === 'available' &&
-        parseFloat(item.quantity) > 0
-    );
-  };
-
-  const resetForm = () => {
-    usageType.value = 'single';
-    singleItem.value = {
-      category_id: '',
-      item_type_id: '',
-      inventory_item_id: '',
-      quantity: '',
-      reason: '',
-      reference_number: '',
-      notes: '',
-    };
-    bulkItems.value = [];
-    bulkReference.value = '';
-    bulkNotes.value = '';
-  };
-
-  const closeModal = () => {
-    resetForm();
-    emit('close');
-  };
-
-  const handleSubmit = () => {
-    if (usageType.value === 'single') {
-      const consumptionData = {
-        items: [
-          {
-            inventory_item_id: singleItem.value.inventory_item_id,
-            quantity: parseFloat(singleItem.value.quantity),
-            reason: singleItem.value.reason,
-          },
-        ],
-        performed_by: 'SCM User',
-        reference_number: singleItem.value.reference_number,
-        notes: singleItem.value.notes,
-      };
-      emit('submit', consumptionData);
-    } else {
-      const consumptionData = {
-        items: bulkItems.value.map((item) => ({
-          inventory_item_id: item.inventory_item_id,
-          quantity: parseFloat(item.quantity),
-          reason: item.reason,
-          notes: item.notes,
-        })),
-        performed_by: 'SCM User',
-        reference_number: bulkReference.value,
-        notes: bulkNotes.value,
-      };
-      emit('submit', consumptionData);
-    }
-  };
-
-  // Watchers
-  watch(
-    () => props.show,
-    (newVal) => {
-      if (newVal) {
-        resetForm();
-      }
-    }
-  );
-</script>
 
 <style scoped>
   .modal-box {

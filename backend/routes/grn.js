@@ -2,13 +2,15 @@ const express = require("express");
 const router = express.Router();
 const GoodsReceiptNote = require("../models/GoodsReceiptNote");
 
-// Get all GRNs with optional filters
+// Get all GRNs with optional filters and stats
 router.get("/", async (req, res) => {
   try {
     const filters = {
       status: req.query.status,
       supplier_id: req.query.supplier_id,
       purchase_order_id: req.query.purchase_order_id,
+      include_stats:
+        req.query.include_stats === "true" || req.query.include_stats === true,
     };
 
     // Remove undefined filters
@@ -18,16 +20,42 @@ router.get("/", async (req, res) => {
       }
     });
 
-    const grns = await GoodsReceiptNote.getAll(filters);
-    res.json({
-      success: true,
-      data: grns,
-    });
+    const result = await GoodsReceiptNote.getAll(filters);
+
+    if (filters.include_stats) {
+      res.json({
+        success: true,
+        data: result.grns,
+        stats: result.stats,
+      });
+    } else {
+      res.json({
+        success: true,
+        data: result,
+      });
+    }
   } catch (error) {
     console.error("Error fetching GRNs:", error);
     res.status(500).json({
       success: false,
       message: error.message || "Failed to fetch GRNs",
+    });
+  }
+});
+
+// Get GRN statistics
+router.get("/stats", async (req, res) => {
+  try {
+    const stats = await GoodsReceiptNote.getStats();
+    res.json({
+      success: true,
+      data: stats,
+    });
+  } catch (error) {
+    console.error("Error fetching GRN stats:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch GRN stats",
     });
   }
 });
@@ -86,7 +114,7 @@ router.post("/from-po/:poId", async (req, res) => {
   }
 });
 
-// Update GRN status
+// Update GRN status with stats
 router.patch("/:id/status", async (req, res) => {
   try {
     const { id } = req.params;
@@ -99,15 +127,17 @@ router.patch("/:id/status", async (req, res) => {
       });
     }
 
-    const updatedGRN = await GoodsReceiptNote.updateStatus(
+    const result = await GoodsReceiptNote.updateStatus(
       id,
       status,
       updated_by,
       notes
     );
+
     res.json({
       success: true,
-      data: updatedGRN,
+      data: result.grn,
+      stats: result.stats,
       message: "GRN status updated successfully",
     });
   } catch (error) {
@@ -181,7 +211,7 @@ router.post("/:id/items/:itemId/map-item-type", async (req, res) => {
   }
 });
 
-// Perform quality inspection on a specific GRN item
+// Perform quality inspection on a specific GRN item with stats
 router.post("/:id/items/:itemId/inspect", async (req, res) => {
   try {
     const { id, itemId } = req.params;
@@ -196,7 +226,7 @@ router.post("/:id/items/:itemId/inspect", async (req, res) => {
       });
     }
 
-    const updatedGRN = await GoodsReceiptNote.performQualityInspection(
+    const result_data = await GoodsReceiptNote.performQualityInspection(
       parseInt(id),
       parseInt(itemId),
       inspectorId,
@@ -208,7 +238,8 @@ router.post("/:id/items/:itemId/inspect", async (req, res) => {
     res.json({
       success: true,
       message: "Quality inspection completed successfully",
-      data: updatedGRN,
+      data: result_data.grn,
+      stats: result_data.stats,
     });
   } catch (error) {
     console.error("Error performing quality inspection:", error);
@@ -220,7 +251,7 @@ router.post("/:id/items/:itemId/inspect", async (req, res) => {
   }
 });
 
-// Perform bulk quality inspection on all items in a GRN
+// Perform bulk quality inspection on all items in a GRN with stats
 router.post("/:id/bulk-inspect", async (req, res) => {
   try {
     const { id } = req.params;
@@ -235,7 +266,7 @@ router.post("/:id/bulk-inspect", async (req, res) => {
       });
     }
 
-    const updatedGRN = await GoodsReceiptNote.performBulkQualityInspection(
+    const result_data = await GoodsReceiptNote.performBulkQualityInspection(
       parseInt(id),
       inspectorId,
       result,
@@ -245,7 +276,8 @@ router.post("/:id/bulk-inspect", async (req, res) => {
     res.json({
       success: true,
       message: "Bulk quality inspection completed successfully",
-      data: updatedGRN,
+      data: result_data.grn,
+      stats: result_data.stats,
     });
   } catch (error) {
     console.error("Error performing bulk quality inspection:", error);

@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const Inventory = require("../models/Inventory");
+const { db } = require("../config/database");
 
 // Get all inventory categories
 router.get("/categories", async (req, res) => {
@@ -321,6 +322,25 @@ router.get("/items/:id/transactions", async (req, res) => {
   }
 });
 
+// Get recent activity
+router.get("/recent-activity", async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const recentActivity = await Inventory.getRecentActivity(limit);
+
+    res.json({
+      success: true,
+      data: recentActivity,
+    });
+  } catch (error) {
+    console.error("Error fetching recent activity:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch recent activity",
+    });
+  }
+});
+
 // Get expiring items
 router.get("/alerts/expiring", async (req, res) => {
   try {
@@ -356,7 +376,70 @@ router.get("/alerts/low-stock", async (req, res) => {
   }
 });
 
-// Bulk consumption (for kitchen usage)
+// Single item consumption
+router.post("/consumption/single", async (req, res) => {
+  try {
+    const {
+      inventory_item_id,
+      quantity,
+      reason,
+      reference_number,
+      notes,
+      performed_by,
+    } = req.body;
+
+    // Validation
+    if (!inventory_item_id || !quantity || !reason) {
+      return res.status(400).json({
+        success: false,
+        message: "Inventory item ID, quantity, and reason are required",
+      });
+    }
+
+    // Block consuming expired items
+    const item = await Inventory.getInventoryItemById(inventory_item_id);
+    if (!item) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Inventory item not found" });
+    }
+    if (item.status === "expired") {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot consume an expired item",
+      });
+    }
+
+    const transactionData = {
+      transaction_type: "consumption",
+      quantity: parseFloat(quantity),
+      reference_number: reference_number || null,
+      reason: reason,
+      notes: notes || null,
+      performed_by: performed_by || "System",
+      transaction_date: new Date(),
+    };
+
+    const updatedItem = await Inventory.updateInventoryQuantity(
+      inventory_item_id,
+      transactionData
+    );
+
+    res.json({
+      success: true,
+      data: updatedItem,
+      message: "Consumption recorded successfully",
+    });
+  } catch (error) {
+    console.error("Error recording consumption:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to record consumption",
+    });
+  }
+});
+
+// Enhanced bulk consumption with better error handling
 router.post("/consumption/bulk", async (req, res) => {
   try {
     const { items, performed_by, reference_number, notes } = req.body;
@@ -371,45 +454,342 @@ router.post("/consumption/bulk", async (req, res) => {
     const results = [];
     const errors = [];
 
-    for (const item of items) {
-      try {
-        const transactionData = {
-          transaction_type: "consumption",
-          quantity: parseFloat(item.quantity),
-          reference_number: reference_number || null,
-          reason: item.reason || "Kitchen usage",
-          notes: notes || null,
-          performed_by: performed_by || "System",
-          transaction_date: new Date(),
-        };
+    // Process items in a transaction
+    const trx = await db.transaction();
 
-        const updatedItem = await Inventory.updateInventoryQuantity(
-          item.inventory_item_id,
-          transactionData
-        );
-        results.push(updatedItem);
-      } catch (error) {
-        errors.push({
-          inventory_item_id: item.inventory_item_id,
-          error: error.message,
-        });
+    try {
+      for (const item of items) {
+        try {
+          // Block consuming expired items
+          const current = await Inventory.getInventoryItemById(
+            item.inventory_item_id
+          );
+          if (!current) {
+            throw new Error("Inventory item not found");
+          }
+          if (current.status === "expired") {
+            throw new Error("Cannot consume an expired item");
+          }
+
+          const transactionData = {
+            transaction_type: "consumption",
+            quantity: parseFloat(item.quantity),
+            reference_number: reference_number || null,
+            reason: item.reason || "Kitchen usage",
+            notes: notes || item.notes || null,
+            performed_by: performed_by || "System",
+            transaction_date: new Date(),
+          };
+
+          const updatedItem = await Inventory.updateInventoryQuantity(
+            item.inventory_item_id,
+            transactionData,
+            trx
+          );
+          results.push(updatedItem);
+        } catch (error) {
+          errors.push({
+            inventory_item_id: item.inventory_item_id,
+            error: error.message,
+          });
+        }
       }
-    }
 
-    res.json({
-      success: errors.length === 0,
-      data: results,
-      errors: errors.length > 0 ? errors : undefined,
-      message:
-        errors.length === 0
-          ? "Bulk consumption recorded successfully"
-          : `${results.length} items processed, ${errors.length} errors occurred`,
-    });
+      if (errors.length === 0) {
+        await trx.commit();
+      } else {
+        await trx.rollback();
+      }
+
+      res.json({
+        success: errors.length === 0,
+        data: results,
+        errors: errors.length > 0 ? errors : undefined,
+        message:
+          errors.length === 0
+            ? "Bulk consumption recorded successfully"
+            : `${results.length} items processed, ${errors.length} errors occurred`,
+      });
+    } catch (error) {
+      await trx.rollback();
+      throw error;
+    }
   } catch (error) {
     console.error("Error processing bulk consumption:", error);
     res.status(500).json({
       success: false,
       message: error.message || "Failed to process bulk consumption",
+    });
+  }
+});
+
+// Stock adjustment with enhanced validation
+router.post("/adjustment", async (req, res) => {
+  try {
+    const {
+      inventory_item_id,
+      adjustment_type,
+      new_quantity,
+      reason,
+      reference_number,
+      notes,
+      performed_by,
+      new_expiry_date,
+    } = req.body;
+
+    // Validation
+    if (!inventory_item_id || !adjustment_type || !reason) {
+      return res.status(400).json({
+        success: false,
+        message: "Inventory item ID, adjustment type, and reason are required",
+      });
+    }
+
+    // Validate adjustment type
+    const validAdjustmentTypes = [
+      "set_quantity",
+      "add_quantity",
+      "reduce_quantity",
+      "mark_expired",
+      "mark_damaged",
+      "set_expiry_date",
+    ];
+
+    if (!validAdjustmentTypes.includes(adjustment_type)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid adjustment type",
+      });
+    }
+
+    // For quantity adjustments, validate new quantity
+    // For quantity adjustments, validate new quantity
+    if (
+      ["set_quantity", "add_quantity", "reduce_quantity"].includes(
+        adjustment_type
+      )
+    ) {
+      if (new_quantity === undefined || new_quantity === null) {
+        return res.status(400).json({
+          success: false,
+          message: "New quantity is required for quantity adjustments",
+        });
+      }
+    }
+
+    // For expiry date adjustment, validate new_expiry_date
+    if (adjustment_type === "set_expiry_date") {
+      if (!new_expiry_date) {
+        return res.status(400).json({
+          success: false,
+          message: "new_expiry_date is required for set_expiry_date",
+        });
+      }
+    }
+
+    const transactionData = {
+      transaction_type: "adjustment",
+      quantity: parseFloat(new_quantity || 0),
+      reference_number: reference_number || null,
+      reason: reason,
+      notes: notes || null,
+      performed_by: performed_by || "System",
+      transaction_date: new Date(),
+      adjustment_type: adjustment_type,
+      new_expiry_date: new_expiry_date || null, // <-- pass to model
+    };
+
+    const updatedItem = await Inventory.updateInventoryQuantity(
+      inventory_item_id,
+      transactionData
+    );
+
+    res.json({
+      success: true,
+      data: updatedItem,
+      message: "Stock adjustment recorded successfully",
+    });
+  } catch (error) {
+    console.error("Error recording stock adjustment:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to record stock adjustment",
+    });
+  }
+});
+
+// Bulk stock adjustment
+router.post("/adjustment/bulk", async (req, res) => {
+  try {
+    const { items, performed_by, reference_number, notes } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Items array is required",
+      });
+    }
+
+    const results = [];
+    const errors = [];
+
+    // Process items in a transaction
+    const trx = await db.transaction();
+
+    try {
+      for (const item of items) {
+        try {
+          const transactionData = {
+            transaction_type: "adjustment",
+            quantity: parseFloat(item.new_quantity || 0),
+            reference_number: reference_number || null,
+            reason: item.reason || "Bulk adjustment",
+            notes: notes || item.notes || null,
+            performed_by: performed_by || "System",
+            transaction_date: new Date(),
+            adjustment_type: item.adjustment_type,
+          };
+
+          const updatedItem = await Inventory.updateInventoryQuantity(
+            item.inventory_item_id,
+            transactionData,
+            trx
+          );
+          results.push(updatedItem);
+        } catch (error) {
+          errors.push({
+            inventory_item_id: item.inventory_item_id,
+            error: error.message,
+          });
+        }
+      }
+
+      if (errors.length === 0) {
+        await trx.commit();
+      } else {
+        await trx.rollback();
+      }
+
+      res.json({
+        success: errors.length === 0,
+        data: results,
+        errors: errors.length > 0 ? errors : undefined,
+        message:
+          errors.length === 0
+            ? "Bulk adjustment recorded successfully"
+            : `${results.length} items processed, ${errors.length} errors occurred`,
+      });
+    } catch (error) {
+      await trx.rollback();
+      throw error;
+    }
+  } catch (error) {
+    console.error("Error processing bulk adjustment:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to process bulk adjustment",
+    });
+  }
+});
+
+// Configure alerts for item types
+router.post("/alerts/configure", async (req, res) => {
+  try {
+    const {
+      item_type_id,
+      min_stock_level,
+      max_stock_level,
+      expiry_warning_days,
+      is_active,
+    } = req.body;
+
+    if (!item_type_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Item type ID is required",
+      });
+    }
+
+    const alertConfig = await Inventory.configureAlert({
+      item_type_id,
+      min_stock_level: parseFloat(min_stock_level || 0),
+      max_stock_level: max_stock_level ? parseFloat(max_stock_level) : null,
+      expiry_warning_days: parseInt(expiry_warning_days || 7),
+      is_active: is_active !== false, // Default to true
+    });
+
+    res.json({
+      success: true,
+      data: alertConfig,
+      message: "Alert configuration saved successfully",
+    });
+  } catch (error) {
+    console.error("Error configuring alert:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to configure alert",
+    });
+  }
+});
+
+// Get alert configuration for item type
+router.get("/alerts/configure/:itemTypeId", async (req, res) => {
+  try {
+    const { itemTypeId } = req.params;
+    const alertConfig = await Inventory.getAlertConfiguration(itemTypeId);
+
+    res.json({
+      success: true,
+      data: alertConfig,
+    });
+  } catch (error) {
+    console.error("Error fetching alert configuration:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch alert configuration",
+    });
+  }
+});
+
+// Get all active alerts
+router.get("/alerts/active", async (req, res) => {
+  try {
+    const alerts = await Inventory.getActiveAlerts();
+    res.json({
+      success: true,
+      data: alerts,
+    });
+  } catch (error) {
+    console.error("Error fetching active alerts:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch active alerts",
+    });
+  }
+});
+
+// Acknowledge alert
+router.post("/alerts/:alertId/acknowledge", async (req, res) => {
+  try {
+    const { alertId } = req.params;
+    const { acknowledged_by, notes } = req.body;
+
+    const acknowledgedAlert = await Inventory.acknowledgeAlert(
+      alertId,
+      acknowledged_by || "System",
+      notes
+    );
+
+    res.json({
+      success: true,
+      data: acknowledgedAlert,
+      message: "Alert acknowledged successfully",
+    });
+  } catch (error) {
+    console.error("Error acknowledging alert:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to acknowledge alert",
     });
   }
 });

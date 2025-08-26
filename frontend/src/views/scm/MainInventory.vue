@@ -34,6 +34,7 @@
   const stats = computed(() => inventoryStore.stats);
   const expiringItems = computed(() => inventoryStore.expiringItems);
   const lowStockItems = computed(() => inventoryStore.lowStockItems);
+  const recentActivity = computed(() => inventoryStore.recentActivity);
   const loading = computed(() => inventoryStore.loading);
   const error = computed(() => inventoryStore.error);
   const alertsCount = computed(() => inventoryStore.alertsCount);
@@ -52,6 +53,14 @@
     type: null,
     show: false,
     item: null,
+  });
+
+  // Confirmation modal state
+  const confirmModal = ref({
+    show: false,
+    title: '',
+    message: '',
+    onConfirm: null,
   });
 
   // Form data
@@ -219,6 +228,37 @@
     return '';
   };
 
+  // Helper function to get transaction type icon and color
+  const getTransactionTypeInfo = (type) => {
+    const typeInfo = {
+      receipt: { icon: '📦', color: 'text-success', label: 'Received' },
+      consumption: { icon: '➖', color: 'text-warning', label: 'Consumed' },
+      adjustment: { icon: '🔄', color: 'text-info', label: 'Adjusted' },
+      return: { icon: '↩️', color: 'text-error', label: 'Returned' },
+      transfer: { icon: '🔄', color: 'text-primary', label: 'Transferred' },
+      expiry: { icon: '⏰', color: 'text-error', label: 'Expired' },
+      damage: { icon: '💥', color: 'text-error', label: 'Damaged' },
+    };
+    return typeInfo[type] || { icon: '❓', color: 'text-neutral', label: type };
+  };
+
+  // Helper function to format transaction date
+  const formatTransactionDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now - date);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return date.toLocaleDateString('en-PH', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
   // Toggle item expansion
   const toggleItem = (itemId) => {
     if (expandedItems.value.has(itemId)) {
@@ -280,25 +320,122 @@
   // Handle modal submissions
   const handleConsumption = async (consumptionData) => {
     try {
-      // TODO: Implement consumption logic
-      console.log('Consumption data:', consumptionData);
-      showToast('success', 'Usage recorded successfully');
-      closeModal();
-      await refreshData();
+      // Build confirmation details
+      const isSingle = consumptionData.items.length === 1;
+      const firstItem = isSingle ? consumptionData.items[0] : null;
+      const selected = isSingle
+        ? currentInventory.value.find(
+            (i) => i.id === firstItem.inventory_item_id
+          )
+        : null;
+      const itemLabel = isSingle
+        ? selected?.item_name || selected?.item_type_name || 'Selected Item'
+        : `${consumptionData.items.length} items`;
+      const qtyLabel = isSingle
+        ? `${parseFloat(firstItem.quantity).toLocaleString()} ${selected?.unit_of_measure || ''}`
+        : `${consumptionData.items.reduce((a, b) => a + parseFloat(b.quantity || 0), 0).toLocaleString()} units`;
+
+      confirmModal.value = {
+        show: true,
+        title: 'Confirm Action',
+        message: `Consume ${qtyLabel} from ${itemLabel}?`,
+        onConfirm: async () => {
+          try {
+            if (isSingle) {
+              await inventoryStore.singleConsumption({
+                inventory_item_id: firstItem.inventory_item_id,
+                quantity: firstItem.quantity,
+                reason: firstItem.reason,
+                reference_number: consumptionData.reference_number,
+                notes: consumptionData.notes,
+                performed_by: 'SCM User',
+              });
+            } else {
+              await inventoryStore.bulkConsumption(consumptionData);
+            }
+            showToast('success', `${itemLabel} consumed successfully.`);
+            closeModal();
+          } catch (err) {
+            showToast(
+              'error',
+              `Failed to update ${itemLabel}. Please try again.`
+            );
+          }
+        },
+      };
+      document.getElementById('inventory_confirm_modal')?.showModal();
     } catch (error) {
-      showToast('error', 'Failed to record usage');
+      showToast('error', 'Failed to prepare confirmation');
     }
   };
 
   const handleAdjustment = async (adjustmentData) => {
     try {
-      // TODO: Implement adjustment logic
-      console.log('Adjustment data:', adjustmentData);
-      showToast('success', 'Stock adjusted successfully');
-      closeModal();
-      await refreshData();
+      const selected = currentInventory.value.find(
+        (i) => i.id == adjustmentData.inventory_item_id
+      );
+      const itemLabel =
+        selected?.item_name || selected?.item_type_name || 'Selected Item';
+      const qtyLabel =
+        typeof adjustmentData.new_quantity === 'number'
+          ? `${parseFloat(adjustmentData.new_quantity).toLocaleString()} ${selected?.unit_of_measure || ''}`
+          : '';
+      const actionLabel =
+        adjustmentData.adjustment_type === 'mark_expired'
+          ? 'Mark as expired'
+          : adjustmentData.adjustment_type === 'mark_damaged'
+            ? 'Mark as damaged'
+            : 'Adjust quantity';
+
+      confirmModal.value = {
+        show: true,
+        title: 'Confirm Action',
+        message: `${actionLabel} for ${itemLabel}${qtyLabel ? ` to ${qtyLabel}` : ''}?`,
+        onConfirm: async () => {
+          try {
+            await inventoryStore.stockAdjustment({
+              inventory_item_id: adjustmentData.inventory_item_id,
+              adjustment_type: adjustmentData.adjustment_type,
+              new_quantity: adjustmentData.new_quantity,
+              reason: adjustmentData.reason,
+              reference_number: adjustmentData.reference_number,
+              notes: adjustmentData.notes,
+              performed_by: 'SCM User',
+              new_expiry_date: adjustmentData.new_expiry_date, // pass through
+            });
+            showToast('success', `${itemLabel} adjusted successfully.`);
+            closeModal();
+          } catch (err) {
+            showToast(
+              'error',
+              `Failed to update ${itemLabel}. Please try again.`
+            );
+          }
+        },
+      };
+      document.getElementById('inventory_confirm_modal')?.showModal();
     } catch (error) {
-      showToast('error', 'Failed to adjust stock');
+      showToast('error', 'Failed to prepare confirmation');
+    }
+  };
+  // Confirmation modal controls
+  const closeConfirmModal = () => {
+    document.getElementById('inventory_confirm_modal')?.close();
+    confirmModal.value = {
+      show: false,
+      title: '',
+      message: '',
+      onConfirm: null,
+    };
+  };
+
+  const handleConfirmAction = async () => {
+    if (confirmModal.value.onConfirm) {
+      try {
+        await confirmModal.value.onConfirm();
+      } finally {
+        closeConfirmModal();
+      }
     }
   };
 
@@ -313,6 +450,7 @@
         inventoryStore.fetchStats(),
         inventoryStore.fetchExpiringItems(),
         inventoryStore.fetchLowStockItems(),
+        inventoryStore.fetchRecentActivity(),
       ]);
       showToast('success', 'Data refreshed successfully');
     } catch (error) {
@@ -331,6 +469,7 @@
         inventoryStore.fetchStats(),
         inventoryStore.fetchExpiringItems(),
         inventoryStore.fetchLowStockItems(),
+        inventoryStore.fetchRecentActivity(),
       ]);
 
       // Add this debug logging
@@ -582,17 +721,119 @@
             </div>
           </div>
 
-          <!-- Recent Activity Placeholder -->
+          <!-- Recent Activity -->
           <div class="card bg-base-100 border border-gray-200">
             <div class="card-body p-4">
-              <h3
-                class="card-title text-sm font-semibold text-primaryColor mb-4"
+              <div class="flex justify-between items-center mb-4">
+                <h3 class="card-title text-sm font-semibold text-primaryColor">
+                  Recent Activity
+                </h3>
+                <button
+                  @click="refreshData"
+                  class="btn btn-ghost btn-xs"
+                  :disabled="loading"
+                >
+                  <RefreshCcw class="w-3 h-3" />
+                </button>
+              </div>
+
+              <div v-if="loading" class="flex justify-center py-4">
+                <span class="loading loading-spinner loading-sm"></span>
+              </div>
+
+              <div
+                v-else-if="recentActivity.length === 0"
+                class="text-center py-8"
               >
-                Recent Activity
-              </h3>
-              <p class="text-center text-gray-500 py-8">
-                Recent inventory transactions will appear here...
-              </p>
+                <History class="w-12 h-12 mx-auto text-gray-400 mb-2" />
+                <p class="text-gray-500">No recent activity</p>
+              </div>
+
+              <div v-else class="space-y-3 max-h-96 overflow-y-auto">
+                <div
+                  v-for="activity in recentActivity"
+                  :key="activity.id"
+                  class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <div class="flex-shrink-0">
+                    <span class="text-lg">{{
+                      getTransactionTypeInfo(activity.transaction_type).icon
+                    }}</span>
+                  </div>
+
+                  <div class="flex-1 min-w-0">
+                    <div class="flex justify-between items-start">
+                      <div>
+                        <h4 class="font-medium text-sm text-gray-900">
+                          {{ activity.item_name || activity.item_type_name }}
+                        </h4>
+                        <p class="text-xs text-gray-600">
+                          {{ activity.category_name }} •
+                          {{ activity.unit_of_measure }}
+                        </p>
+                        <p
+                          v-if="activity.batch_number"
+                          class="text-xs text-gray-500"
+                        >
+                          Batch: {{ activity.batch_number }}
+                        </p>
+                      </div>
+
+                      <div class="text-right">
+                        <div
+                          class="text-sm font-medium"
+                          :class="
+                            getTransactionTypeInfo(activity.transaction_type)
+                              .color
+                          "
+                        >
+                          {{
+                            getTransactionTypeInfo(activity.transaction_type)
+                              .label
+                          }}
+                        </div>
+                        <div class="text-xs text-gray-600">
+                          {{ formatTransactionDate(activity.transaction_date) }}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="mt-2 flex justify-between items-center">
+                      <div class="text-sm">
+                        <span class="font-medium">
+                          {{ parseFloat(activity.quantity).toLocaleString() }}
+                        </span>
+                        <span class="text-gray-600"> units</span>
+                        <span class="text-gray-500"> • </span>
+                        <span class="font-medium"
+                          >₱{{
+                            parseFloat(activity.total_value).toLocaleString()
+                          }}</span
+                        >
+                      </div>
+
+                      <div class="text-xs text-gray-500">
+                        by {{ activity.performed_by }}
+                      </div>
+                    </div>
+
+                    <div v-if="activity.reason || activity.notes" class="mt-1">
+                      <p class="text-xs text-gray-600">
+                        {{ activity.reason || activity.notes }}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="recentActivity.length > 0" class="mt-4 text-center">
+                <button
+                  @click="$router.push('/scm/inventory/transactions')"
+                  class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
+                >
+                  View All Transactions
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -775,6 +1016,12 @@
                                 <button
                                   @click="consumeBatch(batch)"
                                   class="text-sm"
+                                  :disabled="batch.status === 'expired'"
+                                  :title="
+                                    batch.status === 'expired'
+                                      ? 'Cannot consume expired item'
+                                      : ''
+                                  "
                                 >
                                   <Minus class="w-3 h-3 mr-1" />
                                   Consume
@@ -1040,6 +1287,31 @@
       @close="closeModal"
       @submit="handleConsumption"
     />
+
+    <!-- Confirmation Modal (consistent with GRN Manager) -->
+    <dialog id="inventory_confirm_modal" class="modal">
+      <div class="modal-box">
+        <h3 class="font-bold text-lg mb-4">{{ confirmModal.title }}</h3>
+        <p class="py-4">{{ confirmModal.message }}</p>
+
+        <div class="modal-action">
+          <button
+            type="button"
+            class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none btn-sm"
+            @click="closeConfirmModal"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn bg-primaryColor text-white btn-sm font-thin border-none hover:bg-primaryColor/80"
+            @click="handleConfirmAction"
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
+    </dialog>
 
     <InventoryAdjustmentModal
       :show="modal.show && modal.type === 'adjustment'"

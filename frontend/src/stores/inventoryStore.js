@@ -16,6 +16,8 @@ export const useInventoryStore = defineStore('inventory', () => {
   const loading = ref(false);
   const error = ref(null);
   const categoriesForRequests = ref([]); // New state for centralized categories
+  // Recent activity
+  const recentActivity = ref([]);
 
   // Getters
   const totalValue = computed(() => {
@@ -503,6 +505,162 @@ export const useInventoryStore = defineStore('inventory', () => {
     }
   };
 
+  // Fetch recent activity
+  const fetchRecentActivity = async (limit = 10) => {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/inventory/recent-activity?limit=${limit}`
+      );
+
+      if (response.data.success) {
+        recentActivity.value = response.data.data;
+        return recentActivity.value;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch recent activity'
+        );
+      }
+    } catch (error) {
+      console.error('Error fetching recent activity:', error);
+      throw error;
+    }
+  };
+
+  // Single consumption
+  const singleConsumption = async (consumptionData) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/inventory/consumption/single`,
+        consumptionData
+      );
+
+      if (response.data.success) {
+        // Refresh current inventory to show updated quantities
+        await fetchCurrentInventory();
+        await fetchStats();
+        await fetchRecentActivity();
+        return response.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to record consumption'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to record consumption';
+      console.error('Error recording consumption:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Stock adjustment
+  const stockAdjustment = async (adjustmentData) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/inventory/adjustment`,
+        adjustmentData
+      );
+
+      if (response.data.success) {
+        // Refresh current inventory to show updated quantities
+        await fetchCurrentInventory();
+        await fetchStats();
+        await fetchRecentActivity();
+        return response.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to record adjustment');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to record adjustment';
+      console.error('Error recording adjustment:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Configure alerts
+  const configureAlert = async (alertData) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/inventory/alerts/configure`,
+        alertData
+      );
+
+      if (response.data.success) {
+        await fetchLowStockItems(); // Refresh alerts
+        return response.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to configure alert');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to configure alert';
+      console.error('Error configuring alert:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Get alert configuration
+  const getAlertConfiguration = async (itemTypeId) => {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/inventory/alerts/configure/${itemTypeId}`
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch alert configuration'
+        );
+      }
+    } catch (err) {
+      console.error('Error fetching alert configuration:', err);
+      throw err;
+    }
+  };
+
+  // Acknowledge alert
+  const acknowledgeAlert = async (alertId, acknowledgedBy, notes) => {
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/inventory/alerts/${alertId}/acknowledge`,
+        { acknowledged_by: acknowledgedBy, notes }
+      );
+
+      if (response.data.success) {
+        await fetchLowStockItems(); // Refresh alerts
+        return response.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to acknowledge alert');
+      }
+    } catch (err) {
+      console.error('Error acknowledging alert:', err);
+      throw err;
+    }
+  };
+
   return {
     // State
     categories,
@@ -515,6 +673,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     loading,
     error,
     categoriesForRequests, // New state
+    recentActivity,
 
     // Getters
     totalValue,
@@ -539,6 +698,12 @@ export const useInventoryStore = defineStore('inventory', () => {
     bulkConsumption,
     fetchCategoriesForRequests, // New action
     fetchItemTypesByCategoryForRequests, // New action
+    fetchRecentActivity,
+    singleConsumption,
+    stockAdjustment,
+    configureAlert,
+    getAlertConfiguration,
+    acknowledgeAlert,
 
     // Helper methods
     getCategoryById,

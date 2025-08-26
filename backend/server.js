@@ -1,4 +1,6 @@
 const express = require("express");
+const cron = require("node-cron");
+const Inventory = require("./models/Inventory");
 const cors = require("cors");
 require("dotenv").config();
 
@@ -55,6 +57,36 @@ app.use("/api/supplier-ratings", supplierRatingsRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/grn", grnRoutes);
 
+// Auto-expire job
+async function autoExpireJob() {
+  const today = new Date().toISOString().split("T")[0];
+  const items = await db("inventory_items")
+    .select("id")
+    .whereNull("deleted_at")
+    .where("status", "available")
+    .whereNotNull("expiry_date")
+    .where("expiry_date", "<", today);
+
+  for (const row of items) {
+    try {
+      await Inventory.updateInventoryQuantity(row.id, {
+        transaction_type: "adjustment",
+        quantity: 0,
+        reference_number: null,
+        reason: "Auto-expired by daily job",
+        notes: "System auto-expiry based on expiry_date",
+        performed_by: "System",
+        transaction_date: new Date(),
+        adjustment_type: "mark_expired",
+      });
+    } catch (e) {
+      console.error("Auto-expire failed for", row.id, e.message);
+    }
+  }
+}
+
+// Run daily at 01:00 server time
+cron.schedule("0 1 * * *", autoExpireJob);
 // Swagger documentation
 app.use("/api-docs", serve, setup);
 

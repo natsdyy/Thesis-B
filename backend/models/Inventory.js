@@ -248,13 +248,17 @@ class Inventory {
     }
   }
 
-  // Update inventory quantity (consumption, adjustment, etc.)
-  static async updateInventoryQuantity(inventoryItemId, transactionData) {
-    const trx = await db.transaction();
+  // Enhanced updateInventoryQuantity with transaction support
+  static async updateInventoryQuantity(
+    inventoryItemId,
+    transactionData,
+    trx = null
+  ) {
+    const dbTrx = trx || (await db.transaction());
 
     try {
       // Get current item
-      const currentItem = await trx("inventory_items")
+      const currentItem = await dbTrx("inventory_items")
         .where("id", inventoryItemId)
         .first();
 
@@ -262,39 +266,96 @@ class Inventory {
         throw new Error("Inventory item not found");
       }
 
+      // Block consuming or transferring expired items
+      if (
+        currentItem.status === "expired" &&
+        ["consumption", "transfer"].includes(transactionData.transaction_type)
+      ) {
+        throw new Error("Operation not allowed on expired item");
+      }
+
       let newQuantity;
       let newTotalValue;
+      let newStatus = currentItem.status;
 
-      if (transactionData.transaction_type === "consumption") {
-        newQuantity =
-          parseFloat(currentItem.quantity) -
-          parseFloat(transactionData.quantity);
-        if (newQuantity < 0) {
-          throw new Error("Insufficient stock available");
-        }
-      } else if (transactionData.transaction_type === "adjustment") {
-        newQuantity = parseFloat(transactionData.quantity);
-      } else {
-        // For other transaction types, use the quantity as adjustment
-        newQuantity =
-          parseFloat(currentItem.quantity) +
-          parseFloat(transactionData.quantity);
+      // Handle different transaction types
+      switch (transactionData.transaction_type) {
+        case "consumption":
+          newQuantity =
+            parseFloat(currentItem.quantity) -
+            parseFloat(transactionData.quantity);
+          if (newQuantity < 0) {
+            throw new Error("Insufficient stock available");
+          }
+          break;
+
+        case "adjustment":
+          switch (transactionData.adjustment_type) {
+            case "set_quantity":
+              newQuantity = parseFloat(transactionData.quantity);
+              break;
+            case "add_quantity":
+              newQuantity =
+                parseFloat(currentItem.quantity) +
+                parseFloat(transactionData.quantity);
+              break;
+            case "reduce_quantity":
+              newQuantity =
+                parseFloat(currentItem.quantity) -
+                parseFloat(transactionData.quantity);
+              if (newQuantity < 0) {
+                throw new Error("Insufficient stock for reduction");
+              }
+              break;
+            case "mark_expired":
+              newQuantity = parseFloat(currentItem.quantity);
+              newStatus = "expired";
+              break;
+            case "mark_damaged":
+              newQuantity = parseFloat(currentItem.quantity);
+              newStatus = "damaged";
+              break;
+            case "set_expiry_date":
+              newQuantity = parseFloat(currentItem.quantity);
+              // status unchanged; only expiry_date is updated below
+              break;
+            default:
+              throw new Error("Invalid adjustment type");
+          }
+          break;
+
+        default:
+          // For other transaction types, use the quantity as adjustment
+          newQuantity =
+            parseFloat(currentItem.quantity) +
+            parseFloat(transactionData.quantity);
+      }
+
+      // Update status based on quantity
+      if (newQuantity <= 0 && newStatus === "available") {
+        newStatus = "consumed";
       }
 
       newTotalValue = newQuantity * parseFloat(currentItem.unit_cost);
 
       // Update inventory item
-      await trx("inventory_items")
+      // Update inventory item
+      const [updatedItem] = await dbTrx("inventory_items")
         .where("id", inventoryItemId)
         .update({
           quantity: newQuantity,
-          total_value: newTotalValue,
-          status: newQuantity <= 0 ? "consumed" : "available",
+          total_value: newQuantity * parseFloat(currentItem.unit_cost),
+          status: newStatus,
+          expiry_date:
+            transactionData.adjustment_type === "set_expiry_date"
+              ? transactionData.new_expiry_date
+              : currentItem.expiry_date,
           updated_at: new Date(),
-        });
+        })
+        .returning("*");
 
       // Log the transaction
-      await trx("inventory_transactions").insert({
+      await dbTrx("inventory_transactions").insert({
         inventory_item_id: inventoryItemId,
         transaction_type: transactionData.transaction_type,
         quantity: transactionData.quantity,
@@ -307,16 +368,20 @@ class Inventory {
         notes: transactionData.notes || null,
         performed_by: transactionData.performed_by,
         transaction_date: transactionData.transaction_date || new Date(),
+        adjustment_type: transactionData.adjustment_type || null,
         created_at: new Date(),
         updated_at: new Date(),
       });
 
-      await trx.commit();
+      if (!trx) {
+        await dbTrx.commit();
+      }
 
-      // Return updated item
-      return await this.getInventoryItemById(inventoryItemId);
+      return updatedItem;
     } catch (error) {
-      await trx.rollback();
+      if (!trx) {
+        await dbTrx.rollback();
+      }
       console.error("Error updating inventory quantity:", error);
       throw error;
     }
@@ -343,6 +408,30 @@ class Inventory {
     } catch (error) {
       console.error("Error fetching inventory item:", error);
       throw new Error("Failed to fetch inventory item");
+    }
+  }
+
+  // Enhanced getRecentActivity with better joins
+  static async getRecentActivity(limit = 10) {
+    try {
+      return await db("inventory_transactions as it")
+        .leftJoin("inventory_items as ii", "it.inventory_item_id", "ii.id")
+        .leftJoin("inventory_item_types as iit", "ii.item_type_id", "iit.id")
+        .leftJoin("inventory_categories as ic", "iit.category_id", "ic.id")
+        .select(
+          "it.*",
+          "ii.item_name",
+          "ii.batch_number",
+          "iit.name as item_type_name",
+          "iit.unit_of_measure",
+          "ic.name as category_name"
+        )
+        .whereNull("ii.deleted_at")
+        .orderBy("it.transaction_date", "desc")
+        .limit(limit);
+    } catch (error) {
+      console.error("Error fetching recent activity:", error);
+      throw new Error("Failed to fetch recent activity");
     }
   }
 
@@ -375,19 +464,30 @@ class Inventory {
   }
 
   // Get items expiring soon
+  // Get items expiring soon
   static async getExpiringItems(days = 7) {
     try {
+      const today = new Date();
       const futureDate = new Date();
       futureDate.setDate(futureDate.getDate() + days);
+
+      const todayISO = today.toISOString().split("T")[0];
+      const futureISO = futureDate.toISOString().split("T")[0];
 
       return await db("inventory_items as ii")
         .leftJoin("inventory_item_types as it", "ii.item_type_id", "it.id")
         .leftJoin("inventory_categories as ic", "it.category_id", "ic.id")
-        .select("ii.*", "it.name as item_type_name", "ic.name as category_name")
+        .select(
+          "ii.*",
+          "it.name as item_type_name",
+          "it.unit_of_measure",
+          "ic.name as category_name"
+        )
         .whereNull("ii.deleted_at")
         .where("ii.status", "available")
         .whereNotNull("ii.expiry_date")
-        .where("ii.expiry_date", "<=", futureDate.toISOString().split("T")[0])
+        // Only items that will expire from today up to the next N days
+        .whereBetween("ii.expiry_date", [todayISO, futureISO])
         .orderBy("ii.expiry_date");
     } catch (error) {
       console.error("Error fetching expiring items:", error);
@@ -503,6 +603,89 @@ class Inventory {
     } catch (error) {
       console.error("Error rejecting item type:", error);
       throw new Error("Failed to reject item type");
+    }
+  }
+
+  // Configure alert for item type
+  static async configureAlert(alertData) {
+    try {
+      const [alertConfig] = await db("inventory_alerts")
+        .insert({
+          item_type_id: alertData.item_type_id,
+          min_stock_level: alertData.min_stock_level,
+          max_stock_level: alertData.max_stock_level,
+          expiry_warning_days: alertData.expiry_warning_days,
+          is_active: alertData.is_active,
+          created_at: new Date(),
+          updated_at: new Date(),
+        })
+        .onConflict("item_type_id")
+        .merge([
+          "min_stock_level",
+          "max_stock_level",
+          "expiry_warning_days",
+          "is_active",
+          "updated_at",
+        ])
+        .returning("*");
+
+      return alertConfig;
+    } catch (error) {
+      console.error("Error configuring alert:", error);
+      throw new Error("Failed to configure alert");
+    }
+  }
+
+  // Get alert configuration for item type
+  static async getAlertConfiguration(itemTypeId) {
+    try {
+      return await db("inventory_alerts")
+        .where("item_type_id", itemTypeId)
+        .first();
+    } catch (error) {
+      console.error("Error fetching alert configuration:", error);
+      throw new Error("Failed to fetch alert configuration");
+    }
+  }
+
+  // Get all active alerts
+  static async getActiveAlerts() {
+    try {
+      return await db("inventory_alerts as ia")
+        .leftJoin("inventory_item_types as iit", "ia.item_type_id", "iit.id")
+        .leftJoin("inventory_categories as ic", "iit.category_id", "ic.id")
+        .select(
+          "ia.*",
+          "iit.name as item_type_name",
+          "iit.unit_of_measure",
+          "ic.name as category_name"
+        )
+        .where("ia.is_active", true)
+        .whereNull("iit.deleted_at")
+        .orderBy(["ic.name", "iit.name"]);
+    } catch (error) {
+      console.error("Error fetching active alerts:", error);
+      throw new Error("Failed to fetch active alerts");
+    }
+  }
+
+  // Acknowledge alert
+  static async acknowledgeAlert(alertId, acknowledgedBy, notes) {
+    try {
+      const [acknowledgedAlert] = await db("inventory_alerts")
+        .where("id", alertId)
+        .update({
+          acknowledged_at: new Date(),
+          acknowledged_by: acknowledgedBy,
+          acknowledgment_notes: notes,
+          updated_at: new Date(),
+        })
+        .returning("*");
+
+      return acknowledgedAlert;
+    } catch (error) {
+      console.error("Error acknowledging alert:", error);
+      throw new Error("Failed to acknowledge alert");
     }
   }
 }

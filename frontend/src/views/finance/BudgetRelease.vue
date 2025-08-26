@@ -99,12 +99,18 @@
 
   // Budget release history filter
   const historyFilter = ref({
-    startDate: '',
-    endDate: '',
     searchQuery: '',
     sortBy: 'released_at',
     sortOrder: 'desc',
     receiptStatus: '', // 'confirmed', 'pending', ''
+  });
+
+  // History-related reactive variables
+  const historyFilterType = ref('today'); // 'today', 'week', 'month', 'custom'
+  const showCustomMonthPicker = ref(false);
+  const customMonthPicker = ref({
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
   });
 
   // Toast state
@@ -186,23 +192,103 @@
     );
   });
 
+  // Helper functions for date calculations
+  const getStartOfWeek = (date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday as first day
+    return new Date(d.setDate(diff));
+  };
+
+  const getStartOfMonth = (date) => {
+    return new Date(date.getFullYear(), date.getMonth(), 1);
+  };
+
+  const getEndOfMonth = (date) => {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  };
+
+  const isDateInRange = (date, startDate, endDate) => {
+    const orderDate = new Date(date);
+    return orderDate >= startDate && orderDate <= endDate;
+  };
+
+  // Updated history filter options
+  const getHistoryFilterOptions = () => {
+    return [
+      { type: 'today', label: 'Today', count: 0 },
+      { type: 'week', label: 'This Week', count: 0 },
+      { type: 'month', label: 'This Month', count: 0 },
+    ];
+  };
+
+  const historyFilterOptions = ref(getHistoryFilterOptions());
+
   // Clear all filters
   const clearAllFilters = () => {
     historyFilter.value = {
-      startDate: '',
-      endDate: '',
       searchQuery: '',
       sortBy: 'released_at',
       sortOrder: 'desc',
       receiptStatus: '',
     };
+    historyFilterType.value = 'today';
     historyCurrentPage.value = 1;
+    showCustomMonthPicker.value = false;
+    customMonthPicker.value = {
+      month: new Date().getMonth() + 1,
+      year: new Date().getFullYear(),
+    };
   };
 
   // Toggle sort order
   const toggleSortOrder = () => {
     historyFilter.value.sortOrder =
       historyFilter.value.sortOrder === 'asc' ? 'desc' : 'asc';
+  };
+
+  // Update filter option counts
+  const updateHistoryFilterCounts = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    historyFilterOptions.value.forEach((option) => {
+      let count = 0;
+
+      switch (option.type) {
+        case 'today':
+          count = budgetReleaseHistory.value.filter((release) => {
+            const releaseDate = new Date(release.released_at);
+            releaseDate.setHours(0, 0, 0, 0);
+            return releaseDate.getTime() === today.getTime();
+          }).length;
+          break;
+
+        case 'week':
+          const startOfWeek = getStartOfWeek(today);
+          const endOfWeek = new Date(today);
+          endOfWeek.setHours(23, 59, 59, 999);
+
+          count = budgetReleaseHistory.value.filter((release) => {
+            const releaseDate = new Date(release.released_at);
+            return isDateInRange(releaseDate, startOfWeek, endOfWeek);
+          }).length;
+          break;
+
+        case 'month':
+          const startOfMonth = getStartOfMonth(today);
+          const endOfMonth = new Date(today);
+          endOfMonth.setHours(23, 59, 59, 999);
+
+          count = budgetReleaseHistory.value.filter((release) => {
+            const releaseDate = new Date(release.released_at);
+            return isDateInRange(releaseDate, startOfMonth, endOfMonth);
+          }).length;
+          break;
+      }
+
+      option.count = count;
+    });
   };
 
   // Export to CSV
@@ -258,6 +344,15 @@
       historyCurrentPage.value = 1;
     },
     { deep: true }
+  );
+
+  // Watch for changes and update counts
+  watch(
+    [budgetReleaseHistory, historyFilterType],
+    () => {
+      updateHistoryFilterCounts();
+    },
+    { deep: true, immediate: true }
   );
 
   // Modal methods
@@ -399,6 +494,9 @@
         budgetReleaseStore.fetchReleases(),
         supplyRequestStore.fetchStats(),
       ]);
+
+      // Update filter counts after data is loaded
+      updateHistoryFilterCounts();
     } catch (err) {
       showToast('error', err.message || 'Failed to fetch data');
     } finally {
@@ -439,24 +537,166 @@
   // Date picker setup
   let datePicker = null;
 
+  // Add these variables after the existing reactive variables
+  const months = [
+    { value: 1, label: 'Jan' },
+    { value: 2, label: 'Feb' },
+    { value: 3, label: 'Mar' },
+    { value: 4, label: 'Apr' },
+    { value: 5, label: 'May' },
+    { value: 6, label: 'Jun' },
+    { value: 7, label: 'Jul' },
+    { value: 8, label: 'Aug' },
+    { value: 9, label: 'Sep' },
+    { value: 10, label: 'Oct' },
+    { value: 11, label: 'Nov' },
+    { value: 12, label: 'Dec' },
+  ];
+
+  // Generate available years (current year and 5 years back)
+  const availableYears = computed(() => {
+    const currentYear = new Date().getFullYear();
+    const years = [];
+    for (let i = currentYear; i >= currentYear - 5; i--) {
+      years.push(i);
+    }
+    return years;
+  });
+
+  // Add helper functions for better date/time formatting
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-PH', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'Asia/Manila',
+    });
+  };
+
   onMounted(async () => {
     // Initialize data using stores
     await fetchData();
 
-    // Setup date picker
-    datePicker = new PikaDay({
-      field: document.getElementById('history_date_picker'),
-      format: 'YYYY-MM-DD',
-    });
+    // Update filter counts
+    updateHistoryFilterCounts();
   });
 
   onBeforeUnmount(() => {
     if (datePicker) datePicker.destroy();
   });
 
+  // Filter selection methods
+  const selectHistoryFilter = (option) => {
+    historyFilterType.value = option.type;
+    historyCurrentPage.value = 1;
+    showCustomMonthPicker.value = false;
+  };
+
+  const toggleCustomMonthPicker = () => {
+    showCustomMonthPicker.value = !showCustomMonthPicker.value;
+    if (showCustomMonthPicker.value) {
+      historyFilterType.value = 'custom';
+    }
+  };
+
+  const applyCustomMonthFilter = () => {
+    historyFilterType.value = 'custom';
+    historyCurrentPage.value = 1;
+    showCustomMonthPicker.value = false;
+  };
+
+  // Display text for current filter
+  const getHistoryFilterDisplayText = () => {
+    switch (historyFilterType.value) {
+      case 'today':
+        return `Today (${formatDate(new Date())})`;
+      case 'week':
+        const startOfWeek = getStartOfWeek(new Date());
+        const endOfWeek = new Date();
+        return `This Week (${formatDate(startOfWeek)} - ${formatDate(endOfWeek)})`;
+      case 'month':
+        const startOfMonth = getStartOfMonth(new Date());
+        const endOfMonth = new Date();
+        return `This Month (${formatDate(startOfMonth)} - ${formatDate(endOfMonth)})`;
+      case 'custom':
+        const monthName = months.find(
+          (m) => m.value === customMonthPicker.value.month
+        )?.label;
+        return `${monthName} ${customMonthPicker.value.year}`;
+      default:
+        return 'All History';
+    }
+  };
+
   // Computed properties for Budget Release History
-  const filteredBudgetHistory = computed(() => {
+  const filteredBudgetHistoryByDate = computed(() => {
     let filtered = [...(budgetReleaseHistory.value || [])];
+
+    // Apply date filtering based on filter type
+    if (historyFilterType.value) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      switch (historyFilterType.value) {
+        case 'today':
+          filtered = filtered.filter((release) => {
+            const releaseDate = new Date(release.released_at);
+            releaseDate.setHours(0, 0, 0, 0);
+            return releaseDate.getTime() === today.getTime();
+          });
+          break;
+
+        case 'week':
+          const startOfWeek = getStartOfWeek(today);
+          const endOfWeek = new Date(today);
+          endOfWeek.setHours(23, 59, 59, 999);
+
+          filtered = filtered.filter((release) => {
+            const releaseDate = new Date(release.released_at);
+            return isDateInRange(releaseDate, startOfWeek, endOfWeek);
+          });
+          break;
+
+        case 'month':
+          const startOfMonth = getStartOfMonth(today);
+          const endOfMonth = new Date(today);
+          endOfMonth.setHours(23, 59, 59, 999);
+
+          filtered = filtered.filter((release) => {
+            const releaseDate = new Date(release.released_at);
+            return isDateInRange(releaseDate, startOfMonth, endOfMonth);
+          });
+          break;
+
+        case 'custom':
+          if (customMonthPicker.value.month && customMonthPicker.value.year) {
+            const startOfCustomMonth = new Date(
+              customMonthPicker.value.year,
+              customMonthPicker.value.month - 1,
+              1
+            );
+            const endOfCustomMonth = getEndOfMonth(startOfCustomMonth);
+            endOfCustomMonth.setHours(23, 59, 59, 999);
+
+            filtered = filtered.filter((release) => {
+              const releaseDate = new Date(release.released_at);
+              return isDateInRange(
+                releaseDate,
+                startOfCustomMonth,
+                endOfCustomMonth
+              );
+            });
+          }
+          break;
+      }
+    }
+
+    return filtered;
+  });
+
+  const filteredBudgetHistory = computed(() => {
+    let filtered = [...filteredBudgetHistoryByDate.value];
 
     // Filter by receipt status
     if (historyFilter.value.receiptStatus === 'confirmed') {
@@ -473,18 +713,6 @@
           (r.request_description || '').toLowerCase().includes(q) ||
           (r.request_id || '').toString().toLowerCase().includes(q) ||
           (r.release_id || '').toString().toLowerCase().includes(q)
-      );
-    }
-
-    // Filter by date range (Asia/Manila)
-    if (historyFilter.value.startDate) {
-      filtered = filtered.filter(
-        (r) => toManilaYMD(r.released_at) >= historyFilter.value.startDate
-      );
-    }
-    if (historyFilter.value.endDate) {
-      filtered = filtered.filter(
-        (r) => toManilaYMD(r.released_at) <= historyFilter.value.endDate
       );
     }
 
@@ -923,42 +1151,149 @@
             </button>
           </div>
 
-          <!-- Date Range Filters -->
+          <!-- History Date Filter Section -->
           <div
-            class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-white/5 rounded-lg border border-primaryColor/10"
+            class="mb-6 p-4 bg-white/5 rounded-lg border border-primaryColor/20"
           >
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text text-black/70 text-sm">Start Date</span>
-              </label>
-              <input
-                v-model="historyFilter.startDate"
-                type="date"
-                class="input input-sm input-bordered bg-white border-primaryColor/30 text-black/70"
-              />
-            </div>
+            <div
+              class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
+            >
+              <!-- Current Filter Display -->
+              <div class="flex items-center gap-3">
+                <Calendar class="w-5 h-5 text-primaryColor" />
+                <div>
+                  <h3 class="font-semibold text-primaryColor">
+                    {{ getHistoryFilterDisplayText() }}
+                  </h3>
+                  <p class="text-sm text-black/60">
+                    Showing {{ filteredBudgetHistory.length }} release{{
+                      filteredBudgetHistory.length !== 1 ? 's' : ''
+                    }}
+                  </p>
+                </div>
+              </div>
 
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text text-black/70 text-sm">End Date</span>
-              </label>
-              <input
-                v-model="historyFilter.endDate"
-                type="date"
-                class="input input-sm input-bordered bg-white border-primaryColor/30 text-black/70"
-              />
-            </div>
+              <!-- Filter Controls -->
+              <div class="flex flex-col sm:flex-row gap-3">
+                <!-- Quick Filter Buttons -->
+                <div class="flex gap-2 md:flex-row flex-col">
+                  <button
+                    v-for="option in historyFilterOptions"
+                    :key="option.type"
+                    class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
+                    :class="{
+                      'bg-primaryColor text-white':
+                        historyFilterType === option.type,
+                      'bg-white text-primaryColor hover:bg-primaryColor/10':
+                        historyFilterType !== option.type,
+                    }"
+                    @click="selectHistoryFilter(option)"
+                  >
+                    {{ option.label }}
+                    <span
+                      class="badge badge-xs ml-1 bg-secondaryColor border-none"
+                      :class="
+                        historyFilterType === option.type
+                          ? 'badge-ghost'
+                          : 'badge-primaryColor/10 text-primaryColor'
+                      "
+                    >
+                      {{ option.count }}
+                    </span>
+                  </button>
+                </div>
 
-            <div class="form-control flex justify-end">
-              <label class="label">
-                <span class="label-text text-black/70 text-sm">&nbsp;</span>
-              </label>
-              <button
-                class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                @click="clearAllFilters"
-              >
-                Clear Filters
-              </button>
+                <!-- Custom Month Selection -->
+                <div class="flex items-center gap-2">
+                  <div class="relative">
+                    <button
+                      class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                      @click="toggleCustomMonthPicker"
+                    >
+                      <Calendar class="w-4 h-4 mr-1" />
+                      Custom Month
+                    </button>
+
+                    <!-- Custom Month Picker -->
+                    <div
+                      v-if="showCustomMonthPicker"
+                      class="absolute top-full left-0 mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10 p-3 min-w-64"
+                    >
+                      <div class="flex items-center justify-between mb-3">
+                        <h4 class="font-medium text-sm text-black">
+                          Select Month
+                        </h4>
+                        <button
+                          @click="showCustomMonthPicker = false"
+                          class="btn btn-ghost btn-xs"
+                        >
+                          <X class="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      <!-- Month Selection -->
+                      <div class="grid grid-cols-3 gap-2 mb-3">
+                        <button
+                          v-for="month in months"
+                          :key="month.value"
+                          class="btn btn-xs font-thin"
+                          :class="{
+                            'bg-primaryColor text-white':
+                              customMonthPicker.month === month.value,
+                            'btn-ghost':
+                              customMonthPicker.month !== month.value,
+                          }"
+                          @click="customMonthPicker.month = month.value"
+                        >
+                          {{ month.label }}
+                        </button>
+                      </div>
+
+                      <!-- Year Selection -->
+                      <div class="flex items-center gap-2 mb-3">
+                        <span class="text-sm text-black/70">Year:</span>
+                        <select
+                          v-model="customMonthPicker.year"
+                          class="select select-xs select-bordered bg-white border-primaryColor/30 text-black/70"
+                        >
+                          <option
+                            v-for="year in availableYears"
+                            :key="year"
+                            :value="year"
+                          >
+                            {{ year }}
+                          </option>
+                        </select>
+                      </div>
+
+                      <!-- Apply Button -->
+                      <div class="flex gap-2">
+                        <button
+                          @click="applyCustomMonthFilter"
+                          class="btn btn-xs bg-primaryColor text-white font-thin"
+                        >
+                          Apply
+                        </button>
+                        <button
+                          @click="showCustomMonthPicker = false"
+                          class="btn btn-xs btn-ghost font-thin"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Clear Filters Button -->
+                  <button
+                    class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                    @click="clearAllFilters"
+                  >
+                    <RefreshCcw class="w-4 h-4 mr-1" />
+                    Clear
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1111,7 +1446,8 @@
                   filteredBudgetHistory.length
                 )
               }}
-              of {{ filteredBudgetHistory.length }} records
+              of {{ filteredBudgetHistory.length }} records for
+              {{ getHistoryFilterDisplayText() }}
             </span>
             <span class="font-semibold text-primaryColor">
               Total Released: ₱{{

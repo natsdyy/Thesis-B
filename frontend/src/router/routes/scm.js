@@ -18,9 +18,9 @@ export default [
     meta: { title: 'Purchase Order' },
   },
   {
-    path: 'inventory',
-    name: 'Inventory',
-    component: () => import('../../views/scm/Inventory.vue'),
+    path: 'main-inventory',
+    name: 'MainInventory',
+    component: () => import('../../views/scm/MainInventory.vue'),
     meta: { title: 'Inventory' },
   },
   {
@@ -28,5 +28,11 @@ export default [
     name: 'Suppliers',
     component: () => import('../../views/scm/Suppliers.vue'),
     meta: { title: 'Suppliers' },
+  },
+  {
+    path: 'grn',
+    name: 'GRNManager',
+    component: () => import('../../views/scm/GRNManager.vue'),
+    meta: { title: 'Goods Receipt Notes' },
   },
 ];

@@ -153,8 +153,10 @@ router.put("/:id/complete", async (req, res) => {
 // PUT /api/item-returns/:id/cancel - Cancel item return
 router.put("/:id/cancel", async (req, res) => {
   try {
+    const requestBody = req.body || {};
+
     const cancelledBy =
-      req.body.cancelled_by || req.user?.username || "SCM User";
+      requestBody.cancelled_by || req.user?.username || "SCM User";
 
     const itemReturn = await ItemReturn.cancel(req.params.id, cancelledBy);
 

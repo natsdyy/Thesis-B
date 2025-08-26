@@ -1,3 +1,1481 @@
+<script setup>
+  import { ref, computed, onMounted, watch, nextTick } from 'vue';
+  import {
+    FileText,
+    Plus,
+    Search,
+    RefreshCcw,
+    X,
+    AlertTriangle,
+    Clock,
+    CheckCircle,
+    EllipsisVertical,
+    MessageSquare,
+    PhilippinePeso,
+    Calendar,
+    Link,
+  } from 'lucide-vue-next';
+  import { usePurchaseOrderStore } from '../../stores/purchaseOrderStore.js';
+  import { useSupplierStore } from '../../stores/supplierStore.js';
+  import { useSupplyRequestStore } from '../../stores/supplyRequestStore.js';
+  import POreturnItems from '../../components/scm/POreturnItems.vue';
+  import SupplierRatingModal from '../../components/scm/SupplierRatingModal.vue';
+  import { useRouter } from 'vue-router';
+
+  const router = useRouter();
+
+  const getApiUrl = (endpoint) => {
+    const baseUrl =
+      import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+    return `${baseUrl}/${endpoint}`;
+  };
+
+  // Helper functions
+  const getPhilippineDateString = (date = null) => {
+    const targetDate = date || new Date();
+    return targetDate.toISOString().split('T')[0];
+  };
+
+  const formatPhilippineDate = (dateString) => {
+    const date = new Date(dateString + 'T00:00:00');
+    return date.toLocaleDateString('en-PH', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: 'Asia/Manila',
+    });
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('en-PH', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const getStatusColor = (status) => {
+    const colors = {
+      Draft:
+        'badge badge-sm border-none font-medium bg-warning/20 text-warning',
+      Sent: 'badge badge-sm border-none font-medium bg-info/20 text-info',
+      Confirmed:
+        'badge badge-sm border-none font-medium bg-primary/20 text-primary',
+      'In Progress':
+        'badge badge-sm border-none font-medium bg-secondary/20 text-secondary',
+      Completed:
+        'badge badge-sm border-none font-medium bg-success/20 text-success',
+      Cancelled:
+        'badge badge-sm border-none font-medium bg-error/20 text-error',
+    };
+    return (
+      colors[status] ||
+      'badge badge-sm border-none font-medium bg-neutral/20 text-neutral'
+    );
+  };
+
+  // Stores
+  const purchaseOrderStore = usePurchaseOrderStore();
+  const supplierStore = useSupplierStore();
+  const supplyRequestStore = useSupplyRequestStore();
+
+  // Computed properties
+  const suppliers = computed(() => supplierStore.activeSuppliers);
+  const orderStats = computed(() => purchaseOrderStore.stats);
+
+  const approvedSupplyRequests = computed(() => {
+    const allRequests = supplyRequestStore.requestsByStatus('Completed');
+    return allRequests.filter((request) => {
+      const existingPO = purchaseOrderStore.purchaseOrders.find(
+        (po) => po.supply_request_id === request.id && po.status === 'Completed'
+      );
+      return !existingPO;
+    });
+  });
+
+  // Local state
+  const loading = ref(false);
+  const currentPage = ref(1);
+  const ordersPerPage = ref(4);
+  const searchQuery = ref('');
+  const statusFilter = ref('');
+  const supplierFilter = ref('');
+  const selectedDate = ref(getPhilippineDateString());
+  const showDatePicker = ref(false);
+  const activeTab = ref('active');
+
+  // History-related state
+  const historySearchQuery = ref('');
+  const historyStatusFilter = ref('');
+  const historySupplierFilter = ref('');
+  const historyCurrentPage = ref(1);
+  const historyOrdersPerPage = ref(3);
+  const historyFilterType = ref('today');
+  const showCustomMonthPicker = ref(false);
+  const customMonthPicker = ref({
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+  });
+
+  // Modal state
+  const modal = ref({ type: null, show: false, order: null });
+  const receiptModal = ref({ show: false, order: null });
+  const returnModal = ref({ show: false, order: null });
+  const confirmModal = ref({
+    show: false,
+    type: '',
+    title: '',
+    message: '',
+    order: null,
+    onConfirm: null,
+  });
+  const auditTrailModal = ref({ show: false, purchaseOrderId: null });
+  const ratingModal = ref({ show: false, purchaseOrder: {}, supplierName: '' });
+  const grnConfirmModal = ref({ show: false, order: null, loading: false });
+
+  // Supply request modal state
+  const supplyRequestModal = ref({
+    show: false,
+    selectedRequest: null,
+    selectedDate: getPhilippineDateString(),
+    showDatePicker: false,
+    currentPage: 1,
+    perPage: 5,
+  });
+
+  // Form data
+  const orderForm = ref({
+    po_number: '',
+    supplier_id: '',
+    supply_request_id: '',
+    order_date: '',
+    expected_delivery: '',
+    status: 'Draft',
+    total_amount: 0,
+    notes: '',
+  });
+
+  const returnForm = ref({
+    item_id: '',
+    quantity: 1,
+    reason: '',
+    notes: '',
+  });
+
+  // Toast state
+  const toast = ref({ show: false, type: '', message: '' });
+  const showToast = (type, message) => {
+    toast.value = { show: true, type, message };
+    setTimeout(() => {
+      toast.value.show = false;
+    }, 3000);
+  };
+
+  // Constants
+  const orderStatuses = [
+    'Draft',
+    'Sent',
+    'Confirmed',
+    'In Progress',
+    'Completed',
+    'Cancelled',
+  ];
+  const activeOrderStatuses = [
+    'Draft',
+    'Sent',
+    'Confirmed',
+    'In Progress',
+    'Completed',
+  ];
+  const historyOrderStatuses = ['Completed', 'Cancelled'];
+  const months = [
+    { value: 1, label: 'Jan' },
+    { value: 2, label: 'Feb' },
+    { value: 3, label: 'Mar' },
+    { value: 4, label: 'Apr' },
+    { value: 5, label: 'May' },
+    { value: 6, label: 'Jun' },
+    { value: 7, label: 'Jul' },
+    { value: 8, label: 'Aug' },
+    { value: 9, label: 'Sep' },
+    { value: 10, label: 'Oct' },
+    { value: 11, label: 'Nov' },
+    { value: 12, label: 'Dec' },
+  ];
+
+  // Date filtering computed properties
+  const quickDateOptions = computed(() => {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const toYMD = (date) =>
+      date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+
+    return [
+      { label: 'Yesterday', date: toYMD(yesterday), count: 0 },
+      { label: 'Today', date: toYMD(today), count: 0 },
+      { label: 'Tomorrow', date: toYMD(tomorrow), count: 0 },
+    ];
+  });
+
+  const availableYears = computed(() => {
+    const currentYear = new Date().getFullYear();
+    return Array.from({ length: 6 }, (_, i) => currentYear - i);
+  });
+
+  // Filtered data computed properties
+  const filteredOrdersByDate = computed(() => {
+    let filtered = purchaseOrderStore.purchaseOrders.filter(
+      (order) => order.status !== 'Cancelled'
+    );
+
+    if (selectedDate.value) {
+      filtered = filtered.filter((order) => {
+        const orderDate = new Date(
+          new Date(order.order_date).toLocaleString('en-US', {
+            timeZone: 'Asia/Manila',
+          })
+        );
+        const normalized = orderDate.toLocaleDateString('en-CA', {
+          timeZone: 'Asia/Manila',
+        });
+        return normalized === selectedDate.value;
+      });
+    }
+    return filtered;
+  });
+
+  const filteredOrders = computed(() => {
+    let filtered = [...filteredOrdersByDate.value];
+
+    if (searchQuery.value) {
+      const query = searchQuery.value.toLowerCase();
+      filtered = filtered.filter(
+        (order) =>
+          order.po_number.toLowerCase().includes(query) ||
+          order.supplier_name.toLowerCase().includes(query) ||
+          order.notes?.toLowerCase().includes(query) ||
+          order.supply_request_number?.toLowerCase().includes(query)
+      );
+    }
+
+    if (statusFilter.value) {
+      filtered = filtered.filter(
+        (order) => order.status === statusFilter.value
+      );
+    }
+
+    if (supplierFilter.value) {
+      filtered = filtered.filter(
+        (order) => order.supplier_name === supplierFilter.value
+      );
+    }
+
+    return filtered;
+  });
+
+  const uniqueSuppliersByDate = computed(() => {
+    const supplierNames = [
+      ...new Set(
+        filteredOrdersByDate.value.map((order) => order.supplier_name)
+      ),
+    ];
+    return supplierNames.sort();
+  });
+
+  // History filtering
+  const historyOrders = computed(() => {
+    return purchaseOrderStore.purchaseOrders.filter(
+      (order) => order.status === 'Completed' || order.status === 'Cancelled'
+    );
+  });
+
+  const filteredHistoryByDate = computed(() => {
+    let filtered = [...historyOrders.value];
+
+    if (historyFilterType.value) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      switch (historyFilterType.value) {
+        case 'today':
+          filtered = filtered.filter((order) => {
+            const orderDate = new Date(order.order_date);
+            orderDate.setHours(0, 0, 0, 0);
+            return orderDate.getTime() === today.getTime();
+          });
+          break;
+        case 'week':
+          const startOfWeek = new Date(today);
+          startOfWeek.setDate(today.getDate() - today.getDay() + 1);
+          const endOfWeek = new Date(today);
+          endOfWeek.setHours(23, 59, 59, 999);
+          filtered = filtered.filter((order) => {
+            const orderDate = new Date(order.order_date);
+            return orderDate >= startOfWeek && orderDate <= endOfWeek;
+          });
+          break;
+        case 'month':
+          const startOfMonth = new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            1
+          );
+          const endOfMonth = new Date(today);
+          endOfMonth.setHours(23, 59, 59, 999);
+          filtered = filtered.filter((order) => {
+            const orderDate = new Date(order.order_date);
+            return orderDate >= startOfMonth && orderDate <= endOfMonth;
+          });
+          break;
+      }
+    }
+    return filtered;
+  });
+
+  const filteredHistory = computed(() => {
+    let filtered = [...filteredHistoryByDate.value];
+
+    if (historySearchQuery.value) {
+      const query = historySearchQuery.value.toLowerCase();
+      filtered = filtered.filter(
+        (order) =>
+          order.po_number.toLowerCase().includes(query) ||
+          order.supplier_name.toLowerCase().includes(query) ||
+          order.notes?.toLowerCase().includes(query) ||
+          order.supply_request_number?.toLowerCase().includes(query)
+      );
+    }
+
+    if (historyStatusFilter.value) {
+      filtered = filtered.filter(
+        (order) => order.status === historyStatusFilter.value
+      );
+    }
+
+    return filtered;
+  });
+
+  const uniqueHistorySuppliersByDate = computed(() => {
+    const supplierNames = [
+      ...new Set(filteredHistory.value.map((order) => order.supplier_name)),
+    ];
+    return supplierNames.sort();
+  });
+
+  // Supply request filtering
+  const filteredSupplyRequestsByDate = computed(() => {
+    let filtered = [...approvedSupplyRequests.value];
+
+    if (supplyRequestFilterType.value) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      switch (supplyRequestFilterType.value) {
+        case 'today':
+          filtered = filtered.filter((request) => {
+            const requestDate = new Date(request.request_date);
+            requestDate.setHours(0, 0, 0, 0);
+            return requestDate.getTime() === today.getTime();
+          });
+          break;
+        case 'week':
+          const startOfWeek = new Date(today);
+          startOfWeek.setDate(today.getDate() - today.getDay() + 1);
+          const endOfWeek = new Date(today);
+          endOfWeek.setHours(23, 59, 59, 999);
+          filtered = filtered.filter((request) => {
+            const requestDate = new Date(request.request_date);
+            return requestDate >= startOfWeek && requestDate <= endOfWeek;
+          });
+          break;
+        case 'month':
+          const startOfMonth = new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            1
+          );
+          const endOfMonth = new Date(today);
+          endOfMonth.setHours(23, 59, 59, 999);
+          filtered = filtered.filter((request) => {
+            const requestDate = new Date(request.request_date);
+            return requestDate >= startOfMonth && requestDate <= endOfMonth;
+          });
+          break;
+      }
+    }
+    return filtered;
+  });
+
+  // Pagination computed properties
+  const paginatedOrders = computed(() => {
+    const start = (currentPage.value - 1) * ordersPerPage.value;
+    return filteredOrders.value.slice(start, start + ordersPerPage.value);
+  });
+
+  const totalPages = computed(() =>
+    Math.ceil(filteredOrders.value.length / ordersPerPage.value)
+  );
+
+  const paginatedHistory = computed(() => {
+    const start = (historyCurrentPage.value - 1) * historyOrdersPerPage.value;
+    return filteredHistory.value.slice(
+      start,
+      start + historyOrdersPerPage.value
+    );
+  });
+
+  const totalHistoryPages = computed(() =>
+    Math.ceil(filteredHistory.value.length / historyOrdersPerPage.value)
+  );
+
+  const paginatedSupplyRequests = computed(() => {
+    const start =
+      (supplyRequestModal.value.currentPage - 1) *
+      supplyRequestModal.value.perPage;
+    return filteredSupplyRequestsByDate.value.slice(
+      start,
+      start + supplyRequestModal.value.perPage
+    );
+  });
+
+  const totalSupplyRequestPages = computed(() => {
+    return Math.ceil(
+      filteredSupplyRequestsByDate.value.length /
+        supplyRequestModal.value.perPage
+    );
+  });
+
+  // Helper computed properties
+  const selectedRequestDisplay = computed(() => {
+    const request = supplyRequestModal.value.selectedRequest;
+    return request
+      ? `${request.request_id} - ${request.request_description}`
+      : '';
+  });
+
+  const hasFieldChanges = computed(() => {
+    if (modal.value.type !== 'edit' || !modal.value.order) return false;
+    const original = modal.value.order;
+    const current = orderForm.value;
+    return (
+      current.po_number !== original.po_number ||
+      current.supplier_id !== original.supplier_id ||
+      current.order_date !== original.order_date ||
+      current.expected_delivery !== original.expected_delivery ||
+      current.status !== original.status ||
+      current.total_amount !== original.total_amount ||
+      current.notes !== original.notes
+    );
+  });
+
+  // Filter options
+  const historyFilterOptions = ref([
+    { type: 'today', label: 'Today', count: 0 },
+    { type: 'week', label: 'This Week', count: 0 },
+    { type: 'month', label: 'This Month', count: 0 },
+  ]);
+
+  const supplyRequestFilterOptions = ref([
+    { type: 'today', label: 'Today', count: 0 },
+    { type: 'week', label: 'This Week', count: 0 },
+    { type: 'month', label: 'This Month', count: 0 },
+  ]);
+
+  const supplyRequestFilterType = ref('today');
+  const showSupplyRequestCustomMonthPicker = ref(false);
+  const supplyRequestCustomMonthPicker = ref({
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+  });
+
+  const hasExistingGRN = computed(() => {
+    return (order) => {
+      // If no GRNs exist, allow creation
+      if (order.grn_count === 0) {
+        return false;
+      }
+
+      // If there are GRNs, check their statuses
+      const grnStatuses = order.grn_statuses || [];
+
+      // Allow new GRN if:
+      // 1. All existing GRNs are failed (can retry after returns completed)
+      // 2. All existing GRNs are draft (can continue)
+      // 3. All existing GRNs are pending_inspection (can continue)
+      const allFailed = grnStatuses.every((status) => status === 'failed');
+      const allDraft = grnStatuses.every((status) => status === 'draft');
+      const allPendingInspection = grnStatuses.every(
+        (status) => status === 'pending_inspection'
+      );
+
+      // Don't allow if there's a completed or passed GRN
+      const hasCompleted = grnStatuses.some(
+        (status) => status === 'completed' || status === 'passed'
+      );
+
+      return hasCompleted && !allFailed && !allDraft && !allPendingInspection;
+    };
+  });
+
+  const checkGRNCreationEligibility = async (order) => {
+    try {
+      const response = await fetch(
+        getApiUrl(`purchase-orders/${order.id}/can-create-grn`)
+      );
+      const data = await response.json();
+
+      if (data.success) {
+        return data.data;
+      } else {
+        throw new Error(data.message || 'Failed to check GRN eligibility');
+      }
+    } catch (error) {
+      console.error('Error checking GRN eligibility:', error);
+      return { canCreate: false, reason: 'Error checking eligibility' };
+    }
+  };
+
+  // Methods
+  const getSupplierName = (supplierId) => {
+    const supplier = suppliers.value.find((s) => s.id === supplierId);
+    return supplier ? supplier.name : 'Unknown Supplier';
+  };
+
+  const canReturnItems = (order) => order.status === 'Completed';
+
+  const hasPendingReturns = (order) => {
+    return order.has_pending_returns || false;
+  };
+
+  const canCreateNewGRN = (order) => {
+    // Check if there are pending returns
+    if (order.has_pending_returns) {
+      return false;
+    }
+
+    // Check if there are already passed or completed GRNs
+    if (order.grn_statuses && order.grn_statuses.length > 0) {
+      const hasPassedOrCompleted = order.grn_statuses.some(
+        (status) => status === 'passed' || status === 'completed'
+      );
+      if (hasPassedOrCompleted) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const getGRNCreationReason = (order) => {
+    if (order.has_pending_returns) {
+      return `Cannot create GRN: ${order.pending_returns_count} return(s) still pending completion`;
+    }
+
+    if (order.grn_statuses && order.grn_statuses.length > 0) {
+      const hasPassedOrCompleted = order.grn_statuses.some(
+        (status) => status === 'passed' || status === 'completed'
+      );
+      if (hasPassedOrCompleted) {
+        return 'Cannot create GRN: Items already received and processed';
+      }
+    }
+
+    return '';
+  };
+
+  // Date navigation methods
+  const selectQuickDate = (dateOption) => {
+    selectedDate.value = dateOption.date;
+    currentPage.value = 1;
+    showDatePicker.value = false;
+  };
+
+  const selectCustomDate = (event) => {
+    selectedDate.value = event.target.value;
+    currentPage.value = 1;
+    showDatePicker.value = false;
+  };
+
+  const toggleDatePicker = () => (showDatePicker.value = !showDatePicker.value);
+
+  const goToPreviousDay = () => {
+    const currentDate = new Date(selectedDate.value + 'T00:00:00');
+    const previousDay = new Date(currentDate.getTime() - 24 * 60 * 60 * 1000);
+    selectedDate.value = previousDay.toISOString().split('T')[0];
+    currentPage.value = 1;
+  };
+
+  const goToNextDay = () => {
+    const currentDate = new Date(selectedDate.value + 'T00:00:00');
+    const nextDay = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000);
+    selectedDate.value = nextDay.toISOString().split('T')[0];
+    currentPage.value = 1;
+  };
+
+  const goToToday = () => {
+    selectedDate.value = getPhilippineDateString();
+    currentPage.value = 1;
+  };
+
+  // Filter methods
+  const clearFilters = () => {
+    searchQuery.value = '';
+    statusFilter.value = '';
+    supplierFilter.value = '';
+    selectedDate.value = getPhilippineDateString();
+    currentPage.value = 1;
+    historySearchQuery.value = '';
+    historyStatusFilter.value = '';
+    historySupplierFilter.value = '';
+    historyCurrentPage.value = 1;
+  };
+
+  const selectHistoryFilter = (option) => {
+    historyFilterType.value = option.type;
+    historyCurrentPage.value = 1;
+    showCustomMonthPicker.value = false;
+  };
+
+  const toggleCustomMonthPicker = () => {
+    showCustomMonthPicker.value = !showCustomMonthPicker.value;
+    if (showCustomMonthPicker.value) historyFilterType.value = 'custom';
+  };
+
+  const applyCustomMonthFilter = () => {
+    historyFilterType.value = 'custom';
+    historyCurrentPage.value = 1;
+    showCustomMonthPicker.value = false;
+  };
+
+  const clearHistoryFilters = () => {
+    historyFilterType.value = 'today';
+    historySearchQuery.value = '';
+    historyStatusFilter.value = '';
+    historySupplierFilter.value = '';
+    historyCurrentPage.value = 1;
+    showCustomMonthPicker.value = false;
+    customMonthPicker.value = {
+      month: new Date().getMonth() + 1,
+      year: new Date().getFullYear(),
+    };
+  };
+
+  const selectSupplyRequestFilter = (option) => {
+    supplyRequestFilterType.value = option.type;
+    supplyRequestModal.value.currentPage = 1;
+    showSupplyRequestCustomMonthPicker.value = false;
+  };
+
+  const toggleSupplyRequestCustomMonthPicker = () => {
+    showSupplyRequestCustomMonthPicker.value =
+      !showSupplyRequestCustomMonthPicker.value;
+    if (showSupplyRequestCustomMonthPicker.value)
+      supplyRequestFilterType.value = 'custom';
+  };
+
+  const applySupplyRequestCustomMonthFilter = () => {
+    supplyRequestFilterType.value = 'custom';
+    supplyRequestModal.value.currentPage = 1;
+    showSupplyRequestCustomMonthPicker.value = false;
+  };
+
+  // Display text methods
+  const getHistoryFilterDisplayText = () => {
+    switch (historyFilterType.value) {
+      case 'today':
+        return `Today (${formatDate(new Date())})`;
+      case 'week': {
+        const startOfWeek = new Date();
+        startOfWeek.setDate(new Date().getDate() - new Date().getDay() + 1);
+        return `This Week (${formatDate(startOfWeek)} - ${formatDate(new Date())})`;
+      }
+      case 'month': {
+        const startOfMonth = new Date(
+          new Date().getFullYear(),
+          new Date().getMonth(),
+          1
+        );
+        return `This Month (${formatDate(startOfMonth)} - ${formatDate(new Date())})`;
+      }
+      case 'custom': {
+        const monthName = months.find(
+          (m) => m.value === customMonthPicker.value.month
+        )?.label;
+        return `${monthName} ${customMonthPicker.value.year}`;
+      }
+      default:
+        return 'All History';
+    }
+  };
+
+  const getSupplyRequestFilterDisplayText = () => {
+    switch (supplyRequestFilterType.value) {
+      case 'today':
+        return `Today (${formatDate(new Date())})`;
+      case 'week': {
+        const startOfWeek = new Date();
+        startOfWeek.setDate(new Date().getDate() - new Date().getDay() + 1);
+        return `This Week (${formatDate(startOfWeek)} - ${formatDate(new Date())})`;
+      }
+      case 'month': {
+        const startOfMonth = new Date(
+          new Date().getFullYear(),
+          new Date().getMonth(),
+          1
+        );
+        return `This Month (${formatDate(startOfMonth)} - ${formatDate(new Date())})`;
+      }
+      case 'custom': {
+        const monthName = months.find(
+          (m) => m.value === supplyRequestCustomMonthPicker.value.month
+        )?.label;
+        return `${monthName} ${supplyRequestCustomMonthPicker.value.year}`;
+      }
+      default:
+        return 'All Requests';
+    }
+  };
+
+  // Modal methods
+  const openModal = (type, order = null) => {
+    modal.value = { type, show: true, order };
+
+    if (order) {
+      const formatDateForInput = (dateString) => {
+        if (!dateString) return '';
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) return dateString;
+        try {
+          const date = new Date(dateString);
+          if (isNaN(date.getTime())) return '';
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        } catch (error) {
+          return '';
+        }
+      };
+
+      const loadSuppliersAndSetForm = async () => {
+        try {
+          if (suppliers.value.length === 0) {
+            await supplierStore.fetchSuppliers();
+          }
+
+          const supplierId = order.supplier_id || order.supplierId;
+          const convertedSupplierId = supplierId ? String(supplierId) : '';
+          const formattedOrderDate = formatDateForInput(
+            order.order_date || order.orderDate
+          );
+          const formattedDeliveryDate = formatDateForInput(
+            order.expected_delivery || order.expectedDelivery
+          );
+
+          orderForm.value = {
+            po_number: order.po_number || order.poNumber || '',
+            supplier_id: convertedSupplierId,
+            supply_request_id:
+              order.supply_request_id || order.supplyRequestId || '',
+            order_date: formattedOrderDate,
+            expected_delivery: formattedDeliveryDate,
+            status: order.status || 'Draft',
+            total_amount: order.total_amount || order.totalAmount || 0,
+            notes: order.notes || '',
+          };
+        } catch (error) {
+          showToast('error', 'Failed to load suppliers');
+        }
+      };
+
+      loadSuppliersAndSetForm();
+    } else {
+      resetForm();
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      orderForm.value.order_date = `${year}-${month}-${day}`;
+    }
+
+    document.getElementById('purchase_order_modal').showModal();
+  };
+
+  const closeModal = () => {
+    document.getElementById('purchase_order_modal')?.close();
+    modal.value = { type: null, show: false, order: null };
+    resetForm();
+  };
+
+  const resetForm = () => {
+    orderForm.value = {
+      po_number: '',
+      supplier_id: '',
+      supply_request_id: '',
+      order_date: new Date().toISOString().split('T')[0],
+      expected_delivery: '',
+      status: 'Draft',
+      total_amount: 0,
+      notes: '',
+    };
+  };
+
+  // Supply request methods
+  const openSupplyRequestModal = () => {
+    supplyRequestModal.value.show = true;
+    supplyRequestModal.value.selectedDate = getPhilippineDateString();
+    supplyRequestModal.value.currentPage = 1;
+    document.getElementById('supply_request_modal').showModal();
+  };
+
+  const closeSupplyRequestModal = () => {
+    document.getElementById('supply_request_modal')?.close();
+    supplyRequestModal.value.show = false;
+    supplyRequestModal.value.selectedRequest = null;
+    supplyRequestModal.value.selectedDate = getPhilippineDateString();
+    supplyRequestModal.value.currentPage = 1;
+    supplyRequestModal.value.showDatePicker = false;
+  };
+
+  const selectSupplyRequest = (request) => {
+    const existingPO = purchaseOrderStore.purchaseOrders.find(
+      (po) => po.supply_request_id === request.id && po.status !== 'Cancelled'
+    );
+
+    if (existingPO) {
+      showToast(
+        'error',
+        `Purchase order already exists for this supply request. PO Number: ${existingPO.po_number}`
+      );
+      return;
+    }
+
+    supplyRequestModal.value.selectedRequest = request;
+    orderForm.value.supply_request_id = request.id;
+    orderForm.value.total_amount = request.total_amount;
+
+    document.getElementById('supply_request_modal')?.close();
+    supplyRequestModal.value.show = false;
+    supplyRequestModal.value.selectedDate = getPhilippineDateString();
+    supplyRequestModal.value.currentPage = 1;
+    supplyRequestModal.value.showDatePicker = false;
+
+    showToast('success', `Supply request ${request.request_id} selected`);
+  };
+
+  // Receipt methods
+  const openReceiptModal = async (order) => {
+    if (order.status !== 'Completed') {
+      showToast(
+        'error',
+        'Receipt can only be viewed for completed purchase orders'
+      );
+      return;
+    }
+
+    try {
+      loading.value = true;
+      const fullOrderDetails = await purchaseOrderStore.fetchPurchaseOrderById(
+        order.id
+      );
+
+      if (!fullOrderDetails.items || fullOrderDetails.items.length === 0) {
+        showToast('error', 'No items found for this purchase order');
+        return;
+      }
+
+      receiptModal.value = { show: true, order: fullOrderDetails };
+      document.getElementById('purchase_order_receipt_modal').showModal();
+    } catch (error) {
+      showToast('error', 'Failed to load order details for receipt');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const closeReceiptModal = () => {
+    document.getElementById('purchase_order_receipt_modal')?.close();
+    receiptModal.value = { show: false, order: null };
+  };
+
+  const printReceipt = () => window.print();
+
+  // Return methods
+  const openReturnModal = (order) => {
+    if (!canReturnItems(order)) {
+      showToast('error', 'Returns are only allowed for completed orders');
+      return;
+    }
+
+    returnModal.value = { show: true, order };
+    resetReturnForm();
+    document.getElementById('return_modal').showModal();
+  };
+
+  const closeReturnModal = () => {
+    document.getElementById('return_modal')?.close();
+    returnModal.value = { show: false, order: null };
+    resetReturnForm();
+  };
+
+  const resetReturnForm = () => {
+    returnForm.value = { item_id: '', quantity: 1, reason: '', notes: '' };
+  };
+
+  // CRUD operations
+  const handleCreateOrder = async () => {
+    loading.value = true;
+    try {
+      if (!orderForm.value.po_number.trim()) {
+        showToast('error', 'Please enter PO number');
+        return;
+      }
+      if (!orderForm.value.supplier_id) {
+        showToast('error', 'Please select supplier');
+        return;
+      }
+      if (!orderForm.value.order_date) {
+        showToast('error', 'Please select order date');
+        return;
+      }
+
+      if (supplyRequestModal.value.selectedRequest) {
+        const existingPO = purchaseOrderStore.purchaseOrders.find(
+          (po) =>
+            po.supply_request_id ===
+              supplyRequestModal.value.selectedRequest.id &&
+            po.status !== 'Cancelled'
+        );
+
+        if (existingPO) {
+          showToast(
+            'error',
+            `Purchase order already exists for supply request ${supplyRequestModal.value.selectedRequest.request_id}. PO Number: ${existingPO.po_number}`
+          );
+          return;
+        }
+      }
+
+      const orderData = {
+        ...orderForm.value,
+        order_date:
+          orderForm.value.order_date || new Date().toISOString().split('T')[0],
+        expected_delivery: orderForm.value.expected_delivery || null,
+        created_by: 'SCM User',
+      };
+
+      if (supplyRequestModal.value.selectedRequest) {
+        await purchaseOrderStore.createPurchaseOrderFromSupplyRequest(
+          supplyRequestModal.value.selectedRequest.id,
+          orderForm.value.supplier_id,
+          orderData
+        );
+      } else {
+        await purchaseOrderStore.createPurchaseOrder(orderData, []);
+      }
+
+      closeModal();
+      showToast('success', 'Purchase order created successfully');
+    } catch (err) {
+      showToast('error', err.message || 'Failed to create purchase order');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const handleUpdateOrder = async () => {
+    loading.value = true;
+    try {
+      if (!orderForm.value.po_number.trim()) {
+        showToast('error', 'Please enter PO number');
+        return;
+      }
+      if (!orderForm.value.supplier_id) {
+        showToast('error', 'Please select supplier');
+        return;
+      }
+      if (!orderForm.value.order_date) {
+        showToast('error', 'Please select order date');
+        return;
+      }
+
+      const originalOrder = modal.value.order;
+      if (!originalOrder || !originalOrder.id) {
+        showToast('error', 'Invalid purchase order data');
+        return;
+      }
+
+      const updatedData = {
+        ...orderForm.value,
+        order_date: orderForm.value.order_date,
+        expected_delivery: orderForm.value.expected_delivery || null,
+        status: orderForm.value.status,
+      };
+
+      await purchaseOrderStore.updatePurchaseOrder(
+        originalOrder.id,
+        updatedData
+      );
+
+      if (
+        originalOrder.status !== 'Completed' &&
+        orderForm.value.status === 'Completed'
+      ) {
+        try {
+          const existingRatingResponse =
+            await purchaseOrderStore.checkPurchaseOrderRating(originalOrder.id);
+          const hasExistingRating =
+            existingRatingResponse && existingRatingResponse.data;
+
+          if (!hasExistingRating) {
+            setTimeout(() => {
+              const ratingPurchaseOrder = {
+                ...originalOrder,
+                supplier_name:
+                  originalOrder.supplier_name ||
+                  getSupplierName(originalOrder.supplier_id),
+              };
+              openRatingModal(ratingPurchaseOrder);
+            }, 1000);
+          }
+        } catch (error) {
+          setTimeout(() => {
+            const ratingPurchaseOrder = {
+              ...originalOrder,
+              supplier_name:
+                originalOrder.supplier_name ||
+                getSupplierName(originalOrder.supplier_id),
+            };
+            openRatingModal(ratingPurchaseOrder);
+          }, 1000);
+        }
+      }
+
+      closeModal();
+      showToast(
+        'success',
+        'Purchase order updated successfully with preserved dates and status'
+      );
+    } catch (err) {
+      showToast('error', err.message || 'Failed to update purchase order');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const handleDeleteOrder = async (order) => {
+    loading.value = true;
+    try {
+      await purchaseOrderStore.deletePurchaseOrder(order.id);
+      showToast('success', 'Purchase order deleted successfully');
+    } catch (err) {
+      showToast('error', err.message || 'Failed to delete purchase order');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const handleReturnItem = async () => {
+    loading.value = true;
+    try {
+      if (!returnForm.value.item_id) {
+        showToast('error', 'Please select an item to return');
+        return;
+      }
+      if (!returnForm.value.reason) {
+        showToast('error', 'Please select a return reason');
+        return;
+      }
+      if (returnForm.value.quantity < 1) {
+        showToast('error', 'Please enter a valid quantity');
+        return;
+      }
+
+      await purchaseOrderStore.logItemReturn(returnModal.value.order.id, {
+        purchase_order_item_id: returnForm.value.item_id,
+        return_quantity: returnForm.value.quantity,
+        return_reason: returnForm.value.reason,
+        notes: returnForm.value.notes,
+        logged_by: 'SCM User',
+      });
+
+      closeReturnModal();
+      showToast('success', 'Return logged successfully in system');
+    } catch (err) {
+      showToast('error', err.message || 'Failed to log return');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const handleCancelOrder = async (order) => {
+    loading.value = true;
+    try {
+      await purchaseOrderStore.cancelPurchaseOrder(order.id);
+      showToast('success', 'Purchase order cancelled successfully');
+    } catch (err) {
+      showToast('error', err.message || 'Failed to cancel purchase order');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Confirmation modal methods
+  const openConfirmModal = (type, order) => {
+    const configs = {
+      cancel: {
+        title: 'Cancel Purchase Order',
+        message: `Are you sure you want to cancel ${order?.po_number}? This action cannot be undone.`,
+        onConfirm: () => handleCancelOrder(order),
+      },
+      delete: {
+        title: 'Delete Purchase Order',
+        message: `Are you sure you want to delete ${order?.po_number}? This action cannot be undone.`,
+        onConfirm: () => handleDeleteOrder(order),
+      },
+      create: {
+        title: 'Create Purchase Order',
+        message: `Are you sure you want to create purchase order ${orderForm.value.po_number}?`,
+        onConfirm: () => handleCreateOrder(),
+      },
+      update: {
+        title: 'Update Purchase Order',
+        message: `Are you sure you want to update ${orderForm.value.po_number}? All changes will be preserved including dates and status.`,
+        onConfirm: () => handleUpdateOrder(),
+      },
+      return: {
+        title: 'Submit Item Return',
+        message: `Are you sure you want to submit this return for ${returnForm.value.quantity} item(s)?`,
+        onConfirm: () => handleReturnItem(),
+      },
+    };
+
+    const config = configs[type];
+    confirmModal.value = {
+      show: true,
+      type,
+      title: config.title,
+      message: config.message,
+      order,
+      onConfirm: config.onConfirm,
+    };
+    document.getElementById('confirmation_modal').showModal();
+  };
+
+  const closeConfirmModal = () => {
+    document.getElementById('confirmation_modal')?.close();
+    confirmModal.value = {
+      show: false,
+      type: '',
+      title: '',
+      message: '',
+      order: null,
+      onConfirm: null,
+    };
+  };
+
+  const handleConfirmAction = async () => {
+    if (confirmModal.value.onConfirm) {
+      try {
+        await confirmModal.value.onConfirm();
+        closeConfirmModal();
+      } catch (error) {
+        console.error('Confirmation action failed:', error);
+      }
+    }
+  };
+
+  // Wrapper confirmation methods
+  const showCreateConfirmation = () => {
+    if (!orderForm.value.po_number.trim()) {
+      showToast('error', 'Please enter PO number');
+      return;
+    }
+    if (!orderForm.value.supplier_id) {
+      showToast('error', 'Please select supplier');
+      return;
+    }
+    if (!orderForm.value.order_date) {
+      showToast('error', 'Please select order date');
+      return;
+    }
+
+    if (supplyRequestModal.value.selectedRequest) {
+      const existingPO = purchaseOrderStore.purchaseOrders.find(
+        (po) =>
+          po.supply_request_id ===
+            supplyRequestModal.value.selectedRequest.id &&
+          po.status !== 'Cancelled'
+      );
+
+      if (existingPO) {
+        showToast(
+          'error',
+          `Purchase order already exists for supply request ${supplyRequestModal.value.selectedRequest.request_id}. PO Number: ${existingPO.po_number}`
+        );
+        return;
+      }
+    }
+
+    openConfirmModal('create');
+  };
+
+  const showUpdateConfirmation = () => {
+    if (!orderForm.value.po_number.trim()) {
+      showToast('error', 'Please enter PO number');
+      return;
+    }
+    if (!orderForm.value.supplier_id) {
+      showToast('error', 'Please select supplier');
+      return;
+    }
+    if (!orderForm.value.order_date) {
+      showToast('error', 'Please select order date');
+      return;
+    }
+
+    if (hasFieldChanges.value) {
+      openConfirmModal('update');
+    } else {
+      showToast(
+        'info',
+        'No changes detected. Purchase order will remain unchanged.'
+      );
+    }
+  };
+
+  const showReturnConfirmation = () => {
+    if (!returnForm.value.item_id) {
+      showToast('error', 'Please select an item to return');
+      return;
+    }
+    if (!returnForm.value.reason) {
+      showToast('error', 'Please select a return reason');
+      return;
+    }
+    if (returnForm.value.quantity < 1) {
+      showToast('error', 'Please enter a valid quantity');
+      return;
+    }
+
+    openConfirmModal('return');
+  };
+
+  // Audit trail methods
+  const openAuditTrailModal = (purchaseOrderId = null) => {
+    auditTrailModal.value = { show: true, purchaseOrderId };
+  };
+
+  const closeAuditTrailModal = () => {
+    auditTrailModal.value = { show: false, purchaseOrderId: null };
+  };
+
+  const handleReturnProcessed = (returnItem) => {
+    purchaseOrderStore.fetchPurchaseOrders();
+    showToast('success', 'Return processed successfully');
+  };
+
+  const handleReturnCancelled = (returnItem) => {
+    purchaseOrderStore.fetchPurchaseOrders();
+    showToast('success', 'Return cancelled successfully');
+  };
+
+  const viewReturnDetails = (returnItem) => {
+    console.log('View return details:', returnItem);
+  };
+
+  // Rating modal methods
+  const openRatingModal = (purchaseOrder) => {
+    if (!purchaseOrder || typeof purchaseOrder !== 'object') {
+      console.error(
+        'Purchase order is null or invalid, cannot open rating modal'
+      );
+      return;
+    }
+
+    if (!purchaseOrder.id || !purchaseOrder.supplier_id) {
+      console.error(
+        'Purchase order missing required properties (id or supplier_id)'
+      );
+      return;
+    }
+
+    let supplierName = purchaseOrder.supplier_name;
+    if (!supplierName) {
+      const supplier = suppliers.value.find(
+        (s) => s.id === purchaseOrder.supplier_id
+      );
+      supplierName = supplier ? supplier.name : 'Unknown Supplier';
+    }
+
+    ratingModal.value = { show: true, purchaseOrder, supplierName };
+
+    nextTick(() => {
+      const modalElement = document.getElementById('supplier_rating_modal');
+      if (modalElement) modalElement.showModal();
+    });
+  };
+
+  const closeRatingModal = () => {
+    ratingModal.value = { show: false, purchaseOrder: {}, supplierName: '' };
+  };
+
+  const handleRatingSubmitted = async (ratingData) => {
+    showToast(
+      'success',
+      `Thank you for rating ${ratingModal.value.supplierName}!`
+    );
+    try {
+      await Promise.all([
+        purchaseOrderStore.fetchPurchaseOrders(),
+        supplierStore.fetchSuppliersWithStats(),
+      ]);
+    } catch (error) {
+      console.error('Error refreshing data after rating:', error);
+    }
+  };
+
+  // GRN methods
+  // Update the createGRNFromPO method to use the correct endpoint
+  const createGRNFromPO = async (order) => {
+    try {
+      // Check if we can create a new GRN
+      const eligibility = await checkGRNCreationEligibility(order);
+
+      if (!eligibility.canCreate) {
+        showToast('error', eligibility.reason);
+        return;
+      }
+
+      // Show confirmation modal instead of directly creating
+      grnConfirmModal.value = {
+        show: true,
+        order: order,
+        loading: false,
+      };
+      document.getElementById('grn_confirm_modal').showModal();
+    } catch (error) {
+      console.error('Error creating GRN:', error);
+      showToast('error', error.message || 'Failed to create GRN');
+    }
+  };
+
+  const confirmCreateGRN = async () => {
+    const order = grnConfirmModal.value.order;
+    try {
+      grnConfirmModal.value.loading = true;
+      const { useAuthStore } = await import('../../stores/authStore.js');
+      const authStore = useAuthStore();
+
+      // Use the same endpoint as the original method
+      const response = await fetch(getApiUrl(`grn/from-po/${order.id}`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          received_by: authStore.user.id,
+          received_date: new Date().toISOString().split('T')[0],
+          notes: `GRN created from PO ${order.po_number}`,
+          is_partial: false,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        showToast('success', 'GRN created successfully!');
+        await purchaseOrderStore.fetchPurchaseOrders(); // Refresh the orders list
+        closeGRNConfirmModal();
+      } else {
+        throw new Error(data.message || 'Failed to create GRN');
+      }
+    } catch (error) {
+      console.error('Error creating GRN:', error);
+      showToast('error', error.message || 'Failed to create GRN');
+    } finally {
+      grnConfirmModal.value.loading = false;
+    }
+  };
+
+  const closeGRNConfirmModal = () => {
+    document.getElementById('grn_confirm_modal')?.close();
+    grnConfirmModal.value = { show: false, order: null, loading: false };
+  };
+
+  // Field change handler
+  const handleFieldChange = (fieldName, value) => {
+    const originalOrder = modal.value.order;
+    if (originalOrder && modal.value.type === 'edit') {
+      const originalValue = originalOrder[fieldName];
+      const hasChanged = value !== originalValue;
+      if (hasChanged) {
+        console.log(
+          `Field ${fieldName} changed from ${originalValue} to ${value}`
+        );
+      }
+    }
+    orderForm.value[fieldName] = value;
+  };
+
+  // Watchers
+  watch(
+    [() => purchaseOrderStore.purchaseOrders, selectedDate],
+    () => {
+      // Update counts when data changes
+    },
+    { deep: true, immediate: true }
+  );
+
+  watch(
+    [approvedSupplyRequests, supplyRequestFilterType],
+    () => {
+      // Update supply request counts
+    },
+    { deep: true, immediate: true }
+  );
+
+  watch(
+    [() => purchaseOrderStore.purchaseOrders],
+    () => {
+      // Update history counts
+    },
+    { deep: true, immediate: true }
+  );
+
+  // Lifecycle
+  onMounted(async () => {
+    try {
+      loading.value = true;
+      await Promise.all([
+        purchaseOrderStore.fetchPurchaseOrders(),
+        supplierStore.fetchActiveSuppliers(),
+        supplyRequestStore.fetchRequests({ department: 'SCM' }),
+        purchaseOrderStore.fetchStats(),
+      ]);
+
+      console.log('PurchaseOrder component mounted and data loaded');
+
+      try {
+        const route = router.currentRoute?.value;
+        const poIdFromQuery = route?.query?.returnsForPO;
+        if (poIdFromQuery) {
+          openAuditTrailModal(Number(poIdFromQuery));
+        }
+      } catch (_) {}
+    } catch (error) {
+      console.error('Error loading data:', error);
+      showToast('error', 'Failed to load data');
+    } finally {
+      loading.value = false;
+    }
+  });
+</script>
+
 <template>
   <div class="container mx-auto p-2 sm:p-4 lg:p-6 max-w-6xl">
     <!-- Header -->
@@ -453,9 +1931,12 @@
                           >View Receipt</a
                         >
                       </li>
-                      <!-- Only show Edit for non-cancelled orders -->
+                      <!-- Only show Edit for non-cancelled and non-completed orders -->
                       <li
-                        v-if="order.status !== 'Cancelled'"
+                        v-if="
+                          order.status !== 'Cancelled' &&
+                          order.status !== 'Completed'
+                        "
                         class="hover:bg-black/10"
                       >
                         <a
@@ -464,26 +1945,62 @@
                           >Edit</a
                         >
                       </li>
-                      <!-- Only show Return Item for completed orders -->
+                      <!-- Only show Create GRN for completed orders without pending returns -->
                       <li
-                        v-if="order.status === 'Completed'"
+                        v-if="
+                          order.status === 'Completed' && canCreateNewGRN(order)
+                        "
                         class="hover:bg-black/10"
                       >
                         <a
-                          @click="openReturnModal(order)"
-                          class="text-error text-xs sm:text-sm"
-                          >Return Item</a
+                          @click="createGRNFromPO(order)"
+                          class="text-success text-xs sm:text-sm"
                         >
+                          Create GRN
+                        </a>
                       </li>
-                      <!-- Only show Cancel Order for non-cancelled orders -->
+                      <!-- Show disabled Create GRN for completed orders with pending returns -->
                       <li
-                        v-if="order.status !== 'Cancelled'"
+                        v-if="
+                          order.status === 'Completed' &&
+                          !canCreateNewGRN(order)
+                        "
+                        class="hover:bg-black/10 opacity-50 cursor-not-allowed"
+                      >
+                        <a
+                          class="text-black/50 text-xs sm:text-sm cursor-not-allowed"
+                          :title="getGRNCreationReason(order)"
+                        >
+                          <span v-if="hasPendingReturns(order)">
+                            Create GRN ({{ order.pending_returns_count }}
+                            Returns Pending)
+                          </span>
+                          <span v-else> Create GRN (Already Processed) </span>
+                        </a>
+                      </li>
+                      <!-- Only show Cancel Order for non-cancelled and non-completed orders -->
+                      <li
+                        v-if="
+                          order.status !== 'Cancelled' &&
+                          order.status !== 'Completed'
+                        "
                         class="hover:bg-black/10"
                       >
                         <a
                           @click="openConfirmModal('cancel', order)"
                           class="text-error text-xs sm:text-sm"
                           >Cancel Order</a
+                        >
+                      </li>
+                      <!-- Add Return Items action for completed orders -->
+                      <li
+                        v-if="order.status === 'Completed'"
+                        class="hover:bg-black/10"
+                      >
+                        <a
+                          @click="openReturnModal(order)"
+                          class="text-warning text-xs sm:text-sm"
+                          >Return Items</a
                         >
                       </li>
                       <li class="hover:bg-black/10">
@@ -544,14 +2061,7 @@
                   >
                     {{ order.status }}
                   </div>
-                  <!-- Show return indicator for completed orders -->
-                  <div
-                    v-if="order.status === 'Completed'"
-                    class="flex items-center text-xs text-success"
-                  >
-                    <AlertTriangle class="w-3 h-3 mr-1" />
-                    <span>Returns Available</span>
-                  </div>
+
                   <div class="flex items-center text-xs sm:text-sm">
                     <span class="text-black/70 mr-1">Delivery:</span>
                     <span
@@ -925,17 +2435,7 @@
                           >View Receipt</a
                         >
                       </li>
-                      <!-- Show Return Item for completed orders -->
-                      <li
-                        v-if="order.status === 'Completed'"
-                        class="hover:bg-black/10"
-                      >
-                        <a
-                          @click="openReturnModal(order)"
-                          class="text-error text-xs sm:text-sm"
-                          >Return Item</a
-                        >
-                      </li>
+                      <!-- Return Item action moved to GRN workflow -->
                     </ul>
                   </div>
                 </div>
@@ -1950,6 +3450,61 @@
     </div>
   </dialog>
 
+  <!-- GRN Confirmation Modal -->
+  <dialog id="grn_confirm_modal" class="modal">
+    <div class="modal-box">
+      <h3 class="font-bold text-lg mb-4">Create Goods Receipt Note</h3>
+      <div class="py-4">
+        <p class="mb-4">
+          Are you sure you want to create a Goods Receipt Note (GRN) for:
+        </p>
+        <div class="bg-base-200 p-4 rounded-lg mb-4">
+          <div class="flex justify-between items-center mb-2">
+            <span class="font-medium">PO Number:</span>
+            <span class="text-primaryColor font-bold">{{
+              grnConfirmModal.order?.po_number
+            }}</span>
+          </div>
+          <div class="flex justify-between items-center mb-2">
+            <span class="font-medium">Supplier:</span>
+            <span>{{ grnConfirmModal.order?.supplier_name }}</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="font-medium">Items:</span>
+            <span>{{ grnConfirmModal.order?.item_count }} items</span>
+          </div>
+        </div>
+        <p class="text-sm text-black/60">
+          This will create a new GRN that you can use to manage the receipt and
+          quality inspection of these items.
+        </p>
+      </div>
+
+      <div class="modal-action">
+        <button
+          type="button"
+          class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none btn-sm"
+          @click="closeGRNConfirmModal"
+          :disabled="grnConfirmModal.loading"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="btn bg-primaryColor text-white btn-sm font-thin border-none hover:bg-primaryColor/80"
+          @click="confirmCreateGRN"
+          :disabled="grnConfirmModal.loading"
+        >
+          <span
+            v-if="grnConfirmModal.loading"
+            class="loading loading-spinner loading-xs mr-2"
+          ></span>
+          {{ grnConfirmModal.loading ? 'Creating GRN...' : 'Create GRN' }}
+        </button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Audit Trail Component - Direct usage without wrapper modal -->
   <POreturnItems
     :show="auditTrailModal.show"
@@ -1969,1975 +3524,6 @@
     @rating-submitted="handleRatingSubmitted"
   />
 </template>
-<script setup>
-  import { ref, computed, onMounted, watch, nextTick } from 'vue';
-  import {
-    FileText,
-    Plus,
-    Search,
-    RefreshCcw,
-    Mail,
-    Edit,
-    Trash2,
-    Eye,
-    X,
-    AlertTriangle,
-    XCircle,
-    Filter,
-    Phone,
-    Clock,
-    CheckCircle,
-    EllipsisVertical,
-    MessageSquare,
-    PhilippinePeso,
-    Calendar,
-    Link,
-    DollarSign,
-  } from 'lucide-vue-next';
-  import { usePurchaseOrderStore } from '../../stores/purchaseOrderStore.js';
-  import { useSupplierStore } from '../../stores/supplierStore.js';
-  import { useSupplyRequestStore } from '../../stores/supplyRequestStore.js';
-  import POreturnItems from '../../components/scm/POreturnItems.vue';
-  import SupplierRatingModal from '../../components/scm/SupplierRatingModal.vue';
-
-  // Helper functions - Define these first
-  const getPhilippineDateString = (date = null) => {
-    const targetDate = date || new Date();
-    return targetDate.toISOString().split('T')[0];
-  };
-
-  const formatPhilippineDate = (dateString) => {
-    const date = new Date(dateString + 'T00:00:00');
-    return date.toLocaleDateString('en-PH', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      timeZone: 'Asia/Manila',
-    });
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-PH', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
-
-  // Utility functions
-  const getStatusColor = (status) => {
-    const colors = {
-      Draft:
-        'badge badge-sm border-none font-medium bg-warning/20 text-warning',
-      Sent: 'badge badge-sm border-none font-medium bg-info/20 text-info',
-      Confirmed:
-        'badge badge-sm border-none font-medium bg-primary/20 text-primary',
-      'In Progress':
-        'badge badge-sm border-none font-medium bg-secondary/20 text-secondary',
-      Completed:
-        'badge badge-sm border-none font-medium bg-success/20 text-success',
-      Cancelled:
-        'badge badge-sm border-none font-medium bg-error/20 text-error',
-    };
-    return (
-      colors[status] ||
-      'badge badge-sm border-none font-medium bg-neutral/20 text-neutral'
-    );
-  };
-
-  // Stores
-  const purchaseOrderStore = usePurchaseOrderStore();
-  const supplierStore = useSupplierStore();
-  const supplyRequestStore = useSupplyRequestStore();
-
-  // Replace mock data with store data
-  const mockPurchaseOrders = computed(() => purchaseOrderStore.purchaseOrders);
-  const suppliers = computed(() => supplierStore.activeSuppliers); // Change this line
-  const approvedSupplyRequests = computed(() => {
-    // Get all supply requests and filter out completed ones
-    const allRequests = supplyRequestStore.requestsByStatus('Completed');
-
-    // Filter out requests that already have a completed PO
-    return allRequests.filter((request) => {
-      // Check if there's already a completed PO for this request
-      const existingPO = purchaseOrderStore.purchaseOrders.find(
-        (po) => po.supply_request_id === request.id && po.status === 'Completed'
-      );
-
-      // Only show requests that don't have a completed PO
-      return !existingPO;
-    });
-  });
-
-  // Update the stats computed property
-  const orderStats = computed(() => purchaseOrderStore.stats);
-
-  // Local state
-  const loading = ref(false);
-  const currentPage = ref(1);
-  const ordersPerPage = ref(4);
-  const searchQuery = ref('');
-  const statusFilter = ref('');
-  const supplierFilter = ref('');
-
-  // Modal state
-  const modal = ref({
-    type: null,
-    show: false,
-    order: null,
-  });
-
-  // Receipt modal state
-  const receiptModal = ref({
-    show: false,
-    order: null,
-  });
-
-  // Return modal state
-  const returnModal = ref({
-    show: false,
-    order: null,
-  });
-
-  // Supply request selection modal - Now this will work
-  const supplyRequestModal = ref({
-    show: false,
-    selectedRequest: null,
-    selectedDate: getPhilippineDateString(),
-    showDatePicker: false,
-    currentPage: 1,
-    perPage: 5,
-  });
-
-  // Form data for purchase order
-  const orderForm = ref({
-    po_number: '',
-    supplier_id: '',
-    supply_request_id: '',
-    order_date: '',
-    expected_delivery: '',
-    status: 'Draft',
-    total_amount: 0,
-    notes: '',
-  });
-
-  // Return form data
-  const returnForm = ref({
-    item_id: '',
-    quantity: 1,
-    reason: '',
-    notes: '',
-  });
-
-  // Toast state
-  const toast = ref({ show: false, type: '', message: '' });
-
-  // Show toast helper
-  const showToast = (type, message) => {
-    toast.value = { show: true, type, message };
-    setTimeout(() => {
-      toast.value.show = false;
-    }, 3000);
-  };
-
-  // Order statuses
-  const orderStatuses = [
-    'Draft',
-    'Sent',
-    'Confirmed',
-    'In Progress',
-    'Completed',
-    'Cancelled',
-  ];
-
-  // Active order statuses (exclude completed and cancelled)
-  const activeOrderStatuses = ['Draft', 'Sent', 'Confirmed', 'In Progress'];
-
-  // History order statuses (only completed and cancelled)
-  const historyOrderStatuses = ['Completed', 'Cancelled'];
-
-  // Add these new reactive variables after the existing ones (around line 1400)
-  const selectedDate = ref(getPhilippineDateString());
-  const showDatePicker = ref(false);
-
-  // History-related reactive variables
-  const activeTab = ref('active');
-  const historySearchQuery = ref('');
-  const historyStatusFilter = ref('');
-  const historySupplierFilter = ref('');
-  const historySelectedDate = ref(getPhilippineDateString());
-  const showHistoryDatePicker = ref(false);
-  const historyCurrentPage = ref(1);
-  const historyOrdersPerPage = ref(3);
-
-  // Add quick date options for PO list
-  const getQuickDateOptions = () => {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-
-    const toYMD = (date) =>
-      date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-
-    return [
-      { label: 'Yesterday', date: toYMD(yesterday), count: 0 },
-      { label: 'Today', date: toYMD(today), count: 0 },
-      { label: 'Tomorrow', date: toYMD(tomorrow), count: 0 },
-    ];
-  };
-
-  const quickDateOptions = ref(getQuickDateOptions());
-
-  // Update the filteredOrders computed property to include date filtering
-  const filteredOrdersByDate = computed(() => {
-    let filtered = [...purchaseOrderStore.purchaseOrders];
-
-    // Filter out completed and cancelled orders for active tab
-    filtered = filtered.filter(
-      (order) => order.status !== 'Completed' && order.status !== 'Cancelled'
-    );
-
-    // Date filter
-    if (selectedDate.value) {
-      filtered = filtered.filter((order) => {
-        const orderDate = new Date(
-          new Date(order.order_date).toLocaleString('en-US', {
-            timeZone: 'Asia/Manila',
-          })
-        );
-        const normalized = orderDate.toLocaleDateString('en-CA', {
-          timeZone: 'Asia/Manila',
-        });
-        return normalized === selectedDate.value;
-      });
-    }
-
-    return filtered;
-  });
-
-  // Update the main filteredOrders to use the date-filtered results
-  const filteredOrders = computed(() => {
-    let filtered = [...filteredOrdersByDate.value];
-
-    // Search filter
-    if (searchQuery.value) {
-      const query = searchQuery.value.toLowerCase();
-      filtered = filtered.filter(
-        (order) =>
-          order.po_number.toLowerCase().includes(query) ||
-          order.supplier_name.toLowerCase().includes(query) ||
-          order.notes?.toLowerCase().includes(query) ||
-          order.supply_request_number?.toLowerCase().includes(query)
-      );
-    }
-
-    // Status filter
-    if (statusFilter.value) {
-      filtered = filtered.filter(
-        (order) => order.status === statusFilter.value
-      );
-    }
-
-    // Supplier filter
-    if (supplierFilter.value) {
-      filtered = filtered.filter(
-        (order) => order.supplier_name === supplierFilter.value
-      );
-    }
-
-    return filtered;
-  });
-
-  // Update uniqueSuppliers to use date-filtered data
-  const uniqueSuppliersByDate = computed(() => {
-    const supplierNames = [
-      ...new Set(
-        filteredOrdersByDate.value.map((order) => order.supplier_name)
-      ),
-    ];
-    return supplierNames.sort();
-  });
-
-  // Add date filtering methods
-  const selectQuickDate = (dateOption) => {
-    selectedDate.value = dateOption.date;
-    currentPage.value = 1;
-    showDatePicker.value = false;
-  };
-
-  const selectCustomDate = (event) => {
-    selectedDate.value = event.target.value;
-    currentPage.value = 1;
-    showDatePicker.value = false;
-  };
-
-  const toggleDatePicker = () => {
-    showDatePicker.value = !showDatePicker.value;
-  };
-
-  const goToPreviousDay = () => {
-    const currentDate = new Date(selectedDate.value + 'T00:00:00');
-    const previousDay = new Date(currentDate.getTime() - 24 * 60 * 60 * 1000);
-    selectedDate.value = previousDay.toISOString().split('T')[0];
-    currentPage.value = 1;
-  };
-
-  const goToNextDay = () => {
-    const currentDate = new Date(selectedDate.value + 'T00:00:00');
-    const nextDay = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000);
-    selectedDate.value = nextDay.toISOString().split('T')[0];
-    currentPage.value = 1;
-  };
-
-  const goToToday = () => {
-    selectedDate.value = getPhilippineDateString();
-    currentPage.value = 1;
-  };
-
-  // Update quick date counts
-  const updateQuickDateCountsHistory = () => {
-    quickDateOptions.value.forEach((option) => {
-      option.count = purchaseOrderStore.purchaseOrders.filter((order) => {
-        // Only count active orders
-        if (order.status === 'Completed' || order.status === 'Cancelled') {
-          return false;
-        }
-
-        const orderDate = new Date(
-          new Date(order.order_date).toLocaleString('en-US', {
-            timeZone: 'Asia/Manila',
-          })
-        );
-        const normalized = orderDate.toLocaleDateString('en-CA', {
-          timeZone: 'Asia/Manila',
-        });
-        return normalized === option.date;
-      }).length;
-    });
-  };
-
-  // Update the clearFilters function to include date
-  const clearFilters = () => {
-    searchQuery.value = '';
-    statusFilter.value = '';
-    supplierFilter.value = '';
-    selectedDate.value = getPhilippineDateString();
-    currentPage.value = 1;
-
-    // Clear history filters
-    historySearchQuery.value = '';
-    historyStatusFilter.value = '';
-    historySupplierFilter.value = '';
-    historySelectedDate.value = getPhilippineDateString();
-    historyCurrentPage.value = 1;
-  };
-
-  // Add watcher to update counts when data changes
-  watch(
-    [() => purchaseOrderStore.purchaseOrders, selectedDate],
-    () => {
-      updateQuickDateCountsHistory();
-    },
-    { deep: true, immediate: true }
-  );
-
-  // Change this computed property:
-  const selectedRequestDisplay = computed(() => {
-    const request = supplyRequestModal.value.selectedRequest;
-    if (!request) return '';
-    return `${request.request_id} - ${request.request_description}`;
-  });
-
-  // Paginated supply requests
-  const paginatedSupplyRequests = computed(() => {
-    const start =
-      (supplyRequestModal.value.currentPage - 1) *
-      supplyRequestModal.value.perPage;
-    return filteredSupplyRequestsByDate.value.slice(
-      start,
-      start + supplyRequestModal.value.perPage
-    );
-  });
-
-  const totalSupplyRequestPages = computed(() => {
-    return Math.ceil(
-      filteredSupplyRequestsByDate.value.length /
-        supplyRequestModal.value.perPage
-    );
-  });
-
-  // Update quick date counts
-  const updateSupplyRequestQuickDateCounts = () => {
-    supplyRequestQuickDateOptions.value.forEach((option) => {
-      option.count = approvedSupplyRequests.value.filter((request) => {
-        const manilaDate = new Date(
-          new Date(request.request_date).toLocaleString('en-US', {
-            timeZone: 'Asia/Manila',
-          })
-        );
-        const normalized = manilaDate.toLocaleDateString('en-CA', {
-          timeZone: 'Asia/Manila',
-        });
-        return normalized === option.date;
-      }).length;
-    });
-  };
-
-  // Modal methods
-  const openModal = (type, order = null) => {
-    modal.value = {
-      type,
-      show: true,
-      order,
-    };
-
-    if (order) {
-      // For edit mode, preserve all original values including dates and status
-      // Format dates properly for HTML date inputs (YYYY-MM-DD)
-      const formatDateForInput = (dateString) => {
-        if (!dateString) return '';
-
-        // Handle different date formats
-        let date;
-
-        // If it's already in YYYY-MM-DD format, return as is
-        if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-          return dateString;
-        }
-
-        // Try to parse the date
-        try {
-          date = new Date(dateString);
-
-          // Check if the date is valid
-          if (isNaN(date.getTime())) {
-            console.warn('Invalid date:', dateString);
-            return '';
-          }
-
-          // Format as YYYY-MM-DD
-          const year = date.getFullYear();
-          const month = String(date.getMonth() + 1).padStart(2, '0');
-          const day = String(date.getDate()).padStart(2, '0');
-
-          return `${year}-${month}-${day}`;
-        } catch (error) {
-          console.error('Error parsing date:', dateString, error);
-          return '';
-        }
-      };
-
-      // Debug logging
-      console.log('Opening edit modal with order:', order);
-      console.log('Original order_date:', order.order_date);
-      console.log('Original expected_delivery:', order.expected_delivery);
-      console.log(
-        'Order supplier_id:',
-        order.supplier_id,
-        'Type:',
-        typeof order.supplier_id
-      );
-
-      // Ensure suppliers are loaded before setting form values
-      const loadSuppliersAndSetForm = async () => {
-        try {
-          // Fetch suppliers if not already loaded
-          if (suppliers.value.length === 0) {
-            console.log('Suppliers not loaded, fetching...');
-            await supplierStore.fetchSuppliers();
-          }
-
-          console.log(
-            'Available suppliers after loading:',
-            suppliers.value.map((s) => ({
-              id: s.id,
-              name: s.name,
-              idType: typeof s.id,
-            }))
-          );
-
-          // Ensure supplier_id is converted to the correct type
-          const supplierId = order.supplier_id || order.supplierId;
-          const convertedSupplierId = supplierId ? String(supplierId) : '';
-
-          // Format dates
-          const formattedOrderDate = formatDateForInput(
-            order.order_date || order.orderDate
-          );
-          const formattedDeliveryDate = formatDateForInput(
-            order.expected_delivery || order.expectedDelivery
-          );
-
-          console.log('Formatted order_date:', formattedOrderDate);
-          console.log('Formatted expected_delivery:', formattedDeliveryDate);
-
-          // Set form values with comprehensive fallbacks
-          orderForm.value = {
-            po_number: order.po_number || order.poNumber || '',
-            supplier_id: convertedSupplierId,
-            supply_request_id:
-              order.supply_request_id || order.supplyRequestId || '',
-            order_date: formattedOrderDate,
-            expected_delivery: formattedDeliveryDate,
-            status: order.status || 'Draft',
-            total_amount: order.total_amount || order.totalAmount || 0,
-            notes: order.notes || '',
-          };
-
-          // Debug logging
-          console.log('Converted supplier_id:', convertedSupplierId);
-          console.log('Form values set:', orderForm.value);
-          console.log(
-            'Form supplier_id:',
-            orderForm.value.supplier_id,
-            'Type:',
-            typeof orderForm.value.supplier_id
-          );
-
-          // Force a reactive update
-          nextTick(() => {
-            console.log('Form values after nextTick:', orderForm.value);
-            console.log(
-              'Form supplier_id after nextTick:',
-              orderForm.value.supplier_id
-            );
-
-            // Check if the supplier exists in the dropdown
-            const supplierExists = suppliers.value.some(
-              (s) => String(s.id) === orderForm.value.supplier_id
-            );
-            console.log('Supplier exists in dropdown:', supplierExists);
-          });
-        } catch (error) {
-          console.error('Error loading suppliers:', error);
-          showToast('error', 'Failed to load suppliers');
-        }
-      };
-
-      // Load suppliers and set form
-      loadSuppliersAndSetForm();
-    } else {
-      // For create mode, use default values
-      resetForm();
-      // Ensure order_date is set for new orders
-      const today = new Date();
-      const year = today.getFullYear();
-      const month = String(today.getMonth() + 1).padStart(2, '0');
-      const day = String(today.getDate()).padStart(2, '0');
-      orderForm.value.order_date = `${year}-${month}-${day}`;
-    }
-
-    document.getElementById('purchase_order_modal').showModal();
-  };
-
-  const closeModal = () => {
-    document.getElementById('purchase_order_modal')?.close();
-    modal.value = {
-      type: null,
-      show: false,
-      order: null,
-    };
-    resetForm();
-  };
-
-  const resetForm = () => {
-    orderForm.value = {
-      po_number: '',
-      supplier_id: '',
-      supply_request_id: '',
-      order_date: new Date().toISOString().split('T')[0], // Set today's date as default
-      expected_delivery: '',
-      status: 'Draft',
-      total_amount: 0,
-      notes: '',
-    };
-  };
-
-  // Supply request selection methods
-  const openSupplyRequestModal = () => {
-    supplyRequestModal.value.show = true;
-    supplyRequestModal.value.selectedDate = getPhilippineDateString();
-    supplyRequestModal.value.currentPage = 1;
-    updateSupplyRequestQuickDateCounts();
-    document.getElementById('supply_request_modal').showModal();
-  };
-
-  const closeSupplyRequestModal = () => {
-    document.getElementById('supply_request_modal')?.close();
-    supplyRequestModal.value.show = false;
-    supplyRequestModal.value.selectedRequest = null;
-    supplyRequestModal.value.selectedDate = getPhilippineDateString();
-    supplyRequestModal.value.currentPage = 1;
-    supplyRequestModal.value.showDatePicker = false;
-  };
-
-  // Helper function to check if PO already exists for a supply request
-  const getExistingPOForRequest = (supplyRequestId) => {
-    return purchaseOrderStore.purchaseOrders.find(
-      (po) =>
-        po.supply_request_id === supplyRequestId && po.status !== 'Cancelled'
-    );
-  };
-
-  // Update the selectSupplyRequest function to show warning if PO already exists
-  const selectSupplyRequest = (request) => {
-    // Check if PO already exists
-    const existingPO = getExistingPOForRequest(request.id);
-
-    if (existingPO) {
-      showToast(
-        'error',
-        `Purchase order already exists for this supply request. PO Number: ${existingPO.po_number}`
-      );
-      return;
-    }
-
-    supplyRequestModal.value.selectedRequest = request;
-    orderForm.value.supply_request_id = request.id;
-    orderForm.value.total_amount = request.total_amount;
-
-    // Close the modal without clearing the selected request
-    document.getElementById('supply_request_modal')?.close();
-    supplyRequestModal.value.show = false;
-    supplyRequestModal.value.selectedDate = getPhilippineDateString();
-    supplyRequestModal.value.currentPage = 1;
-    supplyRequestModal.value.showDatePicker = false;
-
-    showToast('success', `Supply request ${request.request_id} selected`);
-  };
-
-  // Receipt modal methods
-  const openReceiptModal = async (order) => {
-    // Check if receipt can be viewed (only for completed orders)
-    if (order.status !== 'Completed') {
-      showToast(
-        'error',
-        'Receipt can only be viewed for completed purchase orders'
-      );
-      return;
-    }
-
-    try {
-      loading.value = true;
-
-      // Fetch the full purchase order details including items
-      const fullOrderDetails = await purchaseOrderStore.fetchPurchaseOrderById(
-        order.id
-      );
-
-      // Ensure the order has items data
-      if (!fullOrderDetails.items || fullOrderDetails.items.length === 0) {
-        showToast('error', 'No items found for this purchase order');
-        return;
-      }
-
-      receiptModal.value = {
-        show: true,
-        order: fullOrderDetails,
-      };
-
-      document.getElementById('purchase_order_receipt_modal').showModal();
-    } catch (error) {
-      console.error('Error fetching order details for receipt:', error);
-      showToast('error', 'Failed to load order details for receipt');
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const closeReceiptModal = () => {
-    document.getElementById('purchase_order_receipt_modal')?.close();
-    receiptModal.value = {
-      show: false,
-      order: null,
-    };
-  };
-
-  const printReceipt = () => {
-    window.print();
-  };
-
-  // Return modal methods
-  const openReturnModal = (order) => {
-    // Check if return is allowed
-    if (!canReturnItems(order)) {
-      showToast('error', 'Returns are only allowed for completed orders');
-      return;
-    }
-
-    returnModal.value = {
-      show: true,
-      order,
-    };
-    resetReturnForm();
-    document.getElementById('return_modal').showModal();
-  };
-
-  const closeReturnModal = () => {
-    document.getElementById('return_modal')?.close();
-    returnModal.value = {
-      show: false,
-      order: null,
-    };
-    resetReturnForm();
-  };
-
-  const resetReturnForm = () => {
-    returnForm.value = {
-      item_id: '',
-      quantity: 1,
-      reason: '',
-      notes: '',
-    };
-  };
-
-  // CRUD operations
-  const handleCreateOrder = async () => {
-    loading.value = true;
-    try {
-      // Validation
-      if (!orderForm.value.po_number.trim()) {
-        showToast('error', 'Please enter PO number');
-        return;
-      }
-      if (!orderForm.value.supplier_id) {
-        showToast('error', 'Please select supplier');
-        return;
-      }
-      if (!orderForm.value.order_date) {
-        showToast('error', 'Please select order date');
-        return;
-      }
-
-      // Check if purchase order already exists for this supply request
-      if (supplyRequestModal.value.selectedRequest) {
-        const existingPO = purchaseOrderStore.purchaseOrders.find(
-          (po) =>
-            po.supply_request_id ===
-              supplyRequestModal.value.selectedRequest.id &&
-            po.status !== 'Cancelled'
-        );
-
-        if (existingPO) {
-          showToast(
-            'error',
-            `Purchase order already exists for supply request ${supplyRequestModal.value.selectedRequest.request_id}. PO Number: ${existingPO.po_number}`
-          );
-          return;
-        }
-      }
-
-      // Format the order data
-      const orderData = {
-        ...orderForm.value,
-        order_date:
-          orderForm.value.order_date || new Date().toISOString().split('T')[0],
-        expected_delivery: orderForm.value.expected_delivery || null,
-        created_by: 'SCM User', // Add the created_by field
-      };
-
-      // Create new order using store
-      if (supplyRequestModal.value.selectedRequest) {
-        // Create from supply request
-        await purchaseOrderStore.createPurchaseOrderFromSupplyRequest(
-          supplyRequestModal.value.selectedRequest.id,
-          orderForm.value.supplier_id,
-          orderData
-        );
-      } else {
-        // Create manual order
-        await purchaseOrderStore.createPurchaseOrder(
-          orderData,
-          [] // Empty items array for now
-        );
-      }
-
-      closeModal();
-      showToast('success', 'Purchase order created successfully');
-    } catch (err) {
-      showToast('error', err.message || 'Failed to create purchase order');
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const handleUpdateOrder = async () => {
-    loading.value = true;
-    try {
-      // Validation
-      if (!orderForm.value.po_number.trim()) {
-        showToast('error', 'Please enter PO number');
-        return;
-      }
-      if (!orderForm.value.supplier_id) {
-        showToast('error', 'Please select supplier');
-        return;
-      }
-      if (!orderForm.value.order_date) {
-        showToast('error', 'Please select order date');
-        return;
-      }
-
-      // Store the original order data before closing modal
-      const originalOrder = modal.value.order;
-
-      // Validate that we have a valid original order
-      if (!originalOrder || !originalOrder.id) {
-        showToast('error', 'Invalid purchase order data');
-        return;
-      }
-
-      const updatedData = {
-        ...orderForm.value,
-        // Ensure dates are preserved in their original format
-        order_date: orderForm.value.order_date,
-        expected_delivery: orderForm.value.expected_delivery || null,
-        // Preserve status unless explicitly changed
-        status: orderForm.value.status,
-      };
-
-      // Update order using store
-      await purchaseOrderStore.updatePurchaseOrder(
-        originalOrder.id,
-        updatedData
-      );
-
-      // Check if status changed to "Completed" and show rating modal
-      if (
-        originalOrder.status !== 'Completed' &&
-        orderForm.value.status === 'Completed'
-      ) {
-        console.log(
-          'Status changed to Completed, checking for existing rating...'
-        );
-
-        try {
-          // Check if already rated
-          const existingRatingResponse =
-            await purchaseOrderStore.checkPurchaseOrderRating(originalOrder.id);
-
-          console.log('Existing rating response:', existingRatingResponse);
-
-          // Check if there's no existing rating (response.data should be null if no rating exists)
-          const hasExistingRating =
-            existingRatingResponse && existingRatingResponse.data;
-
-          if (!hasExistingRating) {
-            console.log('No existing rating found, showing rating modal...');
-            // Show rating modal after a short delay, using the stored originalOrder
-            setTimeout(() => {
-              // Ensure we have a valid purchase order object with all required properties
-              const ratingPurchaseOrder = {
-                ...originalOrder,
-                supplier_name:
-                  originalOrder.supplier_name ||
-                  getSupplierName(originalOrder.supplier_id),
-              };
-              openRatingModal(ratingPurchaseOrder);
-            }, 1000);
-          } else {
-            console.log('Purchase order already rated, skipping rating modal');
-          }
-        } catch (error) {
-          console.error('Error checking existing rating:', error);
-          // If there's an error checking, still show the rating modal
-          setTimeout(() => {
-            // Ensure we have a valid purchase order object with all required properties
-            const ratingPurchaseOrder = {
-              ...originalOrder,
-              supplier_name:
-                originalOrder.supplier_name ||
-                getSupplierName(originalOrder.supplier_id),
-            };
-            openRatingModal(ratingPurchaseOrder);
-          }, 1000);
-        }
-      }
-
-      closeModal();
-      showToast(
-        'success',
-        'Purchase order updated successfully with preserved dates and status'
-      );
-    } catch (err) {
-      showToast('error', err.message || 'Failed to update purchase order');
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const handleDeleteOrder = async (order) => {
-    loading.value = true;
-    try {
-      await purchaseOrderStore.deletePurchaseOrder(order.id);
-      showToast('success', 'Purchase order deleted successfully');
-    } catch (err) {
-      showToast('error', err.message || 'Failed to delete purchase order');
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  // Return item functionality
-  const handleReturnItem = async () => {
-    loading.value = true;
-    try {
-      // Validation
-      if (!returnForm.value.item_id) {
-        showToast('error', 'Please select an item to return');
-        return;
-      }
-      if (!returnForm.value.reason) {
-        showToast('error', 'Please select a return reason');
-        return;
-      }
-      if (returnForm.value.quantity < 1) {
-        showToast('error', 'Please enter a valid quantity');
-        return;
-      }
-
-      // Log the return using store
-      await purchaseOrderStore.logItemReturn(returnModal.value.order.id, {
-        purchase_order_item_id: returnForm.value.item_id,
-        return_quantity: returnForm.value.quantity,
-        return_reason: returnForm.value.reason,
-        notes: returnForm.value.notes,
-        logged_by: 'SCM User',
-      });
-
-      closeReturnModal();
-      showToast('success', 'Return logged successfully in system');
-    } catch (err) {
-      showToast('error', err.message || 'Failed to log return');
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  // Confirmation modal
-  const confirmModal = ref({
-    show: false,
-    type: '',
-    title: '',
-    message: '',
-    order: null,
-    onConfirm: null,
-  });
-
-  const openConfirmModal = (type, order) => {
-    const configs = {
-      cancel: {
-        title: 'Cancel Purchase Order',
-        message: `Are you sure you want to cancel ${order?.po_number}? This action cannot be undone.`,
-        onConfirm: () => handleCancelOrder(order),
-      },
-      delete: {
-        title: 'Delete Purchase Order',
-        message: `Are you sure you want to delete ${order?.po_number}? This action cannot be undone.`,
-        onConfirm: () => handleDeleteOrder(order),
-      },
-      create: {
-        title: 'Create Purchase Order',
-        message: `Are you sure you want to create purchase order ${orderForm.value.po_number}?`,
-        onConfirm: () => handleCreateOrder(),
-      },
-      update: {
-        title: 'Update Purchase Order',
-        message: `Are you sure you want to update ${orderForm.value.po_number}? All changes will be preserved including dates and status.`,
-        onConfirm: () => handleUpdateOrder(),
-      },
-      return: {
-        title: 'Submit Item Return',
-        message: `Are you sure you want to submit this return for ${returnForm.value.quantity} item(s)?`,
-        onConfirm: () => handleReturnItem(),
-      },
-    };
-
-    const config = configs[type];
-    confirmModal.value = {
-      show: true,
-      type,
-      title: config.title,
-      message: config.message,
-      order,
-      onConfirm: config.onConfirm,
-    };
-
-    document.getElementById('confirmation_modal').showModal();
-  };
-
-  const closeConfirmModal = () => {
-    document.getElementById('confirmation_modal')?.close();
-    confirmModal.value = {
-      show: false,
-      type: '',
-      title: '',
-      message: '',
-      order: null,
-      onConfirm: null,
-    };
-  };
-
-  const handleConfirmAction = async () => {
-    if (confirmModal.value.onConfirm) {
-      try {
-        await confirmModal.value.onConfirm();
-        closeConfirmModal();
-      } catch (error) {
-        console.error('Confirmation action failed:', error);
-      }
-    }
-  };
-
-  // Add this helper function after the other helper functions (around line 2200)
-  const canReturnItems = (order) => {
-    return order.status === 'Completed';
-  };
-
-  // Add the cancel order function
-  const handleCancelOrder = async (order) => {
-    loading.value = true;
-    try {
-      await purchaseOrderStore.cancelPurchaseOrder(order.id);
-      showToast('success', 'Purchase order cancelled successfully');
-    } catch (err) {
-      showToast('error', err.message || 'Failed to cancel purchase order');
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  // Add these missing computed properties after the existing ones (around line 1500)
-
-  // Pagination computed properties
-  const paginatedOrders = computed(() => {
-    const start = (currentPage.value - 1) * ordersPerPage.value;
-    return filteredOrders.value.slice(start, start + ordersPerPage.value);
-  });
-
-  const totalPages = computed(() => {
-    return Math.ceil(filteredOrders.value.length / ordersPerPage.value);
-  });
-
-  // Add this function definition to the top of the script section, right after the helper functions (around line 1400)
-
-  // Add this function definition BEFORE the supplyRequestQuickDateOptions ref
-  const getSupplyRequestQuickDateOptions = () => {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-
-    const toYMD = (date) =>
-      date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-
-    return [
-      { label: 'Yesterday', date: toYMD(yesterday), count: 0 },
-      { label: 'Today', date: toYMD(today), count: 0 },
-      { label: 'Tomorrow', date: toYMD(tomorrow), count: 0 },
-    ];
-  };
-
-  // Then define the ref that uses it
-  const supplyRequestQuickDateOptions = ref(getSupplyRequestQuickDateOptions());
-
-  // Add the missing sortedOrders computed property
-  const sortedOrders = computed(() => {
-    return [...filteredOrders.value].sort((a, b) => b.id - a.id);
-  });
-
-  // Add the missing uniqueSuppliers computed property (for the main PO list)
-  const uniqueSuppliers = computed(() => {
-    const supplierNames = [
-      ...new Set(
-        purchaseOrderStore.purchaseOrders.map((order) => order.supplier_name)
-      ),
-    ];
-    return supplierNames.sort();
-  });
-
-  // Add the missing watcher for supply request quick date counts
-  watch(
-    [approvedSupplyRequests, () => supplyRequestModal.value.selectedDate],
-    () => {
-      updateSupplyRequestQuickDateCounts();
-    },
-    { deep: true, immediate: true }
-  );
-
-  // History-related computed properties
-  const historyOrders = computed(() => {
-    return purchaseOrderStore.purchaseOrders.filter(
-      (order) => order.status === 'Completed' || order.status === 'Cancelled'
-    );
-  });
-
-  // Add these new reactive variables after the existing history-related variables
-  const historyFilterType = ref('today'); // 'today', 'week', 'month', 'custom'
-  const showCustomMonthPicker = ref(false);
-  const customMonthPicker = ref({
-    month: new Date().getMonth() + 1,
-    year: new Date().getFullYear(),
-  });
-
-  // Define months for the custom month picker
-  const months = [
-    { value: 1, label: 'Jan' },
-    { value: 2, label: 'Feb' },
-    { value: 3, label: 'Mar' },
-    { value: 4, label: 'Apr' },
-    { value: 5, label: 'May' },
-    { value: 6, label: 'Jun' },
-    { value: 7, label: 'Jul' },
-    { value: 8, label: 'Aug' },
-    { value: 9, label: 'Sep' },
-    { value: 10, label: 'Oct' },
-    { value: 11, label: 'Nov' },
-    { value: 12, label: 'Dec' },
-  ];
-
-  // Generate available years (current year and 5 years back)
-  const availableYears = computed(() => {
-    const currentYear = new Date().getFullYear();
-    const years = [];
-    for (let i = currentYear; i >= currentYear - 5; i--) {
-      years.push(i);
-    }
-    return years;
-  });
-
-  // Updated history filter options
-  const getHistoryFilterOptions = () => {
-    return [
-      { type: 'today', label: 'Today', count: 0 },
-      { type: 'week', label: 'This Week', count: 0 },
-      { type: 'month', label: 'This Month', count: 0 },
-    ];
-  };
-
-  const historyFilterOptions = ref(getHistoryFilterOptions());
-
-  // Helper functions for date calculations
-  const getStartOfWeek = (date) => {
-    const d = new Date(date);
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday as first day
-    return new Date(d.setDate(diff));
-  };
-
-  const getStartOfMonth = (date) => {
-    return new Date(date.getFullYear(), date.getMonth(), 1);
-  };
-
-  const getEndOfMonth = (date) => {
-    return new Date(date.getFullYear(), date.getMonth() + 1, 0);
-  };
-
-  const isDateInRange = (date, startDate, endDate) => {
-    const orderDate = new Date(date);
-    return orderDate >= startDate && orderDate <= endDate;
-  };
-
-  // Updated history filtering logic
-  const filteredHistoryByDate = computed(() => {
-    let filtered = [...historyOrders.value];
-
-    // Apply date filtering based on filter type
-    if (historyFilterType.value) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      switch (historyFilterType.value) {
-        case 'today':
-          filtered = filtered.filter((order) => {
-            const orderDate = new Date(order.order_date);
-            orderDate.setHours(0, 0, 0, 0);
-            return orderDate.getTime() === today.getTime();
-          });
-          break;
-
-        case 'week':
-          const startOfWeek = getStartOfWeek(today);
-          const endOfWeek = new Date(today);
-          endOfWeek.setHours(23, 59, 59, 999);
-
-          filtered = filtered.filter((order) => {
-            const orderDate = new Date(order.order_date);
-            return isDateInRange(orderDate, startOfWeek, endOfWeek);
-          });
-          break;
-
-        case 'month':
-          const startOfMonth = getStartOfMonth(today);
-          const endOfMonth = new Date(today);
-          endOfMonth.setHours(23, 59, 59, 999);
-
-          filtered = filtered.filter((order) => {
-            const orderDate = new Date(order.order_date);
-            return isDateInRange(orderDate, startOfMonth, endOfMonth);
-          });
-          break;
-
-        case 'custom':
-          if (customMonthPicker.value.month && customMonthPicker.value.year) {
-            const startOfCustomMonth = new Date(
-              customMonthPicker.value.year,
-              customMonthPicker.value.month - 1,
-              1
-            );
-            const endOfCustomMonth = getEndOfMonth(startOfCustomMonth);
-            endOfCustomMonth.setHours(23, 59, 59, 999);
-
-            filtered = filtered.filter((order) => {
-              const orderDate = new Date(order.order_date);
-              return isDateInRange(
-                orderDate,
-                startOfCustomMonth,
-                endOfCustomMonth
-              );
-            });
-          }
-          break;
-      }
-    }
-
-    return filtered;
-  });
-
-  // Update filter option counts
-  const updateHistoryFilterCounts = () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    historyFilterOptions.value.forEach((option) => {
-      let count = 0;
-
-      switch (option.type) {
-        case 'today':
-          count = historyOrders.value.filter((order) => {
-            const orderDate = new Date(order.order_date);
-            orderDate.setHours(0, 0, 0, 0);
-            return orderDate.getTime() === today.getTime();
-          }).length;
-          break;
-
-        case 'week':
-          const startOfWeek = getStartOfWeek(today);
-          const endOfWeek = new Date(today);
-          endOfWeek.setHours(23, 59, 59, 999);
-
-          count = historyOrders.value.filter((order) => {
-            const orderDate = new Date(order.order_date);
-            return isDateInRange(orderDate, startOfWeek, endOfWeek);
-          }).length;
-          break;
-
-        case 'month':
-          const startOfMonth = getStartOfMonth(today);
-          const endOfMonth = new Date(today);
-          endOfMonth.setHours(23, 59, 59, 999);
-
-          count = historyOrders.value.filter((order) => {
-            const orderDate = new Date(order.order_date);
-            return isDateInRange(orderDate, startOfMonth, endOfMonth);
-          }).length;
-          break;
-      }
-
-      option.count = count;
-    });
-  };
-
-  // Filter selection methods
-  const selectHistoryFilter = (option) => {
-    historyFilterType.value = option.type;
-    historyCurrentPage.value = 1;
-    showCustomMonthPicker.value = false;
-  };
-
-  const toggleCustomMonthPicker = () => {
-    showCustomMonthPicker.value = !showCustomMonthPicker.value;
-    if (showCustomMonthPicker.value) {
-      historyFilterType.value = 'custom';
-    }
-  };
-
-  const applyCustomMonthFilter = () => {
-    historyFilterType.value = 'custom';
-    historyCurrentPage.value = 1;
-    showCustomMonthPicker.value = false;
-  };
-
-  const clearHistoryFilters = () => {
-    historyFilterType.value = 'today';
-    historySearchQuery.value = '';
-    historyStatusFilter.value = '';
-    historySupplierFilter.value = '';
-    historyCurrentPage.value = 1;
-    showCustomMonthPicker.value = false;
-    customMonthPicker.value = {
-      month: new Date().getMonth() + 1,
-      year: new Date().getFullYear(),
-    };
-  };
-
-  // Display text for current filter
-  const getHistoryFilterDisplayText = () => {
-    switch (historyFilterType.value) {
-      case 'today':
-        return `Today (${formatDate(new Date())})`;
-      case 'week':
-        const startOfWeek = getStartOfWeek(new Date());
-        const endOfWeek = new Date();
-        return `This Week (${formatDate(startOfWeek)} - ${formatDate(endOfWeek)})`;
-      case 'month':
-        const startOfMonth = getStartOfMonth(new Date());
-        const endOfMonth = new Date();
-        return `This Month (${formatDate(startOfMonth)} - ${formatDate(endOfMonth)})`;
-      case 'custom':
-        const monthName = months.find(
-          (m) => m.value === customMonthPicker.value.month
-        )?.label;
-        return `${monthName} ${customMonthPicker.value.year}`;
-      default:
-        return 'All History';
-    }
-  };
-
-  // Update watchers
-  watch(
-    [() => purchaseOrderStore.purchaseOrders],
-    () => {
-      updateHistoryFilterCounts();
-    },
-    { deep: true, immediate: true }
-  );
-
-  const uniqueHistorySuppliersByDate = computed(() => {
-    const supplierNames = [
-      ...new Set(filteredHistory.value.map((order) => order.supplier_name)),
-    ];
-    return supplierNames.sort();
-  });
-
-  const paginatedHistory = computed(() => {
-    const start = (historyCurrentPage.value - 1) * historyOrdersPerPage.value;
-    return filteredHistory.value.slice(
-      start,
-      start + historyOrdersPerPage.value
-    );
-  });
-
-  const totalHistoryPages = computed(() => {
-    return Math.ceil(filteredHistory.value.length / historyOrdersPerPage.value);
-  });
-
-  // Update quick date counts
-  const updateQuickDateCounts = () => {
-    quickDateOptions.value.forEach((option) => {
-      option.count = purchaseOrderStore.purchaseOrders.filter((order) => {
-        // Only count active orders
-        if (order.status === 'Completed' || order.status === 'Cancelled') {
-          return false;
-        }
-
-        const orderDate = new Date(
-          new Date(order.order_date).toLocaleString('en-US', {
-            timeZone: 'Asia/Manila',
-          })
-        );
-        const normalized = orderDate.toLocaleDateString('en-CA', {
-          timeZone: 'Asia/Manila',
-        });
-        return normalized === option.date;
-      }).length;
-    });
-  };
-
-  const getHistoryQuickDateOptions = () => {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-
-    const toYMD = (date) =>
-      date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-
-    return [
-      { label: 'Yesterday', date: toYMD(yesterday), count: 0 },
-      { label: 'Today', date: toYMD(today), count: 0 },
-      { label: 'Tomorrow', date: toYMD(tomorrow), count: 0 },
-    ];
-  };
-
-  const historyQuickDateOptions = ref(getHistoryQuickDateOptions());
-
-  // Add this function definition AFTER historyQuickDateOptions is defined
-  const updateHistoryQuickDateCounts = () => {
-    historyQuickDateOptions.value.forEach((option) => {
-      option.count = historyOrders.value.filter((order) => {
-        const orderDate = new Date(
-          new Date(order.order_date).toLocaleString('en-US', {
-            timeZone: 'Asia/Manila',
-          })
-        );
-        const normalized = orderDate.toLocaleDateString('en-CA', {
-          timeZone: 'Asia/Manila',
-        });
-        return normalized === option.date;
-      }).length;
-    });
-  };
-
-  // Add watcher for history counts
-  watch(
-    [() => purchaseOrderStore.purchaseOrders],
-    () => {
-      updateHistoryQuickDateCounts();
-    },
-    { deep: true, immediate: true }
-  );
-
-  // History date filtering methods
-  const selectHistoryQuickDate = (dateOption) => {
-    historySelectedDate.value = dateOption.date;
-    historyCurrentPage.value = 1;
-    showHistoryDatePicker.value = false;
-  };
-
-  const selectHistoryCustomDate = (event) => {
-    historySelectedDate.value = event.target.value;
-    historyCurrentPage.value = 1;
-    showHistoryDatePicker.value = false;
-  };
-
-  const toggleHistoryDatePicker = () => {
-    showHistoryDatePicker.value = !showHistoryDatePicker.value;
-  };
-
-  const goToPreviousHistoryDay = () => {
-    const currentDate = new Date(historySelectedDate.value + 'T00:00:00');
-    const previousDay = new Date(currentDate.getTime() - 24 * 60 * 60 * 1000);
-    historySelectedDate.value = previousDay.toISOString().split('T')[0];
-    historyCurrentPage.value = 1;
-  };
-
-  const goToNextHistoryDay = () => {
-    const currentDate = new Date(historySelectedDate.value + 'T00:00:00');
-    const nextDay = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000);
-    historySelectedDate.value = nextDay.toISOString().split('T')[0];
-    historyCurrentPage.value = 1;
-  };
-
-  const goToTodayHistory = () => {
-    historySelectedDate.value = getPhilippineDateString();
-    historyCurrentPage.value = 1;
-  };
-
-  // Update the onMounted function to include date count updates
-  onMounted(async () => {
-    try {
-      loading.value = true;
-
-      // Fetch all required data
-      await Promise.all([
-        purchaseOrderStore.fetchPurchaseOrders(),
-        supplierStore.fetchActiveSuppliers(),
-        supplyRequestStore.fetchRequests({ department: 'SCM' }),
-        purchaseOrderStore.fetchStats(),
-      ]);
-
-      // Update quick date counts for both PO list and supply requests
-      updateQuickDateCountsHistory();
-      updateSupplyRequestFilterCounts(); // Change this line
-      updateHistoryQuickDateCounts();
-
-      console.log('PurchaseOrder component mounted and data loaded');
-    } catch (error) {
-      console.error('Error loading data:', error);
-      showToast('error', 'Failed to load data');
-    } finally {
-      loading.value = false;
-    }
-  });
-
-  // Wrapper functions to show confirmation modals
-  const showCreateConfirmation = () => {
-    // Validation first
-    if (!orderForm.value.po_number.trim()) {
-      showToast('error', 'Please enter PO number');
-      return;
-    }
-    if (!orderForm.value.supplier_id) {
-      showToast('error', 'Please select supplier');
-      return;
-    }
-    if (!orderForm.value.order_date) {
-      showToast('error', 'Please select order date');
-      return;
-    }
-
-    // Check if purchase order already exists for this supply request
-    if (supplyRequestModal.value.selectedRequest) {
-      const existingPO = purchaseOrderStore.purchaseOrders.find(
-        (po) =>
-          po.supply_request_id ===
-            supplyRequestModal.value.selectedRequest.id &&
-          po.status !== 'Cancelled'
-      );
-
-      if (existingPO) {
-        showToast(
-          'error',
-          `Purchase order already exists for supply request ${supplyRequestModal.value.selectedRequest.request_id}. PO Number: ${existingPO.po_number}`
-        );
-        return;
-      }
-    }
-
-    openConfirmModal('create');
-  };
-
-  const showUpdateConfirmation = () => {
-    // Validation first
-    if (!orderForm.value.po_number.trim()) {
-      showToast('error', 'Please enter PO number');
-      return;
-    }
-    if (!orderForm.value.supplier_id) {
-      showToast('error', 'Please select supplier');
-      return;
-    }
-    if (!orderForm.value.order_date) {
-      showToast('error', 'Please select order date');
-      return;
-    }
-
-    // Show different message based on whether changes were made
-    if (hasFieldChanges.value) {
-      openConfirmModal('update');
-    } else {
-      showToast(
-        'info',
-        'No changes detected. Purchase order will remain unchanged.'
-      );
-    }
-  };
-
-  const showReturnConfirmation = () => {
-    // Validation first
-    if (!returnForm.value.item_id) {
-      showToast('error', 'Please select an item to return');
-      return;
-    }
-    if (!returnForm.value.reason) {
-      showToast('error', 'Please select a return reason');
-      return;
-    }
-    if (returnForm.value.quantity < 1) {
-      showToast('error', 'Please enter a valid quantity');
-      return;
-    }
-
-    openConfirmModal('return');
-  };
-
-  const showDeleteConfirmation = (order) => {
-    openConfirmModal('delete', order);
-  };
-
-  // Add this state for the audit trail modal
-  const auditTrailModal = ref({
-    show: false,
-    purchaseOrderId: null,
-  });
-
-  // Add this method after the existing modal methods
-  const openAuditTrailModal = (purchaseOrderId = null) => {
-    auditTrailModal.value = {
-      show: true,
-      purchaseOrderId,
-    };
-  };
-
-  const closeAuditTrailModal = () => {
-    auditTrailModal.value = {
-      show: false,
-      purchaseOrderId: null,
-    };
-  };
-
-  const handleReturnProcessed = (returnItem) => {
-    // Refresh the purchase orders data
-    purchaseOrderStore.fetchPurchaseOrders();
-    showToast('success', 'Return processed successfully');
-  };
-
-  const handleReturnCancelled = (returnItem) => {
-    // Refresh the purchase orders data
-    purchaseOrderStore.fetchPurchaseOrders();
-    showToast('success', 'Return cancelled successfully');
-  };
-
-  const viewReturnDetails = (returnItem) => {
-    // You can implement a detailed view modal here
-    console.log('View return details:', returnItem);
-  };
-
-  // In the script section, update the supplier fetching:
-
-  // Replace the existing supplier fetching with:
-  const fetchSuppliersForPO = async () => {
-    try {
-      const activeSuppliers = await supplierStore.fetchActiveSuppliers();
-      // Use activeSuppliers for the dropdown instead of all suppliers
-    } catch (error) {
-      console.error('Failed to load active suppliers:', error);
-      showToast('error', 'Failed to load suppliers');
-    }
-  };
-
-  // Add this computed property after the filteredHistoryByDate computed property
-  const filteredHistory = computed(() => {
-    let filtered = [...filteredHistoryByDate.value];
-
-    // Search filter
-    if (historySearchQuery.value) {
-      const query = historySearchQuery.value.toLowerCase();
-      filtered = filtered.filter(
-        (order) =>
-          order.po_number.toLowerCase().includes(query) ||
-          order.supplier_name.toLowerCase().includes(query) ||
-          order.notes?.toLowerCase().includes(query) ||
-          order.supply_request_number?.toLowerCase().includes(query)
-      );
-    }
-
-    // Status filter
-    if (historyStatusFilter.value) {
-      filtered = filtered.filter(
-        (order) => order.status === historyStatusFilter.value
-      );
-    }
-
-    // Supplier filter
-    if (historySupplierFilter.value) {
-      filtered = filtered.filter(
-        (order) => order.supplier_name === historySupplierFilter.value
-      );
-    }
-
-    return filtered;
-  });
-
-  const getSupplyRequestFilterOptions = () => {
-    return [
-      { type: 'today', label: 'Today', count: 0 },
-      { type: 'week', label: 'This Week', count: 0 },
-      { type: 'month', label: 'This Month', count: 0 },
-    ];
-  };
-
-  const supplyRequestFilterOptions = ref(getSupplyRequestFilterOptions());
-
-  const supplyRequestFilterType = ref('today'); // 'today', 'week', 'month'
-  const showSupplyRequestCustomMonthPicker = ref(false);
-  const supplyRequestCustomMonthPicker = ref({
-    month: new Date().getMonth() + 1,
-    year: new Date().getFullYear(),
-  });
-
-  // Update the filteredSupplyRequestsByDate computed property
-  const filteredSupplyRequestsByDate = computed(() => {
-    let filtered = [...approvedSupplyRequests.value];
-
-    // Apply date filtering based on filter type
-    if (supplyRequestFilterType.value) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      switch (supplyRequestFilterType.value) {
-        case 'today':
-          filtered = filtered.filter((request) => {
-            const requestDate = new Date(request.request_date);
-            requestDate.setHours(0, 0, 0, 0);
-            return requestDate.getTime() === today.getTime();
-          });
-          break;
-
-        case 'week':
-          const startOfWeek = getStartOfWeek(today);
-          const endOfWeek = new Date(today);
-          endOfWeek.setHours(23, 59, 59, 999);
-
-          filtered = filtered.filter((request) => {
-            const requestDate = new Date(request.request_date);
-            return isDateInRange(requestDate, startOfWeek, endOfWeek);
-          });
-          break;
-
-        case 'month':
-          const startOfMonth = getStartOfMonth(today);
-          const endOfMonth = new Date(today);
-          endOfMonth.setHours(23, 59, 59, 999);
-
-          filtered = filtered.filter((request) => {
-            const requestDate = new Date(request.request_date);
-            return isDateInRange(requestDate, startOfMonth, endOfMonth);
-          });
-          break;
-
-        case 'custom':
-          if (
-            supplyRequestCustomMonthPicker.value.month &&
-            supplyRequestCustomMonthPicker.value.year
-          ) {
-            const startOfCustomMonth = new Date(
-              supplyRequestCustomMonthPicker.value.year,
-              supplyRequestCustomMonthPicker.value.month - 1,
-              1
-            );
-            const endOfCustomMonth = getEndOfMonth(startOfCustomMonth);
-            endOfCustomMonth.setHours(23, 59, 59, 999);
-
-            filtered = filtered.filter((request) => {
-              const requestDate = new Date(request.request_date);
-              return isDateInRange(
-                requestDate,
-                startOfCustomMonth,
-                endOfCustomMonth
-              );
-            });
-          }
-          break;
-      }
-    }
-
-    return filtered;
-  });
-
-  const updateSupplyRequestFilterCounts = () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    supplyRequestFilterOptions.value.forEach((option) => {
-      let count = 0;
-
-      switch (option.type) {
-        case 'today':
-          count = approvedSupplyRequests.value.filter((request) => {
-            const requestDate = new Date(request.request_date);
-            requestDate.setHours(0, 0, 0, 0);
-            return requestDate.getTime() === today.getTime();
-          }).length;
-          break;
-
-        case 'week':
-          const startOfWeek = getStartOfWeek(today);
-          const endOfWeek = new Date(today);
-          endOfWeek.setHours(23, 59, 59, 999);
-
-          count = approvedSupplyRequests.value.filter((request) => {
-            const requestDate = new Date(request.request_date);
-            return isDateInRange(requestDate, startOfWeek, endOfWeek);
-          }).length;
-          break;
-
-        case 'month':
-          const startOfMonth = getStartOfMonth(today);
-          const endOfMonth = new Date(today);
-          endOfMonth.setHours(23, 59, 59, 999);
-
-          count = approvedSupplyRequests.value.filter((request) => {
-            const requestDate = new Date(request.request_date);
-            return isDateInRange(requestDate, startOfMonth, endOfMonth);
-          }).length;
-          break;
-      }
-
-      option.count = count;
-    });
-  };
-
-  // Add filter selection methods
-  const selectSupplyRequestFilter = (option) => {
-    supplyRequestFilterType.value = option.type;
-    supplyRequestModal.value.currentPage = 1;
-    showSupplyRequestCustomMonthPicker.value = false;
-  };
-
-  const toggleSupplyRequestCustomMonthPicker = () => {
-    showSupplyRequestCustomMonthPicker.value =
-      !showSupplyRequestCustomMonthPicker.value;
-    if (showSupplyRequestCustomMonthPicker.value) {
-      supplyRequestFilterType.value = 'custom';
-    }
-  };
-
-  const applySupplyRequestCustomMonthFilter = () => {
-    supplyRequestFilterType.value = 'custom';
-    supplyRequestModal.value.currentPage = 1;
-    showSupplyRequestCustomMonthPicker.value = false;
-  };
-
-  // Update the display text function
-  const getSupplyRequestFilterDisplayText = () => {
-    switch (supplyRequestFilterType.value) {
-      case 'today':
-        return `Today (${formatDate(new Date())})`;
-      case 'week':
-        const startOfWeek = getStartOfWeek(new Date());
-        const endOfWeek = new Date();
-        return `This Week (${formatDate(startOfWeek)} - ${formatDate(endOfWeek)})`;
-      case 'month':
-        const startOfMonth = getStartOfMonth(new Date());
-        const endOfMonth = new Date();
-        return `This Month (${formatDate(startOfMonth)} - ${formatDate(endOfMonth)})`;
-      case 'custom':
-        const monthName = months.find(
-          (m) => m.value === supplyRequestCustomMonthPicker.value.month
-        )?.label;
-        return `${monthName} ${supplyRequestCustomMonthPicker.value.year}`;
-      default:
-        return 'All Requests';
-    }
-  };
-
-  // Update the watcher to use the new function
-  watch(
-    [approvedSupplyRequests, supplyRequestFilterType],
-    () => {
-      updateSupplyRequestFilterCounts();
-    },
-    { deep: true, immediate: true }
-  );
-
-  // Add helper function for supplier names
-  const getSupplierName = (supplierId) => {
-    const supplier = suppliers.value.find((s) => s.id === supplierId);
-    return supplier ? supplier.name : 'Unknown Supplier';
-  };
-
-  // Add computed property to track field changes
-  const hasFieldChanges = computed(() => {
-    if (modal.value.type !== 'edit' || !modal.value.order) {
-      return false;
-    }
-
-    const original = modal.value.order;
-    const current = orderForm.value;
-
-    return (
-      current.po_number !== original.po_number ||
-      current.supplier_id !== original.supplier_id ||
-      current.order_date !== original.order_date ||
-      current.expected_delivery !== original.expected_delivery ||
-      current.status !== original.status ||
-      current.total_amount !== original.total_amount ||
-      current.notes !== original.notes
-    );
-  });
-
-  // Add function to handle field changes with visual feedback
-  const handleFieldChange = (fieldName, value) => {
-    const originalOrder = modal.value.order;
-    if (originalOrder && modal.value.type === 'edit') {
-      const originalValue = originalOrder[fieldName];
-      const hasChanged = value !== originalValue;
-
-      // Add visual feedback for changed fields (optional)
-      if (hasChanged) {
-        console.log(
-          `Field ${fieldName} changed from ${originalValue} to ${value}`
-        );
-      }
-    }
-
-    orderForm.value[fieldName] = value;
-  };
-
-  // Add this state for the rating modal
-  const ratingModal = ref({
-    show: false,
-    purchaseOrder: {}, // Initialize as an empty object
-    supplierName: '',
-  });
-
-  // Add these methods
-  const openRatingModal = (purchaseOrder) => {
-    console.log('Opening rating modal for purchase order:', purchaseOrder);
-
-    // Add comprehensive null check for purchaseOrder
-    if (!purchaseOrder || typeof purchaseOrder !== 'object') {
-      console.error(
-        'Purchase order is null or invalid, cannot open rating modal'
-      );
-      return;
-    }
-
-    // Ensure we have the required properties
-    if (!purchaseOrder.id || !purchaseOrder.supplier_id) {
-      console.error(
-        'Purchase order missing required properties (id or supplier_id)'
-      );
-      return;
-    }
-
-    // Get supplier name from the suppliers list if not available in purchaseOrder
-    let supplierName = purchaseOrder.supplier_name;
-    if (!supplierName) {
-      const supplier = suppliers.value.find(
-        (s) => s.id === purchaseOrder.supplier_id
-      );
-      supplierName = supplier ? supplier.name : 'Unknown Supplier';
-    }
-
-    ratingModal.value = {
-      show: true,
-      purchaseOrder: purchaseOrder,
-      supplierName: supplierName,
-    };
-
-    // Force the modal to open by triggering the component
-    nextTick(() => {
-      const modalElement = document.getElementById('supplier_rating_modal');
-      if (modalElement) {
-        modalElement.showModal();
-      }
-    });
-  };
-
-  const closeRatingModal = () => {
-    ratingModal.value = {
-      show: false,
-      purchaseOrder: {}, // Reset to an empty object
-      supplierName: '',
-    };
-  };
-
-  const handleRatingSubmitted = async (ratingData) => {
-    showToast(
-      'success',
-      `Thank you for rating ${ratingModal.value.supplierName}!`
-    );
-
-    // Refresh both purchase orders and supplier data to show updated ratings
-    try {
-      await Promise.all([
-        purchaseOrderStore.fetchPurchaseOrders(),
-        supplierStore.fetchSuppliersWithStats(), // Add this line to refresh supplier stats
-      ]);
-    } catch (error) {
-      console.error('Error refreshing data after rating:', error);
-    }
-  };
-</script>
 
 <style scoped>
   /* Enhanced table styling */

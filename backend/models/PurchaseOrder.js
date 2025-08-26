@@ -1,5 +1,6 @@
 const { db } = require("../config/database");
 const Supplier = require("./Supplier");
+const Inventory = require("./Inventory");
 
 class PurchaseOrder {
   // Get all purchase orders with related data
@@ -23,15 +24,132 @@ class PurchaseOrder {
 
       const purchaseOrders = await query.orderBy("po.created_at", "desc");
 
-      // Get items for each purchase order
+      // Get items and GRN count for each purchase order
       for (let po of purchaseOrders) {
         po.items = await this.getItems(po.id);
         po.item_count = po.items.length;
+
+        // Add GRN count
+        const grnCount = await db("goods_receipt_notes")
+          .where("purchase_order_id", po.id)
+          .whereNull("deleted_at")
+          .count("* as count")
+          .first();
+        po.grn_count = parseInt(grnCount.count);
+
+        const grnInfo = await db("goods_receipt_notes")
+          .where("purchase_order_id", po.id)
+          .whereNull("deleted_at")
+          .select("status")
+          .orderBy("created_at", "desc");
+
+        po.grn_count = grnInfo.length;
+        po.grn_statuses = grnInfo.map((grn) => grn.status);
+        po.latest_grn_status = grnInfo.length > 0 ? grnInfo[0].status : null;
+
+        // Check for pending returns
+        const pendingReturnsCount = await this.getPendingReturnsCount(po.id);
+        po.pending_returns_count = pendingReturnsCount;
+        po.has_pending_returns = pendingReturnsCount > 0;
       }
 
       return purchaseOrders;
     } catch (error) {
       throw error;
+    }
+  }
+
+  static async getPendingReturnsCount(purchaseOrderId) {
+    try {
+      const pendingReturns = await db("item_returns as ir")
+        .leftJoin(
+          "grn_items as gi",
+          "ir.purchase_order_item_id",
+          "gi.purchase_order_item_id"
+        )
+        .leftJoin("goods_receipt_notes as grn", "gi.grn_id", "grn.id")
+        .where("grn.purchase_order_id", purchaseOrderId)
+        .where("grn.status", "failed")
+        .where("ir.status", "!=", "Completed")
+        .whereNull("ir.deleted_at")
+        .count("* as count")
+        .first();
+
+      return parseInt(pendingReturns.count);
+    } catch (error) {
+      console.error("Error getting pending returns count:", error);
+      return 0;
+    }
+  }
+
+  static async canCreateNewGRN(purchaseOrderId) {
+    try {
+      // Get all GRNs for this PO
+      const grns = await db("goods_receipt_notes")
+        .where("purchase_order_id", purchaseOrderId)
+        .whereNull("deleted_at")
+        .select("id", "status")
+        .orderBy("created_at", "desc");
+
+      // If no GRNs exist, allow creation
+      if (grns.length === 0) {
+        return { canCreate: true, reason: "No existing GRNs" };
+      }
+
+      // Check if there are any failed GRNs
+      const failedGRNs = grns.filter((grn) => grn.status === "failed");
+
+      if (failedGRNs.length > 0) {
+        // Check if there are pending returns for failed GRNs
+        const pendingReturns = await db("item_returns as ir")
+          .leftJoin(
+            "grn_items as gi",
+            "ir.purchase_order_item_id",
+            "gi.purchase_order_item_id"
+          )
+          .leftJoin("goods_receipt_notes as grn", "gi.grn_id", "grn.id")
+          .where("grn.purchase_order_id", purchaseOrderId)
+          .where("grn.status", "failed")
+          .where("ir.status", "!=", "Completed")
+          .whereNull("ir.deleted_at")
+          .count("* as count")
+          .first();
+
+        const pendingReturnsCount = parseInt(pendingReturns.count);
+
+        if (pendingReturnsCount > 0) {
+          return {
+            canCreate: false,
+            reason: `Cannot create new GRN: ${pendingReturnsCount} return(s) still pending completion`,
+          };
+        }
+
+        return {
+          canCreate: true,
+          reason: "All returns from failed GRNs are completed",
+        };
+      }
+
+      // Check if there are completed or passed GRNs
+      const completedGRNs = grns.filter(
+        (grn) => grn.status === "completed" || grn.status === "passed"
+      );
+
+      if (completedGRNs.length > 0) {
+        return {
+          canCreate: false,
+          reason: "Cannot create new GRN: Items already received and processed",
+        };
+      }
+
+      // Allow creation for draft or pending_inspection GRNs
+      return {
+        canCreate: true,
+        reason: "Existing GRNs are in draft or pending inspection",
+      };
+    } catch (error) {
+      console.error("Error checking if PO can create new GRN:", error);
+      return { canCreate: false, reason: "Error checking GRN status" };
     }
   }
 
@@ -252,6 +370,13 @@ class PurchaseOrder {
     const trx = await db.transaction();
 
     try {
+      // Get the current purchase order to check for status changes
+      const currentOrder = await trx("purchase_orders").where("id", id).first();
+
+      if (!currentOrder) {
+        throw new Error("Purchase order not found");
+      }
+
       // NEW: Validate supplier if it's being changed
       if (poData.supplier_id) {
         const supplier = await Supplier.validateForPurchaseOrder(
@@ -270,6 +395,14 @@ class PurchaseOrder {
           updated_at: new Date(),
         })
         .returning("*");
+
+      // AUTO-INVENTORY INTEGRATION: When PO status changes to "Completed", add items to inventory
+      if (
+        currentOrder.status !== "Completed" &&
+        poData.status === "Completed"
+      ) {
+        await this.createGRNOnCompletion(trx, updatedPurchaseOrder);
+      }
 
       if (items) {
         // Delete existing items
@@ -426,6 +559,85 @@ class PurchaseOrder {
         completed_returns: 0,
       };
     }
+  }
+
+  // Create GRN when PO is completed (instead of auto-adding to inventory)
+  static async createGRNOnCompletion(trx, purchaseOrder) {
+    try {
+      console.log(
+        `PO ${purchaseOrder.po_number} completed. GRN should be created manually for receipt.`
+      );
+
+      // Note: GRN creation is now manual through the GRN workflow
+      // This ensures proper quality inspection and partial receipt handling
+    } catch (error) {
+      console.error("Error in PO completion workflow:", error);
+      throw error;
+    }
+  }
+
+  // Helper method to add individual inventory item
+  static async addInventoryItem(trx, itemData) {
+    // Generate batch number if not provided
+    const batchNumber =
+      itemData.batch_number ||
+      this.generateBatchNumber(
+        itemData.item_type_id,
+        itemData.supplier_id,
+        itemData.received_date ? new Date(itemData.received_date) : new Date()
+      );
+
+    const [newItem] = await trx("inventory_items")
+      .insert({
+        item_type_id: itemData.item_type_id,
+        supplier_id: itemData.supplier_id || null,
+        purchase_order_id: itemData.purchase_order_id || null,
+        batch_number: batchNumber, // Use generated batch number
+        quantity: itemData.quantity,
+        unit_cost: itemData.unit_cost,
+        total_value: itemData.quantity * itemData.unit_cost,
+        expiry_date: itemData.expiry_date || null,
+        received_date: itemData.received_date || new Date(),
+        status: "available",
+        notes: itemData.notes || null,
+        received_by: itemData.received_by,
+        created_at: new Date(),
+        updated_at: new Date(),
+      })
+      .returning("*");
+
+    // Log the transaction
+    await trx("inventory_transactions").insert({
+      inventory_item_id: newItem.id,
+      transaction_type: "receipt",
+      quantity: itemData.quantity,
+      unit_cost: itemData.unit_cost,
+      total_value: itemData.quantity * itemData.unit_cost,
+      reference_number: itemData.reference_number || null,
+      reason: "PO completion - automatic receipt",
+      notes: itemData.notes || null,
+      performed_by: itemData.received_by,
+      transaction_date: new Date(),
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+
+    return newItem;
+  }
+
+  // Add this function at the top of the PurchaseOrder class
+  static generateBatchNumber(
+    itemTypeId,
+    supplierId,
+    poNumber,
+    date = new Date()
+  ) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+
+    // Format: PO-ITEM-SUPPLIER-YYYYMMDD
+    return `PO-${poNumber}-ITEM-${itemTypeId}-${supplierId || "NONE"}-${year}${month}${day}`;
   }
 }
 

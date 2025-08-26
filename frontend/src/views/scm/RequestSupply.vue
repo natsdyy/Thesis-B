@@ -3,6 +3,7 @@
   import { useSupplyRequestStore } from '../../stores/supplyRequestStore.js';
   import { useBudgetReleaseStore } from '../../stores/budgetReleaseStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
+  import { useInventoryStore } from '../../stores/inventoryStore.js';
   import cashRequestReceiptModal from '../../components/scm/cashRequestReceiptModal.vue';
   import PikaDay from 'pikaday';
   import 'pikaday/css/pikaday.css';
@@ -32,6 +33,7 @@
   const supplyRequestStore = useSupplyRequestStore();
   const budgetReleaseStore = useBudgetReleaseStore();
   const authStore = useAuthStore();
+  const inventoryStore = useInventoryStore();
 
   // Local state
   const loading = ref(false);
@@ -62,6 +64,14 @@
     const targetDate = date || getPhilippineTime();
     return targetDate.toISOString().split('T')[0];
   };
+
+  // Request history filter
+  const requestHistoryFilter = ref({
+    searchQuery: '',
+    status: '',
+    sortBy: 'request_date',
+    sortOrder: 'desc',
+  });
 
   // Form data for request items
   const rowRequest = ref([
@@ -106,7 +116,7 @@
     },
   });
 
-  // Enhanced form data for new/edit request
+  // Enhanced form data for new/edit request with centralized categories
   const requestForm = ref({
     request_id: null,
     request_type: '',
@@ -118,58 +128,88 @@
     items: [],
   });
 
-  // Request history filter
-  const requestHistoryFilter = ref({
-    searchQuery: '',
-    status: '',
-    sortBy: 'request_date',
-    sortOrder: 'desc',
+  // Add selected category for centralized inventory integration
+  const selectedCategory = ref('');
+
+  // Centralized inventory categories - computed from inventory store
+  const requestCategories = computed(() => {
+    const categories = inventoryStore.categories || [];
+    const itemTypes = inventoryStore.itemTypes || [];
+
+    return categories.map((category) => ({
+      category: category.name,
+      category_id: category.id,
+      description: category.description,
+      types: itemTypes
+        .filter((item) => item.category_id === category.id && item.is_active)
+        .map((item) => item.name),
+    }));
   });
 
-  // Enhanced request types with categories
-  const requestCategories = [
-    {
-      category: 'Equipment',
-      types: [
-        'Kitchen Equipment',
-        'Office Equipment',
-        'Service Equipment',
-        'Cleaning Equipment',
-      ],
-    },
-    {
-      category: 'Materials',
-      types: [
-        'Meat and Poultry',
-        'Fish and Seafood',
-        'Dairy and Eggs',
-        'Fruits and Vegetables',
-        'Beverages',
-        'Snacks and Confectionery',
-        'Other',
-      ],
-    },
-    {
-      category: 'Services',
-      types: [
-        'Maintenance Service',
-        'Cleaning Service',
-        'IT Service',
-        'Consulting Service',
-      ],
-    },
-    {
-      category: 'Beverages',
-      types: [
-        'Water',
-        'Soft Drinks',
-        'Juices',
-        'Alcoholic Beverages',
-        'Coffee & Tea',
-        'Other',
-      ],
-    },
-  ];
+  // Available item types based on selected category
+  const availableItemTypes = computed(() => {
+    if (!selectedCategory.value) return [];
+
+    const category = requestCategories.value.find(
+      (cat) => cat.category === selectedCategory.value
+    );
+
+    if (!category) return [];
+
+    return (
+      inventoryStore.itemTypes?.filter(
+        (item) => item.category_id === category.category_id && item.is_active
+      ) || []
+    );
+  });
+
+  // Function to handle category change
+  const onCategoryChange = (categoryName) => {
+    selectedCategory.value = categoryName;
+    requestForm.value.request_type = '';
+
+    // Auto-populate the first available type for the selected category
+    const category = requestCategories.value.find(
+      (cat) => cat.category === categoryName
+    );
+    if (category && category.types.length > 0) {
+      requestForm.value.request_type = category.types[0];
+    }
+  };
+
+  // Function to get category name from request type
+  const getCategoryFromRequestType = (requestType) => {
+    const category = requestCategories.value.find((cat) =>
+      cat.types.includes(requestType)
+    );
+    return category ? category.category : 'Materials';
+  };
+
+  // Function to get unit of measure for selected item type
+  const getUnitOfMeasure = (itemTypeName) => {
+    const itemType = inventoryStore.itemTypes?.find(
+      (item) => item.name === itemTypeName
+    );
+    return itemType ? itemType.unit_of_measure : 'pieces';
+  };
+
+  // Auto-populate unit of measure when item type changes
+  const onItemTypeChange = (row) => {
+    if (row.item_type) {
+      // Find the selected item type in inventory
+      const selectedItemType = inventoryStore.itemTypes?.find(
+        (item) => item.name === row.item_type
+      );
+
+      if (selectedItemType) {
+        // Auto-populate unit from inventory
+        row.item_unit = selectedItemType.unit_of_measure;
+      } else {
+        // Fallback to default
+        row.item_unit = 'pieces';
+      }
+    }
+  };
 
   const priorities = ['Low', 'Normal', 'High', 'Urgent'];
   const departments = ['SCM', 'Finance', 'HR', 'Production', 'Admin', 'Branch'];
@@ -667,7 +707,7 @@
       );
 
       // Refresh data
-      await fetchRequests();
+      await fetchAllData();
     } catch (err) {
       showToast('error', err.message || 'Failed to create request');
     } finally {
@@ -726,7 +766,7 @@
       showToast('success', 'Request updated successfully');
 
       // Refresh data
-      await fetchRequests();
+      await fetchAllData();
     } catch (err) {
       showToast('error', err.message || 'Failed to update request');
     } finally {
@@ -752,7 +792,7 @@
       showToast('success', 'Request sent successfully');
 
       // Refresh data
-      await fetchRequests();
+      await fetchAllData();
     } catch (err) {
       showToast('error', err.message || 'Failed to send request');
     } finally {
@@ -778,7 +818,7 @@
       showToast('success', 'Request cancelled successfully');
 
       // Refresh data
-      await fetchRequests();
+      await fetchAllData();
     } catch (err) {
       showToast('error', err.message || 'Failed to cancel request');
     } finally {
@@ -800,7 +840,7 @@
       showToast('success', 'Request deleted successfully');
 
       // Refresh data
-      await fetchRequests();
+      await fetchAllData();
     } catch (err) {
       showToast('error', err.message || 'Failed to delete request');
     } finally {
@@ -830,7 +870,7 @@
 
       // Refresh data
       await fetchPendingReceipts();
-      await fetchRequests();
+      await fetchAllData();
     } catch (err) {
       showToast('error', err.message || 'Failed to confirm receipt');
     } finally {
@@ -838,18 +878,23 @@
     }
   };
 
-  // Data fetching functions
-  const fetchRequests = async () => {
+  // Enhanced data fetching to include inventory data
+  const fetchAllData = async () => {
     loading.value = true;
     try {
-      await supplyRequestStore.fetchRequests({ department: 'SCM' });
-      await supplyRequestStore.fetchStats({ department: 'SCM' });
+      await Promise.all([
+        supplyRequestStore.fetchRequests({ department: 'SCM' }),
+        supplyRequestStore.fetchStats({ department: 'SCM' }),
+        budgetReleaseStore.fetchPendingReceipts('SCM'),
+        inventoryStore.fetchCategories(),
+        inventoryStore.fetchItemTypes(),
+      ]);
 
       updateQuickDateCounts();
-      updateHistoryFilterCounts(); // Add this line
+      updateHistoryFilterCounts();
     } catch (err) {
       console.error('Fetch error:', err);
-      showToast('error', err.message || 'Failed to fetch requests');
+      showToast('error', err.message || 'Failed to fetch data');
     } finally {
       loading.value = false;
     }
@@ -1243,8 +1288,7 @@
 
   onMounted(async () => {
     // Initialize data
-    await fetchRequests();
-    await fetchPendingReceipts();
+    await fetchAllData();
 
     // Setup date picker
     requestDatePicker = new PikaDay({
@@ -1302,7 +1346,7 @@
   const refreshAllData = async () => {
     try {
       loading.value = true;
-      await Promise.all([fetchRequests(), fetchPendingReceipts()]);
+      await Promise.all([fetchAllData(), fetchPendingReceipts()]);
     } catch (error) {
       handleStoreError(error, 'refresh data');
     } finally {
@@ -1531,7 +1575,7 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <DollarSign class="w-8 h-8 text-success" />
+          <PhilippinePeso class="w-8 h-8 text-success" />
         </div>
         <div class="stat-title text-black/50">Awaiting Receipt</div>
         <div class="stat-value text-success">
@@ -1632,7 +1676,7 @@
           <div class="flex gap-2 md:flex-row flex-col">
             <button
               class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
-              @click="fetchRequests"
+              @click="fetchAllData"
               :class="{ loading: loading }"
               :disabled="loading"
             >
@@ -2523,29 +2567,25 @@
               </td>
 
               <td>
-                <select v-model="row.item_unit">
-                  <option value="" disabled selected>Select Unit</option>
-                  <option value="PC">PC/s</option>
-                  <option value="KG">KG</option>
-                  <option value="L">L</option>
-                  <option value="BOX">BOX</option>
-                  <option value="CASE">CASE</option>
-                  <option value="REAM">REAM</option>
-                  <option value="PC/S">PC/S</option>
-                </select>
+                <input
+                  v-model="row.item_unit"
+                  type="text"
+                  class="input input-xs w-full bg-gray-100 border-primaryColor/30 text-black/70"
+                  readonly
+                  :placeholder="getUnitOfMeasure(row.item_type)"
+                />
               </td>
 
               <td>
                 <select v-model="row.item_type">
-                  <option value="" disabled selected>Select Type</option>
-                  <option value="Ingredient">Ingredient</option>
-                  <option value="Beverages">Beverages</option>
-                  <option value="Raw Meat">Raw Meat</option>
-                  <option value="Kitchen Equipment">Kitchen Equipment</option>
-                  <option value="Cleaning Supplies">Cleaning Supplies</option>
-                  <option value="Office Supplies">Office Supplies</option>
-                  <option value="Service Equipment">Service Equipment</option>
-                  <option value="Other">Other</option>
+                  <option value="" disabled>Category</option>
+                  <option
+                    v-for="itemType in availableItemTypes"
+                    :key="itemType.id"
+                    :value="itemType.name"
+                  >
+                    {{ itemType.name }}
+                  </option>
                 </select>
               </td>
               <td>
@@ -2867,29 +2907,25 @@
                 </td>
 
                 <td>
-                  <select v-model="row.item_unit">
-                    <option value="" disabled selected>Select Unit</option>
-                    <option value="PC">PC/s</option>
-                    <option value="KG">KG</option>
-                    <option value="L">L</option>
-                    <option value="BOX">BOX</option>
-                    <option value="CASE">CASE</option>
-                    <option value="REAM">REAM</option>
-                    <option value="PC/S">PC/S</option>
-                  </select>
+                  <input
+                    v-model="row.item_unit"
+                    type="text"
+                    class="input input-xs w-full bg-gray-100 border-primaryColor/30 text-black/70"
+                    readonly
+                    :placeholder="getUnitOfMeasure(row.item_type)"
+                  />
                 </td>
 
                 <td>
                   <select v-model="row.item_type">
-                    <option value="" disabled selected>Select Type</option>
-                    <option value="Ingredient">Ingredient</option>
-                    <option value="Beverages">Beverages</option>
-                    <option value="Raw Meat">Raw Meat</option>
-                    <option value="Kitchen Equipment">Kitchen Equipment</option>
-                    <option value="Cleaning Supplies">Cleaning Supplies</option>
-                    <option value="Office Supplies">Office Supplies</option>
-                    <option value="Service Equipment">Service Equipment</option>
-                    <option value="Other">Other</option>
+                    <option value="" disabled>Category</option>
+                    <option
+                      v-for="itemType in availableItemTypes"
+                      :key="itemType.id"
+                      :value="itemType.name"
+                    >
+                      {{ itemType.name }}
+                    </option>
                   </select>
                 </td>
                 <td>
@@ -3117,34 +3153,46 @@
         {{ modal.type === 'create' ? 'Create New Request' : 'Edit Request' }}
       </h3>
 
-      <!-- Request Information Form -->
+      <!-- Request Information Form with Centralized Categories -->
       <div
         class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6 p-4 bg-white/5 rounded-lg"
       >
+        <!-- Inventory Category Selection -->
         <div class="form-control">
           <label class="label">
             <span class="label-text text-black/70 font-medium"
-              >Request Type <span class="text-red-500">*</span></span
+              >Inventory Category <span class="text-red-500">*</span></span
             >
           </label>
           <select
-            v-model="requestForm.request_type"
+            v-model="selectedCategory"
+            @change="onCategoryChange($event.target.value)"
             class="select select-bordered bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
             required
           >
-            <option value="" disabled>Select Request Type</option>
-            <optgroup
+            <option value="" disabled>Select Inventory Category</option>
+            <option
               v-for="category in requestCategories"
-              :key="category.category"
-              :label="category.category"
+              :key="category.category_id"
+              :value="category.category"
             >
-              <option v-for="type in category.types" :key="type" :value="type">
-                {{ type }}
-              </option>
-            </optgroup>
+              {{ category.category }}
+            </option>
           </select>
+          <div class="label">
+            <span class="label-text-alt text-black/50 text-sm">
+              {{
+                selectedCategory
+                  ? requestCategories.find(
+                      (c) => c.category === selectedCategory
+                    )?.description
+                  : 'Select a category to see description'
+              }}
+            </span>
+          </div>
         </div>
 
+        <!-- Priority Selection -->
         <div class="form-control">
           <label class="label">
             <span class="label-text text-black/70 font-medium"
@@ -3165,6 +3213,7 @@
           </select>
         </div>
 
+        <!-- Department Selection -->
         <div class="form-control">
           <label class="label">
             <span class="label-text text-black/70 font-medium"
@@ -3179,28 +3228,9 @@
               {{ dept }}
             </option>
           </select>
-
-          <template v-if="requestForm.department === 'Branch'">
-            <div class="flex flex-col gap-2">
-              <label class="label">
-                <span class="label-text text-black/70 font-medium">Branch</span>
-              </label>
-              <select
-                v-model="requestForm.branch"
-                class="select select-bordered bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-              >
-                <option
-                  v-for="branch in branches"
-                  :key="branch"
-                  :value="branch"
-                >
-                  {{ branch }}
-                </option>
-              </select>
-            </div>
-          </template>
         </div>
 
+        <!-- Request Date -->
         <div class="form-control">
           <label class="label">
             <span class="label-text text-black/70 font-medium"
@@ -3215,6 +3245,7 @@
           />
         </div>
 
+        <!-- Requested By -->
         <div class="form-control">
           <label class="label">
             <span class="label-text text-black/70 font-medium"
@@ -3246,7 +3277,7 @@
         ></textarea>
       </div>
 
-      <!-- Items Section -->
+      <!-- Items Section with Centralized Categories -->
       <div class="mb-6">
         <div class="flex justify-between items-center mb-4">
           <h4 class="text-lg font-semibold text-primaryColor">Request Items</h4>
@@ -3271,7 +3302,7 @@
                 <th class="w-48">Item Name</th>
                 <th class="w-20">Qty</th>
                 <th class="w-24">Unit</th>
-                <th class="w-32">Category</th>
+                <th class="w-32">Type</th>
                 <th class="w-24">Unit Price</th>
                 <th class="w-24">Amount</th>
                 <th class="w-16">Action</th>
@@ -3308,45 +3339,29 @@
                 </td>
 
                 <td>
-                  <select
+                  <input
                     v-model="row.item_unit"
-                    class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor"
-                  >
-                    <option value="" disabled>Unit</option>
-                    <option value="PC">PC/s</option>
-                    <option value="KG">KG</option>
-                    <option value="L">L</option>
-                    <option value="BOX">BOX</option>
-                    <option value="CASE">CASE</option>
-                    <option value="REAM">REAM</option>
-                    <option value="SET">SET</option>
-                    <option value="PACK">PACK</option>
-                  </select>
+                    type="text"
+                    class="input input-xs w-full bg-gray-100 border-primaryColor/30 text-black/70"
+                    readonly
+                    :placeholder="getUnitOfMeasure(row.item_type)"
+                  />
                 </td>
 
                 <td>
                   <select
                     v-model="row.item_type"
+                    @change="onItemTypeChange(row)"
                     class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor"
                   >
-                    <option value="" disabled>Category</option>
-                    <option value="Ingredient">Ingredient</option>
-                    <option value="Raw Meat">Raw Meat</option>
-                    <option value="Meat and Poultry">Meat and Poultry</option>
-                    <option value="Fish and Seafood">Fish and Seafood</option>
-                    <option value="Dairy and Eggs">Dairy and Eggs</option>
-                    <option value="Fruits and Vegetables">
-                      Fruits and Vegetables
+                    <option value="" disabled>Type</option>
+                    <option
+                      v-for="itemType in availableItemTypes"
+                      :key="itemType.id"
+                      :value="itemType.name"
+                    >
+                      {{ itemType.name }}
                     </option>
-                    <option value="Beverages">Beverages</option>
-                    <option value="Snacks and Confectionery">
-                      Snacks and Confectionery
-                    </option>
-                    <option value="Kitchen Equipment">Kitchen Equipment</option>
-                    <option value="Cleaning Supplies">Cleaning Supplies</option>
-                    <option value="Office Supplies">Office Supplies</option>
-                    <option value="Service Equipment">Service Equipment</option>
-                    <option value="Other">Other</option>
                   </select>
                 </td>
 

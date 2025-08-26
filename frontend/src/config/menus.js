@@ -68,7 +68,7 @@ export const menuItems = [
   {
     name: 'Inventory',
     icon: Package,
-    route: '/scm/inventory',
+    route: '/scm/main-inventory',
     department: 'Supply Chain',
   },
   {
@@ -87,6 +87,12 @@ export const menuItems = [
     name: 'Suppliers',
     icon: Truck,
     route: '/scm/suppliers',
+    department: 'Supply Chain',
+  },
+  {
+    name: 'Goods Receipt Notes',
+    icon: ReceiptText,
+    route: '/scm/grn',
     department: 'Supply Chain',
   },
 

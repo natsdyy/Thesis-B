@@ -1,5 +1,6 @@
 // backend/models/SupplyRequest.js
 const { db } = require("../config/database");
+const CategoryMappingService = require("../services/categoryMappingService");
 
 class SupplyRequest {
   // Get all supply requests with optional filters
@@ -86,6 +87,52 @@ class SupplyRequest {
     } catch (error) {
       console.error("Error fetching supply requests:", error);
       throw new Error("Failed to retrieve supply requests from database");
+    }
+  }
+
+  // Add this method to handle centralized unit management
+  static async createWithInventoryIntegration(requestData, items) {
+    const trx = await db.transaction();
+
+    try {
+      // Create the main request
+      const [requestId] = await trx("supply_requests").insert(requestData);
+
+      // Process items with inventory integration
+      const processedItems = await Promise.all(
+        items.map(async (item, index) => {
+          // Find matching inventory item type
+          const inventoryItemType = await trx("inventory_item_types")
+            .where("name", item.item_type)
+            .first();
+
+          return {
+            supply_request_id: requestId,
+            item_number: index + 1,
+            item_name: item.item_name,
+            item_quantity: item.item_quantity,
+            item_unit: inventoryItemType
+              ? inventoryItemType.unit_of_measure
+              : item.item_unit,
+            item_type: item.item_type,
+            item_unit_price: item.item_unitPrice,
+            item_amount: item.item_amount,
+            inventory_item_type_id: inventoryItemType
+              ? inventoryItemType.id
+              : null,
+            item_notes: item.item_notes || null,
+          };
+        })
+      );
+
+      // Insert items
+      await trx("supply_request_items").insert(processedItems);
+
+      await trx.commit();
+      return requestId;
+    } catch (error) {
+      await trx.rollback();
+      throw error;
     }
   }
 
@@ -209,6 +256,86 @@ class SupplyRequest {
       await trx.rollback();
       console.error("Error creating supply request:", error);
       throw new Error("Failed to create supply request");
+    }
+  }
+
+  // Create new supply request with items and inventory integration
+  static async createWithInventoryIntegration(requestData, items) {
+    const trx = await db.transaction();
+
+    try {
+      // Validate request type against inventory categories
+      if (requestData.request_type) {
+        const isValidType = await CategoryMappingService.validateRequestType(
+          requestData.request_type
+        );
+        if (!isValidType) {
+          throw new Error(
+            `Invalid request type: ${requestData.request_type}. Please select from available inventory categories.`
+          );
+        }
+      }
+
+      // Create the supply request
+      const [newRequest] = await trx("supply_requests")
+        .insert({
+          request_id: requestData.request_id,
+          request_type: requestData.request_type,
+          request_description: requestData.request_description,
+          request_date: requestData.request_date,
+          priority: requestData.priority,
+          department: requestData.department,
+          requested_by: requestData.requested_by,
+          request_status: "To Request",
+          total_amount: 0,
+          item_count: 0,
+          created_at: new Date(),
+          updated_at: new Date(),
+        })
+        .returning("*");
+
+      // Process items with inventory integration
+      let totalAmount = 0;
+      let itemCount = 0;
+
+      for (const item of items) {
+        // Get unit of measure from inventory system if not provided
+        if (!item.item_unit && item.item_type) {
+          item.item_unit = await CategoryMappingService.getUnitOfMeasure(
+            item.item_type
+          );
+        }
+
+        const itemAmount =
+          (item.item_quantity || 0) * (item.item_unitPrice || 0);
+        totalAmount += itemAmount;
+        itemCount++;
+
+        await trx("supply_request_items").insert({
+          supply_request_id: newRequest.id,
+          item_name: item.item_name,
+          item_quantity: item.item_quantity,
+          item_unit: item.item_unit,
+          item_type: item.item_type,
+          item_unit_price: item.item_unitPrice,
+          item_amount: itemAmount,
+          created_at: new Date(),
+          updated_at: new Date(),
+        });
+      }
+
+      // Update the request with calculated totals
+      await trx("supply_requests").where("id", newRequest.id).update({
+        total_amount: totalAmount,
+        item_count: itemCount,
+        updated_at: new Date(),
+      });
+
+      await trx.commit();
+      return newRequest;
+    } catch (error) {
+      await trx.rollback();
+      throw error;
     }
   }
 
@@ -417,6 +544,76 @@ class SupplyRequest {
       throw new Error(
         "Failed to retrieve request statistics: " + error.message
       );
+    }
+  }
+
+  static async updateSupplyRequestItemsWithInventoryData() {
+    const trx = await db.transaction();
+
+    try {
+      // Get all supply request items that don't have inventory_item_type_id populated
+      const unmappedItems = await trx("supply_request_items as sri")
+        .leftJoin("inventory_item_types as iit", "sri.item_type", "iit.name")
+        .select(
+          "sri.id as supply_request_item_id",
+          "sri.item_type",
+          "iit.id as inventory_item_type_id",
+          "iit.name as inventory_item_type_name"
+        )
+        .whereNull("sri.inventory_item_type_id")
+        .whereNotNull("iit.id");
+
+      let updatedCount = 0;
+
+      // Update each unmapped item with inventory data
+      for (const item of unmappedItems) {
+        await trx("supply_request_items")
+          .where("id", item.supply_request_item_id)
+          .update({
+            inventory_item_type_id: item.inventory_item_type_id,
+            updated_at: new Date(),
+          });
+        updatedCount++;
+      }
+
+      // Also try to match by case-insensitive comparison for items that weren't matched
+      const remainingUnmapped = await trx("supply_request_items as sri")
+        .leftJoin(
+          "inventory_item_types as iit",
+          trx.raw("LOWER(sri.item_type) = LOWER(iit.name)")
+        )
+        .select(
+          "sri.id as supply_request_item_id",
+          "sri.item_type",
+          "iit.id as inventory_item_type_id",
+          "iit.name as inventory_item_type_name"
+        )
+        .whereNull("sri.inventory_item_type_id")
+        .whereNotNull("iit.id");
+
+      for (const item of remainingUnmapped) {
+        await trx("supply_request_items")
+          .where("id", item.supply_request_item_id)
+          .update({
+            inventory_item_type_id: item.inventory_item_type_id,
+            updated_at: new Date(),
+          });
+        updatedCount++;
+      }
+
+      await trx.commit();
+
+      console.log(
+        `Updated ${updatedCount} supply request items with inventory data`
+      );
+      return updatedCount;
+    } catch (error) {
+      await trx.rollback();
+      console.error(
+        "Error updating supply request items with inventory data:",
+        error
+      );
+      throw error;
     }
   }
 }

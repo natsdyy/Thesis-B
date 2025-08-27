@@ -341,6 +341,41 @@ router.get("/recent-activity", async (req, res) => {
   }
 });
 
+// Get all transactions with filters and pagination
+router.get("/transactions", async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+
+    const filters = {
+      search: req.query.search || "",
+      transaction_type: req.query.transaction_type || "",
+      date_from: req.query.date_from || "",
+      date_to: req.query.date_to || "",
+      category_id: req.query.category_id || "",
+      item_type_id: req.query.item_type_id || "",
+    };
+
+    const result = await Inventory.getAllTransactions(filters, limit, offset);
+
+    res.json({
+      success: true,
+      data: result.transactions,
+      total: result.total,
+      page,
+      limit,
+      totalPages: Math.ceil(result.total / limit),
+    });
+  } catch (error) {
+    console.error("Error fetching transactions:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch transactions",
+    });
+  }
+});
+
 // Get expiring items
 router.get("/alerts/expiring", async (req, res) => {
   try {
@@ -410,6 +445,20 @@ router.post("/consumption/single", async (req, res) => {
       });
     }
 
+    // Auto-block if expiry_date is today or earlier
+    if (item.expiry_date) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const expiry = new Date(item.expiry_date);
+      expiry.setHours(0, 0, 0, 0);
+      if (expiry.getTime() <= today.getTime()) {
+        return res.status(400).json({
+          success: false,
+          message: "Cannot consume item past its expiry date",
+        });
+      }
+    }
+
     const transactionData = {
       transaction_type: "consumption",
       quantity: parseFloat(quantity),
@@ -469,6 +518,17 @@ router.post("/consumption/bulk", async (req, res) => {
           }
           if (current.status === "expired") {
             throw new Error("Cannot consume an expired item");
+          }
+
+          // Auto-block if expiry_date is today or earlier
+          if (current.expiry_date) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const expiry = new Date(current.expiry_date);
+            expiry.setHours(0, 0, 0, 0);
+            if (expiry.getTime() <= today.getTime()) {
+              throw new Error("Cannot consume item past its expiry date");
+            }
           }
 
           const transactionData = {
@@ -535,6 +595,7 @@ router.post("/adjustment", async (req, res) => {
       notes,
       performed_by,
       new_expiry_date,
+      disposal_cost,
     } = req.body;
 
     // Validation
@@ -553,6 +614,7 @@ router.post("/adjustment", async (req, res) => {
       "mark_expired",
       "mark_damaged",
       "set_expiry_date",
+      "disposal",
     ];
 
     if (!validAdjustmentTypes.includes(adjustment_type)) {
@@ -587,6 +649,21 @@ router.post("/adjustment", async (req, res) => {
       }
     }
 
+    // For disposal adjustment, validate disposal_cost
+    if (adjustment_type === "disposal") {
+      if (
+        disposal_cost === undefined ||
+        disposal_cost === null ||
+        disposal_cost < 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Disposal cost is required and must be non-negative for disposal adjustments",
+        });
+      }
+    }
+
     const transactionData = {
       transaction_type: "adjustment",
       quantity: parseFloat(new_quantity || 0),
@@ -596,7 +673,9 @@ router.post("/adjustment", async (req, res) => {
       performed_by: performed_by || "System",
       transaction_date: new Date(),
       adjustment_type: adjustment_type,
-      new_expiry_date: new_expiry_date || null, // <-- pass to model
+      new_expiry_date: new_expiry_date || null,
+      disposal_cost:
+        disposal_cost !== undefined ? parseFloat(disposal_cost) : null,
     };
 
     const updatedItem = await Inventory.updateInventoryQuantity(

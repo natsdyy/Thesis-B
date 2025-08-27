@@ -1,6 +1,6 @@
 <script setup>
   import { ref, computed, watch } from 'vue';
-  import { Package } from 'lucide-vue-next';
+  import { Package, TriangleAlert } from 'lucide-vue-next';
 
   // Props
   const props = defineProps({
@@ -44,6 +44,7 @@
     reference_number: '',
     notes: '',
     expiry_date: '',
+    disposal_cost: '', // Add disposal cost field
   });
 
   const closeModal = () => {
@@ -109,6 +110,45 @@
     return adjustmentForm.value.adjustment_type === 'set_expiry_date';
   });
 
+  // Check if selected stock is expired
+  const isExpiredItem = computed(() => {
+    if (!selectedStock.value) return false;
+
+    // Check if status is explicitly expired
+    if (selectedStock.value.status === 'expired') return true;
+
+    // Check if expiry date has passed
+    if (selectedStock.value.expiry_date) {
+      const today = new Date().toISOString().split('T')[0];
+      return selectedStock.value.expiry_date <= today;
+    }
+
+    return false;
+  });
+
+  // Get available adjustment types based on item status
+  const availableAdjustmentTypes = computed(() => {
+    if (isExpiredItem.value) {
+      // For expired items, only allow disposal
+      return [{ value: 'disposal', label: 'Dispose Item' }];
+    }
+
+    // For non-expired items, allow all adjustment types
+    return [
+      { value: 'set_quantity', label: 'Set Exact Quantity' },
+      { value: 'add_quantity', label: 'Add Quantity' },
+      { value: 'reduce_quantity', label: 'Reduce Quantity' },
+      { value: 'mark_expired', label: 'Mark as Expired' },
+      { value: 'mark_damaged', label: 'Mark as Damaged' },
+      { value: 'set_expiry_date', label: 'Set Expiry Date' },
+    ];
+  });
+
+  // Check if disposal cost is required
+  const requiresDisposalCost = computed(() => {
+    return adjustmentForm.value.adjustment_type === 'disposal';
+  });
+
   const isFormValid = computed(() => {
     const basicValid =
       adjustmentForm.value.inventory_item_id &&
@@ -125,6 +165,11 @@
 
     if (requiresDateInput.value) {
       return !!adjustmentForm.value.expiry_date;
+    }
+
+    if (requiresDisposalCost.value) {
+      const disposalCost = parseFloat(adjustmentForm.value.disposal_cost);
+      return !isNaN(disposalCost) && disposalCost >= 0;
     }
 
     return true;
@@ -152,6 +197,7 @@
         break;
       case 'mark_expired':
       case 'mark_damaged':
+      case 'disposal':
         newQuantity = 0;
         break;
     }
@@ -195,6 +241,8 @@
         return 'Quantity to Add';
       case 'reduce_quantity':
         return 'Quantity to Reduce';
+      case 'disposal':
+        return 'Disposal Cost';
       default:
         return 'Quantity';
     }
@@ -268,6 +316,8 @@
         return 'Mark as Expired';
       case 'mark_damaged':
         return 'Mark as Damaged';
+      case 'disposal':
+        return 'Dispose Item';
       default:
         return 'Apply Adjustment';
     }
@@ -277,6 +327,7 @@
     switch (adjustmentForm.value.adjustment_type) {
       case 'mark_expired':
       case 'mark_damaged':
+      case 'disposal':
         return 'bg-error text-white';
       case 'reduce_quantity':
         return 'bg-warning text-white';
@@ -296,6 +347,7 @@
 
   const onAdjustmentTypeChange = () => {
     adjustmentForm.value.new_quantity = '';
+    adjustmentForm.value.disposal_cost = '';
     if (adjustmentForm.value.adjustment_type !== 'set_expiry_date') {
       adjustmentForm.value.expiry_date = '';
     }
@@ -312,6 +364,7 @@
       reference_number: '',
       notes: '',
       expiry_date: '',
+      disposal_cost: '',
     };
   };
 
@@ -335,6 +388,7 @@
         break;
       case 'mark_expired':
       case 'mark_damaged':
+      case 'disposal':
         finalQuantity = 0;
         break;
       default:
@@ -345,6 +399,13 @@
       inventory_item_id: adjustmentForm.value.inventory_item_id,
       transaction_type: 'adjustment',
       quantity: finalQuantity,
+      new_quantity: [
+        'set_quantity',
+        'add_quantity',
+        'reduce_quantity',
+      ].includes(adjustmentForm.value.adjustment_type)
+        ? parseFloat(adjustmentForm.value.new_quantity)
+        : null,
       reference_number: adjustmentForm.value.reference_number || null,
       reason: adjustmentForm.value.reason,
       notes: adjustmentForm.value.notes,
@@ -354,6 +415,10 @@
       new_expiry_date:
         adjustmentForm.value.adjustment_type === 'set_expiry_date'
           ? adjustmentForm.value.expiry_date
+          : null,
+      disposal_cost:
+        adjustmentForm.value.adjustment_type === 'disposal'
+          ? parseFloat(adjustmentForm.value.disposal_cost)
           : null,
     };
 
@@ -462,11 +527,21 @@
         </div>
 
         <!-- Current Stock Info -->
-        <div v-if="selectedStock" class="alert alert-success mb-6 w-full">
+        <div
+          v-if="selectedStock"
+          :class="isExpiredItem ? 'alert alert-error' : 'alert alert-success'"
+          class="mb-6 w-full"
+        >
           <div class="flex items-center w-full">
             <!-- Make sure the container is responsive -->
             <div class="w-full min-w-[300px] sm:min-w-[550px]">
-              <h4 class="font-semibold">Current Stock Information</h4>
+              <h4 class="font-semibold">
+                {{
+                  isExpiredItem
+                    ? 'EXPIRED ITEM - Disposal Required'
+                    : 'Current Stock Information'
+                }}
+              </h4>
               <div class="flex flex-col gap-1 mt-1">
                 <!-- Make sure the content does not overflow on smaller screens -->
                 <div class="flex justify-between text-sm overflow-x-auto">
@@ -495,6 +570,23 @@
                   <span class="text-sm">Batch:</span>
                   <span>{{ selectedStock.batch_number }}</span>
                 </div>
+
+                <div
+                  v-if="isExpiredItem"
+                  class="flex justify-between text-sm overflow-x-auto"
+                >
+                  <span class="text-sm">Status:</span>
+                  <span class="font-bold">EXPIRED</span>
+                </div>
+
+                <div
+                  v-if="isExpiredItem"
+                  class="mt-2 bg-error/10 rounded text-sm"
+                >
+                  <strong> Important:</strong>
+                  This item has expired and can only be disposed of. Please
+                  record the disposal cost for proper accounting.
+                </div>
               </div>
             </div>
           </div>
@@ -514,16 +606,20 @@
               @change="onAdjustmentTypeChange"
             >
               <option value="">Select Type</option>
-              <option value="set_quantity">Set Exact Quantity</option>
-              <option value="add_quantity">Add Quantity</option>
-              <option value="reduce_quantity">Reduce Quantity</option>
-              <option value="mark_expired">Mark as Expired</option>
-              <option value="mark_damaged">Mark as Damaged</option>
-              <option value="set_expiry_date">Set Expiry Date</option>
+              <option
+                v-for="type in availableAdjustmentTypes"
+                :key="type.value"
+                :value="type.value"
+              >
+                {{ type.label }}
+              </option>
             </select>
           </div>
 
-          <div class="form-control" v-if="requiresQuantityInput">
+          <div
+            class="form-control"
+            v-if="requiresQuantityInput || requiresDisposalCost"
+          >
             <label class="label">
               <span class="label-text font-medium">
                 {{ getQuantityLabel() }}
@@ -531,6 +627,17 @@
               <span class="label-text-alt text-error">*</span>
             </label>
             <input
+              v-if="requiresDisposalCost"
+              v-model="adjustmentForm.disposal_cost"
+              type="number"
+              step="0.01"
+              min="0"
+              class="input input-bordered w-full"
+              placeholder="Enter disposal cost (₱)"
+              required
+            />
+            <input
+              v-else
               v-model="adjustmentForm.new_quantity"
               type="number"
               step="0.001"
@@ -541,7 +648,13 @@
               required
             />
             <div class="label">
-              <span class="label-text-alt">{{ getQuantityHint() }}</span>
+              <span class="label-text-alt">
+                {{
+                  requiresDisposalCost
+                    ? 'Enter the cost incurred for disposing this expired item'
+                    : getQuantityHint()
+                }}
+              </span>
             </div>
           </div>
         </div>

@@ -75,6 +75,16 @@ class Inventory {
   // Get current inventory with aggregated data
   static async getCurrentInventory(filters = {}) {
     try {
+      // First, automatically update status of expired items
+      const today = new Date().toISOString().split("T")[0];
+      await db("inventory_items")
+        .where("expiry_date", "<=", today)
+        .where("status", "available")
+        .update({
+          status: "expired",
+          updated_at: new Date(),
+        });
+
       let query = db("inventory_items as ii")
         .leftJoin("inventory_item_types as it", "ii.item_type_id", "it.id")
         .leftJoin("inventory_categories as ic", "it.category_id", "ic.id")
@@ -92,7 +102,7 @@ class Inventory {
           "s.name as supplier_name"
         )
         .whereNull("ii.deleted_at")
-        .where("ii.status", "available");
+        .whereIn("ii.status", ["available", "expired"]); // Include expired items
 
       // Apply filters
       if (filters.category_id) {
@@ -315,6 +325,19 @@ class Inventory {
               newQuantity = parseFloat(currentItem.quantity);
               newStatus = "damaged";
               break;
+            case "disposal": {
+              // Only allow disposal for expired items; keep status as 'expired' to satisfy enum
+              const todayIso = new Date().toISOString().split("T")[0];
+              const isExpiredByDate =
+                currentItem.expiry_date && currentItem.expiry_date <= todayIso;
+              const isAlreadyExpired = currentItem.status === "expired";
+              if (!isExpiredByDate && !isAlreadyExpired) {
+                throw new Error("Only expired items can be disposed");
+              }
+              newQuantity = 0; // Dispose all quantity
+              newStatus = "expired";
+              break;
+            }
             case "set_expiry_date":
               newQuantity = parseFloat(currentItem.quantity);
               // status unchanged; only expiry_date is updated below
@@ -369,6 +392,9 @@ class Inventory {
         performed_by: transactionData.performed_by,
         transaction_date: transactionData.transaction_date || new Date(),
         adjustment_type: transactionData.adjustment_type || null,
+        disposal_cost: transactionData.disposal_cost || null,
+        // For clarity in reporting, mark transaction_type as 'disposal' when disposing
+        // but keep inventory_items.status as 'expired' due to enum constraint.
         created_at: new Date(),
         updated_at: new Date(),
       });
@@ -435,6 +461,121 @@ class Inventory {
     }
   }
 
+  // Get all transactions with filters and pagination
+  static async getAllTransactions(filters = {}, limit = 20, offset = 0) {
+    try {
+      let query = db("inventory_transactions as it")
+        .leftJoin("inventory_items as ii", "it.inventory_item_id", "ii.id")
+        .leftJoin("inventory_item_types as iit", "ii.item_type_id", "iit.id")
+        .leftJoin("inventory_categories as ic", "iit.category_id", "ic.id")
+        .select(
+          "it.*",
+          "ii.item_name",
+          "ii.batch_number",
+          "iit.name as item_type_name",
+          "iit.unit_of_measure",
+          "ic.name as category_name"
+        )
+        .whereNull("ii.deleted_at");
+
+      // Apply filters
+      if (filters.search) {
+        query = query.where(function () {
+          this.whereILike("ii.item_name", `%${filters.search}%`)
+            .orWhereILike("iit.name", `%${filters.search}%`)
+            .orWhereILike("ic.name", `%${filters.search}%`)
+            .orWhereILike("it.reference_number", `%${filters.search}%`)
+            .orWhereILike("it.reason", `%${filters.search}%`)
+            .orWhereILike("it.performed_by", `%${filters.search}%`);
+        });
+      }
+
+      if (filters.transaction_type) {
+        query = query.where("it.transaction_type", filters.transaction_type);
+      }
+
+      if (filters.date_from) {
+        query = query.where("it.transaction_date", ">=", filters.date_from);
+      }
+
+      if (filters.date_to) {
+        query = query.where(
+          "it.transaction_date",
+          "<=",
+          filters.date_to + " 23:59:59"
+        );
+      }
+
+      if (filters.category_id) {
+        query = query.where("ic.id", filters.category_id);
+      }
+
+      if (filters.item_type_id) {
+        query = query.where("iit.id", filters.item_type_id);
+      }
+
+      // Get total count for pagination
+      const countQuery = db("inventory_transactions as it")
+        .leftJoin("inventory_items as ii", "it.inventory_item_id", "ii.id")
+        .leftJoin("inventory_item_types as iit", "ii.item_type_id", "iit.id")
+        .leftJoin("inventory_categories as ic", "iit.category_id", "ic.id")
+        .whereNull("ii.deleted_at");
+
+      // Apply the same filters to count query
+      if (filters.search) {
+        countQuery.where(function () {
+          this.whereILike("ii.item_name", `%${filters.search}%`)
+            .orWhereILike("iit.name", `%${filters.search}%`)
+            .orWhereILike("ic.name", `%${filters.search}%`)
+            .orWhereILike("it.reference_number", `%${filters.search}%`)
+            .orWhereILike("it.reason", `%${filters.search}%`)
+            .orWhereILike("it.performed_by", `%${filters.search}%`);
+        });
+      }
+
+      if (filters.transaction_type) {
+        countQuery.where("it.transaction_type", filters.transaction_type);
+      }
+
+      if (filters.date_from) {
+        countQuery.where("it.transaction_date", ">=", filters.date_from);
+      }
+
+      if (filters.date_to) {
+        countQuery.where(
+          "it.transaction_date",
+          "<=",
+          filters.date_to + " 23:59:59"
+        );
+      }
+
+      if (filters.category_id) {
+        countQuery.where("ic.id", filters.category_id);
+      }
+
+      if (filters.item_type_id) {
+        countQuery.where("iit.id", filters.item_type_id);
+      }
+
+      const totalResult = await countQuery.count("* as total").first();
+      const total = parseInt(totalResult.total);
+
+      // Get paginated results
+      const transactions = await query
+        .orderBy("it.transaction_date", "desc")
+        .limit(limit)
+        .offset(offset);
+
+      return {
+        transactions,
+        total,
+      };
+    } catch (error) {
+      console.error("Error fetching all transactions:", error);
+      throw new Error("Failed to fetch transactions");
+    }
+  }
+
   // Get transaction history for an item
   static async getTransactionHistory(inventoryItemId) {
     try {
@@ -498,6 +639,8 @@ class Inventory {
   // Get low stock items (this would need alert configuration)
   static async getLowStockItems() {
     try {
+      // Fallback rule: if no alert config exists, use the reorder_level stored on inventory_items
+      // Threshold used = COALESCE(ia.min_stock_level, MAX(ii.reorder_level)) per item_type
       return await db("inventory_items as ii")
         .leftJoin("inventory_item_types as it", "ii.item_type_id", "it.id")
         .leftJoin("inventory_categories as ic", "it.category_id", "ic.id")
@@ -506,16 +649,22 @@ class Inventory {
           "it.id as item_type_id",
           "it.name as item_type_name",
           "ic.name as category_name",
-          "ia.min_stock_level",
+          db.raw(
+            "COALESCE(ia.min_stock_level, MAX(ii.reorder_level)) as min_stock_level"
+          ),
           db.raw("SUM(ii.quantity) as current_stock")
         )
         .whereNull("ii.deleted_at")
         .where("ii.status", "available")
-        .whereNotNull("ia.min_stock_level")
-        .where("ia.is_active", true)
+        .modify((qb) => {
+          // If alert exists but is deactivated, ignore it and rely on reorder_level
+          qb.whereRaw("(ia.is_active = true OR ia.is_active IS NULL)");
+        })
         .groupBy("it.id", "it.name", "ic.name", "ia.min_stock_level")
-        .havingRaw("SUM(ii.quantity) <= ia.min_stock_level")
-        .orderBy("ic.name", "it.name");
+        .havingRaw(
+          "SUM(ii.quantity) <= COALESCE(ia.min_stock_level, MAX(ii.reorder_level))"
+        )
+        .orderBy(["ic.name", "it.name"]);
     } catch (error) {
       console.error("Error fetching low stock items:", error);
       throw new Error("Failed to fetch low stock items");

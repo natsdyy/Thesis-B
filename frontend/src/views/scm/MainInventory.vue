@@ -18,10 +18,21 @@
     TrendingDown,
     ChevronDown,
     ChevronUp,
+    X,
+    Filter,
+    Calendar,
+    HelpCircle,
+    Trash,
+    ArrowRightLeft,
   } from 'lucide-vue-next';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
   import InventoryConsumptionModal from '../../components/scm/InventoryConsumptionModal.vue';
   import InventoryAdjustmentModal from '../../components/scm/InventoryAdjustmentModal.vue';
+  import TransactionModal from '../../components/scm/TransactionModal.vue';
+  import InventoryDetailsModal from '../../components/scm/InventoryDetailsModal.vue';
+  import { useRouter } from 'vue-router';
+
+  const router = useRouter();
 
   // Store
   const inventoryStore = useInventoryStore();
@@ -53,6 +64,11 @@
     type: null,
     show: false,
     item: null,
+  });
+
+  // Transaction modal state
+  const transactionModal = ref({
+    show: false,
   });
 
   // Confirmation modal state
@@ -97,6 +113,7 @@
           batches: [],
           expanded: expandedItems.value.has(batch.item_type_id),
           expiring_soon_count: 0,
+          expiring_count: 0,
           receipts_count: 0, // Initialize receipts_count
           first_received_at: null, // Initialize first_received_at
           status: 'active', // Default to active
@@ -112,6 +129,12 @@
         if (daysUntilExpiry <= 7 && daysUntilExpiry > 0) {
           grouped[itemKey].expiring_soon_count++;
         }
+        if (daysUntilExpiry <= 0) {
+          grouped[itemKey].expiring_count++;
+        }
+      }
+      if (batch.status === 'expired') {
+        grouped[itemKey].expired_count++;
       }
 
       // Update receipts_count and first_received_at
@@ -218,6 +241,64 @@
     return 'text-success';
   };
 
+  // Low-stock helpers
+  const getLowStockSeverity = (item) => {
+    const current = parseFloat(item.current_stock || 0);
+    const minLevel = parseFloat(item.min_stock_level || 0);
+    if (isNaN(current) || isNaN(minLevel) || minLevel <= 0) return 'info';
+    if (current <= minLevel) return 'critical';
+    if (current <= minLevel * 1.2) return 'warning';
+    return 'ok';
+  };
+
+  // Estimate days of cover using recent consumption over the last 7 days
+  const estimateDaysOfCover = (item) => {
+    try {
+      const now = new Date();
+      const cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const activity = recentActivity.value || [];
+      const key = item.item_type_name?.toLowerCase();
+      const lastWeekConsumption = activity
+        .filter(
+          (a) =>
+            a.transaction_type === 'consumption' &&
+            new Date(a.transaction_date) >= cutoff &&
+            (a.item_type_name?.toLowerCase() === key ||
+              a.item_name?.toLowerCase() === key)
+        )
+        .reduce((sum, a) => sum + parseFloat(a.quantity || 0), 0);
+
+      const avgDaily = lastWeekConsumption / 7;
+      if (!avgDaily || avgDaily <= 0) return 'N/A';
+      const current = parseFloat(item.current_stock || 0);
+      const days = current / avgDaily;
+      return Math.max(0, Math.round(days));
+    } catch (e) {
+      return 'N/A';
+    }
+  };
+
+  const acknowledgedLowStock = ref(new Set());
+  const acknowledgeLowStock = (item) => {
+    acknowledgedLowStock.value.add(item.item_type_id);
+  };
+
+  // Expiring alerts helpers (match low-stock UX)
+  const getExpirySeverityLevel = (item) => {
+    const days = getDaysUntilExpiry(item.expiry_date);
+    if (days <= 0) return 'critical';
+    if (days <= 3) return 'warning';
+    if (days <= 7) return 'info';
+    return 'ok';
+  };
+
+  const acknowledgedExpiring = ref(new Set());
+  const acknowledgeExpiring = (item) => {
+    acknowledgedExpiring.value.add(
+      item.id || `${item.item_type_id}-${item.expiry_date}`
+    );
+  };
+
   const getBatchRowClass = (batch) => {
     if (!batch.expiry_date) return '';
 
@@ -231,28 +312,59 @@
   // Helper function to get transaction type icon and color
   const getTransactionTypeInfo = (type) => {
     const typeInfo = {
-      receipt: { icon: '📦', color: 'text-success', label: 'Received' },
-      consumption: { icon: '➖', color: 'text-warning', label: 'Consumed' },
-      adjustment: { icon: '🔄', color: 'text-info', label: 'Adjusted' },
-      return: { icon: '↩️', color: 'text-error', label: 'Returned' },
-      transfer: { icon: '🔄', color: 'text-primary', label: 'Transferred' },
-      expiry: { icon: '⏰', color: 'text-error', label: 'Expired' },
-      damage: { icon: '💥', color: 'text-error', label: 'Damaged' },
+      receipt: { icon: Package, color: 'text-success', label: 'Received' },
+      consumption: { icon: Minus, color: 'text-warning', label: 'Consumed' },
+      adjustment: { icon: RefreshCcw, color: 'text-info', label: 'Adjusted' },
+      return: { icon: ArrowRightLeft, color: 'text-error', label: 'Returned' },
+      transfer: {
+        icon: ArrowRightLeft,
+        color: 'text-primary',
+        label: 'Transferred',
+      },
+      expiry: { icon: Calendar, color: 'text-error', label: 'Expired' },
+      damage: { icon: Minus, color: 'text-error', label: 'Damaged' },
+      disposal: { icon: Trash, color: 'text-error', label: 'Disposed' },
     };
-    return typeInfo[type] || { icon: '❓', color: 'text-neutral', label: type };
+    return (
+      typeInfo[type] || { icon: HelpCircle, color: 'text-neutral', label: type }
+    );
   };
 
   // Helper function to format transaction date
   const formatTransactionDate = (dateString) => {
     if (!dateString) return 'N/A';
+
+    // Create dates in Philippine Time
     const date = new Date(dateString);
     const now = new Date();
-    const diffTime = Math.abs(now - date);
+
+    // Get Philippine timezone offset (UTC+8)
+    const phOffset = 8 * 60; // 8 hours in minutes
+
+    // Convert to Philippine time
+    const datePh = new Date(date.getTime() + phOffset * 60 * 1000);
+    const nowPh = new Date(now.getTime() + phOffset * 60 * 1000);
+
+    // Compare dates (ignoring time)
+    const datePhDate = new Date(
+      datePh.getFullYear(),
+      datePh.getMonth(),
+      datePh.getDate()
+    );
+    const nowPhDate = new Date(
+      nowPh.getFullYear(),
+      nowPh.getMonth(),
+      nowPh.getDate()
+    );
+
+    const diffTime = nowPhDate.getTime() - datePhDate.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
+    if (diffDays === 0) return 'Today';
     if (diffDays === 1) return 'Yesterday';
     if (diffDays < 7) return `${diffDays} days ago`;
-    return date.toLocaleDateString('en-PH', {
+
+    return datePh.toLocaleDateString('en-PH', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -285,8 +397,16 @@
     modal.value = { type: 'adjustment', show: true, item: null };
   };
 
+  const openTransactionModal = () => {
+    transactionModal.value = { show: true };
+  };
+
   const closeModal = () => {
     modal.value = { type: null, show: false, item: null };
+  };
+
+  const closeTransactionModal = () => {
+    transactionModal.value = { show: false };
   };
 
   // Batch-specific actions
@@ -298,11 +418,14 @@
     modal.value = { type: 'adjustment', show: true, item: batch };
   };
 
+  // Details modal
+  const detailsModal = ref({ show: false, inventoryItemId: null });
+  const closeDetailsModal = () => {
+    detailsModal.value = { show: false, inventoryItemId: null };
+  };
+
   const viewBatchDetails = (batch) => {
-    showToast(
-      'info',
-      `Viewing details for batch ${batch.batch_number || 'N/A'}`
-    );
+    detailsModal.value = { show: true, inventoryItemId: batch.id };
   };
 
   const viewItemDetails = (item) => {
@@ -402,6 +525,7 @@
               notes: adjustmentData.notes,
               performed_by: 'SCM User',
               new_expiry_date: adjustmentData.new_expiry_date, // pass through
+              disposal_cost: adjustmentData.disposal_cost ?? null,
             });
             showToast('success', `${itemLabel} adjusted successfully.`);
             closeModal();
@@ -756,9 +880,12 @@
                   class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                 >
                   <div class="flex-shrink-0">
-                    <span class="text-lg">{{
-                      getTransactionTypeInfo(activity.transaction_type).icon
-                    }}</span>
+                    <component
+                      :is="
+                        getTransactionTypeInfo(activity.transaction_type).icon
+                      "
+                      class="w-4 h-4"
+                    />
                   </div>
 
                   <div class="flex-1 min-w-0">
@@ -810,6 +937,14 @@
                             parseFloat(activity.total_value).toLocaleString()
                           }}</span
                         >
+                        <div
+                          v-if="activity.disposal_cost"
+                          class="text-xs text-error mt-1"
+                        >
+                          Disposal Cost: ₱{{
+                            parseFloat(activity.disposal_cost).toLocaleString()
+                          }}
+                        </div>
                       </div>
 
                       <div class="text-xs text-gray-500">
@@ -828,8 +963,8 @@
 
               <div v-if="recentActivity.length > 0" class="mt-4 text-center">
                 <button
-                  @click="$router.push('/scm/inventory/transactions')"
-                  class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
+                  @click="openTransactionModal"
+                  class="btn btn-outline btn-sm text-primaryColor font-thin hover:bg-primaryColor/10"
                 >
                   View All Transactions
                 </button>
@@ -909,9 +1044,16 @@
                   <div class="flex items-center gap-2">
                     <span
                       v-if="item.expiring_soon_count > 0"
-                      class="badge badge-warning badge-sm"
+                      class="badge bg-warning/20 badge-sm border-none font-medium text-warning"
                     >
                       {{ item.expiring_soon_count }} expiring
+                    </span>
+
+                    <span
+                      v-if="item.expired_count > 0"
+                      class="badge bg-error/20 badge-sm border-none font-medium text-error"
+                    >
+                      {{ item.expired_count }} expired
                     </span>
                     <ChevronDown
                       v-if="!item.expanded"
@@ -1124,20 +1266,101 @@
             </div>
           </div>
 
-          <!-- Expiring Items -->
-          <div v-if="alertTab === 'expiring'" class="space-y-4">
+          <!-- Expiring Items (enhanced UI) -->
+          <div v-if="alertTab === 'expiring'" class="space-y-3">
             <div
               v-for="item in expiringItems"
               :key="item.id"
-              class="alert alert-warning"
+              class="border border-gray-200 rounded-lg bg-base-100 p-3 flex items-start gap-3"
             >
-              <AlertTriangle class="w-6 h-6" />
               <div>
-                <h3 class="font-bold">{{ item.item_type_name }}</h3>
-                <div class="text-sm">
-                  Expires: {{ formatDate(item.expiry_date) }} | Quantity:
-                  {{ parseFloat(item.quantity).toLocaleString() }}
-                  {{ item.unit_of_measure }}
+                <XCircle
+                  v-if="getExpirySeverityLevel(item) === 'critical'"
+                  class="w-5 h-5 text-error"
+                />
+                <AlertTriangle
+                  v-else-if="getExpirySeverityLevel(item) === 'warning'"
+                  class="w-5 h-5 text-warning"
+                />
+                <Calendar v-else class="w-5 h-5 text-info" />
+              </div>
+
+              <div class="flex-1">
+                <div class="flex justify-between items-start">
+                  <div>
+                    <h3 class="font-semibold text-sm text-primaryColor">
+                      {{ item.item_type_name }}
+                    </h3>
+                    <div class="text-xs text-gray-600">
+                      {{ item.category_name }}
+                    </div>
+                  </div>
+                  <div>
+                    <span
+                      v-if="getExpirySeverityLevel(item) === 'critical'"
+                      class="badge bg-error/20 badge-sm text-error"
+                      >Expired / Today</span
+                    >
+                    <span
+                      v-else-if="getExpirySeverityLevel(item) === 'warning'"
+                      class="badge bg-warning/20 badge-sm text-warning"
+                      >Expiring ≤ 3d</span
+                    >
+                    <span v-else class="badge bg-info/20 badge-sm text-info"
+                      >Expiring ≤ 7d</span
+                    >
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2 text-xs">
+                  <div>
+                    <div class="text-gray-500">Expiry Date</div>
+                    <div class="font-medium">
+                      {{ formatDate(item.expiry_date) }}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500">Days Left</div>
+                    <div class="font-medium">
+                      {{ Math.max(0, getDaysUntilExpiry(item.expiry_date)) }}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500">Quantity</div>
+                    <div class="font-medium">
+                      {{ parseFloat(item.quantity).toLocaleString() }}
+                      {{ item.unit_of_measure }}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500">Batch</div>
+                    <div class="font-medium">
+                      {{ item.batch_number || 'N/A' }}
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <button
+                    class="btn btn-ghost btn-xs"
+                    @click="viewBatchDetails(item)"
+                  >
+                    View Item
+                  </button>
+                  <button class="btn btn-ghost btn-xs" disabled>
+                    Mark for Disposal
+                  </button>
+                  <button
+                    class="btn btn-outline btn-xs"
+                    :class="{
+                      'btn-disabled': acknowledgedExpiring.has(
+                        item.id || `${item.item_type_id}-${item.expiry_date}`
+                      ),
+                    }"
+                    @click="acknowledgeExpiring(item)"
+                  >
+                    Acknowledge
+                  </button>
                 </div>
               </div>
             </div>
@@ -1149,19 +1372,99 @@
           </div>
 
           <!-- Low Stock Items -->
-          <div v-if="alertTab === 'lowstock'" class="space-y-4">
+          <div v-if="alertTab === 'lowstock'" class="space-y-3">
             <div
               v-for="item in lowStockItems"
               :key="item.item_type_id"
-              class="alert alert-error"
+              class="border border-gray-200 rounded-lg bg-base-100 p-3 flex items-start gap-3"
             >
-              <XCircle class="w-6 h-6" />
               <div>
-                <h3 class="font-bold">{{ item.item_type_name }}</h3>
-                <div class="text-sm">
-                  Current:
-                  {{ parseFloat(item.current_stock).toLocaleString() }} | Min
-                  Level: {{ parseFloat(item.min_stock_level).toLocaleString() }}
+                <XCircle
+                  v-if="getLowStockSeverity(item) === 'critical'"
+                  class="w-5 h-5 text-error"
+                />
+                <AlertTriangle
+                  v-else-if="getLowStockSeverity(item) === 'warning'"
+                  class="w-5 h-5 text-warning"
+                />
+                <Bell v-else class="w-5 h-5 text-info" />
+              </div>
+
+              <div class="flex-1">
+                <div class="flex justify-between items-start">
+                  <div>
+                    <h3 class="font-semibold text-sm text-primaryColor">
+                      {{ item.item_type_name }}
+                    </h3>
+                    <div class="text-xs text-gray-600">
+                      {{ item.category_name }}
+                    </div>
+                  </div>
+                  <div>
+                    <span
+                      v-if="getLowStockSeverity(item) === 'critical'"
+                      class="badge bg-error/20 badge-sm text-error"
+                      >Critical</span
+                    >
+                    <span
+                      v-else-if="getLowStockSeverity(item) === 'warning'"
+                      class="badge bg-warning/20 badge-sm text-warning"
+                      >Warning</span
+                    >
+                    <span v-else class="badge bg-info/20 badge-sm text-info"
+                      >Info</span
+                    >
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2 text-xs">
+                  <div>
+                    <div class="text-gray-500">Current Stock</div>
+                    <div class="font-medium">
+                      {{ parseFloat(item.current_stock).toLocaleString() }}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500">Min Level</div>
+                    <div class="font-medium">
+                      {{ parseFloat(item.min_stock_level).toLocaleString() }}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500">Variance</div>
+                    <div class="font-medium">
+                      {{
+                        (
+                          parseFloat(item.current_stock) -
+                          parseFloat(item.min_stock_level)
+                        ).toLocaleString()
+                      }}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500">Days of Cover</div>
+                    <div class="font-medium">
+                      {{ estimateDaysOfCover(item) }}
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <button class="btn btn-ghost btn-xs">View Item</button>
+                  <button class="btn btn-ghost btn-xs" disabled>
+                    Create Supply Request
+                  </button>
+                  <button
+                    class="btn btn-outline btn-xs"
+                    :class="{
+                      'btn-disabled': acknowledgedLowStock.has(
+                        item.item_type_id
+                      ),
+                    }"
+                    @click="acknowledgeLowStock(item)"
+                  >
+                    Acknowledge
+                  </button>
                 </div>
               </div>
             </div>
@@ -1322,6 +1625,19 @@
       :preselected-item="modal.item"
       @close="closeModal"
       @submit="handleAdjustment"
+    />
+
+    <!-- Transaction Modal -->
+    <TransactionModal
+      :show="transactionModal.show"
+      @close="closeTransactionModal"
+    />
+
+    <!-- Inventory Details Modal -->
+    <InventoryDetailsModal
+      :show="detailsModal.show"
+      :inventory-item-id="detailsModal.inventoryItemId"
+      @close="closeDetailsModal"
     />
 
     <!-- Toast Notifications -->

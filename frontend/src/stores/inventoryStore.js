@@ -526,6 +526,39 @@ export const useInventoryStore = defineStore('inventory', () => {
     }
   };
 
+  // Fetch all transactions with filters and pagination
+  const fetchAllTransactions = async (params = {}) => {
+    try {
+      const queryParams = new URLSearchParams();
+
+      // Add all parameters to query string
+      Object.keys(params).forEach((key) => {
+        if (
+          params[key] !== '' &&
+          params[key] !== null &&
+          params[key] !== undefined
+        ) {
+          queryParams.append(key, params[key]);
+        }
+      });
+
+      const response = await axios.get(
+        `${API_BASE_URL}/inventory/transactions?${queryParams.toString()}`
+      );
+
+      if (response.data.success) {
+        return response.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch transactions'
+        );
+      }
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+      throw error;
+    }
+  };
+
   // Single consumption
   const singleConsumption = async (consumptionData) => {
     loading.value = true;
@@ -699,6 +732,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     fetchCategoriesForRequests, // New action
     fetchItemTypesByCategoryForRequests, // New action
     fetchRecentActivity,
+    fetchAllTransactions,
     singleConsumption,
     stockAdjustment,
     configureAlert,

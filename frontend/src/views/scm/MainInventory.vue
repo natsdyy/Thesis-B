@@ -59,6 +59,26 @@
   const categoryFilter = ref('');
   const expandedItems = ref(new Set());
 
+  // Enhanced Reports state
+  const reportPeriod = ref('current');
+  const reportSearchQuery = ref('');
+  const reportCategoryFilter = ref('');
+  const reportConditionFilter = ref('');
+  const expandedCategories = ref(new Set());
+  const forecastPeriod = ref('30');
+  const forecastMethod = ref('moving_average');
+  // Advanced forecasting controls
+  const leadTimeDays = ref(7); // default 7 days
+  const serviceLevel = ref(0.95); // 95%
+  const windowProfile = ref('auto'); // auto|fast|medium|slow|custom
+  const customWindowDays = ref(30);
+
+  // Disposed Items state
+  const disposedItems = ref([]);
+  const disposedFromDate = ref('');
+  const disposedToDate = ref('');
+  const disposedCategoryFilter = ref('');
+
   // Modal state
   const modal = ref({
     type: null,
@@ -299,6 +319,319 @@
     );
   };
 
+  // Enhanced Reports computed properties
+  const filteredInventorySummary = computed(() => {
+    if (!inventorySummary.value) return [];
+    let filtered = [...inventorySummary.value];
+
+    if (reportCategoryFilter.value) {
+      filtered = filtered.filter(
+        (item) => item.category_id == reportCategoryFilter.value
+      );
+    }
+
+    return filtered;
+  });
+
+  const recentStockMovements = computed(() => {
+    if (!recentActivity.value) return [];
+
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 7);
+
+    return recentActivity.value
+      .filter((activity) => new Date(activity.transaction_date) >= cutoff)
+      .slice(0, 10)
+      .sort(
+        (a, b) => new Date(b.transaction_date) - new Date(a.transaction_date)
+      );
+  });
+
+  const detailedCategoryReport = computed(() => {
+    if (!categories.value || !currentInventory.value) return [];
+
+    return categories.value
+      .map((category) => {
+        const categoryItems = currentInventory.value.filter((item) => {
+          const matchesCategory = item.category_name === category.name;
+          const matchesSearch =
+            !reportSearchQuery.value ||
+            item.item_type_name
+              .toLowerCase()
+              .includes(reportSearchQuery.value.toLowerCase()) ||
+            item.item_name
+              ?.toLowerCase()
+              .includes(reportSearchQuery.value.toLowerCase());
+          const matchesCondition =
+            !reportConditionFilter.value ||
+            item.status === reportConditionFilter.value;
+
+          return matchesCategory && matchesSearch && matchesCondition;
+        });
+
+        if (categoryItems.length === 0) return null;
+
+        const totalValue = categoryItems.reduce(
+          (sum, item) => sum + parseFloat(item.total_value || 0),
+          0
+        );
+        const totalItems = categoryItems.length;
+        const availableItems = categoryItems.filter(
+          (item) => item.status === 'available'
+        ).length;
+        const expiredItems = categoryItems.filter(
+          (item) => item.status === 'expired'
+        ).length;
+        const expiringItems = categoryItems.filter((item) => {
+          if (!item.expiry_date) return false;
+          const days = getDaysUntilExpiry(item.expiry_date);
+          return days <= 7 && days > 0;
+        }).length;
+
+        return {
+          category_id: category.id,
+          category_name: category.name,
+          total_value: totalValue,
+          total_items: totalItems,
+          available_items: availableItems,
+          expired_items: expiredItems,
+          expiring_items: expiringItems,
+          items: categoryItems,
+        };
+      })
+      .filter(Boolean);
+  });
+
+  const lowStockAlertItems = computed(() => {
+    return lowStockItems.value.filter((item) => {
+      const matchesSearch =
+        !reportSearchQuery.value ||
+        item.item_type_name
+          .toLowerCase()
+          .includes(reportSearchQuery.value.toLowerCase());
+      const matchesCategory =
+        !reportCategoryFilter.value ||
+        item.category_name ===
+          categories.value?.find((c) => c.id == reportCategoryFilter.value)
+            ?.name;
+
+      return matchesSearch && matchesCategory;
+    });
+  });
+
+  const inventoryForecasts = computed(() => {
+    if (!currentInventory.value || !recentActivity.value) return [];
+
+    const itemTypeMap = new Map();
+
+    // Group current inventory by item type
+    currentInventory.value.forEach((item) => {
+      const key = item.item_type_id;
+      if (!itemTypeMap.has(key)) {
+        itemTypeMap.set(key, {
+          item_type_id: key,
+          item_type_name: item.item_type_name,
+          current_stock: 0,
+          total_value: 0,
+          transactions: [],
+        });
+      }
+
+      const existing = itemTypeMap.get(key);
+      existing.current_stock += parseFloat(item.quantity || 0);
+      existing.total_value += parseFloat(item.total_value || 0);
+    });
+
+    // Build per-item daily usage series for a chosen window
+    const autoWindowForVelocity = (avgDaily) => {
+      if (windowProfile.value === 'fast') return 14;
+      if (windowProfile.value === 'medium') return 30;
+      if (windowProfile.value === 'slow') return 60;
+      if (windowProfile.value === 'custom')
+        return Math.max(7, parseInt(customWindowDays.value || 30));
+      // auto based on velocity
+      if (avgDaily >= 5) return 14; // fast movers
+      if (avgDaily >= 1) return 30; // medium
+      return 60; // slow movers
+    };
+
+    // Helper: generate an array of dates for the last N days (oldest -> newest)
+    const lastNDates = (n) => {
+      const arr = [];
+      const end = new Date();
+      for (let i = n - 1; i >= 0; i--) {
+        const d = new Date(end);
+        d.setDate(end.getDate() - i);
+        const key = d.toISOString().slice(0, 10);
+        arr.push(key);
+      }
+      return arr; // array of yyyy-mm-dd
+    };
+
+    const cutoffDays = parseInt(forecastPeriod.value);
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - cutoffDays);
+
+    // Build name->id fallback map for activities missing item_type_id
+    const nameToId = new Map();
+    Array.from(itemTypeMap.values()).forEach((it) => {
+      if (it.item_type_name)
+        nameToId.set(it.item_type_name.toLowerCase(), it.item_type_id);
+    });
+
+    recentActivity.value
+      .filter(
+        (activity) =>
+          activity.transaction_type === 'consumption' &&
+          new Date(activity.transaction_date) >= cutoff
+      )
+      .forEach((activity) => {
+        let key = activity.item_type_id;
+        if (!key) {
+          const nm = (
+            activity.item_type_name ||
+            activity.item_name ||
+            ''
+          ).toLowerCase();
+          if (nameToId.has(nm)) key = nameToId.get(nm);
+        }
+        if (key && itemTypeMap.has(key)) {
+          itemTypeMap.get(key).transactions.push({
+            date: activity.transaction_date,
+            quantity: parseFloat(activity.quantity || 0),
+          });
+        }
+      });
+
+    return Array.from(itemTypeMap.values())
+      .map((item) => {
+        // Determine window days for this item (velocity-based if auto)
+        const last30Total = item.transactions
+          .filter(
+            (t) => new Date(t.date) >= new Date(Date.now() - 30 * 86400000)
+          )
+          .reduce((s, t) => s + t.quantity, 0);
+        const velocityAvgDaily = last30Total / 30;
+        const windowDays = autoWindowForVelocity(velocityAvgDaily);
+
+        // Build daily usage series for the window
+        const dateKeys = lastNDates(windowDays);
+        const usageByDate = new Map(dateKeys.map((k) => [k, 0]));
+        item.transactions.forEach((t) => {
+          const k = new Date(t.date).toISOString().slice(0, 10);
+          if (usageByDate.has(k)) {
+            usageByDate.set(k, usageByDate.get(k) + t.quantity);
+          }
+        });
+        const dailySeries = dateKeys.map((k) => usageByDate.get(k)); // array length windowDays
+
+        // Moving average (baseline)
+        const totalUsageWindow = dailySeries.reduce((s, v) => s + v, 0);
+        const maAvgDaily = totalUsageWindow / windowDays || 0;
+
+        // Linear trend via least squares: y = a + b*x, x = 1..n (oldest->newest)
+        const n = dailySeries.length;
+        let sumX = 0,
+          sumY = 0,
+          sumXY = 0,
+          sumX2 = 0;
+        for (let i = 0; i < n; i++) {
+          const x = i + 1;
+          const y = dailySeries[i];
+          sumX += x;
+          sumY += y;
+          sumXY += x * y;
+          sumX2 += x * x;
+        }
+        const denom = n * sumX2 - sumX * sumX;
+        const b = denom !== 0 ? (n * sumXY - sumX * sumY) / denom : 0;
+        const a = (sumY - b * sumX) / n;
+        const todayIndex = n; // next day after series
+        const trendDailyToday = Math.max(0, a + b * todayIndex);
+
+        // Choose method
+        const method = forecastMethod.value;
+        const meanDaily =
+          method === 'linear_trend' ? trendDailyToday : maAvgDaily;
+
+        // Safety stock using normal approx
+        const mean = maAvgDaily;
+        const stddev = (() => {
+          if (n <= 1) return 0;
+          const variance =
+            dailySeries.reduce((s, v) => s + Math.pow(v - mean, 2), 0) /
+            (n - 1);
+          return Math.sqrt(variance);
+        })();
+        const Z = (() => {
+          const sl = parseFloat(serviceLevel.value);
+          if (sl >= 0.999) return 3.09;
+          if (sl >= 0.995) return 2.58;
+          if (sl >= 0.99) return 2.33;
+          if (sl >= 0.975) return 1.96;
+          if (sl >= 0.95) return 1.65;
+          if (sl >= 0.9) return 1.28;
+          return 1.0;
+        })();
+        const lt = Math.max(0, parseInt(leadTimeDays.value || 0));
+        const safetyStock = Z * stddev * Math.sqrt(lt);
+
+        // ROP and projections
+        const demandDuringLT = meanDaily * lt;
+        const reorderPoint = demandDuringLT + safetyStock;
+        const projectedDemand = meanDaily * parseInt(forecastPeriod.value);
+        const daysUntilDepletion =
+          meanDaily > 0 ? Math.floor(item.current_stock / meanDaily) : Infinity;
+
+        // Reorder date recommendation
+        let reorderDate = '-';
+        if (meanDaily > 0) {
+          const daysUntilROP = (item.current_stock - reorderPoint) / meanDaily;
+          const d = new Date();
+          if (daysUntilROP <= 0) {
+            reorderDate = 'Today';
+          } else {
+            d.setDate(d.getDate() + Math.ceil(daysUntilROP));
+            reorderDate = d.toLocaleDateString('en-PH', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+            });
+          }
+        }
+
+        let recommendedAction = 'Monitor';
+        const needsReorder = item.current_stock <= reorderPoint;
+        if (needsReorder) recommendedAction = 'Urgent Reorder';
+        else if (daysUntilDepletion <= 14) recommendedAction = 'Plan Reorder';
+        else if (daysUntilDepletion <= 30)
+          recommendedAction = 'Schedule Review';
+
+        return {
+          ...item,
+          avg_daily_usage: meanDaily,
+          projected_demand: projectedDemand,
+          days_until_depletion: daysUntilDepletion,
+          recommended_action: recommendedAction,
+          safety_stock: safetyStock,
+          reorder_point: reorderPoint,
+          lead_time_days: lt,
+          reorder_date: reorderDate,
+          window_days: windowDays,
+          trend_slope: b,
+        };
+      })
+      .filter((item) => {
+        const matchesSearch =
+          !reportSearchQuery.value ||
+          item.item_type_name
+            .toLowerCase()
+            .includes(reportSearchQuery.value.toLowerCase());
+        return matchesSearch;
+      })
+      .sort((a, b) => a.days_until_depletion - b.days_until_depletion);
+  });
+
   const getBatchRowClass = (batch) => {
     if (!batch.expiry_date) return '';
 
@@ -310,7 +643,12 @@
   };
 
   // Helper function to get transaction type icon and color
-  const getTransactionTypeInfo = (type) => {
+  const getTransactionTypeInfo = (type, adjustmentType = null) => {
+    // For disposal adjustments, show as disposal instead of adjustment
+    if (type === 'adjustment' && adjustmentType === 'disposal') {
+      return { icon: Trash, color: 'text-error', label: 'Disposed' };
+    }
+
     const typeInfo = {
       receipt: { icon: Package, color: 'text-success', label: 'Received' },
       consumption: { icon: Minus, color: 'text-warning', label: 'Consumed' },
@@ -401,6 +739,41 @@
     transactionModal.value = { show: true };
   };
 
+  // Dev: Seed usage pattern for forecasting demo
+  const seedForecastTest = async () => {
+    try {
+      // Pick the first non-expired, positive-qty batch in current inventory as target
+      const target = (currentInventory.value || []).find(
+        (b) => parseFloat(b.quantity) > 0 && b.status !== 'expired'
+      );
+      if (!target) {
+        showToast(
+          'error',
+          'No eligible inventory to seed (need non-expired with stock)'
+        );
+        return;
+      }
+      // Build a simple increasing usage pattern within the last 30 days
+      const today = new Date();
+      const daysOffsets = [28, 21, 14, 7, 3, 1];
+      const quantities = [1, 2, 3, 4, 6, 8];
+      const entries = daysOffsets.map((d, i) => {
+        const dt = new Date(today);
+        dt.setDate(today.getDate() - d);
+        return { date: dt, quantity: quantities[i] };
+      });
+      await inventoryStore.seedTestConsumption(target.id, entries);
+      showToast('success', 'Seeded test usage successfully');
+    } catch (err) {
+      console.error('Seed usage failed:', err);
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Failed to seed test usage';
+      showToast('error', msg);
+    }
+  };
+
   const closeModal = () => {
     modal.value = { type: null, show: false, item: null };
   };
@@ -430,6 +803,263 @@
 
   const viewItemDetails = (item) => {
     showToast('info', `Viewing details for ${item.item_type_name}`);
+  };
+
+  // Enhanced Reports helper functions
+  const getValuePercentage = (value) => {
+    const total = filteredInventorySummary.value.reduce(
+      (sum, item) => sum + parseFloat(item.total_value || 0),
+      0
+    );
+    return total > 0 ? (parseFloat(value || 0) / total) * 100 : 0;
+  };
+
+  const toggleCategoryDetails = (categoryId) => {
+    if (expandedCategories.value.has(categoryId)) {
+      expandedCategories.value.delete(categoryId);
+    } else {
+      expandedCategories.value.add(categoryId);
+    }
+  };
+
+  const getConditionBadgeClass = (status) => {
+    const classes = {
+      available: 'badge-success',
+      reserved: 'badge-warning',
+      expired: 'badge-error',
+      damaged: 'badge-error',
+    };
+    return classes[status] || 'badge-neutral';
+  };
+
+  const getExpiryStatusBadgeClass = (expiryDate) => {
+    const days = getDaysUntilExpiry(expiryDate);
+    if (days <= 0) return 'badge-error';
+    if (days <= 3) return 'badge-warning';
+    if (days <= 7) return 'badge-info';
+    return 'badge-success';
+  };
+
+  const getExpiryStatusText = (expiryDate) => {
+    const days = getDaysUntilExpiry(expiryDate);
+    if (days <= 0) return 'Expired';
+    if (days <= 3) return `${days}d left`;
+    if (days <= 7) return `${days}d left`;
+    return 'Good';
+  };
+
+  const getStockLevelBadgeClass = (item) => {
+    // Find if this item has low stock alert
+    const lowStockItem = lowStockItems.value.find(
+      (ls) => ls.item_type_id === item.item_type_id
+    );
+    if (lowStockItem) {
+      const severity = getLowStockSeverity(lowStockItem);
+      if (severity === 'critical') return 'badge-error';
+      if (severity === 'warning') return 'badge-warning';
+    }
+    return 'badge-success';
+  };
+
+  const getStockLevelText = (item) => {
+    const lowStockItem = lowStockItems.value.find(
+      (ls) => ls.item_type_id === item.item_type_id
+    );
+    if (lowStockItem) {
+      const severity = getLowStockSeverity(lowStockItem);
+      if (severity === 'critical') return 'Critical';
+      if (severity === 'warning') return 'Low';
+    }
+    return 'Normal';
+  };
+
+  const getForecastText = (item) => {
+    const forecast = inventoryForecasts.value.find(
+      (f) => f.item_type_id === item.item_type_id
+    );
+    if (!forecast) return 'N/A';
+
+    if (forecast.avg_daily_usage <= 0) return 'No usage';
+    return `${forecast.projected_demand.toFixed(0)} units`;
+  };
+
+  const getDepletionWarningClass = (days) => {
+    if (days <= 7) return 'text-error font-bold';
+    if (days <= 14) return 'text-warning font-medium';
+    if (days <= 30) return 'text-info';
+    return 'text-success';
+  };
+
+  const getActionBadgeClass = (action) => {
+    const classes = {
+      'Urgent Reorder': 'badge-error',
+      'Plan Reorder': 'badge-warning',
+      'Schedule Review': 'badge-info',
+      Monitor: 'badge-success',
+    };
+    return classes[action] || 'badge-neutral';
+  };
+
+  const refreshReportData = async () => {
+    try {
+      await Promise.all([
+        inventoryStore.fetchCurrentInventory(),
+        inventoryStore.fetchInventorySummary(),
+        inventoryStore.fetchLowStockItems(),
+        inventoryStore.fetchRecentActivity(),
+      ]);
+      showToast('success', 'Report data refreshed successfully');
+    } catch (error) {
+      showToast('error', 'Failed to refresh report data');
+    }
+  };
+
+  // Export functions
+  const exportDetailedInventory = () => {
+    const data = detailedCategoryReport.value.flatMap((category) =>
+      category.items.map((item) => ({
+        Category: category.category_name,
+        'Item Name': item.item_type_name,
+        Batch: item.batch_number || 'N/A',
+        Quantity: item.quantity,
+        Unit: item.unit_of_measure,
+        'Unit Cost': item.unit_cost,
+        'Total Value': item.total_value,
+        Status: item.status,
+        'Expiry Date': item.expiry_date ? formatDate(item.expiry_date) : 'N/A',
+        Supplier: item.supplier_name || 'N/A',
+      }))
+    );
+    downloadCSV(data, 'detailed_inventory_report.csv');
+  };
+
+  const exportValueAnalysis = () => {
+    const data = filteredInventorySummary.value.map((summary) => ({
+      Category: summary.category_name,
+      'Total Items': summary.unique_items,
+      'Total Quantity': summary.total_quantity,
+      'Total Value': summary.total_value,
+      Percentage: getValuePercentage(summary.total_value).toFixed(2) + '%',
+    }));
+    downloadCSV(data, 'value_analysis_report.csv');
+  };
+
+  const exportForecastReport = () => {
+    const data = inventoryForecasts.value.map((forecast) => ({
+      Item: forecast.item_type_name,
+      'Current Stock': forecast.current_stock,
+      'Avg Daily Usage': forecast.avg_daily_usage.toFixed(2),
+      'Projected Demand': forecast.projected_demand.toFixed(0),
+      'Days Until Depletion': forecast.days_until_depletion,
+      'Recommended Action': forecast.recommended_action,
+    }));
+    downloadCSV(data, 'forecast_report.csv');
+  };
+
+  const exportLowStockAlert = () => {
+    const data = lowStockAlertItems.value.map((item) => ({
+      Item: item.item_type_name,
+      Category: item.category_name,
+      'Current Stock': item.current_stock,
+      'Min Level': item.min_stock_level,
+      Variance:
+        parseFloat(item.current_stock) - parseFloat(item.min_stock_level),
+      'Days of Cover': estimateDaysOfCover(item),
+    }));
+    downloadCSV(data, 'low_stock_alert.csv');
+  };
+
+  const downloadCSV = (data, filename) => {
+    if (data.length === 0) {
+      showToast('error', 'No data to export');
+      return;
+    }
+
+    const headers = Object.keys(data[0]);
+    const csvContent = [
+      headers.join(','),
+      ...data.map((row) =>
+        headers.map((header) => `"${row[header] || ''}"`).join(',')
+      ),
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    showToast('success', `${filename} exported successfully`);
+  };
+
+  // Disposed Items functions
+  const loadDisposedItems = async () => {
+    try {
+      const filters = {
+        category_id: disposedCategoryFilter.value,
+        disposed_from: disposedFromDate.value,
+        disposed_to: disposedToDate.value,
+      };
+
+      const items = await inventoryStore.fetchDisposedItems(filters);
+
+      // Normalize fields coming from the backend join
+      disposedItems.value = items.map((item) => {
+        const originalQty = parseFloat(item.original_quantity || 0); // from tr.quantity alias
+        const unitCost = parseFloat(item.unit_cost || 0);
+        return {
+          ...item,
+          original_quantity: originalQty,
+          original_value: originalQty * unitCost,
+        };
+      });
+
+      showToast('success', `Loaded ${items.length} disposed items`);
+    } catch (error) {
+      showToast('error', 'Failed to load disposed items');
+    }
+  };
+
+  const refreshDisposedItems = async () => {
+    await loadDisposedItems();
+  };
+
+  const getTotalDisposalCost = () => {
+    return disposedItems.value.reduce(
+      (sum, item) => sum + parseFloat(item.disposal_cost || 0),
+      0
+    );
+  };
+
+  const getTotalOriginalValue = () => {
+    return disposedItems.value.reduce((sum, item) => {
+      const qty = parseFloat(item.original_quantity || 0);
+      const cost = parseFloat(item.unit_cost || 0);
+      return sum + qty * cost;
+    }, 0);
+  };
+
+  const exportDisposedItems = () => {
+    const data = disposedItems.value.map((item) => ({
+      'Item Name': item.item_type_name,
+      Category: item.category_name,
+      'Batch Number': item.batch_number || 'N/A',
+      'Original Quantity': item.original_quantity,
+      'Unit of Measure': item.unit_of_measure,
+      'Unit Cost': item.unit_cost,
+      'Original Value': item.total_value,
+      'Disposal Cost': item.disposal_cost,
+      'Disposed Date': formatDate(item.disposed_date),
+      'Disposed By': item.disposed_by,
+      'Disposal Reason': item.disposal_reason || '',
+      'Disposal Notes': item.disposal_notes || '',
+      Supplier: item.supplier_name || 'N/A',
+    }));
+    downloadCSV(data, 'disposed_items_report.csv');
   };
 
   const adjustItem = (item) => {
@@ -595,6 +1225,9 @@
         inventoryStore.fetchLowStockItems(),
         inventoryStore.fetchRecentActivity(),
       ]);
+
+      // Load disposed items for reports
+      await loadDisposedItems();
 
       // Add this debug logging
       console.log('Debug - Categories:', categories.value);
@@ -882,7 +1515,10 @@
                   <div class="flex-shrink-0">
                     <component
                       :is="
-                        getTransactionTypeInfo(activity.transaction_type).icon
+                        getTransactionTypeInfo(
+                          activity.transaction_type,
+                          activity.adjustment_type
+                        ).icon
                       "
                       class="w-4 h-4"
                     />
@@ -910,13 +1546,17 @@
                         <div
                           class="text-sm font-medium"
                           :class="
-                            getTransactionTypeInfo(activity.transaction_type)
-                              .color
+                            getTransactionTypeInfo(
+                              activity.transaction_type,
+                              activity.adjustment_type
+                            ).color
                           "
                         >
                           {{
-                            getTransactionTypeInfo(activity.transaction_type)
-                              .label
+                            getTransactionTypeInfo(
+                              activity.transaction_type,
+                              activity.adjustment_type
+                            ).label
                           }}
                         </div>
                         <div class="text-xs text-gray-600">
@@ -1478,75 +2118,640 @@
 
         <!-- Reports Tab -->
         <div v-if="activeTab === 'reports'" class="space-y-6">
-          <h2
-            class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl mb-4"
+          <div
+            class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
           >
-            Inventory Reports
-          </h2>
+            <h2
+              class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl"
+            >
+              Enhanced Inventory Reports
+            </h2>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- Category Value Report -->
+            <!-- Report Controls -->
+            <div class="flex flex-wrap gap-2">
+              <select
+                v-model="reportPeriod"
+                class="select select-bordered select-sm"
+              >
+                <option value="current">Current Period</option>
+                <option value="last_month">vs Last Month</option>
+                <option value="last_quarter">vs Last Quarter</option>
+              </select>
+              <button @click="refreshReportData" class="btn btn-sm btn-outline">
+                <RefreshCcw class="w-4 h-4 mr-1" />
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <!-- Search and Filter for Reports -->
+          <div class="flex flex-col sm:flex-row gap-4 mb-6">
+            <div class="join flex-1">
+              <input
+                v-model="reportSearchQuery"
+                type="text"
+                placeholder="Search items in reports..."
+                class="input input-bordered input-sm join-item flex-1"
+              />
+              <button class="btn btn-sm join-item">
+                <Search class="w-4 h-4" />
+              </button>
+            </div>
+            <select
+              v-model="reportCategoryFilter"
+              class="select select-bordered select-sm"
+            >
+              <option value="">All Categories</option>
+              <option
+                v-for="category in categories"
+                :key="category.id"
+                :value="category.id"
+              >
+                {{ category.name }}
+              </option>
+            </select>
+            <select
+              v-model="reportConditionFilter"
+              class="select select-bordered select-sm"
+            >
+              <option value="">All Conditions</option>
+              <option value="available">Available</option>
+              <option value="expired">Expired</option>
+              <option value="damaged">Damaged</option>
+              <option value="reserved">Reserved</option>
+            </select>
+          </div>
+
+          <!-- Visual Analytics Dashboard -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <!-- Inventory Distribution Chart -->
             <div class="card bg-base-100 border border-gray-200">
               <div class="card-body p-4">
                 <h3
                   class="card-title text-sm font-semibold text-primaryColor mb-4"
                 >
-                  Category Value Summary
+                  <BarChart3 class="w-4 h-4 mr-2" />
+                  Inventory Value Distribution
                 </h3>
-                <div class="space-y-2">
-                  <div
-                    v-for="summary in inventorySummary"
-                    :key="summary.category_id"
-                    class="flex justify-between items-center p-2 bg-gray-50 rounded"
-                  >
-                    <span class="text-sm font-medium">{{
-                      summary.category_name
-                    }}</span>
-                    <span class="text-sm font-bold"
-                      >₱{{
-                        parseFloat(summary.total_value || 0).toLocaleString()
-                      }}</span
+                <div class="h-64 flex items-center justify-center">
+                  <div class="w-full space-y-3">
+                    <div
+                      v-for="summary in filteredInventorySummary"
+                      :key="summary.category_id"
+                      class="relative"
                     >
+                      <div class="flex justify-between items-center mb-1">
+                        <span class="text-xs font-medium">{{
+                          summary.category_name
+                        }}</span>
+                        <span class="text-xs"
+                          >₱{{
+                            parseFloat(
+                              summary.total_value || 0
+                            ).toLocaleString()
+                          }}</span
+                        >
+                      </div>
+                      <div class="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          class="bg-primaryColor h-2 rounded-full transition-all duration-300"
+                          :style="{
+                            width:
+                              getValuePercentage(summary.total_value) + '%',
+                          }"
+                        ></div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <!-- Quick Stats -->
+            <!-- Stock Movement Trends -->
             <div class="card bg-base-100 border border-gray-200">
               <div class="card-body p-4">
                 <h3
                   class="card-title text-sm font-semibold text-primaryColor mb-4"
                 >
-                  Quick Statistics
+                  <TrendingDown class="w-4 h-4 mr-2" />
+                  Recent Stock Movements (7 Days)
                 </h3>
-                <div class="space-y-3">
-                  <div class="flex justify-between">
-                    <span class="text-sm">Total Categories:</span>
-                    <span class="text-sm font-bold">{{
-                      categories.length
-                    }}</span>
+                <div class="space-y-2 max-h-60 overflow-y-auto">
+                  <div
+                    v-for="movement in recentStockMovements"
+                    :key="movement.id"
+                    class="flex justify-between items-center p-2 bg-gray-50 rounded text-xs"
+                  >
+                    <div class="flex items-center gap-2">
+                      <component
+                        :is="
+                          getTransactionTypeInfo(
+                            movement.transaction_type,
+                            movement.adjustment_type
+                          ).icon
+                        "
+                        class="w-3 h-3"
+                      />
+                      <span class="font-medium">{{
+                        movement.item_type_name
+                      }}</span>
+                    </div>
+                    <div class="text-right">
+                      <div
+                        class="font-medium"
+                        :class="
+                          getTransactionTypeInfo(
+                            movement.transaction_type,
+                            movement.adjustment_type
+                          ).color
+                        "
+                      >
+                        {{
+                          movement.transaction_type === 'consumption'
+                            ? '-'
+                            : '+'
+                        }}{{ parseFloat(movement.quantity).toLocaleString() }}
+                      </div>
+                      <div class="text-gray-500">
+                        {{ formatTransactionDate(movement.transaction_date) }}
+                      </div>
+                    </div>
                   </div>
-                  <div class="flex justify-between">
-                    <span class="text-sm">Total Item Types:</span>
-                    <span class="text-sm font-bold">{{
-                      itemTypes.length
-                    }}</span>
+                  <div
+                    v-if="recentStockMovements.length === 0"
+                    class="text-center py-4 text-gray-500"
+                  >
+                    No recent movements
                   </div>
-                  <div class="flex justify-between">
-                    <span class="text-sm">Active Items:</span>
-                    <span class="text-sm font-bold">{{
-                      currentInventory.length
-                    }}</span>
-                  </div>
-                  <div class="flex justify-between">
-                    <span class="text-sm">Total Value:</span>
-                    <span class="text-sm font-bold"
-                      >₱{{
-                        (stats.total_available_value || 0).toLocaleString()
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Enhanced Category Breakdown with Item Details -->
+          <div class="space-y-4">
+            <div
+              v-for="category in detailedCategoryReport"
+              :key="category.category_id"
+              class="card bg-base-100 border border-gray-200"
+            >
+              <div class="card-body p-4">
+                <div class="flex justify-between items-center mb-4">
+                  <h3
+                    class="card-title text-sm font-semibold text-primaryColor"
+                  >
+                    {{ category.category_name }}
+                  </h3>
+                  <div class="flex items-center gap-4">
+                    <span class="text-sm font-medium"
+                      >Total Value: ₱{{
+                        parseFloat(category.total_value || 0).toLocaleString()
                       }}</span
                     >
+                    <button
+                      @click="toggleCategoryDetails(category.category_id)"
+                      class="btn btn-ghost btn-xs"
+                    >
+                      <ChevronDown
+                        v-if="!expandedCategories.has(category.category_id)"
+                        class="w-4 h-4"
+                      />
+                      <ChevronUp v-else class="w-4 h-4" />
+                    </button>
                   </div>
+                </div>
+
+                <!-- Category Summary Stats -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                  <div class="text-center p-2 bg-gray-50 rounded">
+                    <div class="text-lg font-bold text-primaryColor">
+                      {{ category.total_items }}
+                    </div>
+                    <div class="text-xs text-gray-600">Total Items</div>
+                  </div>
+                  <div class="text-center p-2 bg-gray-50 rounded">
+                    <div class="text-lg font-bold text-success">
+                      {{ category.available_items }}
+                    </div>
+                    <div class="text-xs text-gray-600">Available</div>
+                  </div>
+                  <div class="text-center p-2 bg-gray-50 rounded">
+                    <div class="text-lg font-bold text-warning">
+                      {{ category.expiring_items }}
+                    </div>
+                    <div class="text-xs text-gray-600">Expiring</div>
+                  </div>
+                  <div class="text-center p-2 bg-gray-50 rounded">
+                    <div class="text-lg font-bold text-error">
+                      {{ category.expired_items }}
+                    </div>
+                    <div class="text-xs text-gray-600">Expired</div>
+                  </div>
+                </div>
+
+                <!-- Detailed Item Breakdown -->
+                <div
+                  v-if="expandedCategories.has(category.category_id)"
+                  class="mt-4"
+                >
+                  <div class="overflow-x-auto">
+                    <table class="table table-zebra table-xs w-full">
+                      <thead>
+                        <tr class="bg-base-200">
+                          <th>Item Name</th>
+                          <th>Quantity</th>
+                          <th>Unit Value</th>
+                          <th>Total Value</th>
+                          <th>Condition</th>
+                          <th>Expiry Status</th>
+                          <th>Stock Level</th>
+                          <th>Forecast</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr
+                          v-for="item in category.items"
+                          :key="item.id"
+                          class="hover:bg-base-100"
+                        >
+                          <td>
+                            <div class="font-medium">
+                              {{ item.item_type_name }}
+                            </div>
+                            <div class="text-xs text-gray-500">
+                              {{ item.batch_number || 'No batch' }}
+                            </div>
+                          </td>
+                          <td class="font-medium">
+                            {{ parseFloat(item.quantity).toLocaleString() }}
+                            {{ item.unit_of_measure }}
+                          </td>
+                          <td>
+                            ₱{{
+                              parseFloat(item.unit_cost || 0).toLocaleString()
+                            }}
+                          </td>
+                          <td class="font-medium">
+                            ₱{{
+                              parseFloat(item.total_value || 0).toLocaleString()
+                            }}
+                          </td>
+                          <td>
+                            <span
+                              :class="getConditionBadgeClass(item.status)"
+                              class="badge badge-xs"
+                            >
+                              {{ item.status }}
+                            </span>
+                          </td>
+                          <td>
+                            <span
+                              v-if="item.expiry_date"
+                              :class="
+                                getExpiryStatusBadgeClass(item.expiry_date)
+                              "
+                              class="badge badge-xs"
+                            >
+                              {{ getExpiryStatusText(item.expiry_date) }}
+                            </span>
+                            <span v-else class="text-gray-400 text-xs"
+                              >No expiry</span
+                            >
+                          </td>
+                          <td>
+                            <span
+                              :class="getStockLevelBadgeClass(item)"
+                              class="badge badge-xs"
+                            >
+                              {{ getStockLevelText(item) }}
+                            </span>
+                          </td>
+                          <td>
+                            <div class="text-xs">
+                              <div class="font-medium">
+                                {{ getForecastText(item) }}
+                              </div>
+                              <div class="text-gray-500">Next 30d</div>
+                            </div>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Low Stock Alerts Section -->
+          <div class="card bg-base-100 border border-gray-200">
+            <div class="card-body p-4">
+              <h3 class="card-title text-sm font-semibold text-error mb-4">
+                <AlertTriangle class="w-4 h-4 mr-2" />
+                Low Stock Alerts
+              </h3>
+              <div class="space-y-2">
+                <div
+                  v-for="item in lowStockAlertItems"
+                  :key="item.item_type_id"
+                  class="flex justify-between items-center p-3 bg-error/10 border border-error/20 rounded"
+                >
+                  <div>
+                    <div class="font-medium text-error">
+                      {{ item.item_type_name }}
+                    </div>
+                    <div class="text-xs text-gray-600">
+                      Current:
+                      {{ parseFloat(item.current_stock).toLocaleString() }} |
+                      Min:
+                      {{ parseFloat(item.min_stock_level).toLocaleString() }}
+                    </div>
+                  </div>
+                  <div class="flex gap-2">
+                    <button class="btn btn-xs btn-outline btn-error">
+                      Reorder
+                    </button>
+                    <button class="btn btn-xs btn-ghost">View Details</button>
+                  </div>
+                </div>
+                <div
+                  v-if="lowStockAlertItems.length === 0"
+                  class="text-center py-4 text-gray-500"
+                >
+                  No low stock alerts
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Forecasting Section -->
+          <div class="card bg-base-100 border border-gray-200">
+            <div class="card-body p-4">
+              <div class="flex justify-between items-center mb-4">
+                <h3 class="card-title text-sm font-semibold text-primaryColor">
+                  <BarChart3 class="w-4 h-4 mr-2" />
+                  Inventory Forecasting
+                </h3>
+                <div class="flex gap-2 flex-wrap items-center">
+                  <select
+                    v-model="forecastPeriod"
+                    class="select select-bordered select-xs"
+                  >
+                    <option value="30">30 Days</option>
+                    <option value="60">60 Days</option>
+                    <option value="90">90 Days</option>
+                  </select>
+                  <select
+                    v-model="forecastMethod"
+                    class="select select-bordered select-xs"
+                  >
+                    <option value="moving_average">Moving Average</option>
+                    <option value="linear_trend">Linear Trend</option>
+                  </select>
+                  <select
+                    v-model="windowProfile"
+                    class="select select-bordered select-xs"
+                  >
+                    <option value="auto">Window: Auto</option>
+                    <option value="fast">Window: Fast (14d)</option>
+                    <option value="medium">Window: Medium (30d)</option>
+                    <option value="slow">Window: Slow (60d)</option>
+                    <option value="custom">Window: Custom</option>
+                  </select>
+                  <input
+                    v-if="windowProfile === 'custom'"
+                    v-model.number="customWindowDays"
+                    type="number"
+                    min="7"
+                    class="input input-bordered input-xs w-20"
+                    placeholder="Days"
+                  />
+                  <input
+                    v-model.number="leadTimeDays"
+                    type="number"
+                    min="0"
+                    class="input input-bordered input-xs w-24"
+                    placeholder="Lead time (d)"
+                  />
+                  <input
+                    v-model.number="serviceLevel"
+                    type="number"
+                    step="0.01"
+                    min="0.5"
+                    max="0.999"
+                    class="input input-bordered input-xs w-28"
+                    placeholder="Service lvl (0.95)"
+                  />
+                  <button class="btn btn-xs" @click="seedForecastTest">
+                    Test Usage
+                  </button>
+                </div>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="table table-zebra table-xs w-full">
+                  <thead>
+                    <tr class="bg-base-200">
+                      <th>Item</th>
+                      <th>Current Stock</th>
+                      <th>Avg Daily Usage</th>
+                      <th>Projected Demand</th>
+                      <th>ROP</th>
+                      <th>Reorder Date</th>
+                      <th>Estimated Depletion</th>
+                      <th>Recommended Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="forecast in inventoryForecasts"
+                      :key="forecast.item_type_id"
+                      class="hover:bg-base-100"
+                    >
+                      <td class="font-medium">{{ forecast.item_type_name }}</td>
+                      <td>
+                        {{
+                          parseFloat(forecast.current_stock).toLocaleString()
+                        }}
+                      </td>
+                      <td>{{ forecast.avg_daily_usage.toFixed(2) }}</td>
+                      <td>{{ forecast.projected_demand.toFixed(0) }}</td>
+                      <td>
+                        {{ Math.ceil(forecast.reorder_point).toLocaleString() }}
+                      </td>
+                      <td>{{ forecast.reorder_date }}</td>
+                      <td>
+                        <span
+                          :class="
+                            getDepletionWarningClass(
+                              forecast.days_until_depletion
+                            )
+                          "
+                        >
+                          {{
+                            forecast.days_until_depletion > 0
+                              ? forecast.days_until_depletion + ' days'
+                              : 'Critical'
+                          }}
+                        </span>
+                      </td>
+                      <td>
+                        <span
+                          :class="
+                            getActionBadgeClass(forecast.recommended_action)
+                          "
+                          class="badge badge-xs"
+                        >
+                          {{ forecast.recommended_action }}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Disposed Items Report -->
+          <div class="card bg-base-100 border border-gray-200">
+            <div class="card-body p-4">
+              <div class="flex justify-between items-center mb-4">
+                <h3 class="card-title text-sm font-semibold text-error">
+                  <Trash class="w-4 h-4 mr-2" />
+                  Disposed Items Report
+                </h3>
+                <button
+                  @click="refreshDisposedItems"
+                  class="btn btn-xs btn-outline"
+                >
+                  <RefreshCcw class="w-3 h-3 mr-1" />
+                  Refresh
+                </button>
+              </div>
+
+              <!-- Disposed Items Filters -->
+              <div class="flex flex-wrap gap-2 mb-4">
+                <input
+                  v-model="disposedFromDate"
+                  type="date"
+                  class="input input-bordered input-xs"
+                  placeholder="From Date"
+                />
+                <input
+                  v-model="disposedToDate"
+                  type="date"
+                  class="input input-bordered input-xs"
+                  placeholder="To Date"
+                />
+                <select
+                  v-model="disposedCategoryFilter"
+                  class="select select-bordered select-xs"
+                >
+                  <option value="">All Categories</option>
+                  <option
+                    v-for="category in categories"
+                    :key="category.id"
+                    :value="category.id"
+                  >
+                    {{ category.name }}
+                  </option>
+                </select>
+                <button
+                  @click="loadDisposedItems"
+                  class="btn btn-xs btn-primary"
+                >
+                  Apply Filters
+                </button>
+              </div>
+
+              <!-- Disposed Items Table -->
+              <div class="overflow-x-auto max-h-80">
+                <table class="table table-zebra table-xs w-full">
+                  <thead>
+                    <tr class="bg-base-200">
+                      <th>Item Name</th>
+                      <th>Category</th>
+                      <th>Batch #</th>
+                      <th>Original Qty</th>
+                      <th>Disposal Cost</th>
+                      <th>Disposed Date</th>
+                      <th>Disposed By</th>
+                      <th>Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="item in disposedItems"
+                      :key="item.id"
+                      class="hover:bg-base-100"
+                    >
+                      <td>
+                        <div class="font-medium">{{ item.item_type_name }}</div>
+                        <div class="text-xs text-gray-500">
+                          {{ item.item_name || 'N/A' }}
+                        </div>
+                      </td>
+                      <td>{{ item.category_name }}</td>
+                      <td class="font-mono text-xs">
+                        {{ item.batch_number || 'N/A' }}
+                      </td>
+                      <td>
+                        {{
+                          parseFloat(
+                            item.original_quantity || 0
+                          ).toLocaleString()
+                        }}
+                        {{ item.unit_of_measure }}
+                      </td>
+                      <td class="font-medium text-error">
+                        ₱{{
+                          parseFloat(item.disposal_cost || 0).toLocaleString()
+                        }}
+                      </td>
+                      <td>{{ formatDate(item.disposed_date) }}</td>
+                      <td>{{ item.disposed_by || 'N/A' }}</td>
+                      <td
+                        class="max-w-32 truncate"
+                        :title="item.disposal_reason"
+                      >
+                        {{ item.disposal_reason || 'N/A' }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <div
+                  v-if="disposedItems.length === 0"
+                  class="text-center py-8 text-gray-500"
+                >
+                  <Trash class="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                  <p>No disposed items found</p>
+                  <p class="text-xs">Items will appear here after disposal</p>
+                </div>
+              </div>
+
+              <!-- Disposal Summary -->
+              <div
+                v-if="disposedItems.length > 0"
+                class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4"
+              >
+                <div class="text-center p-3 bg-error/10 rounded">
+                  <div class="text-lg font-bold text-error">
+                    {{ disposedItems.length }}
+                  </div>
+                  <div class="text-xs text-gray-600">Total Items Disposed</div>
+                </div>
+                <div class="text-center p-3 bg-error/10 rounded">
+                  <div class="text-lg font-bold text-error">
+                    ₱{{ getTotalDisposalCost().toLocaleString() }}
+                  </div>
+                  <div class="text-xs text-gray-600">Total Disposal Cost</div>
+                </div>
+                <div class="text-center p-3 bg-error/10 rounded">
+                  <div class="text-lg font-bold text-error">
+                    ₱{{ getTotalOriginalValue().toLocaleString() }}
+                  </div>
+                  <div class="text-xs text-gray-600">Original Value Lost</div>
                 </div>
               </div>
             </div>
@@ -1558,20 +2763,43 @@
               <h3
                 class="card-title text-sm font-semibold text-primaryColor mb-4"
               >
-                Export Reports
+                Export Enhanced Reports
               </h3>
               <div class="flex flex-wrap gap-2">
-                <button class="btn btn-sm btn-outline">
+                <button
+                  class="btn btn-sm btn-outline"
+                  @click="exportDetailedInventory"
+                >
                   <History class="w-4 h-4 mr-1" />
-                  Export Inventory List
+                  Export Detailed Inventory
                 </button>
-                <button class="btn btn-sm btn-outline">
+                <button
+                  class="btn btn-sm btn-outline"
+                  @click="exportValueAnalysis"
+                >
                   <BarChart3 class="w-4 h-4 mr-1" />
-                  Export Value Report
+                  Export Value Analysis
                 </button>
-                <button class="btn btn-sm btn-outline">
+                <button
+                  class="btn btn-sm btn-outline"
+                  @click="exportForecastReport"
+                >
                   <TrendingDown class="w-4 h-4 mr-1" />
-                  Export Transaction History
+                  Export Forecast Report
+                </button>
+                <button
+                  class="btn btn-sm btn-outline"
+                  @click="exportLowStockAlert"
+                >
+                  <AlertTriangle class="w-4 h-4 mr-1" />
+                  Export Low Stock Alert
+                </button>
+                <button
+                  class="btn btn-sm btn-outline"
+                  @click="exportDisposedItems"
+                >
+                  <Trash class="w-4 h-4 mr-1" />
+                  Export Disposed Items
                 </button>
               </div>
             </div>

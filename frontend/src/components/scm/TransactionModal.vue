@@ -13,6 +13,7 @@
     Trash,
     Handshake,
     ArrowRightLeft,
+    Trash2,
   } from 'lucide-vue-next';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
 
@@ -124,7 +125,17 @@
     });
   };
 
-  const getTransactionTypeInfo = (type) => {
+  const getTransactionTypeInfo = (type, adjustmentType = null) => {
+    // For disposal adjustments, show as disposal instead of adjustment
+    if (type === 'adjustment' && adjustmentType === 'disposal') {
+      return {
+        icon: Trash2,
+        color: 'text-error',
+        label: 'Disposed',
+        bgColor: 'bg-error/10',
+      };
+    }
+
     const typeInfo = {
       receipt: {
         icon: Handshake,
@@ -533,21 +544,27 @@
                     <div class="flex items-center gap-2">
                       <component
                         :is="
-                          getTransactionTypeInfo(transaction.transaction_type)
-                            .icon
+                          getTransactionTypeInfo(
+                            transaction.transaction_type,
+                            transaction.adjustment_type
+                          ).icon
                         "
                         class="w-4 h-4"
                       />
                       <span
                         class="badge badge-sm"
                         :class="
-                          getTransactionTypeInfo(transaction.transaction_type)
-                            .bgColor
+                          getTransactionTypeInfo(
+                            transaction.transaction_type,
+                            transaction.adjustment_type
+                          ).bgColor
                         "
                       >
                         {{
-                          getTransactionTypeInfo(transaction.transaction_type)
-                            .label
+                          getTransactionTypeInfo(
+                            transaction.transaction_type,
+                            transaction.adjustment_type
+                          ).label
                         }}
                       </span>
                     </div>

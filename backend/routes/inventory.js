@@ -411,6 +411,30 @@ router.get("/alerts/low-stock", async (req, res) => {
   }
 });
 
+// Get disposed items
+router.get("/disposed", async (req, res) => {
+  try {
+    const filters = {
+      category_id: req.query.category_id || "",
+      item_type_id: req.query.item_type_id || "",
+      disposed_from: req.query.disposed_from || "",
+      disposed_to: req.query.disposed_to || "",
+    };
+
+    const disposedItems = await Inventory.getDisposedItems(filters);
+    res.json({
+      success: true,
+      data: disposedItems,
+    });
+  } catch (error) {
+    console.error("Error fetching disposed items:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch disposed items",
+    });
+  }
+});
+
 // Single item consumption
 router.post("/consumption/single", async (req, res) => {
   try {

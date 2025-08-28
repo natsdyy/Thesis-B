@@ -77,7 +77,7 @@
   };
 
   const goBackHome = () => {
-    router.push('/home');
+    router.push('/');
   };
 
   const login = async () => {

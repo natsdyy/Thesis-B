@@ -65,6 +65,45 @@
     return targetDate.toISOString().split('T')[0];
   };
 
+  // Smart pagination helper
+  const getPageRange = () => {
+    const current = requestHistoryCurrentPage.value;
+    const total = totalPagesRequestHistory.value;
+    const range = [];
+
+    // Show pages around current page
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+
+    for (let i = start; i <= end; i++) {
+      if (i !== 1 && i !== total) {
+        range.push(i);
+      }
+    }
+
+    return range;
+  };
+
+  // Add helper functions for better date/time formatting
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-PH', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'Asia/Manila',
+    });
+  };
+
+  const formatTime = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('en-PH', {
+      timeZone: 'Asia/Manila',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
   // Request history filter
   const requestHistoryFilter = ref({
     searchQuery: '',
@@ -202,14 +241,49 @@
       );
 
       if (selectedItemType) {
-        // Auto-populate unit from inventory
-        row.item_unit = selectedItemType.unit_of_measure;
+        // For "Other Materials", allow user to select unit
+        if (row.item_type === 'Other Materials') {
+          // Don't auto-populate, let user choose
+          row.item_unit = '';
+        } else {
+          // Auto-populate unit from inventory for other types
+          row.item_unit = selectedItemType.unit_of_measure;
+        }
       } else {
         // Fallback to default
         row.item_unit = 'pieces';
       }
     }
   };
+
+  // Function to check if unit selection is required for a row
+  const isUnitSelectionRequired = (row) => {
+    return row.item_type === 'Other Materials';
+  };
+
+  // Common unit options for "Other Materials"
+  const commonUnitOptions = [
+    'pieces',
+    'kg',
+    'liters',
+    'boxes',
+    'cases',
+    'packs',
+    'sets',
+    'reams',
+    'bottles',
+    'cans',
+    'bags',
+    'rolls',
+    'sheets',
+    'meters',
+    'yards',
+    'dozens',
+    'pairs',
+    'units',
+    'items',
+    'containers',
+  ];
 
   const priorities = ['Low', 'Normal', 'High', 'Urgent'];
   const departments = ['SCM', 'Finance', 'HR', 'Production', 'Admin', 'Branch'];
@@ -677,13 +751,15 @@
         (row) =>
           row.item_name.trim() &&
           row.item_quantity > 0 &&
-          row.item_unitPrice > 0
+          row.item_unitPrice > 0 &&
+          // For "Other Materials", ensure unit is selected
+          (row.item_type !== 'Other Materials' || row.item_unit.trim())
       );
 
       if (validItems.length === 0) {
         showToast(
           'error',
-          'Please add at least one valid item with name, quantity, and price'
+          'Please add at least one valid item with name, quantity, and price. For "Other Materials", please also select a unit.'
         );
         return;
       }
@@ -733,11 +809,16 @@
         (row) =>
           row.item_name.trim() &&
           row.item_quantity > 0 &&
-          row.item_unitPrice > 0
+          row.item_unitPrice > 0 &&
+          // For "Other Materials", ensure unit is selected
+          (row.item_type !== 'Other Materials' || row.item_unit.trim())
       );
 
       if (validItems.length === 0) {
-        showToast('error', 'Please add at least one valid item');
+        showToast(
+          'error',
+          'Please add at least one valid item. For "Other Materials", please also select a unit.'
+        );
         return;
       }
 
@@ -1597,7 +1678,9 @@
             <PhilippinePeso class="w-6 h-6 mr-2 text-success" />
             Budget Released - Confirm Receipt
           </h2>
-          <div class="badge badge-success badge-md badge-outline">
+          <div
+            class="badge badge-md border-none font-medium bg-success/20 text-success"
+          >
             {{ pendingReceipts.length }} Pending
           </div>
         </div>
@@ -2421,11 +2504,6 @@
               of {{ filteredRequestHistory.length }} records for
               {{ getHistoryFilterDisplayText() }}
             </span>
-            <span class="font-semibold text-primaryColor">
-              Total Value: ₱{{
-                requestHistoryStats.totalAmount.toLocaleString('en-PH')
-              }}
-            </span>
           </div>
 
           <!-- Pagination with Ellipsis -->
@@ -2567,7 +2645,23 @@
               </td>
 
               <td>
+                <!-- Show dropdown for "Other Materials", readonly input for others -->
+                <select
+                  v-if="row.item_type === 'Other Materials'"
+                  v-model="row.item_unit"
+                  class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor"
+                >
+                  <option value="" disabled>Select Unit</option>
+                  <option
+                    v-for="unit in commonUnitOptions"
+                    :key="unit"
+                    :value="unit"
+                  >
+                    {{ unit }}
+                  </option>
+                </select>
                 <input
+                  v-else
                   v-model="row.item_unit"
                   type="text"
                   class="input input-xs w-full bg-gray-100 border-primaryColor/30 text-black/70"
@@ -2907,7 +3001,23 @@
                 </td>
 
                 <td>
+                  <!-- Show dropdown for "Other Materials", readonly input for others -->
+                  <select
+                    v-if="row.item_type === 'Other Materials'"
+                    v-model="row.item_unit"
+                    class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor"
+                  >
+                    <option value="" disabled>Select Unit</option>
+                    <option
+                      v-for="unit in commonUnitOptions"
+                      :key="unit"
+                      :value="unit"
+                    >
+                      {{ unit }}
+                    </option>
+                  </select>
                   <input
+                    v-else
                     v-model="row.item_unit"
                     type="text"
                     class="input input-xs w-full bg-gray-100 border-primaryColor/30 text-black/70"
@@ -3339,7 +3449,23 @@
                 </td>
 
                 <td>
+                  <!-- Show dropdown for "Other Materials", readonly input for others -->
+                  <select
+                    v-if="row.item_type === 'Other Materials'"
+                    v-model="row.item_unit"
+                    class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor"
+                  >
+                    <option value="" disabled>Select Unit</option>
+                    <option
+                      v-for="unit in commonUnitOptions"
+                      :key="unit"
+                      :value="unit"
+                    >
+                      {{ unit }}
+                    </option>
+                  </select>
                   <input
+                    v-else
                     v-model="row.item_unit"
                     type="text"
                     class="input input-xs w-full bg-gray-100 border-primaryColor/30 text-black/70"
@@ -3497,103 +3623,6 @@
     </div>
   </transition>
 </template>
-
-<script>
-  // Smart pagination helper
-  const getPageRange = () => {
-    const current = requestHistoryCurrentPage.value;
-    const total = totalPagesRequestHistory.value;
-    const range = [];
-
-    // Show pages around current page
-    const start = Math.max(2, current - 1);
-    const end = Math.min(total - 1, current + 1);
-
-    for (let i = start; i <= end; i++) {
-      if (i !== 1 && i !== total) {
-        range.push(i);
-      }
-    }
-
-    return range;
-  };
-
-  // Add helper functions for better date/time formatting
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-PH', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      timeZone: 'Asia/Manila',
-    });
-  };
-
-  const formatTime = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-PH', {
-      timeZone: 'Asia/Manila',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  // Enhanced filtering to work with backend date format
-  const filteredRequestsByDate = computed(() => {
-    const selectedDate = requestListFilter.value.selectedDate;
-
-    allRequests.value.forEach((r) => {
-      // Convert UTC to Asia/Manila and get YYYY-MM-DD
-      const manilaDate = new Date(
-        new Date(r.request_date).toLocaleString('en-US', {
-          timeZone: 'Asia/Manila',
-        })
-      );
-      const normalized = manilaDate.toLocaleDateString('en-CA', {
-        timeZone: 'Asia/Manila',
-      });
-      console.log(
-        `Request ${r.request_id}: raw=${r.request_date}, manila=${normalized}, matches=${normalized === selectedDate}`
-      );
-    });
-
-    return allRequests.value.filter((request) => {
-      const manilaDate = new Date(
-        new Date(request.request_date).toLocaleString('en-US', {
-          timeZone: 'Asia/Manila',
-        })
-      );
-      const normalized = manilaDate.toLocaleDateString('en-CA', {
-        timeZone: 'Asia/Manila',
-      });
-      return (
-        normalized === selectedDate && request.request_status !== 'Cancelled'
-      );
-    });
-  });
-
-  // Add more comprehensive stats using backend data
-  const enhancedStats = computed(() => ({
-    totalRequests: allRequests.value.length,
-    toRequest: allRequests.value.filter(
-      (r) => r.request_status === 'To Request'
-    ).length,
-    pending: allRequests.value.filter((r) => r.request_status === 'Pending')
-      .length,
-    approved: allRequests.value.filter((r) => r.request_status === 'Approved')
-      .length,
-    rejected: allRequests.value.filter((r) => r.request_status === 'Rejected')
-      .length,
-    totalAmount: allRequests.value.reduce(
-      (sum, r) => sum + parseFloat(r.total_amount || 0),
-      0
-    ),
-    totalItems: allRequests.value.reduce(
-      (sum, r) => sum + parseInt(r.item_count || 0),
-      0
-    ),
-  }));
-</script>
 
 <style scoped>
   .custom-zebra tbody tr:nth-child(even) {

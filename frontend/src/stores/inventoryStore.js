@@ -526,6 +526,71 @@ export const useInventoryStore = defineStore('inventory', () => {
     }
   };
 
+  // Fetch all transactions with filters and pagination
+  const fetchAllTransactions = async (params = {}) => {
+    try {
+      const queryParams = new URLSearchParams();
+
+      // Add all parameters to query string
+      Object.keys(params).forEach((key) => {
+        if (
+          params[key] !== '' &&
+          params[key] !== null &&
+          params[key] !== undefined
+        ) {
+          queryParams.append(key, params[key]);
+        }
+      });
+
+      const response = await axios.get(
+        `${API_BASE_URL}/inventory/transactions?${queryParams.toString()}`
+      );
+
+      if (response.data.success) {
+        return response.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch transactions'
+        );
+      }
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+      throw error;
+    }
+  };
+
+  const fetchDisposedItems = async (params = {}) => {
+    try {
+      const queryParams = new URLSearchParams();
+
+      // Add all parameters to query string
+      Object.keys(params).forEach((key) => {
+        if (
+          params[key] !== '' &&
+          params[key] !== null &&
+          params[key] !== undefined
+        ) {
+          queryParams.append(key, params[key]);
+        }
+      });
+
+      const response = await axios.get(
+        `${API_BASE_URL}/inventory/disposed?${queryParams.toString()}`
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch disposed items'
+        );
+      }
+    } catch (error) {
+      console.error('Error fetching disposed items:', error);
+      throw error;
+    }
+  };
+
   // Single consumption
   const singleConsumption = async (consumptionData) => {
     loading.value = true;
@@ -586,6 +651,47 @@ export const useInventoryStore = defineStore('inventory', () => {
         err.message ||
         'Failed to record adjustment';
       console.error('Error recording adjustment:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // DEV: Seed backdated consumption transactions for testing forecasting
+  const seedTestConsumption = async (inventoryItemId, entries = []) => {
+    // entries: [{ date: Date|string, quantity: number }]
+    loading.value = true;
+    error.value = null;
+    try {
+      for (const e of entries) {
+        const payload = {
+          transaction_type: 'consumption',
+          quantity: e.quantity,
+          reference_number: 'SEED',
+          reason: 'Test Seed',
+          notes: 'Forecasting test seed',
+          performed_by: 'Seeder',
+          transaction_date:
+            e.date instanceof Date ? e.date.toISOString() : e.date,
+        };
+        await axios.patch(
+          `${API_BASE_URL}/inventory/items/${inventoryItemId}/quantity`,
+          payload
+        );
+      }
+      // Refresh key datasets
+      await Promise.all([
+        fetchCurrentInventory(),
+        fetchRecentActivity(),
+        fetchLowStockItems(),
+      ]);
+      return true;
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to seed test consumption';
+      console.error('Error seeding test consumption:', err);
       throw err;
     } finally {
       loading.value = false;
@@ -699,11 +805,16 @@ export const useInventoryStore = defineStore('inventory', () => {
     fetchCategoriesForRequests, // New action
     fetchItemTypesByCategoryForRequests, // New action
     fetchRecentActivity,
+    fetchAllTransactions,
+    fetchDisposedItems,
     singleConsumption,
     stockAdjustment,
     configureAlert,
     getAlertConfiguration,
     acknowledgeAlert,
+
+    // Dev helpers
+    seedTestConsumption,
 
     // Helper methods
     getCategoryById,

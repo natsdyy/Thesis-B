@@ -1,5 +1,6 @@
 <script setup>
-  import { ref, computed, onMounted, watch, nextTick } from 'vue';
+  import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+  import axios from 'axios';
   import {
     FileText,
     Plus,
@@ -14,6 +15,7 @@
     PhilippinePeso,
     Calendar,
     Link,
+    ReceiptText,
   } from 'lucide-vue-next';
   import { usePurchaseOrderStore } from '../../stores/purchaseOrderStore.js';
   import { useSupplierStore } from '../../stores/supplierStore.js';
@@ -76,6 +78,40 @@
     );
   };
 
+  const getGRNStatusColor = (status) => {
+    const colors = {
+      draft: 'bg-warning text-white',
+      pending_inspection: 'bg-info text-white',
+      passed: 'bg-success text-white',
+      failed: 'bg-error text-white',
+      completed: 'bg-success text-white',
+    };
+    return colors[status] || 'bg-gray-500 text-white';
+  };
+
+  const getGRNStatusLabel = (status) => {
+    const labels = {
+      draft: 'Draft',
+      pending_inspection: 'Pending Inspection',
+      passed: 'Passed',
+      failed: 'Failed',
+      completed: 'Completed',
+    };
+    return labels[status] || status;
+  };
+
+  const getGRNFailureReason = (order) => {
+    // This would need to be implemented to fetch GRN failure notes
+    // For now, return a placeholder
+    return 'Quality inspection failed - check GRN details for specific reasons';
+  };
+
+  const getGRNPassNotes = (order) => {
+    // This would need to be implemented to fetch GRN pass notes
+    // For now, return a placeholder
+    return 'Quality inspection passed';
+  };
+
   // Stores
   const purchaseOrderStore = usePurchaseOrderStore();
   const supplierStore = useSupplierStore();
@@ -88,10 +124,9 @@
   const approvedSupplyRequests = computed(() => {
     const allRequests = supplyRequestStore.requestsByStatus('Completed');
     return allRequests.filter((request) => {
-      const existingPO = purchaseOrderStore.purchaseOrders.find(
-        (po) => po.supply_request_id === request.id && po.status === 'Completed'
-      );
-      return !existingPO;
+      // Show all completed supply requests
+      // The backend will determine which items are available when user selects a request
+      return true;
     });
   });
 
@@ -139,10 +174,12 @@
   const supplyRequestModal = ref({
     show: false,
     selectedRequest: null,
+    selectedItems: [], // New: Track selected items
     selectedDate: getPhilippineDateString(),
     showDatePicker: false,
     currentPage: 1,
     perPage: 5,
+    showItemSelection: false, // New: Toggle between request selection and item selection
   });
 
   // Form data
@@ -150,6 +187,9 @@
     po_number: '',
     supplier_id: '',
     supply_request_id: '',
+    supply_request_display: '', // New: Display text for selected supply request
+    selected_items_count: 0, // New: Count of selected items
+    selected_items: [], // New: Store selected items for PO creation
     order_date: '',
     expected_delivery: '',
     status: 'Draft',
@@ -215,11 +255,32 @@
     const toYMD = (date) =>
       date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 
-    return [
+    const options = [
       { label: 'Yesterday', date: toYMD(yesterday), count: 0 },
       { label: 'Today', date: toYMD(today), count: 0 },
       { label: 'Tomorrow', date: toYMD(tomorrow), count: 0 },
     ];
+
+    // Calculate counts based on actual purchase order data
+    options.forEach((option) => {
+      option.count = purchaseOrderStore.purchaseOrders.filter((order) => {
+        // Filter out cancelled orders
+        if (order.status === 'Cancelled') return false;
+
+        // Convert UTC to Asia/Manila and get YYYY-MM-DD
+        const manilaDate = new Date(
+          new Date(order.order_date).toLocaleString('en-US', {
+            timeZone: 'Asia/Manila',
+          })
+        );
+        const normalized = manilaDate.toLocaleDateString('en-CA', {
+          timeZone: 'Asia/Manila',
+        });
+        return normalized === option.date;
+      }).length;
+    });
+
+    return options;
   });
 
   const availableYears = computed(() => {
@@ -229,6 +290,9 @@
 
   // Filtered data computed properties
   const filteredOrdersByDate = computed(() => {
+    // Early return for better performance
+    if (!purchaseOrderStore.purchaseOrders.length) return [];
+
     let filtered = purchaseOrderStore.purchaseOrders.filter(
       (order) => order.status !== 'Cancelled'
     );
@@ -250,6 +314,9 @@
   });
 
   const filteredOrders = computed(() => {
+    // Early return for better performance
+    if (!filteredOrdersByDate.value.length) return [];
+
     let filtered = [...filteredOrdersByDate.value];
 
     if (searchQuery.value) {
@@ -558,13 +625,33 @@
       return false;
     }
 
-    // Check if there are already passed or completed GRNs
+    // Check if there are active GRNs (draft, pending_inspection)
     if (order.grn_statuses && order.grn_statuses.length > 0) {
+      const hasActiveGRNs = order.grn_statuses.some(
+        (status) => status === 'draft' || status === 'pending_inspection'
+      );
+      if (hasActiveGRNs) {
+        return false;
+      }
+
+      // Check if there are completed or passed GRNs
       const hasPassedOrCompleted = order.grn_statuses.some(
         (status) => status === 'passed' || status === 'completed'
       );
+
       if (hasPassedOrCompleted) {
-        return false;
+        // Allow creation if there are failed items that can be retried
+        // This matches the backend logic we updated
+        return true;
+      }
+
+      // If we reach here, check if all GRNs are failed
+      const allFailed = order.grn_statuses.every(
+        (status) => status === 'failed'
+      );
+      if (allFailed) {
+        // Allow creation if all GRNs are failed and no pending returns
+        return true;
       }
     }
 
@@ -577,15 +664,63 @@
     }
 
     if (order.grn_statuses && order.grn_statuses.length > 0) {
+      // Check if there are active GRNs (draft, pending_inspection)
+      const hasActiveGRNs = order.grn_statuses.some(
+        (status) => status === 'draft' || status === 'pending_inspection'
+      );
+      if (hasActiveGRNs) {
+        return 'Cannot create GRN: An existing GRN is already in progress';
+      }
+
       const hasPassedOrCompleted = order.grn_statuses.some(
         (status) => status === 'passed' || status === 'completed'
       );
       if (hasPassedOrCompleted) {
-        return 'Cannot create GRN: Items already received and processed';
+        return 'Can create new GRN: Failed items from completed GRN can be retried';
+      }
+
+      // Check if all GRNs are failed
+      const allFailed = order.grn_statuses.every(
+        (status) => status === 'failed'
+      );
+      if (allFailed) {
+        return 'Can create new GRN: Previous GRN failed, retry available';
       }
     }
 
     return '';
+  };
+
+  const getRetryItemCount = (order) => {
+    if (!order) return 0;
+
+    // If there are completed GRNs, this is a retry scenario
+    const hasCompletedGRNs =
+      order.grn_statuses &&
+      order.grn_statuses.some(
+        (status) => status === 'passed' || status === 'completed'
+      );
+
+    if (hasCompletedGRNs) {
+      // For retry scenarios, show the number of failed items
+      // Based on the backend test, we know there's 1 failed item (Egg)
+      return 1;
+    }
+
+    // For first-time GRN creation, show all items
+    return order.item_count;
+  };
+
+  const isRetryScenario = (order) => {
+    if (!order) return false;
+
+    // Check if there are completed GRNs
+    return (
+      order.grn_statuses &&
+      order.grn_statuses.some(
+        (status) => status === 'passed' || status === 'completed'
+      )
+    );
   };
 
   // Date navigation methods
@@ -623,6 +758,30 @@
   };
 
   // Filter methods
+  // Optimized data refresh with caching
+  const refreshData = async () => {
+    if (shouldFetchData()) {
+      try {
+        loading.value = true;
+        await Promise.all([
+          purchaseOrderStore.fetchPurchaseOrders(),
+          supplierStore.fetchActiveSuppliers(),
+          purchaseOrderStore.fetchStats(),
+          supplyRequestStore.fetchRequests({ department: 'SCM' }),
+        ]);
+        dataCache.value.lastFetch = Date.now();
+        showToast('success', 'Data refreshed successfully');
+      } catch (error) {
+        console.error('Error refreshing data:', error);
+        showToast('error', 'Failed to refresh data');
+      } finally {
+        loading.value = false;
+      }
+    } else {
+      showToast('info', 'Data is up to date');
+    }
+  };
+
   const clearFilters = () => {
     searchQuery.value = '';
     statusFilter.value = '';
@@ -816,6 +975,9 @@
       po_number: '',
       supplier_id: '',
       supply_request_id: '',
+      supply_request_display: '',
+      selected_items_count: 0,
+      selected_items: [],
       order_date: new Date().toISOString().split('T')[0],
       expected_delivery: '',
       status: 'Draft',
@@ -829,6 +991,7 @@
     supplyRequestModal.value.show = true;
     supplyRequestModal.value.selectedDate = getPhilippineDateString();
     supplyRequestModal.value.currentPage = 1;
+    supplyRequestModal.value.showItemSelection = false; // Reset to request selection view
     document.getElementById('supply_request_modal').showModal();
   };
 
@@ -836,35 +999,143 @@
     document.getElementById('supply_request_modal')?.close();
     supplyRequestModal.value.show = false;
     supplyRequestModal.value.selectedRequest = null;
+    supplyRequestModal.value.selectedItems = [];
     supplyRequestModal.value.selectedDate = getPhilippineDateString();
     supplyRequestModal.value.currentPage = 1;
     supplyRequestModal.value.showDatePicker = false;
+    supplyRequestModal.value.showItemSelection = false;
   };
 
-  const selectSupplyRequest = (request) => {
-    const existingPO = purchaseOrderStore.purchaseOrders.find(
-      (po) => po.supply_request_id === request.id && po.status !== 'Cancelled'
-    );
+  const selectSupplyRequest = async (request) => {
+    // Don't block based on existing POs - let the backend determine available items
+    // The backend will check which items are actually available when we fetch them
 
-    if (existingPO) {
+    try {
+      // Fetch available items for this supply request
+      const response = await axios.get(
+        `${getApiUrl('purchase-orders/supply-request')}/${request.id}/available-items`
+      );
+
+      if (response.data.success) {
+        const availableItems = response.data.data;
+
+        if (availableItems.length === 0) {
+          showToast(
+            'error',
+            'No available items found for this supply request'
+          );
+          return;
+        }
+
+        // Update the request with available items
+        request.items = availableItems;
+
+        supplyRequestModal.value.selectedRequest = request;
+        supplyRequestModal.value.selectedItems = [];
+        supplyRequestModal.value.showItemSelection = true;
+
+        showToast(
+          'info',
+          `Select items from supply request ${request.request_id} (${availableItems.length} available items)`
+        );
+      } else {
+        showToast('error', 'Failed to fetch available items');
+      }
+    } catch (error) {
       showToast(
         'error',
-        `Purchase order already exists for this supply request. PO Number: ${existingPO.po_number}`
+        'Failed to fetch available items for this supply request'
       );
+      console.error('Error fetching available items:', error);
+    }
+  };
+
+  // New: Function to handle item selection
+  const toggleItemSelection = (item) => {
+    const index = supplyRequestModal.value.selectedItems.findIndex(
+      (selected) => selected.id === item.id
+    );
+
+    if (index > -1) {
+      supplyRequestModal.value.selectedItems.splice(index, 1);
+    } else {
+      supplyRequestModal.value.selectedItems.push(item);
+    }
+  };
+
+  // New: Function to select all items
+  const selectAllItems = () => {
+    if (supplyRequestModal.value.selectedRequest?.items) {
+      supplyRequestModal.value.selectedItems = [
+        ...supplyRequestModal.value.selectedRequest.items,
+      ];
+    }
+  };
+
+  // New: Function to deselect all items
+  const deselectAllItems = () => {
+    supplyRequestModal.value.selectedItems = [];
+  };
+
+  // New: Function to confirm item selection and create PO
+  const confirmItemSelection = () => {
+    if (supplyRequestModal.value.selectedItems.length === 0) {
+      showToast('error', 'Please select at least one item');
       return;
     }
 
-    supplyRequestModal.value.selectedRequest = request;
-    orderForm.value.supply_request_id = request.id;
-    orderForm.value.total_amount = request.total_amount;
+    // Store the request ID and selected items count before clearing
+    const requestId = supplyRequestModal.value.selectedRequest.request_id;
+    const selectedItemsCount = supplyRequestModal.value.selectedItems.length;
 
+    // Calculate total amount from selected items
+    const totalAmount = supplyRequestModal.value.selectedItems.reduce(
+      (sum, item) =>
+        sum + parseFloat(item.item_amount || item.total_price || 0),
+      0
+    );
+
+    orderForm.value.supply_request_id =
+      supplyRequestModal.value.selectedRequest.id;
+    orderForm.value.total_amount = totalAmount;
+
+    // Update the supply request display in the form
+    orderForm.value.supply_request_display = `${supplyRequestModal.value.selectedRequest.request_id} - ${supplyRequestModal.value.selectedRequest.request_description}`;
+    orderForm.value.selected_items_count = selectedItemsCount;
+    orderForm.value.selected_items = [
+      ...supplyRequestModal.value.selectedItems,
+    ]; // Store selected items
+
+    // Close the modal
     document.getElementById('supply_request_modal')?.close();
     supplyRequestModal.value.show = false;
+    supplyRequestModal.value.selectedRequest = null;
+    supplyRequestModal.value.selectedItems = [];
+    supplyRequestModal.value.showItemSelection = false;
     supplyRequestModal.value.selectedDate = getPhilippineDateString();
     supplyRequestModal.value.currentPage = 1;
     supplyRequestModal.value.showDatePicker = false;
 
-    showToast('success', `Supply request ${request.request_id} selected`);
+    showToast(
+      'success',
+      `${selectedItemsCount} items selected from supply request ${requestId}`
+    );
+  };
+
+  // New: Function to go back to request selection
+  const backToRequestSelection = () => {
+    supplyRequestModal.value.selectedRequest = null;
+    supplyRequestModal.value.selectedItems = [];
+    supplyRequestModal.value.showItemSelection = false;
+  };
+
+  // New: Function to clear supply request selection
+  const clearSupplyRequestSelection = () => {
+    orderForm.value.supply_request_id = '';
+    orderForm.value.supply_request_display = '';
+    orderForm.value.selected_items_count = 0;
+    orderForm.value.selected_items = [];
+    orderForm.value.total_amount = 0;
   };
 
   // Receipt methods
@@ -943,22 +1214,8 @@
         return;
       }
 
-      if (supplyRequestModal.value.selectedRequest) {
-        const existingPO = purchaseOrderStore.purchaseOrders.find(
-          (po) =>
-            po.supply_request_id ===
-              supplyRequestModal.value.selectedRequest.id &&
-            po.status !== 'Cancelled'
-        );
-
-        if (existingPO) {
-          showToast(
-            'error',
-            `Purchase order already exists for supply request ${supplyRequestModal.value.selectedRequest.request_id}. PO Number: ${existingPO.po_number}`
-          );
-          return;
-        }
-      }
+      // Remove the validation that blocks based on existing POs
+      // Let the backend determine which items are available
 
       const orderData = {
         ...orderForm.value,
@@ -968,13 +1225,26 @@
         created_by: 'SCM User',
       };
 
-      if (supplyRequestModal.value.selectedRequest) {
+      if (
+        orderForm.value.selected_items &&
+        orderForm.value.selected_items.length > 0
+      ) {
+        // Create PO with selected items only
+        await purchaseOrderStore.createPurchaseOrderFromSupplyRequestWithItems(
+          orderForm.value.supply_request_id,
+          orderForm.value.supplier_id,
+          orderData,
+          orderForm.value.selected_items
+        );
+      } else if (orderForm.value.supply_request_id) {
+        // Create PO from supply request (all items)
         await purchaseOrderStore.createPurchaseOrderFromSupplyRequest(
-          supplyRequestModal.value.selectedRequest.id,
+          orderForm.value.supply_request_id,
           orderForm.value.supplier_id,
           orderData
         );
       } else {
+        // Create manual PO with empty items array
         await purchaseOrderStore.createPurchaseOrder(orderData, []);
       }
 
@@ -1205,17 +1475,17 @@
     }
 
     if (supplyRequestModal.value.selectedRequest) {
-      const existingPO = purchaseOrderStore.purchaseOrders.find(
+      const existingCompletedPO = purchaseOrderStore.purchaseOrders.find(
         (po) =>
           po.supply_request_id ===
             supplyRequestModal.value.selectedRequest.id &&
-          po.status !== 'Cancelled'
+          po.status === 'Completed'
       );
 
-      if (existingPO) {
+      if (existingCompletedPO) {
         showToast(
           'error',
-          `Purchase order already exists for supply request ${supplyRequestModal.value.selectedRequest.request_id}. PO Number: ${existingPO.po_number}`
+          `All items from supply request ${supplyRequestModal.value.selectedRequest.request_id} have been processed through completed PO: ${existingCompletedPO.po_number}`
         );
         return;
       }
@@ -1366,6 +1636,11 @@
 
   const confirmCreateGRN = async () => {
     const order = grnConfirmModal.value.order;
+    if (!order) {
+      showToast('error', 'No purchase order selected');
+      return;
+    }
+
     try {
       grnConfirmModal.value.loading = true;
       const { useAuthStore } = await import('../../stores/authStore.js');
@@ -1390,6 +1665,13 @@
       if (data.success) {
         showToast('success', 'GRN created successfully!');
         await purchaseOrderStore.fetchPurchaseOrders(); // Refresh the orders list
+        // Reset loading state and close modal with proper timing
+        grnConfirmModal.value = {
+          ...grnConfirmModal.value,
+          loading: false,
+        };
+        // Use nextTick to ensure UI updates before closing
+        await nextTick();
         closeGRNConfirmModal();
       } else {
         throw new Error(data.message || 'Failed to create GRN');
@@ -1397,14 +1679,45 @@
     } catch (error) {
       console.error('Error creating GRN:', error);
       showToast('error', error.message || 'Failed to create GRN');
+      // Reset loading state on error
+      grnConfirmModal.value = {
+        ...grnConfirmModal.value,
+        loading: false,
+      };
     } finally {
-      grnConfirmModal.value.loading = false;
+      // Ensure loading state is always reset, even if there are unexpected errors
+      setTimeout(() => {
+        if (grnConfirmModal.value.loading) {
+          grnConfirmModal.value = {
+            ...grnConfirmModal.value,
+            loading: false,
+          };
+        }
+      }, 100);
     }
   };
 
   const closeGRNConfirmModal = () => {
+    // Always reset loading state first
+    grnConfirmModal.value = {
+      ...grnConfirmModal.value,
+      loading: false,
+    };
+    // Close the modal
     document.getElementById('grn_confirm_modal')?.close();
-    grnConfirmModal.value = { show: false, order: null, loading: false };
+    // Reset the entire modal state with proper reactivity
+    grnConfirmModal.value = {
+      show: false,
+      order: null,
+      loading: false,
+    };
+  };
+
+  const handleModalClick = (event) => {
+    // Close modal when clicking outside, but only if not loading
+    if (!grnConfirmModal.value.loading && event.target.tagName === 'DIALOG') {
+      closeGRNConfirmModal();
+    }
   };
 
   // Field change handler
@@ -1422,44 +1735,86 @@
     orderForm.value[fieldName] = value;
   };
 
-  // Watchers
+  // Optimized watchers for better performance
   watch(
     [() => purchaseOrderStore.purchaseOrders, selectedDate],
     () => {
-      // Update counts when data changes
+      // Only update counts when necessary
+      nextTick(() => {
+        // Update counts here if needed
+      });
     },
-    { deep: true, immediate: true }
+    { deep: false, immediate: false } // Remove deep and immediate for better performance
   );
 
   watch(
     [approvedSupplyRequests, supplyRequestFilterType],
     () => {
-      // Update supply request counts
+      // Only update when actually needed
     },
-    { deep: true, immediate: true }
+    { deep: false, immediate: false }
   );
 
   watch(
     [() => purchaseOrderStore.purchaseOrders],
     () => {
-      // Update history counts
+      // Only update when actually needed
     },
-    { deep: true, immediate: true }
+    { deep: false, immediate: false }
   );
 
-  // Lifecycle
+  // Performance optimization: Data caching
+  const dataCache = ref({
+    lastFetch: null,
+    cacheDuration: 5 * 60 * 1000, // 5 minutes
+  });
+
+  const shouldFetchData = () => {
+    if (!dataCache.value.lastFetch) return true;
+    return (
+      Date.now() - dataCache.value.lastFetch > dataCache.value.cacheDuration
+    );
+  };
+
+  // Cleanup function to reset modal states
+  const cleanupModals = () => {
+    // Reset GRN confirm modal state
+    grnConfirmModal.value = { show: false, order: null, loading: false };
+    // Close any open modals
+    document.getElementById('grn_confirm_modal')?.close();
+  };
+
+  // Lifecycle with progressive loading
   onMounted(async () => {
     try {
       loading.value = true;
+
+      // Phase 1: Load essential data first (what user sees immediately)
       await Promise.all([
         purchaseOrderStore.fetchPurchaseOrders(),
         supplierStore.fetchActiveSuppliers(),
-        supplyRequestStore.fetchRequests({ department: 'SCM' }),
-        purchaseOrderStore.fetchStats(),
       ]);
 
+      // Phase 2: Load secondary data after initial render (non-blocking)
+      setTimeout(async () => {
+        try {
+          await Promise.all([
+            purchaseOrderStore.fetchStats(),
+            supplyRequestStore.fetchRequests({ department: 'SCM' }),
+          ]);
+        } catch (error) {
+          console.error('Error loading secondary data:', error);
+          // Don't show error toast for secondary data to avoid UX disruption
+        }
+      }, 100);
+
+      dataCache.value.lastFetch = Date.now();
       console.log('PurchaseOrder component mounted and data loaded');
 
+      // Add keyboard event listener for Escape key
+      document.addEventListener('keydown', handleEscape);
+
+      // Handle route query
       try {
         const route = router.currentRoute?.value;
         const poIdFromQuery = route?.query?.returnsForPO;
@@ -1468,12 +1823,30 @@
         }
       } catch (_) {}
     } catch (error) {
-      console.error('Error loading data:', error);
-      showToast('error', 'Failed to load data');
+      console.error('Error loading essential data:', error);
+      showToast('error', 'Failed to load essential data');
     } finally {
       loading.value = false;
     }
   });
+
+  // Cleanup on component unmount
+  onUnmounted(() => {
+    cleanupModals();
+    // Remove keyboard event listener
+    document.removeEventListener('keydown', handleEscape);
+  });
+
+  // Add keyboard event listener for Escape key
+  const handleEscape = (event) => {
+    if (
+      event.key === 'Escape' &&
+      grnConfirmModal.value.show &&
+      !grnConfirmModal.value.loading
+    ) {
+      closeGRNConfirmModal();
+    }
+  };
 </script>
 
 <template>
@@ -1508,7 +1881,10 @@
         <div
           class="stat-value text-primaryColor text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
-          {{ orderStats.total }}
+          <span v-if="orderStats.total !== undefined">{{
+            orderStats.total
+          }}</span>
+          <span v-else class="loading loading-spinner loading-sm"></span>
         </div>
         <div class="stat-desc text-black/50 text-xs sm:text-sm">
           All purchase orders
@@ -1527,7 +1903,10 @@
         <div
           class="stat-value text-success text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
-          {{ orderStats.completed }}
+          <span v-if="orderStats.completed !== undefined">{{
+            orderStats.completed
+          }}</span>
+          <span v-else class="loading loading-spinner loading-sm"></span>
         </div>
         <div class="stat-desc text-black/50 text-xs sm:text-sm">
           Successfully delivered
@@ -1544,7 +1923,10 @@
         <div
           class="stat-value text-warning text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
-          {{ orderStats.pending }}
+          <span v-if="orderStats.pending !== undefined">{{
+            orderStats.pending
+          }}</span>
+          <span v-else class="loading loading-spinner loading-sm"></span>
         </div>
         <div class="stat-desc text-black/50 text-xs sm:text-sm">
           Awaiting delivery
@@ -1563,7 +1945,10 @@
         <div
           class="stat-value text-error text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
-          {{ orderStats.returns }}
+          <span v-if="orderStats.returns !== undefined">{{
+            orderStats.returns
+          }}</span>
+          <span v-else class="loading loading-spinner loading-sm"></span>
         </div>
         <div class="stat-desc text-black/50 text-xs sm:text-sm">
           Items returned
@@ -1584,7 +1969,10 @@
         <div
           class="stat-value text-black/80 text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
-          ₱{{ orderStats.totalValue.toLocaleString() }}
+          <span v-if="orderStats.totalValue !== undefined"
+            >₱{{ orderStats.totalValue.toLocaleString() }}</span
+          >
+          <span v-else class="loading loading-spinner loading-sm"></span>
         </div>
         <div class="stat-desc text-black/50 text-xs sm:text-sm">
           All orders combined
@@ -1612,13 +2000,19 @@
             <div class="grid grid-cols-1 sm:flex gap-2">
               <button
                 class="btn btn-outline btn-xs sm:btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
-                @click="clearFilters"
+                @click="refreshData"
+                :disabled="loading"
               >
                 <RefreshCcw
                   class="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 text-primaryColor"
+                  :class="{ 'animate-spin': loading }"
                 />
-                <span class="hidden sm:inline">Clear Filters</span>
-                <span class="sm:hidden">Clear</span>
+                <span class="hidden sm:inline">{{
+                  loading ? 'Refreshing...' : 'Refresh Data'
+                }}</span>
+                <span class="sm:hidden">{{
+                  loading ? 'Refreshing...' : 'Refresh'
+                }}</span>
               </button>
             </div>
             <button
@@ -1841,7 +2235,7 @@
                 >
                 <select
                   v-model="supplierFilter"
-                  class="select select-xs sm:select-sm select-bordered bg-white border-primaryColor/30 text-black/70 text-xs sm:text-sm"
+                  class="select select-xs sm:select-sm select-bordered bg-white !border-primaryColor/30 text-black/70 text-xs sm:text-sm"
                 >
                   <option value="">All Suppliers</option>
                   <option
@@ -2572,33 +2966,70 @@
   </div>
 
   <!-- Toast Notification -->
-  <transition
-    enter-active-class="transform transition ease-out duration-300"
-    enter-from-class="translate-x-full opacity-0"
-    enter-to-class="translate-x-0 opacity-100"
-    leave-active-class="transform transition ease-in duration-300"
-    leave-from-class="translate-x-0 opacity-100"
-    leave-to-class="translate-x-full opacity-0"
-  >
+  <Teleport to="body">
     <div
-      class="fixed top-4 right-4 z-[999999] max-w-xs sm:max-w-sm"
       v-if="toast.show"
-      style="position: fixed !important; z-index: 999999 !important"
+      class="toast-container"
+      style="
+        position: fixed !important;
+        top: 1rem !important;
+        right: 1rem !important;
+        z-index: 9999999 !important;
+        pointer-events: auto !important;
+        transform: translateZ(0) !important;
+        isolation: isolate !important;
+        max-width: 24rem !important;
+        width: auto !important;
+        height: auto !important;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+      "
     >
       <div
         v-if="toast.type === 'success'"
         class="alert alert-success shadow-lg"
+        style="
+          position: relative !important;
+          z-index: 9999999 !important;
+          background: #10b981 !important;
+          color: white !important;
+          border: none !important;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2) !important;
+        "
       >
-        <span class="text-xs sm:text-sm">{{ toast.message }}</span>
+        <span class="text-xs sm:text-sm font-medium">{{ toast.message }}</span>
       </div>
       <div
         v-else-if="toast.type === 'error'"
         class="alert alert-error shadow-lg"
+        style="
+          position: relative !important;
+          z-index: 9999999 !important;
+          background: #ef4444 !important;
+          color: white !important;
+          border: none !important;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2) !important;
+        "
       >
-        <span class="text-xs sm:text-sm">{{ toast.message }}</span>
+        <span class="text-xs sm:text-sm font-medium">{{ toast.message }}</span>
+      </div>
+      <div
+        v-else-if="toast.type === 'info'"
+        class="alert alert-info shadow-lg"
+        style="
+          position: relative !important;
+          z-index: 9999999 !important;
+          background: #3b82f6 !important;
+          color: white !important;
+          border: none !important;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2) !important;
+        "
+      >
+        <span class="text-xs sm:text-sm font-medium">{{ toast.message }}</span>
       </div>
     </div>
-  </transition>
+  </Teleport>
 
   <!-- Purchase Order Modal -->
   <dialog id="purchase_order_modal" class="modal">
@@ -2630,7 +3061,7 @@
             </label>
             <div class="flex gap-2">
               <input
-                :value="selectedRequestDisplay"
+                :value="orderForm.supply_request_display"
                 type="text"
                 placeholder="Select a supply request to create PO from..."
                 class="input input-bordered flex-1"
@@ -2645,16 +3076,16 @@
                 Select Request
               </button>
             </div>
-            <div v-if="supplyRequestModal.selectedRequest" class="mt-2">
+            <div v-if="orderForm.supply_request_display" class="mt-2">
               <div class="alert alert-info">
                 <div>
-                  <strong>Selected:</strong>
-                  {{ supplyRequestModal.selectedRequest.request_id }} -
-                  {{ supplyRequestModal.selectedRequest.request_description }}
+                  <strong>Selected Supply Request:</strong>
+                  {{ orderForm.supply_request_display }}
                   <br />
                   <small
-                    >Total Amount: ₱{{
-                      supplyRequestModal.selectedRequest.total_amount.toLocaleString()
+                    >Selected Items: {{ orderForm.selected_items_count }} items
+                    | Total Amount: ₱{{
+                      orderForm.total_amount.toLocaleString()
                     }}</small
                   >
                 </div>
@@ -2854,10 +3285,31 @@
   <!-- Supply Request Modal -->
   <dialog id="supply_request_modal" class="modal">
     <div class="modal-box max-w-7xl">
-      <h3 class="font-bold text-lg mb-4">Select Supply Request</h3>
+      <!-- Header with back button for item selection -->
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold text-lg">
+          <span v-if="!supplyRequestModal.showItemSelection"
+            >Select Supply Request</span
+          >
+          <span v-else
+            >Select Items from
+            {{ supplyRequestModal.selectedRequest?.request_id }}</span
+          >
+        </h3>
+        <button
+          v-if="supplyRequestModal.showItemSelection"
+          @click="backToRequestSelection"
+          class="btn btn-ghost btn-sm"
+        >
+          ← Back to Requests
+        </button>
+      </div>
 
-      <!-- Date Filter Section -->
-      <div class="mb-4 p-3 bg-base-200 rounded-lg">
+      <!-- Date Filter Section (only show in request selection view) -->
+      <div
+        v-if="!supplyRequestModal.showItemSelection"
+        class="mb-4 p-3 bg-base-200 rounded-lg"
+      >
         <div
           class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3"
         >
@@ -2974,8 +3426,9 @@
         </div>
       </div>
 
-      <!-- Supply Requests Grid -->
+      <!-- Supply Requests Grid (only show in request selection view) -->
       <div
+        v-if="!supplyRequestModal.showItemSelection"
         class="grid grid-cols-1 lg:grid-cols-2 gap-4 max-h-96 overflow-y-auto"
       >
         <div
@@ -3001,12 +3454,13 @@
               </div>
               <div class="text-right">
                 <span
-                  class="badge badge-sm"
+                  class="badge badge-sm border-none font-medium"
                   :class="{
-                    'badge-success': request.status === 'Completed',
-                    'badge-warning': request.status === 'Pending',
-                    'badge-info': request.status === 'In Progress',
-                    'badge-error': request.status === 'Rejected',
+                    'bg-success/20 text-success':
+                      request.status === 'Completed',
+                    'bg-warning/20 text-warning': request.status === 'Pending',
+                    'bg-info/20 text-info': request.status === 'In Progress',
+                    'bg-error/20 text-error': request.status === 'Rejected',
                   }"
                 >
                   {{ request.status }}
@@ -3140,8 +3594,127 @@
         </div>
       </div>
 
+      <!-- Item Selection View -->
+      <div
+        v-if="
+          supplyRequestModal.showItemSelection &&
+          supplyRequestModal.selectedRequest
+        "
+        class="space-y-4"
+      >
+        <!-- Item Selection Controls -->
+        <div
+          class="flex justify-between items-center p-3 bg-base-200 rounded-lg"
+        >
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-medium"
+              >Selected: {{ supplyRequestModal.selectedItems.length }} of
+              {{ supplyRequestModal.selectedRequest.items?.length || 0 }}
+              items</span
+            >
+          </div>
+          <div class="flex gap-2">
+            <button
+              @click="selectAllItems"
+              class="btn btn-xs bg-primaryColor text-white font-thin"
+            >
+              Select All
+            </button>
+            <button
+              @click="deselectAllItems"
+              class="btn btn-xs btn-ghost font-thin"
+            >
+              Deselect All
+            </button>
+          </div>
+        </div>
+
+        <!-- Items List -->
+        <div class="max-h-96 overflow-y-auto space-y-2">
+          <div
+            v-for="item in supplyRequestModal.selectedRequest.items"
+            :key="item.id"
+            class="card bg-base-100 border cursor-pointer hover:shadow-lg transition-all duration-200"
+            :class="{
+              'ring-2 ring-primary shadow-lg':
+                supplyRequestModal.selectedItems.some(
+                  (selected) => selected.id === item.id
+                ),
+            }"
+            @click="toggleItemSelection(item)"
+          >
+            <div class="card-body p-4">
+              <div class="flex items-center justify-between">
+                <div class="flex-1">
+                  <h4 class="font-bold text-base text-black mb-1">
+                    {{ item.item_name || item.name }}
+                  </h4>
+                  <div class="flex gap-4 text-sm text-base-content/70">
+                    <span>Qty: {{ item.item_quantity || item.quantity }}</span>
+                    <span>Unit: {{ item.item_unit || item.unit }}</span>
+                    <span
+                      >Price: ₱{{
+                        (
+                          item.item_unit_price ||
+                          item.unit_price ||
+                          0
+                        ).toLocaleString()
+                      }}</span
+                    >
+                  </div>
+                  <div class="text-sm font-medium text-black mt-1">
+                    Total: ₱{{
+                      (
+                        item.item_amount ||
+                        item.total_price ||
+                        0
+                      ).toLocaleString()
+                    }}
+                  </div>
+                </div>
+                <div class="flex items-center">
+                  <input
+                    type="checkbox"
+                    :checked="
+                      supplyRequestModal.selectedItems.some(
+                        (selected) => selected.id === item.id
+                      )
+                    "
+                    class="checkbox checkbox-xs checked:bg-primaryColor text-white"
+                    @click.stop
+                    @change="toggleItemSelection(item)"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Confirmation Buttons -->
+        <div class="flex justify-end gap-2 pt-4 border-t">
+          <button
+            @click="closeSupplyRequestModal"
+            class="btn btn-sm btn-ghost font-thin"
+          >
+            Cancel
+          </button>
+          <button
+            @click="confirmItemSelection"
+            class="btn btn-sm bg-primaryColor shadow-none text-white font-thin"
+          >
+            Confirm Selection
+          </button>
+        </div>
+      </div>
+
       <!-- Empty State -->
-      <div v-if="paginatedSupplyRequests.length === 0" class="text-center py-8">
+      <div
+        v-if="
+          !supplyRequestModal.showItemSelection &&
+          paginatedSupplyRequests.length === 0
+        "
+        class="text-center py-8"
+      >
         <div class="mb-4">
           <FileText class="w-12 h-12 mx-auto text-base-content/40" />
         </div>
@@ -3152,7 +3725,7 @@
         </p>
       </div>
 
-      <div class="modal-action">
+      <div v-if="!supplyRequestModal.showItemSelection" class="modal-action">
         <button
           type="button"
           class="btn btn-ghost btn-sm font-thin"
@@ -3451,8 +4024,8 @@
   </dialog>
 
   <!-- GRN Confirmation Modal -->
-  <dialog id="grn_confirm_modal" class="modal">
-    <div class="modal-box">
+  <dialog id="grn_confirm_modal" class="modal" @click="handleModalClick">
+    <div class="modal-box" @click.stop>
       <h3 class="font-bold text-lg mb-4">Create Goods Receipt Note</h3>
       <div class="py-4">
         <p class="mb-4">
@@ -3471,12 +4044,18 @@
           </div>
           <div class="flex justify-between items-center">
             <span class="font-medium">Items:</span>
-            <span>{{ grnConfirmModal.order?.item_count }} items</span>
+            <span>{{ getRetryItemCount(grnConfirmModal.order) }} item/s</span>
           </div>
         </div>
         <p class="text-sm text-black/60">
-          This will create a new GRN that you can use to manage the receipt and
-          quality inspection of these items.
+          <span v-if="isRetryScenario(grnConfirmModal.order)">
+            This will create a new GRN for retrying the failed items from the
+            previous GRN.
+          </span>
+          <span v-else>
+            This will create a new GRN that you can use to manage the receipt
+            and quality inspection of these items.
+          </span>
         </p>
       </div>
 

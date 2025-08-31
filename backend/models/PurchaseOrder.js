@@ -62,14 +62,7 @@ class PurchaseOrder {
   static async getPendingReturnsCount(purchaseOrderId) {
     try {
       const pendingReturns = await db("item_returns as ir")
-        .leftJoin(
-          "grn_items as gi",
-          "ir.purchase_order_item_id",
-          "gi.purchase_order_item_id"
-        )
-        .leftJoin("goods_receipt_notes as grn", "gi.grn_id", "grn.id")
-        .where("grn.purchase_order_id", purchaseOrderId)
-        .where("grn.status", "failed")
+        .where("ir.purchase_order_id", purchaseOrderId)
         .where("ir.status", "!=", "Completed")
         .whereNull("ir.deleted_at")
         .count("* as count")
@@ -136,16 +129,48 @@ class PurchaseOrder {
       );
 
       if (completedGRNs.length > 0) {
+        // Check if there are any failed items in completed GRNs that could be retried
+        const failedItemsInCompletedGRNs = await db("grn_items as gi")
+          .leftJoin("goods_receipt_notes as grn", "gi.grn_id", "grn.id")
+          .where("grn.purchase_order_id", purchaseOrderId)
+          .whereIn("grn.status", ["completed", "passed"])
+          .where("gi.quality_status", "failed")
+          .where("gi.received_quantity", ">", 0)
+          .count("* as count")
+          .first();
+
+        const failedItemsCount = parseInt(failedItemsInCompletedGRNs.count);
+
+        if (failedItemsCount > 0) {
+          return {
+            canCreate: true,
+            reason: `Can create new GRN: ${failedItemsCount} failed item(s) from completed GRN(s) can be retried`,
+          };
+        }
+
         return {
           canCreate: false,
-          reason: "Cannot create new GRN: Items already received and processed",
+          reason:
+            "Cannot create new GRN: All items already received and processed successfully",
         };
       }
 
-      // Allow creation for draft or pending_inspection GRNs
+      // Check if there are any active GRNs (draft, pending_inspection)
+      const activeGRNs = grns.filter(
+        (grn) => grn.status === "draft" || grn.status === "pending_inspection"
+      );
+
+      if (activeGRNs.length > 0) {
+        return {
+          canCreate: false,
+          reason: `Cannot create new GRN: ${activeGRNs.length} existing GRN(s) in progress`,
+        };
+      }
+
+      // If we reach here, there might be other statuses we haven't handled
       return {
-        canCreate: true,
-        reason: "Existing GRNs are in draft or pending inspection",
+        canCreate: false,
+        reason: "Cannot create new GRN: Existing GRN found with unknown status",
       };
     } catch (error) {
       console.error("Error checking if PO can create new GRN:", error);
@@ -304,6 +329,142 @@ class PurchaseOrder {
     } catch (error) {
       await trx.rollback();
       throw error;
+    }
+  }
+
+  // Create purchase order from supply request with selected items
+  static async createFromSupplyRequestWithItems(
+    supplyRequestId,
+    supplierId,
+    poData,
+    selectedItems
+  ) {
+    const trx = await db.transaction();
+
+    try {
+      // Validate supplier before creating PO
+      const supplier = await Supplier.validateForPurchaseOrder(supplierId);
+
+      // Check if PO number can be reused
+      const canReuse = await this.canReusePoNumber(poData.po_number);
+      if (!canReuse) {
+        throw new Error(
+          `PO number ${poData.po_number} already exists and is not cancelled`
+        );
+      }
+
+      // Get supply request
+      const supplyRequest = await trx("supply_requests")
+        .where("id", supplyRequestId)
+        .where("request_status", "Completed")
+        .first();
+
+      if (!supplyRequest) {
+        throw new Error("Supply request not found or not approved");
+      }
+
+      // Validate that all selected items belong to the supply request
+      const selectedItemIds = selectedItems.map((item) => item.id);
+      const supplyRequestItems = await trx("supply_request_items")
+        .where("supply_request_id", supplyRequestId)
+        .whereIn("id", selectedItemIds);
+
+      if (supplyRequestItems.length !== selectedItems.length) {
+        throw new Error(
+          "Some selected items do not belong to the supply request"
+        );
+      }
+
+      // Check if any of the selected items are already used in other POs
+      const usedItems = await trx("purchase_order_items as poi")
+        .join("purchase_orders as po", "poi.purchase_order_id", "po.id")
+        .whereIn("poi.supply_request_item_id", selectedItemIds)
+        .where("po.status", "!=", "Cancelled")
+        .select("poi.supply_request_item_id", "po.po_number");
+
+      if (usedItems.length > 0) {
+        const usedItemIds = usedItems.map(
+          (item) => item.supply_request_item_id
+        );
+        const usedItemNames = supplyRequestItems
+          .filter((item) => usedItemIds.includes(item.id))
+          .map((item) => item.item_name);
+
+        throw new Error(
+          `The following items are already used in other purchase orders: ${usedItemNames.join(", ")}`
+        );
+      }
+
+      // Calculate total amount from selected items
+      const totalAmount = selectedItems.reduce(
+        (sum, item) => sum + parseFloat(item.total_price || 0),
+        0
+      );
+
+      // Create purchase order
+      const [purchaseOrder] = await trx("purchase_orders")
+        .insert({
+          po_number: poData.po_number,
+          supplier_id: supplierId,
+          supply_request_id: supplyRequestId,
+          status: poData.status || "Draft",
+          total_amount: totalAmount,
+          order_date: poData.order_date || new Date(),
+          expected_delivery: poData.expected_delivery,
+          notes: poData.notes,
+          created_by: poData.created_by,
+        })
+        .returning("*");
+
+      // Create purchase order items from selected items
+      const poItems = selectedItems.map((item) => ({
+        purchase_order_id: purchaseOrder.id,
+        supply_request_item_id: item.id,
+        item_name: item.item_name,
+        quantity: item.quantity,
+        unit: item.unit,
+        unit_price: item.unit_price,
+        total_price: item.total_price,
+        description: item.description,
+      }));
+
+      const createdItems = await trx("purchase_order_items")
+        .insert(poItems)
+        .returning("*");
+
+      await trx.commit();
+      return purchaseOrder.id;
+    } catch (error) {
+      await trx.rollback();
+      throw error;
+    }
+  }
+
+  // Get available items from a supply request (items not used in other POs)
+  static async getAvailableSupplyRequestItems(supplyRequestId) {
+    try {
+      const items = await db("supply_request_items as sri")
+        .leftJoin(
+          "purchase_order_items as poi",
+          "sri.id",
+          "poi.supply_request_item_id"
+        )
+        .leftJoin("purchase_orders as po", "poi.purchase_order_id", "po.id")
+        .where("sri.supply_request_id", supplyRequestId)
+        .where(function () {
+          this.whereNull("poi.id").orWhere("po.status", "Cancelled");
+        })
+        .select(
+          "sri.*",
+          db.raw(
+            "CASE WHEN poi.id IS NOT NULL AND po.status != 'Cancelled' THEN true ELSE false END as is_used"
+          )
+        );
+
+      return items.filter((item) => !item.is_used);
+    } catch (error) {
+      console.error("Error fetching available supply request items:", error);
+      throw new Error("Failed to retrieve available supply request items");
     }
   }
 

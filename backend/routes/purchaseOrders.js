@@ -138,6 +138,70 @@ router.post("/from-supply-request", async (req, res) => {
   }
 });
 
+// POST /api/purchase-orders/from-supply-request-with-items - Create purchase order from supply request with selected items
+router.post("/from-supply-request-with-items", async (req, res) => {
+  try {
+    const { supplyRequestId, supplierId, poData, selectedItems } = req.body;
+
+    if (
+      !supplyRequestId ||
+      !supplierId ||
+      !poData ||
+      !selectedItems ||
+      selectedItems.length === 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Supply request ID, supplier ID, PO data, and selected items are required",
+      });
+    }
+
+    const poId = await PurchaseOrder.createFromSupplyRequestWithItems(
+      supplyRequestId,
+      supplierId,
+      poData,
+      selectedItems
+    );
+
+    const purchaseOrder = await PurchaseOrder.getById(poId);
+
+    res.status(201).json({
+      success: true,
+      message:
+        "Purchase order created successfully from supply request with selected items",
+      data: purchaseOrder,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error creating purchase order",
+      error: error.message,
+    });
+  }
+});
+
+// GET /api/purchase-orders/supply-request/:id/available-items - Get available items from supply request
+router.get("/supply-request/:id/available-items", async (req, res) => {
+  try {
+    const items = await PurchaseOrder.getAvailableSupplyRequestItems(
+      req.params.id
+    );
+
+    res.json({
+      success: true,
+      data: items,
+      count: items.length,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching available supply request items",
+      error: error.message,
+    });
+  }
+});
+
 // POST /api/purchase-orders - Create manual purchase order
 router.post("/", async (req, res) => {
   try {

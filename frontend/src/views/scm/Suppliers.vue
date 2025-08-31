@@ -59,7 +59,7 @@
       </div>
 
       <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
+        class="stat sm:!border sm:!border-l-0 sm:!border-r-0 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
           <XCircle class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-error" />
@@ -74,25 +74,6 @@
         </div>
         <div class="stat-desc text-black/50 text-xs sm:text-sm">
           Suspended or inactive
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <Building2 class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-info" />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">
-          Total Orders
-        </div>
-        <div
-          class="stat-value text-info text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ supplierStats.totalOrders }}
-        </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
-          Across all suppliers
         </div>
       </div>
     </div>

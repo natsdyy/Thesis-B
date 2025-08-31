@@ -132,38 +132,117 @@
           <div
             class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center"
           >
-            <div class="join">
+            <!-- Date Filter Buttons -->
+            <div class="flex gap-2 md:flex-row flex-col">
               <button
-                class="join-item btn btn-xs sm:btn-sm font-thin border border-primaryColor/30"
+                v-for="option in quickDateOptions"
+                :key="option.label"
+                class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
                 :class="{
-                  'bg-primaryColor text-white': grnFilterType === 'today',
+                  'bg-primaryColor text-white':
+                    grnFilterType ===
+                    (option.label === 'Today'
+                      ? 'today'
+                      : option.label === 'This Week'
+                        ? 'week'
+                        : option.label === 'This Month'
+                          ? 'month'
+                          : ''),
+                  'bg-white text-primaryColor hover:bg-primaryColor/10':
+                    grnFilterType !==
+                    (option.label === 'Today'
+                      ? 'today'
+                      : option.label === 'This Week'
+                        ? 'week'
+                        : option.label === 'This Month'
+                          ? 'month'
+                          : ''),
                 }"
-                @click="grnFilterType = 'today'"
+                @click="selectQuickDate(option)"
               >
-                Today
-                <span class="badge badge-xs ml-1">{{ stats.today }}</span>
-              </button>
-              <button
-                class="join-item btn btn-xs sm:btn-sm font-thin border border-primaryColor/30"
-                :class="{
-                  'bg-primaryColor text-white': grnFilterType === 'week',
-                }"
-                @click="grnFilterType = 'week'"
-              >
-                This Week
-                <span class="badge badge-xs ml-1">{{ stats.week }}</span>
-              </button>
-              <button
-                class="join-item btn btn-xs sm:btn-sm font-thin border border-primaryColor/30"
-                :class="{
-                  'bg-primaryColor text-white': grnFilterType === 'month',
-                }"
-                @click="grnFilterType = 'month'"
-              >
-                This Month
-                <span class="badge badge-xs ml-1">{{ stats.month }}</span>
+                {{ option.label }}
+                <span
+                  class="badge badge-xs ml-1 bg-secondaryColor border-none"
+                  :class="
+                    grnFilterType ===
+                    (option.label === 'Today'
+                      ? 'today'
+                      : option.label === 'This Week'
+                        ? 'week'
+                        : option.label === 'This Month'
+                          ? 'month'
+                          : '')
+                      ? 'badge-ghost'
+                      : 'badge-primaryColor/10 text-primaryColor'
+                  "
+                >
+                  {{ option.count }}
+                </span>
               </button>
             </div>
+
+            <!-- Custom Month Picker -->
+            <div class="flex items-center gap-1">
+              <div class="relative">
+                <button
+                  class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                  @click.stop="toggleCustomMonthPicker"
+                >
+                  <Calendar class="w-4 h-4 mr-1" />
+                  Custom Month
+                </button>
+
+                <div
+                  v-if="showCustomMonthPicker"
+                  data-custom-month-picker
+                  class="absolute top-full left-0 mt-1 p-3 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10"
+                  style="min-width: 200px"
+                >
+                  <div class="flex gap-2 mb-3" @click.stop>
+                    <select
+                      v-model="customMonthPicker.month"
+                      class="select select-bordered select-sm w-20"
+                    >
+                      <option v-for="month in 12" :key="month" :value="month">
+                        {{
+                          new Date(2024, month - 1).toLocaleDateString(
+                            'en-US',
+                            { month: 'short' }
+                          )
+                        }}
+                      </option>
+                    </select>
+                    <select
+                      v-model="customMonthPicker.year"
+                      class="select select-bordered select-sm w-24"
+                    >
+                      <option
+                        v-for="year in availableYears"
+                        :key="year"
+                        :value="year"
+                      >
+                        {{ year }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="flex gap-2">
+                    <button
+                      class="btn btn-sm bg-primaryColor font-thin text-white"
+                      @click.stop="selectCustomMonth"
+                    >
+                      Apply
+                    </button>
+                    <button
+                      class="btn btn-sm btn-ghost font-thin"
+                      @click.stop="showCustomMonthPicker = false"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <button
               class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
               @click="refreshGRNs"
@@ -255,20 +334,20 @@
                 <td>
                   <div class="flex gap-2">
                     <button
-                      class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
+                      class="btn btn-outline btn-xs text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
                       @click="viewGRNDetails(grn.id)"
                     >
                       View Details
                     </button>
                     <button
-                      class="btn btn-outline btn-sm text-info hover:bg-info/10 font-thin hover:border-none hover:shadow-none"
+                      class="btn btn-outline btn-xs text-info hover:bg-info/10 font-thin hover:border-none hover:shadow-none"
                       @click="openReturnsForGRN(grn)"
                     >
                       View Returns
                     </button>
                     <button
                       v-if="grn.status === 'draft'"
-                      class="btn btn-sm btn-primary text-white font-thin shadow-none"
+                      class="btn btn-xs btn-success text-white font-thin shadow-none"
                       @click="updateStatus(grn.id, 'pending_inspection')"
                       :disabled="updatingStatus === grn.id"
                     >
@@ -280,7 +359,7 @@
                     </button>
                     <button
                       v-if="grn.status === 'passed'"
-                      class="btn btn-sm btn-success text-white font-thin shadow-none"
+                      class="btn btn-xs btn-success text-white font-thin shadow-none"
                       @click="updateStatus(grn.id, 'completed')"
                       :disabled="updatingStatus === grn.id"
                     >
@@ -419,6 +498,33 @@
             <p class="text-sm">{{ selectedGRN.notes }}</p>
           </div>
 
+          <!-- Quality Inspection Summary -->
+          <div
+            v-if="
+              selectedGRN.status === 'passed' || selectedGRN.status === 'failed'
+            "
+            class="p-4 bg-base-200 rounded-lg"
+          >
+            <h4 class="font-semibold mb-2">
+              Quality Inspection Summary
+              <span
+                :class="getQualityStatusBadgeClass(selectedGRN.status)"
+                class="ml-2"
+              >
+                {{ getQualityStatusLabel(selectedGRN.status) }}
+              </span>
+            </h4>
+            <div
+              v-if="getCommonQualityNotes()"
+              class="text-sm bg-base-100 p-3 rounded"
+            >
+              <strong>Inspection Notes:</strong> {{ getCommonQualityNotes() }}
+            </div>
+            <div v-else class="text-sm text-black/50">
+              No inspection notes provided.
+            </div>
+          </div>
+
           <!-- GRN Items Table -->
           <div v-if="selectedGRN.items && selectedGRN.items.length > 0">
             <div class="flex justify-between items-center mb-3">
@@ -446,10 +552,11 @@
                     <th>Unit Cost</th>
                     <th>Total Value</th>
                     <th>Quality Status</th>
+                    <th>Quality Notes</th>
                     <th>Inventory Category</th>
                     <th>Item Type</th>
                     <th>Inspected By</th>
-                    <th></th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -471,10 +578,20 @@
                       </span>
                     </td>
                     <td>
+                      <div v-if="item.quality_notes" class="max-w-xs">
+                        <div
+                          class="text-xs text-black/70 bg-base-200 p-2 rounded"
+                        >
+                          {{ item.quality_notes }}
+                        </div>
+                      </div>
+                      <div v-else class="text-xs text-black/30">No notes</div>
+                    </td>
+                    <td>
                       <!-- Show auto-populated category if available -->
                       <div v-if="item.category_name">
                         <span
-                          class="badge badge-info/10 text-info border-none text-xs"
+                          class="badge badge-xs border-none font-medium bg-info/20 text-info"
                         >
                           {{ item.category_name }}
                         </span>
@@ -485,7 +602,7 @@
                       <!-- Show auto-populated item type if available -->
                       <div v-if="item.item_type_id && item.item_type_name">
                         <span
-                          class="badge badge-success/10 text-success border-none text-xs"
+                          class="badge badge-xs border-none font-medium bg-success/20 text-success"
                         >
                           {{ item.item_type_name }}
                         </span>
@@ -544,7 +661,54 @@
                       </div>
                     </td>
                     <td>{{ item.inspector_name || 'Not inspected' }}</td>
-                    <td></td>
+                    <td>
+                      <!-- Individual Item Actions -->
+                      <div
+                        v-if="
+                          selectedGRN.status === 'pending_inspection' &&
+                          item.quality_status === 'pending'
+                        "
+                        class="flex gap-1"
+                      >
+                        <button
+                          class="btn btn-xs text-success border-none border"
+                          @click="inspectIndividualItem(item, 'passed')"
+                          :disabled="inspectingItem === item.id"
+                          title="Mark as Passed"
+                        >
+                          <span
+                            v-if="inspectingItem === item.id"
+                            class="loading loading-spinner loading-xs"
+                          ></span>
+                          <font-awesome-icon icon="fa-solid fa-check" />
+                        </button>
+                        <button
+                          class="btn btn-xs text-error border-none border"
+                          @click="inspectIndividualItem(item, 'failed')"
+                          :disabled="inspectingItem === item.id"
+                          title="Mark as Failed"
+                        >
+                          <span
+                            v-if="inspectingItem === item.id"
+                            class="loading loading-spinner loading-xs"
+                          ></span>
+                          <font-awesome-icon icon="fa-solid fa-times" />
+                        </button>
+                      </div>
+                      <div
+                        v-else-if="item.quality_status === 'passed'"
+                        class="text-success text-xs"
+                      >
+                        ✓ Passed
+                      </div>
+                      <div
+                        v-else-if="item.quality_status === 'failed'"
+                        class="text-error text-xs"
+                      >
+                        ✗ Failed
+                      </div>
+                      <div v-else class="text-gray-500 text-xs">-</div>
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -564,36 +728,12 @@
               to inventory.
             </p>
 
-            <!-- Auto-mapping information -->
-            <div class="alert alert-info mb-3">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                class="stroke-current shrink-0 w-6 h-6"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                ></path>
-              </svg>
-              <div>
-                <h3 class="font-bold">Inventory Auto-Mapping</h3>
-                <div class="text-xs">
-                  Items are automatically mapped to inventory categories and
-                  types based on the original supply request data. This ensures
-                  consistency and reduces manual work. Items that couldn't be
-                  auto-mapped will need manual mapping.
-                </div>
-              </div>
-            </div>
-
             <button
-              class="btn btn-success btn-sm"
+              class="btn btn-success btn-sm font-thin shadow-none"
               @click="completeGRN(selectedGRN.id)"
-              :disabled="updatingStatus === selectedGRN.id || hasUnmappedItems"
+              :disabled="
+                updatingStatus === selectedGRN.id || hasUnmappedPassedItems
+              "
             >
               <span
                 v-if="updatingStatus === selectedGRN.id"
@@ -601,8 +741,69 @@
               ></span>
               Add to Inventory
             </button>
-            <div v-if="hasUnmappedItems" class="mt-2 text-xs text-error">
-              You must map all items to an item type before completing this GRN.
+            <div v-if="hasUnmappedPassedItems" class="mt-2 text-xs text-error">
+              You must map all passed items to an item type before completing
+              this GRN.
+            </div>
+          </div>
+
+          <!-- Mixed Results Section -->
+          <div
+            v-if="hasMixedInspectionResults"
+            class="p-4 bg-warning/10 rounded-lg"
+          >
+            <h4 class="font-semibold text-warning mb-2">
+              Mixed Inspection Results
+            </h4>
+            <p class="text-sm text-warning/80 mb-3">
+              Some items passed inspection while others failed. Only passed
+              items will be added to inventory.
+            </p>
+
+            <!-- Summary of results -->
+            <div class="mb-3">
+              <div class="text-sm">
+                <span class="text-success"
+                  >✓ Passed: {{ passedItemsCount }} items</span
+                >
+                <span class="mx-2">|</span>
+                <span class="text-error"
+                  >✗ Failed: {{ failedItemsCount }} items</span
+                >
+              </div>
+            </div>
+
+            <!-- Auto-mapping information -->
+            <div class="alert alert-info mb-3">
+              <font-awesome-icon
+                icon="fa-solid fa-circle-info"
+                class="!w-4 !h-4"
+              />
+              <div>
+                <h3 class="font-bold">Partial Inventory Addition</h3>
+                <div class="text-xs">
+                  Only items that passed quality inspection will be added to
+                  inventory. Failed items will be returned to the supplier.
+                </div>
+              </div>
+            </div>
+
+            <button
+              class="btn btn-warning btn-sm font-thin shadow-none"
+              @click="completeGRN(selectedGRN.id)"
+              :disabled="
+                updatingStatus === selectedGRN.id || hasUnmappedPassedItems
+              "
+            >
+              <span
+                v-if="updatingStatus === selectedGRN.id"
+                class="loading loading-spinner loading-xs mr-1"
+              ></span>
+              Add Passed Items to Inventory
+            </button>
+            <div v-if="hasUnmappedPassedItems" class="mt-2 text-xs text-error">
+              You must map all passed items to an item type before completing
+              this GRN.
             </div>
           </div>
 
@@ -614,10 +815,30 @@
               Quality Inspection Required
             </h4>
             <p class="text-sm text-info/80 mb-3">
-              Items are being inspected for quality. Complete the inspection to
-              proceed.
+              Items are being inspected for quality. You can inspect items
+              individually or use bulk actions.
             </p>
-            <div class="flex flex-col sm:flex-row gap-2">
+
+            <!-- Individual inspection info -->
+            <div class="alert alert-info mb-3">
+              <font-awesome-icon
+                icon="fa-solid fa-circle-info"
+                class="!w-4 !h-4"
+              />
+              <div>
+                <h3 class="font-bold">Individual Item Inspection</h3>
+                <div class="text-xs">
+                  Use the ✓ and ✗ buttons in the Actions column to inspect items
+                  individually. This allows for partial completion where some
+                  items pass and others fail.
+                </div>
+              </div>
+            </div>
+
+            <div
+              v-if="selectedGRN.status === 'pending_inspection'"
+              class="flex flex-col sm:flex-row gap-2"
+            >
               <button
                 class="btn btn-success btn-sm text-white font-thin shadow-none"
                 @click="markAllAsPassed"
@@ -627,7 +848,7 @@
                   v-if="updatingStatus === selectedGRN.id"
                   class="loading loading-spinner loading-xs mr-1"
                 ></span>
-                Mark as Passed
+                Mark All as Passed
               </button>
               <button
                 class="btn btn-error btn-sm text-white font-thin shadow-none"
@@ -638,9 +859,22 @@
                   v-if="updatingStatus === selectedGRN.id"
                   class="loading loading-spinner loading-xs mr-1"
                 ></span>
-                Mark as Failed
+                Mark All as Failed
               </button>
             </div>
+          </div>
+
+          <div
+            v-if="selectedGRN.status === 'passed'"
+            class="p-4 bg-success/10 rounded-lg"
+          >
+            <h4 class="text-success mb-2 font-thin">
+              Quality Inspection Passed
+            </h4>
+            <p class="text-sm text-success/80">
+              All items have passed quality inspection and are ready to be added
+              to inventory.
+            </p>
           </div>
 
           <div
@@ -667,10 +901,54 @@
     </dialog>
 
     <!-- Confirmation Modal -->
-    <dialog id="confirmation_modal" class="modal">
-      <div class="modal-box">
+    <dialog id="confirmation_modal" class="modal" @click="handleModalClick">
+      <div class="modal-box" @click.stop>
         <h3 class="font-bold text-lg mb-4">{{ confirmModal.title }}</h3>
         <p class="py-4">{{ confirmModal.message }}</p>
+
+        <!-- Inspection Notes Input -->
+        <div
+          v-if="
+            confirmModal.type === 'markPassed' ||
+            confirmModal.type === 'markFailed'
+          "
+          class="mb-4"
+        >
+          <label class="label">
+            <span class="label-text font-medium">
+              {{
+                confirmModal.type === 'markPassed'
+                  ? 'Pass Notes (Optional)'
+                  : 'Failure Reason (Required)'
+              }}
+            </span>
+            <span
+              v-if="confirmModal.type === 'markFailed'"
+              class="label-text-alt text-error"
+              >*</span
+            >
+          </label>
+          <textarea
+            v-model="inspectionNotes"
+            class="textarea textarea-bordered w-full"
+            :placeholder="
+              confirmModal.type === 'markPassed'
+                ? 'Enter any notes about the quality inspection (optional)...'
+                : 'Please provide the reason for failure (required)...'
+            "
+            :class="{
+              'textarea-error':
+                confirmModal.type === 'markFailed' && !inspectionNotes.trim(),
+            }"
+            rows="3"
+          ></textarea>
+          <div
+            v-if="confirmModal.type === 'markFailed' && !inspectionNotes.trim()"
+            class="text-error text-sm mt-1"
+          >
+            Please provide a reason for the failure.
+          </div>
+        </div>
 
         <div class="modal-action">
           <button
@@ -684,6 +962,9 @@
             type="button"
             class="btn bg-primaryColor text-white btn-sm font-thin border-none hover:bg-primaryColor/80"
             @click="handleConfirmAction"
+            :disabled="
+              confirmModal.type === 'markFailed' && !inspectionNotes.trim()
+            "
           >
             Confirm
           </button>
@@ -728,14 +1009,150 @@
   const pendingInspectionGRNs = computed(() => stats.value.pending_inspection);
   const completedGRNs = computed(() => stats.value.completed);
 
-  // Use backend stats for date-based counts
-  const grnTodayCount = computed(() => stats.value.today);
-  const grnWeekCount = computed(() => stats.value.week);
-  const grnMonthCount = computed(() => stats.value.month);
-
-  // Optimized filtering - use server-side filtering
+  // Date filtering with client-side count calculation
   const grnFilterType = ref('today');
-  const filteredGrns = computed(() => grns.value);
+
+  // Quick date options with calculated counts
+  const quickDateOptions = computed(() => {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const toYMD = (date) =>
+      date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+
+    const options = [
+      { label: 'Today', date: toYMD(today), count: 0 },
+      { label: 'This Week', date: null, count: 0 },
+      { label: 'This Month', date: null, count: 0 },
+    ];
+
+    // Calculate counts based on actual GRN data
+    options.forEach((option) => {
+      if (option.label === 'Today') {
+        option.count = grns.value.filter((grn) => {
+          const grnDate = new Date(
+            new Date(grn.created_at).toLocaleString('en-US', {
+              timeZone: 'Asia/Manila',
+            })
+          );
+          const normalized = grnDate.toLocaleDateString('en-CA', {
+            timeZone: 'Asia/Manila',
+          });
+          return normalized === option.date;
+        }).length;
+      } else if (option.label === 'This Week') {
+        const startOfWeek = getStartOfWeek(today);
+        const endOfWeek = new Date(today);
+        endOfWeek.setHours(23, 59, 59, 999);
+
+        option.count = grns.value.filter((grn) => {
+          const grnDate = new Date(grn.created_at);
+          return grnDate >= startOfWeek && grnDate <= endOfWeek;
+        }).length;
+      } else if (option.label === 'This Month') {
+        const startOfMonth = getStartOfMonth(today);
+        const endOfMonth = new Date(today);
+        endOfMonth.setHours(23, 59, 59, 999);
+
+        option.count = grns.value.filter((grn) => {
+          const grnDate = new Date(grn.created_at);
+          return grnDate >= startOfMonth && grnDate <= endOfMonth;
+        }).length;
+      }
+    });
+
+    return options;
+  });
+
+  // Custom month picker state
+  const showCustomMonthPicker = ref(false);
+  const customMonthPicker = ref({
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+  });
+
+  // Filtered GRNs based on selected filter type
+  const filteredGrns = computed(() => {
+    if (!grns.value.length) return [];
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    switch (grnFilterType.value) {
+      case 'today':
+        return grns.value.filter((grn) => {
+          const grnDate = new Date(grn.created_at);
+          grnDate.setHours(0, 0, 0, 0);
+          return grnDate.getTime() === today.getTime();
+        });
+      case 'week':
+        const startOfWeek = getStartOfWeek(today);
+        const endOfWeek = new Date(today);
+        endOfWeek.setHours(23, 59, 59, 999);
+        return grns.value.filter((grn) => {
+          const grnDate = new Date(grn.created_at);
+          return grnDate >= startOfWeek && grnDate <= endOfWeek;
+        });
+      case 'month':
+        const startOfMonth = getStartOfMonth(today);
+        const endOfMonth = new Date(today);
+        endOfMonth.setHours(23, 59, 59, 999);
+        return grns.value.filter((grn) => {
+          const grnDate = new Date(grn.created_at);
+          return grnDate >= startOfMonth && grnDate <= endOfMonth;
+        });
+      case 'custom_month':
+        const startOfCustomMonth = new Date(
+          customMonthPicker.value.year,
+          customMonthPicker.value.month - 1,
+          1
+        );
+        const endOfCustomMonth = new Date(
+          customMonthPicker.value.year,
+          customMonthPicker.value.month,
+          0,
+          23,
+          59,
+          59,
+          999
+        );
+        return grns.value.filter((grn) => {
+          const grnDate = new Date(grn.created_at);
+          return grnDate >= startOfCustomMonth && grnDate <= endOfCustomMonth;
+        });
+      default:
+        return grns.value;
+    }
+  });
+
+  // Available years for custom month picker
+  const availableYears = computed(() => {
+    const currentYear = new Date().getFullYear();
+    return Array.from({ length: 6 }, (_, i) => currentYear - i);
+  });
+
+  // Date filter methods
+  const selectQuickDate = (option) => {
+    if (option.label === 'Today') {
+      grnFilterType.value = 'today';
+    } else if (option.label === 'This Week') {
+      grnFilterType.value = 'week';
+    } else if (option.label === 'This Month') {
+      grnFilterType.value = 'month';
+    }
+    showCustomMonthPicker.value = false;
+  };
+
+  const toggleCustomMonthPicker = () => {
+    showCustomMonthPicker.value = !showCustomMonthPicker.value;
+  };
+
+  const selectCustomMonth = () => {
+    grnFilterType.value = 'custom_month';
+    showCustomMonthPicker.value = false;
+  };
 
   // Pagination state and computed properties
   const currentPageGrn = ref(1);
@@ -784,6 +1201,13 @@
         const end = today;
         return `This Month (${formatDate(start)} - ${formatDate(end)})`;
       }
+      case 'custom_month': {
+        const monthName = new Date(
+          customMonthPicker.value.year,
+          customMonthPicker.value.month - 1
+        ).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        return `Custom Month (${monthName})`;
+      }
       default:
         return 'All';
     }
@@ -820,6 +1244,7 @@
   const detailsLoading = ref(false);
   const updatingStatus = ref(null);
   const mappingBusy = ref(null);
+  const inspectingItem = ref(null);
   const activeCategories = ref([]);
   const activeItemTypes = ref([]);
   const itemCategorySelections = ref({});
@@ -828,6 +1253,33 @@
   const hasUnmappedItems = computed(() => {
     if (!selectedGRN.value || !selectedGRN.value.items) return false;
     return selectedGRN.value.items.some((i) => !i.item_type_id);
+  });
+
+  const hasUnmappedPassedItems = computed(() => {
+    if (!selectedGRN.value || !selectedGRN.value.items) return false;
+    return selectedGRN.value.items
+      .filter((i) => i.quality_status === 'passed')
+      .some((i) => !i.item_type_id);
+  });
+
+  const hasMixedInspectionResults = computed(() => {
+    if (!selectedGRN.value || !selectedGRN.value.items) return false;
+    const items = selectedGRN.value.items;
+    const hasPassed = items.some((i) => i.quality_status === 'passed');
+    const hasFailed = items.some((i) => i.quality_status === 'failed');
+    return hasPassed && hasFailed;
+  });
+
+  const passedItemsCount = computed(() => {
+    if (!selectedGRN.value || !selectedGRN.value.items) return 0;
+    return selectedGRN.value.items.filter((i) => i.quality_status === 'passed')
+      .length;
+  });
+
+  const failedItemsCount = computed(() => {
+    if (!selectedGRN.value || !selectedGRN.value.items) return 0;
+    return selectedGRN.value.items.filter((i) => i.quality_status === 'failed')
+      .length;
   });
 
   const updatingInventoryData = ref(false);
@@ -840,6 +1292,8 @@
     message: '',
     onConfirm: null,
   });
+
+  const inspectionNotes = ref('');
 
   // Toast state (same as PurchaseOrder.vue)
   const toast = ref({ show: false, type: '', message: '' });
@@ -862,6 +1316,16 @@
     } catch (err) {
       console.error('Error loading GRN data:', err);
     }
+
+    // Add click outside handler for custom month picker
+    document.addEventListener('click', (event) => {
+      const customMonthPicker = document.querySelector(
+        '[data-custom-month-picker]'
+      );
+      if (customMonthPicker && !customMonthPicker.contains(event.target)) {
+        showCustomMonthPicker.value = false;
+      }
+    });
   });
 
   // Optimized refresh - use cache when possible
@@ -1029,6 +1493,19 @@
         selectedGRN.value = updatedGRN;
       }
 
+      // Refresh PO data if this GRN completion affects PO status
+      if (status === 'completed' && selectedGRN.value?.purchase_order_id) {
+        try {
+          const { usePurchaseOrderStore } = await import(
+            '../../stores/purchaseOrderStore.js'
+          );
+          const poStore = usePurchaseOrderStore();
+          await poStore.fetchPurchaseOrders(); // Refresh PO data to update return status
+        } catch (poError) {
+          console.warn('Failed to refresh PO data:', poError);
+        }
+      }
+
       // Show success toast
       showToast('success', `GRN status updated to ${getStatusLabel(status)}`);
     } catch (err) {
@@ -1044,11 +1521,118 @@
   };
 
   const markAllAsPassed = async () => {
+    // Check if GRN is already passed or completed
+    if (
+      selectedGRN.value?.status === 'passed' ||
+      selectedGRN.value?.status === 'completed'
+    ) {
+      showToast('info', 'GRN has already been processed');
+      return;
+    }
     openConfirmModal('markPassed');
   };
 
   const markAllAsFailed = async () => {
+    // Check if GRN is already passed or completed
+    if (
+      selectedGRN.value?.status === 'passed' ||
+      selectedGRN.value?.status === 'completed'
+    ) {
+      showToast('info', 'GRN has already been processed');
+      return;
+    }
     openConfirmModal('markFailed');
+  };
+
+  const inspectIndividualItem = async (item, result) => {
+    try {
+      inspectingItem.value = item.id;
+
+      // Get auth store for inspector ID
+      const { useAuthStore } = await import('../../stores/authStore.js');
+      const authStore = useAuthStore();
+
+      // Call the individual item inspection endpoint
+      const response = await fetch(
+        getApiUrl(`grn/${selectedGRN.value.id}/items/${item.id}/inspect`),
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            result: result,
+            notes:
+              result === 'failed'
+                ? 'Item failed quality inspection'
+                : 'Item passed quality inspection',
+            inspector_id: authStore.user.id,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to inspect item');
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Update the selected GRN with the new data
+        selectedGRN.value = data.data;
+
+        // Show success toast
+        const statusText = result === 'passed' ? 'passed' : 'failed';
+        showToast('success', `Item marked as ${statusText}`);
+
+        // Check if all items are now inspected
+        const allInspected = selectedGRN.value.items.every(
+          (item) => item.quality_status !== 'pending'
+        );
+
+        if (allInspected) {
+          const hasFailed = selectedGRN.value.items.some(
+            (item) => item.quality_status === 'failed'
+          );
+          const hasPassed = selectedGRN.value.items.some(
+            (item) => item.quality_status === 'passed'
+          );
+
+          if (hasFailed && hasPassed) {
+            showToast(
+              'info',
+              'Mixed inspection results - some items passed, some failed'
+            );
+          } else if (hasPassed) {
+            showToast('success', 'All items passed inspection!');
+          } else if (hasFailed) {
+            showToast(
+              'warning',
+              'All items failed inspection - returns will be created'
+            );
+          }
+
+          // Refresh PO data when all items are inspected (returns may be created)
+          try {
+            const { usePurchaseOrderStore } = await import(
+              '../../stores/purchaseOrderStore.js'
+            );
+            const poStore = usePurchaseOrderStore();
+            await poStore.fetchPurchaseOrders(); // Refresh PO data to update return status
+          } catch (poError) {
+            console.warn('Failed to refresh PO data:', poError);
+          }
+        }
+      } else {
+        throw new Error(data.message || 'Failed to inspect item');
+      }
+    } catch (error) {
+      console.error('Error inspecting individual item:', error);
+      showToast('error', error.message || 'Failed to inspect item');
+    } finally {
+      inspectingItem.value = null;
+    }
   };
 
   const updateInventoryData = async () => {
@@ -1128,6 +1712,15 @@
       message: '',
       onConfirm: null,
     };
+    // Reset inspection notes
+    inspectionNotes.value = '';
+  };
+
+  const handleModalClick = (event) => {
+    // Close modal when clicking outside
+    if (event.target.tagName === 'DIALOG') {
+      closeConfirmModal();
+    }
   };
 
   const handleConfirmAction = async () => {
@@ -1157,11 +1750,22 @@
       const updatedGRN = await performBulkQualityInspection(
         selectedGRN.value.id,
         'passed',
-        'All items passed quality inspection'
+        inspectionNotes.value.trim() || 'All items passed quality inspection'
       );
       if (updatedGRN) {
         selectedGRN.value = updatedGRN;
         showToast('success', 'All items marked as passed!');
+
+        // Refresh PO data when bulk inspection is completed
+        try {
+          const { usePurchaseOrderStore } = await import(
+            '../../stores/purchaseOrderStore.js'
+          );
+          const poStore = usePurchaseOrderStore();
+          await poStore.fetchPurchaseOrders(); // Refresh PO data to update return status
+        } catch (poError) {
+          console.warn('Failed to refresh PO data:', poError);
+        }
       }
     } catch (err) {
       console.error('Error marking all items as passed:', err);
@@ -1186,11 +1790,22 @@
       const updatedGRN = await performBulkQualityInspection(
         selectedGRN.value.id,
         'failed',
-        'All items failed quality inspection'
+        inspectionNotes.value.trim() || 'All items failed quality inspection'
       );
       if (updatedGRN) {
         selectedGRN.value = updatedGRN;
         showToast('success', 'All items marked as failed!');
+
+        // Refresh PO data when bulk inspection is completed (returns are created)
+        try {
+          const { usePurchaseOrderStore } = await import(
+            '../../stores/purchaseOrderStore.js'
+          );
+          const poStore = usePurchaseOrderStore();
+          await poStore.fetchPurchaseOrders(); // Refresh PO data to update return status
+        } catch (poError) {
+          console.warn('Failed to refresh PO data:', poError);
+        }
       }
     } catch (err) {
       console.error('Error marking all items as failed:', err);
@@ -1203,19 +1818,18 @@
   const getStatusBadgeClass = (status) => {
     const classes = {
       draft:
-        'badge badge-sm border-none bg-warning/10 text-warning font-thin border-none',
+        'badge badge-sm border-none font-medium bg-warning/20 text-warning',
       pending_inspection:
-        'badge badge-sm border-none bg-info/10 text-info font-thin border-none',
+        'badge badge-sm border-none font-medium bg-info/20 text-info',
       passed:
-        'badge badge-sm border-none bg-success/10 text-success font-thin border-none',
-      failed:
-        'badge badge-sm border-none bg-error/10 text-error font-thin border-none',
+        'badge badge-sm border-none font-medium bg-success/20 text-success',
+      failed: 'badge badge-sm border-none font-medium bg-error/20 text-error',
       completed:
-        'badge badge-sm border-none bg-success/10 text-success font-thin border-none',
+        'badge badge-sm border-none font-medium bg-success/20 text-success',
     };
     return (
       classes[status] ||
-      'badge badge-sm border-none bg-neutral/10 text-neutral font-thin'
+      'badge badge-sm border-none font-medium bg-neutral/20 text-neutral'
     );
   };
 
@@ -1233,17 +1847,16 @@
   const getQualityStatusBadgeClass = (status) => {
     const classes = {
       pending:
-        'badge badge-sm border-none bg-warning/10 text-warning font-thin border-none',
+        'badge badge-sm border-none font-medium bg-warning/20 text-warning',
       passed:
-        'badge badge-sm border-none bg-success/10 text-success font-thin border-none',
-      failed:
-        'badge badge-sm border-none bg-error/10 text-error font-thin border-none',
+        'badge badge-sm border-none font-medium bg-success/20 text-success',
+      failed: 'badge badge-sm border-none font-medium bg-error/20 text-error',
       conditional:
-        'badge badge-sm border-none bg-info/10 text-info font-thin border-none',
+        'badge badge-sm border-none font-medium bg-info/20 text-info',
     };
     return (
       classes[status] ||
-      'badge badge-sm border-none bg-neutral/10 text-neutral font-thin border-none'
+      'badge badge-sm border-none font-medium bg-neutral/20 text-neutral'
     );
   };
 
@@ -1255,6 +1868,26 @@
       conditional: 'Conditional',
     };
     return labels[status] || status;
+  };
+
+  const getCommonQualityNotes = () => {
+    if (!selectedGRN.value?.items?.length) return null;
+
+    // Get all quality notes from items
+    const notes = selectedGRN.value.items
+      .map((item) => item.quality_notes)
+      .filter((note) => note && note.trim());
+
+    if (notes.length === 0) return null;
+
+    // If all items have the same note, return it
+    const uniqueNotes = [...new Set(notes)];
+    if (uniqueNotes.length === 1) {
+      return uniqueNotes[0];
+    }
+
+    // If different notes, return a summary
+    return `Multiple notes: ${uniqueNotes.length} different inspection notes across items`;
   };
 </script>
 

@@ -52,63 +52,6 @@ if (!TELEGRAM_BOT_TOKEN) {
   console.error("TELEGRAM_BOT_TOKEN is required in environment variables");
 }
 
-/**
- * @swagger
- * /api/feedback:
- * post:
- *   summary: Submit customer feedback with optional image
- *   description: Submit customer feedback and send to Telegram group with image if provided
- *   tags: [Feedback]
- *   requestBody:
- *     required: true
- *     content:
- *       multipart/form-data:
- *         schema:
- *           type: object
- *           required:
- *             - name
- *             - email
- *             - message
- *             - image
- *           properties:
- *             name:
- *               type: string
- *               description: Customer's name
- *             email:
- *               type: string
- *               description: Customer's email
- *             message:
- *               type: string
- *               description: Feedback message
- *             phone:
- *               type: string
- *               description: Customer's phone number (optional)
- *             rating:
- *               type: number
- *               description: Rating from 1-5 (optional)
- *             image:
- *               type: string
- *               format: binary
- *               description: Required image file (max 5MB) - Photo of food experience
- *   responses:
- *     200:
- *       description: Feedback submitted successfully
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               success:
- *                 type: boolean
- *               message:
- *                 type: string
- *               data:
- *                 type: object
- *     400:
- *       description: Bad request - missing required fields or invalid file
- *     500:
- *       description: Internal server error
- */
 router.post("/", upload.single("image"), async (req, res) => {
   try {
     const { name, email, message, phone, rating } = req.body;
@@ -277,33 +220,6 @@ ${feedback.message}
 🌐 <b>Source:</b> ${feedback.source}`;
 }
 
-/**
- * @swagger
- * /api/feedback/health:
- * get:
- *   summary: Check feedback service health
- *   description: Check if the feedback service and Telegram bot are working
- *   tags: [Feedback]
- *   responses:
- *     200:
- *       description: Service is healthy
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               success:
- *                 type: boolean
- *               message:
- *                 type: string
- *               telegram:
- *                 type: object
- *                 properties:
- *                   configured:
- *                     type: boolean
- *                   chatId:
- *                     type: string
- */
 router.get("/health", async (req, res) => {
   try {
     const telegramStatus = {

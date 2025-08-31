@@ -1763,16 +1763,6 @@
                     </div>
                   </div>
                 </div>
-
-                <!-- Action Buttons -->
-                <div class="flex gap-2 mt-4 pt-4 border-t border-gray-200">
-                  <button class="btn btn-xs btn-outline btn-primary flex-1">
-                    View Details
-                  </button>
-                  <button class="btn btn-xs btn-ghost">
-                    <BarChart3 class="w-3 h-3" />
-                  </button>
-                </div>
               </div>
             </div>
           </div>
@@ -1998,7 +1988,7 @@
               <div v-if="recentActivity.length > 0" class="mt-6 text-center">
                 <button
                   @click="openTransactionModal"
-                  class="btn btn-primary btn-sm font-medium hover:bg-primaryColor/90 transition-all duration-200 shadow-lg hover:shadow-xl"
+                  class="btn btn-sm btn-outline bg-primaryColor text-white font-thin hover:bg-primaryColor/90 transition-all duration-200 shadow-lg hover:shadow-xl"
                 >
                   <BarChart3 class="w-4 h-4 mr-2" />
                   View All Transactions

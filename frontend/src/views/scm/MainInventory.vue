@@ -1010,6 +1010,48 @@
     );
   };
 
+  // Helper function to format batch numbers for better readability
+  const formatBatchNumber = (batchNumber) => {
+    if (!batchNumber || batchNumber === 'N/A') return 'N/A';
+
+    // Handle PO-generated batch numbers: PO-1756625418014-ITEM-32-6-20250831
+    if (batchNumber.startsWith('PO-')) {
+      const parts = batchNumber.split('-');
+      if (parts.length >= 6) {
+        const poNumber = parts[1];
+        const date = parts[5];
+
+        // Extract year, month, and day from date: 20250831 -> 25-08-31
+        const year = date.substring(2, 4); // Last 2 digits of year
+        const month = date.substring(4, 6);
+        const day = date.substring(6, 8);
+
+        return `Batch #${poNumber.substring(poNumber.length - 2)}-${year}${month}${day}`;
+      }
+    }
+
+    // Handle GRN-generated batch numbers: GRN-32-6-20250831-0828
+    if (batchNumber.startsWith('GRN-')) {
+      const parts = batchNumber.split('-');
+      if (parts.length >= 5) {
+        const itemType = parts[1];
+        const date = parts[3];
+
+        // Extract year, month, and day from date: 20250831 -> 25-08-31
+        const year = date.substring(2, 4); // Last 2 digits of year
+        const month = date.substring(4, 6);
+        const day = date.substring(6, 8);
+
+        return `Batch #${itemType}-${year}${month}${day}`;
+      }
+    }
+
+    // For other formats, return a simplified version
+    return batchNumber.length > 20
+      ? `${batchNumber.substring(0, 20)}...`
+      : batchNumber;
+  };
+
   const refreshReportData = async () => {
     try {
       await Promise.all([
@@ -1030,7 +1072,7 @@
       category.items.map((item) => ({
         Category: category.category_name,
         'Item Name': item.item_type_name,
-        Batch: item.batch_number || 'N/A',
+        Batch: formatBatchNumber(item.batch_number),
         Quantity: item.quantity,
         Unit: item.unit_of_measure,
         'Unit Cost': item.unit_cost,
@@ -1162,7 +1204,7 @@
     const data = disposedItems.value.map((item) => ({
       'Item Name': item.item_type_name,
       Category: item.category_name,
-      'Batch Number': item.batch_number || 'N/A',
+      'Batch Number': formatBatchNumber(item.batch_number),
       'Original Quantity': item.original_quantity,
       'Unit of Measure': item.unit_of_measure,
       'Unit Cost': item.unit_cost,
@@ -1883,7 +1925,7 @@
                           v-if="activity.batch_number"
                           class="text-xs text-gray-500 font-mono bg-gray-50 px-2 py-1 rounded inline-block"
                         >
-                          Batch: {{ activity.batch_number }}
+                          Batch: {{ formatBatchNumber(activity.batch_number) }}
                         </p>
                       </div>
 
@@ -2115,12 +2157,22 @@
                         class="hover:bg-base-100"
                       >
                         <td>
-                          <span class="font-mono text-sm">{{
-                            batch.batch_number || 'N/A'
-                          }}</span>
+                          <div class="flex flex-col">
+                            <span class="font-medium text-sm">
+                              {{ formatBatchNumber(batch.batch_number) }}
+                            </span>
+                            <span
+                              v-if="
+                                batch.batch_number &&
+                                batch.batch_number !== 'N/A'
+                              "
+                              class="text-xs text-gray-500 font-mono"
+                            >
+                            </span>
+                          </div>
                         </td>
                         <td>
-                          <span class="font-medium">
+                          <span class="font-bold">
                             {{ batch.item_name || 'N/A' }}
                           </span>
                         </td>
@@ -2360,7 +2412,7 @@
                   <div>
                     <div class="text-gray-500">Batch</div>
                     <div class="font-medium">
-                      {{ item.batch_number || 'N/A' }}
+                      {{ formatBatchNumber(item.batch_number) }}
                     </div>
                   </div>
                 </div>
@@ -2764,7 +2816,7 @@
                               {{ item.item_type_name }}
                             </div>
                             <div class="text-xs text-gray-500">
-                              {{ item.batch_number || 'No batch' }}
+                              {{ formatBatchNumber(item.batch_number) }}
                             </div>
                           </td>
                           <td class="font-medium">
@@ -2872,64 +2924,206 @@
           <!-- Forecasting Section -->
           <div class="card bg-base-100 border border-gray-200">
             <div class="card-body p-4">
-              <div class="flex justify-between items-center mb-4">
-                <h3 class="card-title text-sm font-semibold text-primaryColor">
-                  <BarChart3 class="w-4 h-4 mr-2" />
-                  Inventory Forecasting
-                </h3>
-                <div class="flex gap-2 flex-wrap items-center">
-                  <select
-                    v-model="forecastPeriod"
-                    class="select select-bordered select-xs"
+              <div class="mb-4">
+                <div class="flex items-center mb-2">
+                  <h3
+                    class="card-title text-sm font-semibold text-primaryColor"
                   >
-                    <option value="30">30 Days</option>
-                    <option value="60">60 Days</option>
-                    <option value="90">90 Days</option>
-                  </select>
-                  <select
-                    v-model="forecastMethod"
-                    class="select select-bordered select-xs"
+                    <BarChart3 class="w-4 h-4 mr-2" />
+                    Inventory Forecasting
+                  </h3>
+                  <div
+                    class="tooltip tooltip-top ml-2"
+                    data-tip="Predict future inventory needs and optimize reorder timing"
                   >
-                    <option value="moving_average">Moving Average</option>
-                    <option value="linear_trend">Linear Trend</option>
-                  </select>
-                  <select
-                    v-model="windowProfile"
-                    class="select select-bordered select-xs"
+                    <HelpCircle class="w-4 h-4 text-gray-400 cursor-help" />
+                  </div>
+                </div>
+                <p class="text-xs text-gray-600 mb-3">
+                  Configure forecasting parameters to predict when items will
+                  run out and when to reorder.
+                  <span class="font-medium">Lead Time</span> and
+                  <span class="font-medium">Service Level</span> are key factors
+                  for inventory planning.
+                </p>
+              </div>
+
+              <!-- Forecasting Controls -->
+              <div
+                class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-4"
+              >
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs text-gray-600 font-medium"
+                    >Forecast Period</label
                   >
-                    <option value="auto">Window: Auto</option>
-                    <option value="fast">Window: Fast (14d)</option>
-                    <option value="medium">Window: Medium (30d)</option>
-                    <option value="slow">Window: Slow (60d)</option>
-                    <option value="custom">Window: Custom</option>
-                  </select>
+                  <div class="flex items-center gap-1">
+                    <select
+                      v-model="forecastPeriod"
+                      class="select select-bordered select-xs"
+                    >
+                      <option value="30">30 Days</option>
+                      <option value="60">60 Days</option>
+                      <option value="90">90 Days</option>
+                    </select>
+                    <div
+                      class="tooltip tooltip-top"
+                      data-tip="How far into the future to predict inventory needs"
+                    >
+                      <HelpCircle class="w-3 h-3 text-gray-400 cursor-help" />
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs text-gray-600 font-medium"
+                    >Method</label
+                  >
+                  <div class="flex items-center gap-1">
+                    <select
+                      v-model="forecastMethod"
+                      class="select select-bordered select-xs"
+                    >
+                      <option value="moving_average">Moving Average</option>
+                      <option value="linear_trend">Linear Trend</option>
+                    </select>
+                    <div
+                      class="tooltip tooltip-top"
+                      data-tip="Moving Average: Uses recent usage patterns. Linear Trend: Considers growth/decline trends"
+                    >
+                      <HelpCircle class="w-3 h-3 text-gray-400 cursor-help" />
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs text-gray-600 font-medium"
+                    >Analysis Window</label
+                  >
+                  <div class="flex items-center gap-1">
+                    <select
+                      v-model="windowProfile"
+                      class="select select-bordered select-xs"
+                    >
+                      <option value="auto">Auto</option>
+                      <option value="fast">Fast (14d)</option>
+                      <option value="medium">Medium (30d)</option>
+                      <option value="slow">Slow (60d)</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                    <div
+                      class="tooltip tooltip-top"
+                      data-tip="How much historical data to analyze. Fast: Recent trends, Slow: Long-term patterns"
+                    >
+                      <HelpCircle class="w-3 h-3 text-gray-400 cursor-help" />
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  v-if="windowProfile === 'custom'"
+                  class="flex flex-col gap-1"
+                >
+                  <label class="text-xs text-gray-600 font-medium"
+                    >Custom Days</label
+                  >
                   <input
-                    v-if="windowProfile === 'custom'"
                     v-model.number="customWindowDays"
                     type="number"
                     min="7"
-                    class="input input-bordered input-xs w-20"
-                    placeholder="Days"
+                    class="input input-bordered input-xs"
+                    placeholder="30"
                   />
-                  <input
-                    v-model.number="leadTimeDays"
-                    type="number"
-                    min="0"
-                    class="input input-bordered input-xs w-24"
-                    placeholder="Lead time (d)"
-                  />
-                  <input
-                    v-model.number="serviceLevel"
-                    type="number"
-                    step="0.01"
-                    min="0.5"
-                    max="0.999"
-                    class="input input-bordered input-xs w-28"
-                    placeholder="Service lvl (0.95)"
-                  />
+                </div>
+
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs text-gray-600 font-medium"
+                    >Lead Time</label
+                  >
+                  <div class="flex items-center gap-1">
+                    <input
+                      v-model.number="leadTimeDays"
+                      type="number"
+                      min="0"
+                      max="365"
+                      class="input input-bordered input-xs w-20"
+                      placeholder="7"
+                    />
+                    <span class="text-xs text-gray-500">days</span>
+                    <div
+                      class="tooltip tooltip-top"
+                      data-tip="How many days it takes to receive items after ordering"
+                    >
+                      <HelpCircle class="w-3 h-3 text-gray-400 cursor-help" />
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs text-gray-600 font-medium"
+                    >Service Level</label
+                  >
+                  <div class="flex items-center gap-1">
+                    <input
+                      v-model.number="serviceLevel"
+                      type="number"
+                      step="0.01"
+                      min="0.5"
+                      max="0.999"
+                      class="input input-bordered input-xs w-20"
+                      placeholder="0.95"
+                    />
+                    <span class="text-xs text-gray-500">%</span>
+                    <div
+                      class="tooltip tooltip-top"
+                      data-tip="Target percentage of time items are available when needed (95% = high availability)"
+                    >
+                      <HelpCircle class="w-3 h-3 text-gray-400 cursor-help" />
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex flex-col gap-1">
                   <button class="btn btn-xs" @click="seedForecastTest">
                     Test Usage
                   </button>
+                </div>
+              </div>
+
+              <!-- Forecasting Parameters Summary -->
+              <div
+                class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4"
+              >
+                <div class="flex items-center gap-2 mb-2">
+                  <Info class="w-4 h-4 text-blue-600" />
+                  <h4 class="text-sm font-medium text-blue-800">
+                    Understanding Your Settings
+                  </h4>
+                </div>
+                <div
+                  class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-blue-700"
+                >
+                  <div>
+                    <span class="font-medium"
+                      >Lead Time ({{ leadTimeDays }} days):</span
+                    >
+                    Items will be reordered {{ leadTimeDays }} days before
+                    they're expected to run out
+                  </div>
+                  <div>
+                    <span class="font-medium"
+                      >Service Level ({{
+                        (serviceLevel * 100).toFixed(0)
+                      }}%):</span
+                    >
+                    {{
+                      serviceLevel >= 0.95
+                        ? 'High availability'
+                        : serviceLevel >= 0.85
+                          ? 'Good availability'
+                          : 'Standard availability'
+                    }}
+                    - items will be available when needed
+                  </div>
                 </div>
               </div>
 
@@ -3043,7 +3237,7 @@
                 </select>
                 <button
                   @click="loadDisposedItems"
-                  class="btn btn-xs btn-primary"
+                  class="btn btn-xs btn-outline bg-primaryColor text-white font-thin"
                 >
                   Apply Filters
                 </button>
@@ -3078,7 +3272,7 @@
                       </td>
                       <td>{{ item.category_name }}</td>
                       <td class="font-mono text-xs">
-                        {{ item.batch_number || 'N/A' }}
+                        {{ formatBatchNumber(item.batch_number) }}
                       </td>
                       <td>
                         {{

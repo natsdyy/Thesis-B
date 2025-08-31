@@ -52,7 +52,8 @@ if (!TELEGRAM_BOT_TOKEN) {
   console.error("TELEGRAM_BOT_TOKEN is required in environment variables");
 }
 
-router.post("/", upload.single("image"), async (req, res) => {
+
+router.post("/", upload.single('image'), async (req, res) => {
   try {
     const { name, email, message, phone, rating } = req.body;
     const imageFile = req.file;

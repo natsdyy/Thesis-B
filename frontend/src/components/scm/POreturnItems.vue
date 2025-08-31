@@ -49,9 +49,16 @@
   const searchQuery = ref('');
   const statusFilter = ref('');
   const reasonFilter = ref('');
-  const dateFilter = ref('');
+  const dateFilterType = ref('today');
   const currentPage = ref(1);
   const itemsPerPage = ref(10);
+
+  // Custom month picker state
+  const showCustomMonthPicker = ref(false);
+  const customMonthPicker = ref({
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+  });
 
   // Toast state
   const toast = ref({ show: false, type: '', message: '' });
@@ -102,6 +109,78 @@
     return colors[reason] || 'text-neutral';
   };
 
+  // Date helpers for filtration
+  const getStartOfWeek = (date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday first
+    return new Date(d.setDate(diff));
+  };
+
+  const getStartOfMonth = (date) =>
+    new Date(date.getFullYear(), date.getMonth(), 1);
+
+  // Available years for custom month picker
+  const availableYears = computed(() => {
+    const currentYear = new Date().getFullYear();
+    return Array.from({ length: 6 }, (_, i) => currentYear - i);
+  });
+
+  // Quick date options with calculated counts
+  const quickDateOptions = computed(() => {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const toYMD = (date) =>
+      date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+
+    const options = [
+      { label: 'Today', date: toYMD(today), count: 0 },
+      { label: 'This Week', date: null, count: 0 },
+      { label: 'This Month', date: null, count: 0 },
+    ];
+
+    // Calculate counts based on actual return data
+    const returns = itemReturns.value;
+    options.forEach((option) => {
+      if (option.label === 'Today') {
+        option.count = returns.filter((returnItem) => {
+          const returnDate = new Date(
+            new Date(returnItem.created_at).toLocaleString('en-US', {
+              timeZone: 'Asia/Manila',
+            })
+          );
+          const normalized = returnDate.toLocaleDateString('en-CA', {
+            timeZone: 'Asia/Manila',
+          });
+          return normalized === option.date;
+        }).length;
+      } else if (option.label === 'This Week') {
+        const startOfWeek = getStartOfWeek(today);
+        const endOfWeek = new Date(today);
+        endOfWeek.setHours(23, 59, 59, 999);
+
+        option.count = returns.filter((returnItem) => {
+          const returnDate = new Date(returnItem.created_at);
+          return returnDate >= startOfWeek && returnDate <= endOfWeek;
+        }).length;
+      } else if (option.label === 'This Month') {
+        const startOfMonth = getStartOfMonth(today);
+        const endOfMonth = new Date(today);
+        endOfMonth.setHours(23, 59, 59, 999);
+
+        option.count = returns.filter((returnItem) => {
+          const returnDate = new Date(returnItem.created_at);
+          return returnDate >= startOfMonth && returnDate <= endOfMonth;
+        }).length;
+      }
+    });
+
+    return options;
+  });
+
   // Computed properties
   const itemReturns = computed(() => {
     let returns = purchaseOrderStore.itemReturns;
@@ -145,14 +224,58 @@
       );
     }
 
-    // Date filter
-    if (dateFilter.value) {
-      filtered = filtered.filter((returnItem) => {
-        const returnDate = new Date(returnItem.created_at)
-          .toISOString()
-          .split('T')[0];
-        return returnDate === dateFilter.value;
-      });
+    // Date filter based on selected filter type
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    switch (dateFilterType.value) {
+      case 'today':
+        filtered = filtered.filter((returnItem) => {
+          const returnDate = new Date(returnItem.created_at);
+          returnDate.setHours(0, 0, 0, 0);
+          return returnDate.getTime() === today.getTime();
+        });
+        break;
+      case 'week':
+        const startOfWeek = getStartOfWeek(today);
+        const endOfWeek = new Date(today);
+        endOfWeek.setHours(23, 59, 59, 999);
+        filtered = filtered.filter((returnItem) => {
+          const returnDate = new Date(returnItem.created_at);
+          return returnDate >= startOfWeek && returnDate <= endOfWeek;
+        });
+        break;
+      case 'month':
+        const startOfMonth = getStartOfMonth(today);
+        const endOfMonth = new Date(today);
+        endOfMonth.setHours(23, 59, 59, 999);
+        filtered = filtered.filter((returnItem) => {
+          const returnDate = new Date(returnItem.created_at);
+          return returnDate >= startOfMonth && returnDate <= endOfMonth;
+        });
+        break;
+      case 'custom_month':
+        const startOfCustomMonth = new Date(
+          customMonthPicker.value.year,
+          customMonthPicker.value.month - 1,
+          1
+        );
+        const endOfCustomMonth = new Date(
+          customMonthPicker.value.year,
+          customMonthPicker.value.month,
+          0,
+          23,
+          59,
+          59,
+          999
+        );
+        filtered = filtered.filter((returnItem) => {
+          const returnDate = new Date(returnItem.created_at);
+          return (
+            returnDate >= startOfCustomMonth && returnDate <= endOfCustomMonth
+          );
+        });
+        break;
     }
 
     return filtered;
@@ -203,11 +326,32 @@
     }
   };
 
+  // Date filter methods
+  const selectQuickDate = (option) => {
+    if (option.label === 'Today') {
+      dateFilterType.value = 'today';
+    } else if (option.label === 'This Week') {
+      dateFilterType.value = 'week';
+    } else if (option.label === 'This Month') {
+      dateFilterType.value = 'month';
+    }
+    showCustomMonthPicker.value = false;
+  };
+
+  const toggleCustomMonthPicker = () => {
+    showCustomMonthPicker.value = !showCustomMonthPicker.value;
+  };
+
+  const selectCustomMonth = () => {
+    dateFilterType.value = 'custom_month';
+    showCustomMonthPicker.value = false;
+  };
+
   const clearFilters = () => {
     searchQuery.value = '';
     statusFilter.value = '';
     reasonFilter.value = '';
-    dateFilter.value = '';
+    dateFilterType.value = 'today';
     currentPage.value = 1;
   };
 
@@ -291,6 +435,16 @@
   // Lifecycle
   onMounted(() => {
     loadItemReturns();
+
+    // Add click outside handler for custom month picker
+    document.addEventListener('click', (event) => {
+      const customMonthPicker = document.querySelector(
+        '[data-custom-month-picker]'
+      );
+      if (customMonthPicker && !customMonthPicker.contains(event.target)) {
+        showCustomMonthPicker.value = false;
+      }
+    });
   });
 
   watch(
@@ -409,24 +563,132 @@
               {{ reason }}
             </option>
           </select>
-
-          <!-- Date Filter -->
-          <input
-            v-model="dateFilter"
-            type="date"
-            class="input input-sm input-bordered bg-white border-primaryColor/30 text-black/70"
-          />
         </div>
 
-        <!-- Action Buttons -->
-        <div class="flex gap-2">
-          <button
-            class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
-            @click="clearFilters"
-          >
-            <RefreshCcw class="w-4 h-4 mr-1" />
-            Clear
-          </button>
+        <!-- Date Filter Buttons -->
+        <div
+          class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center"
+        >
+          <!-- Quick Date Buttons -->
+          <div class="flex gap-2 md:flex-row flex-col">
+            <button
+              v-for="option in quickDateOptions"
+              :key="option.label"
+              class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
+              :class="{
+                'bg-primaryColor text-white':
+                  dateFilterType ===
+                  (option.label === 'Today'
+                    ? 'today'
+                    : option.label === 'This Week'
+                      ? 'week'
+                      : option.label === 'This Month'
+                        ? 'month'
+                        : ''),
+                'bg-white text-primaryColor hover:bg-primaryColor/10':
+                  dateFilterType !==
+                  (option.label === 'Today'
+                    ? 'today'
+                    : option.label === 'This Week'
+                      ? 'week'
+                      : option.label === 'This Month'
+                        ? 'month'
+                        : ''),
+              }"
+              @click="selectQuickDate(option)"
+            >
+              {{ option.label }}
+              <span
+                class="badge badge-xs ml-1 bg-secondaryColor border-none"
+                :class="
+                  dateFilterType ===
+                  (option.label === 'Today'
+                    ? 'today'
+                    : option.label === 'This Week'
+                      ? 'week'
+                      : option.label === 'This Month'
+                        ? 'month'
+                        : '')
+                    ? 'badge-ghost'
+                    : 'badge-primaryColor/10 text-primaryColor'
+                "
+              >
+                {{ option.count }}
+              </span>
+            </button>
+          </div>
+
+          <!-- Custom Month Picker -->
+          <div class="flex items-center gap-1">
+            <div class="relative">
+              <button
+                class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                @click.stop="toggleCustomMonthPicker"
+              >
+                <Calendar class="w-4 h-4 mr-1" />
+                Custom Month
+              </button>
+
+              <div
+                v-if="showCustomMonthPicker"
+                data-custom-month-picker
+                class="absolute top-full left-0 mt-1 p-3 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10"
+                style="min-width: 200px"
+              >
+                <div class="flex gap-2 mb-3" @click.stop>
+                  <select
+                    v-model="customMonthPicker.month"
+                    class="select select-bordered select-sm w-20"
+                  >
+                    <option v-for="month in 12" :key="month" :value="month">
+                      {{
+                        new Date(2024, month - 1).toLocaleDateString('en-US', {
+                          month: 'short',
+                        })
+                      }}
+                    </option>
+                  </select>
+                  <select
+                    v-model="customMonthPicker.year"
+                    class="select select-bordered select-sm w-24"
+                  >
+                    <option
+                      v-for="year in availableYears"
+                      :key="year"
+                      :value="year"
+                    >
+                      {{ year }}
+                    </option>
+                  </select>
+                </div>
+                <div class="flex gap-2">
+                  <button
+                    class="btn btn-sm bg-primaryColor font-thin text-white"
+                    @click.stop="selectCustomMonth"
+                  >
+                    Apply
+                  </button>
+                  <button
+                    class="btn btn-sm btn-ghost font-thin"
+                    @click.stop="showCustomMonthPicker = false"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="flex gap-2">
+            <button
+              class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
+              @click="clearFilters"
+            >
+              <RefreshCcw class="w-4 h-4 mr-1" />
+              Clear
+            </button>
+          </div>
         </div>
       </div>
 
@@ -443,7 +705,10 @@
         <h4 class="text-lg font-semibold mb-2 text-black">No Returns Found</h4>
         <p class="text-black/60">
           {{
-            searchQuery || statusFilter || reasonFilter || dateFilter
+            searchQuery ||
+            statusFilter ||
+            reasonFilter ||
+            dateFilterType !== 'today'
               ? 'No returns match your current filters.'
               : 'No item returns have been logged yet.'
           }}

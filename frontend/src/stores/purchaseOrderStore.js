@@ -163,6 +163,63 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     }
   };
 
+  const createPurchaseOrderFromSupplyRequestWithItems = async (
+    supplyRequestId,
+    supplierId,
+    poData,
+    selectedItems
+  ) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const payload = {
+        supplyRequestId,
+        supplierId,
+        poData: {
+          ...poData,
+          created_by: poData.created_by || 'SCM User',
+        },
+        selectedItems: selectedItems.map((item) => ({
+          id: item.id,
+          item_name: item.item_name || item.name,
+          quantity: item.item_quantity || item.quantity,
+          unit: item.item_unit || item.unit,
+          unit_price: item.item_unit_price || item.unit_price,
+          total_price: item.item_amount || item.total_price,
+          description: item.item_notes || item.description,
+        })),
+      };
+
+      const response = await axios.post(
+        `${API_BASE_URL}/purchase-orders/from-supply-request-with-items`,
+        payload
+      );
+
+      if (response.data.success) {
+        purchaseOrders.value.unshift(response.data.data);
+        await fetchStats();
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to create purchase order'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to create purchase order';
+      console.error(
+        'Error creating purchase order from supply request with items:',
+        err
+      );
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const createPurchaseOrder = async (poData, items) => {
     loading.value = true;
     error.value = null;
@@ -574,6 +631,7 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     fetchPurchaseOrders,
     fetchPurchaseOrderById,
     createPurchaseOrderFromSupplyRequest,
+    createPurchaseOrderFromSupplyRequestWithItems,
     createPurchaseOrder,
     updatePurchaseOrder,
     deletePurchaseOrder,

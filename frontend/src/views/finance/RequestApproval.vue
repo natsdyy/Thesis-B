@@ -1269,10 +1269,10 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <FileText class="w-8 h-8 text-info" />
+          <FileText class="w-8 h-8 text-black/50" />
         </div>
         <div class="stat-title text-black/50">Total Value Approved</div>
-        <div class="stat-value text-info">
+        <div class="stat-value text-black/50">
           ₱{{
             (
               requestStats.total_approved_amount ||
@@ -2116,10 +2116,10 @@
             <span class="text-sm text-black/60">Requested By:</span>
             <p class="font-medium">{{ modal.request?.requested_by }}</p>
           </div>
-          <div>
+          <div class="flex flex-col gap-2">
             <span class="text-sm text-black/60">Priority:</span>
             <div
-              class="badge badge-sm border-none mt-1"
+              class="badge badge-sm border-none"
               :class="{
                 'bg-error/20 text-error': modal.request?.priority === 'Urgent',
                 'bg-warning/20 text-warning':

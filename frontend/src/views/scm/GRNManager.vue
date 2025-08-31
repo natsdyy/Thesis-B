@@ -132,38 +132,117 @@
           <div
             class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center"
           >
-            <div class="join">
+            <!-- Date Filter Buttons -->
+            <div class="flex gap-2 md:flex-row flex-col">
               <button
-                class="join-item btn btn-xs sm:btn-sm font-thin border border-primaryColor/30"
+                v-for="option in quickDateOptions"
+                :key="option.label"
+                class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
                 :class="{
-                  'bg-primaryColor text-white': grnFilterType === 'today',
+                  'bg-primaryColor text-white':
+                    grnFilterType ===
+                    (option.label === 'Today'
+                      ? 'today'
+                      : option.label === 'This Week'
+                        ? 'week'
+                        : option.label === 'This Month'
+                          ? 'month'
+                          : ''),
+                  'bg-white text-primaryColor hover:bg-primaryColor/10':
+                    grnFilterType !==
+                    (option.label === 'Today'
+                      ? 'today'
+                      : option.label === 'This Week'
+                        ? 'week'
+                        : option.label === 'This Month'
+                          ? 'month'
+                          : ''),
                 }"
-                @click="grnFilterType = 'today'"
+                @click="selectQuickDate(option)"
               >
-                Today
-                <span class="badge badge-xs ml-1">{{ stats.today }}</span>
-              </button>
-              <button
-                class="join-item btn btn-xs sm:btn-sm font-thin border border-primaryColor/30"
-                :class="{
-                  'bg-primaryColor text-white': grnFilterType === 'week',
-                }"
-                @click="grnFilterType = 'week'"
-              >
-                This Week
-                <span class="badge badge-xs ml-1">{{ stats.week }}</span>
-              </button>
-              <button
-                class="join-item btn btn-xs sm:btn-sm font-thin border border-primaryColor/30"
-                :class="{
-                  'bg-primaryColor text-white': grnFilterType === 'month',
-                }"
-                @click="grnFilterType = 'month'"
-              >
-                This Month
-                <span class="badge badge-xs ml-1">{{ stats.month }}</span>
+                {{ option.label }}
+                <span
+                  class="badge badge-xs ml-1 bg-secondaryColor border-none"
+                  :class="
+                    grnFilterType ===
+                    (option.label === 'Today'
+                      ? 'today'
+                      : option.label === 'This Week'
+                        ? 'week'
+                        : option.label === 'This Month'
+                          ? 'month'
+                          : '')
+                      ? 'badge-ghost'
+                      : 'badge-primaryColor/10 text-primaryColor'
+                  "
+                >
+                  {{ option.count }}
+                </span>
               </button>
             </div>
+
+            <!-- Custom Month Picker -->
+            <div class="flex items-center gap-1">
+              <div class="relative">
+                <button
+                  class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                  @click.stop="toggleCustomMonthPicker"
+                >
+                  <Calendar class="w-4 h-4 mr-1" />
+                  Custom Month
+                </button>
+
+                <div
+                  v-if="showCustomMonthPicker"
+                  data-custom-month-picker
+                  class="absolute top-full left-0 mt-1 p-3 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10"
+                  style="min-width: 200px"
+                >
+                  <div class="flex gap-2 mb-3" @click.stop>
+                    <select
+                      v-model="customMonthPicker.month"
+                      class="select select-bordered select-sm w-20"
+                    >
+                      <option v-for="month in 12" :key="month" :value="month">
+                        {{
+                          new Date(2024, month - 1).toLocaleDateString(
+                            'en-US',
+                            { month: 'short' }
+                          )
+                        }}
+                      </option>
+                    </select>
+                    <select
+                      v-model="customMonthPicker.year"
+                      class="select select-bordered select-sm w-24"
+                    >
+                      <option
+                        v-for="year in availableYears"
+                        :key="year"
+                        :value="year"
+                      >
+                        {{ year }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="flex gap-2">
+                    <button
+                      class="btn btn-sm bg-primaryColor font-thin text-white"
+                      @click.stop="selectCustomMonth"
+                    >
+                      Apply
+                    </button>
+                    <button
+                      class="btn btn-sm btn-ghost font-thin"
+                      @click.stop="showCustomMonthPicker = false"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <button
               class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
               @click="refreshGRNs"
@@ -255,20 +334,20 @@
                 <td>
                   <div class="flex gap-2">
                     <button
-                      class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
+                      class="btn btn-outline btn-xs text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
                       @click="viewGRNDetails(grn.id)"
                     >
                       View Details
                     </button>
                     <button
-                      class="btn btn-outline btn-sm text-info hover:bg-info/10 font-thin hover:border-none hover:shadow-none"
+                      class="btn btn-outline btn-xs text-info hover:bg-info/10 font-thin hover:border-none hover:shadow-none"
                       @click="openReturnsForGRN(grn)"
                     >
                       View Returns
                     </button>
                     <button
                       v-if="grn.status === 'draft'"
-                      class="btn btn-sm btn-primary text-white font-thin shadow-none"
+                      class="btn btn-xs btn-success text-white font-thin shadow-none"
                       @click="updateStatus(grn.id, 'pending_inspection')"
                       :disabled="updatingStatus === grn.id"
                     >
@@ -419,6 +498,33 @@
             <p class="text-sm">{{ selectedGRN.notes }}</p>
           </div>
 
+          <!-- Quality Inspection Summary -->
+          <div
+            v-if="
+              selectedGRN.status === 'passed' || selectedGRN.status === 'failed'
+            "
+            class="p-4 bg-base-200 rounded-lg"
+          >
+            <h4 class="font-semibold mb-2">
+              Quality Inspection Summary
+              <span
+                :class="getQualityStatusBadgeClass(selectedGRN.status)"
+                class="ml-2"
+              >
+                {{ getQualityStatusLabel(selectedGRN.status) }}
+              </span>
+            </h4>
+            <div
+              v-if="getCommonQualityNotes()"
+              class="text-sm bg-base-100 p-3 rounded"
+            >
+              <strong>Inspection Notes:</strong> {{ getCommonQualityNotes() }}
+            </div>
+            <div v-else class="text-sm text-black/50">
+              No inspection notes provided.
+            </div>
+          </div>
+
           <!-- GRN Items Table -->
           <div v-if="selectedGRN.items && selectedGRN.items.length > 0">
             <div class="flex justify-between items-center mb-3">
@@ -446,6 +552,7 @@
                     <th>Unit Cost</th>
                     <th>Total Value</th>
                     <th>Quality Status</th>
+                    <th>Quality Notes</th>
                     <th>Inventory Category</th>
                     <th>Item Type</th>
                     <th>Inspected By</th>
@@ -469,6 +576,16 @@
                       >
                         {{ getQualityStatusLabel(item.quality_status) }}
                       </span>
+                    </td>
+                    <td>
+                      <div v-if="item.quality_notes" class="max-w-xs">
+                        <div
+                          class="text-xs text-black/70 bg-base-200 p-2 rounded"
+                        >
+                          {{ item.quality_notes }}
+                        </div>
+                      </div>
+                      <div v-else class="text-xs text-black/30">No notes</div>
                     </td>
                     <td>
                       <!-- Show auto-populated category if available -->
@@ -667,10 +784,54 @@
     </dialog>
 
     <!-- Confirmation Modal -->
-    <dialog id="confirmation_modal" class="modal">
-      <div class="modal-box">
+    <dialog id="confirmation_modal" class="modal" @click="handleModalClick">
+      <div class="modal-box" @click.stop>
         <h3 class="font-bold text-lg mb-4">{{ confirmModal.title }}</h3>
         <p class="py-4">{{ confirmModal.message }}</p>
+
+        <!-- Inspection Notes Input -->
+        <div
+          v-if="
+            confirmModal.type === 'markPassed' ||
+            confirmModal.type === 'markFailed'
+          "
+          class="mb-4"
+        >
+          <label class="label">
+            <span class="label-text font-medium">
+              {{
+                confirmModal.type === 'markPassed'
+                  ? 'Pass Notes (Optional)'
+                  : 'Failure Reason (Required)'
+              }}
+            </span>
+            <span
+              v-if="confirmModal.type === 'markFailed'"
+              class="label-text-alt text-error"
+              >*</span
+            >
+          </label>
+          <textarea
+            v-model="inspectionNotes"
+            class="textarea textarea-bordered w-full"
+            :placeholder="
+              confirmModal.type === 'markPassed'
+                ? 'Enter any notes about the quality inspection (optional)...'
+                : 'Please provide the reason for failure (required)...'
+            "
+            :class="{
+              'textarea-error':
+                confirmModal.type === 'markFailed' && !inspectionNotes.trim(),
+            }"
+            rows="3"
+          ></textarea>
+          <div
+            v-if="confirmModal.type === 'markFailed' && !inspectionNotes.trim()"
+            class="text-error text-sm mt-1"
+          >
+            Please provide a reason for the failure.
+          </div>
+        </div>
 
         <div class="modal-action">
           <button
@@ -684,6 +845,9 @@
             type="button"
             class="btn bg-primaryColor text-white btn-sm font-thin border-none hover:bg-primaryColor/80"
             @click="handleConfirmAction"
+            :disabled="
+              confirmModal.type === 'markFailed' && !inspectionNotes.trim()
+            "
           >
             Confirm
           </button>
@@ -728,14 +892,150 @@
   const pendingInspectionGRNs = computed(() => stats.value.pending_inspection);
   const completedGRNs = computed(() => stats.value.completed);
 
-  // Use backend stats for date-based counts
-  const grnTodayCount = computed(() => stats.value.today);
-  const grnWeekCount = computed(() => stats.value.week);
-  const grnMonthCount = computed(() => stats.value.month);
-
-  // Optimized filtering - use server-side filtering
+  // Date filtering with client-side count calculation
   const grnFilterType = ref('today');
-  const filteredGrns = computed(() => grns.value);
+
+  // Quick date options with calculated counts
+  const quickDateOptions = computed(() => {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const toYMD = (date) =>
+      date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+
+    const options = [
+      { label: 'Today', date: toYMD(today), count: 0 },
+      { label: 'This Week', date: null, count: 0 },
+      { label: 'This Month', date: null, count: 0 },
+    ];
+
+    // Calculate counts based on actual GRN data
+    options.forEach((option) => {
+      if (option.label === 'Today') {
+        option.count = grns.value.filter((grn) => {
+          const grnDate = new Date(
+            new Date(grn.created_at).toLocaleString('en-US', {
+              timeZone: 'Asia/Manila',
+            })
+          );
+          const normalized = grnDate.toLocaleDateString('en-CA', {
+            timeZone: 'Asia/Manila',
+          });
+          return normalized === option.date;
+        }).length;
+      } else if (option.label === 'This Week') {
+        const startOfWeek = getStartOfWeek(today);
+        const endOfWeek = new Date(today);
+        endOfWeek.setHours(23, 59, 59, 999);
+
+        option.count = grns.value.filter((grn) => {
+          const grnDate = new Date(grn.created_at);
+          return grnDate >= startOfWeek && grnDate <= endOfWeek;
+        }).length;
+      } else if (option.label === 'This Month') {
+        const startOfMonth = getStartOfMonth(today);
+        const endOfMonth = new Date(today);
+        endOfMonth.setHours(23, 59, 59, 999);
+
+        option.count = grns.value.filter((grn) => {
+          const grnDate = new Date(grn.created_at);
+          return grnDate >= startOfMonth && grnDate <= endOfMonth;
+        }).length;
+      }
+    });
+
+    return options;
+  });
+
+  // Custom month picker state
+  const showCustomMonthPicker = ref(false);
+  const customMonthPicker = ref({
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+  });
+
+  // Filtered GRNs based on selected filter type
+  const filteredGrns = computed(() => {
+    if (!grns.value.length) return [];
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    switch (grnFilterType.value) {
+      case 'today':
+        return grns.value.filter((grn) => {
+          const grnDate = new Date(grn.created_at);
+          grnDate.setHours(0, 0, 0, 0);
+          return grnDate.getTime() === today.getTime();
+        });
+      case 'week':
+        const startOfWeek = getStartOfWeek(today);
+        const endOfWeek = new Date(today);
+        endOfWeek.setHours(23, 59, 59, 999);
+        return grns.value.filter((grn) => {
+          const grnDate = new Date(grn.created_at);
+          return grnDate >= startOfWeek && grnDate <= endOfWeek;
+        });
+      case 'month':
+        const startOfMonth = getStartOfMonth(today);
+        const endOfMonth = new Date(today);
+        endOfMonth.setHours(23, 59, 59, 999);
+        return grns.value.filter((grn) => {
+          const grnDate = new Date(grn.created_at);
+          return grnDate >= startOfMonth && grnDate <= endOfMonth;
+        });
+      case 'custom_month':
+        const startOfCustomMonth = new Date(
+          customMonthPicker.value.year,
+          customMonthPicker.value.month - 1,
+          1
+        );
+        const endOfCustomMonth = new Date(
+          customMonthPicker.value.year,
+          customMonthPicker.value.month,
+          0,
+          23,
+          59,
+          59,
+          999
+        );
+        return grns.value.filter((grn) => {
+          const grnDate = new Date(grn.created_at);
+          return grnDate >= startOfCustomMonth && grnDate <= endOfCustomMonth;
+        });
+      default:
+        return grns.value;
+    }
+  });
+
+  // Available years for custom month picker
+  const availableYears = computed(() => {
+    const currentYear = new Date().getFullYear();
+    return Array.from({ length: 6 }, (_, i) => currentYear - i);
+  });
+
+  // Date filter methods
+  const selectQuickDate = (option) => {
+    if (option.label === 'Today') {
+      grnFilterType.value = 'today';
+    } else if (option.label === 'This Week') {
+      grnFilterType.value = 'week';
+    } else if (option.label === 'This Month') {
+      grnFilterType.value = 'month';
+    }
+    showCustomMonthPicker.value = false;
+  };
+
+  const toggleCustomMonthPicker = () => {
+    showCustomMonthPicker.value = !showCustomMonthPicker.value;
+  };
+
+  const selectCustomMonth = () => {
+    grnFilterType.value = 'custom_month';
+    showCustomMonthPicker.value = false;
+  };
 
   // Pagination state and computed properties
   const currentPageGrn = ref(1);
@@ -783,6 +1083,13 @@
         const start = getStartOfMonth(today);
         const end = today;
         return `This Month (${formatDate(start)} - ${formatDate(end)})`;
+      }
+      case 'custom_month': {
+        const monthName = new Date(
+          customMonthPicker.value.year,
+          customMonthPicker.value.month - 1
+        ).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        return `Custom Month (${monthName})`;
       }
       default:
         return 'All';
@@ -841,6 +1148,8 @@
     onConfirm: null,
   });
 
+  const inspectionNotes = ref('');
+
   // Toast state (same as PurchaseOrder.vue)
   const toast = ref({ show: false, type: '', message: '' });
 
@@ -862,6 +1171,16 @@
     } catch (err) {
       console.error('Error loading GRN data:', err);
     }
+
+    // Add click outside handler for custom month picker
+    document.addEventListener('click', (event) => {
+      const customMonthPicker = document.querySelector(
+        '[data-custom-month-picker]'
+      );
+      if (customMonthPicker && !customMonthPicker.contains(event.target)) {
+        showCustomMonthPicker.value = false;
+      }
+    });
   });
 
   // Optimized refresh - use cache when possible
@@ -1128,6 +1447,15 @@
       message: '',
       onConfirm: null,
     };
+    // Reset inspection notes
+    inspectionNotes.value = '';
+  };
+
+  const handleModalClick = (event) => {
+    // Close modal when clicking outside
+    if (event.target.tagName === 'DIALOG') {
+      closeConfirmModal();
+    }
   };
 
   const handleConfirmAction = async () => {
@@ -1157,7 +1485,7 @@
       const updatedGRN = await performBulkQualityInspection(
         selectedGRN.value.id,
         'passed',
-        'All items passed quality inspection'
+        inspectionNotes.value.trim() || 'All items passed quality inspection'
       );
       if (updatedGRN) {
         selectedGRN.value = updatedGRN;
@@ -1186,7 +1514,7 @@
       const updatedGRN = await performBulkQualityInspection(
         selectedGRN.value.id,
         'failed',
-        'All items failed quality inspection'
+        inspectionNotes.value.trim() || 'All items failed quality inspection'
       );
       if (updatedGRN) {
         selectedGRN.value = updatedGRN;
@@ -1255,6 +1583,26 @@
       conditional: 'Conditional',
     };
     return labels[status] || status;
+  };
+
+  const getCommonQualityNotes = () => {
+    if (!selectedGRN.value?.items?.length) return null;
+
+    // Get all quality notes from items
+    const notes = selectedGRN.value.items
+      .map((item) => item.quality_notes)
+      .filter((note) => note && note.trim());
+
+    if (notes.length === 0) return null;
+
+    // If all items have the same note, return it
+    const uniqueNotes = [...new Set(notes)];
+    if (uniqueNotes.length === 1) {
+      return uniqueNotes[0];
+    }
+
+    // If different notes, return a summary
+    return `Multiple notes: ${uniqueNotes.length} different inspection notes across items`;
   };
 </script>
 

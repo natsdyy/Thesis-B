@@ -241,14 +241,49 @@
       );
 
       if (selectedItemType) {
-        // Auto-populate unit from inventory
-        row.item_unit = selectedItemType.unit_of_measure;
+        // For "Other Materials", allow user to select unit
+        if (row.item_type === 'Other Materials') {
+          // Don't auto-populate, let user choose
+          row.item_unit = '';
+        } else {
+          // Auto-populate unit from inventory for other types
+          row.item_unit = selectedItemType.unit_of_measure;
+        }
       } else {
         // Fallback to default
         row.item_unit = 'pieces';
       }
     }
   };
+
+  // Function to check if unit selection is required for a row
+  const isUnitSelectionRequired = (row) => {
+    return row.item_type === 'Other Materials';
+  };
+
+  // Common unit options for "Other Materials"
+  const commonUnitOptions = [
+    'pieces',
+    'kg',
+    'liters',
+    'boxes',
+    'cases',
+    'packs',
+    'sets',
+    'reams',
+    'bottles',
+    'cans',
+    'bags',
+    'rolls',
+    'sheets',
+    'meters',
+    'yards',
+    'dozens',
+    'pairs',
+    'units',
+    'items',
+    'containers',
+  ];
 
   const priorities = ['Low', 'Normal', 'High', 'Urgent'];
   const departments = ['SCM', 'Finance', 'HR', 'Production', 'Admin', 'Branch'];
@@ -716,13 +751,15 @@
         (row) =>
           row.item_name.trim() &&
           row.item_quantity > 0 &&
-          row.item_unitPrice > 0
+          row.item_unitPrice > 0 &&
+          // For "Other Materials", ensure unit is selected
+          (row.item_type !== 'Other Materials' || row.item_unit.trim())
       );
 
       if (validItems.length === 0) {
         showToast(
           'error',
-          'Please add at least one valid item with name, quantity, and price'
+          'Please add at least one valid item with name, quantity, and price. For "Other Materials", please also select a unit.'
         );
         return;
       }
@@ -772,11 +809,16 @@
         (row) =>
           row.item_name.trim() &&
           row.item_quantity > 0 &&
-          row.item_unitPrice > 0
+          row.item_unitPrice > 0 &&
+          // For "Other Materials", ensure unit is selected
+          (row.item_type !== 'Other Materials' || row.item_unit.trim())
       );
 
       if (validItems.length === 0) {
-        showToast('error', 'Please add at least one valid item');
+        showToast(
+          'error',
+          'Please add at least one valid item. For "Other Materials", please also select a unit.'
+        );
         return;
       }
 
@@ -2601,7 +2643,23 @@
               </td>
 
               <td>
+                <!-- Show dropdown for "Other Materials", readonly input for others -->
+                <select
+                  v-if="row.item_type === 'Other Materials'"
+                  v-model="row.item_unit"
+                  class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor"
+                >
+                  <option value="" disabled>Select Unit</option>
+                  <option
+                    v-for="unit in commonUnitOptions"
+                    :key="unit"
+                    :value="unit"
+                  >
+                    {{ unit }}
+                  </option>
+                </select>
                 <input
+                  v-else
                   v-model="row.item_unit"
                   type="text"
                   class="input input-xs w-full bg-gray-100 border-primaryColor/30 text-black/70"
@@ -2941,7 +2999,23 @@
                 </td>
 
                 <td>
+                  <!-- Show dropdown for "Other Materials", readonly input for others -->
+                  <select
+                    v-if="row.item_type === 'Other Materials'"
+                    v-model="row.item_unit"
+                    class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor"
+                  >
+                    <option value="" disabled>Select Unit</option>
+                    <option
+                      v-for="unit in commonUnitOptions"
+                      :key="unit"
+                      :value="unit"
+                    >
+                      {{ unit }}
+                    </option>
+                  </select>
                   <input
+                    v-else
                     v-model="row.item_unit"
                     type="text"
                     class="input input-xs w-full bg-gray-100 border-primaryColor/30 text-black/70"
@@ -3373,7 +3447,23 @@
                 </td>
 
                 <td>
+                  <!-- Show dropdown for "Other Materials", readonly input for others -->
+                  <select
+                    v-if="row.item_type === 'Other Materials'"
+                    v-model="row.item_unit"
+                    class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor"
+                  >
+                    <option value="" disabled>Select Unit</option>
+                    <option
+                      v-for="unit in commonUnitOptions"
+                      :key="unit"
+                      :value="unit"
+                    >
+                      {{ unit }}
+                    </option>
+                  </select>
                   <input
+                    v-else
                     v-model="row.item_unit"
                     type="text"
                     class="input input-xs w-full bg-gray-100 border-primaryColor/30 text-black/70"

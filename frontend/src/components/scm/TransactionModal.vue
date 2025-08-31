@@ -133,6 +133,9 @@
         color: 'text-error',
         label: 'Disposed',
         bgColor: 'bg-error/10',
+        badgeColor: 'bg-error/20 text-error',
+        description:
+          'Item was disposed due to damage, expiry, or other reasons',
       };
     }
 
@@ -142,48 +145,65 @@
         color: 'text-success',
         label: 'Received',
         bgColor: 'bg-success/10',
+        badgeColor: 'bg-success/20 text-success',
+        description: 'Item was received and added to inventory',
       },
       consumption: {
         icon: Minus,
         color: 'text-warning',
         label: 'Consumed',
         bgColor: 'bg-warning/10',
+        badgeColor: 'bg-warning/20 text-warning',
+        description: 'Item was consumed or used in operations',
       },
       adjustment: {
         icon: RefreshCcw,
         color: 'text-info',
         label: 'Adjusted',
         bgColor: 'bg-info/10',
+        badgeColor: 'bg-info/20 text-info',
+        description: 'Item quantity was adjusted for corrections',
       },
       return: {
         icon: ArrowRightLeft,
         color: 'text-error',
         label: 'Returned',
         bgColor: 'bg-error/10',
+        badgeColor: 'bg-error/20 text-error',
+        description: 'Item was returned to supplier or source',
       },
       transfer: {
         icon: ArrowRightLeft,
         color: 'text-primary',
         label: 'Transferred',
         bgColor: 'bg-primary/10',
+        badgeColor: 'bg-primary/20 text-primary',
+        description: 'Item was transferred between locations',
       },
       expiry: {
         icon: Calendar,
         color: 'text-error',
         label: 'Expired',
         bgColor: 'bg-error/10',
+        badgeColor: 'bg-error/20 text-error',
+        description: 'Item has reached its expiration date',
       },
       damage: {
         icon: Minus,
         color: 'text-error',
         label: 'Damaged',
         bgColor: 'bg-error/10',
+        badgeColor: 'bg-error/20 text-error',
+        description: 'Item was damaged and removed from stock',
       },
       disposal: {
         icon: Trash,
         color: 'text-error',
         label: 'Disposed',
         bgColor: 'bg-error/10',
+        badgeColor: 'bg-error/20 text-error',
+        description:
+          'Item was disposed due to damage, expiry, or other reasons',
       },
     };
     return (
@@ -192,6 +212,8 @@
         color: 'text-neutral',
         label: type,
         bgColor: 'bg-neutral/10',
+        badgeColor: 'bg-gray-100 text-gray-600',
+        description: 'Transaction type information',
       }
     );
   };
@@ -552,12 +574,12 @@
                         class="w-4 h-4"
                       />
                       <span
-                        class="badge badge-sm"
+                        class="badge badge-sm border-none font-medium"
                         :class="
                           getTransactionTypeInfo(
                             transaction.transaction_type,
                             transaction.adjustment_type
-                          ).bgColor
+                          ).badgeColor
                         "
                       >
                         {{

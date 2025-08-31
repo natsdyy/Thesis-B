@@ -359,7 +359,7 @@
                     </button>
                     <button
                       v-if="grn.status === 'passed'"
-                      class="btn btn-sm btn-success text-white font-thin shadow-none"
+                      class="btn btn-xs btn-success text-white font-thin shadow-none"
                       @click="updateStatus(grn.id, 'completed')"
                       :disabled="updatingStatus === grn.id"
                     >
@@ -556,7 +556,7 @@
                     <th>Inventory Category</th>
                     <th>Item Type</th>
                     <th>Inspected By</th>
-                    <th></th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -591,7 +591,7 @@
                       <!-- Show auto-populated category if available -->
                       <div v-if="item.category_name">
                         <span
-                          class="badge badge-info/10 text-info border-none text-xs"
+                          class="badge badge-xs border-none font-medium bg-info/20 text-info"
                         >
                           {{ item.category_name }}
                         </span>
@@ -602,7 +602,7 @@
                       <!-- Show auto-populated item type if available -->
                       <div v-if="item.item_type_id && item.item_type_name">
                         <span
-                          class="badge badge-success/10 text-success border-none text-xs"
+                          class="badge badge-xs border-none font-medium bg-success/20 text-success"
                         >
                           {{ item.item_type_name }}
                         </span>
@@ -661,7 +661,54 @@
                       </div>
                     </td>
                     <td>{{ item.inspector_name || 'Not inspected' }}</td>
-                    <td></td>
+                    <td>
+                      <!-- Individual Item Actions -->
+                      <div
+                        v-if="
+                          selectedGRN.status === 'pending_inspection' &&
+                          item.quality_status === 'pending'
+                        "
+                        class="flex gap-1"
+                      >
+                        <button
+                          class="btn btn-xs text-success border-none border"
+                          @click="inspectIndividualItem(item, 'passed')"
+                          :disabled="inspectingItem === item.id"
+                          title="Mark as Passed"
+                        >
+                          <span
+                            v-if="inspectingItem === item.id"
+                            class="loading loading-spinner loading-xs"
+                          ></span>
+                          <font-awesome-icon icon="fa-solid fa-check" />
+                        </button>
+                        <button
+                          class="btn btn-xs text-error border-none border"
+                          @click="inspectIndividualItem(item, 'failed')"
+                          :disabled="inspectingItem === item.id"
+                          title="Mark as Failed"
+                        >
+                          <span
+                            v-if="inspectingItem === item.id"
+                            class="loading loading-spinner loading-xs"
+                          ></span>
+                          <font-awesome-icon icon="fa-solid fa-times" />
+                        </button>
+                      </div>
+                      <div
+                        v-else-if="item.quality_status === 'passed'"
+                        class="text-success text-xs"
+                      >
+                        ✓ Passed
+                      </div>
+                      <div
+                        v-else-if="item.quality_status === 'failed'"
+                        class="text-error text-xs"
+                      >
+                        ✗ Failed
+                      </div>
+                      <div v-else class="text-gray-500 text-xs">-</div>
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -681,36 +728,12 @@
               to inventory.
             </p>
 
-            <!-- Auto-mapping information -->
-            <div class="alert alert-info mb-3">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                class="stroke-current shrink-0 w-6 h-6"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                ></path>
-              </svg>
-              <div>
-                <h3 class="font-bold">Inventory Auto-Mapping</h3>
-                <div class="text-xs">
-                  Items are automatically mapped to inventory categories and
-                  types based on the original supply request data. This ensures
-                  consistency and reduces manual work. Items that couldn't be
-                  auto-mapped will need manual mapping.
-                </div>
-              </div>
-            </div>
-
             <button
-              class="btn btn-success btn-sm"
+              class="btn btn-success btn-sm font-thin shadow-none"
               @click="completeGRN(selectedGRN.id)"
-              :disabled="updatingStatus === selectedGRN.id || hasUnmappedItems"
+              :disabled="
+                updatingStatus === selectedGRN.id || hasUnmappedPassedItems
+              "
             >
               <span
                 v-if="updatingStatus === selectedGRN.id"
@@ -718,8 +741,69 @@
               ></span>
               Add to Inventory
             </button>
-            <div v-if="hasUnmappedItems" class="mt-2 text-xs text-error">
-              You must map all items to an item type before completing this GRN.
+            <div v-if="hasUnmappedPassedItems" class="mt-2 text-xs text-error">
+              You must map all passed items to an item type before completing
+              this GRN.
+            </div>
+          </div>
+
+          <!-- Mixed Results Section -->
+          <div
+            v-if="hasMixedInspectionResults"
+            class="p-4 bg-warning/10 rounded-lg"
+          >
+            <h4 class="font-semibold text-warning mb-2">
+              Mixed Inspection Results
+            </h4>
+            <p class="text-sm text-warning/80 mb-3">
+              Some items passed inspection while others failed. Only passed
+              items will be added to inventory.
+            </p>
+
+            <!-- Summary of results -->
+            <div class="mb-3">
+              <div class="text-sm">
+                <span class="text-success"
+                  >✓ Passed: {{ passedItemsCount }} items</span
+                >
+                <span class="mx-2">|</span>
+                <span class="text-error"
+                  >✗ Failed: {{ failedItemsCount }} items</span
+                >
+              </div>
+            </div>
+
+            <!-- Auto-mapping information -->
+            <div class="alert alert-info mb-3">
+              <font-awesome-icon
+                icon="fa-solid fa-circle-info"
+                class="!w-4 !h-4"
+              />
+              <div>
+                <h3 class="font-bold">Partial Inventory Addition</h3>
+                <div class="text-xs">
+                  Only items that passed quality inspection will be added to
+                  inventory. Failed items will be returned to the supplier.
+                </div>
+              </div>
+            </div>
+
+            <button
+              class="btn btn-warning btn-sm font-thin shadow-none"
+              @click="completeGRN(selectedGRN.id)"
+              :disabled="
+                updatingStatus === selectedGRN.id || hasUnmappedPassedItems
+              "
+            >
+              <span
+                v-if="updatingStatus === selectedGRN.id"
+                class="loading loading-spinner loading-xs mr-1"
+              ></span>
+              Add Passed Items to Inventory
+            </button>
+            <div v-if="hasUnmappedPassedItems" class="mt-2 text-xs text-error">
+              You must map all passed items to an item type before completing
+              this GRN.
             </div>
           </div>
 
@@ -731,10 +815,30 @@
               Quality Inspection Required
             </h4>
             <p class="text-sm text-info/80 mb-3">
-              Items are being inspected for quality. Complete the inspection to
-              proceed.
+              Items are being inspected for quality. You can inspect items
+              individually or use bulk actions.
             </p>
-            <div class="flex flex-col sm:flex-row gap-2">
+
+            <!-- Individual inspection info -->
+            <div class="alert alert-info mb-3">
+              <font-awesome-icon
+                icon="fa-solid fa-circle-info"
+                class="!w-4 !h-4"
+              />
+              <div>
+                <h3 class="font-bold">Individual Item Inspection</h3>
+                <div class="text-xs">
+                  Use the ✓ and ✗ buttons in the Actions column to inspect items
+                  individually. This allows for partial completion where some
+                  items pass and others fail.
+                </div>
+              </div>
+            </div>
+
+            <div
+              v-if="selectedGRN.status === 'pending_inspection'"
+              class="flex flex-col sm:flex-row gap-2"
+            >
               <button
                 class="btn btn-success btn-sm text-white font-thin shadow-none"
                 @click="markAllAsPassed"
@@ -744,7 +848,7 @@
                   v-if="updatingStatus === selectedGRN.id"
                   class="loading loading-spinner loading-xs mr-1"
                 ></span>
-                Mark as Passed
+                Mark All as Passed
               </button>
               <button
                 class="btn btn-error btn-sm text-white font-thin shadow-none"
@@ -755,9 +859,22 @@
                   v-if="updatingStatus === selectedGRN.id"
                   class="loading loading-spinner loading-xs mr-1"
                 ></span>
-                Mark as Failed
+                Mark All as Failed
               </button>
             </div>
+          </div>
+
+          <div
+            v-if="selectedGRN.status === 'passed'"
+            class="p-4 bg-success/10 rounded-lg"
+          >
+            <h4 class="text-success mb-2 font-thin">
+              Quality Inspection Passed
+            </h4>
+            <p class="text-sm text-success/80">
+              All items have passed quality inspection and are ready to be added
+              to inventory.
+            </p>
           </div>
 
           <div
@@ -1127,6 +1244,7 @@
   const detailsLoading = ref(false);
   const updatingStatus = ref(null);
   const mappingBusy = ref(null);
+  const inspectingItem = ref(null);
   const activeCategories = ref([]);
   const activeItemTypes = ref([]);
   const itemCategorySelections = ref({});
@@ -1135,6 +1253,33 @@
   const hasUnmappedItems = computed(() => {
     if (!selectedGRN.value || !selectedGRN.value.items) return false;
     return selectedGRN.value.items.some((i) => !i.item_type_id);
+  });
+
+  const hasUnmappedPassedItems = computed(() => {
+    if (!selectedGRN.value || !selectedGRN.value.items) return false;
+    return selectedGRN.value.items
+      .filter((i) => i.quality_status === 'passed')
+      .some((i) => !i.item_type_id);
+  });
+
+  const hasMixedInspectionResults = computed(() => {
+    if (!selectedGRN.value || !selectedGRN.value.items) return false;
+    const items = selectedGRN.value.items;
+    const hasPassed = items.some((i) => i.quality_status === 'passed');
+    const hasFailed = items.some((i) => i.quality_status === 'failed');
+    return hasPassed && hasFailed;
+  });
+
+  const passedItemsCount = computed(() => {
+    if (!selectedGRN.value || !selectedGRN.value.items) return 0;
+    return selectedGRN.value.items.filter((i) => i.quality_status === 'passed')
+      .length;
+  });
+
+  const failedItemsCount = computed(() => {
+    if (!selectedGRN.value || !selectedGRN.value.items) return 0;
+    return selectedGRN.value.items.filter((i) => i.quality_status === 'failed')
+      .length;
   });
 
   const updatingInventoryData = ref(false);
@@ -1348,6 +1493,19 @@
         selectedGRN.value = updatedGRN;
       }
 
+      // Refresh PO data if this GRN completion affects PO status
+      if (status === 'completed' && selectedGRN.value?.purchase_order_id) {
+        try {
+          const { usePurchaseOrderStore } = await import(
+            '../../stores/purchaseOrderStore.js'
+          );
+          const poStore = usePurchaseOrderStore();
+          await poStore.fetchPurchaseOrders(); // Refresh PO data to update return status
+        } catch (poError) {
+          console.warn('Failed to refresh PO data:', poError);
+        }
+      }
+
       // Show success toast
       showToast('success', `GRN status updated to ${getStatusLabel(status)}`);
     } catch (err) {
@@ -1363,11 +1521,118 @@
   };
 
   const markAllAsPassed = async () => {
+    // Check if GRN is already passed or completed
+    if (
+      selectedGRN.value?.status === 'passed' ||
+      selectedGRN.value?.status === 'completed'
+    ) {
+      showToast('info', 'GRN has already been processed');
+      return;
+    }
     openConfirmModal('markPassed');
   };
 
   const markAllAsFailed = async () => {
+    // Check if GRN is already passed or completed
+    if (
+      selectedGRN.value?.status === 'passed' ||
+      selectedGRN.value?.status === 'completed'
+    ) {
+      showToast('info', 'GRN has already been processed');
+      return;
+    }
     openConfirmModal('markFailed');
+  };
+
+  const inspectIndividualItem = async (item, result) => {
+    try {
+      inspectingItem.value = item.id;
+
+      // Get auth store for inspector ID
+      const { useAuthStore } = await import('../../stores/authStore.js');
+      const authStore = useAuthStore();
+
+      // Call the individual item inspection endpoint
+      const response = await fetch(
+        getApiUrl(`grn/${selectedGRN.value.id}/items/${item.id}/inspect`),
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            result: result,
+            notes:
+              result === 'failed'
+                ? 'Item failed quality inspection'
+                : 'Item passed quality inspection',
+            inspector_id: authStore.user.id,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to inspect item');
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Update the selected GRN with the new data
+        selectedGRN.value = data.data;
+
+        // Show success toast
+        const statusText = result === 'passed' ? 'passed' : 'failed';
+        showToast('success', `Item marked as ${statusText}`);
+
+        // Check if all items are now inspected
+        const allInspected = selectedGRN.value.items.every(
+          (item) => item.quality_status !== 'pending'
+        );
+
+        if (allInspected) {
+          const hasFailed = selectedGRN.value.items.some(
+            (item) => item.quality_status === 'failed'
+          );
+          const hasPassed = selectedGRN.value.items.some(
+            (item) => item.quality_status === 'passed'
+          );
+
+          if (hasFailed && hasPassed) {
+            showToast(
+              'info',
+              'Mixed inspection results - some items passed, some failed'
+            );
+          } else if (hasPassed) {
+            showToast('success', 'All items passed inspection!');
+          } else if (hasFailed) {
+            showToast(
+              'warning',
+              'All items failed inspection - returns will be created'
+            );
+          }
+
+          // Refresh PO data when all items are inspected (returns may be created)
+          try {
+            const { usePurchaseOrderStore } = await import(
+              '../../stores/purchaseOrderStore.js'
+            );
+            const poStore = usePurchaseOrderStore();
+            await poStore.fetchPurchaseOrders(); // Refresh PO data to update return status
+          } catch (poError) {
+            console.warn('Failed to refresh PO data:', poError);
+          }
+        }
+      } else {
+        throw new Error(data.message || 'Failed to inspect item');
+      }
+    } catch (error) {
+      console.error('Error inspecting individual item:', error);
+      showToast('error', error.message || 'Failed to inspect item');
+    } finally {
+      inspectingItem.value = null;
+    }
   };
 
   const updateInventoryData = async () => {
@@ -1490,6 +1755,17 @@
       if (updatedGRN) {
         selectedGRN.value = updatedGRN;
         showToast('success', 'All items marked as passed!');
+
+        // Refresh PO data when bulk inspection is completed
+        try {
+          const { usePurchaseOrderStore } = await import(
+            '../../stores/purchaseOrderStore.js'
+          );
+          const poStore = usePurchaseOrderStore();
+          await poStore.fetchPurchaseOrders(); // Refresh PO data to update return status
+        } catch (poError) {
+          console.warn('Failed to refresh PO data:', poError);
+        }
       }
     } catch (err) {
       console.error('Error marking all items as passed:', err);
@@ -1519,6 +1795,17 @@
       if (updatedGRN) {
         selectedGRN.value = updatedGRN;
         showToast('success', 'All items marked as failed!');
+
+        // Refresh PO data when bulk inspection is completed (returns are created)
+        try {
+          const { usePurchaseOrderStore } = await import(
+            '../../stores/purchaseOrderStore.js'
+          );
+          const poStore = usePurchaseOrderStore();
+          await poStore.fetchPurchaseOrders(); // Refresh PO data to update return status
+        } catch (poError) {
+          console.warn('Failed to refresh PO data:', poError);
+        }
       }
     } catch (err) {
       console.error('Error marking all items as failed:', err);
@@ -1531,19 +1818,18 @@
   const getStatusBadgeClass = (status) => {
     const classes = {
       draft:
-        'badge badge-sm border-none bg-warning/10 text-warning font-thin border-none',
+        'badge badge-sm border-none font-medium bg-warning/20 text-warning',
       pending_inspection:
-        'badge badge-sm border-none bg-info/10 text-info font-thin border-none',
+        'badge badge-sm border-none font-medium bg-info/20 text-info',
       passed:
-        'badge badge-sm border-none bg-success/10 text-success font-thin border-none',
-      failed:
-        'badge badge-sm border-none bg-error/10 text-error font-thin border-none',
+        'badge badge-sm border-none font-medium bg-success/20 text-success',
+      failed: 'badge badge-sm border-none font-medium bg-error/20 text-error',
       completed:
-        'badge badge-sm border-none bg-success/10 text-success font-thin border-none',
+        'badge badge-sm border-none font-medium bg-success/20 text-success',
     };
     return (
       classes[status] ||
-      'badge badge-sm border-none bg-neutral/10 text-neutral font-thin'
+      'badge badge-sm border-none font-medium bg-neutral/20 text-neutral'
     );
   };
 
@@ -1561,17 +1847,16 @@
   const getQualityStatusBadgeClass = (status) => {
     const classes = {
       pending:
-        'badge badge-sm border-none bg-warning/10 text-warning font-thin border-none',
+        'badge badge-sm border-none font-medium bg-warning/20 text-warning',
       passed:
-        'badge badge-sm border-none bg-success/10 text-success font-thin border-none',
-      failed:
-        'badge badge-sm border-none bg-error/10 text-error font-thin border-none',
+        'badge badge-sm border-none font-medium bg-success/20 text-success',
+      failed: 'badge badge-sm border-none font-medium bg-error/20 text-error',
       conditional:
-        'badge badge-sm border-none bg-info/10 text-info font-thin border-none',
+        'badge badge-sm border-none font-medium bg-info/20 text-info',
     };
     return (
       classes[status] ||
-      'badge badge-sm border-none bg-neutral/10 text-neutral font-thin border-none'
+      'badge badge-sm border-none font-medium bg-neutral/20 text-neutral'
     );
   };
 

@@ -1678,7 +1678,9 @@
             <PhilippinePeso class="w-6 h-6 mr-2 text-success" />
             Budget Released - Confirm Receipt
           </h2>
-          <div class="badge badge-success badge-md badge-outline">
+          <div
+            class="badge badge-md border-none font-medium bg-success/20 text-success"
+          >
             {{ pendingReceipts.length }} Pending
           </div>
         </div>

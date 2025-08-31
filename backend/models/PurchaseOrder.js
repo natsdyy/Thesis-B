@@ -62,14 +62,7 @@ class PurchaseOrder {
   static async getPendingReturnsCount(purchaseOrderId) {
     try {
       const pendingReturns = await db("item_returns as ir")
-        .leftJoin(
-          "grn_items as gi",
-          "ir.purchase_order_item_id",
-          "gi.purchase_order_item_id"
-        )
-        .leftJoin("goods_receipt_notes as grn", "gi.grn_id", "grn.id")
-        .where("grn.purchase_order_id", purchaseOrderId)
-        .where("grn.status", "failed")
+        .where("ir.purchase_order_id", purchaseOrderId)
         .where("ir.status", "!=", "Completed")
         .whereNull("ir.deleted_at")
         .count("* as count")
@@ -136,9 +129,29 @@ class PurchaseOrder {
       );
 
       if (completedGRNs.length > 0) {
+        // Check if there are any failed items in completed GRNs that could be retried
+        const failedItemsInCompletedGRNs = await db("grn_items as gi")
+          .leftJoin("goods_receipt_notes as grn", "gi.grn_id", "grn.id")
+          .where("grn.purchase_order_id", purchaseOrderId)
+          .whereIn("grn.status", ["completed", "passed"])
+          .where("gi.quality_status", "failed")
+          .where("gi.received_quantity", ">", 0)
+          .count("* as count")
+          .first();
+
+        const failedItemsCount = parseInt(failedItemsInCompletedGRNs.count);
+
+        if (failedItemsCount > 0) {
+          return {
+            canCreate: true,
+            reason: `Can create new GRN: ${failedItemsCount} failed item(s) from completed GRN(s) can be retried`,
+          };
+        }
+
         return {
           canCreate: false,
-          reason: "Cannot create new GRN: Items already received and processed",
+          reason:
+            "Cannot create new GRN: All items already received and processed successfully",
         };
       }
 

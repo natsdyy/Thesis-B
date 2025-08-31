@@ -186,15 +186,17 @@ class Inventory {
     }
   }
 
-  // Get inventory summary by category
+  // Get inventory summary by category with detailed breakdown
   static async getInventorySummary() {
     try {
-      const summary = await db("inventory_items as ii")
+      // Get category-level summary
+      const categorySummary = await db("inventory_items as ii")
         .leftJoin("inventory_item_types as it", "ii.item_type_id", "it.id")
         .leftJoin("inventory_categories as ic", "it.category_id", "ic.id")
         .select(
           "ic.id as category_id",
           "ic.name as category_name",
+          "ic.is_active",
           db.raw("COUNT(DISTINCT ii.item_type_id) as unique_items"),
           db.raw("SUM(ii.quantity) as total_quantity"),
           db.raw("SUM(ii.total_value) as total_value"),
@@ -202,10 +204,94 @@ class Inventory {
         )
         .whereNull("ii.deleted_at")
         .where("ii.status", "available")
-        .groupBy("ic.id", "ic.name")
+        .groupBy("ic.id", "ic.name", "ic.is_active")
         .orderBy("ic.name");
 
-      return summary;
+      // Get detailed breakdown by item type within each category
+      const itemTypeBreakdown = await db("inventory_items as ii")
+        .leftJoin("inventory_item_types as it", "ii.item_type_id", "it.id")
+        .leftJoin("inventory_categories as ic", "it.category_id", "ic.id")
+        .select(
+          "ic.id as category_id",
+          "ic.name as category_name",
+          "it.id as item_type_id",
+          "it.name as item_type_name",
+          "it.unit_of_measure",
+          db.raw("SUM(ii.quantity) as quantity"),
+          db.raw("SUM(ii.total_value) as total_value"),
+          db.raw("COUNT(ii.id) as batch_count")
+        )
+        .whereNull("ii.deleted_at")
+        .where("ii.status", "available")
+        .groupBy("ic.id", "ic.name", "it.id", "it.name", "it.unit_of_measure")
+        .orderBy("ic.name")
+        .orderBy("it.name");
+
+      // Group item types by category
+      const breakdownByCategory = {};
+      itemTypeBreakdown.forEach((item) => {
+        if (!breakdownByCategory[item.category_id]) {
+          breakdownByCategory[item.category_id] = [];
+        }
+        breakdownByCategory[item.category_id].push({
+          item_type_id: item.item_type_id,
+          item_type_name: item.item_type_name,
+          unit_of_measure: item.unit_of_measure,
+          quantity: parseFloat(item.quantity || 0),
+          total_value: parseFloat(item.total_value || 0),
+          batch_count: parseInt(item.batch_count || 0),
+        });
+      });
+
+      // Combine category summary with detailed breakdown
+      const enhancedSummary = categorySummary.map((category) => {
+        // Determine category status based on multiple factors
+        const hasItems = parseInt(category.unique_items || 0) > 0;
+        const hasStock = parseFloat(category.total_quantity || 0) > 0;
+        const isActive = category.is_active === true;
+        const totalValue = parseFloat(category.total_value || 0);
+
+        // Category is considered "active" if:
+        // 1. It's marked as active in the database AND
+        // 2. It has items AND
+        // 3. It has stock
+        let categoryStatus;
+        let statusDescription;
+
+        if (!isActive) {
+          categoryStatus = "disabled";
+          statusDescription = "Category is disabled in the system";
+        } else if (!hasItems) {
+          categoryStatus = "empty";
+          statusDescription = "Category has no items configured";
+        } else if (!hasStock) {
+          categoryStatus = "out_of_stock";
+          statusDescription = "Category has items but no current stock";
+        } else if (totalValue > 10000) {
+          categoryStatus = "active";
+          statusDescription =
+            "Category has active items with good stock levels";
+        } else {
+          categoryStatus = "low_stock";
+          statusDescription = "Category has items with limited stock";
+        }
+
+        return {
+          ...category,
+          unique_items: parseInt(category.unique_items || 0),
+          total_quantity: parseFloat(category.total_quantity || 0),
+          total_value: parseFloat(category.total_value || 0),
+          total_entries: parseInt(category.total_entries || 0),
+          item_breakdown: breakdownByCategory[category.category_id] || [],
+          category_status: categoryStatus,
+          status_description: statusDescription,
+          is_active: isActive,
+          has_items: hasItems,
+          has_stock: hasStock,
+        };
+      });
+
+      return enhancedSummary;
     } catch (error) {
       console.error("Error fetching inventory summary:", error);
       throw new Error("Failed to fetch inventory summary");

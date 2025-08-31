@@ -24,6 +24,7 @@
     HelpCircle,
     Trash,
     ArrowRightLeft,
+    Info,
   } from 'lucide-vue-next';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
   import InventoryConsumptionModal from '../../components/scm/InventoryConsumptionModal.vue';
@@ -646,25 +647,83 @@
   const getTransactionTypeInfo = (type, adjustmentType = null) => {
     // For disposal adjustments, show as disposal instead of adjustment
     if (type === 'adjustment' && adjustmentType === 'disposal') {
-      return { icon: Trash, color: 'text-error', label: 'Disposed' };
+      return {
+        icon: Trash,
+        color: 'text-error',
+        label: 'Disposed',
+        badgeColor: 'bg-error/20 text-error',
+        description:
+          'Item was disposed due to damage, expiry, or other reasons',
+      };
     }
 
     const typeInfo = {
-      receipt: { icon: Package, color: 'text-success', label: 'Received' },
-      consumption: { icon: Minus, color: 'text-warning', label: 'Consumed' },
-      adjustment: { icon: RefreshCcw, color: 'text-info', label: 'Adjusted' },
-      return: { icon: ArrowRightLeft, color: 'text-error', label: 'Returned' },
+      receipt: {
+        icon: Package,
+        color: 'text-success',
+        label: 'Received',
+        badgeColor: 'bg-success/20 text-success',
+        description: 'Item was received and added to inventory',
+      },
+      consumption: {
+        icon: Minus,
+        color: 'text-warning',
+        label: 'Consumed',
+        badgeColor: 'bg-warning/20 text-warning',
+        description: 'Item was consumed or used in operations',
+      },
+      adjustment: {
+        icon: RefreshCcw,
+        color: 'text-info',
+        label: 'Adjusted',
+        badgeColor: 'bg-info/20 text-info',
+        description: 'Item quantity was adjusted for corrections',
+      },
+      return: {
+        icon: ArrowRightLeft,
+        color: 'text-error',
+        label: 'Returned',
+        badgeColor: 'bg-error/20 text-error',
+        description: 'Item was returned to supplier or source',
+      },
       transfer: {
         icon: ArrowRightLeft,
         color: 'text-primary',
         label: 'Transferred',
+        badgeColor: 'bg-primary/20 text-primary',
+        description: 'Item was transferred between locations',
       },
-      expiry: { icon: Calendar, color: 'text-error', label: 'Expired' },
-      damage: { icon: Minus, color: 'text-error', label: 'Damaged' },
-      disposal: { icon: Trash, color: 'text-error', label: 'Disposed' },
+      expiry: {
+        icon: Calendar,
+        color: 'text-error',
+        label: 'Expired',
+        badgeColor: 'bg-error/20 text-error',
+        description: 'Item has reached its expiration date',
+      },
+      damage: {
+        icon: Minus,
+        color: 'text-error',
+        label: 'Damaged',
+        badgeColor: 'bg-error/20 text-error',
+        description: 'Item was damaged and removed from stock',
+      },
+      disposal: {
+        icon: Trash,
+        color: 'text-error',
+        label: 'Disposed',
+        badgeColor: 'bg-error/20 text-error',
+        description:
+          'Item was disposed due to damage, expiry, or other reasons',
+      },
     };
     return (
-      typeInfo[type] || { icon: HelpCircle, color: 'text-neutral', label: type }
+      typeInfo[type] || {
+        icon: HelpCircle,
+        color: 'text-neutral',
+        label: type,
+        badgeColor: 'bg-gray-100 text-gray-600',
+        description: 'Transaction type information',
+      }
     );
   };
 
@@ -707,6 +766,43 @@
       month: 'short',
       day: 'numeric',
     });
+  };
+
+  // Helper function to get category status information
+  const getCategoryStatusInfo = (status) => {
+    const statusInfo = {
+      active: {
+        icon: CheckCircle,
+        color: 'text-success',
+        label: 'Active',
+        description: 'Category has active items with good stock levels',
+      },
+      low_stock: {
+        icon: AlertTriangle,
+        color: 'text-warning',
+        label: 'Low Stock',
+        description: 'Category has items with limited stock',
+      },
+      out_of_stock: {
+        icon: XCircle,
+        color: 'text-error',
+        label: 'Out of Stock',
+        description: 'Category has items but no current stock',
+      },
+      empty: {
+        icon: Package,
+        color: 'text-gray-500',
+        label: 'Empty',
+        description: 'Category has no items configured',
+      },
+      disabled: {
+        icon: XCircle,
+        color: 'text-error',
+        label: 'Disabled',
+        description: 'Category is disabled in the system',
+      },
+    };
+    return statusInfo[status] || statusInfo.disabled;
   };
 
   // Toggle item expansion
@@ -824,20 +920,26 @@
 
   const getConditionBadgeClass = (status) => {
     const classes = {
-      available: 'badge-success',
-      reserved: 'badge-warning',
-      expired: 'badge-error',
-      damaged: 'badge-error',
+      available: 'badge-sm border-none font-medium bg-success/20 text-success',
+      reserved: 'badge-sm border-none font-medium bg-warning/20 text-warning',
+      expired: 'badge-sm border-none font-medium bg-error/20 text-error',
+      damaged: 'badge-sm border-none font-medium bg-error/20 text-error',
     };
-    return classes[status] || 'badge-neutral';
+    return (
+      classes[status] ||
+      'badge-sm border-none font-medium bg-neutral/20 text-neutral'
+    );
   };
 
   const getExpiryStatusBadgeClass = (expiryDate) => {
     const days = getDaysUntilExpiry(expiryDate);
-    if (days <= 0) return 'badge-error';
-    if (days <= 3) return 'badge-warning';
-    if (days <= 7) return 'badge-info';
-    return 'badge-success';
+    if (days <= 0)
+      return 'badge-sm border-none font-medium bg-error/20 text-error';
+    if (days <= 3)
+      return 'badge-sm border-none font-medium bg-warning/20 text-warning';
+    if (days <= 7)
+      return 'badge-sm border-none font-medium bg-info/20 text-info';
+    return 'badge-sm border-none font-medium bg-success/20 text-success';
   };
 
   const getExpiryStatusText = (expiryDate) => {
@@ -855,10 +957,12 @@
     );
     if (lowStockItem) {
       const severity = getLowStockSeverity(lowStockItem);
-      if (severity === 'critical') return 'badge-error';
-      if (severity === 'warning') return 'badge-warning';
+      if (severity === 'critical')
+        return 'badge-sm border-none font-medium bg-error/20 text-error';
+      if (severity === 'warning')
+        return 'badge-sm border-none font-medium bg-warning/20 text-warning';
     }
-    return 'badge-success';
+    return 'badge-sm border-none font-medium bg-success/20 text-success';
   };
 
   const getStockLevelText = (item) => {
@@ -892,12 +996,18 @@
 
   const getActionBadgeClass = (action) => {
     const classes = {
-      'Urgent Reorder': 'badge-error',
-      'Plan Reorder': 'badge-warning',
-      'Schedule Review': 'badge-info',
-      Monitor: 'badge-success',
+      'Urgent Reorder':
+        'badge-sm border-none font-medium bg-error/20 text-error',
+      'Plan Reorder':
+        'badge-sm border-none font-medium bg-warning/20 text-warning',
+      'Schedule Review':
+        'badge-sm border-none font-medium bg-info/20 text-info',
+      Monitor: 'badge-sm border-none font-medium bg-success/20 text-success',
     };
-    return classes[action] || 'badge-neutral';
+    return (
+      classes[action] ||
+      'badge-sm border-none font-medium bg-neutral/20 text-neutral'
+    );
   };
 
   const refreshReportData = async () => {
@@ -997,7 +1107,7 @@
   };
 
   // Disposed Items functions
-  const loadDisposedItems = async () => {
+  const loadDisposedItems = async (showToastMessage = false) => {
     try {
       const filters = {
         category_id: disposedCategoryFilter.value,
@@ -1018,14 +1128,19 @@
         };
       });
 
-      showToast('success', `Loaded ${items.length} disposed items`);
+      // Only show toast if explicitly requested
+      if (showToastMessage) {
+        showToast('success', `Loaded ${items.length} disposed items`);
+      }
     } catch (error) {
-      showToast('error', 'Failed to load disposed items');
+      if (showToastMessage) {
+        showToast('error', 'Failed to load disposed items');
+      }
     }
   };
 
   const refreshDisposedItems = async () => {
-    await loadDisposedItems();
+    await loadDisposedItems(true); // Show toast when explicitly refreshing
   };
 
   const getTotalDisposalCost = () => {
@@ -1422,7 +1537,10 @@
       >
         <Bell class="w-4 h-4 mr-1" />
         Alerts
-        <span v-if="alertsCount > 0" class="badge badge-error badge-sm ml-1">
+        <span
+          v-if="alertsCount > 0"
+          class="badge badge-sm border-none font-medium bg-error/20 text-error ml-1"
+        >
           {{ alertsCount }}
         </span>
       </button>
@@ -1443,54 +1561,250 @@
       <div class="card-body p-3 sm:p-4 lg:p-6">
         <!-- Overview Tab -->
         <div v-if="activeTab === 'overview'" class="space-y-6">
-          <h2
-            class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl mb-4"
+          <div
+            class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6"
           >
-            Inventory Overview
-          </h2>
+            <div>
+              <h2
+                class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl mb-2"
+              >
+                Inventory Overview
+              </h2>
+              <p class="text-sm text-gray-600">
+                Comprehensive view of your inventory status and recent
+                activities
+              </p>
+            </div>
+            <div class="flex gap-2">
+              <button
+                @click="refreshData"
+                class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
+                :disabled="loading"
+              >
+                <RefreshCcw class="w-4 h-4 mr-1" />
+                Refresh
+              </button>
+            </div>
+          </div>
 
-          <!-- Category Summary -->
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <!-- Enhanced Category Summary -->
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div
               v-for="summary in inventorySummary"
               :key="summary.category_id"
-              class="card bg-base-100 border border-gray-200 hover:shadow-md transition-shadow"
+              class="card bg-gradient-to-br from-base-100 to-base-50 border border-gray-200 hover:shadow-xl duration-300 cursor-pointer"
             >
-              <div class="card-body p-4">
-                <h3 class="card-title text-sm font-semibold text-primaryColor">
-                  {{ summary.category_name }}
-                </h3>
-                <div class="space-y-2 text-sm">
-                  <p><strong>Items:</strong> {{ summary.unique_items }}</p>
-                  <p>
-                    <strong>Quantity:</strong>
-                    {{
-                      parseFloat(summary.total_quantity || 0).toLocaleString()
-                    }}
-                  </p>
-                  <p>
-                    <strong>Value:</strong> ₱{{
-                      parseFloat(summary.total_value || 0).toLocaleString()
-                    }}
-                  </p>
+              <div class="card-body p-6">
+                <!-- Header with Icon and Title -->
+                <div class="flex items-center justify-between mb-4">
+                  <div class="flex items-center gap-3">
+                    <div
+                      class="w-12 h-12 rounded-full flex items-center justify-center"
+                      :class="{
+                        'bg-success/10': summary.category_status === 'active',
+                        'bg-warning/10':
+                          summary.category_status === 'low_stock',
+                        'bg-error/10':
+                          summary.category_status === 'out_of_stock',
+                        'bg-gray-100': summary.category_status === 'empty',
+                        'bg-error/10': summary.category_status === 'disabled',
+                      }"
+                    >
+                      <component
+                        :is="
+                          getCategoryStatusInfo(summary.category_status).icon
+                        "
+                        class="w-6 h-6"
+                        :class="
+                          getCategoryStatusInfo(summary.category_status).color
+                        "
+                      />
+                    </div>
+                    <div>
+                      <h3
+                        class="card-title text-lg font-bold text-primaryColor"
+                      >
+                        {{ summary.category_name }}
+                      </h3>
+                      <p class="text-xs text-gray-500">Category Overview</p>
+                      <div
+                        class="tooltip tooltip-right"
+                        :data-tip="
+                          summary.status_description ||
+                          getCategoryStatusInfo(summary.category_status)
+                            .description
+                        "
+                      >
+                        <Info class="w-3 h-3 text-gray-400 cursor-help" />
+                      </div>
+                    </div>
+                  </div>
+                  <div
+                    class="badge-sm border-none font-medium badge"
+                    :class="{
+                      'bg-success/20 text-success':
+                        summary.category_status === 'active',
+                      'bg-warning/20 text-warning':
+                        summary.category_status === 'low_stock',
+                      'bg-error/20 text-error':
+                        summary.category_status === 'out_of_stock',
+                      'bg-gray-100 text-gray-600':
+                        summary.category_status === 'empty',
+                      'bg-error/20 text-error':
+                        summary.category_status === 'disabled',
+                    }"
+                  >
+                    {{ getCategoryStatusInfo(summary.category_status).label }}
+                  </div>
+                </div>
+
+                <!-- Main Stats Grid -->
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                  <div
+                    class="stat bg-white/50 rounded-lg p-3 border border-gray-100"
+                  >
+                    <div class="stat-title text-xs text-gray-600">
+                      Total Items
+                    </div>
+                    <div class="stat-value text-lg font-bold text-primaryColor">
+                      {{ summary.unique_items }}
+                    </div>
+                    <div class="stat-desc text-xs text-gray-500">
+                      Unique types
+                    </div>
+                  </div>
+
+                  <div
+                    class="stat bg-white/50 rounded-lg p-3 border border-gray-100"
+                  >
+                    <div class="stat-title text-xs text-gray-600">
+                      Total Quantity
+                    </div>
+                    <div class="stat-value text-lg font-bold text-success">
+                      {{
+                        parseFloat(summary.total_quantity || 0).toLocaleString()
+                      }}
+                    </div>
+                    <div class="stat-desc text-xs text-gray-500">
+                      Units in stock
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Additional Metrics -->
+                <div class="space-y-2">
+                  <div class="flex justify-between items-center text-xs">
+                    <span class="text-gray-600">Stock Level:</span>
+                    <span
+                      class="font-medium"
+                      :class="{
+                        'text-success': summary.category_status === 'active',
+                        'text-warning': summary.category_status === 'low_stock',
+                        'text-error':
+                          summary.category_status === 'out_of_stock',
+                        'text-gray-500': summary.category_status === 'empty',
+                        'text-error': summary.category_status === 'disabled',
+                      }"
+                    >
+                      {{
+                        summary.category_status === 'active'
+                          ? 'Good'
+                          : summary.category_status === 'low_stock'
+                            ? 'Low'
+                            : summary.category_status === 'out_of_stock'
+                              ? 'Out of Stock'
+                              : summary.category_status === 'empty'
+                                ? 'No Items'
+                                : 'Disabled'
+                      }}
+                    </span>
+                  </div>
+                  <div class="flex justify-between items-center text-xs">
+                    <span class="text-gray-600">Last Updated:</span>
+                    <span class="font-medium">Today</span>
+                  </div>
+                </div>
+
+                <!-- Item Type Breakdown -->
+                <div
+                  v-if="
+                    summary.item_breakdown && summary.item_breakdown.length > 0
+                  "
+                  class="mt-4 pt-4 border-t border-gray-200"
+                >
+                  <div class="text-xs text-gray-600 font-medium mb-3">
+                    Item Breakdown:
+                  </div>
+                  <div class="space-y-2 max-h-32 overflow-y-auto">
+                    <div
+                      v-for="item in summary.item_breakdown"
+                      :key="item.item_type_id"
+                      class="flex justify-between items-center text-xs bg-gray-50 rounded-lg p-2"
+                    >
+                      <div class="flex-1 min-w-0">
+                        <div class="font-medium text-gray-800 truncate">
+                          {{ item.item_type_name }}
+                        </div>
+                        <div class="text-gray-500">
+                          {{ parseFloat(item.quantity).toLocaleString() }}
+                          {{ item.unit_of_measure }}
+                        </div>
+                      </div>
+                      <div class="text-right ml-2">
+                        <div class="font-medium text-success">
+                          ₱{{ parseFloat(item.total_value).toLocaleString() }}
+                        </div>
+                        <div class="text-gray-500">
+                          {{ item.batch_count }} batch{{
+                            item.batch_count !== 1 ? 'es' : ''
+                          }}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex gap-2 mt-4 pt-4 border-t border-gray-200">
+                  <button class="btn btn-xs btn-outline btn-primary flex-1">
+                    View Details
+                  </button>
+                  <button class="btn btn-xs btn-ghost">
+                    <BarChart3 class="w-3 h-3" />
+                  </button>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Recent Activity -->
-          <div class="card bg-base-100 border border-gray-200">
-            <div class="card-body p-4">
-              <div class="flex justify-between items-center mb-4">
-                <h3 class="card-title text-sm font-semibold text-primaryColor">
-                  Recent Activity
-                </h3>
+          <!-- Enhanced Recent Activity -->
+          <div
+            class="card bg-gradient-to-br from-base-100 to-base-50 border border-gray-200 shadow-lg"
+          >
+            <div class="card-body p-6">
+              <div class="flex justify-between items-center mb-6">
+                <div class="flex items-center gap-3">
+                  <div
+                    class="w-10 h-10 rounded-full bg-primaryColor/10 flex items-center justify-center"
+                  >
+                    <History class="w-5 h-5 text-primaryColor" />
+                  </div>
+                  <div>
+                    <h3 class="card-title text-lg font-bold text-primaryColor">
+                      Recent Activity
+                    </h3>
+                    <p class="text-xs text-gray-500">
+                      Latest inventory movements
+                    </p>
+                  </div>
+                </div>
                 <button
                   @click="refreshData"
-                  class="btn btn-ghost btn-xs"
+                  class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
                   :disabled="loading"
                 >
-                  <RefreshCcw class="w-3 h-3" />
+                  <RefreshCcw class="w-4 h-4 mr-1" />
+                  Refresh
                 </button>
               </div>
 
@@ -1506,94 +1820,174 @@
                 <p class="text-gray-500">No recent activity</p>
               </div>
 
-              <div v-else class="space-y-3 max-h-96 overflow-y-auto">
+              <div v-else class="space-y-4 max-h-96 overflow-y-auto">
                 <div
                   v-for="activity in recentActivity"
                   :key="activity.id"
-                  class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                  class="flex items-start gap-4 p-4 bg-white/70 rounded-xl hover:bg-white transition-all duration-200 hover:shadow-md border border-gray-100"
                 >
                   <div class="flex-shrink-0">
-                    <component
-                      :is="
-                        getTransactionTypeInfo(
+                    <div
+                      class="w-10 h-10 rounded-full flex items-center justify-center"
+                      :class="{
+                        'bg-success/10': getTransactionTypeInfo(
                           activity.transaction_type,
                           activity.adjustment_type
-                        ).icon
-                      "
-                      class="w-4 h-4"
-                    />
+                        ).badgeColor.includes('success'),
+                        'bg-warning/10': getTransactionTypeInfo(
+                          activity.transaction_type,
+                          activity.adjustment_type
+                        ).badgeColor.includes('warning'),
+                        'bg-error/10': getTransactionTypeInfo(
+                          activity.transaction_type,
+                          activity.adjustment_type
+                        ).badgeColor.includes('error'),
+                        'bg-info/10': getTransactionTypeInfo(
+                          activity.transaction_type,
+                          activity.adjustment_type
+                        ).badgeColor.includes('info'),
+                        'bg-primary/10': getTransactionTypeInfo(
+                          activity.transaction_type,
+                          activity.adjustment_type
+                        ).badgeColor.includes('primary'),
+                        'bg-gray-100': getTransactionTypeInfo(
+                          activity.transaction_type,
+                          activity.adjustment_type
+                        ).badgeColor.includes('gray'),
+                      }"
+                    >
+                      <component
+                        :is="
+                          getTransactionTypeInfo(
+                            activity.transaction_type,
+                            activity.adjustment_type
+                          ).icon
+                        "
+                        class="w-5 h-5"
+                        :class="
+                          getTransactionTypeInfo(
+                            activity.transaction_type,
+                            activity.adjustment_type
+                          ).color
+                        "
+                      />
+                    </div>
                   </div>
 
                   <div class="flex-1 min-w-0">
-                    <div class="flex justify-between items-start">
-                      <div>
-                        <h4 class="font-medium text-sm text-gray-900">
+                    <div class="flex justify-between items-start mb-3">
+                      <div class="flex-1">
+                        <h4 class="font-bold text-sm text-gray-900 mb-1">
                           {{ activity.item_name || activity.item_type_name }}
                         </h4>
-                        <p class="text-xs text-gray-600">
-                          {{ activity.category_name }} •
-                          {{ activity.unit_of_measure }}
-                        </p>
+                        <div
+                          class="flex items-center gap-2 text-xs text-gray-600 mb-1"
+                        >
+                          <span class="bg-gray-100 px-2 py-1 rounded-full">
+                            {{ activity.category_name }}
+                          </span>
+                          <span>•</span>
+                          <span>{{ activity.unit_of_measure }}</span>
+                        </div>
                         <p
                           v-if="activity.batch_number"
-                          class="text-xs text-gray-500"
+                          class="text-xs text-gray-500 font-mono bg-gray-50 px-2 py-1 rounded inline-block"
                         >
                           Batch: {{ activity.batch_number }}
                         </p>
                       </div>
 
                       <div class="text-right">
-                        <div
-                          class="text-sm font-medium"
-                          :class="
-                            getTransactionTypeInfo(
-                              activity.transaction_type,
-                              activity.adjustment_type
-                            ).color
-                          "
-                        >
-                          {{
-                            getTransactionTypeInfo(
-                              activity.transaction_type,
-                              activity.adjustment_type
-                            ).label
-                          }}
+                        <div class="flex items-center gap-2 justify-end mb-1">
+                          <div
+                            class="badge badge-sm border-none font-medium"
+                            :class="
+                              getTransactionTypeInfo(
+                                activity.transaction_type,
+                                activity.adjustment_type
+                              ).badgeColor
+                            "
+                          >
+                            {{
+                              getTransactionTypeInfo(
+                                activity.transaction_type,
+                                activity.adjustment_type
+                              ).label
+                            }}
+                          </div>
+                          <div
+                            class="tooltip tooltip-left"
+                            :data-tip="
+                              getTransactionTypeInfo(
+                                activity.transaction_type,
+                                activity.adjustment_type
+                              ).description
+                            "
+                          >
+                            <Info class="w-3 h-3 text-gray-400 cursor-help" />
+                          </div>
                         </div>
-                        <div class="text-xs text-gray-600">
+                        <div class="text-xs text-gray-500 font-medium">
                           {{ formatTransactionDate(activity.transaction_date) }}
                         </div>
                       </div>
                     </div>
 
-                    <div class="mt-2 flex justify-between items-center">
-                      <div class="text-sm">
-                        <span class="font-medium">
+                    <div class="grid grid-cols-2 gap-4 mb-3">
+                      <div class="bg-gray-50 rounded-lg p-3">
+                        <div class="text-xs text-gray-600 mb-1">Quantity</div>
+                        <div class="text-lg font-bold text-primaryColor">
                           {{ parseFloat(activity.quantity).toLocaleString() }}
-                        </span>
-                        <span class="text-gray-600"> units</span>
-                        <span class="text-gray-500"> • </span>
-                        <span class="font-medium"
-                          >₱{{
-                            parseFloat(activity.total_value).toLocaleString()
-                          }}</span
-                        >
-                        <div
-                          v-if="activity.disposal_cost"
-                          class="text-xs text-error mt-1"
-                        >
-                          Disposal Cost: ₱{{
-                            parseFloat(activity.disposal_cost).toLocaleString()
-                          }}
+                          <span class="text-sm font-normal text-gray-500"
+                            >units</span
+                          >
                         </div>
                       </div>
 
-                      <div class="text-xs text-gray-500">
-                        by {{ activity.performed_by }}
+                      <div class="bg-gray-50 rounded-lg p-3">
+                        <div class="text-xs text-gray-600 mb-1">Value</div>
+                        <div class="text-lg font-bold text-success">
+                          ₱{{
+                            parseFloat(activity.total_value).toLocaleString()
+                          }}
+                        </div>
                       </div>
                     </div>
 
-                    <div v-if="activity.reason || activity.notes" class="mt-1">
-                      <p class="text-xs text-gray-600">
+                    <div
+                      v-if="activity.disposal_cost"
+                      class="bg-error/10 border border-error/20 rounded-lg p-3 mb-3"
+                    >
+                      <div class="text-xs text-error font-medium mb-1">
+                        Disposal Cost
+                      </div>
+                      <div class="text-sm font-bold text-error">
+                        ₱{{
+                          parseFloat(activity.disposal_cost).toLocaleString()
+                        }}
+                      </div>
+                    </div>
+
+                    <div
+                      class="flex justify-between items-center pt-3 border-t border-gray-100"
+                    >
+                      <div class="text-xs text-gray-500">
+                        <span class="font-medium">Performed by:</span>
+                        {{ activity.performed_by }}
+                      </div>
+                      <div class="text-xs text-gray-400">
+                        Transaction ID: #{{ activity.id }}
+                      </div>
+                    </div>
+
+                    <div
+                      v-if="activity.reason || activity.notes"
+                      class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg"
+                    >
+                      <div class="text-xs text-blue-700 font-medium mb-1">
+                        {{ activity.reason ? 'Reason' : 'Notes' }}
+                      </div>
+                      <p class="text-xs text-blue-800">
                         {{ activity.reason || activity.notes }}
                       </p>
                     </div>
@@ -1601,11 +1995,12 @@
                 </div>
               </div>
 
-              <div v-if="recentActivity.length > 0" class="mt-4 text-center">
+              <div v-if="recentActivity.length > 0" class="mt-6 text-center">
                 <button
                   @click="openTransactionModal"
-                  class="btn btn-outline btn-sm text-primaryColor font-thin hover:bg-primaryColor/10"
+                  class="btn btn-primary btn-sm font-medium hover:bg-primaryColor/90 transition-all duration-200 shadow-lg hover:shadow-xl"
                 >
+                  <BarChart3 class="w-4 h-4 mr-2" />
                   View All Transactions
                 </button>
               </div>

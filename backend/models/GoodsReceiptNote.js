@@ -150,26 +150,62 @@ class GoodsReceiptNote {
         })
         .returning("*");
 
-      // Enhanced query to get PO items with supply request inventory data
-      const poItemsWithInventoryData = await trx("purchase_order_items as poi")
-        .leftJoin(
-          "supply_request_items as sri",
-          "poi.supply_request_item_id",
-          "sri.id"
-        )
-        .leftJoin(
-          "inventory_item_types as iit",
-          "sri.inventory_item_type_id",
-          "iit.id"
-        )
-        .select(
-          "poi.*",
-          "sri.inventory_item_type_id",
-          "iit.name as item_type_name",
-          "iit.unit_of_measure as item_unit_of_measure"
-        )
-        .where("poi.purchase_order_id", purchaseOrderId)
-        .whereNull("poi.deleted_at");
+      // Check if this is a retry scenario (there are existing completed GRNs with failed items)
+      const existingGRNs = await trx("goods_receipt_notes")
+        .where("purchase_order_id", purchaseOrderId)
+        .whereIn("status", ["completed", "passed"])
+        .whereNull("deleted_at");
+
+      let poItemsWithInventoryData;
+
+      if (existingGRNs.length > 0) {
+        // This is a retry scenario - only include failed items from previous GRNs
+        poItemsWithInventoryData = await trx("purchase_order_items as poi")
+          .leftJoin(
+            "supply_request_items as sri",
+            "poi.supply_request_item_id",
+            "sri.id"
+          )
+          .leftJoin(
+            "inventory_item_types as iit",
+            "sri.inventory_item_type_id",
+            "iit.id"
+          )
+          .leftJoin("grn_items as gi", "poi.id", "gi.purchase_order_item_id")
+          .leftJoin("goods_receipt_notes as grn", "gi.grn_id", "grn.id")
+          .select(
+            "poi.*",
+            "sri.inventory_item_type_id",
+            "iit.name as item_type_name",
+            "iit.unit_of_measure as item_unit_of_measure"
+          )
+          .where("poi.purchase_order_id", purchaseOrderId)
+          .where("gi.quality_status", "failed")
+          .whereIn("grn.status", ["completed", "passed"])
+          .whereNull("poi.deleted_at")
+          .whereNull("grn.deleted_at");
+      } else {
+        // First time GRN creation - include all PO items
+        poItemsWithInventoryData = await trx("purchase_order_items as poi")
+          .leftJoin(
+            "supply_request_items as sri",
+            "poi.supply_request_item_id",
+            "sri.id"
+          )
+          .leftJoin(
+            "inventory_item_types as iit",
+            "sri.inventory_item_type_id",
+            "iit.id"
+          )
+          .select(
+            "poi.*",
+            "sri.inventory_item_type_id",
+            "iit.name as item_type_name",
+            "iit.unit_of_measure as item_unit_of_measure"
+          )
+          .where("poi.purchase_order_id", purchaseOrderId)
+          .whereNull("poi.deleted_at");
+      }
 
       const grnItems = poItemsWithInventoryData.map((item) => ({
         grn_id: grn.id,
@@ -220,17 +256,31 @@ class GoodsReceiptNote {
           throw new Error("Cannot complete GRN without items.");
         }
 
-        const notPassed = items.filter((i) => i.quality_status !== "passed");
-        const unmapped = items.filter((i) => !i.item_type_id);
+        // Check if all items have been inspected (not pending)
+        const pendingItems = items.filter(
+          (i) => i.quality_status === "pending"
+        );
+        if (pendingItems.length > 0) {
+          throw new Error(
+            `Cannot complete GRN: ${pendingItems.length} item(s) still pending inspection.`
+          );
+        }
 
-        if (notPassed.length || unmapped.length) {
-          const reasons = [];
-          if (notPassed.length)
-            reasons.push("all items must have quality_status = 'passed'");
-          if (unmapped.length)
-            reasons.push("all items must be mapped to an inventory item type");
-          const message = `GRN cannot be completed: ${reasons.join(" and ")}.`;
-          throw new Error(message);
+        // Get passed items that need to be mapped
+        const passedItems = items.filter((i) => i.quality_status === "passed");
+        const unmappedPassedItems = passedItems.filter((i) => !i.item_type_id);
+
+        if (unmappedPassedItems.length > 0) {
+          throw new Error(
+            `Cannot complete GRN: ${unmappedPassedItems.length} passed item(s) must be mapped to an inventory item type.`
+          );
+        }
+
+        // Check if there are any passed items to add to inventory
+        if (passedItems.length === 0) {
+          throw new Error(
+            "Cannot complete GRN: No items passed quality inspection to add to inventory."
+          );
         }
       }
 
@@ -285,13 +335,13 @@ class GoodsReceiptNote {
 
       for (const item of grnItems) {
         if (item.received_quantity > 0 && item.item_type_id) {
-          // Create the item name by combining PO item name with unit
-          const itemName = `${item.po_item_name} ${item.po_unit}`;
+          // Use only the PO item name without the unit
+          const itemName = item.po_item_name;
 
           const [inventoryItem] = await trx("inventory_items")
             .insert({
               item_type_id: item.item_type_id,
-              item_name: itemName, // Use the specific item name from PO
+              item_name: itemName, // Use only the item name from PO
               supplier_id: item.supplier_id,
               purchase_order_id: item.purchase_order_id,
               grn_id: grnId,

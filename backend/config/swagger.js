@@ -49,6 +49,10 @@ const options = {
         name: "Branches",
         description: "Branch management endpoints",
       },
+      {
+        name: "Feedback",
+        description: "Customer feedback endpoints",
+      },
     ],
     components: {
       schemas: {

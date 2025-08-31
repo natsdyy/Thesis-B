@@ -65,6 +65,45 @@
     return targetDate.toISOString().split('T')[0];
   };
 
+  // Smart pagination helper
+  const getPageRange = () => {
+    const current = requestHistoryCurrentPage.value;
+    const total = totalPagesRequestHistory.value;
+    const range = [];
+
+    // Show pages around current page
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+
+    for (let i = start; i <= end; i++) {
+      if (i !== 1 && i !== total) {
+        range.push(i);
+      }
+    }
+
+    return range;
+  };
+
+  // Add helper functions for better date/time formatting
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-PH', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'Asia/Manila',
+    });
+  };
+
+  const formatTime = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('en-PH', {
+      timeZone: 'Asia/Manila',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
   // Request history filter
   const requestHistoryFilter = ref({
     searchQuery: '',
@@ -2421,11 +2460,6 @@
               of {{ filteredRequestHistory.length }} records for
               {{ getHistoryFilterDisplayText() }}
             </span>
-            <span class="font-semibold text-primaryColor">
-              Total Value: ₱{{
-                requestHistoryStats.totalAmount.toLocaleString('en-PH')
-              }}
-            </span>
           </div>
 
           <!-- Pagination with Ellipsis -->
@@ -3497,103 +3531,6 @@
     </div>
   </transition>
 </template>
-
-<script>
-  // Smart pagination helper
-  const getPageRange = () => {
-    const current = requestHistoryCurrentPage.value;
-    const total = totalPagesRequestHistory.value;
-    const range = [];
-
-    // Show pages around current page
-    const start = Math.max(2, current - 1);
-    const end = Math.min(total - 1, current + 1);
-
-    for (let i = start; i <= end; i++) {
-      if (i !== 1 && i !== total) {
-        range.push(i);
-      }
-    }
-
-    return range;
-  };
-
-  // Add helper functions for better date/time formatting
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-PH', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      timeZone: 'Asia/Manila',
-    });
-  };
-
-  const formatTime = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-PH', {
-      timeZone: 'Asia/Manila',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  // Enhanced filtering to work with backend date format
-  const filteredRequestsByDate = computed(() => {
-    const selectedDate = requestListFilter.value.selectedDate;
-
-    allRequests.value.forEach((r) => {
-      // Convert UTC to Asia/Manila and get YYYY-MM-DD
-      const manilaDate = new Date(
-        new Date(r.request_date).toLocaleString('en-US', {
-          timeZone: 'Asia/Manila',
-        })
-      );
-      const normalized = manilaDate.toLocaleDateString('en-CA', {
-        timeZone: 'Asia/Manila',
-      });
-      console.log(
-        `Request ${r.request_id}: raw=${r.request_date}, manila=${normalized}, matches=${normalized === selectedDate}`
-      );
-    });
-
-    return allRequests.value.filter((request) => {
-      const manilaDate = new Date(
-        new Date(request.request_date).toLocaleString('en-US', {
-          timeZone: 'Asia/Manila',
-        })
-      );
-      const normalized = manilaDate.toLocaleDateString('en-CA', {
-        timeZone: 'Asia/Manila',
-      });
-      return (
-        normalized === selectedDate && request.request_status !== 'Cancelled'
-      );
-    });
-  });
-
-  // Add more comprehensive stats using backend data
-  const enhancedStats = computed(() => ({
-    totalRequests: allRequests.value.length,
-    toRequest: allRequests.value.filter(
-      (r) => r.request_status === 'To Request'
-    ).length,
-    pending: allRequests.value.filter((r) => r.request_status === 'Pending')
-      .length,
-    approved: allRequests.value.filter((r) => r.request_status === 'Approved')
-      .length,
-    rejected: allRequests.value.filter((r) => r.request_status === 'Rejected')
-      .length,
-    totalAmount: allRequests.value.reduce(
-      (sum, r) => sum + parseFloat(r.total_amount || 0),
-      0
-    ),
-    totalItems: allRequests.value.reduce(
-      (sum, r) => sum + parseInt(r.item_count || 0),
-      0
-    ),
-  }));
-</script>
 
 <style scoped>
   .custom-zebra tbody tr:nth-child(even) {

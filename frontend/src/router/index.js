@@ -18,9 +18,9 @@ import NotFound from '../views/NotFound.vue';
 import Login from '../views/Login.vue';
 
 // Import crm components
-import FullMenu from '../crm/FullMenu.vue';
-import Homepage from '../crm/homepage.vue';
-import StoreDirectory from '../crm/StoreDirectory.vue';
+import FullMenu from '../components/crm/FullMenu.vue';
+import Homepage from '../components/crm/homepage.vue';
+import StoreDirectory from '../components/crm/StoreDirectory.vue';
 const routes = [
   // crm route
   {

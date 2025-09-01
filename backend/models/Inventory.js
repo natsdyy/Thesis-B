@@ -989,6 +989,561 @@ class Inventory {
       throw new Error("Failed to acknowledge alert");
     }
   }
+
+  // ==================== PRODUCTION INTEGRATION METHODS ====================
+
+  // Check ingredient availability for production
+  static async checkProductionIngredientAvailability(
+    recipeId,
+    batchSize = null
+  ) {
+    try {
+      // Get recipe ingredients
+      const ingredients = await db("recipe_ingredients as ri")
+        .select("ri.*", "iit.name as ingredient_name", "iit.unit_of_measure")
+        .join(
+          "inventory_item_types as iit",
+          "ri.inventory_item_type_id",
+          "iit.id"
+        )
+        .where("ri.recipe_id", recipeId);
+
+      const recipe = await db("recipes").where("id", recipeId).first();
+      if (!recipe) {
+        throw new Error("Recipe not found");
+      }
+
+      const scaleFactor = batchSize ? batchSize / recipe.batch_size : 1;
+
+      const availability = await Promise.all(
+        ingredients.map(async (ingredient) => {
+          const requiredQuantity =
+            parseFloat(ingredient.quantity_required) * scaleFactor;
+
+          // Get current available inventory for this ingredient
+          const currentStock = await db("inventory_items as ii")
+            .join("inventory_item_types as iit", "ii.item_type_id", "iit.id")
+            .select(db.raw("SUM(ii.quantity) as total_available"))
+            .where("iit.id", ingredient.inventory_item_type_id)
+            .where("ii.quantity", ">", 0)
+            .where("ii.status", "available")
+            .first();
+
+          const availableQuantity = parseFloat(
+            currentStock?.total_available || 0
+          );
+          const isAvailable = availableQuantity >= requiredQuantity;
+
+          return {
+            ...ingredient,
+            required_quantity: requiredQuantity,
+            available_quantity: availableQuantity,
+            is_available: isAvailable,
+            shortage: isAvailable ? 0 : requiredQuantity - availableQuantity,
+          };
+        })
+      );
+
+      const allAvailable = availability.every((ing) => ing.is_available);
+
+      return {
+        recipe_id: recipeId,
+        batch_size: batchSize || recipe.batch_size,
+        scale_factor: scaleFactor,
+        all_ingredients_available: allAvailable,
+        ingredient_availability: availability,
+      };
+    } catch (error) {
+      console.error(
+        "Error checking production ingredient availability:",
+        error
+      );
+      throw new Error("Failed to check ingredient availability");
+    }
+  }
+
+  // Reserve ingredients for production
+  static async reserveIngredientsForProduction(
+    recipeId,
+    batchSize,
+    productionOrderId
+  ) {
+    const trx = await db.transaction();
+
+    try {
+      const availability = await this.checkProductionIngredientAvailability(
+        recipeId,
+        batchSize
+      );
+
+      if (!availability.all_ingredients_available) {
+        throw new Error("Not all ingredients are available for production");
+      }
+
+      const reservations = [];
+
+      for (const ingredient of availability.ingredient_availability) {
+        // Get inventory items for this ingredient (FIFO - First In, First Out)
+        const inventoryItems = await trx("inventory_items as ii")
+          .join("inventory_item_types as iit", "ii.item_type_id", "iit.id")
+          .select("ii.*")
+          .where("iit.id", ingredient.inventory_item_type_id)
+          .where("ii.quantity", ">", 0)
+          .where("ii.status", "available")
+          .orderBy("ii.received_date", "asc"); // FIFO
+
+        let remainingNeeded = ingredient.required_quantity;
+
+        for (const item of inventoryItems) {
+          if (remainingNeeded <= 0) break;
+
+          const quantityToReserve = Math.min(item.quantity, remainingNeeded);
+
+          // Create reservation transaction
+          await trx("inventory_transactions").insert({
+            inventory_item_id: item.id,
+            transaction_type: "reservation",
+            quantity: -quantityToReserve,
+            reference_number: `PROD-${productionOrderId}`,
+            reason: "Production ingredient reservation",
+            notes: `Reserved for production order ${productionOrderId}`,
+            performed_by: "Production System",
+            transaction_date: new Date(),
+          });
+
+          // Update inventory item quantity
+          await trx("inventory_items")
+            .where("id", item.id)
+            .update({
+              quantity: item.quantity - quantityToReserve,
+              updated_at: new Date(),
+            });
+
+          reservations.push({
+            inventory_item_id: item.id,
+            ingredient_name: ingredient.ingredient_name,
+            quantity_reserved: quantityToReserve,
+            batch_number: item.batch_number,
+          });
+
+          remainingNeeded -= quantityToReserve;
+        }
+      }
+
+      await trx.commit();
+      return {
+        production_order_id: productionOrderId,
+        recipe_id: recipeId,
+        batch_size: batchSize,
+        reservations,
+      };
+    } catch (error) {
+      await trx.rollback();
+      console.error("Error reserving ingredients for production:", error);
+      throw new Error("Failed to reserve ingredients for production");
+    }
+  }
+
+  // Consume ingredients during production
+  static async consumeIngredientsForProduction(
+    productionBatchId,
+    ingredientConsumption
+  ) {
+    const trx = await db.transaction();
+
+    try {
+      const consumptionRecords = [];
+
+      for (const consumption of ingredientConsumption) {
+        // Create consumption transaction
+        const [transaction] = await trx("inventory_transactions")
+          .insert({
+            inventory_item_id: consumption.inventory_item_id,
+            transaction_type: "production_consumption",
+            quantity: -consumption.quantity_consumed,
+            reference_number: `BATCH-${productionBatchId}`,
+            reason: "Production ingredient consumption",
+            notes: `Consumed for production batch ${productionBatchId}`,
+            performed_by: consumption.performed_by || "Production System",
+            transaction_date: new Date(),
+          })
+          .returning("*");
+
+        // Update inventory item quantity
+        const inventoryItem = await trx("inventory_items")
+          .where("id", consumption.inventory_item_id)
+          .first();
+
+        if (!inventoryItem) {
+          throw new Error(
+            `Inventory item ${consumption.inventory_item_id} not found`
+          );
+        }
+
+        const newQuantity =
+          parseFloat(inventoryItem.quantity) -
+          parseFloat(consumption.quantity_consumed);
+
+        if (newQuantity < 0) {
+          throw new Error(
+            `Insufficient inventory for item ${inventoryItem.item_name}`
+          );
+        }
+
+        await trx("inventory_items")
+          .where("id", consumption.inventory_item_id)
+          .update({
+            quantity: newQuantity,
+            updated_at: new Date(),
+          });
+
+        consumptionRecords.push({
+          ...consumption,
+          transaction_id: transaction.id,
+          new_quantity: newQuantity,
+        });
+      }
+
+      await trx.commit();
+      return {
+        production_batch_id: productionBatchId,
+        consumption_records: consumptionRecords,
+      };
+    } catch (error) {
+      await trx.rollback();
+      console.error("Error consuming ingredients for production:", error);
+      throw new Error("Failed to consume ingredients for production");
+    }
+  }
+
+  // Add finished goods to inventory from production
+  static async addFinishedGoodsFromProduction(
+    productionBatchId,
+    finishedGoodsData
+  ) {
+    const trx = await db.transaction();
+
+    try {
+      // Get production batch details
+      const batch = await trx("production_batches as pb")
+        .select("pb.*", "po.product_name", "r.recipe_name")
+        .join("production_orders as po", "pb.production_order_id", "po.id")
+        .leftJoin("recipes as r", "pb.recipe_id", "r.id")
+        .where("pb.id", productionBatchId)
+        .first();
+
+      if (!batch) {
+        throw new Error("Production batch not found");
+      }
+
+      // Find or create item type for finished goods
+      let itemType = await trx("inventory_item_types")
+        .where("name", batch.product_name)
+        .where("category_id", finishedGoodsData.category_id || 1) // Default to first category
+        .first();
+
+      if (!itemType) {
+        // Create new item type for finished goods
+        [itemType] = await trx("inventory_item_types")
+          .insert({
+            name: batch.product_name,
+            description: `Finished product from ${batch.recipe_name || "production"}`,
+            category_id: finishedGoodsData.category_id || 1,
+            unit_of_measure: finishedGoodsData.unit_of_measure || "pieces",
+            status: "active",
+          })
+          .returning("*");
+      }
+
+      // Generate batch number for finished goods
+      const finishedGoodsBatch = `FG-${batch.batch_number}`;
+
+      // Add finished goods to inventory
+      const [inventoryItem] = await trx("inventory_items")
+        .insert({
+          item_type_id: itemType.id,
+          item_name: batch.product_name,
+          quantity:
+            finishedGoodsData.quantity_produced || batch.quantity_produced,
+          unit_cost:
+            finishedGoodsData.unit_cost ||
+            batch.actual_cost / (batch.quantity_produced || 1),
+          total_value: finishedGoodsData.total_value || batch.actual_cost,
+          batch_number: finishedGoodsBatch,
+          expiry_date: finishedGoodsData.expiry_date,
+          received_date: new Date(),
+          location: finishedGoodsData.location || "Production Floor",
+          status: "available",
+          supplier_id: null, // Internal production
+          notes: `Produced from batch ${batch.batch_number}`,
+          received_by: finishedGoodsData.received_by || "Production System",
+        })
+        .returning("*");
+
+      // Create inventory transaction
+      await trx("inventory_transactions").insert({
+        inventory_item_id: inventoryItem.id,
+        transaction_type: "production_output",
+        quantity:
+          finishedGoodsData.quantity_produced || batch.quantity_produced,
+        reference_number: `BATCH-${productionBatchId}`,
+        reason: "Production output",
+        notes: `Finished goods from production batch ${batch.batch_number}`,
+        performed_by: finishedGoodsData.received_by || "Production System",
+        transaction_date: new Date(),
+      });
+
+      await trx.commit();
+      return {
+        production_batch_id: productionBatchId,
+        inventory_item: inventoryItem,
+        item_type: itemType,
+      };
+    } catch (error) {
+      await trx.rollback();
+      console.error("Error adding finished goods from production:", error);
+      throw new Error("Failed to add finished goods to inventory");
+    }
+  }
+
+  // Get low stock items that need restocking for production
+  static async getLowStockForProduction() {
+    try {
+      const lowStockItems = await db("inventory_items as ii")
+        .select(
+          "ii.id",
+          "ii.item_name",
+          "ii.quantity",
+          "iit.name as item_type_name",
+          "iit.unit_of_measure",
+          "ic.name as category_name",
+          db.raw("SUM(ii.quantity) as total_quantity"),
+          db.raw("COUNT(ii.id) as batch_count")
+        )
+        .join("inventory_item_types as iit", "ii.item_type_id", "iit.id")
+        .join("inventory_categories as ic", "iit.category_id", "ic.id")
+        .where("ii.status", "available")
+        .where("ii.quantity", ">", 0)
+        .groupBy(
+          "ii.item_type_id",
+          "ii.item_name",
+          "iit.name",
+          "iit.unit_of_measure",
+          "ic.name"
+        )
+        .having(db.raw("SUM(ii.quantity)"), "<", 50) // Low stock threshold
+        .orderBy("total_quantity", "asc");
+
+      // Check if these items are used in active recipes
+      const itemsWithRecipeUsage = await Promise.all(
+        lowStockItems.map(async (item) => {
+          const recipeUsage = await db("recipe_ingredients as ri")
+            .join("recipes as r", "ri.recipe_id", "r.id")
+            .select("r.recipe_name", "ri.quantity_required")
+            .where("ri.inventory_item_type_id", item.item_type_id)
+            .where("r.is_active", true);
+
+          return {
+            ...item,
+            recipe_usage: recipeUsage,
+            is_critical: recipeUsage.length > 0,
+          };
+        })
+      );
+
+      return itemsWithRecipeUsage.filter((item) => item.is_critical);
+    } catch (error) {
+      console.error("Error fetching low stock for production:", error);
+      throw new Error("Failed to retrieve low stock items for production");
+    }
+  }
+
+  // Get ingredient usage analytics for production planning
+  static async getIngredientUsageAnalytics(dateFrom, dateTo) {
+    try {
+      const usage = await db("inventory_transactions as it")
+        .select(
+          "iit.name as ingredient_name",
+          "ic.name as category_name",
+          db.raw("SUM(ABS(it.quantity)) as total_consumed"),
+          db.raw("COUNT(it.id) as transaction_count"),
+          db.raw("AVG(ABS(it.quantity)) as avg_consumption")
+        )
+        .join("inventory_items as ii", "it.inventory_item_id", "ii.id")
+        .join("inventory_item_types as iit", "ii.item_type_id", "iit.id")
+        .join("inventory_categories as ic", "iit.category_id", "ic.id")
+        .where("it.transaction_type", "production_consumption")
+        .where("it.transaction_date", ">=", dateFrom)
+        .where("it.transaction_date", "<=", dateTo)
+        .groupBy("iit.id", "iit.name", "ic.name")
+        .orderBy("total_consumed", "desc");
+
+      return usage;
+    } catch (error) {
+      console.error("Error fetching ingredient usage analytics:", error);
+      throw new Error("Failed to retrieve ingredient usage analytics");
+    }
+  }
+
+  // Trigger automatic restocking based on production demand
+  static async triggerProductionRestocking(
+    itemTypeId,
+    requiredQuantity,
+    urgentLevel = "Normal"
+  ) {
+    const trx = await db.transaction();
+
+    try {
+      // Get item type details
+      const itemType = await trx("inventory_item_types as iit")
+        .select("iit.*", "ic.name as category_name")
+        .join("inventory_categories as ic", "iit.category_id", "ic.id")
+        .where("iit.id", itemTypeId)
+        .first();
+
+      if (!itemType) {
+        throw new Error("Item type not found");
+      }
+
+      // Check current stock
+      const currentStock = await trx("inventory_items")
+        .select(db.raw("SUM(quantity) as total_stock"))
+        .where("item_type_id", itemTypeId)
+        .where("status", "available")
+        .first();
+
+      const totalStock = parseFloat(currentStock?.total_stock || 0);
+
+      if (totalStock >= requiredQuantity) {
+        return {
+          status: "sufficient_stock",
+          message: "Current stock is sufficient",
+          current_stock: totalStock,
+          required_quantity: requiredQuantity,
+        };
+      }
+
+      // Calculate shortage
+      const shortage = requiredQuantity - totalStock;
+
+      // Find the most recent supplier for this item
+      const recentSupplier = await trx("inventory_items as ii")
+        .select("s.id", "s.name", "s.contact_person", "s.email")
+        .join("suppliers as s", "ii.supplier_id", "s.id")
+        .where("ii.item_type_id", itemTypeId)
+        .whereNotNull("ii.supplier_id")
+        .orderBy("ii.received_date", "desc")
+        .first();
+
+      // Create automatic supply request for restocking
+      const requestId = Date.now();
+
+      const [supplyRequest] = await trx("supply_requests")
+        .insert({
+          request_id: requestId,
+          request_type: "Production Restocking",
+          request_description: `Automatic restocking request for ${itemType.name} due to production demand`,
+          request_date: new Date(),
+          priority: urgentLevel,
+          department: "Production",
+          requested_by: "Production System",
+          request_status: "To Request",
+          total_amount: 0, // Will be calculated when supplier prices are added
+          item_count: 1,
+        })
+        .returning("*");
+
+      // Create supply request item
+      await trx("supply_request_items").insert({
+        supply_request_id: supplyRequest.id,
+        item_number: 1,
+        item_name: itemType.name,
+        item_quantity: Math.ceil(shortage * 1.2), // Add 20% buffer
+        item_unit: itemType.unit_of_measure,
+        item_type: itemType.category_name,
+        item_unit_price: 0, // To be filled by procurement
+        item_amount: 0,
+        item_notes: `Production shortage: ${shortage} ${itemType.unit_of_measure}`,
+      });
+
+      await trx.commit();
+
+      return {
+        status: "restocking_triggered",
+        message: "Automatic restocking request created",
+        supply_request_id: supplyRequest.id,
+        shortage_quantity: shortage,
+        requested_quantity: Math.ceil(shortage * 1.2),
+        suggested_supplier: recentSupplier,
+      };
+    } catch (error) {
+      await trx.rollback();
+      console.error("Error triggering production restocking:", error);
+      throw new Error("Failed to trigger automatic restocking");
+    }
+  }
+
+  // Get production impact analysis for inventory changes
+  static async getProductionImpactAnalysis(itemTypeId) {
+    try {
+      // Find recipes that use this ingredient
+      const affectedRecipes = await db("recipe_ingredients as ri")
+        .select(
+          "r.id",
+          "r.recipe_name",
+          "r.recipe_code",
+          "r.is_active",
+          "ri.quantity_required",
+          "ri.unit"
+        )
+        .join("recipes as r", "ri.recipe_id", "r.id")
+        .where("ri.inventory_item_type_id", itemTypeId)
+        .where("r.is_active", true);
+
+      // Find active production orders using these recipes
+      const affectedOrders = await Promise.all(
+        affectedRecipes.map(async (recipe) => {
+          const orders = await db("production_orders")
+            .select(
+              "id",
+              "order_number",
+              "product_name",
+              "quantity_planned",
+              "status",
+              "planned_start_date"
+            )
+            .where("recipe_id", recipe.id)
+            .whereIn("status", ["Draft", "Scheduled", "In Progress"]);
+
+          return {
+            recipe,
+            affected_orders: orders,
+          };
+        })
+      );
+
+      const totalAffectedOrders = affectedOrders.reduce(
+        (sum, item) => sum + item.affected_orders.length,
+        0
+      );
+
+      return {
+        item_type_id: itemTypeId,
+        affected_recipes: affectedRecipes,
+        affected_production_orders: affectedOrders,
+        total_affected_orders: totalAffectedOrders,
+        impact_level:
+          totalAffectedOrders > 5
+            ? "high"
+            : totalAffectedOrders > 2
+              ? "medium"
+              : "low",
+      };
+    } catch (error) {
+      console.error("Error analyzing production impact:", error);
+      throw new Error("Failed to analyze production impact");
+    }
+  }
 }
 
 module.exports = Inventory;

@@ -6,7 +6,7 @@
     Search,
     Filter,
     Clock,
-    DollarSign,
+    PhilippinePeso,
     Users,
     CheckCircle,
     AlertTriangle,
@@ -24,9 +24,11 @@
   } from 'lucide-vue-next';
   import { useProductionStore } from '../../stores/productionStore.js';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
+  import { useAuthStore } from '../../stores/authStore.js';
 
   const productionStore = useProductionStore();
   const inventoryStore = useInventoryStore();
+  const authStore = useAuthStore();
 
   // Reactive state
   const searchQuery = ref('');
@@ -186,6 +188,10 @@
   const itemTypes = computed(() => inventoryStore.currentInventory);
   const recipeStats = computed(() => productionStore.recipeStats);
 
+  // Current user info
+  const currentUser = computed(() => authStore.user);
+  const isUserAuthenticated = computed(() => authStore.isAuthenticated);
+
   // Filter inventory items to only show food-related ingredients
   const foodIngredients = computed(() => {
     if (!itemTypes.value || itemTypes.value.length === 0) return [];
@@ -206,6 +212,12 @@
   // Methods
   const refreshData = async () => {
     try {
+      // Check authentication before fetching data
+      if (!isUserAuthenticated.value || !currentUser.value?.id) {
+        showToast('error', 'Please log in to access recipe management');
+        return;
+      }
+
       loading.value = true;
 
       await Promise.all([
@@ -237,6 +249,12 @@
 
   // Modal methods
   const openModal = (type, recipe = null) => {
+    // Check authentication for create/edit operations
+    if ((type === 'create' || type === 'edit') && !isUserAuthenticated.value) {
+      showToast('error', 'Please log in to manage recipes');
+      return;
+    }
+
     // Store the original modal type for the main recipe modal
     const originalType = type === 'add-ingredient' ? modal.value.type : type;
 
@@ -348,6 +366,12 @@
   const handleCreateRecipe = async () => {
     loading.value = true;
     try {
+      // Check if user is authenticated
+      if (!authStore.isAuthenticated || !authStore.user?.id) {
+        showToast('error', 'Please log in to create recipes');
+        return;
+      }
+
       if (!recipeForm.value.recipe_name.trim()) {
         showToast('error', 'Please enter recipe name');
         return;
@@ -363,7 +387,7 @@
 
       const recipeData = {
         ...recipeForm.value,
-        created_by: 'Production User',
+        created_by: authStore.user.id, // Using current authenticated user ID
       };
 
       await productionStore.createRecipe(recipeData, ingredients.value);
@@ -592,6 +616,12 @@
 
   // Lifecycle
   onMounted(async () => {
+    // Check if user is authenticated before loading data
+    if (!isUserAuthenticated.value) {
+      showToast('error', 'Please log in to access recipe management');
+      return;
+    }
+
     await refreshData();
   });
 </script>
@@ -608,6 +638,18 @@
       <p class="text-sm sm:text-base text-black/50 px-2">
         Manage and track recipes for Countryside Steakhouse production.
       </p>
+      <!-- Current User Info -->
+      <div v-if="isUserAuthenticated && currentUser" class="mt-2">
+        <span class="text-xs text-black/40">
+          Logged in as:
+          <span class="font-medium text-primaryColor">{{
+            currentUser.name
+          }}</span>
+          <span v-if="currentUser.department" class="ml-2 text-black/30"
+            >({{ currentUser.department }})</span
+          >
+        </span>
+      </div>
     </div>
 
     <!-- Stats -->
@@ -664,26 +706,6 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <Clock class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-warning" />
-        </div>
-
-        <div
-          class="stat-value text-warning text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          <span v-if="recipeStats?.average_prep_time !== undefined"
-            >{{ recipeStats.average_prep_time }}m</span
-          >
-          <span v-else class="loading loading-spinner loading-sm"></span>
-        </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
-          Minutes per recipe
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
           <BookOpen class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-info" />
         </div>
         <div class="stat-title text-black/50 text-xs sm:text-sm">
@@ -706,7 +728,7 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <DollarSign
+          <PhilippinePeso
             class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-black/80"
           />
         </div>
@@ -763,6 +785,12 @@
             <button
               class="btn btn-outline btn-xs sm:btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
               @click="openModal('create')"
+              :disabled="!isUserAuthenticated"
+              :title="
+                !isUserAuthenticated
+                  ? 'Please log in to create recipes'
+                  : 'Create new recipe'
+              "
             >
               <Plus
                 class="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 text-primaryColor"
@@ -909,12 +937,6 @@
                 >
                   {{ recipe.is_active ? 'Active' : 'Inactive' }}
                 </div>
-                <div
-                  class="badge"
-                  :class="getDifficultyColor(recipe.difficulty_level)"
-                >
-                  {{ recipe.difficulty_level }}
-                </div>
               </div>
             </div>
 
@@ -927,12 +949,9 @@
                 <Scale class="w-4 h-4" />
                 <span>{{ recipe.batch_size }} {{ recipe.batch_unit }}</span>
               </div>
+
               <div class="flex items-center gap-2 text-sm text-base-content/70">
-                <Timer class="w-4 h-4" />
-                <span>{{ recipe.total_time_minutes || 0 }} minutes</span>
-              </div>
-              <div class="flex items-center gap-2 text-sm text-base-content/70">
-                <DollarSign class="w-4 h-4" />
+                <PhilippinePeso class="w-4 h-4" />
                 <span>₱{{ recipe.cost_per_batch || '0' }}/batch</span>
               </div>
             </div>

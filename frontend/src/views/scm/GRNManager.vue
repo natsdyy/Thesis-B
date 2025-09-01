@@ -1724,18 +1724,31 @@
   };
 
   const handleConfirmAction = async () => {
-    if (confirmModal.value.onConfirm) {
-      try {
-        await confirmModal.value.onConfirm();
-        closeConfirmModal();
-      } catch (error) {
-        console.error('Confirmation action failed:', error);
-      }
+    if (!confirmModal.value.onConfirm) return;
+
+    // Validate required notes for failure before closing
+    if (
+      confirmModal.value.type === 'markFailed' &&
+      !inspectionNotes.value.trim()
+    ) {
+      showToast('error', 'Please provide a reason for the failure.');
+      return;
+    }
+
+    const onConfirm = confirmModal.value.onConfirm;
+    // Preserve notes before closing (closeConfirmModal resets them)
+    const notesToUse = inspectionNotes.value;
+    // Close immediately for better UX; run action in background
+    closeConfirmModal();
+    try {
+      await onConfirm(notesToUse);
+    } catch (error) {
+      console.error('Confirmation action failed:', error);
     }
   };
 
   // Wrapper methods for confirmation actions
-  const performMarkAllAsPassed = async () => {
+  const performMarkAllAsPassed = async (notes) => {
     try {
       // Double-check GRN status before proceeding
       if (selectedGRN.value?.status === 'completed') {
@@ -1750,7 +1763,8 @@
       const updatedGRN = await performBulkQualityInspection(
         selectedGRN.value.id,
         'passed',
-        inspectionNotes.value.trim() || 'All items passed quality inspection'
+        (notes ?? inspectionNotes.value).trim() ||
+          'All items passed quality inspection'
       );
       if (updatedGRN) {
         selectedGRN.value = updatedGRN;
@@ -1775,7 +1789,7 @@
     }
   };
 
-  const performMarkAllAsFailed = async () => {
+  const performMarkAllAsFailed = async (notes) => {
     try {
       // Double-check GRN status before proceeding
       if (selectedGRN.value?.status === 'completed') {
@@ -1790,7 +1804,8 @@
       const updatedGRN = await performBulkQualityInspection(
         selectedGRN.value.id,
         'failed',
-        inspectionNotes.value.trim() || 'All items failed quality inspection'
+        (notes ?? inspectionNotes.value).trim() ||
+          'All items failed quality inspection'
       );
       if (updatedGRN) {
         selectedGRN.value = updatedGRN;

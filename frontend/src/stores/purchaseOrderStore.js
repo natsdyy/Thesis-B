@@ -9,16 +9,30 @@ const API_BASE_URL = apiConfig.baseURL;
 export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
   // State
   const purchaseOrders = ref([]);
-  const currentPurchaseOrder = ref(null);
   const loading = ref(false);
   const error = ref(null);
+  const lastFetchTime = ref(null);
+  const cacheTimeout = 3 * 60 * 1000; // 3 minutes (reduced from 5)
+
+  // Enhanced caching for individual POs
+  const poCache = ref(new Map());
+  const poCacheTimeout = 2 * 60 * 1000; // 2 minutes for individual POs
+
+  // Stats with separate caching
   const stats = ref({
     total: 0,
+    draft: 0,
+    sent: 0,
+    confirmed: 0,
+    inProgress: 0,
     completed: 0,
-    pending: 0,
+    cancelled: 0,
     returns: 0,
     totalValue: 0,
+    pending: 0,
   });
+  const lastStatsFetchTime = ref(null);
+  const statsCacheTimeout = 2 * 60 * 1000; // 2 minutes for stats
 
   // Add this state for item returns
   const itemReturns = ref([]);
@@ -49,14 +63,41 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     );
   });
 
+  // Check if cache is still valid
+  const isCacheValid = computed(() => {
+    return (
+      lastFetchTime.value && Date.now() - lastFetchTime.value < cacheTimeout
+    );
+  });
+
+  // Check if individual PO cache is valid
+  const isPOCacheValid = (id) => {
+    const cached = poCache.value.get(id);
+    return cached && Date.now() - cached.timestamp < poCacheTimeout;
+  };
+
+  // Check if stats cache is valid
+  const isStatsCacheValid = computed(() => {
+    return (
+      lastStatsFetchTime.value &&
+      Date.now() - lastStatsFetchTime.value < statsCacheTimeout
+    );
+  });
+
   // Actions
   const fetchPurchaseOrders = async (filters = {}) => {
+    // Return cached data if still valid and no specific filters
+    if (isCacheValid.value && Object.keys(filters).length === 0) {
+      return purchaseOrders.value;
+    }
+
     loading.value = true;
     error.value = null;
 
     try {
       const params = new URLSearchParams();
 
+      // Add filters to params for server-side filtering
       Object.keys(filters).forEach((key) => {
         if (
           filters[key] !== null &&
@@ -72,9 +113,9 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
       );
 
       if (response.data.success) {
-        purchaseOrders.value = response.data.data;
-        await fetchStats();
-        return response.data.data;
+        purchaseOrders.value = response.data.data || [];
+        lastFetchTime.value = Date.now();
+        return purchaseOrders.value;
       } else {
         throw new Error(
           response.data.message || 'Failed to fetch purchase orders'
@@ -92,7 +133,12 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     }
   };
 
-  const fetchPurchaseOrderById = async (id) => {
+  const fetchPurchaseOrderById = async (id, useCache = true) => {
+    // Check cache first if enabled
+    if (useCache && isPOCacheValid(id)) {
+      return poCache.value.get(id).data;
+    }
+
     loading.value = true;
     error.value = null;
 
@@ -100,8 +146,15 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
       const response = await axios.get(`${API_BASE_URL}/purchase-orders/${id}`);
 
       if (response.data.success) {
-        currentPurchaseOrder.value = response.data.data;
-        return response.data.data;
+        const poData = response.data.data;
+
+        // Cache the PO data
+        poCache.value.set(id, {
+          data: poData,
+          timestamp: Date.now(),
+        });
+
+        return poData;
       } else {
         throw new Error(
           response.data.message || 'Failed to fetch purchase order'
@@ -413,30 +466,25 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     }
   };
 
-  const fetchStats = async (filters = {}) => {
+  const fetchStats = async (forceRefresh = false) => {
+    // Return cached stats if still valid and not forcing refresh
+    if (!forceRefresh && isStatsCacheValid.value) {
+      return stats.value;
+    }
+
     try {
-      const params = new URLSearchParams();
-
-      Object.keys(filters).forEach((key) => {
-        if (
-          filters[key] !== null &&
-          filters[key] !== undefined &&
-          filters[key] !== ''
-        ) {
-          params.append(key, filters[key]);
-        }
-      });
-
-      const response = await axios.get(
-        `${API_BASE_URL}/purchase-orders/stats?${params.toString()}`
-      );
+      const response = await axios.get(`${API_BASE_URL}/purchase-orders/stats`);
 
       if (response.data.success) {
-        stats.value = response.data.data;
-        return response.data.data;
+        stats.value = response.data.data || {};
+        lastStatsFetchTime.value = Date.now();
+        return stats.value;
+      } else {
+        throw new Error(response.data.message || 'Failed to fetch stats');
       }
     } catch (err) {
       console.error('Error fetching purchase order stats:', err);
+      throw err;
     }
   };
 
@@ -474,22 +522,37 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
         url += `?purchase_order_id=${purchaseOrderId}`;
       }
 
+      console.log('🔍 Store: Fetching from URL:', url);
       const response = await axios.get(url);
+      console.log('🔍 Store: Full response:', response);
+      console.log('🔍 Store: Response data:', response.data);
+      console.log('🔍 Store: Response success:', response.data.success);
+      console.log('🔍 Store: Response data.data:', response.data.data);
 
       if (response.data.success) {
-        itemReturns.value = response.data.data;
-        return response.data.data;
+        // Ensure we always set an array, never undefined
+        const data = response.data.data || [];
+        console.log('🔍 Store: Setting itemReturns.value to:', data);
+        itemReturns.value = data;
+        console.log(
+          '🔍 Store: itemReturns.value after setting:',
+          itemReturns.value
+        );
+        return data;
       } else {
         throw new Error(
           response.data.message || 'Failed to fetch item returns'
         );
       }
     } catch (err) {
+      console.error('❌ Store: Error in fetchItemReturns:', err);
       error.value =
         err.response?.data?.message ||
         err.message ||
         'Failed to fetch item returns';
       console.error('Error fetching item returns:', err);
+      // Ensure itemReturns is always an array even on error
+      itemReturns.value = [];
       throw err;
     } finally {
       loading.value = false;
@@ -611,14 +674,34 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     }
   };
 
+  // Clear all caches
+  const clearCaches = () => {
+    lastFetchTime.value = null;
+    lastStatsFetchTime.value = null;
+    poCache.value.clear();
+  };
+
+  // Clear specific PO cache
+  const clearPOCache = (id) => {
+    if (id) {
+      poCache.value.delete(id);
+    } else {
+      poCache.value.clear();
+    }
+  };
+
+  // Clear stats cache
+  const clearStatsCache = () => {
+    lastStatsFetchTime.value = null;
+  };
+
   return {
     // State
     purchaseOrders,
-    currentPurchaseOrder,
     loading,
     error,
     stats,
-    itemReturns, // Add this
+    itemReturns, // Add this - the component needs access to the state
 
     // Getters
     purchaseOrdersByStatus,
@@ -647,5 +730,8 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     checkPurchaseOrderRating,
     submitSupplierRating,
     updateSupplierRating,
+    clearCaches,
+    clearPOCache,
+    clearStatsCache,
   };
 });

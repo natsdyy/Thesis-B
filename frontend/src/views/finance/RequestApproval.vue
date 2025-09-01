@@ -312,12 +312,16 @@
     return Math.ceil(sortedRequests.value.length / requestsPerPage.value);
   });
 
-  // Request history computed properties (approved/rejected/sent back)
+  // Request history computed properties (approved/rejected/sent back/completed)
   const requestHistory = computed(() => {
     return allRequests.value.filter((request) =>
-      ['Approved', 'Rejected', 'Sent Back', 'Budget Released'].includes(
-        request.request_status
-      )
+      [
+        'Approved',
+        'Rejected',
+        'Sent Back',
+        'Budget Released',
+        'Completed',
+      ].includes(request.request_status)
     );
   });
 
@@ -821,6 +825,9 @@
     const sentBack = filteredRequestHistory.value.filter(
       (r) => r.request_status === 'Sent Back'
     );
+    const completed = filteredRequestHistory.value.filter(
+      (r) => r.request_status === 'Completed'
+    );
     const totalAmount = approved.reduce(
       (sum, r) => sum + (parseFloat(r.total_amount) || 0),
       0
@@ -831,6 +838,7 @@
       approved: approved.length,
       rejected: rejected.length,
       sentBack: sentBack.length,
+      completed: completed.length,
       totalAmount,
     };
   });
@@ -1071,6 +1079,7 @@
     'Rejected',
     'Sent Back',
     'Budget Released',
+    'Completed',
   ];
 
   // Watch for changes and update counts
@@ -1614,26 +1623,6 @@
         >
           <div>
             <h2 class="card-title text-primaryColor mb-2">Request History</h2>
-            <div class="flex flex-wrap gap-4 text-sm text-black/60">
-              <span
-                >Total:
-                <strong class="text-primaryColor">{{
-                  requestHistoryStats.total
-                }}</strong></span
-              >
-              <span
-                >Approved:
-                <strong class="text-success">{{
-                  requestHistoryStats.approved
-                }}</strong></span
-              >
-              <span
-                >Rejected:
-                <strong class="text-error">{{
-                  requestHistoryStats.rejected
-                }}</strong></span
-              >
-            </div>
           </div>
 
           <div class="flex gap-2 mt-4 lg:mt-0">
@@ -1949,6 +1938,8 @@
                         request.request_status === 'Sent Back',
                       'bg-success/20 text-success':
                         request.request_status === 'Budget Released',
+                      'bg-primary/20 text-primary':
+                        request.request_status === 'Completed',
                     }"
                   >
                     {{ request.request_status }}
@@ -1996,11 +1987,6 @@
               }}
               of {{ filteredRequestHistory.length }} records for
               {{ getHistoryFilterDisplayText() }}
-            </span>
-            <span class="font-semibold text-primaryColor">
-              Total Value: ₱{{
-                requestHistoryStats.totalAmount.toLocaleString('en-PH')
-              }}
             </span>
           </div>
 

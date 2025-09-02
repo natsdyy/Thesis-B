@@ -40,33 +40,41 @@ export const useAnalyticsStore = defineStore('analytics', {
 
     // Chart data
     consumptionTrendChartData: (state) => ({
-      labels: state.consumptionTrends.labels || [],
-      values: state.consumptionTrends.values || [],
+      labels: state.consumptionTrends?.labels || [],
+      values: state.consumptionTrends?.values || [],
     }),
 
-    categoryBreakdownChartData: (state) => state.categoryBreakdown || [],
+    categoryBreakdownChartData: (state) =>
+      (state.categoryBreakdown || []).map((item) => ({
+        category: item.category || 'Unknown',
+        consumption: parseFloat(item.total_consumed || 0),
+      })),
 
     forecastChartData: (state) => {
-      const forecast = state.forecastData[state.selectedForecastItem];
-      if (!forecast) return null;
-
+      if (!state.forecastData || !state.forecastData.historical_data) {
+        return null;
+      }
       return {
-        labels: forecast.periods || [],
-        actual: forecast.historical_data || [],
-        forecast: forecast.forecasted_data || [],
+        labels: state.forecastData.historical_data.map(
+          (item) => item.month || 'Unknown'
+        ),
+        actual: state.forecastData.historical_data.map((item) =>
+          parseFloat(item.monthly_consumption || 0)
+        ),
+        forecast: state.forecastData.forecasted_data || [],
       };
     },
 
     // Formatted data for display
     formattedMostUsedItems: (state) =>
-      state.mostUsedItems.map((item) => ({
+      (state.mostUsedItems || []).map((item) => ({
         ...item,
         total_consumed: item.total_consumed || 0,
         frequency: item.frequency || 0,
       })),
 
     formattedLeastUsedItems: (state) =>
-      state.leastUsedItems.map((item) => ({
+      (state.leastUsedItems || []).map((item) => ({
         ...item,
         total_consumed: item.total_consumed || 0,
         frequency: item.frequency || 0,
@@ -119,29 +127,41 @@ export const useAnalyticsStore = defineStore('analytics', {
         ]);
 
         // Update state
-        this.dashboardData = dashboard;
-        this.mostUsedItems = mostUsed;
-        this.leastUsedItems = leastUsed;
-        this.categoryBreakdown = categoryBreakdown;
-        this.usageAnalytics = usageAnalytics;
-        this.inventoryTurnover = turnover;
+        this.dashboardData = dashboard || {};
+        this.mostUsedItems = mostUsed || [];
+        this.leastUsedItems = leastUsed || [];
+        this.categoryBreakdown = categoryBreakdown || [];
+        this.usageAnalytics = usageAnalytics || {};
+        this.inventoryTurnover = turnover || [];
 
         // Process consumption trends
-        if (usageAnalytics && usageAnalytics.consumption_trend) {
+        if (
+          usageAnalytics &&
+          usageAnalytics.consumption_trend &&
+          Array.isArray(usageAnalytics.consumption_trend)
+        ) {
           this.consumptionTrends = {
             labels: usageAnalytics.consumption_trend.map((item) => item.period),
             values: usageAnalytics.consumption_trend.map(
               (item) => item.quantity
             ),
           };
+        } else {
+          this.consumptionTrends = { labels: [], values: [] };
         }
 
         // Process alerts and recommendations
         this.processInventoryAlerts();
 
         // Load recent transactions
-        if (dashboard.recent_transactions) {
+        if (
+          dashboard &&
+          dashboard.recent_transactions &&
+          Array.isArray(dashboard.recent_transactions)
+        ) {
           this.recentTransactions = dashboard.recent_transactions;
+        } else {
+          this.recentTransactions = [];
         }
       } catch (error) {
         console.error('Error loading dashboard data:', error);

@@ -1544,6 +1544,502 @@ class Inventory {
       throw new Error("Failed to analyze production impact");
     }
   }
+
+  // ========================================
+  // ANALYTICS & FORECASTING METHODS
+  // ========================================
+
+  // Get comprehensive usage analytics
+  static async getUsageAnalytics(timeframe = "month") {
+    try {
+      let dateFilter;
+      const now = new Date();
+
+      // Handle numeric timeframes (days)
+      if (typeof timeframe === "string" && !isNaN(parseInt(timeframe))) {
+        const days = parseInt(timeframe);
+        dateFilter = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+      } else {
+        // Handle string timeframes
+        switch (timeframe) {
+          case "week":
+            dateFilter = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            break;
+          case "month":
+            dateFilter = new Date(
+              now.getFullYear(),
+              now.getMonth() - 1,
+              now.getDate()
+            );
+            break;
+          case "quarter":
+            dateFilter = new Date(
+              now.getFullYear(),
+              now.getMonth() - 3,
+              now.getDate()
+            );
+            break;
+          case "year":
+            dateFilter = new Date(
+              now.getFullYear() - 1,
+              now.getMonth(),
+              now.getDate()
+            );
+            break;
+          default:
+            dateFilter = new Date(
+              now.getFullYear(),
+              now.getMonth() - 1,
+              now.getDate()
+            );
+        }
+      }
+
+      const analytics = await db("inventory_transactions as it")
+        .leftJoin("inventory_items as ii", "it.inventory_item_id", "ii.id")
+        .leftJoin("inventory_item_types as iit", "ii.item_type_id", "iit.id")
+        .leftJoin("inventory_categories as ic", "iit.category_id", "ic.id")
+        .select(
+          "ii.item_name",
+          "iit.name as item_type",
+          "ic.name as category",
+          db.raw(
+            "SUM(CASE WHEN it.transaction_type = 'consumption' THEN it.quantity ELSE 0 END) as total_consumed"
+          ),
+          db.raw(
+            "SUM(CASE WHEN it.transaction_type = 'receipt' THEN it.quantity ELSE 0 END) as total_received"
+          ),
+          db.raw(
+            "COUNT(CASE WHEN it.transaction_type = 'consumption' THEN 1 END) as consumption_frequency"
+          ),
+          db.raw(
+            "AVG(CASE WHEN it.transaction_type = 'consumption' THEN it.quantity ELSE NULL END) as avg_consumption_per_transaction"
+          ),
+          db.raw("MAX(it.transaction_date) as last_consumption_date")
+        )
+        .where("it.transaction_date", ">=", dateFilter)
+        .groupBy("ii.item_name", "iit.name", "ic.name")
+        .orderBy("total_consumed", "desc");
+
+      return analytics;
+    } catch (error) {
+      console.error("Error getting usage analytics:", error);
+      throw new Error("Failed to get usage analytics");
+    }
+  }
+
+  // Get most used items ranking
+  static async getMostUsedItems(limit = 10, timeframe = "month") {
+    try {
+      const analytics = await this.getUsageAnalytics(timeframe);
+
+      return analytics
+        .filter((item) => item.total_consumed > 0)
+        .slice(0, limit)
+        .map((item, index) => ({
+          rank: index + 1,
+          item_name: item.item_name,
+          category: item.category,
+          item_type: item.item_type,
+          total_consumed: parseFloat(item.total_consumed || 0),
+          consumption_frequency: parseInt(item.consumption_frequency || 0),
+          avg_consumption: parseFloat(
+            item.avg_consumption_per_transaction || 0
+          ),
+          usage_score:
+            parseFloat(item.total_consumed || 0) *
+            parseInt(item.consumption_frequency || 0),
+          last_consumption: item.last_consumption_date,
+        }));
+    } catch (error) {
+      console.error("Error getting most used items:", error);
+      throw new Error("Failed to get most used items");
+    }
+  }
+
+  // Get least used items (slow movers)
+  static async getLeastUsedItems(limit = 10, timeframe = "month") {
+    try {
+      const analytics = await this.getUsageAnalytics(timeframe);
+
+      return analytics
+        .filter((item) => item.total_consumed > 0)
+        .sort(
+          (a, b) => parseFloat(a.total_consumed) - parseFloat(b.total_consumed)
+        )
+        .slice(0, limit)
+        .map((item, index) => ({
+          rank: index + 1,
+          item_name: item.item_name,
+          category: item.category,
+          item_type: item.item_type,
+          total_consumed: parseFloat(item.total_consumed || 0),
+          consumption_frequency: parseInt(item.consumption_frequency || 0),
+          risk_level:
+            parseFloat(item.total_consumed) < 5
+              ? "High"
+              : parseFloat(item.total_consumed) < 10
+                ? "Medium"
+                : "Low",
+          last_consumption: item.last_consumption_date,
+        }));
+    } catch (error) {
+      console.error("Error getting least used items:", error);
+      throw new Error("Failed to get least used items");
+    }
+  }
+
+  // Get consumption forecasting for specific item
+  static async getForecast(itemName, periods = 3) {
+    try {
+      const historicalData = await db("inventory_transactions as it")
+        .leftJoin("inventory_items as ii", "it.inventory_item_id", "ii.id")
+        .select(
+          db.raw("DATE_TRUNC('month', it.transaction_date) as month"),
+          db.raw(
+            "SUM(CASE WHEN it.transaction_type = 'consumption' THEN it.quantity ELSE 0 END) as monthly_consumption"
+          )
+        )
+        .where("ii.item_name", itemName)
+        .where("it.transaction_type", "consumption")
+        .groupBy(db.raw("DATE_TRUNC('month', it.transaction_date)"))
+        .orderBy("month", "desc")
+        .limit(periods);
+
+      if (historicalData.length < periods) {
+        return {
+          forecast: 0,
+          confidence: "Low - Insufficient data",
+          data_points: historicalData.length,
+        };
+      }
+
+      const avgConsumption =
+        historicalData.reduce(
+          (sum, item) => sum + parseFloat(item.monthly_consumption || 0),
+          0
+        ) / historicalData.length;
+
+      // Calculate trend (simple linear regression)
+      const trend = this.calculateTrend(historicalData);
+
+      return {
+        item_name: itemName,
+        forecast: Math.round(avgConsumption + trend),
+        confidence:
+          historicalData.length >= 6
+            ? "High"
+            : historicalData.length >= 3
+              ? "Medium"
+              : "Low",
+        historical_data: historicalData,
+        trend: trend,
+        data_points: historicalData.length,
+        next_month_forecast: Math.round(avgConsumption + trend),
+      };
+    } catch (error) {
+      console.error("Error getting forecast:", error);
+      throw new Error("Failed to get forecast");
+    }
+  }
+
+  // Calculate trend for forecasting
+  static calculateTrend(historicalData) {
+    try {
+      if (historicalData.length < 2) return 0;
+
+      const sortedData = historicalData.sort(
+        (a, b) => new Date(a.month) - new Date(b.month)
+      );
+      const n = sortedData.length;
+
+      let sumX = 0,
+        sumY = 0,
+        sumXY = 0,
+        sumX2 = 0;
+
+      sortedData.forEach((item, index) => {
+        const x = index;
+        const y = parseFloat(item.monthly_consumption || 0);
+        sumX += x;
+        sumY += y;
+        sumXY += x * y;
+        sumX2 += x * x;
+      });
+
+      const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+      return slope;
+    } catch (error) {
+      console.error("Error calculating trend:", error);
+      return 0;
+    }
+  }
+
+  // Get seasonal consumption patterns
+  static async getSeasonalPatterns(itemName) {
+    try {
+      const seasonalData = await db("inventory_transactions as it")
+        .leftJoin("inventory_items as ii", "it.inventory_item_id", "ii.id")
+        .select(
+          db.raw("EXTRACT(MONTH FROM it.transaction_date) as month"),
+          db.raw("EXTRACT(YEAR FROM it.transaction_date) as year"),
+          db.raw(
+            "SUM(CASE WHEN it.transaction_type = 'consumption' THEN it.quantity ELSE 0 END) as consumption"
+          )
+        )
+        .where("ii.item_name", itemName)
+        .where("it.transaction_type", "consumption")
+        .groupBy("month", "year")
+        .orderBy("year", "desc")
+        .orderBy("month", "asc");
+
+      // Group by month across years
+      const monthlyPatterns = {};
+      seasonalData.forEach((item) => {
+        const month = parseInt(item.month);
+        if (!monthlyPatterns[month]) {
+          monthlyPatterns[month] = [];
+        }
+        monthlyPatterns[month].push(parseFloat(item.consumption || 0));
+      });
+
+      // Calculate average consumption per month
+      const monthlyAverages = {};
+      Object.keys(monthlyPatterns).forEach((month) => {
+        const values = monthlyPatterns[month];
+        monthlyAverages[month] =
+          values.reduce((sum, val) => sum + val, 0) / values.length;
+      });
+
+      // Find peak months
+      const peakMonths = Object.entries(monthlyAverages)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 3)
+        .map(([month, avg]) => ({
+          month: parseInt(month),
+          month_name: this.getMonthName(parseInt(month)),
+          average: Math.round(avg * 100) / 100,
+        }));
+
+      return {
+        item_name: itemName,
+        monthly_patterns: monthlyAverages,
+        peak_months: peakMonths,
+        total_data_points: seasonalData.length,
+      };
+    } catch (error) {
+      console.error("Error getting seasonal patterns:", error);
+      throw new Error("Failed to get seasonal patterns");
+    }
+  }
+
+  // Helper method to get month names
+  static getMonthName(month) {
+    const months = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ];
+    return months[month - 1] || "Unknown";
+  }
+
+  // Get comprehensive analytics dashboard
+  static async getAnalyticsDashboard(timeframe = "month") {
+    try {
+      const [
+        mostUsed,
+        leastUsed,
+        totalItems,
+        totalConsumption,
+        categoryBreakdown,
+        recentTransactions,
+      ] = await Promise.all([
+        this.getMostUsedItems(5, timeframe),
+        this.getLeastUsedItems(5, timeframe),
+        db("inventory_items").count("* as total").first(),
+        db("inventory_transactions")
+          .where("transaction_type", "consumption")
+          .sum("quantity as total")
+          .first(),
+        this.getCategoryBreakdown(timeframe),
+        this.getRecentTransactions(10),
+      ]);
+
+      return {
+        most_used_items: mostUsed,
+        least_used_items: leastUsed,
+        total_inventory_items: parseInt(totalItems.total || 0),
+        total_consumption: parseFloat(totalConsumption.total || 0),
+        category_breakdown: categoryBreakdown,
+        recent_transactions: recentTransactions,
+        timeframe: timeframe,
+        last_updated: new Date(),
+        // Add fields that the frontend expects
+        low_stock_items: [], // TODO: Implement low stock detection
+        reorder_recommendations: [], // TODO: Implement reorder recommendations
+      };
+    } catch (error) {
+      console.error("Error getting analytics dashboard:", error);
+      throw new Error("Failed to get analytics dashboard");
+    }
+  }
+
+  // Get consumption breakdown by category
+  static async getCategoryBreakdown(timeframe = "month") {
+    try {
+      let dateFilter;
+      const now = new Date();
+
+      // Handle numeric timeframes (days)
+      if (typeof timeframe === "string" && !isNaN(parseInt(timeframe))) {
+        const days = parseInt(timeframe);
+        dateFilter = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+      } else {
+        // Handle string timeframes
+        if (timeframe === "month") {
+          dateFilter = new Date(
+            now.getFullYear(),
+            now.getMonth() - 1,
+            now.getDate()
+          );
+        } else if (timeframe === "week") {
+          dateFilter = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        } else {
+          dateFilter = new Date(
+            now.getFullYear(),
+            now.getMonth() - 1,
+            now.getDate()
+          );
+        }
+      }
+
+      const breakdown = await db("inventory_transactions as it")
+        .leftJoin("inventory_items as ii", "it.inventory_item_id", "ii.id")
+        .leftJoin("inventory_item_types as iit", "ii.item_type_id", "iit.id")
+        .leftJoin("inventory_categories as ic", "iit.category_id", "ic.id")
+        .select(
+          "ic.name as category",
+          db.raw(
+            "SUM(CASE WHEN it.transaction_type = 'consumption' THEN it.quantity ELSE 0 END) as total_consumed"
+          ),
+          db.raw(
+            "COUNT(CASE WHEN it.transaction_type = 'consumption' THEN 1 END) as transaction_count"
+          )
+        )
+        .where("it.transaction_type", "consumption")
+        .where("it.transaction_date", ">=", dateFilter)
+        .groupBy("ic.name")
+        .orderBy("total_consumed", "desc");
+
+      return breakdown;
+    } catch (error) {
+      console.error("Error getting category breakdown:", error);
+      throw new Error("Failed to get category breakdown");
+    }
+  }
+
+  // Get recent transactions for dashboard
+  static async getRecentTransactions(limit = 10) {
+    try {
+      return await db("inventory_transactions as it")
+        .leftJoin("inventory_items as ii", "it.inventory_item_id", "ii.id")
+        .leftJoin("inventory_item_types as iit", "ii.item_type_id", "iit.id")
+        .leftJoin("inventory_categories as ic", "iit.category_id", "ic.id")
+        .select(
+          "it.transaction_type",
+          "it.quantity",
+          "it.transaction_date",
+          "it.reason",
+          "ii.item_name",
+          "ic.name as category",
+          "iit.unit_of_measure"
+        )
+        .orderBy("it.transaction_date", "desc")
+        .limit(limit);
+    } catch (error) {
+      console.error("Error getting recent transactions:", error);
+      throw new Error("Failed to get recent transactions");
+    }
+  }
+
+  // Get inventory turnover analysis
+  static async getInventoryTurnover(timeframe = "month") {
+    try {
+      let dateFilter;
+      const now = new Date();
+
+      // Handle numeric timeframes (days)
+      if (typeof timeframe === "string" && !isNaN(parseInt(timeframe))) {
+        const days = parseInt(timeframe);
+        dateFilter = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+      } else {
+        // Handle string timeframes
+        if (timeframe === "month") {
+          dateFilter = new Date(
+            now.getFullYear(),
+            now.getMonth() - 1,
+            now.getDate()
+          );
+        } else if (timeframe === "week") {
+          dateFilter = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        } else {
+          dateFilter = new Date(
+            now.getFullYear(),
+            now.getMonth() - 1,
+            now.getDate()
+          );
+        }
+      }
+
+      const turnover = await db("inventory_transactions as it")
+        .leftJoin("inventory_items as ii", "it.inventory_item_id", "ii.id")
+        .select(
+          "ii.item_name",
+          db.raw(
+            "SUM(CASE WHEN it.transaction_type = 'receipt' THEN it.quantity ELSE 0 END) as total_received"
+          ),
+          db.raw(
+            "SUM(CASE WHEN it.transaction_type = 'consumption' THEN it.quantity ELSE 0 END) as total_consumed"
+          ),
+          db.raw(
+            "AVG(CASE WHEN it.transaction_type = 'consumption' THEN it.quantity ELSE NULL END) as avg_consumption"
+          )
+        )
+        .where("it.transaction_date", ">=", dateFilter)
+        .groupBy("ii.item_name")
+        .having(
+          db.raw(
+            "SUM(CASE WHEN it.transaction_type = 'receipt' THEN it.quantity ELSE 0 END) > 0"
+          )
+        )
+        .orderBy("total_consumed", "desc");
+
+      return turnover.map((item) => ({
+        item_name: item.item_name,
+        total_received: parseFloat(item.total_received || 0),
+        total_consumed: parseFloat(item.total_consumed || 0),
+        turnover_rate:
+          item.total_received > 0
+            ? (parseFloat(item.total_consumed || 0) /
+                parseFloat(item.total_received || 1)) *
+              100
+            : 0,
+        avg_consumption: parseFloat(item.avg_consumption || 0),
+      }));
+    } catch (error) {
+      console.error("Error getting inventory turnover:", error);
+      throw new Error("Failed to get inventory turnover");
+    }
+  }
 }
 
 module.exports = Inventory;

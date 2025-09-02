@@ -30,6 +30,7 @@
     "node-cron": "^4.2.1",
     "node-telegram-bot-api": "^0.64.0",
     "pg": "^8.16.3",
+    "qrcode": "^1.5.3",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"
   },

@@ -25,6 +25,7 @@ const inventoryRoutes = require("./routes/inventory");
 const grnRoutes = require("./routes/grn");
 const feedbackRoutes = require("./routes/feedback");
 const productionRoutes = require("./routes/production");
+const attendanceRoutes = require("./routes/attendance");
 const { serve, setup } = require("./config/swagger");
 
 const app = express();
@@ -62,6 +63,7 @@ app.use("/api/inventory", inventoryRoutes);
 app.use("/api/grn", grnRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/production", productionRoutes);
+app.use("/api/attendance", attendanceRoutes);
 
 // Auto-expire job
 async function autoExpireJob() {

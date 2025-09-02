@@ -26,8 +26,8 @@
     "vue-router": "^4.5.1"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^5.2.1",
     "@tailwindcss/postcss": "^4.1.11",
+    "@vitejs/plugin-vue": "^5.2.1",
     "autoprefixer": "^10.4.21",
     "daisyui": "^5.0.50",
     "postcss": "^8.5.6",

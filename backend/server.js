@@ -31,16 +31,44 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(
-  cors({
-    origin: process.env.CORS_ORIGIN || [
-      "http://localhost:5000",
-      "http://localhost:80",
-      "http://localhost:5173",
-    ],
-    credentials: true,
-  })
-);
+// Enhanced CORS to allow localhost and LAN dev origins (e.g., http://192.168.x.x:5173)
+const rawCorsOrigin = process.env.CORS_ORIGIN || "";
+const envOrigins = rawCorsOrigin
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+const defaultAllowedOrigins = [
+  "http://localhost:5000", // Localhost backend
+  "http://localhost:80", //docker
+  "http://localhost:5173", // Localhost frontend
+  "http://192.168.18.5:5173", // Network frontend
+  "http://192.168.56.1:5173", // Network backend
+];
+
+const allowList = [...defaultAllowedOrigins, ...envOrigins];
+
+const corsConfig = {
+  origin: (origin, callback) => {
+    // Allow non-browser requests or same-origin (no Origin header)
+    if (!origin) return callback(null, true);
+
+    const isLanDevOrigin = /^http:\/\/192\.168\.\d+\.\d+:(5173|80)$/.test(
+      origin
+    );
+
+    if (allowList.includes(origin) || isLanDevOrigin) {
+      return callback(null, true);
+    }
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsConfig));
 app.use(express.json());
 
 // API Routes

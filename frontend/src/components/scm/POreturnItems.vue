@@ -619,10 +619,10 @@
 
       <!-- Filters and Actions -->
       <div
-        class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6"
+        class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6 sm:flex-row"
       >
         <!-- Search and Filters -->
-        <div class="flex flex-col sm:flex-row gap-3 flex-1">
+        <div class="flex flex-col sm:flex-row gap-3 flex-1 w-full">
           <!-- Search -->
           <div class="relative">
             <Search
@@ -639,7 +639,7 @@
           <!-- Status Filter -->
           <select
             v-model="statusFilter"
-            class="select select-sm select-bordered bg-white border-primaryColor/30 text-black/70"
+            class="select select-sm select-bordered bg-white border-primaryColor/30 text-black/70 w-full"
           >
             <option value="">All Statuses</option>
             <option
@@ -654,7 +654,7 @@
           <!-- Reason Filter -->
           <select
             v-model="reasonFilter"
-            class="select select-sm select-bordered bg-white border-primaryColor/30 text-black/70"
+            class="select select-sm select-bordered bg-white border-primaryColor/30 text-black/70 w-full"
           >
             <option value="">All Reasons</option>
             <option
@@ -669,10 +669,10 @@
 
         <!-- Date Filter Buttons -->
         <div
-          class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center"
+          class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center w-full"
         >
           <!-- Quick Date Buttons -->
-          <div class="flex gap-2 md:flex-row flex-col">
+          <div class="flex gap-2 md:flex-row flex-col w-full">
             <button
               v-for="option in quickDateOptions"
               :key="option.label"
@@ -721,7 +721,7 @@
           </div>
 
           <!-- Custom Month Picker -->
-          <div class="flex items-center gap-1">
+          <div class="flex items-center gap-1 w-full sm:flex-row flex-col">
             <div class="relative">
               <button
                 class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
@@ -782,7 +782,7 @@
           </div>
 
           <!-- Action Buttons -->
-          <div class="flex gap-2">
+          <div class="flex gap-2 w-full sm:flex-row flex-col items-center">
             <button
               class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
               @click="clearFilters"

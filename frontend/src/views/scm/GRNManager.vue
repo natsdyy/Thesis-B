@@ -11,7 +11,7 @@
     </div>
 
     <!-- Stats -->
-    <div class="stats shadow w-full mb-6">
+    <div class="stats shadow w-full mb-6 lg:stats-horizontal stats-vertical">
       <div class="stat">
         <div class="stat-figure text-primaryColor">
           <ReceiptText class="w-8 h-8" />
@@ -127,7 +127,9 @@
           </div>
         </div>
 
-        <div class="flex justify-between items-center mb-4">
+        <div
+          class="flex justify-between items-center mb-4 sm:flex-row flex-col"
+        >
           <h2 class="card-title text-primaryColor">Goods Receipt Notes</h2>
           <div
             class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center"

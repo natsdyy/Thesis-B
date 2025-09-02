@@ -1,10 +1,13 @@
 <template>
   <div>
     <!-- Mobile Menu Button -->
-    <div class="lg:hidden fixed top-4 left-4 z-50">
+    <div
+      class="lg:hidden fixed left-4 top-4 z-50"
+      :class="isMobileMenuOpen ? 'left-90' : 'right-4'"
+    >
       <button
         @click="toggleMobileMenu"
-        class="btn btn-square bg-primaryColor border-none btn-sm"
+        class="btn btn-square bg-primaryColor border-none btn-sm text-white"
       >
         <Menu v-if="!isMobileMenuOpen" class="w-5 h-5" />
         <X v-else class="w-5 h-5" />

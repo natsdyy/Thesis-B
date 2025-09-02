@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE_URL = apiConfig.baseURL;
 
 class FeedbackService {
   /**
@@ -17,16 +18,20 @@ class FeedbackService {
   async submitFeedback(feedbackData) {
     try {
       let config = {};
-      
+
       // If feedbackData is FormData (has image), don't set Content-Type header
       // If it's a regular object, set JSON content type
       if (!(feedbackData instanceof FormData)) {
         config.headers = {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         };
       }
-      
-      const response = await axios.post(`${API_BASE_URL}/feedback`, feedbackData, config);
+
+      const response = await axios.post(
+        `${API_BASE_URL}/feedback`,
+        feedbackData,
+        config
+      );
       return response.data;
     } catch (error) {
       console.error('Error submitting feedback:', error);

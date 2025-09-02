@@ -2768,7 +2768,7 @@
             </h2>
 
             <!-- Report Controls -->
-            <div class="flex flex-wrap gap-2">
+            <div class="flex flex-wrap gap-2 sm:flex-row w-full">
               <select
                 v-model="reportPeriod"
                 class="select select-bordered select-sm"
@@ -3356,7 +3356,9 @@
               </div>
 
               <!-- Forecasting Filters -->
-              <div class="flex flex-wrap gap-4 mb-4 p-3 bg-base-200 rounded-lg">
+              <div
+                class="flex flex-wrap gap-4 mb-4 p-3 bg-base-200 rounded-lg sm:flex-row flex-col"
+              >
                 <div class="flex flex-col gap-1">
                   <label class="text-xs text-gray-600 font-medium"
                     >Category Filter</label
@@ -3408,7 +3410,7 @@
                   </select>
                 </div>
 
-                <div class="flex flex-col gap-1">
+                <div class="flex flex-col gap-1 sm:flex-row !w-full">
                   <label class="text-xs text-gray-600 font-medium"
                     >Search Items</label
                   >
@@ -3416,7 +3418,7 @@
                     v-model="forecastSearchQuery"
                     type="text"
                     placeholder="Search by item name, supplier, batch..."
-                    class="input input-bordered input-xs w-48"
+                    class="input input-bordered input-xs w-full"
                   />
                 </div>
 
@@ -3825,7 +3827,7 @@
               >
                 Export Enhanced Reports
               </h3>
-              <div class="flex flex-wrap gap-2">
+              <div class="flex flex-wrap gap-2 sm:flex-row w-full flex-col">
                 <button
                   class="btn btn-sm btn-outline"
                   @click="exportDetailedInventory"

@@ -941,4 +941,171 @@ router.get("/categories/:categoryId/item-types", async (req, res) => {
   }
 });
 
+// ========================================
+// ANALYTICS & FORECASTING ENDPOINTS
+// ========================================
+
+// Get comprehensive analytics dashboard
+router.get("/analytics/dashboard", async (req, res) => {
+  try {
+    const timeframe = req.query.timeframe || "month";
+    const dashboard = await Inventory.getAnalyticsDashboard(timeframe);
+
+    res.json({
+      success: true,
+      data: dashboard,
+      message: "Analytics dashboard retrieved successfully",
+    });
+  } catch (error) {
+    console.error("Error fetching analytics dashboard:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch analytics dashboard",
+    });
+  }
+});
+
+// Get most used items ranking
+router.get("/analytics/most-used", async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const timeframe = req.query.timeframe || "month";
+    const mostUsed = await Inventory.getMostUsedItems(limit, timeframe);
+
+    res.json({
+      success: true,
+      data: mostUsed,
+      message: "Most used items retrieved successfully",
+    });
+  } catch (error) {
+    console.error("Error fetching most used items:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch most used items",
+    });
+  }
+});
+
+// Get least used items (slow movers)
+router.get("/analytics/least-used", async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const timeframe = req.query.timeframe || "month";
+    const leastUsed = await Inventory.getLeastUsedItems(limit, timeframe);
+
+    res.json({
+      success: true,
+      data: leastUsed,
+      message: "Least used items retrieved successfully",
+    });
+  } catch (error) {
+    console.error("Error fetching least used items:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch least used items",
+    });
+  }
+});
+
+// Get consumption forecast for specific item
+router.get("/analytics/forecast/:itemName", async (req, res) => {
+  try {
+    const { itemName } = req.params;
+    const periods = parseInt(req.query.periods) || 3;
+    const forecast = await Inventory.getForecast(itemName, periods);
+
+    res.json({
+      success: true,
+      data: forecast,
+      message: "Forecast retrieved successfully",
+    });
+  } catch (error) {
+    console.error("Error fetching forecast:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch forecast",
+    });
+  }
+});
+
+// Get seasonal consumption patterns
+router.get("/analytics/seasonal/:itemName", async (req, res) => {
+  try {
+    const { itemName } = req.params;
+    const patterns = await Inventory.getSeasonalPatterns(itemName);
+
+    res.json({
+      success: true,
+      data: patterns,
+      message: "Seasonal patterns retrieved successfully",
+    });
+  } catch (error) {
+    console.error("Error fetching seasonal patterns:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch seasonal patterns",
+    });
+  }
+});
+
+// Get usage analytics by timeframe
+router.get("/analytics/usage", async (req, res) => {
+  try {
+    const timeframe = req.query.timeframe || "month";
+    const analytics = await Inventory.getUsageAnalytics(timeframe);
+
+    res.json({
+      success: true,
+      data: analytics,
+      message: "Usage analytics retrieved successfully",
+    });
+  } catch (error) {
+    console.error("Error fetching usage analytics:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch usage analytics",
+    });
+  }
+});
+
+// Get inventory turnover analysis
+router.get("/analytics/turnover", async (req, res) => {
+  try {
+    const timeframe = req.query.timeframe || "month";
+    const turnover = await Inventory.getInventoryTurnover(timeframe);
+
+    res.json({
+      success: true,
+      data: turnover,
+      message: "Inventory turnover analysis retrieved successfully",
+    });
+  } catch (error) {
+    console.error("Error fetching inventory turnover:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch inventory turnover",
+    });
+  }
+});
+
+// Get category breakdown
+router.get("/analytics/category-breakdown", async (req, res) => {
+  try {
+    const timeframe = req.query.timeframe || "month";
+    const breakdown = await Inventory.getCategoryBreakdown(timeframe);
+
+    res.json({
+      success: true,
+      data: breakdown,
+      message: "Category breakdown retrieved successfully",
+    });
+  } catch (error) {
+    console.error("Error fetching category breakdown:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch category breakdown",
+    });
+  }
+});
+
 module.exports = router;

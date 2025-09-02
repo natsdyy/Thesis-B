@@ -24,6 +24,10 @@
       type: Boolean,
       default: false,
     },
+    preselectedItem: {
+      type: Object,
+      default: null,
+    },
   });
 
   // Emits
@@ -54,9 +58,23 @@
       const dlg = document.getElementById('inventory_consumption_modal');
       if (newVal) {
         resetForm();
+        // Pre-populate form if preselected item is provided
+        if (props.preselectedItem) {
+          prePopulateForm(props.preselectedItem);
+        }
         if (dlg?.showModal) dlg.showModal();
       } else {
         if (dlg?.close) dlg.close();
+      }
+    }
+  );
+
+  // Watch for preselected item changes
+  watch(
+    () => props.preselectedItem,
+    (newItem) => {
+      if (newItem && props.show) {
+        prePopulateForm(newItem);
       }
     }
   );
@@ -249,6 +267,36 @@
       };
       emit('submit', consumptionData);
     }
+  };
+
+  // Pre-populate form with selected item data
+  const prePopulateForm = (item) => {
+    if (!item) return;
+
+    console.log('🔍 Pre-populating form with item:', item);
+
+    // Find the item type and category for the selected item
+    const itemType = props.itemTypes.find(
+      (type) => type.id == item.item_type_id
+    );
+    const category = props.categories.find(
+      (cat) => cat.id == itemType?.category_id
+    );
+
+    console.log('🔍 Found item type:', itemType);
+    console.log('🔍 Found category:', category);
+
+    singleItem.value = {
+      category_id: category?.id || '',
+      item_type_id: item.item_type_id || '',
+      inventory_item_id: item.id || '',
+      quantity: '',
+      reason: '',
+      reference_number: '',
+      notes: '',
+    };
+
+    console.log('🔍 Form pre-populated:', singleItem.value);
   };
 
   // Watchers

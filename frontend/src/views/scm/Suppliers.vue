@@ -14,11 +14,10 @@
 
     <!-- Stats -->
     <div
-      class="stats shadow w-full mb-4 sm:mb-6 bg-accentColor border border-black/10 stats-vertical lg:stats-horizontal xl:stats-horizontal rounded-lg"
+      class="stats shadow w-full mb-4 sm:mb-6 bg-accentColor border border-black/10 rounded-lg lg:flex"
     >
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
+      <!-- Total Suppliers -->
+      <div class="stat">
         <div class="stat-figure">
           <Building2
             class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-primaryColor"
@@ -37,9 +36,8 @@
         </div>
       </div>
 
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
+      <!-- Active Suppliers -->
+      <div class="stat">
         <div class="stat-figure">
           <CheckCircle
             class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-success"
@@ -58,9 +56,8 @@
         </div>
       </div>
 
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-0 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
+      <!-- Inactive Suppliers -->
+      <div class="stat">
         <div class="stat-figure">
           <XCircle class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-error" />
         </div>

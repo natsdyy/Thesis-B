@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, computed, onMounted, watch } from 'vue';
+  import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
   import {
     Package,
     Plus,
@@ -73,6 +73,17 @@
   const serviceLevel = ref(0.95); // 95%
   const windowProfile = ref('auto'); // auto|fast|medium|slow|custom
   const customWindowDays = ref(30);
+
+  // Forecasting filter state
+  const forecastCategoryFilter = ref('');
+  const forecastPriorityFilter = ref('');
+  const forecastConfidenceFilter = ref('');
+  const forecastSearchQuery = ref('');
+  const forecastShowItems = ref('all');
+
+  // Forecasting pagination state
+  const forecastCurrentPage = ref(1);
+  const forecastItemsPerPage = ref(10);
 
   // Disposed Items state
   const disposedItems = ref([]);
@@ -420,28 +431,25 @@
     });
   });
 
+  // Item-level forecasting with granular data
   const inventoryForecasts = computed(() => {
     if (!currentInventory.value || !recentActivity.value) return [];
 
-    const itemTypeMap = new Map();
+    // Create individual item forecasts instead of grouping by item type
+    const itemForecasts = [];
 
-    // Group current inventory by item type
-    currentInventory.value.forEach((item) => {
-      const key = item.item_type_id;
-      if (!itemTypeMap.has(key)) {
-        itemTypeMap.set(key, {
-          item_type_id: key,
-          item_type_name: item.item_type_name,
-          current_stock: 0,
-          total_value: 0,
-          transactions: [],
-        });
+    // Helper: generate an array of dates for the last N days (oldest -> newest)
+    const lastNDates = (n) => {
+      const arr = [];
+      const end = new Date();
+      for (let i = n - 1; i >= 0; i--) {
+        const d = new Date(end);
+        d.setDate(end.getDate() - i);
+        const key = d.toISOString().slice(0, 10);
+        arr.push(key);
       }
-
-      const existing = itemTypeMap.get(key);
-      existing.current_stock += parseFloat(item.quantity || 0);
-      existing.total_value += parseFloat(item.total_value || 0);
-    });
+      return arr;
+    };
 
     // Build per-item daily usage series for a chosen window
     const autoWindowForVelocity = (avgDaily) => {
@@ -456,182 +464,277 @@
       return 60; // slow movers
     };
 
-    // Helper: generate an array of dates for the last N days (oldest -> newest)
-    const lastNDates = (n) => {
-      const arr = [];
-      const end = new Date();
-      for (let i = n - 1; i >= 0; i--) {
-        const d = new Date(end);
-        d.setDate(end.getDate() - i);
-        const key = d.toISOString().slice(0, 10);
-        arr.push(key);
-      }
-      return arr; // array of yyyy-mm-dd
-    };
-
     const cutoffDays = parseInt(forecastPeriod.value);
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - cutoffDays);
 
-    // Build name->id fallback map for activities missing item_type_id
-    const nameToId = new Map();
-    Array.from(itemTypeMap.values()).forEach((it) => {
-      if (it.item_type_name)
-        nameToId.set(it.item_type_name.toLowerCase(), it.item_type_id);
-    });
+    // Process each individual inventory item
+    currentInventory.value.forEach((item) => {
+      // Find consumption transactions for this specific item
+      const itemTransactions = recentActivity.value
+        .filter(
+          (activity) =>
+            activity.transaction_type === 'consumption' &&
+            new Date(activity.transaction_date) >= cutoff &&
+            (activity.inventory_item_id == item.id ||
+              activity.item_type_id == item.item_type_id)
+        )
+        .map((t) => ({
+          date: t.transaction_date,
+          quantity: parseFloat(t.quantity || 0),
+        }));
 
-    recentActivity.value
-      .filter(
-        (activity) =>
-          activity.transaction_type === 'consumption' &&
-          new Date(activity.transaction_date) >= cutoff
-      )
-      .forEach((activity) => {
-        let key = activity.item_type_id;
-        if (!key) {
-          const nm = (
-            activity.item_type_name ||
-            activity.item_name ||
-            ''
-          ).toLowerCase();
-          if (nameToId.has(nm)) key = nameToId.get(nm);
-        }
-        if (key && itemTypeMap.has(key)) {
-          itemTypeMap.get(key).transactions.push({
-            date: activity.transaction_date,
-            quantity: parseFloat(activity.quantity || 0),
-          });
+      // Calculate usage statistics
+      const last30Total = itemTransactions
+        .filter((t) => new Date(t.date) >= new Date(Date.now() - 30 * 86400000))
+        .reduce((s, t) => s + t.quantity, 0);
+      const velocityAvgDaily = last30Total / 30;
+      const windowDays = autoWindowForVelocity(velocityAvgDaily);
+
+      // Build daily usage series for the window
+      const dateKeys = lastNDates(windowDays);
+      const usageByDate = new Map(dateKeys.map((k) => [k, 0]));
+      itemTransactions.forEach((t) => {
+        const k = new Date(t.date).toISOString().slice(0, 10);
+        if (usageByDate.has(k)) {
+          usageByDate.set(k, usageByDate.get(k) + t.quantity);
         }
       });
+      const dailySeries = dateKeys.map((k) => usageByDate.get(k));
 
-    return Array.from(itemTypeMap.values())
-      .map((item) => {
-        // Determine window days for this item (velocity-based if auto)
-        const last30Total = item.transactions
-          .filter(
-            (t) => new Date(t.date) >= new Date(Date.now() - 30 * 86400000)
-          )
-          .reduce((s, t) => s + t.quantity, 0);
-        const velocityAvgDaily = last30Total / 30;
-        const windowDays = autoWindowForVelocity(velocityAvgDaily);
+      // Moving average (baseline)
+      const totalUsageWindow = dailySeries.reduce((s, v) => s + v, 0);
+      const maAvgDaily = totalUsageWindow / windowDays || 0;
 
-        // Build daily usage series for the window
-        const dateKeys = lastNDates(windowDays);
-        const usageByDate = new Map(dateKeys.map((k) => [k, 0]));
-        item.transactions.forEach((t) => {
-          const k = new Date(t.date).toISOString().slice(0, 10);
-          if (usageByDate.has(k)) {
-            usageByDate.set(k, usageByDate.get(k) + t.quantity);
-          }
-        });
-        const dailySeries = dateKeys.map((k) => usageByDate.get(k)); // array length windowDays
+      // Linear trend via least squares: y = a + b*x, x = 1..n (oldest->newest)
+      const n = dailySeries.length;
+      let sumX = 0,
+        sumY = 0,
+        sumXY = 0,
+        sumX2 = 0;
+      for (let i = 0; i < n; i++) {
+        const x = i + 1;
+        const y = dailySeries[i];
+        sumX += x;
+        sumY += y;
+        sumXY += x * y;
+        sumX2 += x * x;
+      }
+      const denom = n * sumX2 - sumX * sumX;
+      const b = denom !== 0 ? (n * sumXY - sumX * sumY) / denom : 0;
+      const a = (sumY - b * sumX) / n;
+      const todayIndex = n;
+      const trendDailyToday = Math.max(0, a + b * todayIndex);
 
-        // Moving average (baseline)
-        const totalUsageWindow = dailySeries.reduce((s, v) => s + v, 0);
-        const maAvgDaily = totalUsageWindow / windowDays || 0;
+      // Choose method
+      const method = forecastMethod.value;
+      const meanDaily =
+        method === 'linear_trend' ? trendDailyToday : maAvgDaily;
 
-        // Linear trend via least squares: y = a + b*x, x = 1..n (oldest->newest)
-        const n = dailySeries.length;
-        let sumX = 0,
-          sumY = 0,
-          sumXY = 0,
-          sumX2 = 0;
-        for (let i = 0; i < n; i++) {
-          const x = i + 1;
-          const y = dailySeries[i];
-          sumX += x;
-          sumY += y;
-          sumXY += x * y;
-          sumX2 += x * x;
+      // Safety stock using normal approximation
+      const mean = maAvgDaily;
+      const stddev = (() => {
+        if (n <= 1) return 0;
+        const variance =
+          dailySeries.reduce((s, v) => s + Math.pow(v - maAvgDaily, 2), 0) /
+          (n - 1);
+        return Math.sqrt(variance);
+      })();
+
+      const Z = (() => {
+        const sl = parseFloat(serviceLevel.value);
+        if (sl >= 0.999) return 3.09;
+        if (sl >= 0.995) return 2.58;
+        if (sl >= 0.99) return 2.33;
+        if (sl >= 0.975) return 1.96;
+        if (sl >= 0.95) return 1.65;
+        if (sl >= 0.9) return 1.28;
+        return 1.0;
+      })();
+
+      const lt = Math.max(0, parseInt(leadTimeDays.value || 0));
+      const safetyStock = Z * stddev * Math.sqrt(lt);
+
+      // ROP and projections
+      const demandDuringLT = meanDaily * lt;
+      const reorderPoint = demandDuringLT + safetyStock;
+      const projectedDemand = meanDaily * parseInt(forecastPeriod.value);
+      const daysUntilDepletion =
+        meanDaily > 0 ? Math.floor(item.quantity / meanDaily) : Infinity;
+
+      // Reorder date recommendation
+      let reorderDate = '-';
+      if (meanDaily > 0) {
+        const daysUntilROP = (item.quantity - reorderPoint) / meanDaily;
+        const d = new Date();
+        if (daysUntilROP <= 0) {
+          reorderDate = 'Today';
+        } else {
+          d.setDate(d.getDate() + Math.ceil(daysUntilROP));
+          reorderDate = d.toLocaleDateString('en-PH', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+          });
         }
-        const denom = n * sumX2 - sumX * sumX;
-        const b = denom !== 0 ? (n * sumXY - sumX * sumY) / denom : 0;
-        const a = (sumY - b * sumX) / n;
-        const todayIndex = n; // next day after series
-        const trendDailyToday = Math.max(0, a + b * todayIndex);
+      }
 
-        // Choose method
-        const method = forecastMethod.value;
-        const meanDaily =
-          method === 'linear_trend' ? trendDailyToday : maAvgDaily;
-
-        // Safety stock using normal approx
-        const mean = maAvgDaily;
-        const stddev = (() => {
-          if (n <= 1) return 0;
-          const variance =
-            dailySeries.reduce((s, v) => s + Math.pow(v - mean, 2), 0) /
-            (n - 1);
-          return Math.sqrt(variance);
-        })();
-        const Z = (() => {
-          const sl = parseFloat(serviceLevel.value);
-          if (sl >= 0.999) return 3.09;
-          if (sl >= 0.995) return 2.58;
-          if (sl >= 0.99) return 2.33;
-          if (sl >= 0.975) return 1.96;
-          if (sl >= 0.95) return 1.65;
-          if (sl >= 0.9) return 1.28;
-          return 1.0;
-        })();
-        const lt = Math.max(0, parseInt(leadTimeDays.value || 0));
-        const safetyStock = Z * stddev * Math.sqrt(lt);
-
-        // ROP and projections
-        const demandDuringLT = meanDaily * lt;
-        const reorderPoint = demandDuringLT + safetyStock;
-        const projectedDemand = meanDaily * parseInt(forecastPeriod.value);
-        const daysUntilDepletion =
-          meanDaily > 0 ? Math.floor(item.current_stock / meanDaily) : Infinity;
-
-        // Reorder date recommendation
-        let reorderDate = '-';
-        if (meanDaily > 0) {
-          const daysUntilROP = (item.current_stock - reorderPoint) / meanDaily;
-          const d = new Date();
-          if (daysUntilROP <= 0) {
-            reorderDate = 'Today';
-          } else {
-            d.setDate(d.getDate() + Math.ceil(daysUntilROP));
-            reorderDate = d.toLocaleDateString('en-PH', {
-              year: 'numeric',
-              month: 'short',
-              day: 'numeric',
-            });
-          }
+      // Recommended action with priority levels
+      let recommendedAction = 'Monitor';
+      let priority = 0;
+      if (meanDaily > 0) {
+        if (daysUntilDepletion <= 7) {
+          recommendedAction = 'Urgent';
+          priority = 1;
+        } else if (daysUntilDepletion <= 14) {
+          recommendedAction = 'Reorder Soon';
+          priority = 2;
+        } else if (daysUntilDepletion <= 30) {
+          recommendedAction = 'Plan Reorder';
+          priority = 3;
+        } else if (item.quantity <= reorderPoint) {
+          recommendedAction = 'Reorder';
+          priority = 4;
+        } else {
+          priority = 5;
         }
+      }
 
-        let recommendedAction = 'Monitor';
-        const needsReorder = item.current_stock <= reorderPoint;
-        if (needsReorder) recommendedAction = 'Urgent Reorder';
-        else if (daysUntilDepletion <= 14) recommendedAction = 'Plan Reorder';
-        else if (daysUntilDepletion <= 30)
-          recommendedAction = 'Schedule Review';
+      // Create individual item forecast
+      itemForecasts.push({
+        // Item identification
+        id: item.id,
+        item_name: item.item_name || item.item_type_name || 'Unnamed Item',
+        item_type_id: item.item_type_id,
+        item_type_name: item.item_type_name,
+        category_name: item.category_name,
 
-        return {
-          ...item,
-          avg_daily_usage: meanDaily,
-          projected_demand: projectedDemand,
-          days_until_depletion: daysUntilDepletion,
-          recommended_action: recommendedAction,
-          safety_stock: safetyStock,
-          reorder_point: reorderPoint,
-          lead_time_days: lt,
-          reorder_date: reorderDate,
-          window_days: windowDays,
-          trend_slope: b,
-        };
-      })
-      .filter((item) => {
-        const matchesSearch =
-          !reportSearchQuery.value ||
-          item.item_type_name
-            .toLowerCase()
-            .includes(reportSearchQuery.value.toLowerCase());
-        return matchesSearch;
-      })
-      .sort((a, b) => a.days_until_depletion - b.days_until_depletion);
+        // Stock details
+        current_stock: parseFloat(item.quantity || 0),
+        unit_of_measure: item.unit_of_measure,
+        batch_number: item.batch_number,
+        supplier_name: item.supplier_name,
+
+        // Usage and forecasting
+        avg_daily_usage: meanDaily,
+        projected_demand: projectedDemand,
+        reorder_point: reorderPoint,
+        safety_stock: safetyStock,
+
+        // Timing
+        reorder_date: reorderDate,
+        days_until_depletion: daysUntilDepletion,
+
+        // Recommendations
+        recommended_action: recommendedAction,
+        priority: priority,
+
+        // Financial
+        unit_cost: parseFloat(item.unit_cost || 0),
+        total_value: parseFloat(item.total_value || 0),
+
+        // Metadata
+        last_activity:
+          itemTransactions.length > 0
+            ? new Date(
+                Math.max(...itemTransactions.map((t) => new Date(t.date)))
+              ).toLocaleDateString()
+            : 'No activity',
+        usage_confidence: n >= 7 ? 'High' : n >= 3 ? 'Medium' : 'Low',
+      });
+    });
+
+    // Sort by priority (urgent first) and then by days until depletion
+    return itemForecasts.sort((a, b) => {
+      if (a.priority !== b.priority) return a.priority - b.priority;
+      if (
+        a.days_until_depletion !== Infinity &&
+        b.days_until_depletion !== Infinity
+      ) {
+        return a.days_until_depletion - b.days_until_depletion;
+      }
+      if (a.days_until_depletion === Infinity) return 1;
+      if (b.days_until_depletion === Infinity) return -1;
+      return 0;
+    });
   });
+
+  // Filtered forecasts based on user selections
+  const filteredInventoryForecasts = computed(() => {
+    let filtered = inventoryForecasts.value;
+
+    // Category filter
+    if (forecastCategoryFilter.value) {
+      filtered = filtered.filter(
+        (item) =>
+          item.category_name &&
+          item.category_name
+            .toLowerCase()
+            .includes(forecastCategoryFilter.value.toLowerCase())
+      );
+    }
+
+    // Priority filter
+    if (forecastPriorityFilter.value) {
+      filtered = filtered.filter(
+        (item) => item.priority == forecastPriorityFilter.value
+      );
+    }
+
+    // Confidence filter
+    if (forecastConfidenceFilter.value) {
+      filtered = filtered.filter(
+        (item) => item.usage_confidence === forecastConfidenceFilter.value
+      );
+    }
+
+    // Search query filter
+    if (forecastSearchQuery.value) {
+      const query = forecastSearchQuery.value.toLowerCase();
+      filtered = filtered.filter(
+        (item) =>
+          item.item_name.toLowerCase().includes(query) ||
+          (item.supplier_name &&
+            item.supplier_name.toLowerCase().includes(query)) ||
+          (item.batch_number &&
+            item.batch_number.toLowerCase().includes(query)) ||
+          item.item_type_name.toLowerCase().includes(query)
+      );
+    }
+
+    // Show items filter
+    switch (forecastShowItems.value) {
+      case 'with_usage':
+        filtered = filtered.filter((item) => item.avg_daily_usage > 0);
+        break;
+      case 'critical':
+        filtered = filtered.filter((item) => item.days_until_depletion <= 7);
+        break;
+      case 'needs_reorder':
+        filtered = filtered.filter((item) => item.priority <= 4);
+        break;
+      default:
+        // 'all' - no filtering
+        break;
+    }
+
+    return filtered;
+  });
+
+  // Pagination computed properties for forecasting
+  const paginatedInventoryForecasts = computed(() => {
+    const start = (forecastCurrentPage.value - 1) * forecastItemsPerPage.value;
+    return filteredInventoryForecasts.value.slice(
+      start,
+      start + forecastItemsPerPage.value
+    );
+  });
+
+  const totalForecastPages = computed(() =>
+    Math.ceil(
+      filteredInventoryForecasts.value.length / forecastItemsPerPage.value
+    )
+  );
 
   const getBatchRowClass = (batch) => {
     if (!batch.expiry_date) return '';
@@ -835,41 +938,6 @@
     transactionModal.value = { show: true };
   };
 
-  // Dev: Seed usage pattern for forecasting demo
-  const seedForecastTest = async () => {
-    try {
-      // Pick the first non-expired, positive-qty batch in current inventory as target
-      const target = (currentInventory.value || []).find(
-        (b) => parseFloat(b.quantity) > 0 && b.status !== 'expired'
-      );
-      if (!target) {
-        showToast(
-          'error',
-          'No eligible inventory to seed (need non-expired with stock)'
-        );
-        return;
-      }
-      // Build a simple increasing usage pattern within the last 30 days
-      const today = new Date();
-      const daysOffsets = [28, 21, 14, 7, 3, 1];
-      const quantities = [1, 2, 3, 4, 6, 8];
-      const entries = daysOffsets.map((d, i) => {
-        const dt = new Date(today);
-        dt.setDate(today.getDate() - d);
-        return { date: dt, quantity: quantities[i] };
-      });
-      await inventoryStore.seedTestConsumption(target.id, entries);
-      showToast('success', 'Seeded test usage successfully');
-    } catch (err) {
-      console.error('Seed usage failed:', err);
-      const msg =
-        err?.response?.data?.message ||
-        err?.message ||
-        'Failed to seed test usage';
-      showToast('error', msg);
-    }
-  };
-
   const closeModal = () => {
     modal.value = { type: null, show: false, item: null };
   };
@@ -996,16 +1064,27 @@
 
   const getActionBadgeClass = (action) => {
     const classes = {
-      'Urgent Reorder':
-        'badge-sm border-none font-medium bg-error/20 text-error',
-      'Plan Reorder':
+      Urgent: 'badge-sm border-none font-medium bg-error/20 text-error',
+      'Reorder Soon':
         'badge-sm border-none font-medium bg-warning/20 text-warning',
-      'Schedule Review':
-        'badge-sm border-none font-medium bg-info/20 text-info',
+      'Plan Reorder': 'badge-sm border-none font-medium bg-info/20 text-info',
+      Reorder: 'badge-sm border-none font-medium bg-warning/20 text-warning',
       Monitor: 'badge-sm border-none font-medium bg-success/20 text-success',
     };
     return (
       classes[action] ||
+      'badge-sm border-none font-medium bg-neutral/20 text-neutral'
+    );
+  };
+
+  const getConfidenceBadgeClass = (confidence) => {
+    const classes = {
+      High: 'badge-sm border-none font-medium bg-success/20 text-success',
+      Medium: 'badge-sm border-none font-medium bg-warning/20 text-warning',
+      Low: 'badge-sm border-none font-medium bg-error/20 text-error',
+    };
+    return (
+      classes[confidence] ||
       'badge-sm border-none font-medium bg-neutral/20 text-neutral'
     );
   };
@@ -1369,6 +1448,100 @@
     }
   };
 
+  // Reset forecasting pagination
+  const resetForecastPagination = () => {
+    forecastCurrentPage.value = 1;
+  };
+
+  // Handle forecasting page change
+  const goToForecastPage = (page) => {
+    if (page >= 1 && page <= totalForecastPages.value) {
+      forecastCurrentPage.value = page;
+    }
+  };
+
+  // Handle forecasting items per page change
+  const changeForecastItemsPerPage = (newPerPage) => {
+    forecastItemsPerPage.value = newPerPage;
+    forecastCurrentPage.value = 1; // Reset to first page
+  };
+
+  // Export current page of forecasts
+  const exportCurrentPageForecasts = () => {
+    const currentPageData = paginatedInventoryForecasts.value;
+    if (currentPageData.length === 0) {
+      showToast('warning', 'No forecasts to export');
+      return;
+    }
+
+    // Create CSV content
+    const headers = [
+      'Item Name',
+      'Category',
+      'Current Stock',
+      'Daily Usage',
+      'Days Until Depletion',
+      'Recommended Action',
+      'Priority',
+    ];
+    const csvContent = [
+      headers.join(','),
+      ...currentPageData.map((item) =>
+        [
+          item.item_name,
+          item.category_name,
+          item.current_stock,
+          item.avg_daily_usage,
+          item.days_until_depletion,
+          item.recommended_action,
+          item.priority,
+        ].join(',')
+      ),
+    ].join('\n');
+
+    // Download CSV
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `inventory_forecasts_page_${forecastCurrentPage}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+
+    showToast(
+      'success',
+      `Exported ${currentPageData.length} forecasts from page ${forecastCurrentPage}`
+    );
+  };
+
+  // Handle keyboard navigation for forecasting pagination
+  const handleForecastKeyNavigation = (event) => {
+    if (event.target.closest('.forecasting-section')) {
+      switch (event.key) {
+        case 'ArrowLeft':
+          if (forecastCurrentPage.value > 1) {
+            event.preventDefault();
+            goToForecastPage(forecastCurrentPage.value - 1);
+          }
+          break;
+        case 'ArrowRight':
+          if (forecastCurrentPage.value < totalForecastPages.value) {
+            event.preventDefault();
+            goToForecastPage(forecastCurrentPage.value + 1);
+          }
+          break;
+        case 'Home':
+          event.preventDefault();
+          goToForecastPage(1);
+          break;
+        case 'End':
+          event.preventDefault();
+          goToForecastPage(totalForecastPages.value);
+          break;
+      }
+    }
+  };
+
   // Lifecycle
   onMounted(async () => {
     try {
@@ -1415,14 +1588,44 @@
       } catch (err) {
         console.error('API call error:', err);
       }
+
+      // Add keyboard navigation for forecasting pagination
+      document.addEventListener('keydown', handleForecastKeyNavigation);
     } catch (error) {
       showToast('error', 'Failed to load inventory data');
     }
   });
 
+  // Cleanup on unmount
+  onUnmounted(() => {
+    document.removeEventListener('keydown', handleForecastKeyNavigation);
+  });
+
   // Watch for search/filter changes to reset pagination
   watch([searchQuery, categoryFilter], () => {
     currentPage.value = 1;
+  });
+
+  // Watch for forecasting filter changes to reset pagination
+  watch(
+    [
+      forecastCategoryFilter,
+      forecastPriorityFilter,
+      forecastConfidenceFilter,
+      forecastSearchQuery,
+      forecastShowItems,
+    ],
+    () => {
+      forecastCurrentPage.value = 1;
+    }
+  );
+
+  // Watch for pagination changes to ensure current page is valid
+  watch([filteredInventoryForecasts, forecastItemsPerPage], () => {
+    const maxPage = totalForecastPages.value;
+    if (forecastCurrentPage.value > maxPage && maxPage > 0) {
+      forecastCurrentPage.value = maxPage;
+    }
   });
 </script>
 
@@ -2922,7 +3125,9 @@
           </div>
 
           <!-- Forecasting Section -->
-          <div class="card bg-base-100 border border-gray-200">
+          <div
+            class="card bg-base-100 border border-gray-200 forecasting-section"
+          >
             <div class="card-body p-4">
               <div class="mb-4">
                 <div class="flex items-center mb-2">
@@ -2946,6 +3151,35 @@
                   <span class="font-medium">Service Level</span> are key factors
                   for inventory planning.
                 </p>
+
+                <!-- Forecasting Summary -->
+                <div
+                  class="flex flex-wrap items-center justify-between gap-2 mb-3 p-2 bg-base-200 rounded text-xs"
+                >
+                  <div class="flex items-center gap-4">
+                    <span class="text-gray-600">
+                      <span class="font-medium">Total Forecasts:</span>
+                      {{ filteredInventoryForecasts.length }}
+                    </span>
+                    <span class="text-gray-600">
+                      <span class="font-medium">Page:</span>
+                      {{ forecastCurrentPage }} of {{ totalForecastPages }}
+                    </span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-gray-600">
+                      <span class="font-medium">Showing:</span>
+                      {{ forecastItemsPerPage }} per page
+                    </span>
+                    <button
+                      @click="exportCurrentPageForecasts"
+                      class="btn btn-xs btn-outline bg-primaryColor text-white font-thin"
+                      :disabled="paginatedInventoryForecasts.length === 0"
+                    >
+                      Export Page
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <!-- Forecasting Controls -->
@@ -3081,12 +3315,6 @@
                     </div>
                   </div>
                 </div>
-
-                <div class="flex flex-col gap-1">
-                  <button class="btn btn-xs" @click="seedForecastTest">
-                    Test Usage
-                  </button>
-                </div>
               </div>
 
               <!-- Forecasting Parameters Summary -->
@@ -3127,45 +3355,196 @@
                 </div>
               </div>
 
+              <!-- Forecasting Filters -->
+              <div class="flex flex-wrap gap-4 mb-4 p-3 bg-base-200 rounded-lg">
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs text-gray-600 font-medium"
+                    >Category Filter</label
+                  >
+                  <select
+                    v-model="forecastCategoryFilter"
+                    class="select select-bordered select-xs"
+                  >
+                    <option value="">All Categories</option>
+                    <option
+                      v-for="category in categories"
+                      :key="category.id"
+                      :value="category.name"
+                    >
+                      {{ category.name }}
+                    </option>
+                  </select>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs text-gray-600 font-medium"
+                    >Priority Filter</label
+                  >
+                  <select
+                    v-model="forecastPriorityFilter"
+                    class="select select-bordered select-xs"
+                  >
+                    <option value="">All Priorities</option>
+                    <option value="1">Urgent (≤7 days)</option>
+                    <option value="2">Reorder Soon (≤14 days)</option>
+                    <option value="3">Plan Reorder (≤30 days)</option>
+                    <option value="4">Reorder (At ROP)</option>
+                    <option value="5">Monitor</option>
+                  </select>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs text-gray-600 font-medium"
+                    >Usage Confidence</label
+                  >
+                  <select
+                    v-model="forecastConfidenceFilter"
+                    class="select select-bordered select-xs"
+                  >
+                    <option value="">All Levels</option>
+                    <option value="High">High Confidence</option>
+                    <option value="Medium">Medium Confidence</option>
+                    <option value="Low">Low Confidence</option>
+                  </select>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs text-gray-600 font-medium"
+                    >Search Items</label
+                  >
+                  <input
+                    v-model="forecastSearchQuery"
+                    type="text"
+                    placeholder="Search by item name, supplier, batch..."
+                    class="input input-bordered input-xs w-48"
+                  />
+                </div>
+
+                <div class="flex flex-col gap-1">
+                  <label class="text-xs text-gray-600 font-medium"
+                    >Show Items</label
+                  >
+                  <select
+                    v-model="forecastShowItems"
+                    class="select select-bordered select-xs"
+                  >
+                    <option value="all">All Items</option>
+                    <option value="with_usage">With Usage Data</option>
+                    <option value="critical">Critical Only (≤7 days)</option>
+                    <option value="needs_reorder">Needs Reorder</option>
+                  </select>
+                </div>
+              </div>
+
               <div class="overflow-x-auto">
                 <table class="table table-zebra table-xs w-full">
                   <thead>
                     <tr class="bg-base-200">
-                      <th>Item</th>
+                      <th>Item Details</th>
                       <th>Current Stock</th>
-                      <th>Avg Daily Usage</th>
-                      <th>Projected Demand</th>
-                      <th>ROP</th>
-                      <th>Reorder Date</th>
-                      <th>Estimated Depletion</th>
-                      <th>Recommended Action</th>
+                      <th>Usage & Forecast</th>
+                      <th>Reorder Info</th>
+                      <th>Timing</th>
+                      <th>Action</th>
+                      <th>Confidence</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr
-                      v-for="forecast in inventoryForecasts"
-                      :key="forecast.item_type_id"
+                      v-for="forecast in paginatedInventoryForecasts"
+                      :key="forecast.id"
                       class="hover:bg-base-100"
                     >
-                      <td class="font-medium">{{ forecast.item_type_name }}</td>
-                      <td>
-                        {{
-                          parseFloat(forecast.current_stock).toLocaleString()
-                        }}
+                      <!-- Item Details Column -->
+                      <td class="min-w-48">
+                        <div class="space-y-1">
+                          <div class="font-medium text-sm">
+                            {{ forecast.item_name }}
+                          </div>
+                          <div class="text-xs text-gray-600">
+                            {{ forecast.item_type_name }} •
+                            {{ forecast.category_name }}
+                          </div>
+                          <div class="text-xs text-gray-500">
+                            <span v-if="forecast.batch_number"
+                              >Batch: {{ forecast.batch_number }}</span
+                            >
+                            <span v-if="forecast.supplier_name">
+                              • {{ forecast.supplier_name }}</span
+                            >
+                          </div>
+                          <div class="text-xs text-gray-500">
+                            Unit: {{ forecast.unit_of_measure }} • Cost: ₱{{
+                              forecast.unit_cost?.toLocaleString() || '0'
+                            }}
+                          </div>
+                        </div>
                       </td>
-                      <td>{{ forecast.avg_daily_usage.toFixed(2) }}</td>
-                      <td>{{ forecast.projected_demand.toFixed(0) }}</td>
-                      <td>
-                        {{ Math.ceil(forecast.reorder_point).toLocaleString() }}
+
+                      <!-- Current Stock Column -->
+                      <td class="text-center">
+                        <div class="space-y-1">
+                          <div class="font-semibold text-lg">
+                            {{ forecast.current_stock.toLocaleString() }}
+                          </div>
+                          <div class="text-xs text-gray-600">
+                            {{ forecast.unit_of_measure }}
+                          </div>
+                          <div class="text-xs text-gray-500">
+                            Value: ₱{{
+                              forecast.total_value?.toLocaleString() || '0'
+                            }}
+                          </div>
+                        </div>
                       </td>
-                      <td>{{ forecast.reorder_date }}</td>
-                      <td>
+
+                      <!-- Usage & Forecast Column -->
+                      <td class="min-w-32">
+                        <div class="space-y-1">
+                          <div class="text-sm">
+                            <span class="font-medium">Daily:</span>
+                            {{ forecast.avg_daily_usage.toFixed(2) }}
+                          </div>
+                          <div class="text-xs text-gray-600">
+                            <span class="font-medium">Projected:</span>
+                            {{ forecast.projected_demand.toFixed(0) }}
+                          </div>
+                          <div class="text-xs text-gray-500">
+                            <span class="font-medium">Safety:</span>
+                            {{ forecast.safety_stock.toFixed(1) }}
+                          </div>
+                        </div>
+                      </td>
+
+                      <!-- Reorder Info Column -->
+                      <td class="min-w-32">
+                        <div class="space-y-1">
+                          <div class="text-sm">
+                            <span class="font-medium">ROP:</span>
+                            {{
+                              Math.ceil(forecast.reorder_point).toLocaleString()
+                            }}
+                          </div>
+                          <div class="text-xs text-gray-600">
+                            <span class="font-medium">Reorder Date:</span>
+                            {{ forecast.reorder_date }}
+                          </div>
+                          <div class="text-xs text-gray-500">
+                            <span class="font-medium">Last Activity:</span>
+                            {{ forecast.last_activity }}
+                          </div>
+                        </div>
+                      </td>
+
+                      <!-- Timing Column -->
+                      <td class="text-center">
                         <span
                           :class="
                             getDepletionWarningClass(
                               forecast.days_until_depletion
                             )
                           "
+                          class="font-medium"
                         >
                           {{
                             forecast.days_until_depletion > 0
@@ -3174,7 +3553,9 @@
                           }}
                         </span>
                       </td>
-                      <td>
+
+                      <!-- Action Column -->
+                      <td class="text-center">
                         <span
                           :class="
                             getActionBadgeClass(forecast.recommended_action)
@@ -3184,9 +3565,109 @@
                           {{ forecast.recommended_action }}
                         </span>
                       </td>
+
+                      <!-- Confidence Column -->
+                      <td class="text-center">
+                        <span
+                          :class="
+                            getConfidenceBadgeClass(forecast.usage_confidence)
+                          "
+                          class="badge badge-xs"
+                        >
+                          {{ forecast.usage_confidence }}
+                        </span>
+                      </td>
                     </tr>
                   </tbody>
                 </table>
+
+                <!-- No forecasts message -->
+                <div
+                  v-if="filteredInventoryForecasts.length === 0"
+                  class="text-center py-8 text-gray-500"
+                >
+                  <BarChart3 class="w-12 h-12 mx-auto mb-2 text-gray-400" />
+                  <p class="text-sm">
+                    No forecasts found matching your criteria.
+                  </p>
+                  <p class="text-xs text-gray-400 mt-1">
+                    Try adjusting your filters or search terms.
+                  </p>
+                </div>
+              </div>
+
+              <!-- Pagination for Forecasting Table -->
+              <div
+                class="flex flex-col sm:flex-row justify-between items-center mt-4 sm:mt-6 gap-3"
+                v-if="
+                  filteredInventoryForecasts.length > 0 &&
+                  totalForecastPages > 1
+                "
+              >
+                <div class="flex flex-col sm:flex-row items-center gap-3">
+                  <div
+                    class="text-xs sm:text-sm text-black/60 text-center sm:text-left"
+                  >
+                    Showing
+                    {{ (forecastCurrentPage - 1) * forecastItemsPerPage + 1 }}
+                    to
+                    {{
+                      Math.min(
+                        forecastCurrentPage * forecastItemsPerPage,
+                        filteredInventoryForecasts.length
+                      )
+                    }}
+                    of {{ filteredInventoryForecasts.length }} forecasts
+                  </div>
+
+                  <!-- Items per page selector -->
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs text-black/60">Show:</span>
+                    <select
+                      v-model="forecastItemsPerPage"
+                      @change="changeForecastItemsPerPage(forecastItemsPerPage)"
+                      class="select select-bordered select-xs"
+                    >
+                      <option value="5">5</option>
+                      <option value="10">10</option>
+                      <option value="20">20</option>
+                      <option value="50">50</option>
+                    </select>
+                    <span class="text-xs text-black/60">per page</span>
+                  </div>
+                </div>
+
+                <div class="join space-x-1">
+                  <button
+                    class="join-item btn font-thin !bg-gray-200 text-black/50 btn-xs sm:btn-sm border border-none hover:bg-gray-300"
+                    :disabled="forecastCurrentPage <= 1"
+                    @click="goToForecastPage(forecastCurrentPage - 1)"
+                  >
+                    « Prev
+                  </button>
+
+                  <button
+                    class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-xs sm:btn-sm shadow-none"
+                    v-for="page in totalForecastPages"
+                    :key="page"
+                    :class="{
+                      'btn-active': forecastCurrentPage === page,
+                      '!bg-primaryColor text-white':
+                        forecastCurrentPage === page,
+                    }"
+                    @click="goToForecastPage(page)"
+                  >
+                    {{ page }}
+                  </button>
+
+                  <button
+                    class="join-item btn font-thin btn-xs sm:btn-sm !bg-gray-200 text-black/50 border border-none"
+                    :disabled="forecastCurrentPage >= totalForecastPages"
+                    @click="goToForecastPage(forecastCurrentPage + 1)"
+                  >
+                    Next »
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -3394,6 +3875,7 @@
       :item-types="itemTypes"
       :current-inventory="currentInventory"
       :loading="loading"
+      :preselected-item="modal.item"
       @close="closeModal"
       @submit="handleConsumption"
     />

@@ -32,6 +32,7 @@
   import { useSupplyRequestStore } from '../../stores/supplyRequestStore.js';
   import { useBudgetReleaseStore } from '../../stores/budgetReleaseStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
+  import cashRequestReceiptModal from '../../components/scm/cashRequestReceiptModal.vue';
 
   // Stores
   const supplyRequestStore = useSupplyRequestStore();
@@ -96,6 +97,15 @@
     data: null,
     onConfirm: null,
   });
+
+  // Receipt modal state
+  const showReceipt = ref(false);
+  const receiptData = ref(null);
+
+  function closeReceipt() {
+    showReceipt.value = false;
+    receiptData.value = null;
+  }
 
   // Budget release history filter
   const historyFilter = ref({
@@ -483,6 +493,22 @@
   // Action methods
   const viewRequest = (request) => openModal('viewRequest', request);
   const releaseBudget = (request) => openModal('release', request);
+
+  // Receipt modal function
+  const showReceiptModal = async (release) => {
+    try {
+      // Fetch the full request details for the receipt
+      const fullRequest = await supplyRequestStore.fetchRequestByRequestId(
+        release.request_id
+      );
+      receiptData.value = fullRequest;
+    } catch (error) {
+      console.error('Error fetching request details:', error);
+      // Fallback to basic release data
+      receiptData.value = release;
+    }
+    showReceipt.value = true;
+  };
 
   // Add data fetching functions
   const fetchData = async () => {
@@ -1314,6 +1340,7 @@
                 <th class="w-24">Released By</th>
                 <th class="w-32">Receipt Status</th>
                 <th class="w-28">Confirmed Date</th>
+                <th class="w-24">Receipt</th>
               </tr>
             </thead>
             <tbody>
@@ -1323,7 +1350,7 @@
                   filteredBudgetHistory && filteredBudgetHistory.length === 0
                 "
               >
-                <td colspan="9" class="text-center py-12">
+                <td colspan="10" class="text-center py-12">
                   <div class="flex flex-col items-center gap-3">
                     <div
                       class="w-16 h-16 bg-black/5 rounded-full flex items-center justify-center"
@@ -1424,6 +1451,17 @@
                     </span>
                   </div>
                   <span v-else>N/A</span>
+                </td>
+
+                <td>
+                  <a
+                    v-if="release.receipt_confirmed"
+                    class="text-primaryColor cursor-pointer underline hover:text-primaryColor/80 text-sm font-medium"
+                    @click="showReceiptModal(release)"
+                  >
+                    View Receipt
+                  </a>
+                  <span v-else class="text-black/30 text-sm">N/A</span>
                 </td>
               </tr>
             </tbody>
@@ -1793,6 +1831,15 @@
       </div>
     </div>
   </transition>
+
+  <!-- Receipt Modal -->
+  <cashRequestReceiptModal
+    :cashRequestReceipt="{
+      show: showReceipt,
+      receipt: receiptData,
+      onClose: closeReceipt,
+    }"
+  />
 </template>
 
 <style scoped>

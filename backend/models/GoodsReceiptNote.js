@@ -348,7 +348,11 @@ class GoodsReceiptNote {
               grn_item_id: item.id,
               batch_number:
                 item.batch_number ||
-                this.generateBatchNumber(item.item_type_id, item.supplier_id),
+                this.generateBatchNumber(
+                  item.item_type_id,
+                  item.supplier_id,
+                  grnId
+                ),
               quantity: item.received_quantity,
               unit_cost: item.unit_cost,
               total_value: item.total_value,
@@ -383,13 +387,13 @@ class GoodsReceiptNote {
   }
 
   // Generate batch number
-  static generateBatchNumber(itemTypeId, supplierId, date = new Date()) {
+  static generateBatchNumber(itemTypeId, supplierId, grnId, date = new Date()) {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
     const hour = String(date.getHours()).padStart(2, "0");
     const minute = String(date.getMinutes()).padStart(2, "0");
-    return `GRN-${itemTypeId}-${supplierId || "NONE"}-${year}${month}${day}-${hour}${minute}`;
+    return `GRN-${grnId}-${itemTypeId}-${supplierId || "NONE"}-${year}${month}${day}-${hour}${minute}`;
   }
 
   // Quality inspection methods with stats update

@@ -13,6 +13,10 @@ export const useGRNStore = defineStore('grn', () => {
   const lastFetchTime = ref(null);
   const cacheTimeout = 5 * 60 * 1000; // 5 minutes
 
+  // Enhanced caching for individual GRNs
+  const grnCache = ref(new Map());
+  const grnCacheTimeout = 2 * 60 * 1000; // 2 minutes for individual GRNs
+
   // Stats for better performance
   const stats = ref({
     total: 0,
@@ -39,6 +43,12 @@ export const useGRNStore = defineStore('grn', () => {
       lastFetchTime.value && Date.now() - lastFetchTime.value < cacheTimeout
     );
   });
+
+  // Check if individual GRN cache is valid
+  const isGRNCacheValid = (id) => {
+    const cached = grnCache.value.get(id);
+    return cached && Date.now() - cached.timestamp < grnCacheTimeout;
+  };
 
   // Actions
   const fetchGRNs = async (filters = {}) => {
@@ -126,7 +136,12 @@ export const useGRNStore = defineStore('grn', () => {
     }
   };
 
-  const fetchGRNById = async (id) => {
+  const fetchGRNById = async (id, useCache = true) => {
+    // Check cache first if enabled
+    if (useCache && isGRNCacheValid(id)) {
+      return grnCache.value.get(id).data;
+    }
+
     loading.value = true;
     error.value = null;
 
@@ -134,7 +149,15 @@ export const useGRNStore = defineStore('grn', () => {
       const response = await axios.get(`${API_BASE_URL}/grn/${id}`);
 
       if (response.data.success) {
-        return response.data.data;
+        const grnData = response.data.data;
+
+        // Cache the GRN data
+        grnCache.value.set(id, {
+          data: grnData,
+          timestamp: Date.now(),
+        });
+
+        return grnData;
       } else {
         throw new Error(response.data.message || 'Failed to fetch GRN');
       }
@@ -317,6 +340,21 @@ export const useGRNStore = defineStore('grn', () => {
     return updatedGRN;
   };
 
+  // Clear all caches
+  const clearCaches = () => {
+    lastFetchTime.value = null;
+    grnCache.value.clear();
+  };
+
+  // Clear specific GRN cache
+  const clearGRNCache = (id) => {
+    if (id) {
+      grnCache.value.delete(id);
+    } else {
+      grnCache.value.clear();
+    }
+  };
+
   return {
     // State
     grns,
@@ -330,7 +368,6 @@ export const useGRNStore = defineStore('grn', () => {
     draftGRNs,
     pendingInspectionGRNs,
     completedGRNs,
-    isCacheValid,
 
     // Actions
     fetchGRNs,
@@ -344,5 +381,7 @@ export const useGRNStore = defineStore('grn', () => {
     fetchActiveItemTypes,
     mapGrnItemType,
     clearError,
+    clearCaches,
+    clearGRNCache,
   };
 });

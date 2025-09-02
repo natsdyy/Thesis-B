@@ -49,7 +49,7 @@
   const searchQuery = ref('');
   const statusFilter = ref('');
   const reasonFilter = ref('');
-  const dateFilterType = ref('today');
+  const dateFilterType = ref('all'); // Changed from 'today' to 'all' to show all returns by default
   const currentPage = ref(1);
   const itemsPerPage = ref(10);
 
@@ -137,6 +137,7 @@
       date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 
     const options = [
+      { label: 'All', date: null, count: 0 },
       { label: 'Today', date: toYMD(today), count: 0 },
       { label: 'This Week', date: null, count: 0 },
       { label: 'This Month', date: null, count: 0 },
@@ -145,7 +146,9 @@
     // Calculate counts based on actual return data
     const returns = itemReturns.value;
     options.forEach((option) => {
-      if (option.label === 'Today') {
+      if (option.label === 'All') {
+        option.count = returns.length;
+      } else if (option.label === 'Today') {
         option.count = returns.filter((returnItem) => {
           const returnDate = new Date(
             new Date(returnItem.created_at).toLocaleString('en-US', {
@@ -183,12 +186,23 @@
 
   // Computed properties
   const itemReturns = computed(() => {
-    let returns = purchaseOrderStore.itemReturns;
+    let returns = purchaseOrderStore.itemReturns || [];
+    console.log(
+      '🔄 itemReturns computed - store data:',
+      purchaseOrderStore.itemReturns
+    );
+    console.log('🔄 itemReturns computed - returns length:', returns.length);
 
     // Filter by purchase order if specified
     if (props.purchaseOrderId) {
       returns = returns.filter(
         (returnItem) => returnItem.purchase_order_id == props.purchaseOrderId
+      );
+      console.log(
+        '🔄 itemReturns computed - filtered by PO:',
+        props.purchaseOrderId,
+        'result length:',
+        returns.length
       );
     }
 
@@ -196,7 +210,12 @@
   });
 
   const filteredReturns = computed(() => {
-    let filtered = [...itemReturns.value];
+    let filtered = [...(itemReturns.value || [])];
+    console.log(
+      '🔄 filteredReturns computed - starting with:',
+      filtered.length,
+      'items'
+    );
 
     // Search filter
     if (searchQuery.value) {
@@ -208,12 +227,22 @@
           returnItem.logged_by?.toLowerCase().includes(query) ||
           returnItem.notes?.toLowerCase().includes(query)
       );
+      console.log(
+        '🔄 filteredReturns computed - after search filter:',
+        filtered.length,
+        'items'
+      );
     }
 
     // Status filter
     if (statusFilter.value) {
       filtered = filtered.filter(
         (returnItem) => returnItem.status === statusFilter.value
+      );
+      console.log(
+        '🔄 filteredReturns computed - after status filter:',
+        filtered.length,
+        'items'
       );
     }
 
@@ -222,6 +251,11 @@
       filtered = filtered.filter(
         (returnItem) => returnItem.return_reason === reasonFilter.value
       );
+      console.log(
+        '🔄 filteredReturns computed - after reason filter:',
+        filtered.length,
+        'items'
+      );
     }
 
     // Date filter based on selected filter type
@@ -229,12 +263,23 @@
     today.setHours(0, 0, 0, 0);
 
     switch (dateFilterType.value) {
+      case 'all':
+        // No specific date filtering, return all returns
+        console.log(
+          '🔄 filteredReturns computed - using ALL filter, no date filtering'
+        );
+        break;
       case 'today':
         filtered = filtered.filter((returnItem) => {
           const returnDate = new Date(returnItem.created_at);
           returnDate.setHours(0, 0, 0, 0);
           return returnDate.getTime() === today.getTime();
         });
+        console.log(
+          '🔄 filteredReturns computed - after today filter:',
+          filtered.length,
+          'items'
+        );
         break;
       case 'week':
         const startOfWeek = getStartOfWeek(today);
@@ -244,6 +289,11 @@
           const returnDate = new Date(returnItem.created_at);
           return returnDate >= startOfWeek && returnDate <= endOfWeek;
         });
+        console.log(
+          '🔄 filteredReturns computed - after week filter:',
+          filtered.length,
+          'items'
+        );
         break;
       case 'month':
         const startOfMonth = getStartOfMonth(today);
@@ -253,6 +303,11 @@
           const returnDate = new Date(returnItem.created_at);
           return returnDate >= startOfMonth && returnDate <= endOfMonth;
         });
+        console.log(
+          '🔄 filteredReturns computed - after month filter:',
+          filtered.length,
+          'items'
+        );
         break;
       case 'custom_month':
         const startOfCustomMonth = new Date(
@@ -275,9 +330,19 @@
             returnDate >= startOfCustomMonth && returnDate <= endOfCustomMonth
           );
         });
+        console.log(
+          '🔄 filteredReturns computed - after custom month filter:',
+          filtered.length,
+          'items'
+        );
         break;
     }
 
+    console.log(
+      '🔄 filteredReturns computed - final result:',
+      filtered.length,
+      'items'
+    );
     return filtered;
   });
 
@@ -304,7 +369,7 @@
 
   // Statistics
   const returnStats = computed(() => {
-    const returns = itemReturns.value;
+    const returns = itemReturns.value || [];
     return {
       total: returns.length,
       pending: returns.filter((r) => r.status === 'Pending').length,
@@ -317,9 +382,37 @@
   const loadItemReturns = async () => {
     loading.value = true;
     try {
+      console.log('🔍 Starting loadItemReturns...');
+      console.log('🔍 Props purchaseOrderId:', props.purchaseOrderId);
+      console.log(
+        '🔍 Store itemReturns before fetch:',
+        purchaseOrderStore.itemReturns
+      );
+
       await purchaseOrderStore.fetchItemReturns(props.purchaseOrderId);
+
+      console.log(
+        '🔍 Store itemReturns after fetch:',
+        purchaseOrderStore.itemReturns
+      );
+      console.log(
+        '🔍 Store itemReturns length:',
+        purchaseOrderStore.itemReturns?.length
+      );
+      console.log('🔍 Current dateFilterType:', dateFilterType.value);
+      console.log('🔍 Computed itemReturns.value:', itemReturns.value);
+      console.log(
+        '🔍 Computed itemReturns.value length:',
+        itemReturns.value?.length
+      );
+      console.log('🔍 Computed filteredReturns.value:', filteredReturns.value);
+      console.log(
+        '🔍 Computed filteredReturns.value length:',
+        filteredReturns.value?.length
+      );
+      console.log('🔍 Computed returnStats:', returnStats.value);
     } catch (error) {
-      console.error('Error loading item returns:', error);
+      console.error('❌ Error loading item returns:', error);
       showToast('error', 'Failed to load return history');
     } finally {
       loading.value = false;
@@ -328,7 +421,9 @@
 
   // Date filter methods
   const selectQuickDate = (option) => {
-    if (option.label === 'Today') {
+    if (option.label === 'All') {
+      dateFilterType.value = 'all';
+    } else if (option.label === 'Today') {
       dateFilterType.value = 'today';
     } else if (option.label === 'This Week') {
       dateFilterType.value = 'week';
@@ -351,7 +446,7 @@
     searchQuery.value = '';
     statusFilter.value = '';
     reasonFilter.value = '';
-    dateFilterType.value = 'today';
+    dateFilterType.value = 'all'; // Changed from 'today' to 'all' to show all returns by default
     currentPage.value = 1;
   };
 
@@ -494,7 +589,8 @@
           </div>
           <div class="stat-title text-black/50">Total Returns</div>
           <div class="stat-value text-primaryColor">
-            {{ returnStats.total }}
+            <span v-if="!loading">{{ returnStats.total }}</span>
+            <span v-else class="loading loading-spinner loading-sm"></span>
           </div>
         </div>
 
@@ -503,7 +599,10 @@
             <Clock class="w-6 h-6 text-warning" />
           </div>
           <div class="stat-title text-black/50">Pending</div>
-          <div class="stat-value text-warning">{{ returnStats.pending }}</div>
+          <div class="stat-value text-warning">
+            <span v-if="!loading">{{ returnStats.pending }}</span>
+            <span v-else class="loading loading-spinner loading-sm"></span>
+          </div>
         </div>
 
         <div class="stat">
@@ -511,7 +610,10 @@
             <CheckCircle class="w-6 h-6 text-success" />
           </div>
           <div class="stat-title text-black/50">Completed</div>
-          <div class="stat-value text-success">{{ returnStats.completed }}</div>
+          <div class="stat-value text-success">
+            <span v-if="!loading">{{ returnStats.completed }}</span>
+            <span v-else class="loading loading-spinner loading-sm"></span>
+          </div>
         </div>
       </div>
 
@@ -708,7 +810,7 @@
             searchQuery ||
             statusFilter ||
             reasonFilter ||
-            dateFilterType !== 'today'
+            dateFilterType !== 'all'
               ? 'No returns match your current filters.'
               : 'No item returns have been logged yet.'
           }}
@@ -738,11 +840,8 @@
             >
               <td class="font-mono text-sm">#{{ returnItem.id }}</td>
               <td>
-                <div class="font-medium">
+                <div class="font-bold">
                   {{ returnItem.item_name || 'N/A' }}
-                </div>
-                <div class="text-xs text-black/60">
-                  PO: {{ returnItem.purchase_order_id }}
                 </div>
               </td>
               <td class="font-medium">{{ returnItem.return_quantity }}</td>

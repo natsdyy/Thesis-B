@@ -15,6 +15,10 @@ import {
   Store,
   PhilippinePeso,
   ShoppingBag,
+  Calendar,
+  BookOpen,
+  ClipboardList,
+  Trash2,
 } from 'lucide-vue-next';
 
 export const menuItems = [
@@ -130,16 +134,54 @@ export const menuItems = [
     department: 'Production',
   },
   {
-    name: 'Manufacturing',
-    icon: Factory,
-    route: '/production/manufacturing',
+    name: 'Production Planning',
+    icon: Calendar,
+    route: '/production/planning',
+    department: 'Production',
+    subItems: [
+      { name: 'Scheduling', route: '/production/planning' },
+      { name: 'Real-time Monitoring', route: '/production/monitoring' },
+    ],
+  },
+  {
+    name: 'Recipe Management',
+    icon: BookOpen,
+    route: '/production/recipes',
+    department: 'Production',
+  },
+  {
+    name: 'Work Orders',
+    icon: ClipboardList,
+    route: '/production/work-orders',
     department: 'Production',
   },
   {
     name: 'Quality Control',
     icon: Shield,
-    route: '/production/quality',
+    route: '/production/quality-control',
     department: 'Production',
+  },
+  {
+    name: 'Maintenance',
+    icon: Settings,
+    route: '/production/maintenance',
+    department: 'Production',
+  },
+  {
+    name: 'Waste Management',
+    icon: Trash2,
+    route: '/production/waste-management',
+    department: 'Production',
+  },
+  {
+    name: 'Analytics & Reports',
+    icon: BarChart3,
+    route: '/production/analytics',
+    department: 'Production',
+    subItems: [
+      { name: 'Production Metrics', route: '/production/analytics' },
+      { name: 'Traceability', route: '/production/traceability' },
+    ],
   },
 
   // Customer Relationship

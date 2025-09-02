@@ -1225,31 +1225,70 @@
         created_by: 'SCM User',
       };
 
+      let createdOrder;
+
       if (
         orderForm.value.selected_items &&
         orderForm.value.selected_items.length > 0
       ) {
         // Create PO with selected items only
-        await purchaseOrderStore.createPurchaseOrderFromSupplyRequestWithItems(
-          orderForm.value.supply_request_id,
-          orderForm.value.supplier_id,
-          orderData,
-          orderForm.value.selected_items
-        );
+        createdOrder =
+          await purchaseOrderStore.createPurchaseOrderFromSupplyRequestWithItems(
+            orderForm.value.supply_request_id,
+            orderForm.value.supplier_id,
+            orderData,
+            orderForm.value.selected_items
+          );
       } else if (orderForm.value.supply_request_id) {
         // Create PO from supply request (all items)
-        await purchaseOrderStore.createPurchaseOrderFromSupplyRequest(
-          orderForm.value.supply_request_id,
-          orderForm.value.supplier_id,
-          orderData
-        );
+        createdOrder =
+          await purchaseOrderStore.createPurchaseOrderFromSupplyRequest(
+            orderForm.value.supply_request_id,
+            orderForm.value.supplier_id,
+            orderData
+          );
       } else {
         // Create manual PO with empty items array
-        await purchaseOrderStore.createPurchaseOrder(orderData, []);
+        createdOrder = await purchaseOrderStore.createPurchaseOrder(
+          orderData,
+          []
+        );
       }
 
       closeModal();
       showToast('success', 'Purchase order created successfully');
+
+      // Check if the created order has "Completed" status and trigger rating modal
+      if (orderForm.value.status === 'Completed' && createdOrder) {
+        try {
+          const existingRatingResponse =
+            await purchaseOrderStore.checkPurchaseOrderRating(createdOrder.id);
+          const hasExistingRating =
+            existingRatingResponse && existingRatingResponse.data;
+
+          if (!hasExistingRating) {
+            setTimeout(() => {
+              const ratingPurchaseOrder = {
+                ...createdOrder,
+                supplier_name:
+                  createdOrder.supplier_name ||
+                  getSupplierName(createdOrder.supplier_id),
+              };
+              openRatingModal(ratingPurchaseOrder);
+            }, 1000);
+          }
+        } catch (error) {
+          setTimeout(() => {
+            const ratingPurchaseOrder = {
+              ...createdOrder,
+              supplier_name:
+                createdOrder.supplier_name ||
+                getSupplierName(createdOrder.supplier_id),
+            };
+            openRatingModal(ratingPurchaseOrder);
+          }, 1000);
+        }
+      }
     } catch (err) {
       showToast('error', err.message || 'Failed to create purchase order');
     } finally {
@@ -1664,47 +1703,32 @@
 
       if (data.success) {
         showToast('success', 'GRN created successfully!');
-        await purchaseOrderStore.fetchPurchaseOrders(); // Refresh the orders list
-        // Reset loading state and close modal with proper timing
-        grnConfirmModal.value = {
-          ...grnConfirmModal.value,
-          loading: false,
-        };
-        // Use nextTick to ensure UI updates before closing
-        await nextTick();
+
+        // Immediately close the modal and reset state
         closeGRNConfirmModal();
+
+        // Refresh the orders list in the background (non-blocking)
+        purchaseOrderStore
+          .fetchPurchaseOrders()
+          .catch((err) =>
+            console.error('Error refreshing orders after GRN:', err)
+          );
       } else {
         throw new Error(data.message || 'Failed to create GRN');
       }
     } catch (error) {
       console.error('Error creating GRN:', error);
       showToast('error', error.message || 'Failed to create GRN');
-      // Reset loading state on error
-      grnConfirmModal.value = {
-        ...grnConfirmModal.value,
-        loading: false,
-      };
     } finally {
-      // Ensure loading state is always reset, even if there are unexpected errors
-      setTimeout(() => {
-        if (grnConfirmModal.value.loading) {
-          grnConfirmModal.value = {
-            ...grnConfirmModal.value,
-            loading: false,
-          };
-        }
-      }, 100);
+      // Always ensure loading state is reset
+      grnConfirmModal.value.loading = false;
     }
   };
 
   const closeGRNConfirmModal = () => {
-    // Always reset loading state first
-    grnConfirmModal.value = {
-      ...grnConfirmModal.value,
-      loading: false,
-    };
-    // Close the modal
+    // Close the modal first
     document.getElementById('grn_confirm_modal')?.close();
+
     // Reset the entire modal state with proper reactivity
     grnConfirmModal.value = {
       show: false,

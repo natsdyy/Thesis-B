@@ -17,7 +17,7 @@
     "@fortawesome/vue-fontawesome": "^3.1.1",
     "axios": "^1.11.0",
     "chart.js": "^4.5.0",
-    "esbuild": "^0.25.9",
+    "esbuild": "0.25.9",
     "lucide-vue-next": "^0.539.0",
     "pikaday": "^1.8.2",
     "pinia": "^3.0.3",

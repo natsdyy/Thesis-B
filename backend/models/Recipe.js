@@ -55,16 +55,22 @@ class Recipe {
         // Get ingredients for this recipe
         recipe.ingredients = await db("recipe_ingredients as ri")
           .select(
-            "ri.*",
-            "iit.name as ingredient_name",
-            "iit.unit_of_measure",
+            "ri.id",
+            "ri.recipe_id",
+            "ri.inventory_item_id",
+            "ri.quantity_required",
+            "ri.unit",
+            "ri.cost_per_unit",
+            "ri.preparation_notes",
+            "ri.is_optional",
+            "ri.sequence_order",
+            "ri.created_at",
+            "ri.updated_at",
+            "ii.item_name as ingredient_name",
             "ic.name as category_name"
           )
-          .join(
-            "inventory_item_types as iit",
-            "ri.inventory_item_type_id",
-            "iit.id"
-          )
+          .join("inventory_items as ii", "ri.inventory_item_id", "ii.id")
+          .join("inventory_item_types as iit", "ii.item_type_id", "iit.id")
           .join("inventory_categories as ic", "iit.category_id", "ic.id")
           .where("ri.recipe_id", id)
           .orderBy("ri.sequence_order", "asc");
@@ -119,9 +125,9 @@ class Recipe {
       if (ingredients.length > 0) {
         const ingredientData = ingredients.map((ingredient, index) => ({
           recipe_id: recipe.id,
-          inventory_item_type_id: ingredient.inventory_item_type_id,
+          inventory_item_id: ingredient.inventory_item_id,
           quantity_required: ingredient.quantity_required,
-          unit: ingredient.unit,
+          unit: ingredient.unit_of_measure || ingredient.unit, // Use unit_of_measure if available, fallback to unit
           cost_per_unit: ingredient.cost_per_unit || 0,
           preparation_notes: ingredient.preparation_notes,
           is_optional: ingredient.is_optional || false,
@@ -183,9 +189,9 @@ class Recipe {
         if (ingredients.length > 0) {
           const ingredientData = ingredients.map((ingredient, index) => ({
             recipe_id: id,
-            inventory_item_type_id: ingredient.inventory_item_type_id,
+            inventory_item_id: ingredient.inventory_item_id,
             quantity_required: ingredient.quantity_required,
-            unit: ingredient.unit,
+            unit: ingredient.unit_of_measure || ingredient.unit, // Use unit_of_measure if available, fallback to unit
             cost_per_unit: ingredient.cost_per_unit || 0,
             preparation_notes: ingredient.preparation_notes,
             is_optional: ingredient.is_optional || false,
@@ -360,6 +366,37 @@ class Recipe {
     } catch (error) {
       console.error("Error deleting recipe:", error);
       throw new Error("Failed to delete recipe");
+    }
+  }
+
+  // Get recipe statistics
+  static async getStats() {
+    try {
+      const stats = await db("recipes as r")
+        .select(
+          db.raw("COUNT(*) as total_recipes"),
+          db.raw(
+            "COUNT(CASE WHEN r.is_active = true THEN 1 END) as active_recipes"
+          ),
+          db.raw(
+            "COUNT(CASE WHEN r.is_active = false THEN 1 END) as inactive_recipes"
+          ),
+          db.raw("COUNT(DISTINCT r.category) as total_categories"),
+          db.raw("COALESCE(AVG(r.cost_per_batch), 0) as average_cost_per_batch")
+        )
+        .whereNull("r.deleted_at")
+        .first();
+
+      return {
+        total_recipes: parseInt(stats.total_recipes) || 0,
+        active_recipes: parseInt(stats.active_recipes) || 0,
+        inactive_recipes: parseInt(stats.inactive_recipes) || 0,
+        total_categories: parseInt(stats.total_categories) || 0,
+        average_cost_per_batch: parseFloat(stats.average_cost_per_batch) || 0,
+      };
+    } catch (error) {
+      console.error("Error fetching recipe statistics:", error);
+      throw new Error("Failed to retrieve recipe statistics");
     }
   }
 }

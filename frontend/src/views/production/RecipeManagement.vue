@@ -49,7 +49,7 @@
   });
 
   const ingredientForm = ref({
-    inventory_item_type_id: '',
+    inventory_item_id: '',
     quantity_required: '',
     unit: '',
     cost_per_unit: '',
@@ -59,14 +59,14 @@
   });
 
   // Auto-populate ingredient details when selected
-  const handleIngredientSelection = (itemTypeId) => {
-    if (!itemTypeId) {
+  const handleIngredientSelection = (inventoryItemId) => {
+    if (!inventoryItemId) {
       resetIngredientForm();
       return;
     }
 
     const selectedItem = foodIngredients.value.find(
-      (item) => item.id === itemTypeId
+      (item) => item.id === inventoryItemId
     );
     if (selectedItem) {
       console.log('Selected ingredient data:', selectedItem); // Debug log
@@ -188,6 +188,9 @@
   const itemTypes = computed(() => inventoryStore.currentInventory);
   const recipeStats = computed(() => productionStore.recipeStats);
 
+  // Loading states
+  const statsLoading = computed(() => productionStore.loading);
+
   // Current user info
   const currentUser = computed(() => authStore.user);
   const isUserAuthenticated = computed(() => authStore.isAuthenticated);
@@ -222,6 +225,7 @@
 
       await Promise.all([
         productionStore.fetchRecipes(),
+        productionStore.fetchRecipeStats(),
         inventoryStore.fetchCategories(),
         inventoryStore.fetchCurrentInventory(),
       ]);
@@ -248,7 +252,13 @@
   };
 
   // Modal methods
-  const openModal = (type, recipe = null) => {
+  const openModal = async (type, recipe = null) => {
+    console.log('=== OPEN MODAL CALLED ===');
+    console.log('Type:', type);
+    console.log('Recipe:', recipe);
+    console.log('Recipe ID:', recipe?.id);
+    console.log('Recipe ingredients:', recipe?.ingredients);
+
     // Check authentication for create/edit operations
     if ((type === 'create' || type === 'edit') && !isUserAuthenticated.value) {
       showToast('error', 'Please log in to manage recipes');
@@ -258,9 +268,74 @@
     // Store the original modal type for the main recipe modal
     const originalType = type === 'add-ingredient' ? modal.value.type : type;
 
-    modal.value = { type: originalType, show: true, recipe };
+    // For view and edit modals, fetch full recipe details including ingredients
+    if ((type === 'view' || type === 'edit') && recipe) {
+      try {
+        const fullRecipe = await productionStore.getRecipeById(recipe.id);
+        console.log('Full recipe fetched:', fullRecipe);
+        console.log('Full recipe ingredients:', fullRecipe.ingredients);
 
-    if (recipe) {
+        // Ensure ingredients are properly assigned to the modal recipe
+        modal.value = {
+          type: originalType,
+          show: true,
+          recipe: {
+            ...fullRecipe,
+            ingredients: fullRecipe.ingredients || [],
+          },
+        };
+
+        // Use the fetched fullRecipe data for form population
+        recipeForm.value = {
+          recipe_name: fullRecipe.recipe_name || '',
+          description: fullRecipe.description || '',
+          category: fullRecipe.category || '',
+          batch_size: fullRecipe.batch_size || '',
+          batch_unit: fullRecipe.batch_unit || 'servings',
+          instructions: fullRecipe.instructions || '',
+          is_active:
+            fullRecipe.is_active !== undefined ? fullRecipe.is_active : true,
+          cost_per_batch: fullRecipe.cost_per_batch || '',
+        };
+
+        // Also load ingredients into the form for consistency
+        if (fullRecipe.ingredients && fullRecipe.ingredients.length > 0) {
+          ingredients.value = [...fullRecipe.ingredients];
+          console.log(
+            'Loaded ingredients from full recipe:',
+            ingredients.value
+          );
+          // Debug: Log the first ingredient to see its structure
+          if (fullRecipe.ingredients.length > 0) {
+            console.log(
+              'First ingredient structure:',
+              fullRecipe.ingredients[0]
+            );
+            console.log(
+              'Available fields:',
+              Object.keys(fullRecipe.ingredients[0])
+            );
+          }
+        } else {
+          ingredients.value = [];
+          console.log(
+            'No ingredients found in full recipe, resetting to empty array'
+          );
+        }
+      } catch (error) {
+        showToast('error', 'Failed to load recipe details');
+        console.error('Error loading recipe details:', error);
+        return;
+      }
+    } else if (type === 'add-ingredient' && recipe) {
+      // For ingredient modal, preserve the current recipe context
+      modal.value = { type: originalType, show: true, recipe };
+    } else {
+      modal.value = { type: originalType, show: true, recipe };
+    }
+
+    // Only populate form if not already handled by full recipe fetch
+    if (recipe && type !== 'view' && type !== 'edit') {
       recipeForm.value = {
         recipe_name: recipe.recipe_name || '',
         description: recipe.description || '',
@@ -273,13 +348,21 @@
       };
 
       // Load ingredients if editing
+      console.log('Recipe data when opening modal:', recipe);
+      console.log('Recipe ingredients:', recipe.ingredients);
       if (recipe.ingredients) {
         ingredients.value = [...recipe.ingredients];
+        console.log('Loaded ingredients into form:', ingredients.value);
       } else {
         ingredients.value = [];
+        console.log('No ingredients found, resetting to empty array');
       }
-    } else if (type !== 'add-ingredient') {
-      // Only reset form if we're not opening the ingredient modal
+    } else if (
+      type !== 'add-ingredient' &&
+      type !== 'view' &&
+      type !== 'edit'
+    ) {
+      // Only reset form if we're not opening the ingredient modal or view modal
       resetForm();
     }
 
@@ -293,6 +376,9 @@
 
     // Open the appropriate modal based on type
     if (type === 'create' || type === 'edit') {
+      console.log('Opening recipe modal for type:', type);
+      console.log('Modal state before opening:', modal.value);
+      console.log('Ingredients before opening:', ingredients.value);
       document.getElementById('recipe_modal').showModal();
     } else if (type === 'view') {
       document.getElementById('view_recipe_modal').showModal();
@@ -352,7 +438,7 @@
 
   const resetIngredientForm = () => {
     ingredientForm.value = {
-      inventory_item_type_id: '',
+      inventory_item_id: '',
       quantity_required: '',
       unit: '',
       cost_per_unit: '',
@@ -425,6 +511,14 @@
       const updatedData = {
         ...recipeForm.value,
       };
+
+      console.log('Ingredients being sent to updateRecipe:', ingredients.value);
+      console.log('First ingredient details:', ingredients.value[0]);
+      console.log(
+        'First ingredient ingredient_name field:',
+        ingredients.value[0]?.ingredient_name
+      );
+      console.log('Updated data being sent:', updatedData);
 
       await productionStore.updateRecipe(
         originalRecipe.id,
@@ -548,7 +642,7 @@
 
   // Ingredient methods
   const addIngredient = () => {
-    if (!ingredientForm.value.inventory_item_type_id) {
+    if (!ingredientForm.value.inventory_item_id) {
       showToast('error', 'Please select an ingredient');
       return;
     }
@@ -575,9 +669,22 @@
       return;
     }
 
+    // Get the selected ingredient details to store the actual name
+    const selectedIngredient = foodIngredients.value.find(
+      (item) => item.id === ingredientForm.value.inventory_item_id
+    );
+
     const newIngredient = {
       ...ingredientForm.value,
       id: Date.now(), // Temporary ID for frontend
+      // Map the fields correctly for backend compatibility
+      inventory_item_id: ingredientForm.value.inventory_item_id, // This now stores the actual inventory item ID
+      quantity_required: ingredientForm.value.quantity_required,
+      unit_of_measure: ingredientForm.value.unit, // Map 'unit' to 'unit_of_measure'
+      cost_per_unit: ingredientForm.value.cost_per_unit,
+      preparation_notes: ingredientForm.value.preparation_notes,
+      is_optional: ingredientForm.value.is_optional,
+      sequence_order: ingredientForm.value.sequence_order,
     };
 
     ingredients.value.push(newIngredient);
@@ -599,17 +706,17 @@
     showToast('success', 'Ingredient removed successfully');
   };
 
-  const getItemTypeName = (itemTypeId) => {
+  const getItemTypeName = (inventoryItemId) => {
     const itemType = foodIngredients.value.find(
-      (type) => type.id === itemTypeId
+      (type) => type.id === inventoryItemId
     );
     return itemType ? itemType.item_name : 'Unknown Item';
   };
 
   const getSelectedIngredientStock = () => {
-    if (!ingredientForm.value.inventory_item_type_id) return 0;
+    if (!ingredientForm.value.inventory_item_id) return 0;
     const selectedItem = foodIngredients.value.find(
-      (item) => item.id === ingredientForm.value.inventory_item_type_id
+      (item) => item.id === ingredientForm.value.inventory_item_id
     );
     return selectedItem ? selectedItem.quantity || 0 : 0;
   };
@@ -670,9 +777,10 @@
         <div
           class="stat-value text-primaryColor text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
-          <span v-if="recipeStats?.total_recipes !== undefined">{{
-            recipeStats.total_recipes
-          }}</span>
+          <span
+            v-if="!statsLoading && recipeStats?.total_recipes !== undefined"
+            >{{ recipeStats.total_recipes }}</span
+          >
           <span v-else class="loading loading-spinner loading-sm"></span>
         </div>
         <div class="stat-desc text-black/50 text-xs sm:text-sm">
@@ -692,9 +800,10 @@
         <div
           class="stat-value text-success text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
-          <span v-if="recipeStats?.active_recipes !== undefined">{{
-            recipeStats.active_recipes
-          }}</span>
+          <span
+            v-if="!statsLoading && recipeStats?.active_recipes !== undefined"
+            >{{ recipeStats.active_recipes }}</span
+          >
           <span v-else class="loading loading-spinner loading-sm"></span>
         </div>
         <div class="stat-desc text-black/50 text-xs sm:text-sm">
@@ -714,9 +823,10 @@
         <div
           class="stat-value text-info text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
-          <span v-if="uniqueCategories.length > 0">{{
-            uniqueCategories.length
-          }}</span>
+          <span
+            v-if="!statsLoading && recipeStats?.total_categories !== undefined"
+            >{{ recipeStats.total_categories }}</span
+          >
           <span v-else class="loading loading-spinner loading-sm"></span>
         </div>
         <div class="stat-desc text-black/50 text-xs sm:text-sm">
@@ -736,7 +846,10 @@
         <div
           class="stat-value text-black/80 text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
-          <span v-if="recipeStats?.average_cost_per_batch !== undefined"
+          <span
+            v-if="
+              !statsLoading && recipeStats?.average_cost_per_batch !== undefined
+            "
             >₱{{ recipeStats.average_cost_per_batch.toLocaleString() }}</span
           >
           <span v-else class="loading loading-spinner loading-sm"></span>
@@ -859,7 +972,7 @@
                 <!-- Active Status Filter -->
                 <select
                   v-model="activeFilter"
-                  class="select !select-xs !sm:select-sm select-bordered bg-white border-primaryColor/30 text-black/70"
+                  class="select !select-xs sm:!select-sm select-bordered bg-white border-primaryColor/30 text-black/70"
                 >
                   <option value="">All Status</option>
                   <option value="true">Active</option>
@@ -1181,7 +1294,7 @@
               </h4>
               <button
                 type="button"
-                @click="openModal('add-ingredient')"
+                @click="openModal('add-ingredient', modal.recipe)"
                 class="btn btn-outline btn-sm bg-primaryColor/10 border-primaryColor/30 text-primaryColor hover:bg-primaryColor/20 !sm:btn-md"
               >
                 <Plus class="w-4 h-4 mr-2" />
@@ -1211,19 +1324,19 @@
               >
                 <div class="flex-1">
                   <div class="font-medium text-base-content mb-1">
-                    {{ getItemTypeName(ingredient.inventory_item_type_id) }}
+                    {{ getItemTypeName(ingredient.inventory_item_id) }}
                   </div>
                   <div class="text-sm text-base-content/70 mb-1">
                     <span class="font-medium"
                       >{{ ingredient.quantity_required }}
-                      {{ ingredient.unit }}</span
+                      {{ ingredient.unit_of_measure }}</span
                     >
                     <span
                       v-if="ingredient.cost_per_unit"
                       class="ml-2 text-primaryColor"
                     >
                       • ₱{{ ingredient.cost_per_unit }} per
-                      {{ ingredient.unit }}
+                      {{ ingredient.unit_of_measure }}
                     </span>
                   </div>
                   <div
@@ -1300,9 +1413,9 @@
               >
             </label>
             <select
-              v-model="ingredientForm.inventory_item_type_id"
+              v-model="ingredientForm.inventory_item_id"
               @change="
-                handleIngredientSelection(ingredientForm.inventory_item_type_id)
+                handleIngredientSelection(ingredientForm.inventory_item_id)
               "
               class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
               required
@@ -1324,7 +1437,7 @@
 
             <!-- Selected Ingredient Details -->
             <div
-              v-if="ingredientForm.inventory_item_type_id && !loading"
+              v-if="ingredientForm.inventory_item_id && !loading"
               class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg"
             >
               <div class="text-sm font-medium text-blue-800 mb-2">
@@ -1366,7 +1479,7 @@
             <!-- Stock Availability Warning -->
             <div
               v-if="
-                ingredientForm.inventory_item_type_id &&
+                ingredientForm.inventory_item_id &&
                 getSelectedIngredientStock() <= 0
               "
               class="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg"
@@ -1387,7 +1500,7 @@
             <!-- Low Stock Warning -->
             <div
               v-if="
-                ingredientForm.inventory_item_type_id &&
+                ingredientForm.inventory_item_id &&
                 getSelectedIngredientStock() > 0 &&
                 getSelectedIngredientStock() <= 10
               "
@@ -1455,7 +1568,7 @@
               <div
                 v-if="
                   ingredientForm.quantity_required &&
-                  ingredientForm.inventory_item_type_id
+                  ingredientForm.inventory_item_id
                 "
                 class="text-xs mt-1"
                 :class="{
@@ -1607,7 +1720,7 @@
         </form>
       </div>
       <form method="dialog" class="modal-backdrop">
-        <button @click="closeModal">close</button>
+        <button @click="closeIngredientModal">close</button>
       </form>
     </dialog>
 
@@ -1619,7 +1732,15 @@
       >
         <h3 class="font-bold text-lg mb-4 text-primaryColor">Recipe Details</h3>
 
-        <div class="space-y-6">
+        <!-- Loading state -->
+        <div v-if="loading" class="flex justify-center py-8">
+          <span
+            class="loading loading-spinner loading-lg text-primaryColor"
+          ></span>
+        </div>
+
+        <!-- Recipe content -->
+        <div v-else class="space-y-6">
           <!-- Basic Information -->
           <div class="bg-base-100 p-4 rounded-lg">
             <h4 class="font-semibold text-primaryColor mb-3">
@@ -1666,6 +1787,7 @@
             <h4 class="font-semibold text-primaryColor mb-2">
               Ingredients ({{ modal.recipe?.ingredients?.length || 0 }})
             </h4>
+
             <div class="bg-base-100 p-4 rounded-lg max-h-64 overflow-y-auto">
               <div
                 v-if="
@@ -1685,23 +1807,30 @@
                 >
                   <div>
                     <div class="font-medium">
-                      {{ ingredient.ingredient_name }}
+                      {{ ingredient.ingredient_name || 'Unknown Ingredient' }}
                     </div>
                     <div class="text-sm text-base-content/70">
-                      {{ ingredient.quantity_required }} {{ ingredient.unit }}
+                      {{ ingredient.quantity_required }}
+                      {{
+                        ingredient.unit || ingredient.unit_of_measure || 'units'
+                      }}
                     </div>
                     <div class="text-xs text-base-content/60">
-                      {{
-                        ingredient.cost_per_unit * ingredient.quantity_required
+                      ₱{{
+                        (ingredient.cost_per_unit || 0) *
+                        ingredient.quantity_required
                       }}
                     </div>
                   </div>
                   <div class="text-right">
                     <div class="text-sm font-medium">
-                      ₱{{ ingredient.cost_per_unit }}
+                      ₱{{ ingredient.cost_per_unit || 0 }}
                     </div>
                     <div class="text-xs text-base-content/60">
-                      per {{ ingredient.unit }}
+                      per
+                      {{
+                        ingredient.unit || ingredient.unit_of_measure || 'unit'
+                      }}
                     </div>
                   </div>
                 </div>
@@ -1789,7 +1918,8 @@
             <div class="flex items-center justify-between">
               <span class="font-medium">{{ ingredient.ingredient_name }}</span>
               <span class="font-medium text-primaryColor"
-                >{{ ingredient.quantity_required }} {{ ingredient.unit }}</span
+                >{{ ingredient.quantity_required }}
+                {{ ingredient.unit_of_measure }}</span
               >
             </div>
             <div class="text-sm text-base-content/60">

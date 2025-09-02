@@ -32,6 +32,15 @@ export const useProductionStore = defineStore('production', () => {
     today_produced: 0,
   });
 
+  // Recipe stats
+  const recipeStats = ref({
+    total_recipes: 0,
+    active_recipes: 0,
+    inactive_recipes: 0,
+    total_categories: 0,
+    average_cost_per_batch: 0,
+  });
+
   // Getters
   const activeProductionOrders = computed(() =>
     productionOrders.value.filter(
@@ -246,6 +255,29 @@ export const useProductionStore = defineStore('production', () => {
       console.error('Error fetching recipes:', err);
     } finally {
       loading.value = false;
+    }
+  };
+
+  const fetchRecipeStats = async () => {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/production/recipes/stats`
+      );
+      if (response.data.success) {
+        recipeStats.value = response.data.data;
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch recipe stats'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to fetch recipe stats';
+      console.error('Error fetching recipe stats:', err);
+      throw err;
     }
   };
 
@@ -639,6 +671,13 @@ export const useProductionStore = defineStore('production', () => {
       today_planned: 0,
       today_produced: 0,
     };
+    recipeStats.value = {
+      total_recipes: 0,
+      active_recipes: 0,
+      inactive_recipes: 0,
+      total_categories: 0,
+      average_cost_per_batch: 0,
+    };
     error.value = null;
     loading.value = false;
   };
@@ -657,6 +696,7 @@ export const useProductionStore = defineStore('production', () => {
     loading,
     error,
     dashboardStats,
+    recipeStats,
 
     // Getters
     activeProductionOrders,
@@ -673,6 +713,7 @@ export const useProductionStore = defineStore('production', () => {
     updateProductionOrder,
     updateProductionOrderStatus,
     fetchRecipes,
+    fetchRecipeStats,
     getRecipeById,
     createRecipe,
     updateRecipe,

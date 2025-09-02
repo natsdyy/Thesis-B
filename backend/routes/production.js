@@ -586,6 +586,63 @@ router.get("/recipes", async (req, res) => {
 
 /**
  * @swagger
+ * /api/production/recipes/stats:
+ *   get:
+ *     summary: Get recipe statistics
+ *     tags: [Recipes]
+ *     responses:
+ *       200:
+ *         description: Recipe statistics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     total_recipes:
+ *                       type: integer
+ *                       description: Total number of recipes
+ *                     active_recipes:
+ *                       type: integer
+ *                       description: Number of active recipes
+ *                     inactive_recipes:
+ *                       type: integer
+ *                       description: Number of inactive recipes
+ *                     draft_recipes:
+ *                       type: integer
+ *                       description: Number of draft recipes
+ *                     average_cost_per_batch:
+ *                       type: number
+ *                       description: Average cost per batch across all recipes
+ *                     total_categories:
+ *                       type: integer
+ *                       description: Total number of unique recipe categories
+ *       500:
+ *         description: Server error
+ */
+router.get("/recipes/stats", async (req, res) => {
+  try {
+    const stats = await Recipe.getStats();
+
+    res.json({
+      success: true,
+      data: stats,
+    });
+  } catch (error) {
+    console.error("Error fetching recipe stats:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch recipe statistics",
+    });
+  }
+});
+
+/**
+ * @swagger
  * /api/production/recipes/{id}:
  *   get:
  *     summary: Get recipe by ID

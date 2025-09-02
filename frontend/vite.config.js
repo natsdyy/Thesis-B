@@ -21,5 +21,12 @@ export default defineConfig({
       'localhost',
       '.railway.app'
     ],
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
   },
 })

@@ -37,6 +37,8 @@ app.use(
       "http://localhost:5000",
       "http://localhost:80",
       "http://localhost:5173",
+      "https://countrysides.up.railway.app",
+      "https://*.up.railway.app",
     ],
     credentials: true,
   })

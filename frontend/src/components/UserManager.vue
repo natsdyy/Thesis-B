@@ -2,16 +2,19 @@
   <div class="container mx-auto p-6 max-w-6xl">
     <!-- Header -->
     <div class="text-center mb-8">
-      <h1 class="text-4xl font-bold text-primary mb-2">User Management</h1>
-      <p class="text-base-content/70">
+      <h1 class="text-4xl font-bold text-primaryColor mb-2">User Management</h1>
+      <p :class="themeStore.themeClasses.textSecondary">
         Manage users with role assignments and departments
       </p>
     </div>
 
     <!-- Stats -->
-    <div class="stats shadow w-full mb-6">
+    <div :class="[
+      'stats shadow w-full mb-6 transition-colors duration-300',
+      themeStore.themeClasses.cardBg
+    ]">
       <div class="stat">
-        <div class="stat-figure text-primary">
+        <div class="stat-figure text-primaryColor">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
@@ -26,21 +29,21 @@
             ></path>
           </svg>
         </div>
-        <div class="stat-title" v-if="!showDeleted">Total Users</div>
-        <div class="stat-title" v-else>Total Deleted Users</div>
-        <div class="stat-value text-primary" v-if="!showDeleted">
+        <div :class="themeStore.themeClasses.textSecondary" v-if="!showDeleted">Total Users</div>
+        <div :class="themeStore.themeClasses.textSecondary" v-else>Total Deleted Users</div>
+        <div class="stat-value text-primaryColor" v-if="!showDeleted">
           {{ userCount }}
         </div>
-        <div class="stat-value text-primary" v-else>
+        <div class="stat-value text-primaryColor" v-else>
           {{ deletedUsers.length }}
         </div>
-        <div class="stat-desc">
+        <div :class="themeStore.themeClasses.textSecondary">
           {{ hasUsers ? 'Users registered' : 'No users yet' }}
         </div>
       </div>
 
       <div class="stat">
-        <div class="stat-figure text-secondary">
+        <div class="stat-figure text-primaryColor">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
@@ -55,11 +58,11 @@
             ></path>
           </svg>
         </div>
-        <div class="stat-title">Status</div>
-        <div class="stat-value text-secondary">
+        <div :class="themeStore.themeClasses.textSecondary">Status</div>
+        <div class="stat-value text-primaryColor">
           {{ loading ? 'Loading...' : 'Ready' }}
         </div>
-        <div class="stat-desc">
+        <div :class="themeStore.themeClasses.textSecondary">
           {{ loading ? 'Please wait' : 'System operational' }}
         </div>
       </div>
@@ -82,48 +85,57 @@
       </svg>
       <span>{{ error }}</span>
       <div>
-        <button class="btn btn-sm btn-outline" @click="clearError">
+                 <button class="btn btn-sm btn-outline text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white" @click="clearError">
           Dismiss
         </button>
       </div>
     </div>
 
     <!-- Add User Form -->
-    <div class="card bg-base-100 shadow-xl mb-6">
+    <div :class="[
+      'card shadow-xl mb-6 transition-colors duration-300',
+      themeStore.themeClasses.cardBg
+    ]">
       <div class="card-body">
-        <h2 class="card-title">Add New User</h2>
+        <h2 class="card-title text-primaryColor">Add New User</h2>
         <form @submit.prevent="handleCreateUser" class="space-y-4">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="form-control">
               <label class="label">
-                <span class="label-text">Name</span>
+                <span :class="['label-text', themeStore.themeClasses.textSecondary]">Name</span>
               </label>
               <input
                 v-model="newUser.name"
                 type="text"
                 placeholder="Enter full name"
-                class="input input-bordered w-full"
+                :class="[
+                  'input input-bordered w-full transition-colors duration-300',
+                  themeStore.themeClasses.input
+                ]"
                 required
               />
             </div>
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text">Email</span>
+                <span :class="['label-text', themeStore.themeClasses.textSecondary]">Email</span>
               </label>
               <input
                 v-model="newUser.email"
                 type="email"
                 placeholder="Enter email address"
-                class="input input-bordered w-full"
+                :class="[
+                  'input input-bordered w-full transition-colors duration-300',
+                  themeStore.themeClasses.input
+                ]"
                 required
               />
             </div>
 
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Department</span>
-              </label>
+                         <div class="form-control">
+               <label class="label">
+                 <span :class="['label-text', themeStore.themeClasses.textSecondary]">Department</span>
+               </label>
               <select
                 v-model="newUser.department"
                 class="select select-bordered w-full"
@@ -146,10 +158,10 @@
               </div>
             </div>
 
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Role</span>
-              </label>
+                         <div class="form-control">
+               <label class="label">
+                 <span :class="['label-text', themeStore.themeClasses.textSecondary]">Role</span>
+               </label>
               <select
                 v-model="newUser.role_id"
                 class="select select-bordered w-full"
@@ -176,7 +188,7 @@
           <div class="card-actions justify-end">
             <button
               type="submit"
-              class="btn btn-primary"
+              class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none"
               :class="{ loading: loading }"
               :disabled="loading"
             >
@@ -203,17 +215,20 @@
     </div>
 
     <!-- Users List -->
-    <div class="card bg-base-100 shadow-xl">
+    <div :class="[
+      'card shadow-xl transition-colors duration-300',
+      themeStore.themeClasses.cardBg
+    ]">
       <div class="card-body">
         <div class="flex justify-between items-center mb-4">
-          <h2 class="card-title">Users List</h2>
+          <h2 class="card-title text-primaryColor">Users List</h2>
           <div class="flex gap-2">
-            <button
-              class="btn btn-outline btn-sm"
-              @click="fetchUsers(true)"
-              :class="{ loading: loading }"
-              :disabled="loading"
-            >
+                         <button
+               class="btn btn-outline btn-sm text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
+               @click="fetchUsers(true)"
+               :class="{ loading: loading }"
+               :disabled="loading"
+             >
               <svg
                 v-if="!loading"
                 xmlns="http://www.w3.org/2000/svg"
@@ -231,7 +246,7 @@
               </svg>
               Refresh
             </button>
-            <button class="btn btn-outline btn-sm" @click="toggleDeletedUsers">
+                         <button class="btn btn-outline btn-sm text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white" @click="toggleDeletedUsers">
               {{ showDeleted ? 'Show Active Users' : 'Show Deleted Users' }}
             </button>
           </div>
@@ -249,10 +264,16 @@
           </p>
         </div>
 
-        <div v-else class="overflow-x-auto">
-          <table class="table table-zebra">
-            <thead>
-              <tr>
+        <div v-else :class="['overflow-x-auto transition-colors duration-300', themeStore.themeClasses.cardBg]">
+          <table :class="[
+            'table transition-colors duration-300',
+            themeStore.isDarkMode ? 'table-zebra-dark' : 'table-zebra',
+            themeStore.themeClasses.textSecondary,
+            'border',
+            themeStore.themeClasses.border
+          ]">
+            <thead class="text-primaryColor">
+              <tr class="bg-primaryColor text-accentColor">
                 <th>ID</th>
                 <th>Name</th>
                 <th>Email</th>
@@ -289,11 +310,11 @@
                     {{ user.department || 'No Department' }}
                   </div>
                 </td>
-                <td>
-                  <div class="badge badge-primary badge-sm">
-                    {{ user.role || 'No Role' }}
-                  </div>
-                </td>
+                                 <td>
+                   <div class="badge bg-primaryColor text-white badge-sm border-none">
+                     {{ user.role || 'No Role' }}
+                   </div>
+                 </td>
                 <td>{{ formatDate(user.created_at) }}</td>
                 <td>
                   <div class="dropdown dropdown-left">
@@ -374,7 +395,10 @@
 
   <!-- Universal Modal -->
   <dialog id="universal_modal" class="modal">
-    <div class="modal-box">
+    <div :class="[
+      'modal-box transition-colors duration-300',
+      themeStore.themeClasses.modal
+    ]">
       <!-- Edit Modal Content -->
       <template v-if="modal.type === 'edit'">
         <h3 class="text-lg font-bold mb-4">Edit User</h3>
@@ -454,7 +478,7 @@
           </div>
 
           <div class="modal-action">
-            <button type="submit" class="btn btn-primary" :disabled="loading">
+            <button type="submit" class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none" :disabled="loading">
               {{ loading ? 'Saving...' : 'Save' }}
             </button>
             <button type="button" class="btn" @click="closeModal">
@@ -518,11 +542,13 @@
   import { ref, onMounted, computed, watch } from 'vue';
   import { useUserStore } from '../stores/userStore';
   import { useRoleStore } from '../stores/roleStore';
+  import { useThemeStore } from '../stores/themeStore';
   import { storeToRefs } from 'pinia';
 
   // Stores
   const userStore = useUserStore();
   const roleStore = useRoleStore();
+  const themeStore = useThemeStore();
 
   const { users, loading, error, userCount, hasUsers, deletedUsers } =
     storeToRefs(userStore);

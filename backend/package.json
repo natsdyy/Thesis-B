@@ -10,7 +10,10 @@
     "migrate:status": "knex migrate:status --knexfile knexfile.js",
     "migrate:make": "knex migrate:make --knexfile knexfile.js",
     "seed": "node seeders/seedDefaultData.js",
-    "setup": "npm run migrate && npm run seed"
+    "setup": "npm run migrate && npm run seed",
+    "test:telegram": "node scripts/test-telegram-bot.js",
+    "test:image-upload": "node scripts/test-image-upload.js",
+    "setup:telegram": "node setup-telegram.js"
   },
   "keywords": [],
   "author": "",
@@ -22,6 +25,9 @@
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
     "knex": "^3.1.0",
+    "multer": "^1.4.5-lts.1",
+    "node-cron": "^4.2.1",
+    "node-telegram-bot-api": "^0.64.0",
     "pg": "^8.16.3",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"

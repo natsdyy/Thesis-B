@@ -36,7 +36,7 @@
             <img src="/logo1.png" alt="logo" class="w-15 h-15 object-contain" />
           </div>
           <div class="flex-1">
-            <h1 class="font-bold text-lg text-white">
+            <h1 class="font-thin text-lg text-white">
               Countryside Steak House
             </h1>
           </div>

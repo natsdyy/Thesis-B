@@ -32,7 +32,9 @@
   <div class="space-y-6">
     <div class="flex justify-between items-center">
       <h1 class="text-3xl font-bold">Employee Management</h1>
-      <button class="btn btn-primary">
+      <button
+        class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none"
+      >
         <Plus class="w-4 h-4 mr-2" />
         Add Employee
       </button>
@@ -97,11 +99,11 @@
                 <td>{{ employee.role }}</td>
                 <td>
                   <div
-                    class="badge"
+                    class="badge badge-sm border-none font-medium"
                     :class="
                       employee.status === 'Active'
-                        ? 'badge-success'
-                        : 'badge-warning'
+                        ? 'bg-success/20 text-success'
+                        : 'bg-warning/20 text-warning'
                     "
                   >
                     {{ employee.status }}

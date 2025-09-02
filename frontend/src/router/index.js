@@ -17,10 +17,31 @@ import HomePage from '../views/HomePage.vue';
 import NotFound from '../views/NotFound.vue';
 import Login from '../views/Login.vue';
 
+// Import crm components
+import FullMenu from '../components/crm/FullMenu.vue';
+import Homepage from '../components/crm/homepage.vue';
+import StoreDirectory from '../components/crm/StoreDirectory.vue';
 const routes = [
+  // crm route
   {
     path: '/',
-    redirect: '/login',
+    name: 'HomePage',
+    component: Homepage,
+    meta: { title: 'Countryside Steakhouse - Home' },
+  },
+  // crm menu route
+  {
+    path: '/menu',
+    name: 'FullMenu',
+    component: FullMenu,
+    meta: { title: 'Full Menu' },
+  },
+  // crm store directory route
+  {
+    path: '/stores',
+    name: 'StoreDirectory',
+    component: StoreDirectory,
+    meta: { title: 'Store Directory' },
   },
   // Add login route
   {
@@ -161,7 +182,7 @@ router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore();
 
   // Routes that don't require authentication
-  const publicRoutes = ['/', '/login'];
+  const publicRoutes = ['/', '/login', '/home', '/menu', '/stores'];
 
   if (publicRoutes.includes(to.path)) {
     next();

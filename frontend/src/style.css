@@ -5,7 +5,19 @@
 body {
   margin: 0;
   font-family: Poppins;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
+}
+
+.success-badge {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  font-weight: 500;
+  background-color: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+  border: none;
 }
 
 p {
@@ -38,12 +50,12 @@ p {
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: #6B7280;
+  background: #6b7280;
   border-radius: 4px;
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: #9CA3AF;
+  background: #9ca3af;
 }
 
 @font-face {
@@ -61,11 +73,51 @@ p {
   --font-roboto: Roboto;
 
   --color-primaryColor: #466114;
-  --color-secondaryColor: #AAD36D;
-  --color-accentColor: #F9FAFB;
+  --color-secondaryColor: #aad36d;
+  --color-accentColor: #f9fafb;
   --color-neutralColor: #000000;
 }
 
 #app {
   min-height: 100vh;
+}
+
+/* Custom toggle switch styling */
+.toggle:checked {
+  background-color: #466114 !important;
+  border-color: #466114 !important;
+}
+
+.toggle:checked:hover {
+  background-color: #3a5211 !important;
+  border-color: #3a5211 !important;
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  #cash_request_receipt_modal,
+  #cash_request_receipt_modal *,
+  #purchase_order_receipt_modal,
+  #purchase_order_receipt_modal *,
+  /* NEW: Return receipt modal */
+  #return_receipt_modal,
+  #return_receipt_modal * {
+    visibility: visible !important;
+  }
+  #cash_request_receipt_modal,
+  #purchase_order_receipt_modal,
+  #return_receipt_modal {
+    position: absolute !important;
+    left: 0;
+    top: 0;
+    width: 100vw;
+    background: white !important;
+    box-shadow: none !important;
+    z-index: 9999 !important;
+  }
+  .modal-action {
+    display: none !important;
+  }
 }

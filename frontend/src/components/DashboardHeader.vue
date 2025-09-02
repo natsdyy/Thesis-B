@@ -2,7 +2,7 @@
   <header
     :class="[
       'shadow-sm border-b px-4 py-3 flex items-center justify-between transition-colors duration-300',
-      themeStore.themeClasses.headerBg
+      themeStore.themeClasses.headerBg,
     ]"
   >
     <!-- Left Section: Theme Toggle + Menu Button + Breadcrumb -->
@@ -13,24 +13,20 @@
         :class="[
           'p-2 rounded-lg transition-all duration-300 ease-in-out',
           themeStore.themeClasses.hoverBg,
-          themeStore.themeClasses.textSecondary
+          themeStore.themeClasses.textSecondary,
         ]"
-        :title="themeStore.isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'"
+        :title="
+          themeStore.isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'
+        "
       >
-        <Sun v-if="themeStore.isDarkMode" class="w-5 h-5 text-yellow-400 transition-transform duration-300" />
-        <Moon v-else class="w-5 h-5 text-indigo-600 transition-transform duration-300" />
-      </button>
-
-      <!-- Mobile Menu Toggle -->
-      <button
-        @click="toggleSidebar"
-        :class="[
-          'lg:hidden p-2 rounded-md transition-colors',
-          themeStore.themeClasses.hoverBg,
-          themeStore.themeClasses.textSecondary
-        ]"
-      >
-        <Menu class="w-5 h-5" />
+        <Sun
+          v-if="themeStore.isDarkMode"
+          class="w-5 h-5 text-yellow-400 transition-transform duration-300"
+        />
+        <Moon
+          v-else
+          class="w-5 h-5 text-black transition-transform duration-300"
+        />
       </button>
 
       <!-- Breadcrumb Navigation -->
@@ -42,7 +38,9 @@
           Home
         </router-link>
         <ChevronRight :class="['w-4 h-4', themeStore.themeClasses.textMuted]" />
-        <span :class="themeStore.themeClasses.textSecondary">{{ currentPageTitle }}</span>
+        <span :class="themeStore.themeClasses.textSecondary">{{
+          currentPageTitle
+        }}</span>
       </nav>
     </div>
 
@@ -55,7 +53,7 @@
           role="button"
           :class="[
             'flex items-center space-x-3 p-2 rounded-lg transition-colors cursor-pointer',
-            themeStore.themeClasses.hoverBg
+            themeStore.themeClasses.hoverBg,
           ]"
         >
           <!-- User Avatar -->
@@ -69,7 +67,12 @@
 
           <!-- User Info -->
           <div class="flex flex-col items-start">
-            <span :class="['text-sm font-medium', themeStore.themeClasses.textPrimary]">
+            <span
+              :class="[
+                'text-sm font-medium',
+                themeStore.themeClasses.textPrimary,
+              ]"
+            >
               {{ user?.name || 'John Marco Paja' }}
             </span>
             <span :class="['text-xs', themeStore.themeClasses.textMuted]">
@@ -78,7 +81,9 @@
           </div>
 
           <!-- Dropdown Arrow -->
-          <ChevronDown :class="['w-4 h-4', themeStore.themeClasses.textMuted]" />
+          <ChevronDown
+            :class="['w-4 h-4', themeStore.themeClasses.textMuted]"
+          />
         </div>
 
         <!-- Dropdown Menu -->
@@ -87,11 +92,16 @@
           :class="[
             'dropdown-content menu rounded-lg shadow-lg border w-64 p-2 mt-2 transition-colors duration-300',
             themeStore.themeClasses.cardBg,
-            themeStore.themeClasses.border
+            themeStore.themeClasses.border,
           ]"
         >
           <!-- User Info Header -->
-          <li :class="['px-3 py-2 border-b mb-2', themeStore.themeClasses.borderLight]">
+          <li
+            :class="[
+              'px-3 py-2 border-b mb-2',
+              themeStore.themeClasses.borderLight,
+            ]"
+          >
             <div class="flex items-center space-x-3">
               <div
                 class="w-10 h-10 rounded-full bg-primaryColor flex items-center justify-center"
@@ -101,7 +111,9 @@
                 </span>
               </div>
               <div>
-                <p :class="['font-medium', themeStore.themeClasses.textPrimary]">
+                <p
+                  :class="['font-medium', themeStore.themeClasses.textPrimary]"
+                >
                   {{ user?.name || 'John Marco Paja' }}
                 </p>
                 <p :class="['text-sm', themeStore.themeClasses.textMuted]">
@@ -116,11 +128,13 @@
             <a
               :class="[
                 'flex items-center space-x-3 px-3 py-2 rounded-md transition-colors',
-                themeStore.themeClasses.hoverBg
+                themeStore.themeClasses.hoverBg,
               ]"
             >
               <User class="w-4 h-4 text-primaryColor" />
-              <span :class="['text-sm', themeStore.themeClasses.textSecondary]">Profile</span>
+              <span :class="['text-sm', themeStore.themeClasses.textSecondary]"
+                >Profile</span
+              >
             </a>
           </li>
 
@@ -128,11 +142,13 @@
             <a
               :class="[
                 'flex items-center space-x-3 px-3 py-2 rounded-md transition-colors',
-                themeStore.themeClasses.hoverBg
+                themeStore.themeClasses.hoverBg,
               ]"
             >
               <Settings class="w-4 h-4 text-primaryColor" />
-              <span :class="['text-sm', themeStore.themeClasses.textSecondary]">Account Settings</span>
+              <span :class="['text-sm', themeStore.themeClasses.textSecondary]"
+                >Account Settings</span
+              >
             </a>
           </li>
 
@@ -140,22 +156,28 @@
             <a
               :class="[
                 'flex items-center space-x-3 px-3 py-2 rounded-md transition-colors',
-                themeStore.themeClasses.hoverBg
+                themeStore.themeClasses.hoverBg,
               ]"
             >
               <Clock class="w-4 h-4 text-primaryColor" />
-              <span :class="['text-sm', themeStore.themeClasses.textSecondary]">Attendance</span>
+              <span :class="['text-sm', themeStore.themeClasses.textSecondary]"
+                >Attendance</span
+              >
             </a>
           </li>
 
           <!-- Divider -->
-          <li :class="['border-t mt-2 pt-2', themeStore.themeClasses.borderLight]">
+          <li
+            :class="['border-t mt-2 pt-2', themeStore.themeClasses.borderLight]"
+          >
             <a
               @click="logout"
               class="flex items-center space-x-3 px-3 py-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors cursor-pointer"
             >
               <LogOut class="w-4 h-4 text-red-600" />
-              <span class="text-sm text-red-700 dark:text-red-400">Log Out</span>
+              <span class="text-sm text-red-700 dark:text-red-400"
+                >Log Out</span
+              >
             </a>
           </li>
         </ul>

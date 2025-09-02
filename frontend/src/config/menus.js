@@ -12,6 +12,13 @@ import {
   Shield,
   Settings,
   ReceiptText,
+  Store,
+  PhilippinePeso,
+  ShoppingBag,
+  Calendar,
+  BookOpen,
+  ClipboardList,
+  Trash2,
 } from 'lucide-vue-next';
 
 export const menuItems = [
@@ -44,7 +51,7 @@ export const menuItems = [
   },
   {
     name: 'Payroll',
-    icon: DollarSign,
+    icon: PhilippinePeso,
     route: '/hr/payroll',
     department: 'Human Resource',
   },
@@ -65,7 +72,7 @@ export const menuItems = [
   {
     name: 'Inventory',
     icon: Package,
-    route: '/scm/inventory',
+    route: '/scm/main-inventory',
     department: 'Supply Chain',
   },
   {
@@ -75,9 +82,21 @@ export const menuItems = [
     department: 'Supply Chain',
   },
   {
+    name: 'Purchase Order',
+    icon: ShoppingBag,
+    route: '/scm/purchase-order',
+    department: 'Supply Chain',
+  },
+  {
     name: 'Suppliers',
     icon: Truck,
     route: '/scm/suppliers',
+    department: 'Supply Chain',
+  },
+  {
+    name: 'Goods Receipt Notes',
+    icon: ReceiptText,
+    route: '/scm/grn',
     department: 'Supply Chain',
   },
 
@@ -89,15 +108,21 @@ export const menuItems = [
     department: 'Finance',
   },
   {
+    name: 'Request Approval',
+    icon: ReceiptText,
+    route: '/finance/request-approval',
+    department: 'Finance',
+  },
+  {
     name: 'Accounting',
     icon: BarChart3,
     route: '/finance/accounting',
     department: 'Finance',
   },
   {
-    name: 'Budget',
-    icon: DollarSign,
-    route: '/finance/budget',
+    name: 'Budget Release',
+    icon: PhilippinePeso,
+    route: '/finance/budget-release',
     department: 'Finance',
   },
 
@@ -109,16 +134,54 @@ export const menuItems = [
     department: 'Production',
   },
   {
-    name: 'Manufacturing',
-    icon: Factory,
-    route: '/production/manufacturing',
+    name: 'Production Planning',
+    icon: Calendar,
+    route: '/production/planning',
+    department: 'Production',
+    subItems: [
+      { name: 'Scheduling', route: '/production/planning' },
+      { name: 'Real-time Monitoring', route: '/production/monitoring' },
+    ],
+  },
+  {
+    name: 'Recipe Management',
+    icon: BookOpen,
+    route: '/production/recipes',
+    department: 'Production',
+  },
+  {
+    name: 'Work Orders',
+    icon: ClipboardList,
+    route: '/production/work-orders',
     department: 'Production',
   },
   {
     name: 'Quality Control',
     icon: Shield,
-    route: '/production/quality',
+    route: '/production/quality-control',
     department: 'Production',
+  },
+  {
+    name: 'Maintenance',
+    icon: Settings,
+    route: '/production/maintenance',
+    department: 'Production',
+  },
+  {
+    name: 'Waste Management',
+    icon: Trash2,
+    route: '/production/waste-management',
+    department: 'Production',
+  },
+  {
+    name: 'Analytics & Reports',
+    icon: BarChart3,
+    route: '/production/analytics',
+    department: 'Production',
+    subItems: [
+      { name: 'Production Metrics', route: '/production/analytics' },
+      { name: 'Traceability', route: '/production/traceability' },
+    ],
   },
 
   // Customer Relationship
@@ -165,7 +228,7 @@ export const menuItems = [
   },
   {
     name: 'Branch Management',
-    icon: Shield,
+    icon: Store,
     route: '/admin/branches',
     department: 'Administration',
     superAdminOnly: true,
@@ -192,7 +255,7 @@ export const menusByDepartment = menuItems.reduce((acc, item) => {
 export const departmentIcons = {
   'Human Resource': UserCog,
   'Supply Chain': Truck,
-  Finance: DollarSign,
+  Finance: PhilippinePeso,
   Production: Factory,
   'Customer Relationship': Users,
   Administration: Settings, // Add admin department icon

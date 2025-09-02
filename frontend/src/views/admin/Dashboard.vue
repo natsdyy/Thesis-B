@@ -13,11 +13,11 @@
       <!-- Stats cards -->
       <div class="stats shadow">
         <div class="stat">
-          <div class="stat-figure text-primary">
+          <div class="stat-figure text-primaryColor">
             <Users class="w-8 h-8" />
           </div>
           <div class="stat-title">Total Users</div>
-          <div class="stat-value text-primary">150</div>
+          <div class="stat-value text-primaryColor">150</div>
           <div class="stat-desc">Active system users</div>
         </div>
       </div>
@@ -65,7 +65,7 @@
           class="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow"
         >
           <div class="card-body items-center text-center">
-            <Users class="w-12 h-12 text-primary mb-2" />
+            <Users class="w-12 h-12 text-primaryColor mb-2" />
             <h3 class="card-title">Manage Users</h3>
             <p class="text-sm text-base-content/70">
               Add, edit, or remove users

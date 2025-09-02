@@ -1,9 +1,9 @@
 [build]
-builder = "nixpacks"
-buildCommand = "npm ci && npm run build"
+builder = "railpack"
+buildCommand = "rm -rf node_modules package-lock.json && npm cache clean --force && npm install && npm run build"
 
 [deploy]
-startCommand = "npm run preview"
+startCommand = "npm run dev"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"

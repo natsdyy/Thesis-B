@@ -369,6 +369,46 @@ class Recipe {
     }
   }
 
+  // Restore soft-deleted recipe
+  static async restore(id) {
+    try {
+      const existing = await db("recipes").where("id", id).first();
+      if (!existing) {
+        throw new Error("Recipe not found");
+      }
+
+      if (!existing.deleted_at) {
+        throw new Error("Recipe is not deleted and cannot be restored");
+      }
+
+      const [restored] = await db("recipes")
+        .where("id", id)
+        .update({
+          deleted_at: null,
+          updated_at: new Date(),
+          is_active: true,
+        })
+        .returning("*");
+
+      return restored;
+    } catch (error) {
+      console.error("Error restoring recipe:", error);
+      throw new Error("Failed to restore recipe");
+    }
+  }
+
+  // Get deleted recipes only
+  static async getDeleted() {
+    try {
+      return await db("recipes")
+        .whereNotNull("deleted_at")
+        .orderBy("recipe_name", "asc");
+    } catch (error) {
+      console.error("Error fetching deleted recipes:", error);
+      throw new Error("Failed to fetch deleted recipes");
+    }
+  }
+
   // Get recipe statistics
   static async getStats() {
     try {

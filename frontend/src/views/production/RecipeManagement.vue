@@ -175,6 +175,17 @@
     Math.ceil(filteredRecipes.value.length / recipesPerPage.value)
   );
 
+  // Deleted recipes pagination
+  const deletedPage = ref(1);
+  const deletedPerPage = ref(8);
+  const paginatedDeletedRecipes = computed(() => {
+    const start = (deletedPage.value - 1) * deletedPerPage.value;
+    return deletedRecipes.value.slice(start, start + deletedPerPage.value);
+  });
+  const totalDeletedPages = computed(() =>
+    Math.ceil((deletedRecipes.value?.length || 0) / deletedPerPage.value)
+  );
+
   const uniqueCategories = computed(() => {
     const categoryNames = [
       ...new Set(recipes.value.map((recipe) => recipe.category)),
@@ -187,6 +198,7 @@
   const categories = computed(() => inventoryStore.categories);
   const itemTypes = computed(() => inventoryStore.currentInventory);
   const recipeStats = computed(() => productionStore.recipeStats);
+  const deletedRecipes = computed(() => productionStore.deletedRecipes);
 
   // Loading states
   const statsLoading = computed(() => productionStore.loading);
@@ -228,6 +240,7 @@
         productionStore.fetchRecipeStats(),
         inventoryStore.fetchCategories(),
         inventoryStore.fetchCurrentInventory(),
+        productionStore.fetchDeletedRecipes(),
       ]);
 
       console.log(
@@ -262,6 +275,42 @@
     // Check authentication for create/edit operations
     if ((type === 'create' || type === 'edit') && !isUserAuthenticated.value) {
       showToast('error', 'Please log in to manage recipes');
+      return;
+    }
+
+    // If opening stock check from view/edit, do NOT change modal.type so the
+    // main modal remains closable. Just ensure the recipe context is present
+    // and open the overlay modal.
+    if (type === 'check-stock') {
+      try {
+        loading.value = true;
+        let recipeForStock = recipe || modal.value.recipe;
+
+        // If we do not have ingredients, fetch full recipe details
+        if (
+          recipeForStock &&
+          (!recipeForStock.ingredients ||
+            recipeForStock.ingredients.length === 0)
+        ) {
+          const fullRecipe = await productionStore.getRecipeById(
+            recipeForStock.id
+          );
+          recipeForStock = {
+            ...fullRecipe,
+            ingredients: fullRecipe.ingredients || [],
+          };
+        }
+
+        // Preserve main modal type and just set the recipe context
+        modal.value = { ...modal.value, recipe: recipeForStock, show: true };
+      } catch (err) {
+        console.error('Failed to load recipe for stock check:', err);
+        showToast('error', 'Failed to load stock details');
+      } finally {
+        loading.value = false;
+      }
+
+      document.getElementById('check_stock_modal').showModal();
       return;
     }
 
@@ -376,14 +425,9 @@
 
     // Open the appropriate modal based on type
     if (type === 'create' || type === 'edit') {
-      console.log('Opening recipe modal for type:', type);
-      console.log('Modal state before opening:', modal.value);
-      console.log('Ingredients before opening:', ingredients.value);
       document.getElementById('recipe_modal').showModal();
     } else if (type === 'view') {
       document.getElementById('view_recipe_modal').showModal();
-    } else if (type === 'check-stock') {
-      document.getElementById('check_stock_modal').showModal();
     } else if (type === 'add-ingredient') {
       document.getElementById('add_ingredient_modal').showModal();
     }
@@ -397,8 +441,6 @@
       document.getElementById('recipe_modal')?.close();
     } else if (currentModalType === 'view') {
       document.getElementById('view_recipe_modal')?.close();
-    } else if (currentModalType === 'check-stock') {
-      document.getElementById('check_stock_modal')?.close();
     } else if (currentModalType === 'add-ingredient') {
       document.getElementById('add_ingredient_modal')?.close();
     }
@@ -420,6 +462,11 @@
       'Ingredient modal closed. Current ingredients:',
       ingredients.value
     ); // Debug log
+  };
+
+  const closeCheckStockModal = () => {
+    // Close only the check stock modal without altering main modal state
+    document.getElementById('check_stock_modal')?.close();
   };
 
   const resetForm = () => {
@@ -538,9 +585,22 @@
     loading.value = true;
     try {
       await productionStore.deleteRecipe(recipe.id);
-      showToast('success', 'Recipe deleted successfully');
+      showToast('success', 'Recipe moved to deleted');
     } catch (err) {
       showToast('error', err.message || 'Failed to delete recipe');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const handleRestoreRecipe = async (recipe) => {
+    loading.value = true;
+    try {
+      await productionStore.restoreRecipe(recipe.id);
+      showToast('success', 'Recipe restored successfully');
+      await productionStore.fetchDeletedRecipes();
+    } catch (err) {
+      showToast('error', err.message || 'Failed to restore recipe');
     } finally {
       loading.value = false;
     }
@@ -721,6 +781,41 @@
     return selectedItem ? selectedItem.quantity || 0 : 0;
   };
 
+  // Helpers for Check Stock modal
+  const getInventoryItemById = (inventoryItemId) => {
+    if (!inventoryItemId) return null;
+    return (
+      foodIngredients.value.find((item) => item.id === inventoryItemId) ||
+      itemTypes.value?.find?.((item) => item.id === inventoryItemId) ||
+      null
+    );
+  };
+
+  const getStockForIngredient = (ingredient) => {
+    const inventoryItem = getInventoryItemById(ingredient?.inventory_item_id);
+    const quantityInStock = Number(inventoryItem?.quantity || 0);
+    const unit =
+      ingredient?.unit_of_measure ||
+      ingredient?.unit ||
+      inventoryItem?.unit_of_measure ||
+      'units';
+    return { quantityInStock, unit };
+  };
+
+  const formatQuantity = (value) => {
+    const num = Number(value || 0);
+    if (Number.isNaN(num)) return '0';
+    // Show up to 3 decimals, but avoid trailing zeros
+    const fixed = num.toFixed(3);
+    return fixed.replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
+  };
+
+  const formatCurrency = (value) => {
+    const num = Number(value ?? 0);
+    if (!Number.isFinite(num)) return '0.00';
+    return num.toFixed(2);
+  };
+
   // Lifecycle
   onMounted(async () => {
     // Check if user is authenticated before loading data
@@ -831,31 +926,6 @@
         </div>
         <div class="stat-desc text-black/50 text-xs sm:text-sm">
           Recipe categories
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <PhilippinePeso
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-black/80"
-          />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">Avg Cost</div>
-        <div
-          class="stat-value text-black/80 text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          <span
-            v-if="
-              !statsLoading && recipeStats?.average_cost_per_batch !== undefined
-            "
-            >₱{{ recipeStats.average_cost_per_batch.toLocaleString() }}</span
-          >
-          <span v-else class="loading loading-spinner loading-sm"></span>
-        </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
-          Per batch average
         </div>
       </div>
     </div>
@@ -1024,79 +1094,101 @@
         <!-- Recipe Grid -->
         <div
           v-else
-          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
         >
           <div
             v-for="recipe in paginatedRecipes"
             :key="recipe.id"
-            class="bg-accentColor rounded-xl p-6 shadow-sm border hover:shadow-md transition-shadow cursor-pointer"
+            class="rounded-2xl border border-black/10 bg-white/90 backdrop-blur-sm shadow-sm hover:shadow-md transition-all cursor-pointer"
             @click="openModal('view', recipe)"
           >
-            <div class="flex items-start justify-between mb-4">
-              <div class="flex-1">
-                <h3 class="font-semibold text-lg text-primaryColor mb-1">
+            <!-- Header -->
+            <div
+              class="flex items-start justify-between p-5 pb-3 border-b border-black/5"
+            >
+              <div class="min-w-0">
+                <h3 class="text-lg font-semibold text-primaryColor truncate">
                   {{ recipe.recipe_name }}
                 </h3>
-                <p class="text-sm text-base-content/70 line-clamp-2">
+                <p class="mt-1 text-xs text-black/50 line-clamp-2">
                   {{ recipe.description || 'No description available' }}
                 </p>
               </div>
-              <div class="flex flex-col gap-2">
-                <div
-                  class="badge"
-                  :class="
-                    getStatusColor(recipe.is_active ? 'Active' : 'Inactive')
-                  "
-                >
-                  {{ recipe.is_active ? 'Active' : 'Inactive' }}
+              <span
+                class="badge border-none bg-success/20 text-success badge-sm"
+                :class="
+                  getStatusColor(recipe.is_active ? 'Active' : 'Inactive')
+                "
+              >
+                {{ recipe.is_active ? 'Active' : 'Inactive' }}
+              </span>
+            </div>
+
+            <!-- Body -->
+            <div class="p-5 grid grid-cols-1 gap-3">
+              <div class="flex items-center justify-between text-sm">
+                <div class="flex items-center gap-2 text-black/60">
+                  <BookOpen class="w-4 h-4" />
+                  <span>Category</span>
                 </div>
+                <span class="font-medium text-black/70">{{
+                  recipe.category
+                }}</span>
+              </div>
+
+              <div class="flex items-center justify-between text-sm">
+                <div class="flex items-center gap-2 text-black/60">
+                  <Scale class="w-4 h-4" />
+                  <span>Batch Size</span>
+                </div>
+                <span class="font-medium text-black/70"
+                  >{{ recipe.batch_size }} {{ recipe.batch_unit }}</span
+                >
+              </div>
+
+              <div class="flex items-center justify-between text-sm">
+                <div class="flex items-center gap-2 text-black/60">
+                  <PhilippinePeso class="w-4 h-4" />
+                  <span>Cost / batch</span>
+                </div>
+                <span class="font-semibold text-primaryColor"
+                  >₱{{ recipe.cost_per_batch || '0' }}</span
+                >
               </div>
             </div>
 
-            <div class="space-y-3 mb-4">
-              <div class="flex items-center gap-2 text-sm text-base-content/70">
-                <BookOpen class="w-4 h-4" />
-                <span>{{ recipe.category }}</span>
+            <!-- Footer actions -->
+            <div class="px-5 pb-5" @click.stop>
+              <div class="grid grid-cols-4 gap-2">
+                <button
+                  @click="openModal('check-stock', recipe)"
+                  class="btn btn-xs bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none"
+                >
+                  <Package class="w-4 h-4 mr-1 text-primaryColor" />
+                  Stock
+                </button>
+                <button
+                  @click="openModal('view', recipe)"
+                  class="btn btn-xs bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none"
+                >
+                  <Eye class="w-4 h-4 mr-1 text-primaryColor" />
+                  View
+                </button>
+                <button
+                  @click="openModal('edit', recipe)"
+                  class="btn btn-xs bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none"
+                >
+                  <Edit class="w-4 h-4 mr-1 text-primaryColor" />
+                  Edit
+                </button>
+                <button
+                  @click="showDeleteConfirmation(recipe)"
+                  class="btn btn-xs bg-white text-error border border-error/30 hover:bg-error/10 hover:border-error/50 rounded-lg shadow-none"
+                >
+                  <Trash2 class="w-4 h-4 mr-1" />
+                  Delete
+                </button>
               </div>
-              <div class="flex items-center gap-2 text-sm text-base-content/70">
-                <Scale class="w-4 h-4" />
-                <span>{{ recipe.batch_size }} {{ recipe.batch_unit }}</span>
-              </div>
-
-              <div class="flex items-center gap-2 text-sm text-base-content/70">
-                <PhilippinePeso class="w-4 h-4" />
-                <span>₱{{ recipe.cost_per_batch || '0' }}/batch</span>
-              </div>
-            </div>
-
-            <div class="flex gap-2 mt-4" @click.stop>
-              <button
-                @click="openModal('check-stock', recipe)"
-                class="btn btn-outline btn-xs flex-1"
-              >
-                Check Stock
-              </button>
-              <button
-                @click="openModal('view', recipe)"
-                class="btn btn-outline btn-xs flex-1"
-              >
-                <Eye class="w-3 h-3 mr-1" />
-                View
-              </button>
-              <button
-                @click="openModal('edit', recipe)"
-                class="btn btn-outline btn-xs flex-1"
-              >
-                <Edit class="w-3 h-3 mr-1" />
-                Edit
-              </button>
-              <button
-                @click="showDeleteConfirmation(recipe)"
-                class="btn btn-outline btn-xs flex-1 text-error hover:bg-error/10"
-              >
-                <Trash2 class="w-3 h-3 mr-1" />
-                Delete
-              </button>
             </div>
           </div>
         </div>
@@ -1124,10 +1216,92 @@
       </div>
     </div>
 
+    <!-- Deleted Recipes Section -->
+    <div
+      class="card bg-accentColor shadow-xl mb-4 sm:mb-6 border border-black/10 mx-auto"
+    >
+      <div class="card-body p-3 sm:p-4 lg:p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2
+            class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl"
+          >
+            Deleted Recipes
+          </h2>
+          <button
+            class="btn btn-xs bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none"
+            @click="productionStore.fetchDeletedRecipes()"
+            :disabled="loading"
+          >
+            Refresh
+          </button>
+        </div>
+
+        <div v-if="deletedRecipes.length === 0" class="text-sm text-black/50">
+          No deleted recipes.
+        </div>
+        <div
+          v-else
+          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
+        >
+          <div
+            v-for="recipe in paginatedDeletedRecipes"
+            :key="`deleted-${recipe.id}`"
+            class="rounded-2xl border border-black/10 bg-white/90 p-4"
+          >
+            <div class="flex items-center justify-between">
+              <div class="font-semibold text-primaryColor truncate">
+                {{ recipe.recipe_name }}
+              </div>
+              <span class="badge badge-xs border-none bg-error/20 text-error">
+                Deleted
+              </span>
+            </div>
+            <div class="text-xs text-black/50 mt-1">
+              {{ recipe.category }} • Batch: {{ recipe.batch_size }}
+              {{ recipe.batch_unit }}
+            </div>
+            <div class="mt-3 flex justify-end">
+              <button
+                class="btn btn-xs bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none"
+                @click.stop="() => handleRestoreRecipe(recipe)"
+              >
+                Restore
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Deleted pagination -->
+        <div v-if="totalDeletedPages > 1" class="flex justify-center mt-6">
+          <div class="btn-group">
+            <button
+              @click="deletedPage--"
+              :disabled="deletedPage === 1"
+              class="btn btn-sm"
+            >
+              Previous
+            </button>
+            <button class="btn btn-sm">{{ deletedPage }}</button>
+            <button
+              @click="deletedPage++"
+              :disabled="deletedPage === totalDeletedPages"
+              class="btn btn-sm"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Create/Edit Recipe Modal -->
     <dialog id="recipe_modal" class="modal">
-      <div class="modal-box max-w-4xl max-h-[90vh] overflow-y-auto">
-        <h3 class="font-bold text-lg mb-4 text-primaryColor">
+      <div
+        class="modal-box max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-black/10 bg-white/95 shadow-lg"
+      >
+        <h3
+          class="font-bold text-xl text-primaryColor mb-4 border-b border-black/10 pb-3"
+        >
           {{ modal.type === 'create' ? 'Create New Recipe' : 'Edit Recipe' }}
         </h3>
 
@@ -1140,7 +1314,9 @@
           class="space-y-6"
         >
           <!-- Basic Information -->
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+          <div
+            class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
+          >
             <!-- Recipe Name -->
             <div class="form-control">
               <label class="label mb-1">
@@ -1253,7 +1429,9 @@
           </div>
 
           <!-- Description -->
-          <div class="form-control lg:col-span-2">
+          <div
+            class="form-control lg:col-span-2 bg-white border border-black/10 p-4 rounded-xl"
+          >
             <label class="label">
               <span
                 class="label-text text-black/70 font-medium text-sm sm:text-base"
@@ -1270,7 +1448,9 @@
           </div>
 
           <!-- Instructions -->
-          <div class="form-control lg:col-span-2">
+          <div
+            class="form-control lg:col-span-2 bg-white border border-black/10 p-4 rounded-xl"
+          >
             <label class="label">
               <span
                 class="label-text text-black/70 font-medium text-sm sm:text-base"
@@ -1295,7 +1475,7 @@
               <button
                 type="button"
                 @click="openModal('add-ingredient', modal.recipe)"
-                class="btn btn-outline btn-sm bg-primaryColor/10 border-primaryColor/30 text-primaryColor hover:bg-primaryColor/20 !sm:btn-md"
+                class="btn btn-sm bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none"
               >
                 <Plus class="w-4 h-4 mr-2" />
                 Add Ingredient
@@ -1366,19 +1546,17 @@
           </div>
 
           <!-- Form Actions -->
-          <div
-            class="flex justify-end gap-4 pt-8 border-t border-primaryColor/20"
-          >
+          <div class="flex justify-end gap-3 pt-8 border-t border-black/10">
             <button
               type="button"
               @click="closeModal"
-              class="btn btn-outline border-primaryColor/30 text-primaryColor hover:bg-primaryColor/10 hover:border-primaryColor/50 transition-colors"
+              class="btn btn-sm bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none font-thin"
             >
               Cancel
             </button>
             <button
               type="submit"
-              class="btn bg-primaryColor text-white hover:bg-primaryColor/80 shadow-lg hover:shadow-xl transition-all duration-200"
+              class="btn btn-sm bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none font-thin"
               :disabled="loading"
             >
               <span
@@ -1727,10 +1905,14 @@
     <!-- Recipe Details Modal -->
     <dialog id="view_recipe_modal" class="modal">
       <div
-        class="modal-box max-w-4xl"
+        class="modal-box max-w-4xl rounded-2xl border border-black/10 bg-white/95 shadow-lg"
         v-if="modal.recipe && modal.recipe.recipe_name"
       >
-        <h3 class="font-bold text-lg mb-4 text-primaryColor">Recipe Details</h3>
+        <h3
+          class="font-bold text-xl text-primaryColor mb-4 border-b border-black/10 pb-3"
+        >
+          Recipe Details
+        </h3>
 
         <!-- Loading state -->
         <div v-if="loading" class="flex justify-center py-8">
@@ -1742,7 +1924,7 @@
         <!-- Recipe content -->
         <div v-else class="space-y-6">
           <!-- Basic Information -->
-          <div class="bg-base-100 p-4 rounded-lg">
+          <div class="bg-white border border-black/10 p-4 rounded-xl">
             <h4 class="font-semibold text-primaryColor mb-3">
               Basic Information
             </h4>
@@ -1777,7 +1959,7 @@
 
           <div v-if="modal.recipe?.description">
             <h4 class="font-semibold text-primaryColor mb-2">Description</h4>
-            <div class="bg-base-100 p-4 rounded-lg">
+            <div class="bg-white border border-black/10 p-4 rounded-xl">
               <p class="text-sm">{{ modal.recipe?.description }}</p>
             </div>
           </div>
@@ -1788,7 +1970,9 @@
               Ingredients ({{ modal.recipe?.ingredients?.length || 0 }})
             </h4>
 
-            <div class="bg-base-100 p-4 rounded-lg max-h-64 overflow-y-auto">
+            <div
+              class="bg-white border border-black/10 p-4 rounded-xl max-h-64 overflow-y-auto"
+            >
               <div
                 v-if="
                   !modal.recipe?.ingredients ||
@@ -1803,7 +1987,7 @@
                 <div
                   v-for="ingredient in modal.recipe?.ingredients || []"
                   :key="ingredient.id"
-                  class="flex justify-between items-start p-2 bg-base-200 rounded"
+                  class="flex justify-between items-start p-3 bg-white border border-black/10 rounded-lg"
                 >
                   <div>
                     <div class="font-medium">
@@ -1839,7 +2023,7 @@
           </div>
 
           <!-- Cost Summary -->
-          <div class="bg-base-100 p-4 rounded-lg">
+          <div class="bg-white border border-black/10 p-4 rounded-xl">
             <div class="flex justify-between items-center">
               <span class="text-base-content/70 font-medium">Total Cost:</span>
               <span class="font-bold text-lg text-primaryColor">
@@ -1873,11 +2057,14 @@
         <div class="modal-action">
           <button
             @click="openModal('check-stock', modal.recipe || null)"
-            class="btn btn-outline"
+            class="btn btn-sm bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none font-thin"
           >
             Check Availability
           </button>
-          <button @click="closeModal" class="btn bg-primaryColor text-white">
+          <button
+            @click="closeModal"
+            class="btn btn-sm bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none font-thin"
+          >
             Close
           </button>
         </div>
@@ -1910,21 +2097,96 @@
           </p>
         </div>
 
-        <div v-else class="space-y-4">
+        <div v-else class="space-y-3">
           <div
             v-for="ingredient in modal.recipe?.ingredients || []"
             :key="ingredient.id"
+            class="p-3 rounded-lg border border-primaryColor/10 bg-base-100"
           >
-            <div class="flex items-center justify-between">
-              <span class="font-medium">{{ ingredient.ingredient_name }}</span>
-              <span class="font-medium text-primaryColor"
-                >{{ ingredient.quantity_required }}
-                {{ ingredient.unit_of_measure }}</span
-              >
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="font-medium">{{ ingredient.ingredient_name }}</div>
+                <div
+                  class="text-xs text-base-content/60"
+                  v-if="ingredient.preparation_notes"
+                >
+                  • {{ ingredient.preparation_notes }}
+                </div>
+              </div>
+
+              <div class="text-right">
+                <div class="text-sm">
+                  Required:
+                  <span class="font-semibold text-primaryColor">
+                    {{ formatQuantity(ingredient.quantity_required) }}
+                    {{
+                      ingredient.unit_of_measure || ingredient.unit || 'units'
+                    }}
+                  </span>
+                </div>
+                <div class="text-xs mt-1">
+                  <span>
+                    In stock:
+                    <span class="font-semibold">
+                      {{
+                        formatQuantity(
+                          getStockForIngredient(ingredient).quantityInStock
+                        )
+                      }}
+                      {{ getStockForIngredient(ingredient).unit }}
+                    </span>
+                  </span>
+                </div>
+              </div>
             </div>
-            <div class="text-sm text-base-content/60">
-              <span v-if="ingredient.preparation_notes">
-                • {{ ingredient.preparation_notes }}
+
+            <div class="mt-2 flex items-center justify-between">
+              <div class="text-xs text-base-content/70">
+                Cost per
+                {{ ingredient.unit_of_measure || ingredient.unit || 'unit' }}:
+                ₱{{ formatCurrency(ingredient.cost_per_unit) }}
+              </div>
+              <div
+                class="badge text-xs"
+                :class="{
+                  'badge-success border-none text-success bg-success/20 badge-xs':
+                    getStockForIngredient(ingredient).quantityInStock >=
+                    Number(ingredient.quantity_required || 0),
+                  'badge-warning border-none text-warning bg-warning/20 badge-xs':
+                    getStockForIngredient(ingredient).quantityInStock > 0 &&
+                    getStockForIngredient(ingredient).quantityInStock <
+                      Number(ingredient.quantity_required || 0),
+                  'badge-error border-none text-error bg-error/20 badge-xs':
+                    getStockForIngredient(ingredient).quantityInStock <= 0,
+                }"
+              >
+                {{
+                  getStockForIngredient(ingredient).quantityInStock >=
+                  Number(ingredient.quantity_required || 0)
+                    ? 'Sufficient'
+                    : getStockForIngredient(ingredient).quantityInStock <= 0
+                      ? 'Out of stock'
+                      : 'Insufficient'
+                }}
+              </div>
+            </div>
+
+            <div
+              v-if="
+                getStockForIngredient(ingredient).quantityInStock <
+                Number(ingredient.quantity_required || 0)
+              "
+              class="mt-2 text-xs text-warning"
+            >
+              Short by
+              <span class="font-semibold">
+                {{
+                  formatQuantity(
+                    Number(ingredient.quantity_required || 0) -
+                      getStockForIngredient(ingredient).quantityInStock
+                  )
+                }}
+                {{ getStockForIngredient(ingredient).unit }}
               </span>
             </div>
           </div>
@@ -1932,8 +2194,8 @@
 
         <div class="modal-action">
           <button
-            @click="closeModal"
-            class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none"
+            @click="closeCheckStockModal"
+            class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none btn-sm"
           >
             Close
           </button>
@@ -1954,13 +2216,13 @@
         <div class="modal-action">
           <button
             @click="closeConfirmModal"
-            class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none"
+            class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none btn-sm"
           >
             Cancel
           </button>
           <button
             @click="handleConfirmAction"
-            class="btn bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
+            class="btn bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80 btn-sm"
           >
             Confirm
           </button>

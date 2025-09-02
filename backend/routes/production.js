@@ -584,6 +584,20 @@ router.get("/recipes", async (req, res) => {
   }
 });
 
+// Get deleted recipes
+router.get("/recipes/deleted", async (req, res) => {
+  try {
+    const deleted = await Recipe.getDeleted();
+    res.json({ success: true, data: deleted });
+  } catch (error) {
+    console.error("Error fetching deleted recipes:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch deleted recipes",
+    });
+  }
+});
+
 /**
  * @swagger
  * /api/production/recipes/stats:
@@ -974,6 +988,25 @@ router.delete("/recipes/:id", async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || "Failed to delete recipe",
+    });
+  }
+});
+
+// Restore recipe
+router.patch("/recipes/:id/restore", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const restored = await Recipe.restore(id);
+    res.json({
+      success: true,
+      message: "Recipe restored successfully",
+      data: restored,
+    });
+  } catch (error) {
+    console.error("Error restoring recipe:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to restore recipe",
     });
   }
 });

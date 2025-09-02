@@ -8,6 +8,7 @@ export const useProductionStore = defineStore('production', () => {
   // State
   const productionOrders = ref([]);
   const recipes = ref([]);
+  const deletedRecipes = ref([]);
   const workOrders = ref([]);
   const productionBatches = ref([]);
   const qualityInspections = ref([]);
@@ -281,6 +282,34 @@ export const useProductionStore = defineStore('production', () => {
     }
   };
 
+  const fetchDeletedRecipes = async () => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/production/recipes/deleted`
+      );
+      if (response.data.success) {
+        deletedRecipes.value = response.data.data;
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch deleted recipes'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to fetch deleted recipes';
+      console.error('Error fetching deleted recipes:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const getRecipeById = async (id) => {
     loading.value = true;
     error.value = null;
@@ -351,6 +380,63 @@ export const useProductionStore = defineStore('production', () => {
       error.value =
         err.response?.data?.message || err.message || 'Failed to update recipe';
       console.error('Error updating recipe:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const deleteRecipe = async (id) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.delete(
+        `${API_BASE_URL}/production/recipes/${id}`
+      );
+      if (response.data.success) {
+        // Remove from list without refetch
+        recipes.value = recipes.value.filter((r) => r.id !== id);
+        await fetchRecipeStats();
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to delete recipe');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message || err.message || 'Failed to delete recipe';
+      console.error('Error deleting recipe:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const restoreRecipe = async (id) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.patch(
+        `${API_BASE_URL}/production/recipes/${id}/restore`
+      );
+      if (response.data.success) {
+        // Add back to list then sort by name
+        recipes.value.unshift(response.data.data);
+        recipes.value.sort((a, b) =>
+          a.recipe_name.localeCompare(b.recipe_name)
+        );
+        await fetchRecipeStats();
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to restore recipe');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to restore recipe';
+      console.error('Error restoring recipe:', err);
       throw err;
     } finally {
       loading.value = false;
@@ -686,6 +772,7 @@ export const useProductionStore = defineStore('production', () => {
     // State
     productionOrders,
     recipes,
+    deletedRecipes,
     workOrders,
     productionBatches,
     qualityInspections,
@@ -714,9 +801,12 @@ export const useProductionStore = defineStore('production', () => {
     updateProductionOrderStatus,
     fetchRecipes,
     fetchRecipeStats,
+    fetchDeletedRecipes,
     getRecipeById,
     createRecipe,
     updateRecipe,
+    deleteRecipe,
+    restoreRecipe,
     checkIngredientAvailability,
     fetchWorkOrders,
     updateWorkOrderStatus,

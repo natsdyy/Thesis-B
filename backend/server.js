@@ -28,7 +28,7 @@ const productionRoutes = require("./routes/production");
 const { serve, setup } = require("./config/swagger");
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.BACKEND_PORT || 5000;
 
 // Middleware
 app.use(

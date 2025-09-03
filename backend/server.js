@@ -42,9 +42,10 @@ const envOrigins = rawCorsOrigin
 const defaultAllowedOrigins = [
   "http://localhost:5000", // Localhost backend
   "http://localhost:80", //docker
-  "http://localhost:5173", // Localhost frontend
-  "http://192.168.18.5:5173", // Network frontend
-  "http://192.168.56.1:5173", // Network backend
+  "http://localhost:8080", // Localhost frontend
+  "http://192.168.18.5:8080", // Network frontend
+  "http://192.168.56.1:5000", // Network backend
+  "http://localhost:8080", // Localhost frontend
   "https://countrysides.up.railway.app", // Railway deployment
   "https://*.up.railway.app", // Railway wildcard
 ];

@@ -25,6 +25,8 @@ const inventoryRoutes = require("./routes/inventory");
 const grnRoutes = require("./routes/grn");
 const feedbackRoutes = require("./routes/feedback");
 const productionRoutes = require("./routes/production");
+const menuRoutes = require("./routes/menu");
+const menuAnalyticsRoutes = require("./routes/menuAnalytics");
 const attendanceRoutes = require("./routes/attendance");
 const { serve, setup } = require("./config/swagger");
 
@@ -57,7 +59,7 @@ const corsConfig = {
     // Allow non-browser requests or same-origin (no Origin header)
     if (!origin) return callback(null, true);
 
-    const isLanDevOrigin = /^http:\/\/192\.168\.\d+\.\d+:(5173|80)$/.test(
+    const isLanDevOrigin = /^http:\/\/192\.168\.\d+\.\d+:(8080|80)$/.test(
       origin
     );
 
@@ -74,6 +76,7 @@ const corsConfig = {
 
 app.use(cors(corsConfig));
 app.use(express.json());
+app.use("/uploads", express.static(require("path").join(__dirname, "uploads")));
 
 // API Routes
 app.use("/api/users", userRoutes);
@@ -92,6 +95,8 @@ app.use("/api/inventory", inventoryRoutes);
 app.use("/api/grn", grnRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/production", productionRoutes);
+app.use("/api/menu", menuRoutes);
+app.use("/api/menu/analytics", menuAnalyticsRoutes);
 app.use("/api/attendance", attendanceRoutes);
 
 // Auto-expire job

@@ -23,6 +23,10 @@
     Package,
   } from 'lucide-vue-next';
   import { useProductionStore } from '../../stores/productionStore.js';
+  import {
+    recipeCategories,
+    batchUnits,
+  } from '../../config/productionCategories.js';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
 
@@ -87,16 +91,7 @@
 
   // Constants
   const recipeStatuses = ['Active', 'Inactive', 'Draft'];
-  const batchUnits = ['servings', 'pieces', 'kg', 'liters'];
-
-  // Recipe categories for food dishes (not inventory categories)
-  const recipeCategories = [
-    'Sizzling Plates',
-    'Steaks',
-    'Breakfast',
-    'Sides',
-    'Beverages',
-  ];
+  // imported from shared config
 
   // Helper functions
   const getStatusColor = (status) => {

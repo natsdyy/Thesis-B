@@ -1,5 +1,6 @@
 const express = require("express");
 const User = require("../models/User");
+const jwt = require("jsonwebtoken");
 const router = express.Router();
 
 /**
@@ -108,7 +109,7 @@ router.post("/login", async (req, res) => {
 
     if (!authResult.success) {
       let statusCode;
-      
+
       switch (authResult.code) {
         case "MISSING_CREDENTIALS":
         case "INVALID_EMAIL_FORMAT":
@@ -140,7 +141,23 @@ router.post("/login", async (req, res) => {
     }
 
     // Get user with permissions
-    const userWithPermissions = await User.getWithPermissions(authResult.user.id);
+    const userWithPermissions = await User.getWithPermissions(
+      authResult.user.id
+    );
+
+    // Generate JWT token
+    const token = jwt.sign(
+      {
+        id: userWithPermissions.id,
+        email: userWithPermissions.email,
+        role: userWithPermissions.role,
+        department: userWithPermissions.department,
+      },
+      process.env.JWT_SECRET || "your-secret-key",
+      {
+        expiresIn: "24h",
+      }
+    );
 
     res.json({
       success: true,
@@ -148,15 +165,18 @@ router.post("/login", async (req, res) => {
       code: authResult.code,
       data: {
         user: userWithPermissions,
+        token: token,
       },
     });
   } catch (error) {
     console.error("Login error:", error);
-    
+
     // Handle specific error types
-    if (error.message.includes("Access denied") || 
-        error.message.includes("deactivated") ||
-        error.message.includes("inactive")) {
+    if (
+      error.message.includes("Access denied") ||
+      error.message.includes("deactivated") ||
+      error.message.includes("inactive")
+    ) {
       return res.status(403).json({
         success: false,
         message: error.message,
@@ -174,7 +194,8 @@ router.post("/login", async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: "Authentication service is temporarily unavailable. Please try again.",
+      message:
+        "Authentication service is temporarily unavailable. Please try again.",
       code: "INTERNAL_SERVER_ERROR",
     });
   }
@@ -264,16 +285,20 @@ router.post("/validate-session", async (req, res) => {
       let message;
       switch (roleValidation.code) {
         case "NO_ROLE_ASSIGNED":
-          message = "No role has been assigned to your account. Please contact your administrator.";
+          message =
+            "No role has been assigned to your account. Please contact your administrator.";
           break;
         case "ROLE_DELETED":
-          message = "Your assigned role has been removed. Please contact your administrator for role reassignment.";
+          message =
+            "Your assigned role has been removed. Please contact your administrator for role reassignment.";
           break;
         case "ROLE_DEACTIVATED":
-          message = "Your assigned role has been temporarily deactivated. Please contact your administrator.";
+          message =
+            "Your assigned role has been temporarily deactivated. Please contact your administrator.";
           break;
         case "ROLE_VALIDATION_ERROR":
-          message = "Unable to verify your role permissions. Please try again or contact your administrator.";
+          message =
+            "Unable to verify your role permissions. Please try again or contact your administrator.";
           break;
         default:
           message = `Access denied: ${roleValidation.reason}. Please contact your administrator.`;
@@ -299,7 +324,7 @@ router.post("/validate-session", async (req, res) => {
     });
   } catch (error) {
     console.error("Session validation error:", error);
-    
+
     // Handle specific error types
     if (error.message.includes("Invalid user ID")) {
       return res.status(400).json({
@@ -317,9 +342,11 @@ router.post("/validate-session", async (req, res) => {
       });
     }
 
-    if (error.message.includes("Access denied") || 
-        error.message.includes("deactivated") ||
-        error.message.includes("inactive")) {
+    if (
+      error.message.includes("Access denied") ||
+      error.message.includes("deactivated") ||
+      error.message.includes("inactive")
+    ) {
       return res.status(403).json({
         success: false,
         message: error.message,
@@ -329,7 +356,8 @@ router.post("/validate-session", async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: "Session validation service is temporarily unavailable. Please try again.",
+      message:
+        "Session validation service is temporarily unavailable. Please try again.",
       code: "INTERNAL_SERVER_ERROR",
     });
   }
@@ -410,7 +438,7 @@ router.put("/change-password", async (req, res) => {
     });
   } catch (error) {
     console.error("Change password error:", error);
-    
+
     // Handle validation errors
     if (error.message.includes("validation failed")) {
       return res.status(400).json({
@@ -446,7 +474,8 @@ router.put("/change-password", async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: "Password update service is temporarily unavailable. Please try again.",
+      message:
+        "Password update service is temporarily unavailable. Please try again.",
       code: "INTERNAL_SERVER_ERROR",
     });
   }

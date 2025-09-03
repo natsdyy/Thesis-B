@@ -68,6 +68,7 @@
               <label
                 :for="`dept-collapse-${department}`"
                 class="collapse-title px-2 py-3 cursor-pointer hover:bg-white/10 rounded-lg transition-colors duration-200 flex items-center justify-between min-h-0"
+                style="position: relative; z-index: 1"
               >
                 <div class="flex items-center space-x-3">
                   <component
@@ -77,7 +78,7 @@
                   <span class="text-white font-medium">{{ department }}</span>
                 </div>
                 <ChevronDown
-                  class="w-4 h-4 text-white/60 transition-transform duration-200"
+                  class="w-4 h-4 text-white/60 transition-transform duration-200 chevron-icon"
                 />
               </label>
 
@@ -100,6 +101,7 @@
                         <label
                           :for="`submenu-collapse-${menu.name.replace(/\s+/g, '-')}`"
                           class="collapse-title px-2 py-2 cursor-pointer hover:bg-white/10 rounded-lg transition-colors duration-200 flex items-center justify-between min-h-0"
+                          style="position: relative; z-index: 1"
                         >
                           <div class="flex items-center space-x-3">
                             <component
@@ -111,7 +113,7 @@
                             }}</span>
                           </div>
                           <ChevronDown
-                            class="w-3 h-3 text-white/60 transition-transform duration-200"
+                            class="w-3 h-3 text-white/60 transition-transform duration-200 chevron-icon"
                           />
                         </label>
 
@@ -179,6 +181,7 @@
                     <label
                       :for="`collapse-${menu.name}`"
                       class="collapse-title px-2 py-3 cursor-pointer hover:bg-white/10 rounded-lg transition-colors duration-200 flex items-center justify-between min-h-0"
+                      style="position: relative; z-index: 1"
                     >
                       <div class="flex items-center space-x-3">
                         <component :is="menu.icon" class="w-5 h-5 text-white" />
@@ -187,7 +190,7 @@
                         }}</span>
                       </div>
                       <ChevronDown
-                        class="w-4 h-4 text-white/60 transition-transform duration-200"
+                        class="w-4 h-4 text-white/60 transition-transform duration-200 chevron-icon"
                       />
                     </label>
 
@@ -340,10 +343,10 @@
     background: rgba(255, 255, 255, 0.3);
   }
 
-  /* Collapse functionality */
-  .collapse-toggle:checked ~ .collapse-title .w-4,
-  .collapse-toggle:checked ~ .collapse-title .w-3 {
+  /* Collapse functionality - only rotate chevron icons */
+  .collapse-toggle:checked ~ .collapse-title .chevron-icon {
     transform: rotate(180deg);
+    transform-origin: center;
   }
 
   .collapse-toggle:checked ~ .collapse-content {
@@ -356,5 +359,47 @@
     opacity: 0;
     overflow: hidden;
     transition: all 0.3s ease;
+  }
+
+  /* Ensure icons stay in place during collapse animation */
+  .collapse-title svg:not(.chevron-icon) {
+    flex-shrink: 0;
+    transition: none;
+  }
+
+  /* Prevent layout shift during collapse */
+  .collapse-title {
+    will-change: transform;
+    align-items: center;
+  }
+
+  /* Ensure stable positioning for icons */
+  .collapse-title > div:first-child {
+    display: flex;
+    align-items: center;
+    min-height: 20px;
+    position: relative;
+  }
+
+  /* Fix for Menu Management icon movement */
+  .collapse-title .w-5,
+  .collapse-title .w-4:not(.chevron-icon) {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    transition: none;
+  }
+
+  /* Only rotate the chevron, not the main icon */
+  .chevron-icon {
+    position: static;
+    transform: none;
+    transition: transform 0.3s ease;
+  }
+
+  /* Ensure proper spacing for text */
+  .collapse-title span {
+    margin-left: 28px;
   }
 </style>

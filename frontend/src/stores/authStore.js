@@ -5,6 +5,43 @@ import { apiConfig } from '../config/api.js';
 
 const API_BASE_URL = apiConfig.baseURL;
 
+// Set up axios interceptors for authentication
+const setupAxiosInterceptors = () => {
+  // Request interceptor to add auth token
+  axios.interceptors.request.use(
+    (config) => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    },
+    (error) => {
+      return Promise.reject(error);
+    }
+  );
+
+  // Response interceptor to handle 401 errors
+  axios.interceptors.response.use(
+    (response) => {
+      return response;
+    },
+    (error) => {
+      if (error.response?.status === 401) {
+        // Token is invalid or expired
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('isAuthenticated');
+        window.location.href = '/login';
+      }
+      return Promise.reject(error);
+    }
+  );
+};
+
+// Initialize interceptors
+setupAxiosInterceptors();
+
 export const useAuthStore = defineStore('auth', () => {
   // State
   const user = ref(null);
@@ -35,6 +72,7 @@ export const useAuthStore = defineStore('auth', () => {
 
         // Store in localStorage for persistence
         localStorage.setItem('user', JSON.stringify(response.data.data.user));
+        localStorage.setItem('token', response.data.data.token);
         localStorage.setItem('isAuthenticated', 'true');
 
         return response.data.data.user;

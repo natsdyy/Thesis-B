@@ -20,6 +20,69 @@ export const useProductionStore = defineStore('production', () => {
   const loading = ref(false);
   const error = ref(null);
 
+  // Menu Management State
+  const menus = ref([]);
+  const menuItems = ref([]);
+  const sampleProductions = ref([]);
+  const productionInventory = ref([]);
+  const menuStats = ref({
+    total_menus: 0,
+    active_menus: 0,
+    total_menu_items: 0,
+    available_items: 0,
+    total_categories: 0,
+  });
+  const menuItemStats = ref({
+    total_items: 0,
+    available_items: 0,
+    featured_items: 0,
+    average_price: 0,
+    average_margin: 0,
+    total_categories: 0,
+  });
+  const sampleProductionStats = ref({
+    total_samples: 0,
+    planned_samples: 0,
+    in_progress_samples: 0,
+    completed_samples: 0,
+    failed_samples: 0,
+    average_cost: 0,
+    total_quantity_produced: 0,
+  });
+  const qualityInspectionStats = ref({
+    total_inspections: 0,
+    passed_inspections: 0,
+    failed_inspections: 0,
+    retest_required: 0,
+    approved_for_production: 0,
+    pass_rate: 0,
+    average_taste_score: 0,
+    average_appearance_score: 0,
+    average_texture_score: 0,
+    average_overall_score: 0,
+  });
+  const productionInventoryStats = ref({
+    total_items: 0,
+    total_quantity: 0,
+    average_cost: 0,
+    average_selling_price: 0,
+    average_margin: 0,
+    low_stock_items: 0,
+    total_produced_all_time: 0,
+  });
+
+  // Inventory Integration State
+  const inventoryStats = ref({
+    total_items: 0,
+    total_quantity: 0,
+    low_stock_items: 0,
+    expiring_soon: 0,
+    total_value: 0,
+    average_cost: 0,
+  });
+  const lowStockAlerts = ref([]);
+  const expiringItems = ref([]);
+
   // Dashboard stats
   const dashboardStats = ref({
     total_orders: 0,
@@ -561,38 +624,6 @@ export const useProductionStore = defineStore('production', () => {
     }
   };
 
-  // Quality Control Actions
-  const fetchQualityInspections = async (filters = {}) => {
-    loading.value = true;
-    error.value = null;
-
-    try {
-      const params = new URLSearchParams();
-      Object.keys(filters).forEach((key) => {
-        if (filters[key]) params.append(key, filters[key]);
-      });
-
-      const response = await axios.get(
-        `${API_BASE_URL}/production/quality-inspections?${params}`
-      );
-      if (response.data.success) {
-        qualityInspections.value = response.data.data;
-      } else {
-        throw new Error(
-          response.data.message || 'Failed to fetch quality inspections'
-        );
-      }
-    } catch (err) {
-      error.value =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to fetch quality inspections';
-      console.error('Error fetching quality inspections:', err);
-    } finally {
-      loading.value = false;
-    }
-  };
-
   // Equipment & Maintenance Actions
   const fetchEquipment = async () => {
     loading.value = true;
@@ -769,6 +800,707 @@ export const useProductionStore = defineStore('production', () => {
     loading.value = false;
   };
 
+  // ==================== MENU MANAGEMENT ACTIONS ====================
+
+  // Menu Actions
+  const fetchMenus = async (filters = {}) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const params = new URLSearchParams();
+      Object.keys(filters).forEach((key) => {
+        if (filters[key]) params.append(key, filters[key]);
+      });
+
+      const response = await axios.get(`${API_BASE_URL}/menu/menus?${params}`);
+      if (response.data.success) {
+        menus.value = response.data.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to fetch menus');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message || err.message || 'Failed to fetch menus';
+      console.error('Error fetching menus:', err);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const fetchMenuStats = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/menu/menus/stats`);
+      if (response.data.success) {
+        menuStats.value = response.data.data;
+      }
+    } catch (err) {
+      console.error('Error fetching menu stats:', err);
+    }
+  };
+
+  // Menu Item Actions
+  const fetchMenuItems = async (filters = {}) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const params = new URLSearchParams();
+      Object.keys(filters).forEach((key) => {
+        if (filters[key]) params.append(key, filters[key]);
+      });
+
+      const response = await axios.get(`${API_BASE_URL}/menu/items?${params}`);
+      if (response.data.success) {
+        menuItems.value = response.data.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to fetch menu items');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to fetch menu items';
+      console.error('Error fetching menu items:', err);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const createMenuItem = async (menuItemData) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const isFormData =
+        typeof FormData !== 'undefined' && menuItemData instanceof FormData;
+      const url = isFormData
+        ? `${API_BASE_URL}/menu/items/upload`
+        : `${API_BASE_URL}/menu/items`;
+      const headers = isFormData
+        ? { 'Content-Type': 'multipart/form-data' }
+        : undefined;
+      const response = await axios.post(url, menuItemData, { headers });
+      if (response.data.success) {
+        await fetchMenuItems();
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to create menu item');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to create menu item';
+      console.error('Error creating menu item:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const updateMenuItem = async (id, updateData) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.put(
+        `${API_BASE_URL}/menu/items/${id}`,
+        updateData
+      );
+      if (response.data.success) {
+        await fetchMenuItems();
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to update menu item');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to update menu item';
+      console.error('Error updating menu item:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const approveMenuItemForProduction = async (id) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/menu/items/${id}/approve`
+      );
+      if (response.data.success) {
+        await fetchMenuItems();
+        await fetchProductionInventory();
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to approve menu item');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to approve menu item';
+      console.error('Error approving menu item:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Sample Production Actions
+  const fetchSampleProductions = async (filters = {}) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const params = new URLSearchParams();
+      Object.keys(filters).forEach((key) => {
+        if (filters[key]) params.append(key, filters[key]);
+      });
+
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/sample-production?${params}`
+      );
+      if (response.data.success) {
+        sampleProductions.value = response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch sample productions'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to fetch sample productions';
+      console.error('Error fetching sample productions:', err);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const createSampleProduction = async (sampleData) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/menu/sample-production`,
+        sampleData
+      );
+      if (response.data.success) {
+        await fetchSampleProductions();
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to create sample production'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to create sample production';
+      console.error('Error creating sample production:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const startSampleProduction = async (id) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/menu/sample-production/${id}/start`
+      );
+      if (response.data.success) {
+        await fetchSampleProductions();
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to start sample production'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to start sample production';
+      console.error('Error starting sample production:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const completeSampleProduction = async (
+    id,
+    quantityProduced,
+    productionCost,
+    notes
+  ) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/menu/sample-production/${id}/complete`,
+        {
+          quantity_produced: quantityProduced,
+          production_cost: productionCost,
+          notes,
+        }
+      );
+      if (response.data.success) {
+        await fetchSampleProductions();
+        await fetchQualityInspections();
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to complete sample production'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to complete sample production';
+      console.error('Error completing sample production:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Quality Inspection Actions
+  const fetchQualityInspections = async (filters = {}) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const params = new URLSearchParams();
+      Object.keys(filters).forEach((key) => {
+        if (filters[key]) params.append(key, filters[key]);
+      });
+
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/quality-inspection?${params}`
+      );
+      if (response.data.success) {
+        qualityInspections.value = response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch quality inspections'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to fetch quality inspections';
+      console.error('Error fetching quality inspections:', err);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const createQualityInspection = async (inspectionData) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/menu/quality-inspection`,
+        inspectionData
+      );
+      if (response.data.success) {
+        await fetchQualityInspections();
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to create quality inspection'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to create quality inspection';
+      console.error('Error creating quality inspection:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const approveForProduction = async (id) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/menu/quality-inspection/${id}/approve`
+      );
+      if (response.data.success) {
+        await fetchQualityInspections();
+        await fetchMenuItems();
+        await fetchProductionInventory();
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to approve for production'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to approve for production';
+      console.error('Error approving for production:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const failInspection = async (
+    id,
+    findings,
+    correctiveActions,
+    requiresRetest,
+    retestDate
+  ) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/menu/quality-inspection/${id}/fail`,
+        {
+          findings,
+          corrective_actions: correctiveActions,
+          requires_retest: requiresRetest,
+          retest_date: retestDate,
+        }
+      );
+      if (response.data.success) {
+        await fetchQualityInspections();
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to fail inspection');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to fail inspection';
+      console.error('Error failing inspection:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Production Inventory Actions
+  const fetchProductionInventory = async (filters = {}) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const params = new URLSearchParams();
+      Object.keys(filters).forEach((key) => {
+        if (filters[key]) params.append(key, filters[key]);
+      });
+
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/production-inventory?${params}`
+      );
+      if (response.data.success) {
+        productionInventory.value = response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch production inventory'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to fetch production inventory';
+      console.error('Error fetching production inventory:', err);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const updateInventoryStock = async (id, quantity, notes) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.put(
+        `${API_BASE_URL}/menu/production-inventory/${id}/stock`,
+        {
+          quantity,
+          notes,
+        }
+      );
+      if (response.data.success) {
+        await fetchProductionInventory();
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to update stock');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message || err.message || 'Failed to update stock';
+      console.error('Error updating stock:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const updateInventoryPricing = async (id, sellingPrice) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.put(
+        `${API_BASE_URL}/menu/production-inventory/${id}/pricing`,
+        {
+          selling_price: sellingPrice,
+        }
+      );
+      if (response.data.success) {
+        await fetchProductionInventory();
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to update pricing');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to update pricing';
+      console.error('Error updating pricing:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Statistics Actions
+  const fetchMenuItemStats = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/menu/items/stats`);
+      if (response.data.success) {
+        menuItemStats.value = response.data.data;
+      }
+    } catch (err) {
+      console.error('Error fetching menu item stats:', err);
+    }
+  };
+
+  const fetchSampleProductionStats = async () => {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/sample-production/stats`
+      );
+      if (response.data.success) {
+        sampleProductionStats.value = response.data.data;
+      }
+    } catch (err) {
+      console.error('Error fetching sample production stats:', err);
+    }
+  };
+
+  const fetchQualityInspectionStats = async () => {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/quality-inspection/stats`
+      );
+      if (response.data.success) {
+        qualityInspectionStats.value = response.data.data;
+      }
+    } catch (err) {
+      console.error('Error fetching quality inspection stats:', err);
+    }
+  };
+
+  const fetchProductionInventoryStats = async () => {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/production-inventory/stats`
+      );
+      if (response.data.success) {
+        productionInventoryStats.value = response.data.data;
+      }
+    } catch (err) {
+      console.error('Error fetching production inventory stats:', err);
+    }
+  };
+
+  // Utility Actions
+  const fetchAvailableRecipes = async () => {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/items/available-recipes`
+      );
+      if (response.data.success) {
+        return response.data.data;
+      }
+    } catch (err) {
+      console.error('Error fetching available recipes:', err);
+      return [];
+    }
+  };
+
+  // Get menus by category for hybrid approach
+  const fetchMenusByCategory = async (category) => {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/menus/by-category/${encodeURIComponent(category)}`
+      );
+      if (response.data.success) {
+        return response.data.data;
+      }
+    } catch (err) {
+      console.error('Error fetching menus by category:', err);
+      return [];
+    }
+  };
+
+  // Create new menu for hybrid approach
+  const createMenu = async (menuData) => {
+    try {
+      const response = await axios.post(`${API_BASE_URL}/menu/menus`, menuData);
+      if (response.data.success) {
+        return response.data.data;
+      }
+      throw new Error(response.data.message || 'Failed to create menu');
+    } catch (err) {
+      console.error('Error creating menu:', err);
+      throw err;
+    }
+  };
+
+  const fetchLowStockItems = async () => {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/production-inventory/low-stock`
+      );
+      if (response.data.success) {
+        return response.data.data;
+      }
+    } catch (err) {
+      console.error('Error fetching low stock items:', err);
+      return [];
+    }
+  };
+
+  // Inventory Integration Actions
+  const checkRecipeAvailability = async (recipeId, batchSize = 1) => {
+    try {
+      loading.value = true;
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/inventory/check-recipe-availability`,
+        {
+          params: { recipe_id: recipeId, batch_size: batchSize },
+        }
+      );
+      if (response.data.success) {
+        return response.data.data;
+      }
+    } catch (err) {
+      console.error('Error checking recipe availability:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const checkSampleAvailability = async (sampleId) => {
+    try {
+      loading.value = true;
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/inventory/check-sample-availability/${sampleId}`
+      );
+      if (response.data.success) {
+        return response.data.data;
+      }
+    } catch (err) {
+      console.error('Error checking sample availability:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const fetchInventoryStats = async () => {
+    try {
+      loading.value = true;
+      const response = await axios.get(`${API_BASE_URL}/menu/inventory/stats`);
+      if (response.data.success) {
+        inventoryStats.value = response.data.data;
+        return response.data.data;
+      }
+    } catch (err) {
+      console.error('Error fetching inventory stats:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const fetchLowStockAlerts = async () => {
+    try {
+      loading.value = true;
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/inventory/low-stock-alerts`
+      );
+      if (response.data.success) {
+        lowStockAlerts.value = response.data.data;
+        return response.data.data;
+      }
+    } catch (err) {
+      console.error('Error fetching low stock alerts:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const fetchExpiringItems = async (daysAhead = 30) => {
+    try {
+      loading.value = true;
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/inventory/expiring-soon`,
+        {
+          params: { days_ahead: daysAhead },
+        }
+      );
+      if (response.data.success) {
+        expiringItems.value = response.data.data;
+        return response.data.data;
+      }
+    } catch (err) {
+      console.error('Error fetching expiring items:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   return {
     // State
     productionOrders,
@@ -785,6 +1517,17 @@ export const useProductionStore = defineStore('production', () => {
     error,
     dashboardStats,
     recipeStats,
+
+    // Menu Management State
+    menus,
+    menuItems,
+    sampleProductions,
+    productionInventory,
+    menuStats,
+    menuItemStats,
+    sampleProductionStats,
+    qualityInspectionStats,
+    productionInventoryStats,
 
     // Getters
     activeProductionOrders,
@@ -820,5 +1563,41 @@ export const useProductionStore = defineStore('production', () => {
     fetchProductionMetrics,
     resetError,
     resetStore,
+
+    // Menu Management Actions
+    fetchMenus,
+    fetchMenuStats,
+    fetchMenuItems,
+    createMenuItem,
+    updateMenuItem,
+    approveMenuItemForProduction,
+    fetchSampleProductions,
+    createSampleProduction,
+    startSampleProduction,
+    completeSampleProduction,
+    createQualityInspection,
+    approveForProduction,
+    failInspection,
+    fetchProductionInventory,
+    updateInventoryStock,
+    updateInventoryPricing,
+    fetchMenuItemStats,
+    fetchSampleProductionStats,
+    fetchQualityInspectionStats,
+    fetchProductionInventoryStats,
+    fetchAvailableRecipes,
+    fetchMenusByCategory,
+    createMenu,
+    fetchLowStockItems,
+
+    // Inventory Integration Actions
+    checkRecipeAvailability,
+    checkSampleAvailability,
+    fetchInventoryStats,
+    fetchLowStockAlerts,
+    fetchExpiringItems,
+    inventoryStats,
+    lowStockAlerts,
+    expiringItems,
   };
 });

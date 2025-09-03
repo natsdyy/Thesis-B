@@ -6,10 +6,10 @@ export default [
     meta: { title: 'Production Dashboard' },
   },
   {
-    path: 'planning',
-    name: 'ProductionPlanning',
-    component: () => import('../../views/production/ProductionPlanning.vue'),
-    meta: { title: 'Production Planning' },
+    path: 'menu-creation',
+    name: 'MenuCreation',
+    component: () => import('../../views/production/MenuCreation.vue'),
+    meta: { title: 'Menu Creation' },
   },
   {
     path: 'recipes',
@@ -18,46 +18,22 @@ export default [
     meta: { title: 'Recipe Management' },
   },
   {
-    path: 'work-orders',
-    name: 'WorkOrders',
-    component: () => import('../../views/production/WorkOrders.vue'),
-    meta: { title: 'Work Orders' },
-  },
-  {
-    path: 'quality-control',
-    name: 'QualityControl',
-    component: () => import('../../views/production/QualityControl.vue'),
-    meta: { title: 'Quality Control' },
-  },
-  {
-    path: 'monitoring',
-    name: 'ProductionMonitoring',
-    component: () => import('../../views/production/ProductionMonitoring.vue'),
-    meta: { title: 'Real-time Monitoring' },
-  },
-  {
-    path: 'maintenance',
-    name: 'MaintenanceManagement',
-    component: () => import('../../views/production/MaintenanceManagement.vue'),
-    meta: { title: 'Maintenance Management' },
-  },
-  {
-    path: 'waste-management',
-    name: 'WasteManagement',
-    component: () => import('../../views/production/WasteManagement.vue'),
-    meta: { title: 'Waste Management' },
-  },
-  {
-    path: 'analytics',
-    name: 'ProductionAnalytics',
-    component: () => import('../../views/production/ProductionAnalytics.vue'),
-    meta: { title: 'Analytics & Reporting' },
-  },
-  {
-    path: 'traceability',
-    name: 'TraceabilityCompliance',
+    path: 'sample-planning',
+    name: 'SampleProductionPlanning',
     component: () =>
-      import('../../views/production/TraceabilityCompliance.vue'),
-    meta: { title: 'Traceability & Compliance' },
+      import('../../views/production/SampleProductionPlanning.vue'),
+    meta: { title: 'Sample Production Planning' },
+  },
+  {
+    path: 'quality-inspection',
+    name: 'QualityInspection',
+    component: () => import('../../views/production/QualityInspection.vue'),
+    meta: { title: 'Quality Inspection' },
+  },
+  {
+    path: 'production-inventory',
+    name: 'ProductionInventory',
+    component: () => import('../../views/production/ProductionInventory.vue'),
+    meta: { title: 'Production Inventory' },
   },
 ];

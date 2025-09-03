@@ -25,13 +25,14 @@ const inventoryRoutes = require("./routes/inventory");
 const grnRoutes = require("./routes/grn");
 const feedbackRoutes = require("./routes/feedback");
 const productionRoutes = require("./routes/production");
+const attendanceRoutes = require("./routes/attendance");
 const { serve, setup } = require("./config/swagger");
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.BACKEND_PORT || 5000;
 
 // Middleware
-// Enhanced CORS to allow localhost and LAN dev origins (e.g., http://192.168.x.x:5173)
+// Enhanced CORS to allow localhost, LAN dev origins, and Railway deployment
 const rawCorsOrigin = process.env.CORS_ORIGIN || "";
 const envOrigins = rawCorsOrigin
   .split(",")
@@ -44,6 +45,8 @@ const defaultAllowedOrigins = [
   "http://localhost:5173", // Localhost frontend
   "http://192.168.18.5:5173", // Network frontend
   "http://192.168.56.1:5173", // Network backend
+  "https://countrysides.up.railway.app", // Railway deployment
+  "https://*.up.railway.app", // Railway wildcard
 ];
 
 const allowList = [...defaultAllowedOrigins, ...envOrigins];
@@ -88,6 +91,7 @@ app.use("/api/inventory", inventoryRoutes);
 app.use("/api/grn", grnRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/production", productionRoutes);
+app.use("/api/attendance", attendanceRoutes);
 
 // Auto-expire job
 async function autoExpireJob() {

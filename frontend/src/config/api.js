@@ -5,9 +5,7 @@ const config = {
     timeout: 10000,
   },
   production: {
-    baseURL:
-      import.meta.env.VITE_API_BASE_URL ||
-      'https://your-backend-domain.railway.app/api',
+    baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
     timeout: 15000,
   },
 };

@@ -274,9 +274,8 @@ router.get("/items", authenticateToken, async (req, res) => {
       search: req.query.search,
     };
 
-    console.log("Menu items route called with filters:", filters);
     const menuItems = await MenuItem.getAll(filters);
-    console.log("Menu items returned:", menuItems.length, "items");
+
     res.json({
       success: true,
       data: menuItems,
@@ -609,9 +608,110 @@ router.get("/sample-production", authenticateToken, async (req, res) => {
  *   post:
  *     summary: Create a new sample production
  *     tags: [Sample Production]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - recipe_id
+ *               - menu_item_id
+ *               - batch_size
+ *               - scheduled_date
+ *               - scheduled_time
+ *             properties:
+ *               recipe_id:
+ *                 type: integer
+ *                 description: ID of the recipe to use for sample production
+ *               menu_item_id:
+ *                 type: integer
+ *                 description: ID of the menu item
+ *               batch_size:
+ *                 type: number
+ *                 description: Size of the batch to produce
+ *               batch_unit:
+ *                 type: string
+ *                 description: Unit for the batch size
+ *               scheduled_date:
+ *                 type: string
+ *                 format: date
+ *                 description: Scheduled date for production
+ *               scheduled_time:
+ *                 type: string
+ *                 format: time
+ *                 description: Scheduled time for production
+ *               assigned_to:
+ *                 type: integer
+ *                 description: User ID assigned to the production
+ *               production_notes:
+ *                 type: string
+ *                 description: Additional notes for production
+ *               priority:
+ *                 type: string
+ *                 enum: [Low, Normal, High, Urgent]
+ *                 description: Priority level
+ *                 default: Normal
+ *               category:
+ *                 type: string
+ *                 description: Category of the sample production
+ *               estimated_cost:
+ *                 type: number
+ *                 description: Estimated cost for production
+ *     responses:
+ *       201:
+ *         description: Sample production created successfully
+ *       400:
+ *         description: Validation error - missing required fields
+ *       500:
+ *         description: Server error
  */
 router.post("/sample-production", authenticateToken, async (req, res) => {
   try {
+    // Validate required fields
+    const {
+      recipe_id,
+      menu_item_id,
+      batch_size,
+      scheduled_date,
+      scheduled_time,
+    } = req.body;
+
+    if (!recipe_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Recipe ID is required",
+      });
+    }
+
+    if (!menu_item_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Menu item ID is required",
+      });
+    }
+
+    if (!batch_size) {
+      return res.status(400).json({
+        success: false,
+        message: "Batch size is required",
+      });
+    }
+
+    if (!scheduled_date) {
+      return res.status(400).json({
+        success: false,
+        message: "Scheduled date is required",
+      });
+    }
+
+    if (!scheduled_time) {
+      return res.status(400).json({
+        success: false,
+        message: "Scheduled time is required",
+      });
+    }
+
     const sampleData = {
       ...req.body,
       created_by: req.user.id,
@@ -767,6 +867,7 @@ router.post(
         req.params.id,
         req.user.id
       );
+
       res.json({
         success: true,
         data: sampleProduction,
@@ -781,6 +882,66 @@ router.post(
     }
   }
 );
+
+/**
+ * @swagger
+ * /api/menu/sample-production/{id}:
+ *   delete:
+ *     summary: Delete sample production
+ *     tags: [Sample Production]
+ */
+router.delete("/sample-production/:id", authenticateToken, async (req, res) => {
+  try {
+    const sampleProduction = await SampleProduction.delete(
+      req.params.id,
+      req.user.id
+    );
+    res.json({
+      success: true,
+      data: sampleProduction,
+      message: "Sample production deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting sample production:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to delete sample production",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/menu/sample-production/{id}:
+ *   put:
+ *     summary: Update sample production
+ *     tags: [Sample Production]
+ */
+router.put("/sample-production/:id", authenticateToken, async (req, res) => {
+  try {
+    const sampleData = {
+      ...req.body,
+      // Note: updated_by column doesn't exist in sample_productions table
+    };
+
+    const sampleProduction = await SampleProduction.update(
+      req.params.id,
+      sampleData
+    );
+
+    res.json({
+      success: true,
+      data: sampleProduction,
+      message: "Sample production updated successfully",
+    });
+  } catch (error) {
+    console.error("Error updating sample production:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update sample production",
+    });
+  }
+});
 
 // ==================== QUALITY INSPECTION ROUTES ====================
 

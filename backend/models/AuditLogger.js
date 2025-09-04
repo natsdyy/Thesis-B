@@ -30,17 +30,19 @@ class AuditLogger {
           ? JSON.stringify(action_details)
           : action_details;
 
-      const [logEntry] = await db("menu_item_audit_log").insert({
-        menu_item_id,
-        sample_production_id,
-        quality_inspection_id,
-        user_id,
-        action_type,
-        action_details: detailsJson,
-        notes,
-        created_at: new Date(),
-        updated_at: new Date(),
-      });
+      const logEntry = await db("menu_item_audit_log")
+        .insert({
+          menu_item_id,
+          sample_production_id,
+          quality_inspection_id,
+          user_id,
+          action_type,
+          action_details: detailsJson,
+          notes,
+          created_at: new Date(),
+          updated_at: new Date(),
+        })
+        .returning("id");
 
       return logEntry;
     } catch (error) {

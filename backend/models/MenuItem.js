@@ -5,7 +5,6 @@ class MenuItem {
   // Get all menu items with recipe details
   static async getAll(filters = {}) {
     try {
-      console.log("MenuItem.getAll called with filters:", filters);
       let query = db("menu_items as mi")
         .select(
           "mi.*",
@@ -40,14 +39,11 @@ class MenuItem {
 
       // Handle deleted items filter
       if (filters.include_deleted === true) {
-        console.log("Including both deleted and non-deleted items");
         // Include both deleted and non-deleted items
       } else if (filters.only_deleted === true) {
-        console.log("Filtering for only deleted items");
         // Only show deleted items
         query = query.whereNotNull("mi.deleted_at");
       } else {
-        console.log("Filtering for non-deleted items only");
         // Default: exclude deleted items
         query = query.whereNull("mi.deleted_at");
       }

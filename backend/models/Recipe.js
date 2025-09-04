@@ -310,9 +310,8 @@ class Recipe {
 
           // Get current inventory for this ingredient
           const currentStock = await db("inventory_items as ii")
-            .join("inventory_item_types as iit", "ii.item_type_id", "iit.id")
             .select(db.raw("SUM(ii.quantity) as total_available"))
-            .where("iit.id", ingredient.inventory_item_type_id)
+            .where("ii.id", ingredient.inventory_item_id)
             .where("ii.quantity", ">", 0)
             .first();
 

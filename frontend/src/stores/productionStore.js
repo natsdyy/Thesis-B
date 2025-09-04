@@ -1044,6 +1044,25 @@ export const useProductionStore = defineStore('production', () => {
     }
   };
 
+  const getSampleProductionById = async (id) => {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/sample-production/${id}`,
+        { timeout: 10000 } // 10 second timeout for complex operations
+      );
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch sample production'
+        );
+      }
+    } catch (err) {
+      console.error('Error fetching sample production by ID:', err);
+      throw err;
+    }
+  };
+
   const createSampleProduction = async (sampleData) => {
     loading.value = true;
     error.value = null;
@@ -1051,7 +1070,8 @@ export const useProductionStore = defineStore('production', () => {
     try {
       const response = await axios.post(
         `${API_BASE_URL}/menu/sample-production`,
-        sampleData
+        sampleData,
+        { timeout: 10000 } // 10 second timeout for complex operations
       );
       if (response.data.success) {
         await fetchSampleProductions();
@@ -1079,7 +1099,9 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/menu/sample-production/${id}/start`
+        `${API_BASE_URL}/menu/sample-production/${id}/start`,
+        {},
+        { timeout: 10000 } // 10 second timeout for complex operations
       );
       if (response.data.success) {
         await fetchSampleProductions();
@@ -1117,7 +1139,8 @@ export const useProductionStore = defineStore('production', () => {
           quantity_produced: quantityProduced,
           production_cost: productionCost,
           notes,
-        }
+        },
+        { timeout: 10000 } // 10 second timeout for complex operations
       );
       if (response.data.success) {
         await fetchSampleProductions();
@@ -1134,6 +1157,97 @@ export const useProductionStore = defineStore('production', () => {
         err.message ||
         'Failed to complete sample production';
       console.error('Error completing sample production:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const updateSampleProduction = async (id, updateData) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.put(
+        `${API_BASE_URL}/menu/sample-production/${id}`,
+        updateData,
+        { timeout: 10000 } // 10 second timeout for complex operations
+      );
+      if (response.data.success) {
+        // Small delay to ensure database transaction is committed
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        await fetchSampleProductions();
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to update sample production'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to update sample production';
+      console.error('Error updating sample production:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const cancelSampleProduction = async (id) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/menu/sample-production/${id}/cancel`,
+        {},
+        { timeout: 10000 } // 10 second timeout for complex operations
+      );
+      if (response.data.success) {
+        await fetchSampleProductions();
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to cancel sample production'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to cancel sample production';
+      console.error('Error cancelling sample production:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const deleteSampleProduction = async (id) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.delete(
+        `${API_BASE_URL}/menu/sample-production/${id}`,
+        { timeout: 10000 } // 10 second timeout for complex operations
+      );
+      if (response.data.success) {
+        await fetchSampleProductions();
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to delete sample production'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to delete sample production';
+      console.error('Error deleting sample production:', err);
       throw err;
     } finally {
       loading.value = false;
@@ -1633,9 +1747,13 @@ export const useProductionStore = defineStore('production', () => {
     deleteMenuItem,
     restoreMenuItem,
     fetchSampleProductions,
+    getSampleProductionById,
     createSampleProduction,
+    updateSampleProduction,
     startSampleProduction,
     completeSampleProduction,
+    cancelSampleProduction,
+    deleteSampleProduction,
     createQualityInspection,
     approveForProduction,
     failInspection,

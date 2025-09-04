@@ -9,20 +9,43 @@ class InventoryService {
    */
   static async checkRecipeIngredientsAvailability(recipeId, batchSize = 1) {
     try {
+      // Validate input parameters
+      if (!recipeId) {
+        throw new Error(
+          "Recipe ID is required for ingredient availability check"
+        );
+      }
+
+      if (batchSize <= 0) {
+        throw new Error("Batch size must be greater than 0");
+      }
+
+      // Get recipe information to determine standard batch size
+      const recipe = await db("recipes")
+        .select("batch_size", "batch_unit")
+        .where("id", recipeId)
+        .first();
+
+      if (!recipe) {
+        throw new Error("Recipe not found");
+      }
+
+      // Calculate scaling factor based on recipe's standard batch size
+      // This matches the frontend calculation logic
+      const standardBatchSize = recipe.batch_size || 1;
+      const scalingFactor = batchSize / standardBatchSize;
+
       // Get recipe ingredients with inventory links
       const ingredients = await db("recipe_ingredients as ri")
         .leftJoin("inventory_items as ii", "ri.inventory_item_id", "ii.id")
-        .leftJoin(
-          "inventory_item_types as iit",
-          "ri.inventory_item_type_id",
-          "iit.id"
-        )
+        .leftJoin("inventory_item_types as iit", "ii.item_type_id", "iit.id")
         .leftJoin("inventory_categories as ic", "iit.category_id", "ic.id")
         .select(
           "ri.*",
           "ii.quantity as available_stock",
           "ii.item_name as inventory_item_name",
-          "ii.unit_of_measure as inventory_unit",
+          "ii.unit_cost as inventory_unit_cost",
+          "iit.unit_of_measure as inventory_unit",
           "ii.expiry_date",
           "ii.status as inventory_status",
           "iit.name as item_type_name",
@@ -38,31 +61,24 @@ class InventoryService {
         insufficient_ingredients: [],
         sufficient_for_production: true,
         ingredients: [],
+        scaling_factor: scalingFactor,
+        standard_batch_size: standardBatchSize,
+        sample_batch_size: batchSize,
       };
 
       for (const ingredient of ingredients) {
-        // Calculate required quantity for the batch
-        const requiredQuantity = ingredient.quantity_required * batchSize;
+        // Calculate required quantity using scaling factor (matches frontend logic)
+        const requiredQuantity = ingredient.quantity_required * scalingFactor;
 
         // Get available stock (only count 'available' status items)
         let availableQuantity = 0;
 
-        if (ingredient.inventory_item_id) {
-          // If directly linked to inventory item
-          if (ingredient.inventory_status === "available") {
-            availableQuantity = ingredient.available_stock || 0;
-          }
-        } else if (ingredient.inventory_item_type_id) {
-          // If linked to item type, sum all available items of that type
-          const typeItems = await db("inventory_items")
-            .where("item_type_id", ingredient.inventory_item_type_id)
-            .where("status", "available")
-            .whereNull("deleted_at");
-
-          availableQuantity = typeItems.reduce(
-            (sum, item) => sum + item.quantity,
-            0
-          );
+        // Get available stock from the joined inventory item
+        if (
+          ingredient.inventory_item_id &&
+          ingredient.inventory_status === "available"
+        ) {
+          availableQuantity = parseFloat(ingredient.available_stock || 0);
         }
 
         const isAvailable = availableQuantity >= requiredQuantity;
@@ -78,6 +94,7 @@ class InventoryService {
             ingredient.unit ||
             ingredient.inventory_unit ||
             ingredient.item_type_unit,
+          cost_per_unit: ingredient.inventory_unit_cost || 0,
           is_available: isAvailable,
           linked_to_inventory: !!ingredient.inventory_item_id,
           linked_to_item_type: !!ingredient.inventory_item_type_id,

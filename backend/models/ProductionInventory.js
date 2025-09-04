@@ -99,11 +99,12 @@ class ProductionInventory {
             "ri.*",
             "ii.item_name as ingredient_name",
             "ii.quantity as available_stock",
-            "ii.unit_of_measure",
+            "iit.unit_of_measure",
             "ii.unit_cost",
             "ii.expiry_date"
           )
           .leftJoin("inventory_items as ii", "ri.inventory_item_id", "ii.id")
+          .leftJoin("inventory_item_types as iit", "ii.item_type_id", "iit.id")
           .where("ri.recipe_id", inventoryItem.recipe_id)
           .orderBy("ri.sequence_order", "asc");
 

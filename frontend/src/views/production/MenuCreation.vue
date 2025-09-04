@@ -92,6 +92,17 @@
   const menuStats = computed(() => productionStore.menuStats);
   const menuItemStats = computed(() => productionStore.menuItemStats);
 
+  // Dynamic categories from menus
+  const availableCategories = computed(() => {
+    const categories = new Set();
+    menus.value.forEach((menu) => {
+      if (menu.category && menu.category.trim()) {
+        categories.add(menu.category.trim());
+      }
+    });
+    return Array.from(categories).sort();
+  });
+
   // Get selected recipe for form display
   const selectedRecipe = computed(() => {
     if (!menuItemForm.value.recipe_id) return null;
@@ -1189,13 +1200,13 @@
             <div class="flex gap-2">
               <select v-model="categoryFilter" class="select select-bordered">
                 <option value="">All Categories</option>
-                <option value="Breakfast">Breakfast</option>
-                <option value="Lunch">Lunch</option>
-                <option value="Dinner">Dinner</option>
-                <option value="Sizzling Plates">Sizzling Plates</option>
-                <option value="Steaks">Steaks</option>
-                <option value="Sides">Sides</option>
-                <option value="Beverages">Beverages</option>
+                <option
+                  v-for="category in availableCategories"
+                  :key="category"
+                  :value="category"
+                >
+                  {{ category }}
+                </option>
               </select>
               <select v-model="statusFilter" class="select select-bordered">
                 <option value="">All Status</option>
@@ -1487,8 +1498,12 @@
                 required
               >
                 <option value="">Select Category</option>
-                <option v-for="cat in recipeCategories" :key="cat" :value="cat">
-                  {{ cat }}
+                <option
+                  v-for="category in availableCategories"
+                  :key="category"
+                  :value="category"
+                >
+                  {{ category }}
                 </option>
               </select>
             </div>

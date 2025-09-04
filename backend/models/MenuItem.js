@@ -35,19 +35,30 @@ class MenuItem {
           "sp.id",
           "qi.sample_production_id"
         )
-        .whereNull("mi.deleted_at")
-        .whereNull("m.deleted_at")
-        .groupBy(
-          "mi.id",
-          "m.menu_name",
-          "m.category",
-          "r.recipe_name",
-          "r.category",
-          "r.cost_per_batch",
-          "r.batch_size",
-          "r.batch_unit",
-          "u.name"
-        );
+        .whereNull("m.deleted_at");
+
+      // Handle deleted items filter
+      if (filters.include_deleted === true) {
+        // Include both deleted and non-deleted items
+      } else if (filters.only_deleted === true) {
+        // Only show deleted items
+        query = query.whereNotNull("mi.deleted_at");
+      } else {
+        // Default: exclude deleted items
+        query = query.whereNull("mi.deleted_at");
+      }
+
+      query = query.groupBy(
+        "mi.id",
+        "m.menu_name",
+        "m.category",
+        "r.recipe_name",
+        "r.category",
+        "r.cost_per_batch",
+        "r.batch_size",
+        "r.batch_unit",
+        "u.name"
+      );
 
       // Apply filters
       if (filters.menu_id) {
@@ -679,6 +690,45 @@ class MenuItem {
     } catch (error) {
       console.error("Error deleting menu item:", error);
       throw new Error("Failed to delete menu item");
+    }
+  }
+
+  // Restore soft deleted menu item
+  static async restore(id, userId) {
+    try {
+      // Get current item data before restoration for audit logging
+      const currentItem = await db("menu_items")
+        .select("*")
+        .where("id", id)
+        .whereNotNull("deleted_at")
+        .first();
+
+      if (!currentItem) {
+        throw new Error("Menu item not found or not deleted");
+      }
+
+      await db("menu_items").where("id", id).update({
+        deleted_at: null,
+        updated_at: db.fn.now(),
+      });
+
+      // Log the restoration action
+      await AuditLogger.log({
+        menu_item_id: id,
+        user_id: userId,
+        action_type: "RESTORED",
+        action_details: {
+          menu_item_name: currentItem.menu_item_name,
+          item_code: currentItem.item_code,
+          recipe_name: currentItem.recipe_name,
+        },
+        notes: `Menu item "${currentItem.menu_item_name}" restored`,
+      });
+
+      return true;
+    } catch (error) {
+      console.error("Error restoring menu item:", error);
+      throw new Error("Failed to restore menu item");
     }
   }
 

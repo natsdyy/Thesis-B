@@ -25,6 +25,7 @@
   import { recipeCategories } from '../../config/productionCategories.js';
   import { useAuthStore } from '../../stores/authStore.js';
   import { useUserStore } from '../../stores/userStore.js';
+  import { apiConfig } from '../../config/api.js';
 
   const productionStore = useProductionStore();
   const authStore = useAuthStore();
@@ -38,8 +39,10 @@
   const showCreateModal = ref(false);
   const confirmModal = ref({
     show: false,
-    title: 'Create Menu Item',
+    type: '',
+    title: '',
     message: '',
+    item: null,
     onConfirm: null,
   });
   const showDetailsModal = ref(false);
@@ -116,11 +119,7 @@
       );
     }
 
-    if (statusFilter.value) {
-      filtered = filtered.filter(
-        (item) => item.is_available === (statusFilter.value === 'available')
-      );
-    }
+    // Status filtering is now handled in the backend
 
     return filtered.sort((a, b) => a.item_name.localeCompare(b.item_name));
   });
@@ -169,17 +168,42 @@
       // serving_size: 1, // Always 1 for customer portion
       serving_unit: 'serving',
       tags: '',
+      isEditing: false, // Reset editing flags
+      editingItemId: null,
     };
     menuAssignmentOption.value = 'auto'; // Reset to default
     availableMenus.value = []; // Clear available menus
   };
 
   // Methods
+  const fetchMenuItems = async () => {
+    const filters = {};
+
+    // Handle status filtering including deleted items
+    if (statusFilter.value === 'deleted') {
+      filters.only_deleted = true;
+    } else if (statusFilter.value === 'available') {
+      filters.is_available = true;
+    } else if (statusFilter.value === 'draft') {
+      filters.is_available = false;
+    }
+
+    // Add other filters
+    if (searchQuery.value) {
+      filters.search = searchQuery.value;
+    }
+    if (categoryFilter.value) {
+      filters.category = categoryFilter.value;
+    }
+
+    await productionStore.fetchMenuItems(filters);
+  };
+
   const fetchData = async () => {
     try {
       await Promise.all([
         productionStore.fetchMenus(),
-        productionStore.fetchMenuItems(),
+        fetchMenuItems(),
         productionStore.fetchAvailableRecipes(),
         productionStore.fetchMenuStats(),
         productionStore.fetchMenuItemStats(),
@@ -190,7 +214,10 @@
   };
 
   const openCreateModal = async () => {
-    resetForm();
+    // Only reset form if we're not in edit mode
+    if (!menuItemForm.value.isEditing) {
+      resetForm();
+    }
     // Ensure recipes are loaded so the Select Recipe is populated
     try {
       const list = await productionStore.fetchAvailableRecipes();
@@ -209,6 +236,7 @@
   const closeCreateModal = () => {
     showCreateModal.value = false;
     document.getElementById('menu_item_modal')?.close();
+    // Reset form and clear editing flags
     resetForm();
     if (imagePreviewUrl.value) {
       URL.revokeObjectURL(imagePreviewUrl.value);
@@ -227,7 +255,102 @@
     selectedMenuItem.value = null;
   };
 
-  const createMenuItem = async () => {
+  const openEditModal = async (item) => {
+    // Reset form first
+    resetForm();
+
+    // Populate form with item data
+    let imageUrl = item.image_url || '';
+    // Convert relative image path to full URL if needed
+    if (imageUrl && imageUrl.startsWith('/uploads/')) {
+      // Construct full URL for images (remove /api from base URL)
+      const baseUrl = apiConfig.baseURL.replace('/api', '');
+      imageUrl = `${baseUrl}${imageUrl}`;
+      console.log('Constructed image URL:', imageUrl); // Debug log
+    }
+
+    menuItemForm.value = {
+      item_name: item.item_name || item.menu_item_name || '',
+      recipe_id: item.recipe_id || '',
+      menu_id: item.menu_id || null,
+      description: item.description || '',
+      category: item.category || '',
+      selling_price: item.selling_price || null,
+      preparation_time_minutes: item.preparation_time_minutes || null,
+      serving_unit: item.serving_unit || 'serving',
+      tags: item.tags || '',
+      image_url: imageUrl,
+    };
+
+    // Set editing mode
+    menuItemForm.value.isEditing = true;
+    menuItemForm.value.editingItemId = item.id;
+
+    // Open the create modal (which will now act as edit modal)
+    await openCreateModal();
+  };
+
+  // Confirmation modal methods
+  const openConfirmModal = (type, item) => {
+    const configs = {
+      create: {
+        title: 'Create Menu Item',
+        message: `Are you sure you want to create menu item "${item?.menu_item_name || 'Untitled'}"?`,
+        onConfirm: () => saveMenuItem(),
+      },
+      update: {
+        title: 'Update Menu Item',
+        message: `Are you sure you want to update "${item?.menu_item_name}"?`,
+        onConfirm: () => saveMenuItem(),
+      },
+      delete: {
+        title: 'Delete Menu Item',
+        message: `Are you sure you want to delete "${item?.menu_item_name}"? This action cannot be undone.`,
+        onConfirm: () => handleDeleteMenuItem(item),
+      },
+      restore: {
+        title: 'Restore Menu Item',
+        message: `Are you sure you want to restore "${item?.menu_item_name}"? It will be available again.`,
+        onConfirm: () => handleRestoreMenuItem(item),
+      },
+    };
+
+    const config = configs[type];
+    confirmModal.value = {
+      show: true,
+      type,
+      title: config.title,
+      message: config.message,
+      item,
+      onConfirm: config.onConfirm,
+    };
+    document.getElementById('confirmation_modal')?.showModal();
+  };
+
+  const closeConfirmModal = () => {
+    document.getElementById('confirmation_modal')?.close();
+    confirmModal.value = {
+      show: false,
+      type: '',
+      title: '',
+      message: '',
+      item: null,
+      onConfirm: null,
+    };
+  };
+
+  const handleConfirmAction = async () => {
+    if (confirmModal.value.onConfirm) {
+      try {
+        await confirmModal.value.onConfirm();
+        closeConfirmModal();
+      } catch (error) {
+        console.error('Confirmation action failed:', error);
+      }
+    }
+  };
+
+  const saveMenuItem = async () => {
     try {
       const formData = { ...menuItemForm.value };
 
@@ -311,13 +434,25 @@
         payload = fd;
       }
 
-      await productionStore.createMenuItem(payload);
+      // Check if we're editing or creating
+      if (formData.isEditing && formData.editingItemId) {
+        // Update existing item
+        await productionStore.updateMenuItem(formData.editingItemId, payload);
+        showToast('success', 'Menu item updated successfully');
+      } else {
+        // Create new item
+        await productionStore.createMenuItem(payload);
+        showToast('success', 'Menu item created successfully');
+      }
+
       closeCreateModal();
       closeConfirmModal(); // Close the confirmation modal as well
-      showToast('success', 'Menu item created successfully');
+      await fetchMenuItems(); // Refresh the list
     } catch (error) {
       // Handle specific error messages from backend
-      let errorMessage = 'Failed to create menu item';
+      let errorMessage = formData.isEditing
+        ? 'Failed to update menu item'
+        : 'Failed to create menu item';
 
       if (error.message) {
         if (error.message.includes('Recipe not found')) {
@@ -346,29 +481,6 @@
     }
   };
 
-  // Confirmation modal helpers (align with Recipe Management UX)
-  const openConfirmModal = () => {
-    confirmModal.value = {
-      show: true,
-      title: 'Create Menu Item',
-      message: `Are you sure you want to create menu item "${menuItemForm.value.item_name || 'Untitled'}"?`,
-      onConfirm: async () => {
-        await createMenuItem();
-      },
-    };
-    document.getElementById('menu_item_confirmation_modal')?.showModal();
-  };
-
-  const closeConfirmModal = () => {
-    document.getElementById('menu_item_confirmation_modal')?.close();
-    confirmModal.value = {
-      show: false,
-      title: '',
-      message: '',
-      onConfirm: null,
-    };
-  };
-
   const showCreateConfirmation = () => {
     if (!menuItemForm.value.recipe_id) {
       showToast('error', 'Please select a recipe');
@@ -386,7 +498,12 @@
       showToast('error', 'Please enter selling price');
       return;
     }
-    openConfirmModal();
+
+    // Open confirmation modal for creating/updating menu item
+    const modalType = menuItemForm.value.isEditing ? 'update' : 'create';
+    openConfirmModal(modalType, {
+      menu_item_name: menuItemForm.value.item_name,
+    });
   };
 
   const approveMenuItem = async (itemId) => {
@@ -406,20 +523,39 @@
     }
   };
 
-  const deleteMenuItem = async (itemId) => {
-    if (
-      !confirm(
-        'Are you sure you want to delete this menu item? This action cannot be undone.'
-      )
-    ) {
-      return;
-    }
-
+  const handleDeleteMenuItem = async (item) => {
     try {
-      // Note: We'll need to add deleteMenuItem to the store
+      await productionStore.deleteMenuItem(item.id, authStore.user?.id);
       showToast('success', 'Menu item deleted successfully');
+      // Refresh the menu items list
+      await fetchMenuItems();
     } catch (error) {
       showToast('error', error.message || 'Failed to delete menu item');
+    }
+  };
+
+  const handleRestoreMenuItem = async (item) => {
+    try {
+      await productionStore.restoreMenuItem(item.id, authStore.user?.id);
+      showToast('success', 'Menu item restored successfully');
+      // Refresh the menu items list
+      await fetchMenuItems();
+    } catch (error) {
+      showToast('error', error.message || 'Failed to restore menu item');
+    }
+  };
+
+  const handleUpdateMenuItem = async (item) => {
+    try {
+      const updateData = { ...menuItemForm.value };
+      await productionStore.updateMenuItem(item.id, updateData);
+      showToast('success', 'Menu item updated successfully');
+      // Refresh the menu items list
+      await fetchMenuItems();
+      // Close the modal
+      closeCreateModal();
+    } catch (error) {
+      showToast('error', error.message || 'Failed to update menu item');
     }
   };
 
@@ -513,6 +649,20 @@
     if (imageInput.value) {
       imageInput.value.value = '';
     }
+  };
+
+  const clearExistingImage = () => {
+    // Clear the existing image URL from the form
+    menuItemForm.value.image_url = '';
+  };
+
+  const handleImageError = (event) => {
+    console.error('Image failed to load:', event.target.src);
+    // You could set a fallback image or show an error message here
+  };
+
+  const handleImageLoad = (event) => {
+    console.log('Image loaded successfully:', event.target.src);
   };
 
   // Keep Menu Category (menu_id) in sync with Food Category
@@ -941,6 +1091,7 @@
                 <option value="">All Status</option>
                 <option value="available">Available</option>
                 <option value="draft">Draft</option>
+                <option value="deleted">Deleted</option>
               </select>
             </div>
           </div>
@@ -1017,6 +1168,30 @@
                       <CheckCircle class="w-4 h-4" />
                     </button>
                     <button
+                      @click.stop="openConfirmModal('delete', item)"
+                      v-if="!item.deleted_at && statusFilter !== 'deleted'"
+                      class="btn btn-ghost btn-xs text-red-500 hover:bg-red-50"
+                      title="Delete Menu Item"
+                    >
+                      <Trash2 class="w-4 h-4" />
+                    </button>
+                    <button
+                      @click.stop="openConfirmModal('restore', item)"
+                      v-if="statusFilter === 'deleted' && item.deleted_at"
+                      class="btn btn-ghost btn-xs text-blue-500 hover:bg-blue-50"
+                      title="Restore Menu Item"
+                    >
+                      <RefreshCcw class="w-4 h-4" />
+                    </button>
+                    <button
+                      @click.stop="openEditModal(item)"
+                      v-if="!item.deleted_at && statusFilter !== 'deleted'"
+                      class="btn btn-ghost btn-xs text-orange-500 hover:bg-orange-50"
+                      title="Edit Menu Item"
+                    >
+                      <Edit class="w-4 h-4" />
+                    </button>
+                    <button
                       @click.stop="openDetailsModal(item)"
                       class="btn btn-ghost btn-xs text-primaryColor hover:bg-primaryColor/10"
                       title="View Details"
@@ -1089,7 +1264,9 @@
         <h3
           class="font-bold text-xl text-primaryColor mb-4 border-b border-black/10 pb-3"
         >
-          Create New Menu Item
+          {{
+            menuItemForm.isEditing ? 'Edit Menu Item' : 'Create New Menu Item'
+          }}
         </h3>
 
         <form @submit.prevent="showCreateConfirmation" class="space-y-6">
@@ -1375,13 +1552,12 @@
               <label class="label mb-1">
                 <span
                   class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Cost per Serving</span
+                  >Estimated cost per Serving</span
                 >
               </label>
               <input
                 :value="formatCurrency(recipeCostInfo.costPerServing)"
                 class="input input-sm sm:input-md input-bordered w-full bg-gray-50 text-black/70"
-                readonly
               />
             </div>
           </div>
@@ -1392,7 +1568,8 @@
             v-if="selectedRecipe"
           >
             <h4 class="font-semibold text-blue-800 mb-3">
-              🏭 Production Planning Helper
+              <font-awesome-icon icon="fa-solid fa-gears" />
+              Production Planning Helper
             </h4>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
               <div class="bg-white p-3 rounded-lg border border-blue-200">
@@ -1416,8 +1593,9 @@
               </div>
             </div>
             <div class="mt-3 text-xs text-blue-700">
-              💡 <strong>Production Tip:</strong> To produce 100 servings,
-              you'll need
+              <font-awesome-icon icon="fa-solid fa-lightbulb" />
+              <strong>Production Tip:</strong> To produce 100 servings, you'll
+              need
               {{ Math.ceil(100 / (selectedRecipe.batch_size || 1)) }} batches of
               {{ selectedRecipe.batch_size }}
               {{ selectedRecipe.batch_unit }} each.
@@ -1466,8 +1644,14 @@
               <span
                 class="label-text text-black/70 font-medium text-sm sm:text-base"
                 >Menu Image
-                <span class="text-black/40 text-xs">(optional)</span></span
-              >
+                <span class="text-black/40 text-xs">
+                  {{
+                    menuItemForm.isEditing && menuItemForm.image_url
+                      ? '(replace current image)'
+                      : '(optional)'
+                  }}
+                </span>
+              </span>
             </label>
             <input
               type="file"
@@ -1476,20 +1660,48 @@
               @change="handleImageChange"
               ref="imageInput"
             />
+            <!-- Image Preview for new uploads -->
             <div v-if="imagePreviewUrl" class="mt-3 relative inline-block">
               <img
                 :src="imagePreviewUrl"
-                alt="preview"
+                alt="New image preview"
                 class="w-40 h-40 object-cover rounded-lg border border-black/10"
               />
               <button
                 type="button"
                 class="btn btn-xs btn-circle absolute -top-2 -right-2 bg-error text-white border-none hover:bg-error/80"
                 @click="clearSelectedImage"
-                title="Remove image"
+                title="Remove new image"
               >
                 ×
               </button>
+            </div>
+
+            <!-- Existing Image Preview for editing -->
+            <div
+              v-else-if="menuItemForm.image_url && menuItemForm.isEditing"
+              class="mt-3 relative inline-block"
+            >
+              <img
+                :src="menuItemForm.image_url"
+                alt="Current image"
+                class="w-40 h-40 object-cover rounded-lg border border-black/10"
+                @error="handleImageError"
+                @load="handleImageLoad"
+              />
+              <button
+                type="button"
+                class="btn btn-xs btn-circle absolute -top-2 -right-2 bg-warning text-white border-none hover:bg-warning/80"
+                @click="clearExistingImage"
+                title="Remove current image"
+              >
+                ×
+              </button>
+              <div
+                class="absolute bottom-1 left-1 bg-black/70 text-white text-xs px-2 py-1 rounded"
+              >
+                Current Image
+              </div>
             </div>
             <p class="text-xs text-black/50 mt-2">
               Max 5MB. JPG or PNG recommended.
@@ -1513,7 +1725,9 @@
                 class="loading loading-spinner loading-sm mr-2"
                 v-if="loading"
               ></span>
-              Create Menu Item
+              {{
+                menuItemForm.isEditing ? 'Update Menu Item' : 'Create Menu Item'
+              }}
             </button>
           </div>
         </form>
@@ -1523,8 +1737,8 @@
       </form>
     </dialog>
 
-    <!-- Confirmation Modal for creating menu item -->
-    <dialog id="menu_item_confirmation_modal" class="modal">
+    <!-- Confirmation Modal -->
+    <dialog id="confirmation_modal" class="modal">
       <div class="modal-box max-w-sm">
         <h3 class="font-bold text-lg mb-4 text-primaryColor">
           {{ confirmModal.title }}
@@ -1538,7 +1752,7 @@
             Cancel
           </button>
           <button
-            @click="confirmModal.onConfirm && confirmModal.onConfirm()"
+            @click="handleConfirmAction"
             class="btn bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80 btn-sm"
           >
             Confirm

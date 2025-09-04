@@ -530,7 +530,7 @@ router.post("/items/:id/approve", authenticateToken, async (req, res) => {
  */
 router.delete("/items/:id", authenticateToken, async (req, res) => {
   try {
-    await MenuItem.delete(req.params.id);
+    await MenuItem.delete(req.params.id, req.user.id);
     res.json({
       success: true,
       message: "Menu item deleted successfully",
@@ -540,6 +540,29 @@ router.delete("/items/:id", authenticateToken, async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || "Failed to delete menu item",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/menu/items/{id}/restore:
+ *   post:
+ *     summary: Restore a soft-deleted menu item
+ *     tags: [Menu Items]
+ */
+router.post("/items/:id/restore", authenticateToken, async (req, res) => {
+  try {
+    await MenuItem.restore(req.params.id, req.user.id);
+    res.json({
+      success: true,
+      message: "Menu item restored successfully",
+    });
+  } catch (error) {
+    console.error("Error restoring menu item:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to restore menu item",
     });
   }
 });

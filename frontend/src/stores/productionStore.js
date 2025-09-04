@@ -953,6 +953,58 @@ export const useProductionStore = defineStore('production', () => {
     }
   };
 
+  const deleteMenuItem = async (id, userId) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.delete(`${API_BASE_URL}/menu/items/${id}`, {
+        data: { userId }, // Pass userId for audit logging
+      });
+      if (response.data.success) {
+        await fetchMenuItems();
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to delete menu item');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to delete menu item';
+      console.error('Error deleting menu item:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const restoreMenuItem = async (id, userId) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/menu/items/${id}/restore`
+      );
+      if (response.data.success) {
+        await fetchMenuItems();
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to restore menu item');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to restore menu item';
+      console.error('Error restoring menu item:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   // Sample Production Actions
   const fetchSampleProductions = async (filters = {}) => {
     loading.value = true;
@@ -1571,6 +1623,8 @@ export const useProductionStore = defineStore('production', () => {
     createMenuItem,
     updateMenuItem,
     approveMenuItemForProduction,
+    deleteMenuItem,
+    restoreMenuItem,
     fetchSampleProductions,
     createSampleProduction,
     startSampleProduction,

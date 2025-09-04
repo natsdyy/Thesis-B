@@ -2025,18 +2025,6 @@
                 ₱{{ modal.recipe?.total_estimated_cost || 0 }}
               </span>
             </div>
-            <div class="flex justify-between items-center mt-2">
-              <span class="text-base-content/70 text-sm"
-                >Cost per
-                {{ modal.recipe?.batch_unit?.slice(0, -1) || 'unit' }}:</span
-              >
-              <span class="font-medium">
-                ₱{{
-                  (modal.recipe?.total_estimated_cost || 0) /
-                  (modal.recipe?.batch_size || 1)
-                }}
-              </span>
-            </div>
           </div>
 
           <div v-if="modal.recipe?.instructions">

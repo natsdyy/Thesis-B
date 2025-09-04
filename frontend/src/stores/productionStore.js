@@ -850,9 +850,16 @@ export const useProductionStore = defineStore('production', () => {
         if (filters[key]) params.append(key, filters[key]);
       });
 
-      const response = await axios.get(`${API_BASE_URL}/menu/items?${params}`);
+      const url = `${API_BASE_URL}/menu/items?${params}`;
+      console.log('Fetching menu items from URL:', url);
+      console.log('Filters applied:', filters);
+
+      const response = await axios.get(url);
+      console.log('API Response:', response.data);
+
       if (response.data.success) {
         menuItems.value = response.data.data;
+        console.log('Menu items loaded:', menuItems.value.length, 'items');
       } else {
         throw new Error(response.data.message || 'Failed to fetch menu items');
       }

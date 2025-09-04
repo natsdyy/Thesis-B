@@ -5,6 +5,7 @@ class MenuItem {
   // Get all menu items with recipe details
   static async getAll(filters = {}) {
     try {
+      console.log("MenuItem.getAll called with filters:", filters);
       let query = db("menu_items as mi")
         .select(
           "mi.*",
@@ -39,11 +40,14 @@ class MenuItem {
 
       // Handle deleted items filter
       if (filters.include_deleted === true) {
+        console.log("Including both deleted and non-deleted items");
         // Include both deleted and non-deleted items
       } else if (filters.only_deleted === true) {
+        console.log("Filtering for only deleted items");
         // Only show deleted items
         query = query.whereNotNull("mi.deleted_at");
       } else {
+        console.log("Filtering for non-deleted items only");
         // Default: exclude deleted items
         query = query.whereNull("mi.deleted_at");
       }
@@ -567,10 +571,50 @@ class MenuItem {
       // Get current item data before update for audit logging
       const currentItem = await this.getById(id);
 
+      // Filter and map updateData to valid database columns
+      const filteredData = {};
+      const allowedFields = [
+        "menu_item_name",
+        "recipe_id",
+        "menu_id",
+        "description",
+        "category",
+        "selling_price",
+        "preparation_time_minutes",
+        "serving_unit",
+        "tags",
+        "image_url",
+      ];
+
+      // Map incoming fields to database columns
+      if (updateData.menu_item_name !== undefined)
+        filteredData.menu_item_name = updateData.menu_item_name;
+      if (updateData.recipe_id !== undefined)
+        filteredData.recipe_id = updateData.recipe_id;
+      if (updateData.menu_id !== undefined && updateData.menu_id !== null)
+        filteredData.menu_id = updateData.menu_id;
+      // Ensure menu_id is always present (preserve existing if not being updated)
+      if (!filteredData.menu_id && currentItem.menu_id)
+        filteredData.menu_id = currentItem.menu_id;
+      if (updateData.description !== undefined)
+        filteredData.description = updateData.description;
+      if (updateData.category !== undefined)
+        filteredData.category = updateData.category;
+      if (updateData.selling_price !== undefined)
+        filteredData.selling_price = updateData.selling_price;
+      if (updateData.preparation_time_minutes !== undefined)
+        filteredData.preparation_time_minutes =
+          updateData.preparation_time_minutes;
+      if (updateData.serving_unit !== undefined)
+        filteredData.serving_unit = updateData.serving_unit;
+      if (updateData.tags !== undefined) filteredData.tags = updateData.tags;
+      if (updateData.image_url !== undefined)
+        filteredData.image_url = updateData.image_url;
+
       await db("menu_items")
         .where("id", id)
         .update({
-          ...updateData,
+          ...filteredData,
           updated_at: db.fn.now(),
         });
 
@@ -599,6 +643,20 @@ class MenuItem {
   // Approve menu item for production (after quality inspection)
   static async approveForProduction(id, userId) {
     try {
+      // First check if item exists and is not deleted
+      const itemExists = await db("menu_items")
+        .where("id", id)
+        .whereNull("deleted_at")
+        .first();
+
+      if (!itemExists) {
+        throw new Error("Menu item not found or has been deleted");
+      }
+
+      if (itemExists.is_available) {
+        throw new Error("Menu item is already approved for production");
+      }
+
       // Get current item data before update for audit logging
       const currentItem = await this.getById(id);
 

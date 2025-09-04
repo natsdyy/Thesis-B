@@ -269,11 +269,14 @@ router.get("/items", authenticateToken, async (req, res) => {
           : req.query.is_available === "false"
             ? false
             : undefined,
+      only_deleted: req.query.only_deleted === "true" ? true : undefined,
       category: req.query.category,
       search: req.query.search,
     };
 
+    console.log("Menu items route called with filters:", filters);
     const menuItems = await MenuItem.getAll(filters);
+    console.log("Menu items returned:", menuItems.length, "items");
     res.json({
       success: true,
       data: menuItems,

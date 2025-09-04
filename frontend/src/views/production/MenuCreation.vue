@@ -183,6 +183,7 @@
     // Handle status filtering including deleted items
     if (statusFilter.value === 'deleted') {
       filters.only_deleted = true;
+      console.log('Setting only_deleted filter to true');
     } else if (statusFilter.value === 'available') {
       filters.is_available = true;
     } else if (statusFilter.value === 'draft') {
@@ -197,6 +198,7 @@
       filters.category = categoryFilter.value;
     }
 
+    console.log('Fetching menu items with filters:', filters);
     await productionStore.fetchMenuItems(filters);
   };
 
@@ -437,8 +439,24 @@
 
       // Check if we're editing or creating
       if (formData.isEditing && formData.editingItemId) {
-        // Update existing item
-        await productionStore.updateMenuItem(formData.editingItemId, payload);
+        // For update, use filtered data with proper field mapping
+        const updateData = {
+          menu_item_name: formData.item_name,
+          recipe_id: formData.recipe_id,
+          menu_id: formData.menu_id,
+          description: formData.description,
+          category: formData.category,
+          selling_price: formData.selling_price,
+          preparation_time_minutes: formData.preparation_time_minutes,
+          serving_unit: formData.serving_unit,
+          tags: formData.tags,
+          image_url: formData.image_url,
+        };
+
+        await productionStore.updateMenuItem(
+          formData.editingItemId,
+          updateData
+        );
         showToast('success', 'Menu item updated successfully');
       } else {
         // Create new item
@@ -526,11 +544,19 @@
 
   const handleDeleteMenuItem = async (item) => {
     try {
+      console.log('Deleting item:', item.id);
       await productionStore.deleteMenuItem(item.id, authStore.user?.id);
       showToast('success', 'Menu item deleted successfully');
+
+      // Small delay to ensure backend operation completes
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
       // Refresh the menu items list
+      console.log('Refreshing menu items after delete');
       await fetchMenuItems();
+      console.log('Menu items refreshed');
     } catch (error) {
+      console.error('Delete error:', error);
       showToast('error', error.message || 'Failed to delete menu item');
     }
   };
@@ -548,7 +574,40 @@
 
   const handleUpdateMenuItem = async (item) => {
     try {
-      const updateData = { ...menuItemForm.value };
+      // Filter and map form data to valid database fields
+      // Preserve original values if form fields are empty/null
+      const formData = menuItemForm.value;
+      const updateData = {
+        menu_item_name:
+          formData.item_name || item.item_name || item.menu_item_name,
+        recipe_id: formData.recipe_id || item.recipe_id,
+        menu_id:
+          formData.menu_id !== null && formData.menu_id !== undefined
+            ? formData.menu_id
+            : item.menu_id, // Preserve original menu_id if not explicitly set
+        description:
+          formData.description !== undefined
+            ? formData.description
+            : item.description,
+        category: formData.category || item.category,
+        selling_price:
+          formData.selling_price !== null &&
+          formData.selling_price !== undefined
+            ? formData.selling_price
+            : item.selling_price,
+        preparation_time_minutes:
+          formData.preparation_time_minutes !== null &&
+          formData.preparation_time_minutes !== undefined
+            ? formData.preparation_time_minutes
+            : item.preparation_time_minutes,
+        serving_unit: formData.serving_unit || item.serving_unit,
+        tags: formData.tags !== undefined ? formData.tags : item.tags,
+        image_url:
+          formData.image_url !== undefined
+            ? formData.image_url
+            : item.image_url,
+      };
+
       await productionStore.updateMenuItem(item.id, updateData);
       showToast('success', 'Menu item updated successfully');
       // Refresh the menu items list
@@ -752,6 +811,7 @@
   // Watch for data changes
   watch([searchQuery, categoryFilter, statusFilter], () => {
     currentPage.value = 1; // Reset to first page when filters change
+    fetchMenuItems();
   });
 </script>
 
@@ -1048,7 +1108,7 @@
                             </li>
 
                             <!-- Approve (only for draft items) -->
-                            <li v-if="!item.is_available">
+                            <li v-if="!item.is_available && !item.deleted_at">
                               <button
                                 @click.stop.prevent="approveMenuItem(item.id)"
                                 @mousedown.stop
@@ -1242,7 +1302,7 @@
                       </li>
 
                       <!-- Approve (only for draft items) -->
-                      <li v-if="!item.is_available">
+                      <li v-if="!item.is_available && !item.deleted_at">
                         <button
                           @click.stop.prevent="approveMenuItem(item.id)"
                           @mousedown.stop
@@ -1664,7 +1724,7 @@
               <font-awesome-icon icon="fa-solid fa-gears" />
               Production Planning Helper
             </h4>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div class="bg-white p-3 rounded-lg border border-blue-200">
                 <div class="font-medium text-blue-800">Batch Size</div>
                 <div class="text-lg font-bold text-blue-600">
@@ -1676,12 +1736,6 @@
                 <div class="font-medium text-blue-800">Cost per Batch</div>
                 <div class="text-lg font-bold text-blue-600">
                   {{ formatCurrency(selectedRecipe.cost_per_batch || 0) }}
-                </div>
-              </div>
-              <div class="bg-white p-3 rounded-lg border border-blue-200">
-                <div class="font-medium text-blue-800">Cost per Serving</div>
-                <div class="text-lg font-bold text-blue-600">
-                  {{ formatCurrency(recipeCostInfo.costPerServing || 0) }}
                 </div>
               </div>
             </div>

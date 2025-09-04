@@ -924,7 +924,7 @@
           </div>
 
           <!-- Quick Stats Cards -->
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
             <div
               class="card bg-gradient-to-br from-base-100 to-base-50 border border-gray-200 hover:shadow-xl duration-300"
             >
@@ -981,32 +981,6 @@
                   }}
                 </div>
                 <div class="text-sm text-gray-600">Awaiting approval</div>
-              </div>
-            </div>
-
-            <div
-              class="card bg-gradient-to-br from-base-100 to-base-50 border border-gray-200 hover:shadow-xl duration-300"
-            >
-              <div class="card-body p-6">
-                <div class="flex items-center gap-3 mb-4">
-                  <div
-                    class="w-12 h-12 rounded-full flex items-center justify-center bg-info/10"
-                  >
-                    <PhilippinePeso class="w-6 h-6 text-info" />
-                  </div>
-                  <div>
-                    <h3 class="card-title text-lg font-bold text-primaryColor">
-                      Avg. Price
-                    </h3>
-                    <p class="text-xs text-gray-500">Menu item pricing</p>
-                  </div>
-                </div>
-                <div class="text-3xl font-bold text-info mb-2">
-                  {{ formatCurrency(menuItemStats.average_price || 0) }}
-                </div>
-                <div class="text-sm text-gray-600">
-                  {{ menuItemStats.average_margin || 0 }}% avg margin
-                </div>
               </div>
             </div>
           </div>

@@ -11,9 +11,10 @@ class GoodsReceiptNote {
     return `GRN${year}${month}${day}-${timestamp}`;
   }
 
-  // Get all GRNs with optional filters and stats
+  // Get all GRNs with optional filters and stats (optimized)
   static async getAll(filters = {}) {
     try {
+      // Main query with basic GRN data and related info
       let query = db("goods_receipt_notes as grn")
         .leftJoin("purchase_orders as po", "grn.purchase_order_id", "po.id")
         .leftJoin("suppliers as s", "grn.supplier_id", "s.id")
@@ -35,10 +36,56 @@ class GoodsReceiptNote {
 
       const grns = await query.orderBy("grn.created_at", "desc");
 
-      for (let grn of grns) {
-        grn.items = await this.getItems(grn.id);
-        grn.item_count = grn.items.length;
+      if (grns.length === 0) {
+        // Calculate stats if requested even with no GRNs
+        if (filters.include_stats) {
+          const stats = await this.getStats();
+          return { grns, stats };
+        }
+        return grns;
       }
+
+      const grnIds = grns.map((grn) => grn.id);
+
+      // Batch fetch all items for all GRNs in one query
+      const allItems = await db("grn_items as gi")
+        .leftJoin(
+          "purchase_order_items as poi",
+          "gi.purchase_order_item_id",
+          "poi.id"
+        )
+        .leftJoin("inventory_item_types as it", "gi.item_type_id", "it.id")
+        .leftJoin("inventory_categories as ic", "it.category_id", "ic.id")
+        .leftJoin("users as u", "gi.inspected_by", "u.id")
+        .select(
+          "gi.*",
+          "poi.item_name as po_item_name",
+          "poi.quantity as po_quantity",
+          "poi.unit as po_unit",
+          "it.name as item_type_name",
+          "it.unit_of_measure as item_unit_of_measure",
+          "ic.name as category_name",
+          "ic.description as category_description",
+          "u.name as inspector_name"
+        )
+        .whereIn("gi.grn_id", grnIds)
+        .orderBy("gi.grn_id")
+        .orderBy("gi.id");
+
+      // Group items by GRN ID
+      const itemsByGRN = {};
+      allItems.forEach((item) => {
+        if (!itemsByGRN[item.grn_id]) {
+          itemsByGRN[item.grn_id] = [];
+        }
+        itemsByGRN[item.grn_id].push(item);
+      });
+
+      // Combine all data
+      grns.forEach((grn) => {
+        grn.items = itemsByGRN[grn.id] || [];
+        grn.item_count = grn.items.length;
+      });
 
       // Calculate stats if requested
       if (filters.include_stats) {

@@ -1093,6 +1093,9 @@
   const formatBatchNumber = (batchNumber) => {
     if (!batchNumber || batchNumber === 'N/A') return 'N/A';
 
+    // Debug: Log the actual batch number to see the format
+    console.log('Formatting batch number:', batchNumber);
+
     // Handle PO-generated batch numbers: PO-1756625418014-ITEM-32-6-20250831
     if (batchNumber.startsWith('PO-')) {
       const parts = batchNumber.split('-');
@@ -1109,19 +1112,20 @@
       }
     }
 
-    // Handle GRN-generated batch numbers: GRN-32-6-20250831-0828
+    // Handle GRN-generated batch numbers: GRN-26-26-6-20250905-1430
     if (batchNumber.startsWith('GRN-')) {
       const parts = batchNumber.split('-');
-      if (parts.length >= 5) {
-        const itemType = parts[1];
-        const date = parts[3];
+      if (parts.length >= 6) {
+        const grnId = parts[1];
+        const itemType = parts[2];
+        const date = parts[4];
 
-        // Extract year, month, and day from date: 20250831 -> 25-08-31
+        // Extract year, month, and day from date: 20250905 -> 25-09-05
         const year = date.substring(2, 4); // Last 2 digits of year
         const month = date.substring(4, 6);
         const day = date.substring(6, 8);
 
-        return `Batch #${itemType}-${year}${month}${day}`;
+        return `Batch #${grnId}-${year}${month}${day}`;
       }
     }
 

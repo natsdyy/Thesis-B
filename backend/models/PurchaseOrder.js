@@ -3,9 +3,10 @@ const Supplier = require("./Supplier");
 const Inventory = require("./Inventory");
 
 class PurchaseOrder {
-  // Get all purchase orders with related data
+  // Get all purchase orders with related data (optimized)
   static async getAll(includeDeleted = false) {
     try {
+      // Main query with basic PO data and supplier info
       let query = db("purchase_orders as po")
         .leftJoin("suppliers as s", "po.supplier_id", "s.id")
         .leftJoin("supply_requests as sr", "po.supply_request_id", "sr.id")
@@ -24,34 +25,87 @@ class PurchaseOrder {
 
       const purchaseOrders = await query.orderBy("po.created_at", "desc");
 
-      // Get items and GRN count for each purchase order
-      for (let po of purchaseOrders) {
-        po.items = await this.getItems(po.id);
+      if (purchaseOrders.length === 0) {
+        return purchaseOrders;
+      }
+
+      const poIds = purchaseOrders.map((po) => po.id);
+
+      // Batch fetch all items for all POs in one query
+      const allItems = await db("purchase_order_items as poi")
+        .leftJoin(
+          "supply_request_items as sri",
+          "poi.supply_request_item_id",
+          "sri.id"
+        )
+        .select("poi.*", "sri.item_number as original_item_number")
+        .whereIn("poi.purchase_order_id", poIds)
+        .orderBy("poi.purchase_order_id")
+        .orderBy("poi.id");
+
+      // Group items by PO ID
+      const itemsByPO = {};
+      allItems.forEach((item) => {
+        if (!itemsByPO[item.purchase_order_id]) {
+          itemsByPO[item.purchase_order_id] = [];
+        }
+        itemsByPO[item.purchase_order_id].push(item);
+      });
+
+      // Batch fetch GRN counts and statuses in one query
+      const grnData = await db("goods_receipt_notes")
+        .whereIn("purchase_order_id", poIds)
+        .whereNull("deleted_at")
+        .select("purchase_order_id", "status", "created_at")
+        .orderBy("purchase_order_id")
+        .orderBy("created_at", "desc");
+
+      // Group GRN data by PO ID
+      const grnByPO = {};
+      grnData.forEach((grn) => {
+        if (!grnByPO[grn.purchase_order_id]) {
+          grnByPO[grn.purchase_order_id] = [];
+        }
+        grnByPO[grn.purchase_order_id].push(grn);
+      });
+
+      // Batch fetch pending returns counts in one query
+      const pendingReturnsData = await db("item_returns as ir")
+        .leftJoin(
+          "purchase_order_items as poi",
+          "ir.purchase_order_item_id",
+          "poi.id"
+        )
+        .whereIn("poi.purchase_order_id", poIds)
+        .where("ir.status", "pending")
+        .select("poi.purchase_order_id")
+        .count("* as count")
+        .groupBy("poi.purchase_order_id");
+
+      // Group pending returns by PO ID
+      const pendingReturnsByPO = {};
+      pendingReturnsData.forEach((returnData) => {
+        pendingReturnsByPO[returnData.purchase_order_id] = parseInt(
+          returnData.count
+        );
+      });
+
+      // Combine all data
+      purchaseOrders.forEach((po) => {
+        // Add items
+        po.items = itemsByPO[po.id] || [];
         po.item_count = po.items.length;
 
-        // Add GRN count
-        const grnCount = await db("goods_receipt_notes")
-          .where("purchase_order_id", po.id)
-          .whereNull("deleted_at")
-          .count("* as count")
-          .first();
-        po.grn_count = parseInt(grnCount.count);
+        // Add GRN data
+        const grns = grnByPO[po.id] || [];
+        po.grn_count = grns.length;
+        po.grn_statuses = grns.map((grn) => grn.status);
+        po.latest_grn_status = grns.length > 0 ? grns[0].status : null;
 
-        const grnInfo = await db("goods_receipt_notes")
-          .where("purchase_order_id", po.id)
-          .whereNull("deleted_at")
-          .select("status")
-          .orderBy("created_at", "desc");
-
-        po.grn_count = grnInfo.length;
-        po.grn_statuses = grnInfo.map((grn) => grn.status);
-        po.latest_grn_status = grnInfo.length > 0 ? grnInfo[0].status : null;
-
-        // Check for pending returns
-        const pendingReturnsCount = await this.getPendingReturnsCount(po.id);
-        po.pending_returns_count = pendingReturnsCount;
-        po.has_pending_returns = pendingReturnsCount > 0;
-      }
+        // Add pending returns data
+        po.pending_returns_count = pendingReturnsByPO[po.id] || 0;
+        po.has_pending_returns = po.pending_returns_count > 0;
+      });
 
       return purchaseOrders;
     } catch (error) {

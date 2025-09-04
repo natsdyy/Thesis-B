@@ -20,6 +20,7 @@
     X,
     ChevronDown,
     ChevronUp,
+    EllipsisVertical,
   } from 'lucide-vue-next';
   import { useProductionStore } from '../../stores/productionStore.js';
   import { recipeCategories } from '../../config/productionCategories.js';
@@ -48,7 +49,7 @@
   const showDetailsModal = ref(false);
   const selectedMenuItem = ref(null);
   const currentPage = ref(1);
-  const itemsPerPage = ref(12);
+  const itemsPerPage = ref(10);
   const expandedItems = ref(new Set());
 
   // Form data
@@ -1031,6 +1032,8 @@
                     <tr
                       v-for="item in paginatedMenuItems.slice(0, 5)"
                       :key="item.id"
+                      class="hover:bg-base-200 cursor-pointer"
+                      @click="openDetailsModal(item)"
                     >
                       <td class="font-medium">{{ item.item_name }}</td>
                       <td>{{ item.category }}</td>
@@ -1044,12 +1047,85 @@
                         </span>
                       </td>
                       <td>
-                        <button
-                          @click="openDetailsModal(item)"
-                          class="btn btn-ghost btn-xs text-primaryColor"
-                        >
-                          <Eye class="w-4 h-4" />
-                        </button>
+                        <!-- Actions Dropdown -->
+                        <div class="dropdown dropdown-end">
+                          <button
+                            class="btn btn-ghost btn-xs"
+                            tabindex="0"
+                            @click.stop
+                          >
+                            <EllipsisVertical class="w-4 h-4" />
+                          </button>
+                          <ul
+                            class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-44 z-50"
+                            tabindex="0"
+                            @click.stop
+                          >
+                            <!-- View Details -->
+                            <li>
+                              <button
+                                @click.stop.prevent="openDetailsModal(item)"
+                                @mousedown.stop
+                                class="text-sm"
+                              >
+                                <Eye class="w-3 h-3 mr-2" />
+                                View Details
+                              </button>
+                            </li>
+
+                            <!-- Approve (only for draft items) -->
+                            <li v-if="!item.is_available">
+                              <button
+                                @click.stop.prevent="approveMenuItem(item.id)"
+                                @mousedown.stop
+                                class="text-sm text-success"
+                              >
+                                <CheckCircle class="w-3 h-3 mr-2" />
+                                Approve
+                              </button>
+                            </li>
+
+                            <!-- Edit (only for non-deleted items) -->
+                            <li v-if="!item.deleted_at">
+                              <button
+                                @click.stop.prevent="openEditModal(item)"
+                                @mousedown.stop
+                                class="text-sm text-orange-500"
+                              >
+                                <Edit class="w-3 h-3 mr-2" />
+                                Edit
+                              </button>
+                            </li>
+
+                            <!-- Delete (only for non-deleted items) -->
+                            <li v-if="!item.deleted_at">
+                              <button
+                                @click.stop.prevent="
+                                  openConfirmModal('delete', item)
+                                "
+                                @mousedown.stop
+                                class="text-sm text-red-500"
+                              >
+                                <Trash2 class="w-3 h-3 mr-2" />
+                                Delete
+                              </button>
+                            </li>
+
+                            <!-- Restore (only for deleted items) -->
+                            <li v-if="item.deleted_at">
+                              <button
+                                @click.stop.prevent="
+                                  openConfirmModal('restore', item)
+                                "
+                                @mousedown.stop
+                                class="text-sm text-blue-500"
+                              >
+                                <RefreshCcw class="w-3 h-3 mr-2" />
+                                Restore
+                              </button>
+                            </li>
+                          </ul>
+                        </div>
                       </td>
                     </tr>
                   </tbody>
@@ -1158,46 +1234,89 @@
                       </span>
                     </div>
                   </div>
-                  <div class="flex gap-1">
+                  <!-- Actions Dropdown -->
+                  <div
+                    class="dropdown dropdown-end"
+                    @click.stop
+                    @mousedown.stop
+                    @mouseup.stop
+                  >
                     <button
-                      @click.stop="approveMenuItem(item.id)"
-                      v-if="!item.is_available"
-                      class="btn btn-ghost btn-xs text-success hover:bg-success/10"
-                      title="Approve for Production"
+                      class="btn btn-ghost btn-xs"
+                      tabindex="0"
+                      @click.stop.prevent
+                      @mousedown.stop
+                      @mouseup.stop
                     >
-                      <CheckCircle class="w-4 h-4" />
+                      <EllipsisVertical class="w-4 h-4" />
                     </button>
-                    <button
-                      @click.stop="openConfirmModal('delete', item)"
-                      v-if="!item.deleted_at && statusFilter !== 'deleted'"
-                      class="btn btn-ghost btn-xs text-red-500 hover:bg-red-50"
-                      title="Delete Menu Item"
+                    <ul
+                      class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-48 z-50"
+                      tabindex="0"
+                      @click.stop
                     >
-                      <Trash2 class="w-4 h-4" />
-                    </button>
-                    <button
-                      @click.stop="openConfirmModal('restore', item)"
-                      v-if="statusFilter === 'deleted' && item.deleted_at"
-                      class="btn btn-ghost btn-xs text-blue-500 hover:bg-blue-50"
-                      title="Restore Menu Item"
-                    >
-                      <RefreshCcw class="w-4 h-4" />
-                    </button>
-                    <button
-                      @click.stop="openEditModal(item)"
-                      v-if="!item.deleted_at && statusFilter !== 'deleted'"
-                      class="btn btn-ghost btn-xs text-orange-500 hover:bg-orange-50"
-                      title="Edit Menu Item"
-                    >
-                      <Edit class="w-4 h-4" />
-                    </button>
-                    <button
-                      @click.stop="openDetailsModal(item)"
-                      class="btn btn-ghost btn-xs text-primaryColor hover:bg-primaryColor/10"
-                      title="View Details"
-                    >
-                      <Eye class="w-4 h-4" />
-                    </button>
+                      <!-- View Details -->
+                      <li>
+                        <button
+                          @click.stop.prevent="openDetailsModal(item)"
+                          @mousedown.stop
+                          class="text-sm"
+                        >
+                          <Eye class="w-3 h-3 mr-2" />
+                          View Details
+                        </button>
+                      </li>
+
+                      <!-- Approve (only for draft items) -->
+                      <li v-if="!item.is_available">
+                        <button
+                          @click.stop.prevent="approveMenuItem(item.id)"
+                          @mousedown.stop
+                          class="text-sm text-success"
+                        >
+                          <CheckCircle class="w-3 h-3 mr-2" />
+                          Approve for Production
+                        </button>
+                      </li>
+
+                      <!-- Edit (only for non-deleted items) -->
+                      <li v-if="!item.deleted_at && statusFilter !== 'deleted'">
+                        <button
+                          @click.stop.prevent="openEditModal(item)"
+                          @mousedown.stop
+                          class="text-sm text-orange-500"
+                        >
+                          <Edit class="w-3 h-3 mr-2" />
+                          Edit Menu Item
+                        </button>
+                      </li>
+
+                      <!-- Delete (only for non-deleted items) -->
+                      <li v-if="!item.deleted_at && statusFilter !== 'deleted'">
+                        <button
+                          @click.stop.prevent="openConfirmModal('delete', item)"
+                          @mousedown.stop
+                          class="text-sm text-red-500"
+                        >
+                          <Trash2 class="w-3 h-3 mr-2" />
+                          Delete Menu Item
+                        </button>
+                      </li>
+
+                      <!-- Restore (only for deleted items) -->
+                      <li v-if="statusFilter === 'deleted' && item.deleted_at">
+                        <button
+                          @click.stop.prevent="
+                            openConfirmModal('restore', item)
+                          "
+                          @mousedown.stop
+                          class="text-sm text-blue-500"
+                        >
+                          <RefreshCcw class="w-3 h-3 mr-2" />
+                          Restore Menu Item
+                        </button>
+                      </li>
+                    </ul>
                   </div>
                 </div>
               </div>

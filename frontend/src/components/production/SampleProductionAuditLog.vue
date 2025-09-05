@@ -12,7 +12,7 @@
   });
 
   // Emits
-  const emit = defineEmits(['update:show']);
+  const emit = defineEmits(['update:show', 'open-full-modal']);
 
   // Store
   const productionStore = useProductionStore();
@@ -398,6 +398,26 @@
     );
   };
 
+  const getActionIconColor = (actionType) => {
+    const t = normalizeActionType(actionType);
+    const colorMap = {
+      PLANNED: 'text-info',
+      STARTED: 'text-warning',
+      COMPLETED: 'text-success',
+      FAILED: 'text-error',
+      CANCELLED: 'text-gray-500',
+      ARCHIVED: 'text-orange-500',
+      DELETED: 'text-orange-500',
+      CREATED: 'text-primary',
+      UPDATED: 'text-secondary',
+    };
+    return colorMap[t] || 'text-neutral';
+  };
+
+  const openFullAuditLogModal = () => {
+    emit('open-full-modal');
+  };
+
   // Lifecycle
   const refreshAuditLogsHandler = () => {
     if (props.show) fetchAuditLogs();
@@ -417,12 +437,22 @@
 </script>
 
 <template>
-  <!-- Audit Log Section -->
+  <!-- Enhanced Audit Log Section -->
   <div class="mt-8">
-    <div class="flex items-center justify-between mb-4">
-      <h3 class="text-lg font-semibold text-primaryColor">
-        Sample Production Audit Log
-      </h3>
+    <div class="flex justify-between items-center mb-6">
+      <div class="flex items-center gap-3">
+        <div
+          class="w-10 h-10 rounded-full bg-primaryColor/10 flex items-center justify-center"
+        >
+          <Activity class="w-5 h-5 text-primaryColor" />
+        </div>
+        <div>
+          <h3 class="card-title text-lg font-bold text-primaryColor">
+            Recent Audit Activity
+          </h3>
+          <p class="text-xs text-gray-500">Latest sample production changes</p>
+        </div>
+      </div>
       <button
         @click="toggleAuditLogs"
         class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
@@ -434,188 +464,229 @@
 
     <div
       v-if="show"
-      class="bg-white rounded-lg border border-gray-200 shadow-sm"
+      class="card bg-gradient-to-br from-base-100 to-base-50 border border-gray-200 shadow-lg"
     >
-      <!-- Date Filter Section -->
-      <div class="p-4 border-b border-gray-200">
-        <div
-          class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
-        >
+      <div class="card-body p-6">
+        <!-- Date Filter Section -->
+        <div class="mb-6">
           <div
-            class="flex flex-col sm:flex-row items-start sm:items-center gap-3"
+            class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
           >
-            <span class="text-sm font-medium text-gray-700">Filter by:</span>
+            <div
+              class="flex flex-col sm:flex-row items-start sm:items-center gap-3"
+            >
+              <span class="text-sm font-medium text-gray-700">Filter by:</span>
 
-            <!-- Date Filter Buttons -->
-            <div class="flex flex-wrap gap-2">
-              <button
-                v-for="option in auditLogFilterOptions"
-                :key="option.type"
-                class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
-                :class="{
-                  'bg-primaryColor text-white':
-                    auditLogFilterType === option.type,
-                  'bg-white text-primaryColor hover:bg-primaryColor/10':
-                    auditLogFilterType !== option.type,
-                }"
-                @click="selectAuditLogFilter(option)"
-              >
-                {{ option.label }}
-              </button>
+              <!-- Date Filter Buttons -->
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="option in auditLogFilterOptions"
+                  :key="option.type"
+                  class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
+                  :class="{
+                    'bg-primaryColor text-white':
+                      auditLogFilterType === option.type,
+                    'bg-white text-primaryColor hover:bg-primaryColor/10':
+                      auditLogFilterType !== option.type,
+                  }"
+                  @click="selectAuditLogFilter(option)"
+                >
+                  {{ option.label }}
+                </button>
+              </div>
+
+              <!-- Custom Month Selection -->
+              <div class="flex items-center gap-2">
+                <div class="relative">
+                  <button
+                    class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                    @click="toggleAuditLogCustomMonthPicker"
+                  >
+                    <Calendar class="w-4 h-4 mr-1" />
+                    Custom Month
+                  </button>
+
+                  <!-- Custom Month Picker -->
+                  <div
+                    v-if="showAuditLogCustomMonthPicker"
+                    class="absolute top-full left-0 mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10 p-3 min-w-64"
+                  >
+                    <div class="flex items-center justify-between mb-3">
+                      <h4 class="text-sm font-medium text-gray-700">
+                        Select Month
+                      </h4>
+                      <button
+                        @click="showAuditLogCustomMonthPicker = false"
+                        class="btn btn-xs btn-ghost"
+                      >
+                        <X class="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                      <div>
+                        <label class="label label-text-alt text-gray-600"
+                          >Month</label
+                        >
+                        <select
+                          v-model="auditLogCustomMonthPicker.month"
+                          class="select select-bordered select-sm w-full"
+                        >
+                          <option
+                            v-for="month in months"
+                            :key="month.value"
+                            :value="month.value"
+                          >
+                            {{ month.label }}
+                          </option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label class="label label-text-alt text-gray-600"
+                          >Year</label
+                        >
+                        <select
+                          v-model="auditLogCustomMonthPicker.year"
+                          class="select select-bordered select-sm w-full"
+                        >
+                          <option
+                            v-for="year in Array.from(
+                              { length: 5 },
+                              (_, i) => new Date().getFullYear() - 2 + i
+                            )"
+                            :key="year"
+                            :value="year"
+                          >
+                            {{ year }}
+                          </option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div class="flex justify-end gap-2 mt-3">
+                      <button
+                        @click="showAuditLogCustomMonthPicker = false"
+                        class="btn btn-sm btn-ghost"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        @click="applyAuditLogCustomMonthFilter"
+                        class="btn btn-sm bg-primaryColor text-white"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <!-- Custom Month Selection -->
-            <div class="flex items-center gap-2">
-              <div class="relative">
-                <button
-                  class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                  @click="toggleAuditLogCustomMonthPicker"
-                >
-                  <Calendar class="w-4 h-4 mr-1" />
-                  Custom Month
-                </button>
+            <!-- Current Filter Display -->
+            <div class="text-xs text-gray-500">
+              {{ getAuditLogFilterDisplayText() }}
+            </div>
+          </div>
+        </div>
 
-                <!-- Custom Month Picker -->
-                <div
-                  v-if="showAuditLogCustomMonthPicker"
-                  class="absolute top-full left-0 mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10 p-3 min-w-64"
-                >
-                  <div class="flex items-center justify-between mb-3">
-                    <h4 class="text-sm font-medium text-gray-700">
-                      Select Month
-                    </h4>
-                    <button
-                      @click="showAuditLogCustomMonthPicker = false"
-                      class="btn btn-xs btn-ghost"
-                    >
-                      <X class="w-3 h-3" />
-                    </button>
+        <!-- Audit Logs Display -->
+        <div v-if="loading" class="flex justify-center py-4">
+          <span class="loading loading-spinner loading-sm"></span>
+        </div>
+
+        <div
+          v-else-if="filteredAuditLogs.length === 0"
+          class="text-center py-8"
+        >
+          <Activity class="w-12 h-12 mx-auto text-gray-400 mb-2" />
+          <p class="text-gray-500">No recent audit activity</p>
+        </div>
+
+        <div v-else class="space-y-4 max-h-96 overflow-y-auto">
+          <div
+            v-for="log in paginatedAuditLogs"
+            :key="log.id"
+            class="flex items-start gap-4 p-4 bg-white/70 rounded-xl hover:bg-white transition-all duration-200 hover:shadow-md border border-gray-100"
+          >
+            <div class="flex-shrink-0">
+              <div
+                class="w-10 h-10 rounded-full flex items-center justify-center"
+                :class="{
+                  'bg-success/10': getActionBadgeClass(
+                    getDisplayAction(log)
+                  ).includes('success'),
+                  'bg-warning/10': getActionBadgeClass(
+                    getDisplayAction(log)
+                  ).includes('warning'),
+                  'bg-error/10': getActionBadgeClass(
+                    getDisplayAction(log)
+                  ).includes('error'),
+                  'bg-info/10': getActionBadgeClass(
+                    getDisplayAction(log)
+                  ).includes('info'),
+                  'bg-primary/10': getActionBadgeClass(
+                    getDisplayAction(log)
+                  ).includes('primary'),
+                  'bg-gray-100': getActionBadgeClass(
+                    getDisplayAction(log)
+                  ).includes('gray'),
+                }"
+              >
+                <Activity
+                  class="w-5 h-5"
+                  :class="getActionIconColor(getDisplayAction(log))"
+                />
+              </div>
+            </div>
+
+            <div class="flex-1 min-w-0">
+              <div class="flex justify-between items-start mb-3">
+                <div class="flex-1">
+                  <h4 class="font-bold text-sm text-gray-900 mb-1">
+                    {{ log.menu_item_name || 'Sample Production' }}
+                  </h4>
+                  <div
+                    class="flex items-center gap-2 text-xs text-gray-600 mb-1"
+                  >
+                    <span class="bg-gray-100 px-2 py-1 rounded-full">
+                      {{ log.sample_batch_number || 'N/A' }}
+                    </span>
+                    <span>•</span>
+                    <span>{{ log.user_name || 'System' }}</span>
                   </div>
+                  <p class="text-xs text-gray-500">
+                    {{ getDetailsText(log) }}
+                  </p>
+                </div>
 
-                  <div class="grid grid-cols-2 gap-3">
-                    <div>
-                      <label class="label label-text-alt text-gray-600"
-                        >Month</label
-                      >
-                      <select
-                        v-model="auditLogCustomMonthPicker.month"
-                        class="select select-bordered select-sm w-full"
-                      >
-                        <option
-                          v-for="month in months"
-                          :key="month.value"
-                          :value="month.value"
-                        >
-                          {{ month.label }}
-                        </option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label class="label label-text-alt text-gray-600"
-                        >Year</label
-                      >
-                      <select
-                        v-model="auditLogCustomMonthPicker.year"
-                        class="select select-bordered select-sm w-full"
-                      >
-                        <option
-                          v-for="year in Array.from(
-                            { length: 5 },
-                            (_, i) => new Date().getFullYear() - 2 + i
-                          )"
-                          :key="year"
-                          :value="year"
-                        >
-                          {{ year }}
-                        </option>
-                      </select>
+                <div class="text-right">
+                  <div class="flex items-center gap-2 justify-end mb-1">
+                    <div
+                      class="badge badge-sm border-none font-medium"
+                      :class="getActionBadgeClass(getDisplayAction(log))"
+                    >
+                      {{ formatActionType(getDisplayAction(log)) }}
                     </div>
                   </div>
-
-                  <div class="flex justify-end gap-2 mt-3">
-                    <button
-                      @click="showAuditLogCustomMonthPicker = false"
-                      class="btn btn-sm btn-ghost"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      @click="applyAuditLogCustomMonthFilter"
-                      class="btn btn-sm bg-primaryColor text-white"
-                    >
-                      Apply
-                    </button>
+                  <div class="text-xs text-gray-500 font-medium">
+                    {{ formatDateTime(log.created_at) }}
                   </div>
                 </div>
               </div>
             </div>
           </div>
-
-          <!-- Current Filter Display -->
-          <div class="text-xs text-gray-500">
-            {{ getAuditLogFilterDisplayText() }}
-          </div>
-        </div>
-      </div>
-
-      <div class="p-4">
-        <div
-          v-if="filteredAuditLogs.length === 0"
-          class="text-center py-8 text-gray-500"
-        >
-          <Activity class="w-12 h-12 mx-auto mb-4 text-gray-300" />
-          <p>No audit logs found</p>
         </div>
 
-        <div v-else class="overflow-x-auto">
-          <table class="table table-xs">
-            <thead>
-              <tr>
-                <th>Date & Time</th>
-                <th>Action</th>
-                <th>User</th>
-                <th>Menu Item</th>
-                <th>Batch Number</th>
-                <th>Details</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="log in paginatedAuditLogs" :key="log.id">
-                <td class="text-xs">
-                  <div class="flex flex-col items-start">
-                    <span class="text-xs">{{
-                      formatDateTime(log.created_at)
-                    }}</span>
-                    <span class="text-xs text-black/50">
-                      {{ formatTime(log.created_at) }}
-                    </span>
-                  </div>
-                </td>
-                <td>
-                  <span
-                    class="badge badge-xs"
-                    :class="getActionBadgeClass(getDisplayAction(log))"
-                  >
-                    {{ formatActionType(getDisplayAction(log)) }}
-                  </span>
-                </td>
-                <td class="text-xs">{{ log.user_name || 'System' }}</td>
-                <td class="text-xs">{{ log.menu_item_name || 'N/A' }}</td>
-                <td class="text-xs">{{ log.sample_batch_number || 'N/A' }}</td>
-                <td class="text-xs max-w-xs">
-                  <div class="" v-if="log.action_details.reason">
-                    <span class="!font-bold">Reason:</span>
-                    {{ log.action_details.reason }}
-                  </div>
-                  <div class="">
-                    <span class="!font-bold">Notes:</span>
-                    {{ log.notes }}
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <!-- View All Button -->
+        <div v-if="filteredAuditLogs.length > 0" class="mt-6 text-center">
+          <button
+            @click="openFullAuditLogModal"
+            class="btn btn-sm btn-outline bg-primaryColor text-white font-thin hover:bg-primaryColor/90 transition-all duration-200 shadow-lg hover:shadow-xl"
+          >
+            <Activity class="w-4 h-4 mr-2" />
+            View All Audit Logs
+          </button>
         </div>
 
         <!-- Audit Log Pagination -->

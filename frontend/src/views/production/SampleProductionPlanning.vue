@@ -38,6 +38,7 @@
   import { useUserStore } from '../../stores/userStore.js';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
   import SampleProductionAuditLog from '../../components/production/SampleProductionAuditLog.vue';
+  import FullAuditLogModal from '../../components/production/FullAuditLogModal.vue';
 
   const productionStore = useProductionStore();
   const authStore = useAuthStore();
@@ -77,16 +78,26 @@
     estimated_cost: '',
   });
 
-  // Confirmation modal
-  const confirmModal = ref({
+  // Separate fail modal state
+  const failModal = ref({
     show: false,
-    title: '',
-    message: '',
-    type: '',
+    title: 'Mark Sample Production as Failed',
+    message: 'Provide failure details before marking as failed.',
     onConfirm: null,
+    data: null,
+  });
+
+  // Separate complete modal state
+  const completeModal = ref({
+    show: false,
+    title: 'Complete Sample Production',
+    message: 'Provide completion details before marking as completed.',
+    onConfirm: null,
+    data: null,
   });
   // Audit Log state
   const showAuditLog = ref(false);
+  const showFullAuditLogModal = ref(false);
 
   // Access store data
   const loading = computed(() => productionStore.loading);
@@ -569,7 +580,15 @@
     }
   };
 
-  // Confirmation modal helpers
+  // Shared confirmation modal for other operations (start, cancel, delete, create, update)
+  const confirmModal = ref({
+    show: false,
+    title: '',
+    message: '',
+    type: '',
+    onConfirm: null,
+  });
+
   const openConfirmModal = (type, title, message, onConfirm, data = null) => {
     confirmModal.value = {
       show: true,
@@ -979,15 +998,15 @@
       notes: '',
     };
 
-    openConfirmModal(
-      'fail',
-      'Mark Sample Production as Failed',
-      'Provide failure details before marking as failed.',
-      async () => {
+    failModal.value = {
+      show: true,
+      title: 'Mark Sample Production as Failed',
+      message: 'Provide failure details before marking as failed.',
+      onConfirm: async () => {
         try {
           loading.value = true;
           // Validate quantity_lost within range 0..planned
-          const plannedQty = Number(confirmModal.value?.data?.batch_size) || 0;
+          const plannedQty = Number(failModal.value?.data?.batch_size) || 0;
           const qtyLost = Number(failForm.value.quantity_lost) || 0;
           if (qtyLost < 0 || (plannedQty > 0 && qtyLost > plannedQty)) {
             showToast(
@@ -1006,7 +1025,7 @@
           );
           await new Promise((resolve) => setTimeout(resolve, 100));
           showToast('warning', 'Sample production marked as failed');
-          closeConfirmModal();
+          closeFailModal();
           window.dispatchEvent(new Event('refresh-audit-logs'));
         } catch (error) {
           console.error('Error in failSampleProduction:', error);
@@ -1018,17 +1037,17 @@
               'warning',
               'Request timed out, but sample may have been marked failed. Please refresh to check.'
             );
-            closeConfirmModal();
+            closeFailModal();
             await fetchData();
           } else {
             showToast('error', error.message || 'Failed to mark as failed');
-            closeConfirmModal();
+            closeFailModal();
           }
         } finally {
           loading.value = false;
         }
       },
-      {
+      data: {
         sampleId: sample.id,
         menu_item_name: sample.menu_item_name,
         sample_batch_number: sample.sample_batch_number,
@@ -1038,13 +1057,28 @@
         assigned_to_name: sample.assigned_to_name,
         estimated_cost: sample.estimated_cost,
         priority: sample.priority,
-      }
-    );
+      },
+    };
   };
 
   const canConfirmFail = computed(() => {
     return (failForm.value.failure_reason || '').trim().length > 0;
   });
+
+  const closeFailModal = () => {
+    failModal.value = {
+      show: false,
+      title: '',
+      message: '',
+      onConfirm: null,
+      data: null,
+    };
+    // Close the actual dialog element
+    const dialog = document.getElementById('sample_fail_modal');
+    if (dialog) {
+      dialog.close();
+    }
+  };
 
   // Complete Sample Production with details
   const completeForm = ref({
@@ -1059,14 +1093,14 @@
       production_cost: sample?.estimated_cost || 0,
       notes: '',
     };
-    openConfirmModal(
-      'complete',
-      'Complete Sample Production',
-      'Provide completion details before marking as completed.',
-      async () => {
+    completeModal.value = {
+      show: true,
+      title: 'Complete Sample Production',
+      message: 'Provide completion details before marking as completed.',
+      onConfirm: async () => {
         try {
           loading.value = true;
-          const plannedQty = Number(confirmModal.value?.data?.batch_size) || 0;
+          const plannedQty = Number(completeModal.value?.data?.batch_size) || 0;
           const qtyProd = Number(completeForm.value.quantity_produced) || 0;
           if (qtyProd < 0 || (plannedQty > 0 && qtyProd > plannedQty)) {
             showToast(
@@ -1084,7 +1118,7 @@
           );
           await new Promise((resolve) => setTimeout(resolve, 100));
           showToast('success', 'Sample production completed successfully');
-          closeConfirmModal();
+          closeCompleteModal();
           window.dispatchEvent(new Event('refresh-audit-logs'));
         } catch (error) {
           console.error('Error in completeSampleProduction (modal):', error);
@@ -1096,17 +1130,17 @@
               'warning',
               'Request timed out, but sample may have been completed. Please refresh to check.'
             );
-            closeConfirmModal();
+            closeCompleteModal();
             await fetchData();
           } else {
             showToast('error', error.message || 'Failed to complete sample');
-            closeConfirmModal();
+            closeCompleteModal();
           }
         } finally {
           loading.value = false;
         }
       },
-      {
+      data: {
         sampleId: sample.id,
         menu_item_name: sample.menu_item_name,
         sample_batch_number: sample.sample_batch_number,
@@ -1116,15 +1150,34 @@
         assigned_to_name: sample.assigned_to_name,
         estimated_cost: sample.estimated_cost,
         priority: sample.priority,
-      }
-    );
+      },
+    };
   };
 
   const canConfirmComplete = computed(() => {
-    const planned = Number(confirmModal.value?.data?.batch_size) || 0;
+    const planned = Number(completeModal.value?.data?.batch_size) || 0;
     const qty = Number(completeForm.value.quantity_produced) || 0;
     return qty >= 0 && (planned === 0 || qty <= planned);
   });
+
+  const closeCompleteModal = () => {
+    completeModal.value = {
+      show: false,
+      title: '',
+      message: '',
+      onConfirm: null,
+      data: null,
+    };
+    // Close the actual dialog element
+    const dialog = document.getElementById('sample_complete_modal');
+    if (dialog) {
+      dialog.close();
+    }
+  };
+
+  const handleOpenFullAuditLogModal = () => {
+    showFullAuditLogModal.value = true;
+  };
 
   const deleteSampleProduction = async (sampleId) => {
     openConfirmModal(
@@ -1527,25 +1580,6 @@
         </div>
         <div class="stat-desc text-black/50 !text-xs sm:text-sm">
           Ready for quality inspection
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <PhilippinePeso
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-info"
-          />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">Avg. Cost</div>
-        <div
-          class="stat-value text-info text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ formatCurrency(sampleProductionStats.average_cost || 0) }}
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Per sample batch
         </div>
       </div>
     </div>
@@ -1973,50 +2007,238 @@
           <div
             class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6"
           >
-            <div>
-              <h2
-                class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl mb-2"
+            <div class="flex items-center gap-3">
+              <div
+                class="w-10 h-10 rounded-full bg-primaryColor/10 flex items-center justify-center"
               >
-                Production Monitoring
-              </h2>
-              <p class="text-sm text-gray-600">
-                Monitor ongoing sample productions and track progress in
-                real-time.
-              </p>
+                <BarChart3 class="w-5 h-5 text-primaryColor" />
+              </div>
+              <div>
+                <h2
+                  class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl mb-2"
+                >
+                  Production Monitoring
+                </h2>
+                <p class="text-sm text-gray-600">
+                  Monitor ongoing sample productions and track progress in
+                  real-time.
+                </p>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <button
+                @click="fetchData"
+                class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
+                :disabled="loading"
+              >
+                <RefreshCcw class="w-4 h-4 mr-1" />
+                Refresh
+              </button>
             </div>
           </div>
 
-          <!-- Active Productions -->
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div class="card bg-white shadow-lg">
-              <div class="card-body">
-                <h3 class="card-title text-lg font-bold text-primaryColor mb-4">
-                  Active Productions
-                </h3>
-                <div class="space-y-4">
+          <!-- Monitoring Statistics -->
+          <div
+            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8"
+          >
+            <div
+              class="card bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 shadow-sm"
+            >
+              <div class="card-body p-4">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-xs text-blue-600 font-medium mb-1">
+                      Active Productions
+                    </div>
+                    <div class="text-2xl font-bold text-blue-700">
+                      {{
+                        sampleProductions.filter(
+                          (s) => s.status === 'In Progress'
+                        ).length
+                      }}
+                    </div>
+                  </div>
+                  <div
+                    class="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center"
+                  >
+                    <Play class="w-4 h-4 text-blue-500" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="card bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 shadow-sm"
+            >
+              <div class="card-body p-4">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-xs text-yellow-600 font-medium mb-1">
+                      Today's Schedule
+                    </div>
+                    <div class="text-2xl font-bold text-yellow-700">
+                      {{
+                        sampleProductions.filter(
+                          (s) =>
+                            s.scheduled_date ===
+                              new Date().toISOString().split('T')[0] &&
+                            s.status === 'Planned'
+                        ).length
+                      }}
+                    </div>
+                  </div>
+                  <div
+                    class="w-8 h-8 rounded-full bg-yellow-500/10 flex items-center justify-center"
+                  >
+                    <Calendar class="w-4 h-4 text-yellow-500" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="card bg-gradient-to-br from-green-50 to-green-100 border border-green-200 shadow-sm"
+            >
+              <div class="card-body p-4">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-xs text-green-600 font-medium mb-1">
+                      Completed Today
+                    </div>
+                    <div class="text-2xl font-bold text-green-700">
+                      {{
+                        sampleProductions.filter(
+                          (s) =>
+                            s.actual_end_date &&
+                            new Date(s.actual_end_date).toDateString() ===
+                              new Date().toDateString() &&
+                            s.status === 'Completed'
+                        ).length
+                      }}
+                    </div>
+                  </div>
+                  <div
+                    class="w-8 h-8 rounded-full bg-green-500/10 flex items-center justify-center"
+                  >
+                    <CheckCircle class="w-4 h-4 text-green-500" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="card bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 shadow-sm"
+            >
+              <div class="card-body p-4">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-xs text-purple-600 font-medium mb-1">
+                      Total Productions
+                    </div>
+                    <div class="text-2xl font-bold text-purple-700">
+                      {{ sampleProductions.length }}
+                    </div>
+                  </div>
+                  <div
+                    class="w-8 h-8 rounded-full bg-purple-500/10 flex items-center justify-center"
+                  >
+                    <BarChart3 class="w-4 h-4 text-purple-500" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Active Productions & Today's Schedule -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div
+              class="card bg-gradient-to-br from-base-100 to-base-50 border border-gray-200 shadow-lg"
+            >
+              <div class="card-body p-6">
+                <div class="flex items-center gap-3 mb-6">
+                  <div
+                    class="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center"
+                  >
+                    <Play class="w-5 h-5 text-blue-500" />
+                  </div>
+                  <div>
+                    <h3 class="card-title text-lg font-bold text-primaryColor">
+                      Active Productions
+                    </h3>
+                    <p class="text-xs text-gray-500">
+                      Currently running sample productions
+                    </p>
+                  </div>
+                </div>
+
+                <div class="space-y-4 max-h-96 overflow-y-auto">
                   <div
                     v-for="sample in sampleProductions.filter(
                       (s) => s.status === 'In Progress'
                     )"
                     :key="sample.id"
-                    class="flex items-center justify-between p-4 bg-blue-50 rounded-lg"
+                    class="flex items-start gap-4 p-4 bg-white/70 rounded-xl hover:bg-white transition-all duration-200 hover:shadow-md border border-gray-100"
                   >
-                    <div>
-                      <div class="font-medium text-primaryColor">
-                        {{ sample.menu_item_name }}
-                      </div>
-                      <div class="text-sm text-gray-600">
-                        Batch #{{ sample.sample_batch_number }}
-                      </div>
-                      <div class="text-sm text-gray-500">
-                        Started: {{ formatDate(sample.actual_start_date) }}
+                    <div class="flex-shrink-0">
+                      <div
+                        class="w-10 h-10 rounded-full flex items-center justify-center bg-blue-500/10"
+                      >
+                        <FlaskConical class="w-5 h-5 text-blue-500" />
                       </div>
                     </div>
-                    <div class="text-right">
-                      <div class="text-sm font-medium">
-                        {{ sample.assigned_to_name || 'Unassigned' }}
+
+                    <div class="flex-1 min-w-0">
+                      <div class="flex justify-between items-start mb-3">
+                        <div class="flex-1">
+                          <h4 class="font-bold text-sm text-gray-900 mb-1">
+                            {{ sample.menu_item_name }}
+                          </h4>
+                          <div
+                            class="flex items-center gap-2 text-xs text-gray-600 mb-1"
+                          >
+                            <span class="bg-gray-100 px-2 py-1 rounded-full">
+                              Batch #{{ sample.sample_batch_number }}
+                            </span>
+                            <span>•</span>
+                            <span
+                              >{{ sample.batch_size }}
+                              {{ sample.batch_unit }}</span
+                            >
+                          </div>
+                          <p class="text-xs text-gray-500">
+                            Started: {{ formatDate(sample.actual_start_date) }}
+                          </p>
+                        </div>
+
+                        <div class="text-right">
+                          <div class="flex items-center gap-2 justify-end mb-2">
+                            <div
+                              class="badge bg-info/10 badge-sm border-none font-medium text-info"
+                            >
+                              In Progress
+                            </div>
+                          </div>
+                          <div class="text-xs text-gray-500 font-medium mb-2">
+                            {{ sample.assigned_to_name || 'Unassigned' }}
+                          </div>
+                          <div class="flex gap-1">
+                            <button
+                              @click.stop.prevent="openDetailsModal(sample)"
+                              class="btn btn-xs btn-ghost text-primaryColor hover:bg-primaryColor/10"
+                              title="View Details"
+                            >
+                              <Eye class="w-3 h-3" />
+                            </button>
+                            <button
+                              @click.stop.prevent="openCompleteModal(sample)"
+                              class="btn btn-xs btn-ghost text-success hover:bg-success/10"
+                              title="Mark as Complete"
+                            >
+                              <CheckCircle class="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <div class="badge badge-info mt-1">In Progress</div>
                     </div>
                   </div>
                   <div
@@ -2025,20 +2247,40 @@
                         (s) => s.status === 'In Progress'
                       ).length === 0
                     "
-                    class="text-center py-8 text-gray-500"
+                    class="text-center py-8"
                   >
-                    No active productions at the moment
+                    <FlaskConical
+                      class="w-12 h-12 mx-auto text-gray-400 mb-2"
+                    />
+                    <p class="text-gray-500">
+                      No active productions at the moment
+                    </p>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div class="card bg-white shadow-lg">
-              <div class="card-body">
-                <h3 class="card-title text-lg font-bold text-primaryColor mb-4">
-                  Today's Schedule
-                </h3>
-                <div class="space-y-4">
+            <div
+              class="card bg-gradient-to-br from-base-100 to-base-50 border border-gray-200 shadow-lg"
+            >
+              <div class="card-body p-6">
+                <div class="flex items-center gap-3 mb-6">
+                  <div
+                    class="w-10 h-10 rounded-full bg-yellow-500/10 flex items-center justify-center"
+                  >
+                    <Calendar class="w-5 h-5 text-yellow-500" />
+                  </div>
+                  <div>
+                    <h3 class="card-title text-lg font-bold text-primaryColor">
+                      Today's Schedule
+                    </h3>
+                    <p class="text-xs text-gray-500">
+                      Productions scheduled for today
+                    </p>
+                  </div>
+                </div>
+
+                <div class="space-y-4 max-h-96 overflow-y-auto">
                   <div
                     v-for="sample in sampleProductions.filter(
                       (s) =>
@@ -2047,24 +2289,70 @@
                         s.status === 'Planned'
                     )"
                     :key="sample.id"
-                    class="flex items-center justify-between p-4 bg-yellow-50 rounded-lg"
+                    class="flex items-start gap-4 p-4 bg-white/70 rounded-xl hover:bg-white transition-all duration-200 hover:shadow-md border border-gray-100"
                   >
-                    <div>
-                      <div class="font-medium text-primaryColor">
-                        {{ sample.menu_item_name }}
-                      </div>
-                      <div class="text-sm text-gray-600">
-                        {{ sample.scheduled_time || 'Time not set' }}
-                      </div>
-                      <div class="text-sm text-gray-500">
-                        {{ sample.batch_size }} {{ sample.batch_unit }}
+                    <div class="flex-shrink-0">
+                      <div
+                        class="w-10 h-10 rounded-full flex items-center justify-center bg-yellow-500/10"
+                      >
+                        <Clock class="w-5 h-5 text-yellow-500" />
                       </div>
                     </div>
-                    <div class="text-right">
-                      <div class="text-sm font-medium">
-                        {{ sample.assigned_to_name || 'Unassigned' }}
+
+                    <div class="flex-1 min-w-0">
+                      <div class="flex justify-between items-start mb-3">
+                        <div class="flex-1">
+                          <h4 class="font-bold text-sm text-gray-900 mb-1">
+                            {{ sample.menu_item_name }}
+                          </h4>
+                          <div
+                            class="flex items-center gap-2 text-xs text-gray-600 mb-1"
+                          >
+                            <span class="bg-gray-100 px-2 py-1 rounded-full">
+                              {{ sample.scheduled_time || 'Time not set' }}
+                            </span>
+                            <span>•</span>
+                            <span
+                              >{{ sample.batch_size }}
+                              {{ sample.batch_unit }}</span
+                            >
+                          </div>
+                          <p class="text-xs text-gray-500">
+                            Batch #{{ sample.sample_batch_number }}
+                          </p>
+                        </div>
+
+                        <div class="text-right">
+                          <div class="flex items-center gap-2 justify-end mb-2">
+                            <div
+                              class="badge bg-warning/10 badge-sm border-none font-medium text-warning"
+                            >
+                              Scheduled
+                            </div>
+                          </div>
+                          <div class="text-xs text-gray-500 font-medium mb-2">
+                            {{ sample.assigned_to_name || 'Unassigned' }}
+                          </div>
+                          <div class="flex gap-1">
+                            <button
+                              @click.stop.prevent="openDetailsModal(sample)"
+                              class="btn btn-xs btn-ghost text-primaryColor hover:bg-primaryColor/10"
+                              title="View Details"
+                            >
+                              <Eye class="w-3 h-3" />
+                            </button>
+                            <button
+                              @click.stop.prevent="
+                                startSampleProduction(sample.id)
+                              "
+                              class="btn btn-xs btn-ghost text-success hover:bg-success/10"
+                              title="Start Production"
+                            >
+                              <Play class="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <div class="badge badge-warning mt-1">Scheduled</div>
                     </div>
                   </div>
                   <div
@@ -2076,9 +2364,12 @@
                           s.status === 'Planned'
                       ).length === 0
                     "
-                    class="text-center py-8 text-gray-500"
+                    class="text-center py-8"
                   >
-                    No productions scheduled for today
+                    <Calendar class="w-12 h-12 mx-auto text-gray-400 mb-2" />
+                    <p class="text-gray-500">
+                      No productions scheduled for today
+                    </p>
                   </div>
                 </div>
               </div>
@@ -2086,907 +2377,1316 @@
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Create Sample Production Modal -->
-    <dialog
-      id="sample_production_modal"
-      class="modal"
-      :class="{ 'modal-open': showCreateModal }"
-    >
-      <div
-        class="modal-box max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-black/10 bg-white/95 shadow-lg"
+      <!-- Create Sample Production Modal -->
+      <dialog
+        id="sample_production_modal"
+        class="modal"
+        :class="{ 'modal-open': showCreateModal }"
       >
-        <h3
-          class="font-bold text-xl text-primaryColor mb-4 border-b border-black/10 pb-3"
+        <div
+          class="modal-box max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-black/10 bg-white/95 shadow-lg"
         >
-          Plan Sample Production
-        </h3>
-
-        <form @submit.prevent="showCreateConfirmation" class="space-y-6">
-          <!-- Basic Information -->
-          <div
-            class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
+          <h3
+            class="font-bold text-xl text-primaryColor mb-4 border-b border-black/10 pb-3"
           >
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Menu Item <span class="text-red-500">*</span></span
-                >
-              </label>
-              <select
-                v-model="sampleForm.menu_item_id"
-                class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-                required
-              >
-                <option value="" disabled>Select Menu Item</option>
-                <option
-                  v-for="item in availableMenuItems"
-                  :key="item.id"
-                  :value="item.id"
-                >
-                  {{ item.item_name }} ({{ item.category }})
-                </option>
-              </select>
-            </div>
+            Plan Sample Production
+          </h3>
 
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Assigned To</span
-                >
-              </label>
-              <select
-                v-model="sampleForm.assigned_to"
-                class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-              >
-                <option value="">Select Staff Member</option>
-                <option
-                  v-for="staff in staffMembers"
-                  :key="staff.id"
-                  :value="staff.id"
-                >
-                  {{ staff.name }} ({{ staff.role }})
-                </option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Production Details -->
-          <div
-            class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
-          >
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Batch Size <span class="text-red-500">*</span></span
-                >
-              </label>
-              <input
-                v-model.number="sampleForm.batch_size"
-                type="number"
-                min="1"
-                :max="maxBatchSize"
-                step="1"
-                @input="validateBatchSize"
-                @keypress="onlyAllowPositiveNumbers"
-                class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-                placeholder="Size"
-                required
-              />
-              <div class="text-xs text-gray-600 mt-1">
-                {{ batchSizeValidationMessage }}
-                <div class="mt-1" v-if="batchSizeStatus !== 'empty'">
+          <form @submit.prevent="showCreateConfirmation" class="space-y-6">
+            <!-- Basic Information -->
+            <div
+              class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
+            >
+              <div class="form-control">
+                <label class="label mb-1">
                   <span
-                    class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium"
-                    :class="{
-                      'bg-red-100 text-red-800': batchSizeStatus === 'error',
-                      'bg-yellow-100 text-yellow-800':
-                        batchSizeStatus === 'warning',
-                      'bg-green-100 text-green-800':
-                        batchSizeStatus === 'normal',
-                    }"
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Menu Item <span class="text-red-500">*</span></span
                   >
-                    <span v-if="batchSizeStatus === 'error'">
-                      <font-awesome-icon
-                        icon="fa-solid fa-triangle-exclamation"
-                      />
-                      Exceeds limit</span
-                    >
-                    <span v-if="batchSizeStatus === 'warning'">
-                      <font-awesome-icon
-                        icon="fa-solid fa-triangle-exclamation"
-                      />
-                      Near limit</span
-                    >
-                    <span v-if="batchSizeStatus === 'normal'">
-                      <font-awesome-icon icon="fa-solid fa-check" />
-                      Within limit</span
-                    >
-                  </span>
-                </div>
+                </label>
+                <select
+                  v-model="sampleForm.menu_item_id"
+                  class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  required
+                >
+                  <option value="" disabled>Select Menu Item</option>
+                  <option
+                    v-for="item in availableMenuItems"
+                    :key="item.id"
+                    :value="item.id"
+                  >
+                    {{ item.item_name }} ({{ item.category }})
+                  </option>
+                </select>
+              </div>
+
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Assigned To</span
+                  >
+                </label>
+                <select
+                  v-model="sampleForm.assigned_to"
+                  class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                >
+                  <option value="">Select Staff Member</option>
+                  <option
+                    v-for="staff in staffMembers"
+                    :key="staff.id"
+                    :value="staff.id"
+                  >
+                    {{ staff.name }} ({{ staff.role }})
+                  </option>
+                </select>
               </div>
             </div>
 
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Unit</span
-                >
-              </label>
-              <select
-                v-model="sampleForm.batch_unit"
-                class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-              >
-                <option value="servings">Servings</option>
-                <option value="pieces">Pieces</option>
-                <option value="kg">Kilograms</option>
-                <option value="liters">Liters</option>
-              </select>
-            </div>
-
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Priority</span
-                >
-              </label>
-              <select
-                v-model="sampleForm.priority"
-                class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-              >
-                <option value="Low">Low</option>
-                <option value="Normal">Normal</option>
-                <option value="High">High</option>
-                <option value="Urgent">Urgent</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Schedule Information -->
-          <div
-            class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
-          >
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Scheduled Date <span class="text-red-500">*</span></span
-                >
-              </label>
-              <input
-                v-model="sampleForm.scheduled_date"
-                type="date"
-                class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-                :min="new Date().toISOString().split('T')[0]"
-                required
-              />
-            </div>
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Scheduled Time</span
-                >
-              </label>
-              <input
-                v-model="sampleForm.scheduled_time"
-                type="time"
-                class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-              />
-            </div>
-          </div>
-
-          <!-- Cost & Notes Information -->
-          <div
-            class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
-          >
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Estimated Cost</span
-                >
-              </label>
-              <input
-                v-model="sampleForm.estimated_cost"
-                type="number"
-                step="0.01"
-                min="0"
-                class="input input-sm sm:input-md input-bordered w-full bg-gray-50 text-black/70"
-                placeholder="0.00"
-                readonly
-              />
-              <div class="text-xs text-black/40 mt-2">
-                Auto-calculated based on menu item cost and batch size
-              </div>
-            </div>
-
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Production Notes</span
-                >
-              </label>
-              <textarea
-                v-model="sampleForm.production_notes"
-                class="textarea textarea-sm sm:textarea-md textarea-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-                rows="3"
-                placeholder="Any special instructions or notes for production..."
-              ></textarea>
-            </div>
-          </div>
-
-          <!-- Ingredient Availability Preview -->
-          <div
-            v-if="sampleForm.menu_item_id"
-            class="bg-secondaryColor/10 border border-primaryColor/20 p-4 rounded-xl"
-          >
-            <div class="flex items-center justify-between mb-3">
-              <h4 class="font-thin text-primaryColor">
-                <font-awesome-icon icon="fa-solid fa-box" />
-                Ingredient Availability Check
-              </h4>
-              <div class="flex items-center gap-2">
-                <button
-                  v-if="!checkingAvailability && ingredientAvailability"
-                  @click="
-                    checkIngredientAvailability(
-                      availableMenuItems.find(
-                        (item) => item.id === sampleForm.menu_item_id
-                      ),
-                      false
-                    )
-                  "
-                  class="btn btn-xs btn-ghost text-primaryColor hover:bg-primaryColor/10"
-                  title="Refresh ingredient availability (instant)"
-                >
-                  <RefreshCcw class="w-3 h-3" />
-                </button>
-                <div
-                  v-if="checkingAvailability"
-                  class="flex items-center text-sm text-primaryColor"
-                >
-                  <RefreshCcw class="w-4 h-4 mr-1 animate-spin" />
-                  Checking availability...
-                </div>
-              </div>
-            </div>
-
-            <div v-if="ingredientAvailability" class="space-y-4">
-              <!-- Summary -->
-              <div class="grid grid-cols-3 gap-4 text-sm">
-                <div class="text-center">
-                  <div class="text-2xl font-thin text-primaryColor">
-                    {{ ingredientAvailability.total_ingredients }}
+            <!-- Production Details -->
+            <div
+              class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
+            >
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Batch Size <span class="text-red-500">*</span></span
+                  >
+                </label>
+                <input
+                  v-model.number="sampleForm.batch_size"
+                  type="number"
+                  min="1"
+                  :max="maxBatchSize"
+                  step="1"
+                  @input="validateBatchSize"
+                  @keypress="onlyAllowPositiveNumbers"
+                  class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  placeholder="Size"
+                  required
+                />
+                <div class="text-xs text-gray-600 mt-1">
+                  {{ batchSizeValidationMessage }}
+                  <div class="mt-1" v-if="batchSizeStatus !== 'empty'">
+                    <span
+                      class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium"
+                      :class="{
+                        'bg-red-100 text-red-800': batchSizeStatus === 'error',
+                        'bg-yellow-100 text-yellow-800':
+                          batchSizeStatus === 'warning',
+                        'bg-green-100 text-green-800':
+                          batchSizeStatus === 'normal',
+                      }"
+                    >
+                      <span v-if="batchSizeStatus === 'error'">
+                        <font-awesome-icon
+                          icon="fa-solid fa-triangle-exclamation"
+                        />
+                        Exceeds limit</span
+                      >
+                      <span v-if="batchSizeStatus === 'warning'">
+                        <font-awesome-icon
+                          icon="fa-solid fa-triangle-exclamation"
+                        />
+                        Near limit</span
+                      >
+                      <span v-if="batchSizeStatus === 'normal'">
+                        <font-awesome-icon icon="fa-solid fa-check" />
+                        Within limit</span
+                      >
+                    </span>
                   </div>
-                  <div class="text-xs text-primaryColor">Total Ingredients</div>
                 </div>
-                <div class="text-center">
-                  <div class="text-2xl font-thin text-primaryColor">
-                    {{ ingredientAvailability.available_ingredients }}
-                  </div>
-                  <div class="text-xs text-primaryColor">Available</div>
+              </div>
+
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Unit</span
+                  >
+                </label>
+                <select
+                  v-model="sampleForm.batch_unit"
+                  class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                >
+                  <option value="servings">Servings</option>
+                  <option value="pieces">Pieces</option>
+                  <option value="kg">Kilograms</option>
+                  <option value="liters">Liters</option>
+                </select>
+              </div>
+
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Priority</span
+                  >
+                </label>
+                <select
+                  v-model="sampleForm.priority"
+                  class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                >
+                  <option value="Low">Low</option>
+                  <option value="Normal">Normal</option>
+                  <option value="High">High</option>
+                  <option value="Urgent">Urgent</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Schedule Information -->
+            <div
+              class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
+            >
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Scheduled Date <span class="text-red-500">*</span></span
+                  >
+                </label>
+                <input
+                  v-model="sampleForm.scheduled_date"
+                  type="date"
+                  class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  :min="new Date().toISOString().split('T')[0]"
+                  required
+                />
+              </div>
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Scheduled Time</span
+                  >
+                </label>
+                <input
+                  v-model="sampleForm.scheduled_time"
+                  type="time"
+                  class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                />
+              </div>
+            </div>
+
+            <!-- Cost & Notes Information -->
+            <div
+              class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
+            >
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Estimated Cost</span
+                  >
+                </label>
+                <input
+                  v-model="sampleForm.estimated_cost"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  class="input input-sm sm:input-md input-bordered w-full bg-gray-50 text-black/70"
+                  placeholder="0.00"
+                  readonly
+                />
+                <div class="text-xs text-black/40 mt-2">
+                  Auto-calculated based on menu item cost and batch size
                 </div>
-                <div class="text-center">
-                  <div
-                    class="text-2xl font-thin"
-                    :class="
-                      ingredientAvailability.sufficient_for_production
-                        ? 'text-primaryColor'
-                        : 'text-red-600'
+              </div>
+
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Production Notes</span
+                  >
+                </label>
+                <textarea
+                  v-model="sampleForm.production_notes"
+                  class="textarea textarea-sm sm:textarea-md textarea-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  rows="3"
+                  placeholder="Any special instructions or notes for production..."
+                ></textarea>
+              </div>
+            </div>
+
+            <!-- Ingredient Availability Preview -->
+            <div
+              v-if="sampleForm.menu_item_id"
+              class="bg-secondaryColor/10 border border-primaryColor/20 p-4 rounded-xl"
+            >
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="font-thin text-primaryColor">
+                  <font-awesome-icon icon="fa-solid fa-box" />
+                  Ingredient Availability Check
+                </h4>
+                <div class="flex items-center gap-2">
+                  <button
+                    v-if="!checkingAvailability && ingredientAvailability"
+                    @click="
+                      checkIngredientAvailability(
+                        availableMenuItems.find(
+                          (item) => item.id === sampleForm.menu_item_id
+                        ),
+                        false
+                      )
                     "
+                    class="btn btn-xs btn-ghost text-primaryColor hover:bg-primaryColor/10"
+                    title="Refresh ingredient availability (instant)"
                   >
-                    {{
-                      ingredientAvailability.sufficient_for_production
-                        ? 'Ready'
-                        : 'Issues'
-                    }}
+                    <RefreshCcw class="w-3 h-3" />
+                  </button>
+                  <div
+                    v-if="checkingAvailability"
+                    class="flex items-center text-sm text-primaryColor"
+                  >
+                    <RefreshCcw class="w-4 h-4 mr-1 animate-spin" />
+                    Checking availability...
                   </div>
-                  <div class="text-xs text-primaryColor">Status</div>
                 </div>
               </div>
 
-              <!-- Detailed Ingredient Breakdown -->
-              <div class="border-t border-primaryColor/20 pt-4">
-                <div class="text-sm font-medium text-primaryColor mb-3">
-                  <font-awesome-icon icon="fa-solid fa-clipboard" />
-                  Ingredient Details:
+              <div v-if="ingredientAvailability" class="space-y-4">
+                <!-- Summary -->
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <div class="text-center">
+                    <div class="text-2xl font-thin text-primaryColor">
+                      {{ ingredientAvailability.total_ingredients }}
+                    </div>
+                    <div class="text-xs text-primaryColor">
+                      Total Ingredients
+                    </div>
+                  </div>
+                  <div class="text-center">
+                    <div class="text-2xl font-thin text-primaryColor">
+                      {{ ingredientAvailability.available_ingredients }}
+                    </div>
+                    <div class="text-xs text-primaryColor">Available</div>
+                  </div>
+                  <div class="text-center">
+                    <div
+                      class="text-2xl font-thin"
+                      :class="
+                        ingredientAvailability.sufficient_for_production
+                          ? 'text-primaryColor'
+                          : 'text-red-600'
+                      "
+                    >
+                      {{
+                        ingredientAvailability.sufficient_for_production
+                          ? 'Ready'
+                          : 'Issues'
+                      }}
+                    </div>
+                    <div class="text-xs text-primaryColor">Status</div>
+                  </div>
                 </div>
-                <div class="space-y-3 max-h-96 overflow-y-auto">
-                  <div
-                    v-for="ingredient in ingredientAvailability.ingredients"
-                    :key="ingredient.ingredient_name"
-                    class="p-3 rounded-lg border border-primaryColor/10 bg-white/50"
-                  >
-                    <div class="flex items-start justify-between">
-                      <div class="flex-1">
-                        <div class="font-medium text-sm text-primaryColor mb-1">
-                          {{ ingredient.ingredient_name }}
-                        </div>
-                        <div class="text-xs text-gray-600 mb-2">
-                          <span class="font-medium">Required:</span>
-                          <span class="text-primaryColor ml-1 font-thin">
-                            {{ formatQuantity(ingredient.required_quantity) }}
-                            {{ ingredient.unit }}
-                          </span>
-                          <span class="mx-2">•</span>
-                          <span class="font-medium">Available:</span>
-                          <span
-                            class="ml-1 font-thin"
-                            :class="
-                              ingredient.is_available
-                                ? 'text-primaryColor'
-                                : 'text-error'
-                            "
-                          >
-                            {{ formatQuantity(ingredient.available_quantity) }}
-                            {{ ingredient.unit }}
-                          </span>
-                        </div>
-                        <div class="text-xs text-gray-600">
-                          <span class="font-medium"
-                            >Cost per {{ ingredient.unit }}:</span
-                          >
-                          <span class="font-semibold ml-1">
-                            {{ formatCurrency(ingredient.cost_per_unit) }}
-                          </span>
-                          <span class="ml-2">•</span>
-                          <span class="font-medium">Total:</span>
-                          <span class="font-semibold ml-1 text-gray-600">
-                            {{
-                              formatCurrency(
-                                ingredient.required_quantity *
-                                  ingredient.cost_per_unit
-                              )
-                            }}
-                          </span>
-                        </div>
-                      </div>
 
-                      <div class="flex flex-col items-end gap-2">
-                        <!-- Status Badge -->
-                        <div
-                          class="badge text-xs badge-xs"
-                          :class="{
-                            'badge-success border-none text-success bg-success/20 font-thin':
-                              ingredient.available_quantity >=
-                              ingredient.required_quantity,
-                            'badge-warning border-none text-warning bg-warning/20 font-thin':
-                              ingredient.available_quantity > 0 &&
-                              ingredient.available_quantity <
+                <!-- Detailed Ingredient Breakdown -->
+                <div class="border-t border-primaryColor/20 pt-4">
+                  <div class="text-sm font-medium text-primaryColor mb-3">
+                    <font-awesome-icon icon="fa-solid fa-clipboard" />
+                    Ingredient Details:
+                  </div>
+                  <div class="space-y-3 max-h-96 overflow-y-auto">
+                    <div
+                      v-for="ingredient in ingredientAvailability.ingredients"
+                      :key="ingredient.ingredient_name"
+                      class="p-3 rounded-lg border border-primaryColor/10 bg-white/50"
+                    >
+                      <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                          <div
+                            class="font-medium text-sm text-primaryColor mb-1"
+                          >
+                            {{ ingredient.ingredient_name }}
+                          </div>
+                          <div class="text-xs text-gray-600 mb-2">
+                            <span class="font-medium">Required:</span>
+                            <span class="text-primaryColor ml-1 font-thin">
+                              {{ formatQuantity(ingredient.required_quantity) }}
+                              {{ ingredient.unit }}
+                            </span>
+                            <span class="mx-2">•</span>
+                            <span class="font-medium">Available:</span>
+                            <span
+                              class="ml-1 font-thin"
+                              :class="
+                                ingredient.is_available
+                                  ? 'text-primaryColor'
+                                  : 'text-error'
+                              "
+                            >
+                              {{
+                                formatQuantity(ingredient.available_quantity)
+                              }}
+                              {{ ingredient.unit }}
+                            </span>
+                          </div>
+                          <div class="text-xs text-gray-600">
+                            <span class="font-medium"
+                              >Cost per {{ ingredient.unit }}:</span
+                            >
+                            <span class="font-semibold ml-1">
+                              {{ formatCurrency(ingredient.cost_per_unit) }}
+                            </span>
+                            <span class="ml-2">•</span>
+                            <span class="font-medium">Total:</span>
+                            <span class="font-semibold ml-1 text-gray-600">
+                              {{
+                                formatCurrency(
+                                  ingredient.required_quantity *
+                                    ingredient.cost_per_unit
+                                )
+                              }}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div class="flex flex-col items-end gap-2">
+                          <!-- Status Badge -->
+                          <div
+                            class="badge text-xs badge-xs"
+                            :class="{
+                              'badge-success border-none text-success bg-success/20 font-thin':
+                                ingredient.available_quantity >=
                                 ingredient.required_quantity,
-                            'badge-error border-none text-error bg-error/20 font-thin':
-                              ingredient.available_quantity <= 0,
-                          }"
-                        >
-                          {{
-                            ingredient.available_quantity >=
-                            ingredient.required_quantity
-                              ? 'Sufficient'
-                              : ingredient.available_quantity <= 0
-                                ? 'Out of Stock'
-                                : 'Insufficient'
-                          }}
-                        </div>
-
-                        <!-- Shortage Info -->
-                        <div
-                          v-if="
-                            ingredient.available_quantity <
-                            ingredient.required_quantity
-                          "
-                          class="text-xs text-error"
-                        >
-                          Short by
-                          <span class="font-semibold">
+                              'badge-warning border-none text-warning bg-warning/20 font-thin':
+                                ingredient.available_quantity > 0 &&
+                                ingredient.available_quantity <
+                                  ingredient.required_quantity,
+                              'badge-error border-none text-error bg-error/20 font-thin':
+                                ingredient.available_quantity <= 0,
+                            }"
+                          >
                             {{
-                              formatQuantity(
-                                ingredient.required_quantity -
-                                  ingredient.available_quantity
-                              )
+                              ingredient.available_quantity >=
+                              ingredient.required_quantity
+                                ? 'Sufficient'
+                                : ingredient.available_quantity <= 0
+                                  ? 'Out of Stock'
+                                  : 'Insufficient'
                             }}
-                            {{ ingredient.unit }}
-                          </span>
+                          </div>
+
+                          <!-- Shortage Info -->
+                          <div
+                            v-if="
+                              ingredient.available_quantity <
+                              ingredient.required_quantity
+                            "
+                            class="text-xs text-error"
+                          >
+                            Short by
+                            <span class="font-semibold">
+                              {{
+                                formatQuantity(
+                                  ingredient.required_quantity -
+                                    ingredient.available_quantity
+                                )
+                              }}
+                              {{ ingredient.unit }}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <!-- Insufficient ingredients summary -->
-              <div
-                v-if="!ingredientAvailability.sufficient_for_production"
-                class="bg-red-50 border border-red-200 p-3 rounded-lg"
-              >
-                <div class="text-sm font-medium text-red-800 mb-2">
-                  Issues Found:
-                </div>
-                <div class="text-xs text-red-700">
-                  {{
-                    ingredientAvailability.total_ingredients -
-                    ingredientAvailability.available_ingredients
-                  }}
-                  out of
-                  {{ ingredientAvailability.total_ingredients }} ingredients are
-                  insufficient for production.
-                </div>
-              </div>
-
-              <!-- Production readiness status -->
-              <div
-                class="flex items-center justify-between pt-3 border-t border-primaryColor/20"
-              >
-                <span class="text-sm text-primaryColor font-medium"
-                  >Production Ready:</span
+                <!-- Insufficient ingredients summary -->
+                <div
+                  v-if="!ingredientAvailability.sufficient_for_production"
+                  class="bg-red-50 border border-red-200 p-3 rounded-lg"
                 >
+                  <div class="text-sm font-medium text-red-800 mb-2">
+                    Issues Found:
+                  </div>
+                  <div class="text-xs text-red-700">
+                    {{
+                      ingredientAvailability.total_ingredients -
+                      ingredientAvailability.available_ingredients
+                    }}
+                    out of
+                    {{ ingredientAvailability.total_ingredients }} ingredients
+                    are insufficient for production.
+                  </div>
+                </div>
+
+                <!-- Production readiness status -->
+                <div
+                  class="flex items-center justify-between pt-3 border-t border-primaryColor/20"
+                >
+                  <span class="text-sm text-primaryColor font-medium"
+                    >Production Ready:</span
+                  >
+                  <span
+                    class="badge badge-sm"
+                    :class="
+                      ingredientAvailability.sufficient_for_production
+                        ? 'badge-success bg-success/20 border-none text-success font-thin'
+                        : 'badge-error bg-error/20 border-none text-error font-thin'
+                    "
+                  >
+                    {{
+                      ingredientAvailability.sufficient_for_production
+                        ? 'Yes'
+                        : 'No'
+                    }}
+                  </span>
+                </div>
+              </div>
+
+              <div
+                v-else-if="!checkingAvailability"
+                class="text-center text-primaryColor py-4"
+              >
+                <Package class="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <div class="text-sm">
+                  Select a menu item to check ingredient availability
+                </div>
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex justify-end gap-3 pt-4 border-t border-black/10">
+              <button
+                type="button"
+                @click="closeCreateModal"
+                class="btn btn-sm bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none font-thin"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
+                :disabled="loading"
+              >
                 <span
-                  class="badge badge-sm"
-                  :class="
-                    ingredientAvailability.sufficient_for_production
-                      ? 'badge-success bg-success/20 border-none text-success font-thin'
-                      : 'badge-error bg-error/20 border-none text-error font-thin'
-                  "
-                >
-                  {{
-                    ingredientAvailability.sufficient_for_production
-                      ? 'Yes'
-                      : 'No'
-                  }}
-                </span>
-              </div>
+                  class="loading loading-spinner loading-sm mr-2"
+                  v-if="loading"
+                ></span>
+                <Plus class="w-4 h-4 mr-2" v-else />
+                Plan Sample Production
+              </button>
             </div>
+          </form>
+        </div>
+      </dialog>
 
+      <!-- Edit Sample Production Modal -->
+      <dialog
+        id="edit_sample_modal"
+        class="modal"
+        :class="{ 'modal-open': showEditModal }"
+      >
+        <div class="modal-box max-w-4xl">
+          <h3
+            class="font-bold text-xl text-primaryColor mb-4 border-b border-black/10 pb-3"
+          >
+            Edit Sample Production
+          </h3>
+
+          <form @submit.prevent="showUpdateConfirmation" class="space-y-6">
+            <!-- Basic Information -->
             <div
-              v-else-if="!checkingAvailability"
-              class="text-center text-primaryColor py-4"
+              class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
             >
-              <Package class="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <div class="text-sm">
-                Select a menu item to check ingredient availability
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Menu Item <span class="text-red-500">*</span></span
+                  >
+                </label>
+                <select
+                  v-model="sampleForm.menu_item_id"
+                  class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  required
+                >
+                  <option value="">Select Menu Item</option>
+                  <option
+                    v-for="item in availableMenuItems"
+                    :key="item.id"
+                    :value="item.id"
+                  >
+                    {{ item.item_name }} ({{ item.category }})
+                  </option>
+                </select>
+              </div>
+
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Assigned To</span
+                  >
+                </label>
+                <select
+                  v-model="sampleForm.assigned_to"
+                  class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                >
+                  <option value="">Select Staff Member</option>
+                  <option
+                    v-for="staff in staffMembers"
+                    :key="staff.id"
+                    :value="staff.id"
+                  >
+                    {{ staff.name }} ({{ staff.role }})
+                  </option>
+                </select>
               </div>
             </div>
-          </div>
 
-          <!-- Action Buttons -->
-          <div class="flex justify-end gap-3 pt-4 border-t border-black/10">
-            <button
-              type="button"
-              @click="closeCreateModal"
-              class="btn btn-sm bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none font-thin"
+            <!-- Production Details -->
+            <div
+              class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
-              :disabled="loading"
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Batch Size <span class="text-red-500">*</span></span
+                  >
+                </label>
+                <input
+                  v-model.number="sampleForm.batch_size"
+                  type="number"
+                  min="1"
+                  :max="maxBatchSize"
+                  step="1"
+                  @input="validateBatchSize"
+                  @keypress="onlyAllowPositiveNumbers"
+                  :class="batchSizeInputClass"
+                  placeholder="10"
+                  required
+                />
+                <div class="text-xs text-gray-600 mt-1">
+                  {{ batchSizeValidationMessage }}
+                  <div class="mt-1" v-if="batchSizeStatus !== 'empty'">
+                    <span
+                      class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium"
+                      :class="{
+                        'bg-red-100 text-red-800': batchSizeStatus === 'error',
+                        'bg-yellow-100 text-yellow-800':
+                          batchSizeStatus === 'warning',
+                        'bg-green-100 text-green-800':
+                          batchSizeStatus === 'normal',
+                      }"
+                    >
+                      <span v-if="batchSizeStatus === 'error'">
+                        <font-awesome-icon
+                          icon="fa-solid fa-triangle-exclamation"
+                        />
+                        Exceeds limit</span
+                      >
+                      <span v-if="batchSizeStatus === 'warning'">
+                        <font-awesome-icon
+                          icon="fa-solid fa-triangle-exclamation"
+                        />
+                        Near limit</span
+                      >
+                      <span v-if="batchSizeStatus === 'normal'">
+                        <font-awesome-icon icon="fa-solid fa-check" />
+                        Within limit</span
+                      >
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Unit</span
+                  >
+                </label>
+                <select
+                  v-model="sampleForm.batch_unit"
+                  class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                >
+                  <option value="servings">Servings</option>
+                  <option value="pieces">Pieces</option>
+                  <option value="kg">Kilograms</option>
+                  <option value="liters">Liters</option>
+                </select>
+              </div>
+
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Priority</span
+                  >
+                </label>
+                <select
+                  v-model="sampleForm.priority"
+                  class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                >
+                  <option value="Low">Low</option>
+                  <option value="Normal">Normal</option>
+                  <option value="High">High</option>
+                  <option value="Urgent">Urgent</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Schedule Information -->
+            <div
+              class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
             >
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Scheduled Date <span class="text-red-500">*</span></span
+                  >
+                </label>
+                <input
+                  v-model="sampleForm.scheduled_date"
+                  type="date"
+                  class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  :min="new Date().toISOString().split('T')[0]"
+                  required
+                />
+              </div>
+
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Scheduled Time</span
+                  >
+                </label>
+                <input
+                  v-model="sampleForm.scheduled_time"
+                  type="time"
+                  class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                />
+              </div>
+            </div>
+
+            <!-- Cost & Notes Information -->
+            <div
+              class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
+            >
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Estimated Cost</span
+                  >
+                </label>
+                <input
+                  v-model="sampleForm.estimated_cost"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  class="input input-sm sm:input-md input-bordered w-full bg-gray-50 text-black/70"
+                  placeholder="0.00"
+                  readonly
+                />
+                <div class="text-xs text-black/40 mt-2">
+                  Auto-calculated based on menu item cost and batch size
+                </div>
+              </div>
+
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Production Notes</span
+                  >
+                </label>
+                <textarea
+                  v-model="sampleForm.production_notes"
+                  class="textarea textarea-sm sm:textarea-md textarea-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  rows="3"
+                  placeholder="Any special instructions or notes for production..."
+                ></textarea>
+              </div>
+            </div>
+
+            <!-- Ingredient Availability Preview -->
+            <div
+              v-if="sampleForm.menu_item_id"
+              class="bg-secondaryColor/10 border border-primaryColor/20 p-4 rounded-xl"
+            >
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="font-semibold text-primaryColor">
+                  <font-awesome-icon icon="fa-solid fa-box" />
+                  Ingredient Availability Check
+                </h4>
+                <div class="flex items-center gap-2">
+                  <button
+                    v-if="!checkingAvailability && ingredientAvailability"
+                    @click="
+                      checkIngredientAvailability(
+                        availableMenuItems.find(
+                          (item) => item.id === sampleForm.menu_item_id
+                        ),
+                        false
+                      )
+                    "
+                    class="btn btn-xs btn-ghost text-primaryColor hover:bg-primaryColor/10"
+                    title="Refresh ingredient availability (instant)"
+                  >
+                    <RefreshCcw class="w-3 h-3" />
+                  </button>
+                  <div
+                    v-if="checkingAvailability"
+                    class="flex items-center text-sm text-primaryColor"
+                  >
+                    <RefreshCcw class="w-4 h-4 mr-1 animate-spin" />
+                    Checking availability...
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="ingredientAvailability" class="space-y-4">
+                <!-- Summary -->
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <div class="text-center">
+                    <div class="text-2xl font-bold text-primaryColor">
+                      {{ ingredientAvailability.total_ingredients }}
+                    </div>
+                    <div class="text-xs text-primaryColor">
+                      Total Ingredients
+                    </div>
+                  </div>
+                  <div class="text-center">
+                    <div class="text-2xl font-bold text-primaryColor">
+                      {{ ingredientAvailability.available_ingredients }}
+                    </div>
+                    <div class="text-xs text-primaryColor">Available</div>
+                  </div>
+                  <div class="text-center">
+                    <div
+                      class="text-2xl font-bold"
+                      :class="
+                        ingredientAvailability.sufficient_for_production
+                          ? 'text-primaryColor'
+                          : 'text-red-600'
+                      "
+                    >
+                      {{
+                        ingredientAvailability.sufficient_for_production
+                          ? 'Ready'
+                          : 'Issues'
+                      }}
+                    </div>
+                    <div class="text-xs text-gray-600">Status</div>
+                  </div>
+                </div>
+
+                <!-- Detailed Ingredient Breakdown -->
+                <div class="border-t border-primaryColor/20 pt-4">
+                  <div class="text-sm font-medium text-primaryColor mb-3">
+                    <font-awesome-icon icon="fa-solid fa-clipboard" />
+                    Ingredient Details:
+                  </div>
+                  <div class="space-y-3 max-h-96 overflow-y-auto">
+                    <div
+                      v-for="ingredient in ingredientAvailability.ingredients"
+                      :key="ingredient.ingredient_name"
+                      class="p-3 rounded-lg border border-primaryColor/10 bg-white/50"
+                    >
+                      <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                          <div
+                            class="font-medium text-sm text-primaryColor/70 mb-1"
+                          >
+                            {{ ingredient.ingredient_name }}
+                          </div>
+                          <div class="text-xs text-gray-600 mb-2">
+                            <span class="font-medium">Required:</span>
+                            <span
+                              class="text-primaryColor/70 font-semibold ml-1"
+                            >
+                              {{ formatQuantity(ingredient.required_quantity) }}
+                              {{ ingredient.unit }}
+                            </span>
+                            <span class="mx-2">•</span>
+                            <span class="font-medium">Available:</span>
+                            <span
+                              class="font-semibold ml-1 text-primaryColor/70"
+                              :class="
+                                ingredient.is_available
+                                  ? 'text-primaryColor'
+                                  : 'text-error'
+                              "
+                            >
+                              {{
+                                formatQuantity(ingredient.available_quantity)
+                              }}
+                              {{ ingredient.unit }}
+                            </span>
+                          </div>
+                          <div class="text-xs text-gray-600">
+                            <span class="font-medium"
+                              >Cost per {{ ingredient.unit }}:</span
+                            >
+                            <span
+                              class="font-semibold ml-1 text-primaryColor/70"
+                            >
+                              ₱{{ formatCurrency(ingredient.cost_per_unit) }}
+                            </span>
+                            <span class="ml-2">•</span>
+                            <span class="font-medium">Total:</span>
+                            <span
+                              class="font-semibold ml-1 text-primaryColor/70"
+                            >
+                              ₱{{
+                                formatCurrency(
+                                  ingredient.required_quantity *
+                                    ingredient.cost_per_unit
+                                )
+                              }}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div class="flex flex-col items-end gap-2">
+                          <!-- Status Badge -->
+                          <div
+                            class="badge text-xs badge-xs"
+                            :class="{
+                              'badge-success border-none text-success bg-success/20 font-thin':
+                                ingredient.available_quantity >=
+                                ingredient.required_quantity,
+                              'badge-warning border-none text-warning bg-warning/20 font-thin':
+                                ingredient.available_quantity > 0 &&
+                                ingredient.available_quantity <
+                                  ingredient.required_quantity,
+                              'badge-error border-none text-error bg-error/20 font-thin':
+                                ingredient.available_quantity <= 0,
+                            }"
+                          >
+                            {{
+                              ingredient.available_quantity >=
+                              ingredient.required_quantity
+                                ? 'Sufficient'
+                                : ingredient.available_quantity <= 0
+                                  ? 'Out of Stock'
+                                  : 'Insufficient'
+                            }}
+                          </div>
+
+                          <!-- Shortage Info -->
+                          <div
+                            v-if="
+                              ingredient.available_quantity <
+                              ingredient.required_quantity
+                            "
+                            class="text-xs text-error font-thin"
+                          >
+                            Short by
+                            <span class="font-semibold text-primaryColor/70">
+                              {{
+                                formatQuantity(
+                                  ingredient.required_quantity -
+                                    ingredient.available_quantity
+                                )
+                              }}
+                              {{ ingredient.unit }}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Insufficient ingredients summary -->
+                <div
+                  v-if="!ingredientAvailability.sufficient_for_production"
+                  class="bg-secondaryColor/10 border border-primaryColor/20 p-3 rounded-lg"
+                >
+                  <div class="text-sm font-medium text-primaryColor mb-2">
+                    <font-awesome-icon
+                      icon="fa-solid fa-exclamation-triangle"
+                    />
+                    Issues Found:
+                  </div>
+                  <div class="text-xs text-primaryColor">
+                    {{
+                      ingredientAvailability.total_ingredients -
+                      ingredientAvailability.available_ingredients
+                    }}
+                    out of
+                    {{ ingredientAvailability.total_ingredients }} ingredients
+                    are insufficient for production.
+                  </div>
+                </div>
+
+                <!-- Production readiness status -->
+                <div
+                  class="flex items-center justify-between pt-3 border-t border-primaryColor/20"
+                >
+                  <span class="text-sm text-primaryColor font-medium"
+                    >Production Ready:</span
+                  >
+                  <span
+                    class="badge badge-xs"
+                    :class="
+                      ingredientAvailability.sufficient_for_production
+                        ? 'badge-success bg-success/20 border-none text-success font-thin'
+                        : 'badge-error'
+                    "
+                  >
+                    {{
+                      ingredientAvailability.sufficient_for_production
+                        ? 'Yes'
+                        : 'No'
+                    }}
+                  </span>
+                </div>
+              </div>
+
+              <div
+                v-else-if="!checkingAvailability"
+                class="text-center text-primaryColor py-4"
+              >
+                <Package class="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <div class="text-sm">
+                  Select a menu item to check ingredient availability
+                </div>
+              </div>
+            </div>
+
+            <div class="modal-action">
+              <button
+                type="button"
+                @click="closeEditModal"
+                class="btn btn-sm bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
+                :disabled="loading"
+              >
+                <Edit class="w-4 h-4 mr-2" v-if="!loading" />
+                <RefreshCcw class="w-4 h-4 mr-2 animate-spin" v-else />
+                Update Sample Production
+              </button>
+            </div>
+          </form>
+        </div>
+      </dialog>
+
+      <!-- Sample Production Details Modal -->
+      <dialog
+        id="sample_details_modal"
+        class="modal"
+        :class="{ 'modal-open': showDetailsModal }"
+      >
+        <div
+          v-if="selectedSample"
+          class="modal-box max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-black/10 bg-white/95 shadow-lg"
+        >
+          <div
+            class="flex items-center justify-between mb-6 border-b border-black/10 pb-4"
+          >
+            <div>
+              <h3 class="font-bold text-xl text-primaryColor">
+                Sample Production Details
+              </h3>
+              <p class="text-sm text-gray-600 mt-1">
+                {{ selectedSample.menu_item_name }} - Batch
+                {{ selectedSample.sample_batch_number }}
+              </p>
+            </div>
+            <div class="flex items-center gap-2">
               <span
-                class="loading loading-spinner loading-sm mr-2"
-                v-if="loading"
-              ></span>
-              <Plus class="w-4 h-4 mr-2" v-else />
-              Plan Sample Production
-            </button>
-          </div>
-        </form>
-      </div>
-    </dialog>
-
-    <!-- Edit Sample Production Modal -->
-    <dialog
-      id="edit_sample_modal"
-      class="modal"
-      :class="{ 'modal-open': showEditModal }"
-    >
-      <div class="modal-box max-w-4xl">
-        <h3
-          class="font-bold text-xl text-primaryColor mb-4 border-b border-black/10 pb-3"
-        >
-          Edit Sample Production
-        </h3>
-
-        <form @submit.prevent="showUpdateConfirmation" class="space-y-6">
-          <!-- Basic Information -->
-          <div
-            class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
-          >
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Menu Item <span class="text-red-500">*</span></span
-                >
-              </label>
-              <select
-                v-model="sampleForm.menu_item_id"
-                class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-                required
+                class="badge badge-sm"
+                :class="getStatusBadgeClass(selectedSample?.status || '')"
               >
-                <option value="">Select Menu Item</option>
-                <option
-                  v-for="item in availableMenuItems"
-                  :key="item.id"
-                  :value="item.id"
-                >
-                  {{ item.item_name }} ({{ item.category }})
-                </option>
-              </select>
-            </div>
-
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Assigned To</span
-                >
-              </label>
-              <select
-                v-model="sampleForm.assigned_to"
-                class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                {{ selectedSample?.status || 'N/A' }}
+              </span>
+              <span
+                v-if="selectedSample?.priority"
+                class="badge badge-sm"
+                :class="getPriorityBadgeClass(selectedSample.priority)"
               >
-                <option value="">Select Staff Member</option>
-                <option
-                  v-for="staff in staffMembers"
-                  :key="staff.id"
-                  :value="staff.id"
-                >
-                  {{ staff.name }} ({{ staff.role }})
-                </option>
-              </select>
+                {{ selectedSample.priority }}
+              </span>
             </div>
           </div>
 
-          <!-- Production Details -->
-          <div
-            class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
-          >
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Batch Size <span class="text-red-500">*</span></span
-                >
-              </label>
-              <input
-                v-model.number="sampleForm.batch_size"
-                type="number"
-                min="1"
-                :max="maxBatchSize"
-                step="1"
-                @input="validateBatchSize"
-                @keypress="onlyAllowPositiveNumbers"
-                :class="batchSizeInputClass"
-                placeholder="10"
-                required
-              />
-              <div class="text-xs text-gray-600 mt-1">
-                {{ batchSizeValidationMessage }}
-                <div class="mt-1" v-if="batchSizeStatus !== 'empty'">
-                  <span
-                    class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium"
-                    :class="{
-                      'bg-red-100 text-red-800': batchSizeStatus === 'error',
-                      'bg-yellow-100 text-yellow-800':
-                        batchSizeStatus === 'warning',
-                      'bg-green-100 text-green-800':
-                        batchSizeStatus === 'normal',
-                    }"
+          <div class="space-y-6">
+            <!-- Basic Information -->
+            <div
+              class="bg-secondaryColor/10 border border-primaryColor/20 p-4 rounded-xl"
+            >
+              <h4 class="font-semibold text-primaryColor mb-4">
+                <font-awesome-icon
+                  icon="fa-solid fa-info-circle"
+                  class="mr-2"
+                />
+                Basic Information
+              </h4>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="space-y-3">
+                  <div class="flex justify-between">
+                    <span class="text-gray-600">Menu Item:</span>
+                    <span class="font-medium text-primaryColor">{{
+                      selectedSample?.menu_item_name || 'N/A'
+                    }}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-600">Recipe:</span>
+                    <span class="font-medium text-primaryColor">{{
+                      selectedSample?.recipe_name || 'N/A'
+                    }}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-600">Batch Size:</span>
+                    <span class="font-medium text-primaryColor"
+                      >{{ selectedSample?.batch_size || 'N/A' }}
+                      {{ selectedSample?.batch_unit || '' }}</span
+                    >
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-600">Estimated Cost:</span>
+                    <span class="font-medium text-info">
+                      {{ formatCurrency(selectedSample?.estimated_cost || 0) }}
+                    </span>
+                  </div>
+                </div>
+                <div class="space-y-3">
+                  <div class="flex justify-between">
+                    <span class="text-gray-600">Scheduled Date:</span>
+                    <span class="font-medium">{{
+                      formatDate(selectedSample?.scheduled_date)
+                    }}</span>
+                  </div>
+                  <div
+                    v-if="selectedSample?.scheduled_time"
+                    class="flex justify-between"
                   >
-                    <span v-if="batchSizeStatus === 'error'">
-                      <font-awesome-icon
-                        icon="fa-solid fa-triangle-exclamation"
-                      />
-                      Exceeds limit</span
-                    >
-                    <span v-if="batchSizeStatus === 'warning'">
-                      <font-awesome-icon
-                        icon="fa-solid fa-triangle-exclamation"
-                      />
-                      Near limit</span
-                    >
-                    <span v-if="batchSizeStatus === 'normal'">
-                      <font-awesome-icon icon="fa-solid fa-check" />
-                      Within limit</span
-                    >
-                  </span>
+                    <span class="text-gray-600">Scheduled Time:</span>
+                    <span class="font-medium">{{
+                      formatTime(selectedSample.scheduled_time)
+                    }}</span>
+                  </div>
+                  <div
+                    v-if="selectedSample?.actual_start_date"
+                    class="flex justify-between"
+                  >
+                    <span class="text-gray-600">Started:</span>
+                    <span class="font-medium">{{
+                      formatDate(selectedSample.actual_start_date)
+                    }}</span>
+                  </div>
+                  <div
+                    v-if="selectedSample?.actual_end_date"
+                    class="flex justify-between"
+                  >
+                    <span class="text-gray-600">Completed:</span>
+                    <span class="font-medium">{{
+                      formatDate(selectedSample.actual_end_date)
+                    }}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-600">Assigned To:</span>
+                    <span class="font-medium">{{
+                      selectedSample?.assigned_to_name || 'Unassigned'
+                    }}</span>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Unit</span
-                >
-              </label>
-              <select
-                v-model="sampleForm.batch_unit"
-                class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-              >
-                <option value="servings">Servings</option>
-                <option value="pieces">Pieces</option>
-                <option value="kg">Kilograms</option>
-                <option value="liters">Liters</option>
-              </select>
-            </div>
-
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Priority</span
-                >
-              </label>
-              <select
-                v-model="sampleForm.priority"
-                class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-              >
-                <option value="Low">Low</option>
-                <option value="Normal">Normal</option>
-                <option value="High">High</option>
-                <option value="Urgent">Urgent</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Schedule Information -->
-          <div
-            class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
-          >
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Scheduled Date <span class="text-red-500">*</span></span
-                >
-              </label>
-              <input
-                v-model="sampleForm.scheduled_date"
-                type="date"
-                class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-                :min="new Date().toISOString().split('T')[0]"
-                required
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Scheduled Time</span
-                >
-              </label>
-              <input
-                v-model="sampleForm.scheduled_time"
-                type="time"
-                class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-              />
-            </div>
-          </div>
-
-          <!-- Cost & Notes Information -->
-          <div
-            class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
-          >
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Estimated Cost</span
-                >
-              </label>
-              <input
-                v-model="sampleForm.estimated_cost"
-                type="number"
-                step="0.01"
-                min="0"
-                class="input input-sm sm:input-md input-bordered w-full bg-gray-50 text-black/70"
-                placeholder="0.00"
-                readonly
-              />
-              <div class="text-xs text-black/40 mt-2">
-                Auto-calculated based on menu item cost and batch size
-              </div>
-            </div>
-
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Production Notes</span
-                >
-              </label>
-              <textarea
-                v-model="sampleForm.production_notes"
-                class="textarea textarea-sm sm:textarea-md textarea-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-                rows="3"
-                placeholder="Any special instructions or notes for production..."
-              ></textarea>
-            </div>
-          </div>
-
-          <!-- Ingredient Availability Preview -->
-          <div
-            v-if="sampleForm.menu_item_id"
-            class="bg-secondaryColor/10 border border-primaryColor/20 p-4 rounded-xl"
-          >
-            <div class="flex items-center justify-between mb-3">
-              <h4 class="font-semibold text-primaryColor">
-                <font-awesome-icon icon="fa-solid fa-box" />
-                Ingredient Availability Check
+            <!-- Production Notes -->
+            <div
+              v-if="selectedSample?.production_notes"
+              class="bg-secondaryColor/10 border border-primaryColor/20 p-4 rounded-xl"
+            >
+              <h4 class="font-semibold text-primaryColor mb-3">
+                <font-awesome-icon
+                  icon="fa-solid fa-sticky-note"
+                  class="mr-2"
+                />
+                Production Notes
               </h4>
-              <div class="flex items-center gap-2">
+              <p class="text-gray-700 text-sm leading-relaxed">
+                {{ selectedSample.production_notes }}
+              </p>
+            </div>
+
+            <!-- Ingredient Availability Check -->
+            <div
+              class="bg-secondaryColor/10 border border-primaryColor/20 p-4 rounded-xl"
+            >
+              <div class="flex items-center justify-between mb-4">
+                <h4 class="font-semibold text-primaryColor">
+                  <font-awesome-icon icon="fa-solid fa-box" class="mr-2" />
+                  Ingredient Availability Check
+                </h4>
                 <button
-                  v-if="!checkingAvailability && ingredientAvailability"
-                  @click="
-                    checkIngredientAvailability(
-                      availableMenuItems.find(
-                        (item) => item.id === sampleForm.menu_item_id
-                      ),
-                      false
-                    )
-                  "
+                  @click="refreshIngredientAvailability"
                   class="btn btn-xs btn-ghost text-primaryColor hover:bg-primaryColor/10"
-                  title="Refresh ingredient availability (instant)"
+                  title="Refresh ingredient availability"
                 >
                   <RefreshCcw class="w-3 h-3" />
                 </button>
+              </div>
+
+              <div
+                v-if="selectedSample?.ingredient_availability"
+                class="space-y-4"
+              >
+                <!-- Summary Cards -->
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                  <div class="text-center">
+                    <div class="text-2xl font-bold text-primaryColor">
+                      {{
+                        selectedSample.ingredient_availability.total_ingredients
+                      }}
+                    </div>
+                    <div class="text-xs text-primaryColor">
+                      Total Ingredients
+                    </div>
+                  </div>
+                  <div class="text-center">
+                    <div class="text-2xl font-bold text-success">
+                      {{
+                        selectedSample.ingredient_availability
+                          .available_ingredients
+                      }}
+                    </div>
+                    <div class="text-xs text-primaryColor">Available</div>
+                  </div>
+                  <div class="text-center">
+                    <div
+                      class="text-2xl font-bold"
+                      :class="
+                        selectedSample.ingredient_availability
+                          .sufficient_for_production
+                          ? 'text-primaryColor'
+                          : 'text-red-600'
+                      "
+                    >
+                      {{
+                        selectedSample.ingredient_availability
+                          .sufficient_for_production
+                          ? 'Ready'
+                          : 'Issues'
+                      }}
+                    </div>
+                    <div class="text-xs text-gray-600">Status</div>
+                  </div>
+                </div>
+
+                <!-- Show insufficient ingredients if any -->
                 <div
-                  v-if="checkingAvailability"
-                  class="flex items-center text-sm text-primaryColor"
+                  v-if="
+                    !selectedSample.ingredient_availability
+                      .sufficient_for_production &&
+                    selectedSample.ingredient_availability
+                      .insufficient_ingredients?.length > 0
+                  "
+                  class="bg-red-50 border border-red-200 rounded-lg p-3"
                 >
-                  <RefreshCcw class="w-4 h-4 mr-1 animate-spin" />
-                  Checking availability...
-                </div>
-              </div>
-            </div>
-
-            <div v-if="ingredientAvailability" class="space-y-4">
-              <!-- Summary -->
-              <div class="grid grid-cols-3 gap-4 text-sm">
-                <div class="text-center">
-                  <div class="text-2xl font-bold text-primaryColor">
-                    {{ ingredientAvailability.total_ingredients }}
+                  <div class="text-sm font-medium text-red-800 mb-2">
+                    <font-awesome-icon
+                      icon="fa-solid fa-triangle-exclamation"
+                      class="mr-1"
+                    />
+                    Issues Found:
                   </div>
-                  <div class="text-xs text-primaryColor">Total Ingredients</div>
-                </div>
-                <div class="text-center">
-                  <div class="text-2xl font-bold text-primaryColor">
-                    {{ ingredientAvailability.available_ingredients }}
-                  </div>
-                  <div class="text-xs text-primaryColor">Available</div>
-                </div>
-                <div class="text-center">
-                  <div
-                    class="text-2xl font-bold"
-                    :class="
-                      ingredientAvailability.sufficient_for_production
-                        ? 'text-primaryColor'
-                        : 'text-red-600'
-                    "
-                  >
-                    {{
-                      ingredientAvailability.sufficient_for_production
-                        ? 'Ready'
-                        : 'Issues'
-                    }}
-                  </div>
-                  <div class="text-xs text-gray-600">Status</div>
-                </div>
-              </div>
-
-              <!-- Detailed Ingredient Breakdown -->
-              <div class="border-t border-primaryColor/20 pt-4">
-                <div class="text-sm font-medium text-primaryColor mb-3">
-                  <font-awesome-icon icon="fa-solid fa-clipboard" />
-                  Ingredient Details:
-                </div>
-                <div class="space-y-3 max-h-96 overflow-y-auto">
-                  <div
-                    v-for="ingredient in ingredientAvailability.ingredients"
-                    :key="ingredient.ingredient_name"
-                    class="p-3 rounded-lg border border-primaryColor/10 bg-white/50"
-                  >
-                    <div class="flex items-start justify-between">
-                      <div class="flex-1">
-                        <div
-                          class="font-medium text-sm text-primaryColor/70 mb-1"
-                        >
-                          {{ ingredient.ingredient_name }}
-                        </div>
-                        <div class="text-xs text-gray-600 mb-2">
-                          <span class="font-medium">Required:</span>
-                          <span class="text-primaryColor/70 font-semibold ml-1">
-                            {{ formatQuantity(ingredient.required_quantity) }}
-                            {{ ingredient.unit }}
-                          </span>
-                          <span class="mx-2">•</span>
-                          <span class="font-medium">Available:</span>
-                          <span
-                            class="font-semibold ml-1 text-primaryColor/70"
-                            :class="
-                              ingredient.is_available
-                                ? 'text-primaryColor'
-                                : 'text-error'
-                            "
-                          >
-                            {{ formatQuantity(ingredient.available_quantity) }}
-                            {{ ingredient.unit }}
-                          </span>
-                        </div>
-                        <div class="text-xs text-gray-600">
-                          <span class="font-medium"
-                            >Cost per {{ ingredient.unit }}:</span
-                          >
-                          <span class="font-semibold ml-1 text-primaryColor/70">
-                            ₱{{ formatCurrency(ingredient.cost_per_unit) }}
-                          </span>
-                          <span class="ml-2">•</span>
-                          <span class="font-medium">Total:</span>
-                          <span class="font-semibold ml-1 text-primaryColor/70">
-                            ₱{{
-                              formatCurrency(
-                                ingredient.required_quantity *
-                                  ingredient.cost_per_unit
-                              )
-                            }}
-                          </span>
-                        </div>
+                  <div class="space-y-2">
+                    <div
+                      v-for="ingredient in selectedSample
+                        .ingredient_availability.insufficient_ingredients"
+                      :key="ingredient.ingredient_name"
+                      class="text-xs bg-red-100 p-2 rounded border border-red-200"
+                    >
+                      <div class="font-medium text-red-800">
+                        {{ ingredient.ingredient_name }}
                       </div>
+                      <div class="text-red-700">
+                        Need {{ formatQuantity(ingredient.required_quantity) }}
+                        {{ ingredient.unit }}, have
+                        {{ formatQuantity(ingredient.available_quantity) }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-                      <div class="flex flex-col items-end gap-2">
-                        <!-- Status Badge -->
-                        <div
-                          class="badge text-xs badge-xs"
-                          :class="{
-                            'badge-success border-none text-success bg-success/20 font-thin':
-                              ingredient.available_quantity >=
-                              ingredient.required_quantity,
-                            'badge-warning border-none text-warning bg-warning/20 font-thin':
-                              ingredient.available_quantity > 0 &&
-                              ingredient.available_quantity <
-                                ingredient.required_quantity,
-                            'badge-error border-none text-error bg-error/20 font-thin':
-                              ingredient.available_quantity <= 0,
-                          }"
-                        >
-                          {{
-                            ingredient.available_quantity >=
-                            ingredient.required_quantity
-                              ? 'Sufficient'
-                              : ingredient.available_quantity <= 0
-                                ? 'Out of Stock'
-                                : 'Insufficient'
-                          }}
+                <!-- Detailed Ingredient Breakdown -->
+                <div class="border-t border-primaryColor/20 pt-4">
+                  <div class="text-sm font-medium text-primaryColor mb-3">
+                    <font-awesome-icon
+                      icon="fa-solid fa-clipboard"
+                      class="mr-1"
+                    />
+                    Ingredient Details:
+                  </div>
+                  <div class="space-y-3 max-h-96 overflow-y-auto">
+                    <div
+                      v-for="ingredient in selectedSample
+                        .ingredient_availability.ingredients"
+                      :key="ingredient.ingredient_name"
+                      class="p-3 rounded-lg border border-primaryColor/10 bg-white/50"
+                    >
+                      <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                          <div
+                            class="font-medium text-sm text-primaryColor/70 mb-1"
+                          >
+                            {{ ingredient.ingredient_name }}
+                          </div>
+                          <div class="text-xs text-gray-600 mb-2">
+                            <span class="font-medium">Required:</span>
+                            <span
+                              class="text-primaryColor/70 font-semibold ml-1"
+                            >
+                              {{ formatQuantity(ingredient.required_quantity) }}
+                              {{ ingredient.unit }}
+                            </span>
+                            <span class="mx-2">•</span>
+                            <span class="font-medium">Available:</span>
+                            <span
+                              class="text-primaryColor/70 font-semibold ml-1"
+                            >
+                              {{
+                                formatQuantity(ingredient.available_quantity)
+                              }}
+                              {{ ingredient.unit }}
+                            </span>
+                          </div>
+                          <div class="text-xs text-gray-500">
+                            Cost per {{ ingredient.unit }}:
+                            {{ formatCurrency(ingredient.cost_per_unit || 0) }}
+                          </div>
                         </div>
-
-                        <!-- Shortage Info -->
-                        <div
-                          v-if="
-                            ingredient.available_quantity <
-                            ingredient.required_quantity
-                          "
-                          class="text-xs text-error font-thin"
-                        >
-                          Short by
-                          <span class="font-semibold text-primaryColor/70">
+                        <div class="ml-3">
+                          <span
+                            class="badge text-xs"
+                            :class="{
+                              'badge-success border-none text-success bg-success/20 badge-xs':
+                                ingredient.is_available,
+                              'badge-warning border-none text-warning bg-warning/20 badge-xs':
+                                !ingredient.is_available &&
+                                ingredient.available_quantity > 0,
+                              'badge-error border-none text-error bg-error/20 badge-xs':
+                                ingredient.available_quantity <= 0,
+                            }"
+                          >
                             {{
-                              formatQuantity(
-                                ingredient.required_quantity -
-                                  ingredient.available_quantity
-                              )
+                              ingredient.is_available
+                                ? 'Sufficient'
+                                : ingredient.available_quantity <= 0
+                                  ? 'Out of stock'
+                                  : 'Insufficient'
                             }}
-                            {{ ingredient.unit }}
                           </span>
                         </div>
                       </div>
@@ -2995,727 +3695,428 @@
                 </div>
               </div>
 
-              <!-- Insufficient ingredients summary -->
-              <div
-                v-if="!ingredientAvailability.sufficient_for_production"
-                class="bg-secondaryColor/10 border border-primaryColor/20 p-3 rounded-lg"
-              >
-                <div class="text-sm font-medium text-primaryColor mb-2">
-                  <font-awesome-icon icon="fa-solid fa-exclamation-triangle" />
-                  Issues Found:
-                </div>
-                <div class="text-xs text-primaryColor">
-                  {{
-                    ingredientAvailability.total_ingredients -
-                    ingredientAvailability.available_ingredients
-                  }}
-                  out of
-                  {{ ingredientAvailability.total_ingredients }} ingredients are
-                  insufficient for production.
-                </div>
-              </div>
-
-              <!-- Production readiness status -->
-              <div
-                class="flex items-center justify-between pt-3 border-t border-primaryColor/20"
-              >
-                <span class="text-sm text-primaryColor font-medium"
-                  >Production Ready:</span
+              <div v-else class="text-center text-gray-500 py-8">
+                <AlertCircle class="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <div class="text-sm">Availability data not available</div>
+                <button
+                  @click="refreshIngredientAvailability"
+                  class="btn btn-xs btn-outline mt-2"
                 >
-                <span
-                  class="badge badge-xs"
-                  :class="
-                    ingredientAvailability.sufficient_for_production
-                      ? 'badge-success bg-success/20 border-none text-success font-thin'
-                      : 'badge-error'
-                  "
-                >
-                  {{
-                    ingredientAvailability.sufficient_for_production
-                      ? 'Yes'
-                      : 'No'
-                  }}
-                </span>
+                  Refresh Data
+                </button>
               </div>
             </div>
 
+            <!-- Quality Inspection Status -->
             <div
-              v-else-if="!checkingAvailability"
-              class="text-center text-primaryColor py-4"
+              v-if="
+                selectedSample?.quality_inspections &&
+                selectedSample.quality_inspections.length > 0
+              "
+              class="bg-green-50 p-4 rounded-lg"
             >
-              <Package class="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <div class="text-sm">
-                Select a menu item to check ingredient availability
+              <h4 class="font-semibold text-primaryColor mb-3">
+                Quality Inspection Results
+              </h4>
+              <div class="space-y-2">
+                <div
+                  v-for="inspection in selectedSample.quality_inspections"
+                  :key="inspection.id"
+                  class="flex items-center justify-between p-3 bg-white rounded"
+                >
+                  <div>
+                    <div class="font-medium">
+                      {{ inspection.inspection_type }}
+                    </div>
+                    <div class="text-sm text-gray-600">
+                      {{ formatDate(inspection.inspection_date) }} by
+                      {{ inspection.inspector_name }}
+                    </div>
+                  </div>
+                  <div class="text-right">
+                    <span
+                      class="badge"
+                      :class="
+                        inspection.result === 'Pass'
+                          ? 'badge-success'
+                          : inspection.result === 'Fail'
+                            ? 'badge-error'
+                            : 'badge-warning'
+                      "
+                    >
+                      {{ inspection.result }}
+                    </span>
+                    <div
+                      v-if="inspection.overall_quality_score"
+                      class="text-sm text-gray-600 mt-1"
+                    >
+                      Score: {{ inspection.overall_quality_score }}/10
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
           <div class="modal-action">
             <button
-              type="button"
-              @click="closeEditModal"
-              class="btn btn-sm bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300"
+              @click="closeDetailsModal"
+              class="btn btn-ghost btn-sm font-thin"
             >
-              Cancel
+              Close
             </button>
             <button
-              type="submit"
-              class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
-              :disabled="loading"
+              v-if="
+                selectedSample?.status === 'Planned' &&
+                canStartProduction(selectedSample)
+              "
+              @click="startSampleProduction(selectedSample.id)"
+              class="btn bg-primaryColor text-white border-none hover:bg-primaryColor/80 btn-sm shadow-none font-thin"
             >
-              <Edit class="w-4 h-4 mr-2" v-if="!loading" />
-              <RefreshCcw class="w-4 h-4 mr-2 animate-spin" v-else />
-              Update Sample Production
+              <Play class="w-4 h-4 mr-2" />
+              Start Production
             </button>
           </div>
-        </form>
-      </div>
-    </dialog>
+        </div>
+      </dialog>
 
-    <!-- Sample Production Details Modal -->
-    <dialog
-      id="sample_details_modal"
-      class="modal"
-      :class="{ 'modal-open': showDetailsModal }"
-    >
-      <div
-        v-if="selectedSample"
-        class="modal-box max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-black/10 bg-white/95 shadow-lg"
+      <!-- Shared Confirmation Modal for other operations -->
+      <dialog
+        id="sample_confirmation_modal"
+        class="modal"
+        :class="{ 'modal-open': confirmModal.show }"
       >
-        <div
-          class="flex items-center justify-between mb-6 border-b border-black/10 pb-4"
-        >
-          <div>
-            <h3 class="font-bold text-xl text-primaryColor">
-              Sample Production Details
-            </h3>
-            <p class="text-sm text-gray-600 mt-1">
-              {{ selectedSample.menu_item_name }} - Batch
-              {{ selectedSample.sample_batch_number }}
-            </p>
-          </div>
-          <div class="flex items-center gap-2">
-            <span
-              class="badge badge-sm"
-              :class="getStatusBadgeClass(selectedSample?.status || '')"
+        <div class="modal-box max-w-sm">
+          <h3
+            class="font-bold text-lg text-primaryColor"
+            :class="{
+              'text-red-500':
+                confirmModal.type === 'cancel' ||
+                confirmModal.type === 'delete',
+            }"
+          >
+            {{ confirmModal.title }}
+          </h3>
+          <p class="text-gray-700 mb-4">{{ confirmModal.message }}</p>
+          <div class="modal-action">
+            <button
+              @click="closeConfirmModal"
+              :disabled="loading"
+              class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none btn-sm disabled:opacity-50"
             >
-              {{ selectedSample?.status || 'N/A' }}
-            </span>
-            <span
-              v-if="selectedSample?.priority"
-              class="badge badge-sm"
-              :class="getPriorityBadgeClass(selectedSample.priority)"
+              No
+            </button>
+            <button
+              @click="confirmModal.onConfirm"
+              :disabled="loading"
+              :class="
+                confirmModal.type === 'cancel' || confirmModal.type === 'delete'
+                  ? 'btn bg-red-500 text-white btn-sm font-thin border-none hover:bg-red-500/80 disabled:opacity-50'
+                  : 'btn bg-primaryColor text-white btn-sm font-thin border-none hover:bg-primaryColor/80 disabled:opacity-50'
+              "
             >
-              {{ selectedSample.priority }}
-            </span>
+              <span
+                class="loading loading-spinner loading-sm mr-2"
+                v-if="loading"
+              ></span>
+              {{
+                confirmModal.type === 'start' && loading
+                  ? 'Starting…'
+                  : confirmModal.type === 'cancel'
+                    ? 'Cancel'
+                    : confirmModal.type === 'delete'
+                      ? 'Delete'
+                      : confirmModal.type === 'create'
+                        ? 'Create'
+                        : confirmModal.type === 'update'
+                          ? 'Update'
+                          : 'Yes'
+              }}
+            </button>
           </div>
         </div>
+      </dialog>
 
-        <div class="space-y-6">
-          <!-- Basic Information -->
-          <div
-            class="bg-secondaryColor/10 border border-primaryColor/20 p-4 rounded-xl"
-          >
-            <h4 class="font-semibold text-primaryColor mb-4">
-              <font-awesome-icon icon="fa-solid fa-info-circle" class="mr-2" />
-              Basic Information
-            </h4>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div class="space-y-3">
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Menu Item:</span>
-                  <span class="font-medium text-primaryColor">{{
-                    selectedSample?.menu_item_name || 'N/A'
-                  }}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Recipe:</span>
-                  <span class="font-medium text-primaryColor">{{
-                    selectedSample?.recipe_name || 'N/A'
-                  }}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Batch Size:</span>
-                  <span class="font-medium text-primaryColor"
-                    >{{ selectedSample?.batch_size || 'N/A' }}
-                    {{ selectedSample?.batch_unit || '' }}</span
-                  >
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Estimated Cost:</span>
-                  <span class="font-medium text-info">
-                    {{ formatCurrency(selectedSample?.estimated_cost || 0) }}
-                  </span>
-                </div>
+      <!-- Fail Confirmation Modal -->
+      <dialog
+        id="sample_fail_modal"
+        class="modal"
+        :class="{ 'modal-open': failModal.show }"
+      >
+        <div class="modal-box max-w-md">
+          <h3 class="font-bold text-lg text-red-500">
+            {{ failModal.title }}
+          </h3>
+          <p class="text-gray-700 mb-4">{{ failModal.message }}</p>
+
+          <!-- Fail form summary + fields -->
+          <div class="space-y-4">
+            <div class="bg-red-50 border border-red-200 p-3 rounded">
+              <div class="font-medium text-red-500 mb-1">
+                {{ failModal.data?.menu_item_name || 'Sample' }}
               </div>
-              <div class="space-y-3">
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Scheduled Date:</span>
-                  <span class="font-medium">{{
-                    formatDate(selectedSample?.scheduled_date)
-                  }}</span>
-                </div>
-                <div
-                  v-if="selectedSample?.scheduled_time"
-                  class="flex justify-between"
-                >
-                  <span class="text-gray-600">Scheduled Time:</span>
-                  <span class="font-medium">{{
-                    formatTime(selectedSample.scheduled_time)
-                  }}</span>
-                </div>
-                <div
-                  v-if="selectedSample?.actual_start_date"
-                  class="flex justify-between"
-                >
-                  <span class="text-gray-600">Started:</span>
-                  <span class="font-medium">{{
-                    formatDate(selectedSample.actual_start_date)
-                  }}</span>
-                </div>
-                <div
-                  v-if="selectedSample?.actual_end_date"
-                  class="flex justify-between"
-                >
-                  <span class="text-gray-600">Completed:</span>
-                  <span class="font-medium">{{
-                    formatDate(selectedSample.actual_end_date)
-                  }}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Assigned To:</span>
-                  <span class="font-medium">{{
-                    selectedSample?.assigned_to_name || 'Unassigned'
-                  }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Production Notes -->
-          <div
-            v-if="selectedSample?.production_notes"
-            class="bg-secondaryColor/10 border border-primaryColor/20 p-4 rounded-xl"
-          >
-            <h4 class="font-semibold text-primaryColor mb-3">
-              <font-awesome-icon icon="fa-solid fa-sticky-note" class="mr-2" />
-              Production Notes
-            </h4>
-            <p class="text-gray-700 text-sm leading-relaxed">
-              {{ selectedSample.production_notes }}
-            </p>
-          </div>
-
-          <!-- Ingredient Availability Check -->
-          <div
-            class="bg-secondaryColor/10 border border-primaryColor/20 p-4 rounded-xl"
-          >
-            <div class="flex items-center justify-between mb-4">
-              <h4 class="font-semibold text-primaryColor">
-                <font-awesome-icon icon="fa-solid fa-box" class="mr-2" />
-                Ingredient Availability Check
-              </h4>
-              <button
-                @click="refreshIngredientAvailability"
-                class="btn btn-xs btn-ghost text-primaryColor hover:bg-primaryColor/10"
-                title="Refresh ingredient availability"
-              >
-                <RefreshCcw class="w-3 h-3" />
-              </button>
-            </div>
-
-            <div
-              v-if="selectedSample?.ingredient_availability"
-              class="space-y-4"
-            >
-              <!-- Summary Cards -->
-              <div class="grid grid-cols-3 gap-4 text-sm">
-                <div class="text-center">
-                  <div class="text-2xl font-bold text-primaryColor">
-                    {{
-                      selectedSample.ingredient_availability.total_ingredients
-                    }}
-                  </div>
-                  <div class="text-xs text-primaryColor">Total Ingredients</div>
-                </div>
-                <div class="text-center">
-                  <div class="text-2xl font-bold text-success">
-                    {{
-                      selectedSample.ingredient_availability
-                        .available_ingredients
-                    }}
-                  </div>
-                  <div class="text-xs text-primaryColor">Available</div>
-                </div>
-                <div class="text-center">
-                  <div
-                    class="text-2xl font-bold"
-                    :class="
-                      selectedSample.ingredient_availability
-                        .sufficient_for_production
-                        ? 'text-primaryColor'
-                        : 'text-red-600'
-                    "
-                  >
-                    {{
-                      selectedSample.ingredient_availability
-                        .sufficient_for_production
-                        ? 'Ready'
-                        : 'Issues'
-                    }}
-                  </div>
-                  <div class="text-xs text-gray-600">Status</div>
-                </div>
-              </div>
-
-              <!-- Show insufficient ingredients if any -->
-              <div
-                v-if="
-                  !selectedSample.ingredient_availability
-                    .sufficient_for_production &&
-                  selectedSample.ingredient_availability
-                    .insufficient_ingredients?.length > 0
-                "
-                class="bg-red-50 border border-red-200 rounded-lg p-3"
-              >
-                <div class="text-sm font-medium text-red-800 mb-2">
-                  <font-awesome-icon
-                    icon="fa-solid fa-triangle-exclamation"
-                    class="mr-1"
-                  />
-                  Issues Found:
-                </div>
-                <div class="space-y-2">
-                  <div
-                    v-for="ingredient in selectedSample.ingredient_availability
-                      .insufficient_ingredients"
-                    :key="ingredient.ingredient_name"
-                    class="text-xs bg-red-100 p-2 rounded border border-red-200"
-                  >
-                    <div class="font-medium text-red-800">
-                      {{ ingredient.ingredient_name }}
-                    </div>
-                    <div class="text-red-700">
-                      Need {{ formatQuantity(ingredient.required_quantity) }}
-                      {{ ingredient.unit }}, have
-                      {{ formatQuantity(ingredient.available_quantity) }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Detailed Ingredient Breakdown -->
-              <div class="border-t border-primaryColor/20 pt-4">
-                <div class="text-sm font-medium text-primaryColor mb-3">
-                  <font-awesome-icon
-                    icon="fa-solid fa-clipboard"
-                    class="mr-1"
-                  />
-                  Ingredient Details:
-                </div>
-                <div class="space-y-3 max-h-96 overflow-y-auto">
-                  <div
-                    v-for="ingredient in selectedSample.ingredient_availability
-                      .ingredients"
-                    :key="ingredient.ingredient_name"
-                    class="p-3 rounded-lg border border-primaryColor/10 bg-white/50"
-                  >
-                    <div class="flex items-start justify-between">
-                      <div class="flex-1">
-                        <div
-                          class="font-medium text-sm text-primaryColor/70 mb-1"
-                        >
-                          {{ ingredient.ingredient_name }}
-                        </div>
-                        <div class="text-xs text-gray-600 mb-2">
-                          <span class="font-medium">Required:</span>
-                          <span class="text-primaryColor/70 font-semibold ml-1">
-                            {{ formatQuantity(ingredient.required_quantity) }}
-                            {{ ingredient.unit }}
-                          </span>
-                          <span class="mx-2">•</span>
-                          <span class="font-medium">Available:</span>
-                          <span class="text-primaryColor/70 font-semibold ml-1">
-                            {{ formatQuantity(ingredient.available_quantity) }}
-                            {{ ingredient.unit }}
-                          </span>
-                        </div>
-                        <div class="text-xs text-gray-500">
-                          Cost per {{ ingredient.unit }}:
-                          {{ formatCurrency(ingredient.cost_per_unit || 0) }}
-                        </div>
-                      </div>
-                      <div class="ml-3">
-                        <span
-                          class="badge text-xs"
-                          :class="{
-                            'badge-success border-none text-success bg-success/20 badge-xs':
-                              ingredient.is_available,
-                            'badge-warning border-none text-warning bg-warning/20 badge-xs':
-                              !ingredient.is_available &&
-                              ingredient.available_quantity > 0,
-                            'badge-error border-none text-error bg-error/20 badge-xs':
-                              ingredient.available_quantity <= 0,
-                          }"
-                        >
-                          {{
-                            ingredient.is_available
-                              ? 'Sufficient'
-                              : ingredient.available_quantity <= 0
-                                ? 'Out of stock'
-                                : 'Insufficient'
-                          }}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div v-else class="text-center text-gray-500 py-8">
-              <AlertCircle class="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <div class="text-sm">Availability data not available</div>
-              <button
-                @click="refreshIngredientAvailability"
-                class="btn btn-xs btn-outline mt-2"
-              >
-                Refresh Data
-              </button>
-            </div>
-          </div>
-
-          <!-- Quality Inspection Status -->
-          <div
-            v-if="
-              selectedSample?.quality_inspections &&
-              selectedSample.quality_inspections.length > 0
-            "
-            class="bg-green-50 p-4 rounded-lg"
-          >
-            <h4 class="font-semibold text-primaryColor mb-3">
-              Quality Inspection Results
-            </h4>
-            <div class="space-y-2">
-              <div
-                v-for="inspection in selectedSample.quality_inspections"
-                :key="inspection.id"
-                class="flex items-center justify-between p-3 bg-white rounded"
-              >
+              <div class="text-xs text-black/60 grid grid-cols-2 gap-y-1">
                 <div>
-                  <div class="font-medium">
-                    {{ inspection.inspection_type }}
-                  </div>
-                  <div class="text-sm text-gray-600">
-                    {{ formatDate(inspection.inspection_date) }} by
-                    {{ inspection.inspector_name }}
-                  </div>
+                  <span class="font-thin text-red-500">Batch:</span>
+                  {{ failModal.data?.sample_batch_number }}
                 </div>
-                <div class="text-right">
-                  <span
-                    class="badge"
-                    :class="
-                      inspection.result === 'Pass'
-                        ? 'badge-success'
-                        : inspection.result === 'Fail'
-                          ? 'badge-error'
-                          : 'badge-warning'
-                    "
-                  >
-                    {{ inspection.result }}
-                  </span>
-                  <div
-                    v-if="inspection.overall_quality_score"
-                    class="text-sm text-gray-600 mt-1"
-                  >
-                    Score: {{ inspection.overall_quality_score }}/10
-                  </div>
+                <div>
+                  <span class="font-thin text-red-500">Planned:</span>
+                  {{ failModal.data?.batch_size }} servings
+                </div>
+                <div>
+                  <span class="font-thin text-red-500">Schedule:</span>
+                  {{ formatDate(failModal.data?.scheduled_date) }}
+                  {{ formatTime(failModal.data?.scheduled_time) }}
+                </div>
+                <div>
+                  <span class="font-thin text-red-500">Assigned:</span>
+                  {{ failModal.data?.assigned_to_name || 'Unassigned' }}
+                </div>
+                <div>
+                  <span class="font-thin text-red-500">Est. Cost:</span>
+                  {{ formatCurrency(failModal.data?.estimated_cost) }}
+                </div>
+                <div v-if="failModal.data?.priority">
+                  <span class="font-thin text-red-500">Priority:</span>
+                  {{ failModal.data?.priority }}
                 </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        <div class="modal-action">
-          <button
-            @click="closeDetailsModal"
-            class="btn btn-ghost btn-sm font-thin"
-          >
-            Close
-          </button>
-          <button
-            v-if="
-              selectedSample?.status === 'Planned' &&
-              canStartProduction(selectedSample)
-            "
-            @click="startSampleProduction(selectedSample.id)"
-            class="btn bg-primaryColor text-white border-none hover:bg-primaryColor/80 btn-sm shadow-none font-thin"
-          >
-            <Play class="w-4 h-4 mr-2" />
-            Start Production
-          </button>
-        </div>
-      </div>
-    </dialog>
-    <!-- Sample Production Audit Log Component -->
-    <SampleProductionAuditLog v-model:show="showAuditLog" />
-
-    <!-- Confirmation Modal -->
-    <dialog
-      id="sample_confirmation_modal"
-      class="modal"
-      :class="{ 'modal-open': confirmModal.show }"
-    >
-      <div class="modal-box max-w-sm">
-        <h3
-          class="font-bold text-lg text-primaryColor"
-          :class="{ 'text-red-500': confirmModal.type === 'fail' }"
-        >
-          {{ confirmModal.title }}
-        </h3>
-        <p class="text-gray-700 mb-4">{{ confirmModal.message }}</p>
-
-        <!-- Fail / Complete form summary + fields -->
-        <div v-if="confirmModal.type === 'fail'" class="space-y-4">
-          <div class="bg-red-50 border border-red-200 p-3 rounded">
-            <div class="font-medium text-red-500 mb-1">
-              {{ confirmModal.data?.menu_item_name || 'Sample' }}
-            </div>
-            <div class="text-xs text-black/60 grid grid-cols-2 gap-y-1">
+            <div class="space-y-3">
               <div>
-                <span class="font-thin text-red-500">Batch:</span>
-                {{ confirmModal.data?.sample_batch_number }}
-              </div>
-              <div>
-                <span class="font-thin text-red-500">Planned:</span>
-                {{ confirmModal.data?.batch_size }} servings
-              </div>
-              <div>
-                <span class="font-thin text-red-500">Schedule:</span>
-                {{ formatDate(confirmModal.data?.scheduled_date) }}
-                {{ formatTime(confirmModal.data?.scheduled_time) }}
-              </div>
-              <div>
-                <span class="font-thin text-red-500">Assigned:</span>
-                {{ confirmModal.data?.assigned_to_name || 'Unassigned' }}
-              </div>
-              <div>
-                <span class="font-thin text-red-500">Est. Cost:</span>
-                {{ formatCurrency(confirmModal.data?.estimated_cost) }}
-              </div>
-              <div v-if="confirmModal.data?.priority">
-                <span class="font-thin text-red-500">Priority:</span>
-                {{ confirmModal.data?.priority }}
-              </div>
-            </div>
-          </div>
-
-          <div class="space-y-3">
-            <div>
-              <label class="label text-xs text-black/60">Failure Reason</label>
-              <input
-                v-model="failForm.failure_reason"
-                type="text"
-                class="input input-bordered input-sm w-full bg-white"
-                placeholder="e.g., Equipment malfunction"
-              />
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="label text-xs text-black/60">Quantity Lost</label>
+                <label class="label text-xs text-black/60"
+                  >Failure Reason</label
+                >
                 <input
-                  v-model.number="failForm.quantity_lost"
-                  type="number"
-                  :min="0"
-                  :max="confirmModal.data?.batch_size || 0"
-                  step="0.01"
+                  v-model="failForm.failure_reason"
+                  type="text"
                   class="input input-bordered input-sm w-full bg-white"
+                  placeholder="e.g., Equipment malfunction"
                 />
-                <div class="text-[10px] text-black/40 mt-1">
-                  Max: {{ confirmModal.data?.batch_size || 0 }} servings
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="label text-xs text-black/60"
+                    >Quantity Lost</label
+                  >
+                  <input
+                    v-model.number="failForm.quantity_lost"
+                    type="number"
+                    :min="0"
+                    :max="failModal.data?.batch_size || 0"
+                    step="0.01"
+                    class="input input-bordered input-sm w-full bg-white"
+                  />
+                  <div class="text-[10px] text-black/40 mt-1">
+                    Max: {{ failModal.data?.batch_size || 0 }} servings
+                  </div>
+                </div>
+                <div>
+                  <label class="label text-xs text-black/60"
+                    >Cost Incurred (₱)</label
+                  >
+                  <input
+                    v-model.number="failForm.cost_incurred"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="input input-bordered input-sm w-full bg-white"
+                  />
+                  <div class="text-[10px] text-black/40 mt-1">
+                    Prefilled from estimated cost
+                  </div>
                 </div>
               </div>
               <div>
                 <label class="label text-xs text-black/60"
-                  >Cost Incurred (₱)</label
+                  >Notes (optional)</label
+                >
+                <textarea
+                  v-model="failForm.notes"
+                  class="textarea textarea-bordered w-full bg-white"
+                  rows="2"
+                  placeholder="Additional details"
+                />
+              </div>
+            </div>
+          </div>
+          <div class="modal-action">
+            <button
+              @click="closeFailModal"
+              :disabled="loading"
+              class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none btn-sm disabled:opacity-50"
+            >
+              No
+            </button>
+            <button
+              @click="failModal.onConfirm"
+              :disabled="loading || !canConfirmFail"
+              class="btn bg-red-500 text-white btn-sm font-thin border-none hover:bg-red-500/80 disabled:opacity-50"
+            >
+              <span
+                class="loading loading-spinner loading-sm mr-2"
+                v-if="loading"
+              ></span>
+              {{ canConfirmFail ? 'Confirm Fail' : 'Add Reason to Continue' }}
+            </button>
+          </div>
+        </div>
+      </dialog>
+
+      <!-- Complete Confirmation Modal -->
+      <dialog
+        id="sample_complete_modal"
+        class="modal"
+        :class="{ 'modal-open': completeModal.show }"
+      >
+        <div class="modal-box max-w-md">
+          <h3 class="font-bold text-lg text-primaryColor">
+            {{ completeModal.title }}
+          </h3>
+          <p class="text-gray-700 mb-4">{{ completeModal.message }}</p>
+
+          <!-- Complete form summary + fields -->
+          <div class="space-y-4">
+            <div class="bg-green-50 border border-green-200 p-3 rounded">
+              <div class="font-medium text-success mb-1">
+                {{ completeModal.data?.menu_item_name || 'Sample' }}
+              </div>
+              <div class="text-xs text-black/60 grid grid-cols-2 gap-y-1">
+                <div>
+                  <span class="font-semibold">Batch:</span>
+                  {{ completeModal.data?.sample_batch_number }}
+                </div>
+                <div>
+                  <span class="font-semibold">Planned:</span>
+                  {{ completeModal.data?.batch_size }} servings
+                </div>
+                <div>
+                  <span class="font-semibold">Schedule:</span>
+                  {{ formatDate(completeModal.data?.scheduled_date) }}
+                  {{ formatTime(completeModal.data?.scheduled_time) }}
+                </div>
+                <div>
+                  <span class="font-semibold">Assigned:</span>
+                  {{ completeModal.data?.assigned_to_name || 'Unassigned' }}
+                </div>
+                <div>
+                  <span class="font-semibold">Est. Cost:</span>
+                  {{ formatCurrency(completeModal.data?.estimated_cost) }}
+                </div>
+                <div v-if="completeModal.data?.priority">
+                  <span class="font-semibold">Priority:</span>
+                  {{ completeModal.data?.priority }}
+                </div>
+              </div>
+            </div>
+
+            <div class="space-y-3">
+              <div>
+                <label class="label text-xs text-black/60"
+                  >Quantity Produced</label
                 >
                 <input
-                  v-model.number="failForm.cost_incurred"
+                  v-model.number="completeForm.quantity_produced"
+                  type="number"
+                  :min="0"
+                  :max="completeModal.data?.batch_size || 0"
+                  step="0.01"
+                  class="input input-bordered input-sm w-full bg-white"
+                />
+                <div class="text-[10px] text-black/40 mt-1">
+                  Max: {{ completeModal.data?.batch_size || 0 }} servings
+                </div>
+              </div>
+              <div>
+                <label class="label text-xs text-black/60"
+                  >Production Cost (₱)</label
+                >
+                <input
+                  v-model.number="completeForm.production_cost"
                   type="number"
                   min="0"
                   step="0.01"
                   class="input input-bordered input-sm w-full bg-white"
                 />
-                <div class="text-[10px] text-black/40 mt-1">
-                  Prefilled from estimated cost
-                </div>
+              </div>
+              <div>
+                <label class="label text-xs text-black/60"
+                  >Notes (optional)</label
+                >
+                <textarea
+                  v-model="completeForm.notes"
+                  class="textarea textarea-bordered w-full bg-white"
+                  rows="2"
+                  placeholder="Additional details"
+                />
               </div>
             </div>
-            <div>
-              <label class="label text-xs text-black/60"
-                >Notes (optional)</label
-              >
-              <textarea
-                v-model="failForm.notes"
-                class="textarea textarea-bordered w-full bg-white"
-                rows="2"
-                placeholder="Additional details"
-              />
-            </div>
+          </div>
+          <div class="modal-action">
+            <button
+              @click="closeCompleteModal"
+              :disabled="loading"
+              class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none btn-sm disabled:opacity-50"
+            >
+              No
+            </button>
+            <button
+              @click="completeModal.onConfirm"
+              :disabled="loading || !canConfirmComplete"
+              class="btn bg-primaryColor text-white btn-sm font-thin border-none hover:bg-primaryColor/80 disabled:opacity-50"
+            >
+              <span
+                class="loading loading-spinner loading-sm mr-2"
+                v-if="loading"
+              ></span>
+              {{ canConfirmComplete ? 'Confirm Complete' : 'Check Quantity' }}
+            </button>
           </div>
         </div>
+      </dialog>
 
-        <!-- Complete form summary + fields -->
-        <div v-if="confirmModal.type === 'complete'" class="space-y-4">
-          <div class="bg-green-50 border border-green-200 p-3 rounded">
-            <div class="font-medium text-success mb-1">
-              {{ confirmModal.data?.menu_item_name || 'Sample' }}
-            </div>
-            <div class="text-xs text-black/60 grid grid-cols-2 gap-y-1">
-              <div>
-                <span class="font-semibold">Batch:</span>
-                {{ confirmModal.data?.sample_batch_number }}
-              </div>
-              <div>
-                <span class="font-semibold">Planned:</span>
-                {{ confirmModal.data?.batch_size }} servings
-              </div>
-              <div>
-                <span class="font-semibold">Schedule:</span>
-                {{ formatDate(confirmModal.data?.scheduled_date) }}
-                {{ formatTime(confirmModal.data?.scheduled_time) }}
-              </div>
-              <div>
-                <span class="font-semibold">Assigned:</span>
-                {{ confirmModal.data?.assigned_to_name || 'Unassigned' }}
-              </div>
-              <div>
-                <span class="font-semibold">Est. Cost:</span>
-                {{ formatCurrency(confirmModal.data?.estimated_cost) }}
-              </div>
-              <div v-if="confirmModal.data?.priority">
-                <span class="font-semibold">Priority:</span>
-                {{ confirmModal.data?.priority }}
-              </div>
-            </div>
-          </div>
-
-          <div class="space-y-3">
-            <div>
-              <label class="label text-xs text-black/60"
-                >Quantity Produced</label
-              >
-              <input
-                v-model.number="completeForm.quantity_produced"
-                type="number"
-                :min="0"
-                :max="confirmModal.data?.batch_size || 0"
-                step="0.01"
-                class="input input-bordered input-sm w-full bg-white"
-              />
-              <div class="text-[10px] text-black/40 mt-1">
-                Max: {{ confirmModal.data?.batch_size || 0 }} servings
-              </div>
-            </div>
-            <div>
-              <label class="label text-xs text-black/60"
-                >Production Cost (₱)</label
-              >
-              <input
-                v-model.number="completeForm.production_cost"
-                type="number"
-                min="0"
-                step="0.01"
-                class="input input-bordered input-sm w-full bg-white"
-              />
-            </div>
-            <div>
-              <label class="label text-xs text-black/60"
-                >Notes (optional)</label
-              >
-              <textarea
-                v-model="completeForm.notes"
-                class="textarea textarea-bordered w-full bg-white"
-                rows="2"
-                placeholder="Additional details"
-              />
-            </div>
-          </div>
-        </div>
-        <div class="modal-action">
-          <button
-            @click="closeConfirmModal"
-            :disabled="loading"
-            class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none btn-sm disabled:opacity-50"
+      <!-- Toast -->
+      <!-- Toast Notification - Enhanced from RecipeManagement.vue -->
+      <transition
+        enter-active-class="transform transition ease-out duration-300"
+        enter-from-class="translate-x-full opacity-0"
+        enter-to-class="translate-x-0 opacity-100"
+        leave-active-class="transform transition ease-in duration-300"
+        leave-from-class="translate-x-0 opacity-100"
+        leave-to-class="translate-x-full opacity-0"
+      >
+        <div class="toast toast-end sm:toast-end z-[100000]" v-if="toast.show">
+          <div
+            v-if="toast.type === 'success'"
+            class="alert alert-success shadow-lg max-w-xs sm:max-w-sm"
           >
-            No
-          </button>
-          <button
-            @click="confirmModal.onConfirm"
-            :disabled="
-              loading ||
-              (confirmModal.type === 'fail' && !canConfirmFail) ||
-              (confirmModal.type === 'complete' && !canConfirmComplete)
-            "
-            :class="
-              confirmModal.type === 'fail'
-                ? 'btn bg-red-500 text-white btn-sm font-thin border-none hover:bg-red-500/80 disabled:opacity-50'
-                : 'btn bg-primaryColor text-white btn-sm font-thin border-none hover:bg-primaryColor/80 disabled:opacity-50'
-            "
+            <span class="text-xs sm:text-sm">{{ toast.message }}</span>
+          </div>
+          <div
+            v-else-if="toast.type === 'error'"
+            class="alert alert-error shadow-lg max-w-xs sm:max-w-sm"
           >
-            <span
-              class="loading loading-spinner loading-sm mr-2"
-              v-if="loading"
-            ></span>
-            {{
-              confirmModal.type === 'start' && loading
-                ? 'Starting…'
-                : confirmModal.type === 'fail'
-                  ? canConfirmFail
-                    ? 'Confirm Fail'
-                    : 'Add Reason to Continue'
-                  : confirmModal.type === 'complete'
-                    ? canConfirmComplete
-                      ? 'Confirm Complete'
-                      : 'Check Quantity'
-                    : 'Yes'
-            }}
-          </button>
+            <span class="text-xs sm:text-sm">{{ toast.message }}</span>
+          </div>
+          <div
+            v-else-if="toast.type === 'warning'"
+            class="alert alert-warning shadow-lg max-w-xs sm:max-w-sm"
+          >
+            <span class="text-xs sm:text-sm">{{ toast.message }}</span>
+          </div>
         </div>
-      </div>
-    </dialog>
+      </transition>
+    </div>
+    <!-- Sample Production Audit Log Component -->
+    <SampleProductionAuditLog
+      v-model:show="showAuditLog"
+      @open-full-modal="handleOpenFullAuditLogModal"
+    />
 
-    <!-- Toast -->
-    <!-- Toast Notification - Enhanced from RecipeManagement.vue -->
-    <transition
-      enter-active-class="transform transition ease-out duration-300"
-      enter-from-class="translate-x-full opacity-0"
-      enter-to-class="translate-x-0 opacity-100"
-      leave-active-class="transform transition ease-in duration-300"
-      leave-from-class="translate-x-0 opacity-100"
-      leave-to-class="translate-x-full opacity-0"
-    >
-      <div class="toast toast-end sm:toast-end z-[100000]" v-if="toast.show">
-        <div
-          v-if="toast.type === 'success'"
-          class="alert alert-success shadow-lg max-w-xs sm:max-w-sm"
-        >
-          <span class="text-xs sm:text-sm">{{ toast.message }}</span>
-        </div>
-        <div
-          v-else-if="toast.type === 'error'"
-          class="alert alert-error shadow-lg max-w-xs sm:max-w-sm"
-        >
-          <span class="text-xs sm:text-sm">{{ toast.message }}</span>
-        </div>
-        <div
-          v-else-if="toast.type === 'warning'"
-          class="alert alert-warning shadow-lg max-w-xs sm:max-w-sm"
-        >
-          <span class="text-xs sm:text-sm">{{ toast.message }}</span>
-        </div>
-      </div>
-    </transition>
+    <!-- Full Audit Log Modal -->
+    <FullAuditLogModal v-model:show="showFullAuditLogModal" />
   </div>
 </template>
 

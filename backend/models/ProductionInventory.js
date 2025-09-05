@@ -349,15 +349,291 @@ class ProductionInventory {
           db.raw(
             "COUNT(DISTINCT CASE WHEN pi.available_quantity <= pi.reorder_point THEN pi.id END) as low_stock_items"
           ),
-          db.raw("SUM(pi.total_produced) as total_produced_all_time")
+          db.raw("SUM(pi.total_produced) as total_produced_all_time"),
+          db.raw("SUM(pi.total_distributed) as total_distributed_all_time")
         )
         .where("pi.is_active", true)
         .first();
 
-      return stats;
+      // Get distribution statistics
+      const distributionStats = await db(
+        "production_inventory_distributions as pid"
+      )
+        .select(
+          db.raw("COUNT(DISTINCT pid.id) as total_distributions"),
+          db.raw("SUM(pid.quantity_distributed) as total_quantity_distributed"),
+          db.raw("COUNT(DISTINCT pid.branch_id) as branches_served"),
+          db.raw("COUNT(DISTINCT pid.menu_item_id) as items_distributed")
+        )
+        .where("pid.status", "completed")
+        .whereNull("pid.deleted_at")
+        .first();
+
+      // Get recent distribution activity (last 30 days)
+      const recentDistributions = await db(
+        "production_inventory_distributions as pid"
+      )
+        .select(
+          db.raw("COUNT(DISTINCT pid.id) as recent_distributions"),
+          db.raw("SUM(pid.quantity_distributed) as recent_quantity_distributed")
+        )
+        .where("pid.status", "completed")
+        .where(
+          "pid.distribution_date",
+          ">=",
+          db.raw("NOW() - INTERVAL '30 days'")
+        )
+        .whereNull("pid.deleted_at")
+        .first();
+
+      return {
+        ...stats,
+        ...distributionStats,
+        ...recentDistributions,
+      };
     } catch (error) {
       console.error("Error fetching production inventory stats:", error);
       throw new Error("Failed to retrieve production inventory statistics");
+    }
+  }
+
+  // Record distribution to branch
+  static async recordDistribution(
+    menuItemId,
+    quantityDistributed,
+    branchId,
+    userId,
+    notes = null
+  ) {
+    try {
+      const inventoryItem = await this.getByMenuItem(menuItemId);
+
+      if (!inventoryItem) {
+        throw new Error("Production inventory item not found");
+      }
+
+      if (inventoryItem.available_quantity < quantityDistributed) {
+        throw new Error("Insufficient stock for distribution");
+      }
+
+      const newQuantity =
+        inventoryItem.available_quantity - quantityDistributed;
+
+      await db("production_inventory")
+        .where("id", inventoryItem.id)
+        .update({
+          available_quantity: newQuantity,
+          total_distributed:
+            (inventoryItem.total_distributed || 0) + quantityDistributed,
+          updated_at: db.fn.now(),
+        });
+
+      // Log the distribution
+      await this.logStockUpdate(
+        inventoryItem.id,
+        inventoryItem.available_quantity,
+        newQuantity,
+        userId,
+        `Distributed ${quantityDistributed} units to branch ${branchId}${notes ? ` - ${notes}` : ""}`
+      );
+
+      // Create distribution record
+      await db("production_inventory_distributions").insert({
+        production_inventory_id: inventoryItem.id,
+        menu_item_id: menuItemId,
+        branch_id: branchId,
+        quantity_distributed: quantityDistributed,
+        distribution_date: db.fn.now(),
+        distributed_by: userId,
+        notes: notes,
+        created_at: db.fn.now(),
+      });
+
+      return await this.getById(inventoryItem.id);
+    } catch (error) {
+      console.error("Error recording distribution:", error);
+      throw new Error("Failed to record distribution");
+    }
+  }
+
+  // Get distribution history for a menu item
+  static async getDistributionHistory(menuItemId, filters = {}) {
+    try {
+      let query = db("production_inventory_distributions as pid")
+        .select(
+          "pid.*",
+          "pi.available_quantity",
+          "mi.menu_item_name",
+          "mi.item_code",
+          "b.branch_name",
+          "u.name as distributed_by_name"
+        )
+        .leftJoin(
+          "production_inventory as pi",
+          "pid.production_inventory_id",
+          "pi.id"
+        )
+        .leftJoin("menu_items as mi", "pid.menu_item_id", "mi.id")
+        .leftJoin("branches as b", "pid.branch_id", "b.id")
+        .leftJoin("users as u", "pid.distributed_by", "u.id")
+        .where("pid.menu_item_id", menuItemId);
+
+      // Apply filters
+      if (filters.branch_id) {
+        query = query.where("pid.branch_id", filters.branch_id);
+      }
+
+      if (filters.date_from) {
+        query = query.where("pid.distribution_date", ">=", filters.date_from);
+      }
+
+      if (filters.date_to) {
+        query = query.where("pid.distribution_date", "<=", filters.date_to);
+      }
+
+      return await query.orderBy("pid.distribution_date", "desc");
+    } catch (error) {
+      console.error("Error fetching distribution history:", error);
+      throw new Error("Failed to retrieve distribution history");
+    }
+  }
+
+  // Get all distributions with filters
+  static async getAllDistributions(filters = {}) {
+    try {
+      let query = db("production_inventory_distributions as pid")
+        .select(
+          "pid.*",
+          "pi.available_quantity",
+          "mi.menu_item_name",
+          "mi.item_code",
+          "mi.category",
+          "b.branch_name",
+          "u.name as distributed_by_name"
+        )
+        .leftJoin(
+          "production_inventory as pi",
+          "pid.production_inventory_id",
+          "pi.id"
+        )
+        .leftJoin("menu_items as mi", "pid.menu_item_id", "mi.id")
+        .leftJoin("branches as b", "pid.branch_id", "b.id")
+        .leftJoin("users as u", "pid.distributed_by", "u.id");
+
+      // Apply filters
+      if (filters.branch_id) {
+        query = query.where("pid.branch_id", filters.branch_id);
+      }
+
+      if (filters.menu_item_id) {
+        query = query.where("pid.menu_item_id", filters.menu_item_id);
+      }
+
+      if (filters.date_from) {
+        query = query.where("pid.distribution_date", ">=", filters.date_from);
+      }
+
+      if (filters.date_to) {
+        query = query.where("pid.distribution_date", "<=", filters.date_to);
+      }
+
+      if (filters.search) {
+        query = query.where(function () {
+          this.where("mi.menu_item_name", "ilike", `%${filters.search}%`)
+            .orWhere("mi.item_code", "ilike", `%${filters.search}%`)
+            .orWhere("b.branch_name", "ilike", `%${filters.search}%`);
+        });
+      }
+
+      return await query.orderBy("pid.distribution_date", "desc");
+    } catch (error) {
+      console.error("Error fetching all distributions:", error);
+      throw new Error("Failed to retrieve distributions");
+    }
+  }
+
+  // Check distribution availability
+  static async checkDistributionAvailability(menuItemId, requestedQuantity) {
+    try {
+      const inventoryItem = await this.getByMenuItem(menuItemId);
+
+      if (!inventoryItem) {
+        return {
+          available: false,
+          current_stock: 0,
+          requested_quantity: requestedQuantity,
+          shortfall: requestedQuantity,
+          message: "Menu item not found in production inventory",
+        };
+      }
+
+      const available = inventoryItem.available_quantity >= requestedQuantity;
+      const shortfall = Math.max(
+        0,
+        requestedQuantity - inventoryItem.available_quantity
+      );
+
+      return {
+        available: available,
+        current_stock: inventoryItem.available_quantity,
+        requested_quantity: requestedQuantity,
+        shortfall: shortfall,
+        message: available
+          ? "Sufficient stock available"
+          : `Insufficient stock. Shortfall: ${shortfall} units`,
+      };
+    } catch (error) {
+      console.error("Error checking distribution availability:", error);
+      throw new Error("Failed to check distribution availability");
+    }
+  }
+
+  // Update initial stock for items with 0 stock based on recipe batch size
+  static async updateInitialStockFromRecipe(menuItemId, userId) {
+    try {
+      const inventoryItem = await this.getByMenuItem(menuItemId);
+
+      if (!inventoryItem) {
+        throw new Error("Production inventory item not found");
+      }
+
+      if (inventoryItem.available_quantity > 0) {
+        return inventoryItem; // Already has stock
+      }
+
+      // Get recipe batch size
+      const recipe = await db("recipes")
+        .select("batch_size", "batch_unit")
+        .where("id", inventoryItem.recipe_id)
+        .first();
+
+      if (!recipe) {
+        throw new Error("Recipe not found");
+      }
+
+      const initialStock = recipe.batch_size;
+      const reorderPoint = Math.ceil(initialStock * 0.2);
+
+      await db("production_inventory").where("id", inventoryItem.id).update({
+        available_quantity: initialStock,
+        unit_of_measure: recipe.batch_unit,
+        reorder_point: reorderPoint,
+        updated_at: db.fn.now(),
+      });
+
+      // Log the stock update
+      await this.logStockUpdate(
+        inventoryItem.id,
+        0,
+        initialStock,
+        userId,
+        `Initial stock set from recipe batch size: ${initialStock} ${recipe.batch_unit}`
+      );
+
+      return await this.getById(inventoryItem.id);
+    } catch (error) {
+      console.error("Error updating initial stock from recipe:", error);
+      throw new Error("Failed to update initial stock from recipe");
     }
   }
 

@@ -22,6 +22,7 @@
     X,
     ChevronDown,
     ChevronUp,
+    Truck,
   } from 'lucide-vue-next';
   import { useProductionStore } from '../../stores/productionStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
@@ -40,6 +41,7 @@
   const statusFilter = ref('');
   const showUpdateModal = ref(false);
   const showDetailsModal = ref(false);
+  const showDistributionModal = ref(false);
   const selectedItem = ref(null);
   const currentPage = ref(1);
   const itemsPerPage = ref(12);
@@ -52,6 +54,21 @@
     notes: '',
   });
 
+  // Form data for distribution
+  const distributionForm = ref({
+    quantity: 0,
+    branch_id: '',
+    transfer_price: 0,
+    notes: '',
+  });
+
+  // Branch data
+  const branches = ref([]);
+
+  // Distribution data
+  const distributions = ref([]);
+  const distributionLoading = ref(false);
+
   // Access store data
   const loading = computed(() => productionStore.loading);
   const error = computed(() => productionStore.error);
@@ -63,6 +80,13 @@
   );
 
   // Computed properties
+  const distributionTotal = computed(() => {
+    return (
+      (distributionForm.value.quantity || 0) *
+      (distributionForm.value.transfer_price || 0)
+    );
+  });
+
   const filteredInventory = computed(() => {
     let filtered = productionInventory.value;
 
@@ -187,9 +211,31 @@
       await Promise.all([
         productionStore.fetchProductionInventory(),
         productionStore.fetchProductionInventoryStats(),
+        fetchBranches(),
       ]);
     } catch (error) {
       console.error('Error fetching data:', error);
+    }
+  };
+
+  const fetchBranches = async () => {
+    try {
+      const branchData = await productionStore.fetchBranches();
+      branches.value = branchData;
+    } catch (error) {
+      console.error('Error fetching branches:', error);
+    }
+  };
+
+  const fetchDistributions = async () => {
+    try {
+      distributionLoading.value = true;
+      const distributionData = await productionStore.fetchAllDistributions();
+      distributions.value = distributionData;
+    } catch (error) {
+      console.error('Error fetching distributions:', error);
+    } finally {
+      distributionLoading.value = false;
     }
   };
 
@@ -221,6 +267,28 @@
     selectedItem.value = null;
   };
 
+  const openDistributionModal = (item) => {
+    selectedItem.value = item;
+    distributionForm.value = {
+      quantity: 0,
+      branch_id: '',
+      transfer_price: item.selling_price || 0,
+      notes: '',
+    };
+    showDistributionModal.value = true;
+  };
+
+  const closeDistributionModal = () => {
+    showDistributionModal.value = false;
+    selectedItem.value = null;
+    distributionForm.value = {
+      quantity: 0,
+      branch_id: '',
+      transfer_price: 0,
+      notes: '',
+    };
+  };
+
   const updateStock = async () => {
     try {
       await productionStore.updateInventoryStock(
@@ -248,6 +316,63 @@
     }
   };
 
+  const recordDistribution = async () => {
+    try {
+      if (
+        !distributionForm.value.quantity ||
+        !distributionForm.value.branch_id
+      ) {
+        showToast('error', 'Please fill in all required fields');
+        return;
+      }
+
+      if (
+        distributionForm.value.quantity > selectedItem.value.available_quantity
+      ) {
+        showToast('error', 'Insufficient stock for distribution');
+        return;
+      }
+
+      await productionStore.recordDistribution(
+        selectedItem.value.id,
+        distributionForm.value
+      );
+      closeDistributionModal();
+      showToast('success', 'Distribution recorded successfully');
+
+      // Refresh distributions if we're on the distributions tab
+      if (activeTab.value === 'distributions') {
+        await fetchDistributions();
+      }
+    } catch (error) {
+      showToast('error', error.message || 'Failed to record distribution');
+    }
+  };
+
+  const updateInitialStock = async (item) => {
+    try {
+      // Try the new function first, fallback to manual update if not available
+      if (typeof productionStore.updateInitialStockFromRecipe === 'function') {
+        await productionStore.updateInitialStockFromRecipe(item.id);
+        showToast('success', `Initial stock set from recipe batch size`);
+      } else {
+        // Fallback: Set stock to recipe batch size manually
+        const batchSize = item.recipe_batch_size || 100; // Default to 100 if not available
+        await productionStore.updateInventoryStock(
+          item.id,
+          batchSize,
+          'Initial stock from recipe'
+        );
+        showToast(
+          'success',
+          `Initial stock set to ${batchSize} ${item.unit_of_measure}`
+        );
+      }
+    } catch (error) {
+      showToast('error', error.message || 'Failed to update initial stock');
+    }
+  };
+
   const showToast = (type, message) => {
     // Simple toast implementation
     console.log(`${type}: ${message}`);
@@ -261,6 +386,13 @@
   // Watch for data changes
   watch([searchQuery, categoryFilter, statusFilter], () => {
     currentPage.value = 1;
+  });
+
+  // Watch for tab changes to fetch distributions
+  watch(activeTab, (newTab) => {
+    if (newTab === 'distributions' && distributions.value.length === 0) {
+      fetchDistributions();
+    }
   });
 </script>
 
@@ -356,10 +488,29 @@
         <div
           class="stat-value text-info text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
-          {{ (productionInventoryStats.average_margin || 0).toFixed(0) }}%
+          {{ Number(productionInventoryStats.average_margin || 0).toFixed(0) }}%
         </div>
         <div class="stat-desc text-black/50 !text-xs sm:text-sm">
           Profit margin
+        </div>
+      </div>
+
+      <div
+        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
+      >
+        <div class="stat-figure">
+          <Truck class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-warning" />
+        </div>
+        <div class="stat-title text-black/50 !text-xs sm:text-sm">
+          Distributed
+        </div>
+        <div
+          class="stat-value text-warning text-lg sm:text-xl lg:text-2xl xl:text-3xl"
+        >
+          {{ productionInventoryStats.total_distributed_all_time || 0 }}
+        </div>
+        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
+          Units distributed to branches
         </div>
       </div>
     </div>
@@ -395,6 +546,14 @@
       >
         <BarChart3 class="w-4 h-4 mr-1" />
         Analytics
+      </button>
+      <button
+        @click="activeTab = 'distributions'"
+        class="tab"
+        :class="{ 'tab-active': activeTab === 'distributions' }"
+      >
+        <Truck class="w-4 h-4 mr-1" />
+        Distributions
       </button>
       <button
         @click="activeTab = 'alerts'"
@@ -584,18 +743,32 @@
 
                 <div class="flex gap-2">
                   <button
+                    @click.stop="openDistributionModal(item)"
+                    class="btn btn-ghost btn-xs text-info hover:bg-info/10 flex-1"
+                    :disabled="item.available_quantity <= 0"
+                  >
+                    <Truck class="w-4 h-4 mr-1" />
+                    Distribute
+                  </button>
+                  <button
+                    v-if="item.available_quantity === 0"
+                    @click.stop="updateInitialStock(item)"
+                    class="btn btn-ghost btn-xs text-warning hover:bg-warning/10 flex-1"
+                    :disabled="loading"
+                  >
+                    <RefreshCcw
+                      class="w-4 h-4 mr-1"
+                      :class="{ 'animate-spin': loading }"
+                    />
+                    Set Initial Stock
+                  </button>
+                  <button
+                    v-else
                     @click.stop="openUpdateModal(item, 'stock')"
                     class="btn btn-ghost btn-xs text-primaryColor hover:bg-primaryColor/10 flex-1"
                   >
                     <Package class="w-4 h-4 mr-1" />
                     Update Stock
-                  </button>
-                  <button
-                    @click.stop="openUpdateModal(item, 'pricing')"
-                    class="btn btn-ghost btn-xs text-success hover:bg-success/10 flex-1"
-                  >
-                    <PhilippinePeso class="w-4 h-4 mr-1" />
-                    Update Price
                   </button>
                   <button
                     @click.stop="openDetailsModal(item)"
@@ -681,6 +854,297 @@
 
             <!-- Inventory Trends Chart -->
             <InventoryTrendsChart />
+          </div>
+        </div>
+
+        <!-- Distributions Tab -->
+        <div v-if="activeTab === 'distributions'" class="space-y-6">
+          <div
+            class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6"
+          >
+            <div>
+              <h2
+                class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl mb-2"
+              >
+                Distribution Management
+              </h2>
+              <p class="text-sm text-gray-600">
+                Track and manage distributions to branch restaurants.
+              </p>
+            </div>
+          </div>
+
+          <!-- Distribution Stats -->
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="card bg-white border border-gray-200">
+              <div class="card-body p-4">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-2xl font-bold text-primaryColor">
+                      {{ productionInventoryStats.total_distributions || 0 }}
+                    </div>
+                    <div class="text-sm text-gray-600">Total Distributions</div>
+                  </div>
+                  <Truck class="w-8 h-8 text-primaryColor" />
+                </div>
+              </div>
+            </div>
+
+            <div class="card bg-white border border-gray-200">
+              <div class="card-body p-4">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-2xl font-bold text-success">
+                      {{ productionInventoryStats.branches_served || 0 }}
+                    </div>
+                    <div class="text-sm text-gray-600">Branches Served</div>
+                  </div>
+                  <Target class="w-8 h-8 text-success" />
+                </div>
+              </div>
+            </div>
+
+            <div class="card bg-white border border-gray-200">
+              <div class="card-body p-4">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-2xl font-bold text-info">
+                      {{ productionInventoryStats.recent_distributions || 0 }}
+                    </div>
+                    <div class="text-sm text-gray-600">Recent (30 days)</div>
+                  </div>
+                  <Activity class="w-8 h-8 text-info" />
+                </div>
+              </div>
+            </div>
+
+            <div class="card bg-white border border-gray-200">
+              <div class="card-body p-4">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-2xl font-bold text-warning">
+                      {{
+                        productionInventoryStats.recent_quantity_distributed ||
+                        0
+                      }}
+                    </div>
+                    <div class="text-sm text-gray-600">Units (30 days)</div>
+                  </div>
+                  <TrendingUp class="w-8 h-8 text-warning" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Branch Demand Planning -->
+          <div class="card bg-white border border-gray-200">
+            <div class="card-body p-6">
+              <h3 class="text-lg font-semibold text-primaryColor mb-4">
+                Branch Demand Planning
+              </h3>
+
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Production Recommendations -->
+                <div class="space-y-4">
+                  <h4 class="font-medium text-gray-700">
+                    Production Recommendations
+                  </h4>
+                  <div class="space-y-3">
+                    <div class="alert alert-info">
+                      <div class="flex items-center">
+                        <Target class="w-5 h-5 mr-2" />
+                        <div>
+                          <div class="font-medium">High Demand Items</div>
+                          <div class="text-sm">
+                            Consider increasing production for frequently
+                            distributed items
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="alert alert-warning">
+                      <div class="flex items-center">
+                        <AlertTriangle class="w-5 h-5 mr-2" />
+                        <div>
+                          <div class="font-medium">Low Stock Alert</div>
+                          <div class="text-sm">
+                            Monitor items with low available quantities
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Branch Performance -->
+                <div class="space-y-4">
+                  <h4 class="font-medium text-gray-700">Branch Performance</h4>
+                  <div class="space-y-3">
+                    <div
+                      class="flex justify-between items-center p-3 bg-gray-50 rounded"
+                    >
+                      <div>
+                        <div class="font-medium">Top Performing Branch</div>
+                        <div class="text-sm text-gray-600">
+                          Highest distribution volume
+                        </div>
+                      </div>
+                      <div class="text-right">
+                        <div class="font-bold text-success">
+                          {{ productionInventoryStats.branches_served || 0 }}
+                          branches
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      class="flex justify-between items-center p-3 bg-gray-50 rounded"
+                    >
+                      <div>
+                        <div class="font-medium">Distribution Efficiency</div>
+                        <div class="text-sm text-gray-600">
+                          Average per distribution
+                        </div>
+                      </div>
+                      <div class="text-right">
+                        <div class="font-bold text-info">
+                          {{
+                            productionInventoryStats.total_distributions > 0
+                              ? Math.round(
+                                  (productionInventoryStats.total_quantity_distributed ||
+                                    0) /
+                                    productionInventoryStats.total_distributions
+                                )
+                              : 0
+                          }}
+                          units
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Distribution History -->
+          <div class="card bg-white border border-gray-200">
+            <div class="card-body p-6">
+              <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold text-primaryColor">
+                  Distribution History
+                </h3>
+                <button
+                  @click="fetchDistributions"
+                  class="btn btn-outline btn-sm"
+                  :disabled="distributionLoading"
+                >
+                  <RefreshCcw
+                    class="w-4 h-4 mr-1"
+                    :class="{ 'animate-spin': distributionLoading }"
+                  />
+                  Refresh
+                </button>
+              </div>
+
+              <!-- Distribution Table -->
+              <div v-if="distributionLoading" class="text-center py-8">
+                <RefreshCcw
+                  class="w-8 h-8 text-gray-400 mx-auto mb-2 animate-spin"
+                />
+                <p class="text-gray-500">Loading distributions...</p>
+              </div>
+
+              <div
+                v-else-if="distributions.length === 0"
+                class="text-center py-8"
+              >
+                <Truck class="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 class="text-lg font-medium text-gray-600 mb-2">
+                  No Distributions Yet
+                </h3>
+                <p class="text-sm text-gray-500">
+                  Start distributing items to branches to see history here.
+                </p>
+              </div>
+
+              <div v-else class="overflow-x-auto">
+                <table class="table table-zebra w-full">
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th>Branch</th>
+                      <th>Quantity</th>
+                      <th>Transfer Price</th>
+                      <th>Total Cost</th>
+                      <th>Date</th>
+                      <th>Distributed By</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="distribution in distributions"
+                      :key="distribution.id"
+                    >
+                      <td>
+                        <div>
+                          <div class="font-medium">
+                            {{ distribution.menu_item_name }}
+                          </div>
+                          <div class="text-sm text-gray-500">
+                            {{ distribution.item_code }}
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <div class="font-medium">
+                          {{ distribution.branch_name }}
+                        </div>
+                      </td>
+                      <td>
+                        <span class="badge badge-info">
+                          {{ distribution.quantity_distributed }}
+                        </span>
+                      </td>
+                      <td>
+                        <div class="font-medium text-success">
+                          ₱{{
+                            Number(distribution.transfer_price || 0).toFixed(2)
+                          }}
+                        </div>
+                      </td>
+                      <td>
+                        <div class="font-medium text-primaryColor">
+                          ₱{{
+                            Number(
+                              (distribution.quantity_distributed || 0) *
+                                (distribution.transfer_price || 0)
+                            ).toFixed(2)
+                          }}
+                        </div>
+                      </td>
+                      <td>
+                        <div class="text-sm">
+                          {{ formatDate(distribution.distribution_date) }}
+                        </div>
+                      </td>
+                      <td>
+                        <div class="text-sm">
+                          {{ distribution.distributed_by_name }}
+                        </div>
+                      </td>
+                      <td>
+                        <div class="text-sm text-gray-500 max-w-xs truncate">
+                          {{ distribution.notes || 'No notes' }}
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1097,6 +1561,139 @@
             Update Stock
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- Distribution Modal -->
+    <div v-if="showDistributionModal && selectedItem" class="modal modal-open">
+      <div class="modal-box max-w-md">
+        <h3 class="font-bold text-lg text-primaryColor mb-4">
+          Distribute {{ selectedItem.item_name }}
+        </h3>
+
+        <form @submit.prevent="recordDistribution" class="space-y-4">
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text font-medium">Available Stock</span>
+            </label>
+            <div class="text-lg font-bold text-primaryColor">
+              {{ selectedItem.available_quantity }}
+              {{ selectedItem.unit_of_measure }}
+            </div>
+          </div>
+
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text font-medium">Quantity to Distribute</span>
+            </label>
+            <input
+              v-model.number="distributionForm.quantity"
+              type="number"
+              min="1"
+              :max="selectedItem.available_quantity"
+              class="input input-bordered"
+              placeholder="Enter quantity to distribute"
+              required
+            />
+            <div class="label">
+              <span class="label-text-alt text-gray-500">
+                Unit: {{ selectedItem.unit_of_measure }}
+              </span>
+            </div>
+          </div>
+
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text font-medium">Branch</span>
+            </label>
+            <select
+              v-model="distributionForm.branch_id"
+              class="select select-bordered"
+              required
+            >
+              <option value="">Select branch</option>
+              <option
+                v-for="branch in branches"
+                :key="branch.id"
+                :value="branch.id"
+              >
+                {{ branch.name }} ({{ branch.code }})
+              </option>
+            </select>
+          </div>
+
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text font-medium">Transfer Price</span>
+            </label>
+            <div class="relative">
+              <span
+                class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500"
+                >₱</span
+              >
+              <input
+                v-model.number="distributionForm.transfer_price"
+                type="number"
+                min="0"
+                step="0.01"
+                class="input input-bordered pl-8"
+                placeholder="0.00"
+                required
+              />
+            </div>
+            <div class="label">
+              <span class="label-text-alt text-gray-500">
+                Price per unit for this distribution
+              </span>
+            </div>
+          </div>
+
+          <!-- Total Cost Display -->
+          <div
+            v-if="
+              distributionForm.quantity > 0 &&
+              distributionForm.transfer_price > 0
+            "
+            class="alert alert-info"
+          >
+            <div class="flex items-center">
+              <PhilippinePeso class="w-5 h-5 mr-2" />
+              <div>
+                <div class="font-medium">Total Distribution Cost</div>
+                <div class="text-lg font-bold">
+                  ₱{{ Number(distributionTotal).toFixed(2) }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text font-medium">Notes (Optional)</span>
+            </label>
+            <textarea
+              v-model="distributionForm.notes"
+              class="textarea textarea-bordered"
+              rows="3"
+              placeholder="Distribution notes..."
+            ></textarea>
+          </div>
+
+          <div class="modal-action">
+            <button
+              type="button"
+              @click="closeDistributionModal"
+              class="btn btn-ghost"
+            >
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-info" :disabled="loading">
+              <Truck class="w-4 h-4 mr-2" v-if="!loading" />
+              <RefreshCcw class="w-4 h-4 mr-2 animate-spin" v-else />
+              Record Distribution
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   </div>

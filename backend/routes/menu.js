@@ -1474,6 +1474,201 @@ router.get(
   }
 );
 
+// ==================== DISTRIBUTION ROUTES ====================
+
+/**
+ * @swagger
+ * /api/menu/production-inventory/{id}/distribute:
+ *   post:
+ *     summary: Record distribution to branch
+ *     tags: [Production Inventory]
+ */
+router.post(
+  "/production-inventory/:id/distribute",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { quantity, branch_id, notes } = req.body;
+
+      if (!quantity || !branch_id) {
+        return res.status(400).json({
+          success: false,
+          message: "Quantity and branch_id are required",
+        });
+      }
+
+      const inventoryItem = await ProductionInventory.recordDistribution(
+        req.params.id,
+        quantity,
+        branch_id,
+        req.user.id,
+        notes
+      );
+
+      res.json({
+        success: true,
+        data: inventoryItem,
+        message: "Distribution recorded successfully",
+      });
+    } catch (error) {
+      console.error("Error recording distribution:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to record distribution",
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/menu/production-inventory/{id}/distribution-history:
+ *   get:
+ *     summary: Get distribution history for a menu item
+ *     tags: [Production Inventory]
+ */
+router.get(
+  "/production-inventory/:id/distribution-history",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const filters = {
+        branch_id: req.query.branch_id,
+        date_from: req.query.date_from,
+        date_to: req.query.date_to,
+      };
+
+      const distributionHistory =
+        await ProductionInventory.getDistributionHistory(
+          req.params.id,
+          filters
+        );
+
+      res.json({
+        success: true,
+        data: distributionHistory,
+      });
+    } catch (error) {
+      console.error("Error fetching distribution history:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch distribution history",
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/menu/production-inventory/distributions:
+ *   get:
+ *     summary: Get all distributions with filters
+ *     tags: [Production Inventory]
+ */
+router.get(
+  "/production-inventory/distributions",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const filters = {
+        branch_id: req.query.branch_id,
+        menu_item_id: req.query.menu_item_id,
+        date_from: req.query.date_from,
+        date_to: req.query.date_to,
+        search: req.query.search,
+      };
+
+      const distributions =
+        await ProductionInventory.getAllDistributions(filters);
+
+      res.json({
+        success: true,
+        data: distributions,
+      });
+    } catch (error) {
+      console.error("Error fetching distributions:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch distributions",
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/menu/production-inventory/{id}/check-availability:
+ *   post:
+ *     summary: Check distribution availability
+ *     tags: [Production Inventory]
+ */
+router.post(
+  "/production-inventory/:id/check-availability",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { quantity } = req.body;
+
+      if (!quantity) {
+        return res.status(400).json({
+          success: false,
+          message: "Quantity is required",
+        });
+      }
+
+      const availability =
+        await ProductionInventory.checkDistributionAvailability(
+          req.params.id,
+          quantity
+        );
+
+      res.json({
+        success: true,
+        data: availability,
+      });
+    } catch (error) {
+      console.error("Error checking distribution availability:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to check distribution availability",
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/menu/production-inventory/{id}/update-initial-stock:
+ *   post:
+ *     summary: Update initial stock from recipe batch size
+ *     tags: [Production Inventory]
+ */
+router.post(
+  "/production-inventory/:id/update-initial-stock",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const inventoryItem =
+        await ProductionInventory.updateInitialStockFromRecipe(
+          req.params.id,
+          req.user.id
+        );
+
+      res.json({
+        success: true,
+        data: inventoryItem,
+        message: "Initial stock updated from recipe batch size",
+      });
+    } catch (error) {
+      console.error("Error updating initial stock:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to update initial stock",
+      });
+    }
+  }
+);
+
 // ==================== INVENTORY INTEGRATION ROUTES ====================
 
 /**

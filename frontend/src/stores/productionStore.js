@@ -1719,6 +1719,114 @@ export const useProductionStore = defineStore('production', () => {
     }
   };
 
+  // Branch Management
+  const fetchBranches = async () => {
+    try {
+      loading.value = true;
+      const response = await axios.get(`${API_BASE_URL}/branches?active=true`);
+      if (response.data) {
+        return response.data;
+      }
+    } catch (error) {
+      console.error('Error fetching branches:', error);
+      throw error;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Distribution Actions
+  const recordDistribution = async (inventoryId, distributionData) => {
+    try {
+      loading.value = true;
+      const response = await axios.post(
+        `${API_BASE_URL}/menu/production-inventory/${inventoryId}/distribute`,
+        distributionData
+      );
+      if (response.data.success) {
+        await fetchProductionInventory(); // Refresh inventory
+        return response.data;
+      }
+    } catch (error) {
+      console.error('Error recording distribution:', error);
+      throw error;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const fetchDistributionHistory = async (inventoryId, filters = {}) => {
+    try {
+      loading.value = true;
+      const params = new URLSearchParams(filters).toString();
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/production-inventory/${inventoryId}/distribution-history?${params}`
+      );
+      if (response.data.success) {
+        return response.data.data;
+      }
+    } catch (error) {
+      console.error('Error fetching distribution history:', error);
+      throw error;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const fetchAllDistributions = async (filters = {}) => {
+    try {
+      loading.value = true;
+      const params = new URLSearchParams(filters).toString();
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/production-inventory/distributions?${params}`
+      );
+      if (response.data.success) {
+        return response.data.data;
+      }
+    } catch (error) {
+      console.error('Error fetching all distributions:', error);
+      throw error;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const checkDistributionAvailability = async (inventoryId, quantity) => {
+    try {
+      loading.value = true;
+      const response = await axios.post(
+        `${API_BASE_URL}/menu/production-inventory/${inventoryId}/check-availability`,
+        { quantity }
+      );
+      if (response.data.success) {
+        return response.data.data;
+      }
+    } catch (error) {
+      console.error('Error checking distribution availability:', error);
+      throw error;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const updateInitialStockFromRecipe = async (inventoryId) => {
+    try {
+      loading.value = true;
+      const response = await axios.post(
+        `${API_BASE_URL}/menu/production-inventory/${inventoryId}/update-initial-stock`
+      );
+      if (response.data.success) {
+        await fetchProductionInventory(); // Refresh inventory
+        return response.data;
+      }
+    } catch (error) {
+      console.error('Error updating initial stock from recipe:', error);
+      throw error;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   // Inventory Integration Actions
   const checkRecipeAvailability = async (recipeId, batchSize = 1) => {
     try {
@@ -1910,6 +2018,16 @@ export const useProductionStore = defineStore('production', () => {
     fetchMenusByCategory,
     createMenu,
     fetchLowStockItems,
+
+    // Branch Management
+    fetchBranches,
+
+    // Distribution Actions
+    recordDistribution,
+    fetchDistributionHistory,
+    fetchAllDistributions,
+    checkDistributionAvailability,
+    updateInitialStockFromRecipe,
 
     // Inventory Integration Actions
     checkRecipeAvailability,

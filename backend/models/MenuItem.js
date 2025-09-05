@@ -629,15 +629,27 @@ class MenuItem {
       // Add to production inventory
       const menuItem = await this.getById(id);
       if (menuItem) {
+        // Get recipe batch size for initial stock
+        const recipe = await db("recipes")
+          .select("batch_size", "batch_unit")
+          .where("id", menuItem.recipe_id)
+          .first();
+
+        const initialStock = recipe ? recipe.batch_size : 0;
+        const unitOfMeasure = recipe
+          ? recipe.batch_unit
+          : menuItem.serving_unit;
+
         await db("production_inventory")
           .insert({
             menu_item_id: id,
             recipe_id: menuItem.recipe_id,
-            unit_of_measure: menuItem.serving_unit,
+            unit_of_measure: unitOfMeasure,
             unit_cost: menuItem.cost_price,
             selling_price: menuItem.selling_price,
             profit_margin_percent: menuItem.profit_margin,
-            available_quantity: 0, // Start with 0, will be updated when produced
+            available_quantity: initialStock, // Start with recipe batch size
+            reorder_point: Math.ceil(initialStock * 0.2), // Set reorder point to 20% of batch size
             created_by: userId,
             created_at: db.fn.now(),
             updated_at: db.fn.now(),
@@ -665,12 +677,14 @@ class MenuItem {
           user_id: userId,
           action_type: "ADDED_TO_INVENTORY",
           action_details: {
-            unit_of_measure: menuItem.serving_unit,
+            unit_of_measure: unitOfMeasure,
             unit_cost: menuItem.cost_price,
             selling_price: menuItem.selling_price,
             profit_margin_percent: menuItem.profit_margin,
+            initial_stock: initialStock,
+            reorder_point: Math.ceil(initialStock * 0.2),
           },
-          notes: `Menu item "${menuItem.menu_item_name}" added to production inventory`,
+          notes: `Menu item "${menuItem.menu_item_name}" added to production inventory with initial stock of ${initialStock} ${unitOfMeasure}`,
         });
       }
 

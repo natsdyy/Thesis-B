@@ -63,9 +63,31 @@ class SampleProduction {
         });
       }
 
-      return await query
+      const results = await query
         .orderBy("sp.scheduled_date", "desc")
         .orderBy("sp.scheduled_time", "desc");
+
+      // Format scheduled_date to handle timezone issues
+      return results.map((sample) => ({
+        ...sample,
+        scheduled_date: sample.scheduled_date
+          ? (() => {
+              // If it's already a date string (YYYY-MM-DD), return as is
+              if (
+                typeof sample.scheduled_date === "string" &&
+                sample.scheduled_date.match(/^\d{4}-\d{2}-\d{2}$/)
+              ) {
+                return sample.scheduled_date;
+              }
+              // If it's a datetime, extract just the date part in local timezone
+              const date = new Date(sample.scheduled_date);
+              const year = date.getFullYear();
+              const month = String(date.getMonth() + 1).padStart(2, "0");
+              const day = String(date.getDate()).padStart(2, "0");
+              return `${year}-${month}-${day}`;
+            })()
+          : null,
+      }));
     } catch (error) {
       console.error("Error fetching sample productions:", error);
       throw new Error("Failed to retrieve sample productions");
@@ -100,6 +122,24 @@ class SampleProduction {
         .first();
 
       if (sampleProduction) {
+        // Format scheduled_date to handle timezone issues
+        sampleProduction.scheduled_date = sampleProduction.scheduled_date
+          ? (() => {
+              // If it's already a date string (YYYY-MM-DD), return as is
+              if (
+                typeof sampleProduction.scheduled_date === "string" &&
+                sampleProduction.scheduled_date.match(/^\d{4}-\d{2}-\d{2}$/)
+              ) {
+                return sampleProduction.scheduled_date;
+              }
+              // If it's a datetime, extract just the date part in local timezone
+              const date = new Date(sampleProduction.scheduled_date);
+              const year = date.getFullYear();
+              const month = String(date.getMonth() + 1).padStart(2, "0");
+              const day = String(date.getDate()).padStart(2, "0");
+              return `${year}-${month}-${day}`;
+            })()
+          : null;
         // Get recipe ingredients with inventory availability
         sampleProduction.recipe_ingredients = await db(
           "recipe_ingredients as ri"
@@ -220,7 +260,13 @@ class SampleProduction {
   }
 
   // Update sample production status
-  static async updateStatus(id, status, userId, additionalData = {}) {
+  static async updateStatus(
+    id,
+    status,
+    userId,
+    additionalData = {},
+    customNotes = null
+  ) {
     try {
       // Get current sample data before update for audit logging
       const currentSample = await this.getById(id);
@@ -246,17 +292,25 @@ class SampleProduction {
 
       // Log the status update action
       let actionType = "SAMPLE_STARTED";
-      let notes = `Sample production "${currentSample.menu_item_name}" started`;
+      let notes =
+        customNotes ||
+        `Sample production "${currentSample.menu_item_name}" started`;
 
       if (status === "Completed") {
         actionType = "SAMPLE_COMPLETED";
-        notes = `Sample production "${currentSample.menu_item_name}" completed - Batch ${currentSample.sample_batch_number}`;
+        notes =
+          customNotes ||
+          `Sample production "${currentSample.menu_item_name}" completed - Batch ${currentSample.sample_batch_number}`;
       } else if (status === "Failed") {
         actionType = "SAMPLE_COMPLETED";
-        notes = `Sample production "${currentSample.menu_item_name}" failed - Batch ${currentSample.sample_batch_number}`;
+        notes =
+          customNotes ||
+          `Sample production "${currentSample.menu_item_name}" failed - Batch ${currentSample.sample_batch_number}`;
       } else if (status === "Cancelled") {
         actionType = "SAMPLE_COMPLETED";
-        notes = `Sample production "${currentSample.menu_item_name}" cancelled - Batch ${currentSample.sample_batch_number}`;
+        notes =
+          customNotes ||
+          `Sample production "${currentSample.menu_item_name}" cancelled - Batch ${currentSample.sample_batch_number}`;
       }
 
       await AuditLogger.log({
@@ -345,17 +399,55 @@ class SampleProduction {
     notes,
     userId
   ) {
-    return await this.updateStatus(id, "Completed", userId, {
-      actual_end_date: db.fn.now(),
-      quantity_produced: quantityProduced,
-      production_cost: productionCost,
-      production_notes: notes,
-    });
+    return await this.updateStatus(
+      id,
+      "Completed",
+      userId,
+      {
+        actual_end_date: db.fn.now(),
+        quantity_produced: quantityProduced,
+        production_cost: productionCost,
+        production_notes: notes,
+      },
+      notes
+    );
   }
 
   // Cancel sample production
   static async cancelProduction(id, userId) {
     return await this.updateStatus(id, "Cancelled", userId);
+  }
+
+  // Fail sample production
+  static async failProduction(id, userId, additionalData = {}) {
+    const updateData = {
+      actual_end_date: db.fn.now(),
+    };
+
+    // Add failure-specific data if provided
+    if (additionalData.failure_reason) {
+      updateData.failure_reason = additionalData.failure_reason;
+    }
+    if (additionalData.quantity_lost !== undefined) {
+      updateData.quantity_lost = additionalData.quantity_lost;
+    }
+    if (additionalData.cost_incurred !== undefined) {
+      updateData.production_cost = additionalData.cost_incurred; // Use existing production_cost column
+    }
+    if (additionalData.production_notes) {
+      updateData.production_notes = additionalData.production_notes;
+    }
+
+    // Create custom notes for audit log
+    const customNotes = additionalData.production_notes || null;
+
+    return await this.updateStatus(
+      id,
+      "Failed",
+      userId,
+      updateData,
+      customNotes
+    );
   }
 
   // Get real-time ingredient availability for sample production
@@ -400,6 +492,106 @@ class SampleProduction {
       sufficient_for_production: false,
       deprecated: true,
     };
+  }
+
+  // Archive sample production (soft delete with archive flag)
+  static async archive(id, userId, customNotes = null) {
+    try {
+      // Get current sample data before archiving for audit logging
+      const currentSample = await this.getById(id);
+
+      await db("sample_productions").where("id", id).update({
+        deleted_at: db.fn.now(),
+        updated_at: db.fn.now(),
+        // Add archive flag if you have an archived column
+        // archived: true,
+      });
+
+      // Log the archiving action
+      await AuditLogger.log({
+        menu_item_id: currentSample.menu_item_id,
+        sample_production_id: id,
+        user_id: userId,
+        action_type: "SAMPLE_ARCHIVED",
+        action_details: {
+          sample_batch_number: currentSample.sample_batch_number,
+          menu_item_name: currentSample.menu_item_name,
+          reason: "archived",
+        },
+        notes:
+          customNotes && String(customNotes).trim().length > 0
+            ? String(customNotes).trim()
+            : `Sample production "${currentSample.menu_item_name}" archived - Batch ${currentSample.sample_batch_number}`,
+      });
+
+      return true;
+    } catch (error) {
+      console.error("Error archiving sample production:", error);
+      throw new Error("Failed to archive sample production");
+    }
+  }
+
+  // Get audit logs for sample productions
+  static async getAuditLogs(filters = {}) {
+    try {
+      let query = db("menu_item_audit_log as al")
+        .select(
+          "al.*",
+          "u.name as user_name",
+          "mi.menu_item_name",
+          "sp.sample_batch_number"
+        )
+        .leftJoin("users as u", "al.user_id", "u.id")
+        .leftJoin("menu_items as mi", "al.menu_item_id", "mi.id")
+        .leftJoin(
+          "sample_productions as sp",
+          "al.sample_production_id",
+          "sp.id"
+        )
+        .whereNotNull("al.sample_production_id")
+        .orderBy("al.created_at", "desc");
+
+      // Apply filters
+      if (filters.sample_production_id) {
+        query = query.where(
+          "al.sample_production_id",
+          filters.sample_production_id
+        );
+      }
+
+      if (filters.action_type) {
+        query = query.where("al.action_type", filters.action_type);
+      }
+
+      if (filters.user_id) {
+        query = query.where("al.user_id", filters.user_id);
+      }
+
+      if (filters.date_from) {
+        query = query.where("al.created_at", ">=", filters.date_from);
+      }
+
+      if (filters.date_to) {
+        query = query.where("al.created_at", "<=", filters.date_to);
+      }
+
+      if (filters.limit) {
+        query = query.limit(filters.limit);
+      }
+
+      const auditLogs = await query;
+
+      // Parse action_details JSON strings
+      return auditLogs.map((log) => ({
+        ...log,
+        action_details: log.action_details
+          ? JSON.parse(log.action_details)
+          : null,
+      }));
+    } catch (error) {
+      console.error("Error fetching sample production audit logs:", error);
+      throw new Error("Failed to retrieve audit logs");
+    }
   }
 
   // Get sample production statistics

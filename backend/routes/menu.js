@@ -757,6 +757,42 @@ router.get("/sample-production/stats", authenticateToken, async (req, res) => {
 
 /**
  * @swagger
+ * /api/menu/sample-production/audit-logs:
+ *   get:
+ *     summary: Get sample production audit logs
+ *     tags: [Sample Production]
+ */
+router.get(
+  "/sample-production/audit-logs",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const filters = {
+        sample_production_id: req.query.sample_production_id,
+        action_type: req.query.action_type,
+        user_id: req.query.user_id,
+        date_from: req.query.date_from,
+        date_to: req.query.date_to,
+        limit: req.query.limit ? parseInt(req.query.limit) : 50,
+      };
+
+      const auditLogs = await SampleProduction.getAuditLogs(filters);
+      res.json({
+        success: true,
+        data: auditLogs,
+      });
+    } catch (error) {
+      console.error("Error fetching sample production audit logs:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch audit logs",
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
  * /api/menu/sample-production/{id}:
  *   get:
  *     summary: Get sample production by ID
@@ -885,6 +921,46 @@ router.post(
 
 /**
  * @swagger
+ * /api/menu/sample-production/{id}/fail:
+ *   post:
+ *     summary: Fail sample production
+ *     tags: [Sample Production]
+ */
+router.post(
+  "/sample-production/:id/fail",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { failure_reason, quantity_lost, cost_incurred, notes } = req.body;
+
+      const sampleProduction = await SampleProduction.failProduction(
+        req.params.id,
+        req.user.id,
+        {
+          failure_reason,
+          quantity_lost,
+          cost_incurred, // This will be mapped to production_cost in the model
+          production_notes: notes,
+        }
+      );
+
+      res.json({
+        success: true,
+        data: sampleProduction,
+        message: "Sample production marked as failed",
+      });
+    } catch (error) {
+      console.error("Error failing sample production:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fail sample production",
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
  * /api/menu/sample-production/{id}:
  *   delete:
  *     summary: Delete sample production
@@ -909,6 +985,39 @@ router.delete("/sample-production/:id", authenticateToken, async (req, res) => {
     });
   }
 });
+
+/**
+ * @swagger
+ * /api/menu/sample-production/{id}/archive:
+ *   post:
+ *     summary: Archive sample production
+ *     tags: [Sample Production]
+ */
+router.post(
+  "/sample-production/:id/archive",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { notes } = req.body;
+      const sampleProduction = await SampleProduction.archive(
+        req.params.id,
+        req.user.id,
+        notes
+      );
+      res.json({
+        success: true,
+        data: sampleProduction,
+        message: "Sample production archived successfully",
+      });
+    } catch (error) {
+      console.error("Error archiving sample production:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to archive sample production",
+      });
+    }
+  }
+);
 
 /**
  * @swagger

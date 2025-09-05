@@ -31,11 +31,13 @@
     Star,
     Zap,
     EllipsisVertical,
+    Check,
   } from 'lucide-vue-next';
   import { useProductionStore } from '../../stores/productionStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
   import { useUserStore } from '../../stores/userStore.js';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
+  import SampleProductionAuditLog from '../../components/production/SampleProductionAuditLog.vue';
 
   const productionStore = useProductionStore();
   const authStore = useAuthStore();
@@ -83,6 +85,8 @@
     type: '',
     onConfirm: null,
   });
+  // Audit Log state
+  const showAuditLog = ref(false);
 
   // Access store data
   const loading = computed(() => productionStore.loading);
@@ -566,13 +570,14 @@
   };
 
   // Confirmation modal helpers
-  const openConfirmModal = (type, title, message, onConfirm) => {
+  const openConfirmModal = (type, title, message, onConfirm, data = null) => {
     confirmModal.value = {
       show: true,
       type,
       title,
       message,
       onConfirm,
+      data,
     };
   };
 
@@ -824,14 +829,24 @@
     openConfirmModal(
       'start',
       'Start Sample Production',
-      'Are you sure you want to start this sample production? This will change the status to "In Progress".',
+      loading.value
+        ? 'Sample is starting production...'
+        : 'Are you sure you want to start this sample production? This will change the status to "In Progress".',
       async () => {
         try {
+          // show loading state in modal immediately
+          loading.value = true;
           await productionStore.startSampleProduction(sampleId);
           // Wait a bit to ensure loading state is cleared
           await new Promise((resolve) => setTimeout(resolve, 100));
           showToast('success', 'Sample production started');
           closeConfirmModal();
+          // If the details modal is open, close it after successful start
+          if (showDetailsModal.value) {
+            closeDetailsModal();
+          }
+          // notify audit log to refresh
+          window.dispatchEvent(new Event('refresh-audit-logs'));
         } catch (error) {
           console.error('Error in startSampleProduction:', error);
 
@@ -852,6 +867,8 @@
             );
             closeConfirmModal();
           }
+        } finally {
+          loading.value = false;
         }
       }
     );
@@ -879,6 +896,8 @@
           await new Promise((resolve) => setTimeout(resolve, 100));
           showToast('success', 'Sample production completed successfully');
           closeConfirmModal();
+          // notify audit log to refresh
+          window.dispatchEvent(new Event('refresh-audit-logs'));
         } catch (error) {
           console.error('Error in completeSampleProduction:', error);
 
@@ -916,6 +935,8 @@
           await new Promise((resolve) => setTimeout(resolve, 100));
           showToast('warning', 'Sample production cancelled');
           closeConfirmModal();
+          // notify audit log to refresh
+          window.dispatchEvent(new Event('refresh-audit-logs'));
         } catch (error) {
           console.error('Error in cancelSampleProduction:', error);
 
@@ -941,6 +962,170 @@
     );
   };
 
+  // Fail Sample Production with details
+  const failForm = ref({
+    failure_reason: '',
+    quantity_lost: 0,
+    cost_incurred: 0,
+    notes: '',
+  });
+
+  const openFailModal = (sample) => {
+    // Initialize defaults
+    failForm.value = {
+      failure_reason: '',
+      quantity_lost: 0,
+      cost_incurred: sample?.estimated_cost || 0,
+      notes: '',
+    };
+
+    openConfirmModal(
+      'fail',
+      'Mark Sample Production as Failed',
+      'Provide failure details before marking as failed.',
+      async () => {
+        try {
+          loading.value = true;
+          // Validate quantity_lost within range 0..planned
+          const plannedQty = Number(confirmModal.value?.data?.batch_size) || 0;
+          const qtyLost = Number(failForm.value.quantity_lost) || 0;
+          if (qtyLost < 0 || (plannedQty > 0 && qtyLost > plannedQty)) {
+            showToast(
+              'error',
+              `Quantity lost must be between 0 and ${plannedQty} servings`
+            );
+            loading.value = false;
+            return;
+          }
+          await productionStore.failSampleProduction(
+            sample.id,
+            failForm.value.failure_reason,
+            qtyLost,
+            Number(failForm.value.cost_incurred) || 0,
+            failForm.value.notes
+          );
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          showToast('warning', 'Sample production marked as failed');
+          closeConfirmModal();
+          window.dispatchEvent(new Event('refresh-audit-logs'));
+        } catch (error) {
+          console.error('Error in failSampleProduction:', error);
+          if (
+            error.code === 'ECONNABORTED' ||
+            error.message?.includes('timeout')
+          ) {
+            showToast(
+              'warning',
+              'Request timed out, but sample may have been marked failed. Please refresh to check.'
+            );
+            closeConfirmModal();
+            await fetchData();
+          } else {
+            showToast('error', error.message || 'Failed to mark as failed');
+            closeConfirmModal();
+          }
+        } finally {
+          loading.value = false;
+        }
+      },
+      {
+        sampleId: sample.id,
+        menu_item_name: sample.menu_item_name,
+        sample_batch_number: sample.sample_batch_number,
+        batch_size: sample.batch_size,
+        scheduled_date: sample.scheduled_date,
+        scheduled_time: sample.scheduled_time,
+        assigned_to_name: sample.assigned_to_name,
+        estimated_cost: sample.estimated_cost,
+        priority: sample.priority,
+      }
+    );
+  };
+
+  const canConfirmFail = computed(() => {
+    return (failForm.value.failure_reason || '').trim().length > 0;
+  });
+
+  // Complete Sample Production with details
+  const completeForm = ref({
+    quantity_produced: 0,
+    production_cost: 0,
+    notes: '',
+  });
+
+  const openCompleteModal = (sample) => {
+    completeForm.value = {
+      quantity_produced: sample?.batch_size || 0,
+      production_cost: sample?.estimated_cost || 0,
+      notes: '',
+    };
+    openConfirmModal(
+      'complete',
+      'Complete Sample Production',
+      'Provide completion details before marking as completed.',
+      async () => {
+        try {
+          loading.value = true;
+          const plannedQty = Number(confirmModal.value?.data?.batch_size) || 0;
+          const qtyProd = Number(completeForm.value.quantity_produced) || 0;
+          if (qtyProd < 0 || (plannedQty > 0 && qtyProd > plannedQty)) {
+            showToast(
+              'error',
+              `Quantity produced must be between 0 and ${plannedQty} servings`
+            );
+            loading.value = false;
+            return;
+          }
+          await productionStore.completeSampleProduction(
+            sample.id,
+            qtyProd,
+            Number(completeForm.value.production_cost) || 0,
+            completeForm.value.notes
+          );
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          showToast('success', 'Sample production completed successfully');
+          closeConfirmModal();
+          window.dispatchEvent(new Event('refresh-audit-logs'));
+        } catch (error) {
+          console.error('Error in completeSampleProduction (modal):', error);
+          if (
+            error.code === 'ECONNABORTED' ||
+            error.message?.includes('timeout')
+          ) {
+            showToast(
+              'warning',
+              'Request timed out, but sample may have been completed. Please refresh to check.'
+            );
+            closeConfirmModal();
+            await fetchData();
+          } else {
+            showToast('error', error.message || 'Failed to complete sample');
+            closeConfirmModal();
+          }
+        } finally {
+          loading.value = false;
+        }
+      },
+      {
+        sampleId: sample.id,
+        menu_item_name: sample.menu_item_name,
+        sample_batch_number: sample.sample_batch_number,
+        batch_size: sample.batch_size,
+        scheduled_date: sample.scheduled_date,
+        scheduled_time: sample.scheduled_time,
+        assigned_to_name: sample.assigned_to_name,
+        estimated_cost: sample.estimated_cost,
+        priority: sample.priority,
+      }
+    );
+  };
+
+  const canConfirmComplete = computed(() => {
+    const planned = Number(confirmModal.value?.data?.batch_size) || 0;
+    const qty = Number(completeForm.value.quantity_produced) || 0;
+    return qty >= 0 && (planned === 0 || qty <= planned);
+  });
+
   const deleteSampleProduction = async (sampleId) => {
     openConfirmModal(
       'delete',
@@ -953,6 +1138,8 @@
           await new Promise((resolve) => setTimeout(resolve, 100));
           showToast('success', 'Sample production deleted successfully');
           closeConfirmModal();
+          // notify audit log to refresh
+          window.dispatchEvent(new Event('refresh-audit-logs'));
         } catch (error) {
           console.error('Error in deleteSampleProduction:', error);
 
@@ -1532,12 +1719,13 @@
                       </span>
                       <span
                         v-if="
+                          sample.status === 'Planned' &&
                           isOverdue(
                             sample.scheduled_date,
                             sample.scheduled_time
                           )
                         "
-                        class="badge badge-error"
+                        class="badge badge-error badge-outline badge-xs border-none font-medium bg-error/20 text-error"
                       >
                         Overdue
                       </span>
@@ -1620,10 +1808,41 @@
                         <button
                           @click.stop.prevent="startSampleProduction(sample.id)"
                           @mousedown.stop
+                          :disabled="loading"
+                          class="text-sm text-success disabled:opacity-50"
+                        >
+                          <span
+                            v-if="loading"
+                            class="loading loading-spinner loading-xs mr-2"
+                          ></span>
+                          <Play v-else class="w-3 h-3 mr-2" />
+                          <span>
+                            {{ loading ? 'Starting…' : 'Start Production' }}
+                          </span>
+                        </button>
+                      </li>
+
+                      <!-- Complete (only for in-progress items) -->
+                      <li v-if="sample.status === 'In Progress'">
+                        <button
+                          @click.stop.prevent="openCompleteModal(sample)"
+                          @mousedown.stop
                           class="text-sm text-success"
                         >
-                          <Play class="w-3 h-3 mr-2" />
-                          Start Production
+                          <Check class="w-3 h-3 mr-2 !text-success" />
+                          Complete Production
+                        </button>
+                      </li>
+
+                      <!-- Mark as Failed (only for in-progress items) -->
+                      <li v-if="sample.status === 'In Progress'">
+                        <button
+                          @click.stop.prevent="openFailModal(sample)"
+                          @mousedown.stop
+                          class="text-sm text-red-500"
+                        >
+                          <AlertTriangle class="w-3 h-3 mr-2" />
+                          Mark as Failed
                         </button>
                       </li>
 
@@ -1653,13 +1872,9 @@
                         </button>
                       </li>
 
-                      <!-- Delete (only for completed/failed/cancelled items) -->
+                      <!-- Delete (only for failed/cancelled items) -->
                       <li
-                        v-if="
-                          ['Completed', 'Failed', 'Cancelled'].includes(
-                            sample.status
-                          )
-                        "
+                        v-if="['Failed', 'Cancelled'].includes(sample.status)"
                       >
                         <button
                           @click.stop.prevent="
@@ -3242,6 +3457,8 @@
         </div>
       </div>
     </dialog>
+    <!-- Sample Production Audit Log Component -->
+    <SampleProductionAuditLog v-model:show="showAuditLog" />
 
     <!-- Confirmation Modal -->
     <dialog
@@ -3250,27 +3467,219 @@
       :class="{ 'modal-open': confirmModal.show }"
     >
       <div class="modal-box max-w-sm">
-        <h3 class="font-bold text-lg text-primaryColor mb-4">
+        <h3
+          class="font-bold text-lg text-primaryColor"
+          :class="{ 'text-red-500': confirmModal.type === 'fail' }"
+        >
           {{ confirmModal.title }}
         </h3>
         <p class="text-gray-700 mb-4">{{ confirmModal.message }}</p>
+
+        <!-- Fail / Complete form summary + fields -->
+        <div v-if="confirmModal.type === 'fail'" class="space-y-4">
+          <div class="bg-red-50 border border-red-200 p-3 rounded">
+            <div class="font-medium text-red-500 mb-1">
+              {{ confirmModal.data?.menu_item_name || 'Sample' }}
+            </div>
+            <div class="text-xs text-black/60 grid grid-cols-2 gap-y-1">
+              <div>
+                <span class="font-thin text-red-500">Batch:</span>
+                {{ confirmModal.data?.sample_batch_number }}
+              </div>
+              <div>
+                <span class="font-thin text-red-500">Planned:</span>
+                {{ confirmModal.data?.batch_size }} servings
+              </div>
+              <div>
+                <span class="font-thin text-red-500">Schedule:</span>
+                {{ formatDate(confirmModal.data?.scheduled_date) }}
+                {{ formatTime(confirmModal.data?.scheduled_time) }}
+              </div>
+              <div>
+                <span class="font-thin text-red-500">Assigned:</span>
+                {{ confirmModal.data?.assigned_to_name || 'Unassigned' }}
+              </div>
+              <div>
+                <span class="font-thin text-red-500">Est. Cost:</span>
+                {{ formatCurrency(confirmModal.data?.estimated_cost) }}
+              </div>
+              <div v-if="confirmModal.data?.priority">
+                <span class="font-thin text-red-500">Priority:</span>
+                {{ confirmModal.data?.priority }}
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-3">
+            <div>
+              <label class="label text-xs text-black/60">Failure Reason</label>
+              <input
+                v-model="failForm.failure_reason"
+                type="text"
+                class="input input-bordered input-sm w-full bg-white"
+                placeholder="e.g., Equipment malfunction"
+              />
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="label text-xs text-black/60">Quantity Lost</label>
+                <input
+                  v-model.number="failForm.quantity_lost"
+                  type="number"
+                  :min="0"
+                  :max="confirmModal.data?.batch_size || 0"
+                  step="0.01"
+                  class="input input-bordered input-sm w-full bg-white"
+                />
+                <div class="text-[10px] text-black/40 mt-1">
+                  Max: {{ confirmModal.data?.batch_size || 0 }} servings
+                </div>
+              </div>
+              <div>
+                <label class="label text-xs text-black/60"
+                  >Cost Incurred (₱)</label
+                >
+                <input
+                  v-model.number="failForm.cost_incurred"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="input input-bordered input-sm w-full bg-white"
+                />
+                <div class="text-[10px] text-black/40 mt-1">
+                  Prefilled from estimated cost
+                </div>
+              </div>
+            </div>
+            <div>
+              <label class="label text-xs text-black/60"
+                >Notes (optional)</label
+              >
+              <textarea
+                v-model="failForm.notes"
+                class="textarea textarea-bordered w-full bg-white"
+                rows="2"
+                placeholder="Additional details"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Complete form summary + fields -->
+        <div v-if="confirmModal.type === 'complete'" class="space-y-4">
+          <div class="bg-green-50 border border-green-200 p-3 rounded">
+            <div class="font-medium text-success mb-1">
+              {{ confirmModal.data?.menu_item_name || 'Sample' }}
+            </div>
+            <div class="text-xs text-black/60 grid grid-cols-2 gap-y-1">
+              <div>
+                <span class="font-semibold">Batch:</span>
+                {{ confirmModal.data?.sample_batch_number }}
+              </div>
+              <div>
+                <span class="font-semibold">Planned:</span>
+                {{ confirmModal.data?.batch_size }} servings
+              </div>
+              <div>
+                <span class="font-semibold">Schedule:</span>
+                {{ formatDate(confirmModal.data?.scheduled_date) }}
+                {{ formatTime(confirmModal.data?.scheduled_time) }}
+              </div>
+              <div>
+                <span class="font-semibold">Assigned:</span>
+                {{ confirmModal.data?.assigned_to_name || 'Unassigned' }}
+              </div>
+              <div>
+                <span class="font-semibold">Est. Cost:</span>
+                {{ formatCurrency(confirmModal.data?.estimated_cost) }}
+              </div>
+              <div v-if="confirmModal.data?.priority">
+                <span class="font-semibold">Priority:</span>
+                {{ confirmModal.data?.priority }}
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-3">
+            <div>
+              <label class="label text-xs text-black/60"
+                >Quantity Produced</label
+              >
+              <input
+                v-model.number="completeForm.quantity_produced"
+                type="number"
+                :min="0"
+                :max="confirmModal.data?.batch_size || 0"
+                step="0.01"
+                class="input input-bordered input-sm w-full bg-white"
+              />
+              <div class="text-[10px] text-black/40 mt-1">
+                Max: {{ confirmModal.data?.batch_size || 0 }} servings
+              </div>
+            </div>
+            <div>
+              <label class="label text-xs text-black/60"
+                >Production Cost (₱)</label
+              >
+              <input
+                v-model.number="completeForm.production_cost"
+                type="number"
+                min="0"
+                step="0.01"
+                class="input input-bordered input-sm w-full bg-white"
+              />
+            </div>
+            <div>
+              <label class="label text-xs text-black/60"
+                >Notes (optional)</label
+              >
+              <textarea
+                v-model="completeForm.notes"
+                class="textarea textarea-bordered w-full bg-white"
+                rows="2"
+                placeholder="Additional details"
+              />
+            </div>
+          </div>
+        </div>
         <div class="modal-action">
           <button
             @click="closeConfirmModal"
-            class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none btn-sm"
+            :disabled="loading"
+            class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none btn-sm disabled:opacity-50"
           >
             No
           </button>
           <button
             @click="confirmModal.onConfirm"
-            :disabled="loading"
-            class="btn bg-primaryColor text-white btn-sm font-thin border-none hover:bg-primaryColor/80 disabled:opacity-50"
+            :disabled="
+              loading ||
+              (confirmModal.type === 'fail' && !canConfirmFail) ||
+              (confirmModal.type === 'complete' && !canConfirmComplete)
+            "
+            :class="
+              confirmModal.type === 'fail'
+                ? 'btn bg-red-500 text-white btn-sm font-thin border-none hover:bg-red-500/80 disabled:opacity-50'
+                : 'btn bg-primaryColor text-white btn-sm font-thin border-none hover:bg-primaryColor/80 disabled:opacity-50'
+            "
           >
             <span
               class="loading loading-spinner loading-sm mr-2"
               v-if="loading"
             ></span>
-            Yes
+            {{
+              confirmModal.type === 'start' && loading
+                ? 'Starting…'
+                : confirmModal.type === 'fail'
+                  ? canConfirmFail
+                    ? 'Confirm Fail'
+                    : 'Add Reason to Continue'
+                  : confirmModal.type === 'complete'
+                    ? canConfirmComplete
+                      ? 'Confirm Complete'
+                      : 'Check Quantity'
+                    : 'Yes'
+            }}
           </button>
         </div>
       </div>

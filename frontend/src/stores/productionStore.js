@@ -1225,6 +1225,47 @@ export const useProductionStore = defineStore('production', () => {
     }
   };
 
+  const failSampleProduction = async (
+    id,
+    failureReason,
+    quantityLost,
+    costIncurred,
+    notes
+  ) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/menu/sample-production/${id}/fail`,
+        {
+          failure_reason: failureReason,
+          quantity_lost: quantityLost,
+          cost_incurred: costIncurred,
+          notes: notes,
+        },
+        { timeout: 10000 } // 10 second timeout for complex operations
+      );
+      if (response.data.success) {
+        await fetchSampleProductions();
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fail sample production'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to fail sample production';
+      console.error('Error failing sample production:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const deleteSampleProduction = async (id) => {
     loading.value = true;
     error.value = null;
@@ -1281,6 +1322,74 @@ export const useProductionStore = defineStore('production', () => {
         err.message ||
         'Failed to fetch quality inspections';
       console.error('Error fetching quality inspections:', err);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const archiveSampleProduction = async (id, notes = null) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/menu/sample-production/${id}/archive`,
+        { notes },
+        { timeout: 10000 } // 10 second timeout for complex operations
+      );
+      if (response.data.success) {
+        await fetchSampleProductions();
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to archive sample production'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to archive sample production';
+      console.error('Error archiving sample production:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const fetchSampleProductionAuditLogs = async (filters = {}) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const queryParams = new URLSearchParams();
+      Object.keys(filters).forEach((key) => {
+        if (
+          filters[key] !== null &&
+          filters[key] !== undefined &&
+          filters[key] !== ''
+        ) {
+          queryParams.append(key, filters[key]);
+        }
+      });
+
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/sample-production/audit-logs?${queryParams.toString()}`,
+        { timeout: 10000 }
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message || 'Failed to fetch audit logs');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to fetch audit logs';
+      console.error('Error fetching audit logs:', err);
+      throw err;
     } finally {
       loading.value = false;
     }
@@ -1753,7 +1862,10 @@ export const useProductionStore = defineStore('production', () => {
     startSampleProduction,
     completeSampleProduction,
     cancelSampleProduction,
+    failSampleProduction,
     deleteSampleProduction,
+    archiveSampleProduction,
+    fetchSampleProductionAuditLogs,
     createQualityInspection,
     approveForProduction,
     failInspection,

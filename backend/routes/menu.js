@@ -1088,6 +1088,29 @@ router.get("/quality-inspection", authenticateToken, async (req, res) => {
 
 /**
  * @swagger
+ * /api/menu/quality-inspection/types:
+ *   get:
+ *     summary: Get available inspection types and requirements
+ *     tags: [Quality Inspection]
+ */
+router.get("/quality-inspection/types", async (req, res) => {
+  try {
+    const inspectionTypes = QualityInspection.getInspectionTypes();
+    res.json({
+      success: true,
+      data: inspectionTypes,
+    });
+  } catch (error) {
+    console.error("Error fetching inspection types:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch inspection types",
+    });
+  }
+});
+
+/**
+ * @swagger
  * /api/menu/quality-inspection:
  *   post:
  *     summary: Create a new quality inspection
@@ -1111,6 +1134,35 @@ router.post("/quality-inspection", authenticateToken, async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || "Failed to create quality inspection",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/menu/quality-inspection/{id}:
+ *   put:
+ *     summary: Update quality inspection status
+ *     tags: [Quality Inspection]
+ */
+router.put("/quality-inspection/:id", authenticateToken, async (req, res) => {
+  try {
+    const { result, notes } = req.body;
+    const inspection = await QualityInspection.updateStatus(req.params.id, {
+      result,
+      notes,
+      updated_by: req.user.id,
+    });
+    res.json({
+      success: true,
+      data: inspection,
+      message: "Quality inspection updated successfully",
+    });
+  } catch (error) {
+    console.error("Error updating quality inspection:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update quality inspection",
     });
   }
 });

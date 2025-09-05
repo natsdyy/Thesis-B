@@ -1,14 +1,139 @@
 const { db } = require("../config/database");
 const AuditLogger = require("./AuditLogger");
 
+// Quality Inspection Types
+const INSPECTION_TYPES = {
+  SAMPLE_TEST: "Sample Test",
+  SPOT_CHECK: "Spot Check",
+  DIRECT_INSPECTION: "Direct Inspection",
+  COMPLAINT_INVESTIGATION: "Complaint Investigation",
+  SUPPLIER_CHANGE: "Supplier Change",
+  PRODUCTION_CHECK: "Production Check",
+  SEASONAL_CHECK: "Seasonal Check",
+  RETEST: "Retest",
+};
+
+// Inspection Result Types
+const INSPECTION_RESULTS = {
+  PASS: "Pass",
+  FAIL: "Fail",
+  PENDING: "Pending",
+  RETEST_REQUIRED: "Retest Required",
+};
+
+// Quality Score Requirements by Inspection Type
+const QUALITY_SCORE_REQUIREMENTS = {
+  [INSPECTION_TYPES.SAMPLE_TEST]: {
+    taste_score: true,
+    appearance_score: true,
+    texture_score: true,
+    overall_score: true,
+    findings: true,
+  },
+  [INSPECTION_TYPES.SPOT_CHECK]: {
+    taste_score: false,
+    appearance_score: false,
+    texture_score: false,
+    overall_score: false,
+    findings: true,
+  },
+  [INSPECTION_TYPES.DIRECT_INSPECTION]: {
+    taste_score: true,
+    appearance_score: true,
+    texture_score: true,
+    overall_score: true,
+    findings: true,
+  },
+  [INSPECTION_TYPES.COMPLAINT_INVESTIGATION]: {
+    taste_score: true,
+    appearance_score: true,
+    texture_score: true,
+    overall_score: true,
+    findings: true,
+  },
+  [INSPECTION_TYPES.SUPPLIER_CHANGE]: {
+    taste_score: true,
+    appearance_score: true,
+    texture_score: true,
+    overall_score: true,
+    findings: true,
+  },
+  [INSPECTION_TYPES.PRODUCTION_CHECK]: {
+    taste_score: false,
+    appearance_score: false,
+    texture_score: false,
+    overall_score: false,
+    findings: true,
+  },
+  [INSPECTION_TYPES.SEASONAL_CHECK]: {
+    taste_score: true,
+    appearance_score: true,
+    texture_score: true,
+    overall_score: true,
+    findings: true,
+  },
+  [INSPECTION_TYPES.RETEST]: {
+    taste_score: true,
+    appearance_score: true,
+    texture_score: true,
+    overall_score: true,
+    findings: true,
+  },
+};
+
 class QualityInspection {
+  // Get inspection types and requirements
+  static getInspectionTypes() {
+    return {
+      types: INSPECTION_TYPES,
+      results: INSPECTION_RESULTS,
+      requirements: QUALITY_SCORE_REQUIREMENTS,
+    };
+  }
+
+  // Validate inspection data based on type
+  static validateInspectionData(inspectionData) {
+    const { inspection_type, sample_production_id, menu_item_id } =
+      inspectionData;
+    const requirements = QUALITY_SCORE_REQUIREMENTS[inspection_type];
+
+    // For sample-based inspections, sample_production_id is required
+    if ([INSPECTION_TYPES.SAMPLE_TEST].includes(inspection_type)) {
+      if (!sample_production_id) {
+        throw new Error(
+          "Sample production is required for this inspection type"
+        );
+      }
+    }
+
+    // For direct inspections, menu_item_id is required
+    if (
+      [
+        INSPECTION_TYPES.DIRECT_INSPECTION,
+        INSPECTION_TYPES.SPOT_CHECK,
+        INSPECTION_TYPES.COMPLAINT_INVESTIGATION,
+      ].includes(inspection_type)
+    ) {
+      if (!menu_item_id) {
+        throw new Error("Menu item is required for this inspection type");
+      }
+    }
+
+    // Validate required fields based on inspection type
+    if (requirements.findings && !inspectionData.findings?.trim()) {
+      throw new Error("Findings are required for this inspection type");
+    }
+
+    return true;
+  }
+
   // Get all quality inspections with details
   static async getAll(filters = {}) {
     try {
       let query = db("menu_quality_inspections as qi")
         .select(
           "qi.*",
-          "mi.menu_item_name",
+          "mi.menu_item_name as item_name",
           "mi.item_code",
           "sp.sample_batch_number",
           "u.name as inspector_name",
@@ -68,7 +193,7 @@ class QualityInspection {
       const inspection = await db("menu_quality_inspections as qi")
         .select(
           "qi.*",
-          "mi.menu_item_name",
+          "mi.menu_item_name as item_name",
           "mi.item_code",
           "mi.description as menu_item_description",
           "mi.selling_price",
@@ -101,33 +226,143 @@ class QualityInspection {
     }
   }
 
+  // Helper function to convert dd/mm/yyyy to yyyy-mm-dd
+  static convertDateFormat(dateString) {
+    if (
+      !dateString ||
+      dateString.trim() === "" ||
+      dateString === "undefined" ||
+      dateString === "null"
+    ) {
+      return null;
+    }
+
+    // Handle dd/mm/yyyy format
+    if (dateString.includes("/")) {
+      const [day, month, year] = dateString.split("/");
+      if (
+        day &&
+        month &&
+        year &&
+        day.length > 0 &&
+        month.length > 0 &&
+        year.length > 0
+      ) {
+        return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+      }
+    }
+
+    // If already in yyyy-mm-dd format, return as is
+    if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return dateString;
+    }
+
+    return null;
+  }
+
   // Create new quality inspection
   static async create(inspectionData) {
     const trx = await db.transaction();
 
     try {
+      // Validate inspection data based on type
+      this.validateInspectionData(inspectionData);
+
       // Generate inspection number
       const timestamp = Date.now();
       const inspectionNumber = `QI${timestamp}`;
 
-      const [inspectionId] = await trx("menu_quality_inspections").insert({
+      // Handle different inspection types first
+      let menuItemId = inspectionData.menu_item_id;
+      let sampleProduction = null;
+
+      if (inspectionData.sample_production_id) {
+        // For sample-based inspections
+        sampleProduction = await trx("sample_productions")
+          .where("id", inspectionData.sample_production_id)
+          .select("sample_batch_number", "menu_item_id")
+          .first();
+        menuItemId = sampleProduction?.menu_item_id || menuItemId;
+      } else if (inspectionData.menu_item_id) {
+        // For direct inspections - ensure menu item exists
+        const menuItem = await trx("menu_items")
+          .where("id", inspectionData.menu_item_id)
+          .select("id", "menu_item_name")
+          .first();
+
+        if (!menuItem) {
+          throw new Error("Menu item not found");
+        }
+      }
+
+      // Ensure we have a menu_item_id for the inspection
+      if (!menuItemId) {
+        throw new Error("Menu item ID is required for quality inspection");
+      }
+
+      // Prepare data for insertion
+      const insertData = {
         ...inspectionData,
         inspection_number: inspectionNumber,
-        inspection_date: inspectionData.inspection_date || trx.fn.now(),
+        inspection_date:
+          this.convertDateFormat(inspectionData.inspection_date) ||
+          trx.fn.now(),
         inspection_time: inspectionData.inspection_time || trx.fn.now(),
+        retest_date: this.convertDateFormat(inspectionData.retest_date),
+        // Convert empty strings to null for integer fields
+        sample_production_id: inspectionData.sample_production_id || null,
+        menu_item_id: menuItemId, // Use the resolved menuItemId
+        inspector_id: inspectionData.inspector_id || null,
+        approved_by: inspectionData.approved_by || null,
+        // Convert empty strings to null and decimal values to integers for numeric fields
+        taste_score: inspectionData.taste_score
+          ? Math.max(
+              1,
+              Math.min(10, Math.round(parseFloat(inspectionData.taste_score)))
+            )
+          : null,
+        appearance_score: inspectionData.appearance_score
+          ? Math.max(
+              1,
+              Math.min(
+                10,
+                Math.round(parseFloat(inspectionData.appearance_score))
+              )
+            )
+          : null,
+        texture_score: inspectionData.texture_score
+          ? Math.max(
+              1,
+              Math.min(10, Math.round(parseFloat(inspectionData.texture_score)))
+            )
+          : null,
+        overall_quality_score: inspectionData.overall_quality_score
+          ? Math.max(
+              1,
+              Math.min(
+                10,
+                Math.round(parseFloat(inspectionData.overall_quality_score))
+              )
+            )
+          : null,
         created_at: trx.fn.now(),
         updated_at: trx.fn.now(),
-      });
+      };
 
-      // Get sample production details for audit logging
-      const sampleProduction = await trx("sample_productions")
-        .where("id", inspectionData.sample_production_id)
-        .select("sample_batch_number", "menu_item_id")
-        .first();
+      const [result] = await trx("menu_quality_inspections")
+        .insert(insertData)
+        .returning("id");
+
+      if (!result) {
+        throw new Error("Failed to get inspection ID after creation");
+      }
+
+      // Extract the actual ID value from the result object
+      const inspectionId = result.id || result;
 
       // Log the quality inspection action
       await AuditLogger.log({
-        menu_item_id: inspectionData.menu_item_id,
+        menu_item_id: menuItemId,
         sample_production_id: inspectionData.sample_production_id,
         quality_inspection_id: inspectionId,
         user_id: inspectionData.inspector_id,
@@ -140,7 +375,7 @@ class QualityInspection {
           sample_batch_number: sampleProduction?.sample_batch_number,
           requires_retest: inspectionData.requires_retest,
         },
-        notes: `Quality inspection completed for batch ${sampleProduction?.sample_batch_number} - Result: ${inspectionData.result}`,
+        notes: `Quality inspection completed${sampleProduction?.sample_batch_number ? ` for batch ${sampleProduction.sample_batch_number}` : ""} - Result: ${inspectionData.result}`,
       });
 
       await trx.commit();
@@ -149,6 +384,32 @@ class QualityInspection {
       await trx.rollback();
       console.error("Error creating quality inspection:", error);
       throw new Error("Failed to create quality inspection");
+    }
+  }
+
+  // Update quality inspection status
+  static async updateStatus(id, updateData) {
+    try {
+      const { result, notes, updated_by } = updateData;
+
+      // Validate result
+      const validResults = ["Pending", "Pass", "Fail", "Retest Required"];
+      if (!validResults.includes(result)) {
+        throw new Error("Invalid inspection result");
+      }
+
+      return await this.update(
+        id,
+        {
+          result,
+          notes: notes || null,
+          updated_by,
+        },
+        updated_by
+      );
+    } catch (error) {
+      console.error("Error updating inspection status:", error);
+      throw error;
     }
   }
 

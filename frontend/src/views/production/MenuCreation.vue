@@ -21,7 +21,9 @@
     ChevronDown,
     ChevronUp,
     EllipsisVertical,
+    Shield,
   } from 'lucide-vue-next';
+  import { useRouter } from 'vue-router';
   import { useProductionStore } from '../../stores/productionStore.js';
   import { recipeCategories } from '../../config/productionCategories.js';
   import { useAuthStore } from '../../stores/authStore.js';
@@ -31,6 +33,7 @@
   const productionStore = useProductionStore();
   const authStore = useAuthStore();
   const userStore = useUserStore();
+  const router = useRouter();
 
   // Reactive state
   const activeTab = ref('overview');
@@ -45,6 +48,12 @@
     message: '',
     item: null,
     onConfirm: null,
+  });
+  const approveModal = ref({
+    show: false,
+    item: null,
+    requireQualityCheck: false,
+    approvalReason: '',
   });
   const showDetailsModal = ref(false);
   const selectedMenuItem = ref(null);
@@ -92,6 +101,16 @@
   const menuStats = computed(() => productionStore.menuStats);
   const menuItemStats = computed(() => productionStore.menuItemStats);
 
+  // Debug computed property to see filtered items
+  const debugMenuItems = computed(() => {
+    console.log('Total menu items:', menuItems.value.length);
+    console.log('Current status filter:', statusFilter.value);
+    console.log('Current category filter:', categoryFilter.value);
+    console.log('Current search query:', searchQuery.value);
+    console.log('Sample menu item data:', menuItems.value[0]);
+    return menuItems.value;
+  });
+
   // Dynamic categories from menus
   const availableCategories = computed(() => {
     const categories = new Set();
@@ -113,26 +132,48 @@
 
   const filteredMenuItems = computed(() => {
     let filtered = menuItems.value;
+    console.log('Starting with', filtered.length, 'menu items');
 
     if (searchQuery.value) {
       const query = searchQuery.value.toLowerCase();
       filtered = filtered.filter(
         (item) =>
           item.item_name.toLowerCase().includes(query) ||
-          item.item_code.toLowerCase().includes(query) ||
+          item.item_code?.toLowerCase().includes(query) ||
           item.recipe_name?.toLowerCase().includes(query) ||
           item.description?.toLowerCase().includes(query)
       );
+      console.log('After search filter:', filtered.length, 'items');
     }
 
     if (categoryFilter.value) {
       filtered = filtered.filter(
         (item) => item.category === categoryFilter.value
       );
+      console.log('After category filter:', filtered.length, 'items');
     }
 
-    // Status filtering is now handled in the backend
+    // Status filtering - client-side like Sample Production Planning
+    if (statusFilter.value) {
+      if (statusFilter.value === 'available') {
+        filtered = filtered.filter((item) => item.is_available === true);
+      } else if (statusFilter.value === 'draft') {
+        filtered = filtered.filter((item) => item.is_available === false);
+      } else if (statusFilter.value === 'quality_passed') {
+        filtered = filtered.filter((item) => item.passed_inspections > 0);
+      } else if (statusFilter.value === 'inspection_pending') {
+        filtered = filtered.filter(
+          (item) => item.sample_count > 0 && item.passed_inspections === 0
+        );
+      } else if (statusFilter.value === 'deleted') {
+        // For deleted items, we already fetched only deleted items from backend
+        // So we don't need to filter further - all items in the array are deleted
+        console.log('Showing deleted items (already filtered by backend)');
+      }
+      console.log('After status filter:', filtered.length, 'items');
+    }
 
+    console.log('Final filtered items:', filtered.length);
     return filtered.sort((a, b) => a.item_name.localeCompare(b.item_name));
   });
 
@@ -189,27 +230,17 @@
 
   // Methods
   const fetchMenuItems = async () => {
+    // Fetch menu items based on current status filter
     const filters = {};
 
-    // Handle status filtering including deleted items
     if (statusFilter.value === 'deleted') {
       filters.only_deleted = true;
-      console.log('Setting only_deleted filter to true');
-    } else if (statusFilter.value === 'available') {
-      filters.is_available = true;
-    } else if (statusFilter.value === 'draft') {
-      filters.is_available = false;
+      console.log('Fetching deleted menu items');
+    } else {
+      // For all other filters, fetch non-deleted items and filter client-side
+      console.log('Fetching non-deleted menu items for client-side filtering');
     }
 
-    // Add other filters
-    if (searchQuery.value) {
-      filters.search = searchQuery.value;
-    }
-    if (categoryFilter.value) {
-      filters.category = categoryFilter.value;
-    }
-
-    console.log('Fetching menu items with filters:', filters);
     await productionStore.fetchMenuItems(filters);
   };
 
@@ -351,6 +382,48 @@
       item: null,
       onConfirm: null,
     };
+  };
+
+  const openApproveModal = (item) => {
+    approveModal.value = {
+      show: true,
+      item: item,
+      requireQualityCheck: false,
+      approvalReason: '',
+    };
+  };
+
+  const closeApproveModal = () => {
+    approveModal.value = {
+      show: false,
+      item: null,
+      requireQualityCheck: false,
+      approvalReason: '',
+    };
+  };
+
+  const handleApproval = async () => {
+    const item = approveModal.value.item;
+
+    if (approveModal.value.requireQualityCheck) {
+      // Navigate to quality inspection first
+      closeApproveModal();
+      createQualityInspection(item);
+      showToast('info', 'Please complete quality inspection before approval');
+      return;
+    }
+
+    try {
+      await productionStore.approveMenuItemForProduction(item.id);
+      showToast(
+        'success',
+        `${item.item_name} approved for production successfully`
+      );
+      closeApproveModal();
+      await fetchMenuItems();
+    } catch (error) {
+      showToast('error', error.message || 'Failed to approve menu item');
+    }
   };
 
   const handleConfirmAction = async () => {
@@ -551,6 +624,18 @@
     } catch (error) {
       showToast('error', error.message || 'Failed to approve menu item');
     }
+  };
+
+  const createQualityInspection = (menuItem) => {
+    // Navigate to quality inspection page with pre-selected menu item
+    router.push({
+      name: 'QualityInspection',
+      query: {
+        menu_item_id: menuItem.id,
+        inspection_type: 'Direct Inspection',
+        source: 'menu_creation',
+      },
+    });
   };
 
   const handleDeleteMenuItem = async (item) => {
@@ -822,7 +907,12 @@
   // Watch for data changes
   watch([searchQuery, categoryFilter, statusFilter], () => {
     currentPage.value = 1; // Reset to first page when filters change
-    fetchMenuItems();
+
+    // Only fetch data when status filter changes to/from 'deleted'
+    // Other filtering is done client-side
+    if (statusFilter.value === 'deleted' || statusFilter.value === '') {
+      fetchMenuItems();
+    }
   });
 </script>
 
@@ -1193,12 +1283,15 @@
                   v-model="searchQuery"
                   type="text"
                   placeholder="Search menu items..."
-                  class="input input-bordered w-full pl-10"
+                  class="input input-bordered w-full pl-10 text-sm sm:text-base"
                 />
               </div>
             </div>
-            <div class="flex gap-2">
-              <select v-model="categoryFilter" class="select select-bordered">
+            <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
+              <select
+                v-model="categoryFilter"
+                class="select select-bordered text-sm sm:text-base"
+              >
                 <option value="">All Categories</option>
                 <option
                   v-for="category in availableCategories"
@@ -1208,47 +1301,60 @@
                   {{ category }}
                 </option>
               </select>
-              <select v-model="statusFilter" class="select select-bordered">
+              <select
+                v-model="statusFilter"
+                class="select select-bordered text-sm sm:text-base"
+              >
                 <option value="">All Status</option>
                 <option value="available">Available</option>
                 <option value="draft">Draft</option>
+                <option value="quality_passed">Quality Passed</option>
+                <option value="inspection_pending">Inspection Pending</option>
                 <option value="deleted">Deleted</option>
               </select>
             </div>
           </div>
 
           <!-- Menu Items Grid -->
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div
+            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6"
+          >
             <div
               v-for="item in paginatedMenuItems"
               :key="item.id"
               class="card bg-white border border-gray-200 hover:shadow-xl duration-300 cursor-pointer"
               @click="openDetailsModal(item)"
             >
-              <div class="card-body p-6">
-                <div class="flex items-start justify-between mb-4">
-                  <div class="flex-1">
+              <div class="card-body p-4 sm:p-6">
+                <!-- Header Section -->
+                <div
+                  class="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-3 sm:mb-4 gap-2"
+                >
+                  <div class="flex-1 min-w-0">
                     <h3
-                      class="card-title text-lg font-bold text-primaryColor mb-2"
+                      class="card-title text-base sm:text-lg font-bold text-primaryColor mb-2 truncate"
                     >
                       {{ item.item_name }}
                     </h3>
-                    <p class="text-sm text-gray-600 mb-2">
-                      {{ item.recipe_name }}
-                    </p>
-                    <div class="flex items-center gap-2 mb-3">
-                      <span
-                        class="badge badge-sm"
-                        :class="getStatusBadgeClass(item.is_available)"
-                      >
-                        {{ getStatusText(item.is_available) }}
-                      </span>
-                      <span class="badge badge-sm bg-gray-100 text-gray-600">
-                        {{ item.category }}
-                      </span>
+
+                    <!-- Price Section - Mobile First -->
+                    <div class="sm:hidden mb-2">
+                      <div class="text-lg font-bold text-primaryColor">
+                        {{ formatCurrency(item.selling_price) }}
+                      </div>
+                      <div class="text-xs text-gray-500">
+                        {{
+                          calculateProfitMargin(
+                            item.selling_price,
+                            item.cost_price
+                          )
+                        }}% margin
+                      </div>
                     </div>
                   </div>
-                  <div class="text-right">
+
+                  <!-- Price Section - Desktop -->
+                  <div class="hidden sm:block text-right">
                     <div class="text-lg font-bold text-primaryColor">
                       {{ formatCurrency(item.selling_price) }}
                     </div>
@@ -1263,14 +1369,64 @@
                   </div>
                 </div>
 
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-4 text-sm text-gray-600">
+                <!-- Badges Section - Responsive -->
+                <div class="flex flex-wrap gap-1 sm:gap-2 mb-3 sm:mb-4">
+                  <span
+                    class="badge badge-xs sm:badge-sm"
+                    :class="getStatusBadgeClass(item.is_available)"
+                  >
+                    {{ getStatusText(item.is_available) }}
+                  </span>
+                  <span
+                    class="badge badge-xs sm:badge-sm bg-gray-100 text-gray-600"
+                  >
+                    {{ item.category }}
+                  </span>
+                  <!-- Quality Inspection Status -->
+                  <span
+                    v-if="item.passed_inspections > 0"
+                    class="badge badge-xs sm:badge-sm bg-success/20 text-success border border-success/30"
+                    title="Passed Quality Inspection - Ready for Production"
+                  >
+                    <Shield class="w-3 h-3 mr-1" />
+                    <span class="hidden xs:inline">Quality Passed</span>
+                    <span class="xs:hidden">Passed</span>
+                  </span>
+                  <span
+                    v-else-if="item.sample_count > 0"
+                    class="badge badge-xs sm:badge-sm bg-warning/20 text-warning border border-warning/30"
+                    title="Quality Inspection Pending - Consider quality check before approval"
+                  >
+                    <AlertTriangle class="w-3 h-3 mr-1" />
+                    <span class="hidden xs:inline">Needs Quality Check</span>
+                    <span class="xs:hidden">Pending</span>
+                  </span>
+                  <span
+                    v-else-if="!item.is_available"
+                    class="badge badge-xs sm:badge-sm bg-info/20 text-info border border-info/30"
+                    title="New menu item - Quality inspection recommended"
+                  >
+                    <Shield class="w-3 h-3 mr-1" />
+                    <span class="hidden xs:inline"
+                      >Quality Check Recommended</span
+                    >
+                    <span class="xs:hidden">Check Needed</span>
+                  </span>
+                </div>
+
+                <!-- Bottom Section - Responsive -->
+                <div
+                  class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4"
+                >
+                  <div
+                    class="flex flex-col xs:flex-row xs:items-center gap-2 xs:gap-4 text-xs sm:text-sm text-gray-600"
+                  >
                     <div class="flex items-center gap-1">
-                      <Clock class="w-4 h-4" />
-                      {{ item.preparation_time_minutes }}m
+                      <Clock class="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                      <span>{{ item.preparation_time_minutes }}m</span>
                     </div>
                     <div class="flex items-center gap-1">
-                      <Users class="w-4 h-4" />
+                      <Users class="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
                       <span class="text-xs">
                         <span class="font-medium">1 serving</span>
                         <span class="text-gray-500"
@@ -1281,22 +1437,22 @@
                   </div>
                   <!-- Actions Dropdown -->
                   <div
-                    class="dropdown dropdown-end"
+                    class="dropdown dropdown-end flex-shrink-0"
                     @click.stop
                     @mousedown.stop
                     @mouseup.stop
                   >
                     <button
-                      class="btn btn-ghost btn-xs"
+                      class="btn btn-ghost btn-xs sm:btn-sm"
                       tabindex="0"
                       @click.stop.prevent
                       @mousedown.stop
                       @mouseup.stop
                     >
-                      <EllipsisVertical class="w-4 h-4" />
+                      <EllipsisVertical class="w-3 h-3 sm:w-4 sm:h-4" />
                     </button>
                     <ul
-                      class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-48 z-50"
+                      class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-48 sm:w-52 z-50"
                       tabindex="0"
                       @click.stop
                     >
@@ -1312,10 +1468,22 @@
                         </button>
                       </li>
 
+                      <!-- Create Quality Inspection -->
+                      <li v-if="!item.deleted_at">
+                        <button
+                          @click.stop.prevent="createQualityInspection(item)"
+                          @mousedown.stop
+                          class="text-sm text-primaryColor"
+                        >
+                          <Shield class="w-3 h-3 mr-2" />
+                          Create Quality Inspection
+                        </button>
+                      </li>
+
                       <!-- Approve (only for draft items) -->
                       <li v-if="!item.is_available && !item.deleted_at">
                         <button
-                          @click.stop.prevent="approveMenuItem(item.id)"
+                          @click.stop.prevent="openApproveModal(item)"
                           @mousedown.stop
                           class="text-sm text-success"
                         >
@@ -1926,6 +2094,110 @@
       </form>
     </dialog>
 
+    <!-- Approval Modal -->
+    <dialog
+      id="approval_modal"
+      class="modal"
+      :class="{ 'modal-open': approveModal.show }"
+    >
+      <div class="modal-box max-w-2xl">
+        <h3 class="font-bold text-lg mb-4 text-primaryColor">
+          Approve Menu Item for Production
+        </h3>
+
+        <div class="mb-6">
+          <div
+            class="bg-secondaryColor/10 border border-primaryColor/20 rounded-lg p-4 mb-4"
+          >
+            <div class="flex items-center gap-2 mb-2">
+              <Shield class="w-5 h-5 text-primaryColor" />
+              <h4 class="font-semibold text-primaryColor">
+                Quality Check Recommendation
+              </h4>
+            </div>
+            <p class="text-sm text-primaryColor mb-3">
+              For new menu items or recipe modifications, we recommend
+              completing a quality inspection before approval to ensure
+              consistent taste, appearance, and portion size.
+            </p>
+
+            <div class="space-y-3">
+              <label class="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="radio"
+                  v-model="approveModal.requireQualityCheck"
+                  :value="true"
+                  class="radio checked:text-primaryColor radio-xs text-primaryColor"
+                />
+                <div>
+                  <div class="font-medium text-primaryColor">
+                    Complete Quality Inspection First
+                  </div>
+                  <div class="text-xs text-primaryColor">
+                    Recommended for new items or recipe changes
+                  </div>
+                </div>
+              </label>
+
+              <label class="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="radio"
+                  v-model="approveModal.requireQualityCheck"
+                  :value="false"
+                  class="radio checked:text-primaryColor radio-xs text-primaryColor"
+                />
+                <div>
+                  <div class="font-medium text-primaryColor">
+                    Approve Directly
+                  </div>
+                  <div class="text-xs text-primaryColor">
+                    Skip quality check (use with caution)
+                  </div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-control flex flex-col gap-2">
+            <label class="label">
+              <span class="label-text font-medium !text-xs sm:text-base"
+                >Approval Reason (Optional)</span
+              >
+            </label>
+            <textarea
+              v-model="approveModal.approvalReason"
+              class="textarea textarea-bordered w-full textarea-sm bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+              placeholder="e.g., Recipe tested in kitchen, customer feedback positive, etc."
+              rows="3"
+            ></textarea>
+          </div>
+        </div>
+
+        <div class="modal-action">
+          <button
+            @click="closeApproveModal"
+            class="btn btn-ghost btn-sm font-thin"
+          >
+            Cancel
+          </button>
+          <button
+            @click="handleApproval"
+            class="btn bg-primaryColor text-white border-none hover:bg-primaryColor/80 btn-sm shadow-none font-thin"
+          >
+            <CheckCircle class="w-4 h-4 mr-1" />
+            {{
+              approveModal.requireQualityCheck
+                ? 'Go to Quality Check'
+                : 'Approve for Production'
+            }}
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="closeApproveModal">close</button>
+      </form>
+    </dialog>
+
     <!-- Menu Item Details Modal -->
     <div v-if="showDetailsModal && selectedMenuItem" class="modal modal-open">
       <div class="modal-box max-w-4xl">
@@ -2070,6 +2342,33 @@
               >
                 View Recipe Details
               </button>
+            </div>
+          </div>
+
+          <!-- Quality Inspection History -->
+          <div>
+            <h4 class="font-semibold text-primaryColor mb-3">
+              Quality Inspection History
+            </h4>
+            <div class="bg-gray-50 p-4 rounded-lg">
+              <p class="text-sm text-gray-600 mb-3">
+                Track quality control history for this menu item.
+              </p>
+              <div class="flex gap-2">
+                <button
+                  @click="createQualityInspection(selectedMenuItem)"
+                  class="btn btn-sm bg-primaryColor text-white font-thin hover:bg-primaryColor/80 hover:border-none hover:shadow-none"
+                >
+                  <Shield class="w-4 h-4 mr-1" />
+                  New Inspection
+                </button>
+                <button
+                  @click="$router.push('/production/quality-inspection')"
+                  class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
+                >
+                  View All Inspections
+                </button>
+              </div>
             </div>
           </div>
         </div>

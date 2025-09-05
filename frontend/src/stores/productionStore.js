@@ -1424,6 +1424,35 @@ export const useProductionStore = defineStore('production', () => {
     }
   };
 
+  const updateQualityInspection = async (id, updateData) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.put(
+        `${API_BASE_URL}/menu/quality-inspection/${id}`,
+        updateData
+      );
+      if (response.data.success) {
+        await fetchQualityInspections();
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to update quality inspection'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to update quality inspection';
+      console.error('Error updating quality inspection:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const approveForProduction = async (id) => {
     loading.value = true;
     error.value = null;
@@ -1867,6 +1896,7 @@ export const useProductionStore = defineStore('production', () => {
     archiveSampleProduction,
     fetchSampleProductionAuditLogs,
     createQualityInspection,
+    updateQualityInspection,
     approveForProduction,
     failInspection,
     fetchProductionInventory,

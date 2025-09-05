@@ -48,19 +48,7 @@ class MenuItem {
         query = query.whereNull("mi.deleted_at");
       }
 
-      query = query.groupBy(
-        "mi.id",
-        "m.menu_name",
-        "m.category",
-        "r.recipe_name",
-        "r.category",
-        "r.cost_per_batch",
-        "r.batch_size",
-        "r.batch_unit",
-        "u.name"
-      );
-
-      // Apply filters
+      // Apply basic filters before groupBy
       if (filters.menu_id) {
         query = query.where("mi.menu_id", filters.menu_id);
       }
@@ -73,12 +61,37 @@ class MenuItem {
         query = query.where("mi.category", filters.category);
       }
 
+      query = query.groupBy(
+        "mi.id",
+        "m.menu_name",
+        "m.category",
+        "r.recipe_name",
+        "r.category",
+        "r.cost_per_batch",
+        "r.batch_size",
+        "r.batch_unit",
+        "u.name"
+      );
+
+      // Apply remaining filters after groupBy
+
       if (filters.search) {
         query = query.where(function () {
           this.where("mi.menu_item_name", "ilike", `%${filters.search}%`)
             .orWhere("mi.item_code", "ilike", `%${filters.search}%`)
             .orWhere("r.recipe_name", "ilike", `%${filters.search}%`);
         });
+      }
+
+      // Quality inspection filters
+      if (filters.quality_passed) {
+        query = query.having("passed_inspections", ">", 0);
+      }
+
+      if (filters.inspection_pending) {
+        query = query
+          .having("sample_count", ">", 0)
+          .having("passed_inspections", "=", 0);
       }
 
       return await query.orderBy("mi.sequence_order", "asc");
@@ -198,11 +211,6 @@ class MenuItem {
     const trx = await db.transaction();
 
     try {
-      console.log(
-        "MenuItem.create - Received data keys:",
-        Object.keys(menuItemData)
-      );
-
       // Validate required fields
       if (!menuItemData.recipe_id) {
         throw new Error("Recipe ID is required");
@@ -258,7 +266,6 @@ class MenuItem {
       let menuId = Number(menuItemData.menu_id);
 
       // Validate menu_id if provided
-      console.log("Original menuId:", menuId, "Type:", typeof menuId);
 
       // Handle menu_id logic
       if (Number.isFinite(menuId) && menuId > 0) {
@@ -272,11 +279,9 @@ class MenuItem {
         if (!menuExists) {
           throw new Error("Selected menu not found or is inactive");
         }
-        console.log("Using user-selected menu with ID:", menuId);
       } else {
         // No valid menu_id provided - need to find or create one
         const targetCategory = menuItemData.category || recipe.category;
-        console.log("Looking for menu with category:", targetCategory);
 
         // Strategy 1: Try to find existing menu first
         let menuRow = await trx("menus")
@@ -289,13 +294,8 @@ class MenuItem {
         if (menuRow) {
           // Use existing menu
           menuId = Number(menuRow.id);
-          console.log("Found existing menu with ID:", menuId);
         } else {
           // Strategy 2: Auto-create menu for this category
-          console.log(
-            "No existing menu found, auto-creating new one for category:",
-            targetCategory
-          );
           const menuTimestamp = Date.now();
 
           // Insert the menu
@@ -318,7 +318,6 @@ class MenuItem {
 
           if (newMenu && newMenu.id) {
             menuId = Number(newMenu.id);
-            console.log("Auto-created new menu with ID:", menuId);
           } else {
             throw new Error(
               "Failed to create menu - could not retrieve created menu"
@@ -329,7 +328,6 @@ class MenuItem {
 
       // CRITICAL FIX: Ensure menuId is never NaN or 0
       if (!Number.isFinite(menuId) || menuId <= 0) {
-        console.log("CRITICAL: menuId is invalid, creating default menu");
         // Create a default menu if we still don't have a valid ID
         const targetCategory =
           menuItemData.category || recipe.category || "General";
@@ -354,7 +352,6 @@ class MenuItem {
 
         if (defaultMenu && defaultMenu.id) {
           menuId = Number(defaultMenu.id);
-          console.log("Created default menu with ID:", menuId);
         } else {
           throw new Error(
             "Failed to create default menu - could not retrieve created menu"
@@ -362,51 +359,19 @@ class MenuItem {
         }
       }
 
-      console.log(
-        "After menu resolution - menuId:",
-        menuId,
-        "Type:",
-        typeof menuId
-      );
-
       // Generate item code
       const timestamp = Date.now();
-      console.log("Generated timestamp:", timestamp, "Type:", typeof timestamp);
       const itemCode = `MITM${timestamp}`;
-      console.log(
-        "Generated itemCode:",
-        itemCode,
-        "Type:",
-        typeof itemCode,
-        "Length:",
-        itemCode.length
-      );
 
       // Ensure itemCode is a valid string
       if (typeof itemCode !== "string" || itemCode.length < 10) {
-        console.error("Invalid itemCode generated:", itemCode);
         throw new Error("Failed to generate valid item code");
       }
-
-      // Debug: Check if itemCode generation is affecting other variables
-      console.log(
-        "After itemCode generation - menuId:",
-        menuId,
-        "Type:",
-        typeof menuId
-      );
 
       // Calculate cost price based on recipe
       const costPerBatch = Number(recipe.cost_per_batch || 0);
       const batchSize = Number(recipe.batch_size || 1);
       const costPrice = batchSize > 0 ? costPerBatch / batchSize : 0;
-
-      console.log(
-        "After cost calculation - menuId:",
-        menuId,
-        "Type:",
-        typeof menuId
-      );
 
       // Debug the actual insert data
       console.log("=== FINAL CHECK BEFORE INSERT ===");

@@ -1953,6 +1953,72 @@ export const useProductionStore = defineStore('production', () => {
     }
   };
 
+  // Fetch recent activity for production inventory
+  const fetchRecentActivity = async (limit = 10) => {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/production-inventory/recent-activity?limit=${limit}`
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch recent activity'
+        );
+      }
+    } catch (error) {
+      console.error('Error fetching recent activity:', error);
+      error.value =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to fetch recent activity';
+      throw error;
+    }
+  };
+
+  // Fetch all transactions with filters and pagination
+  const fetchAllTransactions = async (params = {}) => {
+    try {
+      const queryParams = new URLSearchParams();
+
+      // Add all parameters to query string
+      Object.keys(params).forEach((key) => {
+        if (
+          params[key] !== '' &&
+          params[key] !== null &&
+          params[key] !== undefined
+        ) {
+          queryParams.append(key, params[key]);
+        }
+      });
+
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/production-inventory/audit-logs?${queryParams.toString()}`
+      );
+
+      if (response.data.success) {
+        return {
+          data: response.data.data,
+          total: response.data.total,
+          page: response.data.page,
+          totalPages: response.data.totalPages,
+        };
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch transactions'
+        );
+      }
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+      error.value =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to fetch transactions';
+      throw error;
+    }
+  };
+
   // Inventory Integration Actions
   const checkRecipeAvailability = async (recipeId, batchSize = 1) => {
     try {
@@ -2156,6 +2222,8 @@ export const useProductionStore = defineStore('production', () => {
     updateInitialStockFromRecipe,
     refreshProductionInventory,
     forceRefreshProductionInventory,
+    fetchRecentActivity,
+    fetchAllTransactions,
 
     // Inventory Integration Actions
     checkRecipeAvailability,

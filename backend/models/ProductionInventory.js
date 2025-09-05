@@ -54,7 +54,49 @@ class ProductionInventory {
         });
       }
 
-      return await query.orderBy("mi.menu_item_name", "asc");
+      const results = await query.orderBy("mi.menu_item_name", "asc");
+
+      // Calculate production capacity for each item
+      for (let item of results) {
+        try {
+          // Get recipe ingredients for production capacity calculation
+          const ingredients = await db("recipe_ingredients as ri")
+            .select(
+              "ri.*",
+              "ii.item_name as ingredient_name",
+              "ii.quantity as available_stock",
+              "iit.unit_of_measure",
+              "ii.unit_cost"
+            )
+            .leftJoin("inventory_items as ii", "ri.inventory_item_id", "ii.id")
+            .leftJoin(
+              "inventory_item_types as iit",
+              "ii.item_type_id",
+              "iit.id"
+            )
+            .where("ri.recipe_id", item.recipe_id)
+            .orderBy("ri.sequence_order", "asc");
+
+          // Calculate production capacity
+          item.production_capacity = this.calculateProductionCapacity(
+            ingredients,
+            item.batch_size
+          );
+        } catch (error) {
+          console.error(
+            `Error calculating production capacity for item ${item.id}:`,
+            error
+          );
+          // Set default values if calculation fails
+          item.production_capacity = {
+            max_batches: 0,
+            limiting_factor: "Calculation error",
+            can_produce: false,
+          };
+        }
+      }
+
+      return results;
     } catch (error) {
       console.error("Error fetching production inventory:", error);
       throw new Error("Failed to retrieve production inventory");
@@ -321,11 +363,23 @@ class ProductionInventory {
     notes
   ) {
     try {
+      // Get the menu_item_id from the production_inventory record
+      const inventoryItem = await db("production_inventory")
+        .select("menu_item_id")
+        .where("id", inventoryId)
+        .first();
+
+      if (!inventoryItem) {
+        console.error("Could not find production inventory item for logging");
+        return;
+      }
+
       await db("menu_item_audit_log").insert({
-        production_inventory_id: inventoryId,
+        menu_item_id: inventoryItem.menu_item_id,
         user_id: userId,
         action_type: "INVENTORY_UPDATED",
         action_details: JSON.stringify({
+          production_inventory_id: inventoryId,
           old_quantity: oldQuantity,
           new_quantity: newQuantity,
           quantity_change: newQuantity - oldQuantity,
@@ -397,6 +451,183 @@ class ProductionInventory {
     } catch (error) {
       console.error("Error fetching production inventory stats:", error);
       throw new Error("Failed to retrieve production inventory statistics");
+    }
+  }
+
+  // Get recent activity for production inventory
+  static async getRecentActivity(limit = 10) {
+    try {
+      // Use raw PostgreSQL query for better performance
+      const activities = await db.raw(
+        `
+        SELECT 
+          mal.id,
+          mal.action_type,
+          mal.action_details,
+          mal.notes,
+          mal.created_at,
+          mal.user_id,
+          COALESCE(mi.menu_item_name, 'Unknown Item') as item_name,
+          COALESCE(pi.available_quantity, 0) as available_quantity,
+          COALESCE(u.name, 'Unknown User') as performed_by
+        FROM menu_item_audit_log mal
+        LEFT JOIN menu_items mi ON mal.menu_item_id = mi.id AND mi.deleted_at IS NULL
+        LEFT JOIN production_inventory pi ON mal.menu_item_id = pi.menu_item_id
+        LEFT JOIN users u ON mal.user_id = u.id
+        WHERE mal.action_type = ?
+        ORDER BY mal.created_at DESC
+        LIMIT ?
+      `,
+        ["INVENTORY_UPDATED", limit]
+      );
+
+      // Parse action_details and add quantity information
+      return activities.rows.map((activity) => {
+        const details = activity.action_details
+          ? JSON.parse(activity.action_details)
+          : {};
+        return {
+          id: activity.id,
+          action_type: activity.action_type,
+          item_name: activity.item_name,
+          old_quantity: details.old_quantity || 0,
+          new_quantity: details.new_quantity || 0,
+          quantity_change: details.quantity_change || 0,
+          performed_by: activity.performed_by,
+          created_at: activity.created_at,
+          notes: activity.notes,
+          action_details: activity.action_details,
+        };
+      });
+    } catch (error) {
+      console.error("Error fetching recent activity:", error);
+      throw new Error("Failed to retrieve recent activity");
+    }
+  }
+
+  // Get audit logs with filters and pagination
+  static async getAuditLogs(filters = {}) {
+    try {
+      const {
+        page = 1,
+        limit = 10,
+        search = "",
+        action_type = "",
+        date_from = "",
+        date_to = "",
+        menu_item_id = null,
+      } = filters;
+
+      const offset = (page - 1) * limit;
+
+      // Build WHERE conditions dynamically
+      const whereConditions = [];
+      const queryParams = [];
+
+      // Base condition
+      whereConditions.push("1=1");
+
+      // Search filter
+      if (search) {
+        whereConditions.push(`(
+          mi.menu_item_name ILIKE $${queryParams.length + 1} OR
+          u.name ILIKE $${queryParams.length + 1} OR
+          mal.notes ILIKE $${queryParams.length + 1}
+        )`);
+        queryParams.push(`%${search}%`);
+      }
+
+      // Action type filter
+      if (action_type) {
+        whereConditions.push(`mal.action_type = $${queryParams.length + 1}`);
+        queryParams.push(action_type);
+      }
+
+      // Date filters
+      if (date_from) {
+        whereConditions.push(`mal.created_at >= $${queryParams.length + 1}`);
+        queryParams.push(date_from);
+      }
+
+      if (date_to) {
+        whereConditions.push(`mal.created_at <= $${queryParams.length + 1}`);
+        queryParams.push(date_to);
+      }
+
+      // Menu item filter
+      if (menu_item_id) {
+        whereConditions.push(`mal.menu_item_id = $${queryParams.length + 1}`);
+        queryParams.push(menu_item_id);
+      }
+
+      const whereClause = whereConditions.join(" AND ");
+
+      // Get total count with optimized query
+      const countQuery = `
+        SELECT COUNT(*) as count
+        FROM menu_item_audit_log mal
+        LEFT JOIN menu_items mi ON mal.menu_item_id = mi.id AND mi.deleted_at IS NULL
+        LEFT JOIN users u ON mal.user_id = u.id
+        WHERE ${whereClause}
+      `;
+
+      const countResult = await db.raw(countQuery, queryParams);
+      const total = parseInt(countResult.rows[0].count);
+
+      // Get paginated results with optimized query
+      const dataQuery = `
+        SELECT 
+          mal.id,
+          mal.action_type,
+          mal.action_details,
+          mal.notes,
+          mal.created_at,
+          mal.user_id,
+          mal.menu_item_id,
+          COALESCE(mi.menu_item_name, 'Unknown Item') as item_name,
+          COALESCE(pi.available_quantity, 0) as available_quantity,
+          COALESCE(u.name, 'Unknown User') as performed_by
+        FROM menu_item_audit_log mal
+        LEFT JOIN menu_items mi ON mal.menu_item_id = mi.id AND mi.deleted_at IS NULL
+        LEFT JOIN production_inventory pi ON mal.menu_item_id = pi.menu_item_id
+        LEFT JOIN users u ON mal.user_id = u.id
+        WHERE ${whereClause}
+        ORDER BY mal.created_at DESC
+        LIMIT ? OFFSET ?
+      `;
+
+      const dataParams = [...queryParams, limit, offset];
+      const activitiesResult = await db.raw(dataQuery, dataParams);
+
+      // Parse action_details and add quantity information
+      const processedActivities = activitiesResult.rows.map((activity) => {
+        const details = activity.action_details
+          ? JSON.parse(activity.action_details)
+          : {};
+        return {
+          id: activity.id,
+          action_type: activity.action_type,
+          menu_item_id: activity.menu_item_id,
+          item_name: activity.item_name,
+          old_quantity: details.old_quantity || 0,
+          new_quantity: details.new_quantity || 0,
+          quantity_change: details.quantity_change || 0,
+          performed_by: activity.performed_by,
+          created_at: activity.created_at,
+          notes: activity.notes,
+          action_details: activity.action_details,
+        };
+      });
+
+      return {
+        data: processedActivities,
+        total,
+        page,
+        totalPages: Math.ceil(total / limit),
+      };
+    } catch (error) {
+      console.error("Error fetching audit logs:", error);
+      throw new Error("Failed to retrieve audit logs");
     }
   }
 

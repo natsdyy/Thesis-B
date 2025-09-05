@@ -1399,6 +1399,84 @@ router.get(
 
 /**
  * @swagger
+ * /api/menu/production-inventory/recent-activity:
+ *   get:
+ *     summary: Get recent production inventory activity
+ *     tags: [Production Inventory]
+ */
+router.get(
+  "/production-inventory/recent-activity",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit) || 10;
+      const recentActivity = await ProductionInventory.getRecentActivity(limit);
+      res.json({
+        success: true,
+        data: recentActivity,
+      });
+    } catch (error) {
+      console.error("Error fetching recent activity:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch recent activity",
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/menu/production-inventory/audit-logs:
+ *   get:
+ *     summary: Get production inventory audit logs with filters and pagination
+ *     tags: [Production Inventory]
+ */
+router.get(
+  "/production-inventory/audit-logs",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const {
+        page = 1,
+        limit = 10,
+        search = "",
+        action_type = "",
+        date_from = "",
+        date_to = "",
+        menu_item_id = "",
+      } = req.query;
+
+      const filters = {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        search,
+        action_type,
+        date_from,
+        date_to,
+        menu_item_id: menu_item_id ? parseInt(menu_item_id) : null,
+      };
+
+      const result = await ProductionInventory.getAuditLogs(filters);
+      res.json({
+        success: true,
+        data: result.data,
+        total: result.total,
+        page: result.page,
+        totalPages: result.totalPages,
+      });
+    } catch (error) {
+      console.error("Error fetching audit logs:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch audit logs",
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
  * /api/menu/production-inventory/{id}:
  *   get:
  *     summary: Get production inventory item by ID
@@ -1439,17 +1517,77 @@ router.put(
   authenticateToken,
   async (req, res) => {
     try {
-      const { quantity, notes } = req.body;
+      const {
+        quantity,
+        notes,
+        // Enhanced stock update data
+        new_quantity,
+        previous_quantity,
+        quantity_change,
+        adjustment_type,
+        adjustment_category,
+        reason,
+        reference_number,
+        counted_by,
+        verified_by,
+        requires_approval,
+        change_percentage,
+        cost_impact,
+        cost_impact_type,
+        cost_description,
+        revenue_impact,
+        cost_impact_percentage,
+        unit_cost,
+        total_item_value,
+        is_significant_cost_impact,
+        timestamp,
+      } = req.body;
+
+      // Use new_quantity if provided, otherwise fall back to quantity
+      const finalQuantity = new_quantity || quantity;
+
+      // Prepare comprehensive notes including all adjustment details
+      const comprehensiveNotes = {
+        basic_notes: notes,
+        adjustment_details: {
+          adjustment_type,
+          adjustment_category,
+          reason,
+          reference_number,
+          counted_by,
+          verified_by,
+          requires_approval,
+          change_percentage,
+          cost_impact,
+          cost_impact_type,
+          cost_description,
+          revenue_impact,
+          cost_impact_percentage,
+          unit_cost,
+          total_item_value,
+          is_significant_cost_impact,
+          timestamp,
+        },
+      };
+
       const inventoryItem = await ProductionInventory.updateStock(
         req.params.id,
-        quantity,
+        finalQuantity,
         req.user.id,
-        notes
+        JSON.stringify(comprehensiveNotes)
       );
+
+      // Determine response message based on approval requirement
+      const message = requires_approval
+        ? "Stock adjustment submitted for approval"
+        : "Stock updated successfully";
+
       res.json({
         success: true,
         data: inventoryItem,
-        message: "Stock updated successfully",
+        message: message,
+        requires_approval: requires_approval || false,
+        cost_impact: cost_impact || 0,
       });
     } catch (error) {
       console.error("Error updating stock:", error);

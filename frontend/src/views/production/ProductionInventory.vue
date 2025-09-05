@@ -23,6 +23,10 @@
     ChevronDown,
     ChevronUp,
     Truck,
+    History,
+    Handshake,
+    Minus,
+    Settings,
   } from 'lucide-vue-next';
   import { useProductionStore } from '../../stores/productionStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
@@ -30,6 +34,7 @@
   import SampleProductionTrendsChart from '../../components/production/SampleProductionTrendsChart.vue';
   import ProductionMetricsChart from '../../components/production/ProductionMetricsChart.vue';
   import InventoryTrendsChart from '../../components/production/InventoryTrendsChart.vue';
+  import ProductionTransactionModal from '../../components/production/ProductionTransactionModal.vue';
   import { apiConfig } from '../../config/api.js';
 
   const productionStore = useProductionStore();
@@ -48,11 +53,25 @@
   const itemsPerPage = ref(12);
   const expandedItems = ref(new Set());
 
+  // Recent activity and transaction modal state
+  const recentActivity = ref([]);
+  const showTransactionModal = ref(false);
+
   // Form data for stock/pricing updates
   const updateForm = ref({
     available_quantity: 0,
     selling_price: 0,
     notes: '',
+    reason: '',
+    adjustment_type: '',
+    requires_approval: false,
+    previous_quantity: 0,
+    quantity_change: 0,
+    adjustment_category: '',
+    reference_number: '',
+    physical_count_date: null,
+    counted_by: '',
+    verified_by: '',
   });
 
   // Form data for distribution
@@ -86,6 +105,101 @@
       (distributionForm.value.quantity || 0) *
       (distributionForm.value.transfer_price || 0)
     );
+  });
+
+  // Stock update validation and calculations
+  const stockUpdateValidation = computed(() => {
+    const form = updateForm.value;
+    const previousQty = form.previous_quantity || 0;
+    const newQty = form.available_quantity || 0;
+    const change = newQty - previousQty;
+    const changePercent =
+      previousQty > 0 ? Math.abs((change / previousQty) * 100) : 0;
+
+    // Calculate cost impact based on adjustment type and quantity change
+    const unitCost = selectedItem.value?.unit_cost || 0;
+    const sellingPrice = selectedItem.value?.selling_price || 0;
+
+    let costImpact = 0;
+    let costImpactType = 'neutral';
+    let costDescription = '';
+
+    if (change !== 0 && unitCost > 0) {
+      switch (form.adjustment_type) {
+        case 'received_goods':
+        case 'production_completed':
+        case 'transfer_in':
+          // Positive adjustments - inventory value increases
+          costImpact = change * unitCost;
+          costImpactType = 'positive';
+          costDescription = 'Inventory value increased';
+          break;
+
+        case 'damage':
+        case 'theft':
+        case 'expired':
+        case 'waste':
+        case 'transfer_out':
+          // Negative adjustments - inventory value decreases (loss)
+          costImpact = Math.abs(change) * unitCost;
+          costImpactType = 'negative';
+          costDescription = 'Inventory value lost';
+          break;
+
+        case 'physical_count':
+        case 'correction':
+          // Neutral adjustments - just correcting records
+          costImpact = Math.abs(change) * unitCost;
+          costImpactType = change > 0 ? 'positive' : 'negative';
+          costDescription =
+            change > 0
+              ? 'Inventory value corrected upward'
+              : 'Inventory value corrected downward';
+          break;
+
+        default:
+          // Default calculation
+          costImpact = Math.abs(change) * unitCost;
+          costImpactType = change > 0 ? 'positive' : 'negative';
+          costDescription =
+            change > 0
+              ? 'Inventory value increased'
+              : 'Inventory value decreased';
+      }
+    }
+
+    // Calculate potential revenue impact for decreases
+    const revenueImpact = change < 0 ? Math.abs(change) * sellingPrice : 0;
+
+    // Determine if cost impact is significant (more than $100 or 10% of item value)
+    const totalItemValue = previousQty * unitCost;
+    const costImpactPercent =
+      totalItemValue > 0 ? (costImpact / totalItemValue) * 100 : 0;
+    const isSignificantCostImpact = costImpact > 100 || costImpactPercent > 10;
+
+    return {
+      quantityChange: change,
+      changePercent: changePercent,
+      isSignificantChange: changePercent > 20 || Math.abs(change) > 50,
+      requiresApproval:
+        changePercent > 20 ||
+        Math.abs(change) > 50 ||
+        form.adjustment_type === 'damage' ||
+        form.adjustment_type === 'theft' ||
+        isSignificantCostImpact,
+      isValid: form.reason && form.adjustment_type && form.adjustment_category,
+      changeType:
+        change > 0 ? 'increase' : change < 0 ? 'decrease' : 'no_change',
+      // Cost calculations
+      costImpact: costImpact,
+      costImpactType: costImpactType,
+      costDescription: costDescription,
+      revenueImpact: revenueImpact,
+      costImpactPercent: costImpactPercent,
+      isSignificantCostImpact: isSignificantCostImpact,
+      unitCost: unitCost,
+      totalItemValue: totalItemValue,
+    };
   });
 
   const filteredInventory = computed(() => {
@@ -161,6 +275,189 @@
     }).format(amount || 0);
   };
 
+  // Recent activity functions
+  const fetchRecentActivity = async () => {
+    try {
+      const activity = await productionStore.fetchRecentActivity(5);
+      recentActivity.value = activity;
+    } catch (error) {
+      console.error('Error fetching recent activity:', error);
+      // Fallback to empty array if API fails
+      recentActivity.value = [];
+    }
+  };
+
+  const openTransactionModal = () => {
+    showTransactionModal.value = true;
+  };
+
+  const closeTransactionModal = () => {
+    showTransactionModal.value = false;
+  };
+
+  const getActivityTypeInfo = (actionType) => {
+    const typeInfo = {
+      INVENTORY_UPDATED: {
+        icon: RefreshCcw,
+        color: 'text-info',
+        label: 'Stock Updated',
+        bgColor: 'bg-info/10',
+        badgeColor: 'bg-info/20 text-info',
+        description: 'Inventory quantity was updated',
+      },
+      CREATED: {
+        icon: Plus,
+        color: 'text-success',
+        label: 'Created',
+        bgColor: 'bg-success/10',
+        badgeColor: 'bg-success/20 text-success',
+        description: 'New item was created',
+      },
+      UPDATED: {
+        icon: Edit,
+        color: 'text-warning',
+        label: 'Updated',
+        bgColor: 'bg-warning/10',
+        badgeColor: 'bg-warning/20 text-warning',
+        description: 'Item details were updated',
+      },
+    };
+    return (
+      typeInfo[actionType] || {
+        icon: Activity,
+        color: 'text-neutral',
+        label: actionType,
+        bgColor: 'bg-neutral/10',
+        badgeColor: 'bg-gray-100 text-gray-600',
+        description: 'Activity information',
+      }
+    );
+  };
+
+  const formatActivityDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = now.getTime() - date.getTime();
+    const diffMinutes = Math.floor(diffTime / (1000 * 60));
+    const diffHours = Math.floor(diffTime / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+    // Show more specific time information
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+
+    // For older dates, show the actual date and time
+    return date.toLocaleDateString('en-PH', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const getActivityDetails = (activity) => {
+    if (!activity.action_details) {
+      return {};
+    }
+
+    try {
+      const parsed = JSON.parse(activity.action_details);
+
+      // Handle nested structure: {"basic_notes": {...}, "adjustment_details": {...}}
+      if (parsed.basic_notes) {
+        return parsed.basic_notes;
+      }
+
+      return parsed;
+    } catch (error) {
+      console.error('Error parsing activity details:', error);
+      return {};
+    }
+  };
+
+  const getFormattedReason = (activity) => {
+    const details = getActivityDetails(activity);
+
+    // If there's a user note, show that first
+    if (details.notes && details.notes.trim()) {
+      return details.notes;
+    }
+
+    // Format based on adjustment type and reason
+    const adjustmentType = details.adjustment_type;
+    const reason = details.reason;
+
+    // Create user-friendly descriptions
+    const reasonMap = {
+      physical_inventory: 'Physical inventory count',
+      transfer_in: 'Stock transfer received',
+      transfer_out: 'Stock transfer sent',
+      damage: 'Damaged goods adjustment',
+      theft: 'Theft/loss adjustment',
+      production: 'Production completion',
+      waste: 'Production waste',
+      other: 'Manual adjustment',
+    };
+
+    const typeMap = {
+      physical_count: 'Physical count',
+      transfer_in: 'Transfer received',
+      transfer_out: 'Transfer sent',
+      damage: 'Damage adjustment',
+      theft: 'Loss adjustment',
+      production: 'Production',
+      waste: 'Waste',
+      other: 'Manual adjustment',
+    };
+
+    // Return the most descriptive reason
+    if (reason && reasonMap[reason]) {
+      return reasonMap[reason];
+    }
+
+    if (adjustmentType && typeMap[adjustmentType]) {
+      return typeMap[adjustmentType];
+    }
+
+    // For simple data structure, provide more descriptive reason based on quantity change
+    const quantityChange = details.quantity_change;
+    if (quantityChange > 0) {
+      return 'Stock increase';
+    } else if (quantityChange < 0) {
+      return 'Stock decrease';
+    }
+
+    // Fallback to generic description
+    return 'Stock adjustment';
+  };
+
+  const getFormattedAdjustmentType = (adjustmentType) => {
+    const typeMap = {
+      physical_count: 'Physical Count',
+      transfer_in: 'Transfer In',
+      transfer_out: 'Transfer Out',
+      damage: 'Damage',
+      theft: 'Loss/Theft',
+      production: 'Production',
+      waste: 'Waste',
+      other: 'Manual Adjustment',
+    };
+
+    return typeMap[adjustmentType] || adjustmentType;
+  };
+
+  const getChangePercentage = (details) => {
+    if (!details.old_quantity || details.old_quantity === 0) return 0;
+
+    const change = details.quantity_change || 0;
+    const percentage = (Math.abs(change) / details.old_quantity) * 100;
+    return percentage.toFixed(1);
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-PH', {
@@ -171,6 +468,7 @@
   };
 
   const getStockLevelBadgeClass = (item) => {
+    if (!item) return 'badge-sm border-none font-medium bg-gray/20 text-gray';
     const current = item.available_quantity || 0;
     const reorderPoint = item.reorder_point || 0;
 
@@ -183,6 +481,7 @@
   };
 
   const getStockLevelText = (item) => {
+    if (!item) return 'Unknown';
     const current = item.available_quantity || 0;
     const reorderPoint = item.reorder_point || 0;
 
@@ -203,11 +502,30 @@
   };
 
   const getProductionCapacity = (item) => {
-    // Mock production capacity calculation
+    if (!item) {
+      return {
+        max_batches: 0,
+        limiting_factor: 'No item data',
+        can_produce: false,
+      };
+    }
+
+    // Use production capacity data from backend
     const capacity = item.production_capacity || {};
+
+    // If no capacity data, provide meaningful defaults
+    if (!capacity.limiting_factor) {
+      return {
+        max_batches: 0,
+        limiting_factor: 'No recipe ingredients found',
+        can_produce: false,
+      };
+    }
+
     return {
       max_batches: capacity.max_batches || 0,
       limiting_factor: capacity.limiting_factor || 'Unknown',
+      limiting_ingredient: capacity.limiting_ingredient || null,
       can_produce: capacity.can_produce || false,
     };
   };
@@ -217,6 +535,16 @@
       available_quantity: 0,
       selling_price: 0,
       notes: '',
+      reason: '',
+      adjustment_type: '',
+      requires_approval: false,
+      previous_quantity: 0,
+      quantity_change: 0,
+      adjustment_category: '',
+      reference_number: '',
+      physical_count_date: null,
+      counted_by: '',
+      verified_by: '',
     };
   };
 
@@ -227,6 +555,7 @@
         productionStore.fetchProductionInventory(),
         productionStore.fetchProductionInventoryStats(),
         fetchBranches(),
+        fetchRecentActivity(),
       ]);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -265,14 +594,30 @@
   };
 
   const openUpdateModal = (item, type) => {
-    selectedItem.value = item;
-    if (type === 'stock') {
-      updateForm.value.available_quantity = item.available_quantity || 0;
-      updateForm.value.selling_price = item.selling_price || 0;
-    } else if (type === 'pricing') {
-      updateForm.value.available_quantity = item.available_quantity || 0;
-      updateForm.value.selling_price = item.selling_price || 0;
+    if (!item || !item.id) {
+      console.error('Invalid item provided to openUpdateModal:', item);
+      return;
     }
+    selectedItem.value = item;
+
+    // Initialize form with current values
+    const currentQuantity = item.available_quantity || 0;
+    updateForm.value = {
+      available_quantity: currentQuantity,
+      selling_price: item.selling_price || 0,
+      notes: '',
+      reason: '',
+      adjustment_type: '',
+      requires_approval: false,
+      previous_quantity: currentQuantity,
+      quantity_change: 0,
+      adjustment_category: '',
+      reference_number: '',
+      physical_count_date: null,
+      counted_by: authStore.user?.name || '',
+      verified_by: '',
+    };
+
     showUpdateModal.value = true;
   };
 
@@ -283,6 +628,10 @@
   };
 
   const openDetailsModal = (item) => {
+    if (!item || !item.id) {
+      console.error('Invalid item provided to openDetailsModal:', item);
+      return;
+    }
     selectedItem.value = item;
     showDetailsModal.value = true;
   };
@@ -293,6 +642,10 @@
   };
 
   const openDistributionModal = (item) => {
+    if (!item || !item.id) {
+      console.error('Invalid item provided to openDistributionModal:', item);
+      return;
+    }
     selectedItem.value = item;
     distributionForm.value = {
       quantity: 0,
@@ -316,13 +669,51 @@
 
   const updateStock = async () => {
     try {
+      // Validate form before submission
+      if (!stockUpdateValidation.value.isValid) {
+        showToast('error', 'Please fill in all required fields');
+        return;
+      }
+
+      // Prepare comprehensive stock update data
+      const stockUpdateData = {
+        new_quantity: updateForm.value.available_quantity,
+        previous_quantity: updateForm.value.previous_quantity,
+        quantity_change: stockUpdateValidation.value.quantityChange,
+        adjustment_type: updateForm.value.adjustment_type,
+        adjustment_category: updateForm.value.adjustment_category,
+        reason: updateForm.value.reason,
+        reference_number: updateForm.value.reference_number,
+        counted_by: updateForm.value.counted_by,
+        verified_by: updateForm.value.verified_by,
+        notes: updateForm.value.notes,
+        requires_approval: stockUpdateValidation.value.requiresApproval,
+        change_percentage: stockUpdateValidation.value.changePercent,
+        // Cost impact data
+        cost_impact: stockUpdateValidation.value.costImpact,
+        cost_impact_type: stockUpdateValidation.value.costImpactType,
+        cost_description: stockUpdateValidation.value.costDescription,
+        revenue_impact: stockUpdateValidation.value.revenueImpact,
+        cost_impact_percentage: stockUpdateValidation.value.costImpactPercent,
+        unit_cost: stockUpdateValidation.value.unitCost,
+        total_item_value: stockUpdateValidation.value.totalItemValue,
+        is_significant_cost_impact:
+          stockUpdateValidation.value.isSignificantCostImpact,
+        timestamp: new Date().toISOString(),
+      };
+
       await productionStore.updateInventoryStock(
         selectedItem.value.id,
         updateForm.value.available_quantity,
-        updateForm.value.notes
+        stockUpdateData
       );
+
       closeUpdateModal();
-      showToast('success', 'Stock updated successfully');
+
+      const message = stockUpdateValidation.value.requiresApproval
+        ? 'Stock adjustment submitted for approval'
+        : 'Stock updated successfully';
+      showToast('success', message);
     } catch (error) {
       showToast('error', error.message || 'Failed to update stock');
     }
@@ -1295,236 +1686,983 @@
       </div>
     </div>
 
-    <!-- Update Modal -->
-    <div v-if="showUpdateModal && selectedItem" class="modal modal-open">
-      <div class="modal-box max-w-md">
-        <h3 class="font-bold text-lg text-primaryColor mb-4">
-          Update {{ selectedItem.item_name }}
-        </h3>
-
-        <form @submit.prevent="updateStock" class="space-y-4">
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Current Stock Quantity</span>
-            </label>
-            <input
-              v-model.number="updateForm.available_quantity"
-              type="number"
-              min="0"
-              class="input input-bordered"
-              placeholder="Enter new quantity"
-              required
-            />
-            <div class="label">
-              <span class="label-text-alt text-gray-500">
-                Unit: {{ selectedItem.unit_of_measure }}
-              </span>
+    <!-- Recent Activity Section -->
+    <div
+      class="card bg-gradient-to-br from-base-100 to-base-50 border border-gray-200 shadow-lg"
+    >
+      <div class="card-body p-6 overflow-y-auto">
+        <div class="flex justify-between items-center mb-6">
+          <div class="flex items-center gap-3">
+            <div
+              class="w-10 h-10 rounded-full bg-primaryColor/10 flex items-center justify-center"
+            >
+              <History class="w-5 h-5 text-primaryColor" />
+            </div>
+            <div>
+              <h3 class="card-title text-lg font-bold text-primaryColor">
+                Recent Activity
+              </h3>
+              <p class="text-xs text-gray-500">
+                Latest production inventory movements
+              </p>
             </div>
           </div>
+          <button
+            @click="fetchData"
+            class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
+            :disabled="loading"
+          >
+            <RefreshCcw class="w-4 h-4 mr-1" />
+            Refresh
+          </button>
+        </div>
 
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Notes (Optional)</span>
-            </label>
-            <textarea
-              v-model="updateForm.notes"
-              class="textarea textarea-bordered"
-              rows="3"
-              placeholder="Reason for stock update..."
-            ></textarea>
-          </div>
+        <div v-if="loading" class="flex justify-center py-4">
+          <span class="loading loading-spinner loading-sm"></span>
+        </div>
 
-          <div class="modal-action">
-            <button
-              type="button"
-              @click="closeUpdateModal"
-              class="btn btn-ghost"
-            >
-              Cancel
-            </button>
-            <button type="submit" class="btn btn-primary" :disabled="loading">
-              <Package class="w-4 h-4 mr-2" v-if="!loading" />
-              <RefreshCcw class="w-4 h-4 mr-2 animate-spin" v-else />
-              Update Stock
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div v-else-if="recentActivity.length === 0" class="text-center py-8">
+          <History class="w-12 h-12 mx-auto text-gray-400 mb-2" />
+          <h3 class="text-lg font-medium text-gray-600 mb-2">
+            No recent activity
+          </h3>
+          <p class="text-gray-500">Recent inventory changes will appear here</p>
+        </div>
 
-    <!-- Details Modal -->
-    <div v-if="showDetailsModal && selectedItem" class="modal modal-open">
-      <div class="modal-box max-w-4xl">
-        <h3 class="font-bold text-lg text-primaryColor mb-4">
-          {{ selectedItem.item_name }} Details
-        </h3>
-
-        <div class="space-y-6">
-          <!-- Menu Item Image -->
-          <div v-if="selectedItem.image_url" class="text-center">
-            <img
-              :src="selectedItem.image_url"
-              :alt="selectedItem.item_name"
-              class="w-64 h-48 object-cover rounded-lg mx-auto shadow-md"
-            />
-          </div>
-
-          <!-- Basic Info -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h4 class="font-semibold text-primaryColor mb-3">
-                Item Information
-              </h4>
-              <div class="space-y-2">
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Item Code:</span>
-                  <span class="font-medium">{{ selectedItem.item_code }}</span>
+        <div v-else class="space-y-4">
+          <div
+            v-for="activity in recentActivity.slice(0, 5)"
+            :key="activity.id"
+            class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow duration-200"
+          >
+            <div class="flex items-start justify-between mb-3">
+              <div class="flex items-center gap-3">
+                <div
+                  class="w-8 h-8 rounded-full flex items-center justify-center"
+                  :class="getActivityTypeInfo(activity.action_type).bgColor"
+                >
+                  <component
+                    :is="getActivityTypeInfo(activity.action_type).icon"
+                    class="w-4 h-4"
+                    :class="getActivityTypeInfo(activity.action_type).color"
+                  />
                 </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Recipe:</span>
-                  <span class="font-medium">{{
-                    selectedItem.recipe_name
-                  }}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Category:</span>
-                  <span class="font-medium">{{ selectedItem.category }}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Unit of Measure:</span>
-                  <span class="font-medium">{{
-                    selectedItem.unit_of_measure
-                  }}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Featured:</span>
-                  <span
-                    class="badge"
-                    :class="
-                      selectedItem.is_featured
-                        ? 'badge-warning'
-                        : 'badge-neutral'
-                    "
-                  >
-                    {{ selectedItem.is_featured ? 'Yes' : 'No' }}
-                  </span>
+                <div>
+                  <div class="flex items-center gap-2 mb-1">
+                    <span
+                      class="badge badge-sm border-none font-medium"
+                      :class="
+                        getActivityTypeInfo(activity.action_type).badgeColor
+                      "
+                    >
+                      {{ getActivityTypeInfo(activity.action_type).label }}
+                    </span>
+                    <span class="text-sm text-gray-500">
+                      {{ formatActivityDate(activity.created_at) }}
+                    </span>
+                  </div>
+                  <h4 class="font-semibold text-gray-800">
+                    {{ activity.item_name }}
+                  </h4>
                 </div>
               </div>
             </div>
 
-            <div>
-              <h4 class="font-semibold text-primaryColor mb-3">
-                Stock & Pricing
-              </h4>
-              <div class="space-y-2">
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Available Stock:</span>
-                  <span class="font-medium">{{
-                    selectedItem.available_quantity
-                  }}</span>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+              <div class="text-center">
+                <div class="text-xs text-gray-500 mb-1">Previous</div>
+                <div class="font-semibold text-gray-700">
+                  {{ activity.old_quantity || 0 }}
                 </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Reorder Point:</span>
-                  <span class="font-medium">{{
-                    selectedItem.reorder_point || 0
-                  }}</span>
+              </div>
+              <div class="text-center">
+                <div class="text-xs text-gray-500 mb-1">New</div>
+                <div class="font-semibold text-gray-700">
+                  {{ activity.new_quantity || 0 }}
                 </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Selling Price:</span>
-                  <span class="font-medium text-success">{{
-                    formatCurrency(selectedItem.selling_price)
-                  }}</span>
+              </div>
+              <div class="text-center">
+                <div class="text-xs text-gray-500 mb-1">Change</div>
+                <div
+                  class="font-semibold"
+                  :class="{
+                    'text-success': activity.quantity_change > 0,
+                    'text-error': activity.quantity_change < 0,
+                    'text-gray-500': activity.quantity_change === 0,
+                  }"
+                >
+                  {{ activity.quantity_change > 0 ? '+' : ''
+                  }}{{ activity.quantity_change || 0 }}
                 </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Unit Cost:</span>
-                  <span class="font-medium">{{
-                    formatCurrency(selectedItem.unit_cost)
-                  }}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Profit Margin:</span>
-                  <span
-                    class="font-medium"
-                    :class="
-                      getProfitMarginColor(
-                        calculateProfitMargin(
-                          selectedItem.selling_price,
-                          selectedItem.unit_cost
+              </div>
+            </div>
+
+            <div
+              class="flex justify-between items-center pt-3 border-t border-gray-100"
+            >
+              <div class="text-xs text-gray-500">
+                <span class="font-medium">Performed by:</span>
+                {{ activity.performed_by }}
+              </div>
+              <div class="text-xs text-gray-400">
+                Activity ID: #{{ activity.id }}
+              </div>
+            </div>
+
+            <!-- Activity Details -->
+            <div
+              v-if="
+                getActivityDetails(activity).notes ||
+                getActivityDetails(activity).reason ||
+                getActivityDetails(activity).adjustment_type ||
+                activity.action_details
+              "
+              class="mt-3 space-y-2"
+            >
+              <!-- Reason/Notes Display -->
+              <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div class="text-xs text-blue-700 font-medium mb-1">Reason</div>
+                <p class="text-xs text-blue-800">
+                  {{ getFormattedReason(activity) }}
+                </p>
+              </div>
+
+              <!-- Additional Details -->
+              <div
+                v-if="
+                  getActivityDetails(activity).adjustment_type ||
+                  getActivityDetails(activity).cost_impact ||
+                  getActivityDetails(activity).production_inventory_id
+                "
+                class="p-3 bg-gray-50 border border-gray-200 rounded-lg"
+              >
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <!-- Adjustment Type -->
+                  <div
+                    v-if="getActivityDetails(activity).adjustment_type"
+                    class="flex justify-between"
+                  >
+                    <span class="text-gray-600">Type:</span>
+                    <span class="font-medium text-gray-800">
+                      {{
+                        getFormattedAdjustmentType(
+                          getActivityDetails(activity).adjustment_type
                         )
-                      )
+                      }}
+                    </span>
+                  </div>
+
+                  <!-- Cost Impact -->
+                  <div
+                    v-if="getActivityDetails(activity).cost_impact"
+                    class="flex justify-between"
+                  >
+                    <span class="text-gray-600">Cost Impact:</span>
+                    <span
+                      class="font-medium"
+                      :class="{
+                        'text-success':
+                          getActivityDetails(activity).cost_impact_type ===
+                          'positive',
+                        'text-error':
+                          getActivityDetails(activity).cost_impact_type ===
+                          'negative',
+                        'text-gray-600':
+                          getActivityDetails(activity).cost_impact_type ===
+                          'neutral',
+                      }"
+                    >
+                      ₱{{
+                        getActivityDetails(activity).cost_impact?.toFixed(2)
+                      }}
+                    </span>
+                  </div>
+
+                  <!-- Reference Number -->
+                  <div
+                    v-if="getActivityDetails(activity).reference_number"
+                    class="flex justify-between"
+                  >
+                    <span class="text-gray-600">Reference:</span>
+                    <span class="font-medium text-gray-800">
+                      {{ getActivityDetails(activity).reference_number }}
+                    </span>
+                  </div>
+
+                  <!-- Approval Status -->
+                  <div
+                    v-if="getActivityDetails(activity).requires_approval"
+                    class="flex justify-between"
+                  >
+                    <span class="text-gray-600">Status:</span>
+                    <span class="badge badge-warning badge-xs"
+                      >Approval Required</span
+                    >
+                  </div>
+
+                  <!-- Change Percentage -->
+                  <div
+                    v-if="
+                      getActivityDetails(activity).old_quantity &&
+                      getActivityDetails(activity).new_quantity
+                    "
+                    class="flex justify-between"
+                  >
+                    <span class="text-gray-600">Change %:</span>
+                    <span
+                      class="font-medium"
+                      :class="{
+                        'text-success':
+                          getActivityDetails(activity).quantity_change > 0,
+                        'text-error':
+                          getActivityDetails(activity).quantity_change < 0,
+                        'text-gray-600':
+                          getActivityDetails(activity).quantity_change === 0,
+                      }"
+                    >
+                      {{ getChangePercentage(getActivityDetails(activity)) }}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="recentActivity.length > 0" class="mt-6 text-center">
+          <button
+            @click="openTransactionModal"
+            class="btn btn-sm btn-outline bg-primaryColor text-white font-thin hover:bg-primaryColor/90 transition-all duration-200 shadow-lg hover:shadow-xl"
+          >
+            <BarChart3 class="w-4 h-4 mr-2" />
+            View All Transactions
+          </button>
+        </div>
+      </div>
+    </div>
+    <!-- Update Modal -->
+    <dialog
+      id="update_modal"
+      class="modal"
+      :class="{
+        'modal-open': showUpdateModal && selectedItem && selectedItem.id,
+      }"
+    >
+      <div class="modal-box max-w-2xl">
+        <h3 class="font-bold text-lg text-primaryColor mb-6">
+          <Package class="w-5 h-5 inline mr-2" />
+          Stock Adjustment - {{ selectedItem?.item_name }}
+        </h3>
+
+        <form @submit.prevent="updateStock" class="space-y-6">
+          <!-- Current Stock Information -->
+          <div
+            class="bg-secondaryColor/10 border border-primaryColor/20 p-4 rounded-xl"
+          >
+            <h4 class="font-semibold text-primaryColor mb-3">
+              <Activity class="w-4 h-4 inline mr-2" />
+              Current Stock Information
+            </h4>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span class="label-text text-black/70 font-medium text-sm"
+                    >Previous Quantity</span
+                  >
+                </label>
+                <div class="text-lg font-bold text-primaryColor">
+                  {{ updateForm.previous_quantity }}
+                  {{ selectedItem?.unit_of_measure }}
+                </div>
+              </div>
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span class="label-text text-black/70 font-medium text-sm"
+                    >New Quantity</span
+                  >
+                </label>
+                <input
+                  v-model.number="updateForm.available_quantity"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="input input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  placeholder="Enter new quantity"
+                  required
+                />
+              </div>
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span class="label-text text-black/70 font-medium text-sm"
+                    >Change</span
+                  >
+                </label>
+                <div
+                  class="text-lg font-bold"
+                  :class="{
+                    'text-success': stockUpdateValidation.quantityChange > 0,
+                    'text-error': stockUpdateValidation.quantityChange < 0,
+                    'text-gray-500': stockUpdateValidation.quantityChange === 0,
+                  }"
+                >
+                  {{ stockUpdateValidation.quantityChange > 0 ? '+' : ''
+                  }}{{ stockUpdateValidation.quantityChange }}
+                  {{ selectedItem?.unit_of_measure }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cost Impact Analysis -->
+          <div
+            v-if="stockUpdateValidation.costImpact > 0"
+            class="bg-white border border-black/10 p-4 rounded-xl"
+          >
+            <h4 class="font-semibold text-primaryColor mb-4">
+              <TrendingUp class="w-4 h-4 inline mr-2" />
+              Cost Impact Analysis
+            </h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span class="label-text text-black/70 font-medium text-sm"
+                    >Unit Cost</span
+                  >
+                </label>
+                <div class="text-sm font-semibold text-primaryColor">
+                  {{ formatCurrency(stockUpdateValidation.unitCost) }}
+                </div>
+              </div>
+
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span class="label-text text-black/70 font-medium text-sm"
+                    >Cost Impact</span
+                  >
+                </label>
+                <div
+                  class="text-lg font-bold"
+                  :class="{
+                    'text-success':
+                      stockUpdateValidation.costImpactType === 'positive',
+                    'text-error':
+                      stockUpdateValidation.costImpactType === 'negative',
+                    'text-gray-500':
+                      stockUpdateValidation.costImpactType === 'neutral',
+                  }"
+                >
+                  {{
+                    stockUpdateValidation.costImpactType === 'positive'
+                      ? '+'
+                      : stockUpdateValidation.costImpactType === 'negative'
+                        ? '-'
+                        : ''
+                  }}{{ formatCurrency(stockUpdateValidation.costImpact) }}
+                </div>
+                <div class="text-xs text-black/50">
+                  {{ stockUpdateValidation.costDescription }}
+                </div>
+              </div>
+
+              <div
+                v-if="stockUpdateValidation.revenueImpact > 0"
+                class="form-control"
+              >
+                <label class="label mb-1">
+                  <span class="label-text text-black/70 font-medium text-sm"
+                    >Revenue Impact</span
+                  >
+                </label>
+                <div class="text-lg font-bold text-warning">
+                  -{{ formatCurrency(stockUpdateValidation.revenueImpact) }}
+                </div>
+                <div class="text-xs text-black/50">Potential lost sales</div>
+              </div>
+
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span class="label-text text-black/70 font-medium text-sm"
+                    >Impact %</span
+                  >
+                </label>
+                <div
+                  class="text-sm font-semibold"
+                  :class="{
+                    'text-success': stockUpdateValidation.costImpactPercent < 5,
+                    'text-warning':
+                      stockUpdateValidation.costImpactPercent >= 5 &&
+                      stockUpdateValidation.costImpactPercent < 10,
+                    'text-error': stockUpdateValidation.costImpactPercent >= 10,
+                  }"
+                >
+                  {{ stockUpdateValidation.costImpactPercent.toFixed(1) }}%
+                </div>
+                <div class="text-xs text-black/50">of total item value</div>
+              </div>
+            </div>
+
+            <!-- Significant Cost Impact Warning -->
+            <div
+              v-if="stockUpdateValidation.isSignificantCostImpact"
+              class="alert alert-warning mt-4"
+            >
+              <AlertTriangle class="w-5 h-5" />
+              <div>
+                <h3 class="font-bold">Significant Cost Impact</h3>
+                <div class="text-sm">
+                  This adjustment has a significant financial impact ({{
+                    formatCurrency(stockUpdateValidation.costImpact)
+                  }}
+                  - {{ stockUpdateValidation.costImpactPercent.toFixed(1) }}% of
+                  item value) and may require additional approval.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Adjustment Details -->
+          <div class="bg-white border border-black/10 p-4 rounded-xl">
+            <h4 class="font-semibold text-primaryColor mb-4">
+              <AlertTriangle class="w-4 h-4 inline mr-2" />
+              Adjustment Details
+            </h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span class="label-text text-black/70 font-medium text-sm"
+                    >Adjustment Type *</span
+                  >
+                </label>
+                <select
+                  v-model="updateForm.adjustment_type"
+                  class="select select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  required
+                >
+                  <option value="">Select adjustment type</option>
+                  <option value="physical_count">Physical Count</option>
+                  <option value="received_goods">Received Goods</option>
+                  <option value="production_completed">
+                    Production Completed
+                  </option>
+                  <option value="damage">Damage/Loss</option>
+                  <option value="theft">Theft/Missing</option>
+                  <option value="expired">Expired Items</option>
+                  <option value="transfer_in">Transfer In</option>
+                  <option value="transfer_out">Transfer Out</option>
+                  <option value="waste">Waste/Spillage</option>
+                  <option value="correction">Data Correction</option>
+                </select>
+              </div>
+
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span class="label-text text-black/70 font-medium text-sm"
+                    >Adjustment Category *</span
+                  >
+                </label>
+                <select
+                  v-model="updateForm.adjustment_category"
+                  class="select select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  required
+                >
+                  <option value="">Select category</option>
+                  <option value="routine">Routine Adjustment</option>
+                  <option value="audit">Audit Correction</option>
+                  <option value="emergency">Emergency Adjustment</option>
+                  <option value="system">System Correction</option>
+                </select>
+              </div>
+
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span class="label-text text-black/70 font-medium text-sm"
+                    >Reason for Adjustment *</span
+                  >
+                </label>
+                <select
+                  v-model="updateForm.reason"
+                  class="select select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  required
+                >
+                  <option value="">Select reason</option>
+                  <option value="physical_inventory">
+                    Physical Inventory Count
+                  </option>
+                  <option value="delivery_received">Delivery Received</option>
+                  <option value="production_batch">
+                    Production Batch Completed
+                  </option>
+                  <option value="damaged_items">Items Damaged</option>
+                  <option value="missing_items">Items Missing/Stolen</option>
+                  <option value="expired_items">Items Expired</option>
+                  <option value="branch_transfer">Branch Transfer</option>
+                  <option value="data_error">Data Entry Error</option>
+                  <option value="quality_issue">Quality Issue</option>
+                  <option value="other">Other (specify in notes)</option>
+                </select>
+              </div>
+
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span class="label-text text-black/70 font-medium text-sm"
+                    >Reference Number</span
+                  >
+                </label>
+                <input
+                  v-model="updateForm.reference_number"
+                  type="text"
+                  class="input input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  placeholder="PO#, Invoice#, etc."
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Personnel Information -->
+          <div class="bg-white border border-black/10 p-4 rounded-xl">
+            <h4 class="font-semibold text-primaryColor mb-4">
+              <CheckCircle class="w-4 h-4 inline mr-2" />
+              Personnel Information
+            </h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span class="label-text text-black/70 font-medium text-sm"
+                    >Counted/Updated By *</span
+                  >
+                </label>
+                <input
+                  v-model="updateForm.counted_by"
+                  type="text"
+                  class="input input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  placeholder="Your name"
+                  required
+                />
+              </div>
+
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span class="label-text text-black/70 font-medium text-sm"
+                    >Verified By</span
+                  >
+                </label>
+                <input
+                  v-model="updateForm.verified_by"
+                  type="text"
+                  class="input input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  placeholder="Supervisor/Manager name"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Additional Notes -->
+          <div class="form-control">
+            <label class="label mb-1">
+              <span class="label-text text-black/70 font-medium text-sm"
+                >Additional Notes</span
+              >
+            </label>
+            <textarea
+              v-model="updateForm.notes"
+              class="textarea textarea-bordered w-full textarea-sm bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+              rows="3"
+              placeholder="Additional details, observations, or special circumstances..."
+            ></textarea>
+          </div>
+
+          <!-- Approval Warning -->
+          <div
+            v-if="stockUpdateValidation.requiresApproval"
+            class="alert alert-warning"
+          >
+            <AlertTriangle class="w-5 h-5" />
+            <div>
+              <h3 class="font-bold">Approval Required</h3>
+              <div class="text-sm">
+                This adjustment requires manager approval due to:
+                <ul class="list-disc list-inside mt-2 space-y-1">
+                  <li v-if="stockUpdateValidation.changePercent > 20">
+                    Significant quantity change ({{
+                      stockUpdateValidation.changePercent.toFixed(1)
+                    }}% change)
+                  </li>
+                  <li
+                    v-if="Math.abs(stockUpdateValidation.quantityChange) > 50"
+                  >
+                    Large quantity adjustment ({{
+                      Math.abs(stockUpdateValidation.quantityChange)
+                    }}
+                    units)
+                  </li>
+                  <li
+                    v-if="
+                      updateForm.adjustment_type === 'damage' ||
+                      updateForm.adjustment_type === 'theft'
                     "
                   >
-                    {{
-                      calculateProfitMargin(
-                        selectedItem.selling_price,
-                        selectedItem.unit_cost
-                      )
-                    }}%
-                  </span>
-                </div>
+                    High-risk adjustment type ({{ updateForm.adjustment_type }})
+                  </li>
+                  <li v-if="stockUpdateValidation.isSignificantCostImpact">
+                    Significant cost impact ({{
+                      formatCurrency(stockUpdateValidation.costImpact)
+                    }}
+                    - {{ stockUpdateValidation.costImpactPercent.toFixed(1) }}%
+                    of item value)
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="flex justify-end gap-3 pt-4 border-t border-black/10">
+            <button
+              type="button"
+              @click="closeUpdateModal"
+              class="btn btn-sm bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none font-thin"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
+              :disabled="loading || !stockUpdateValidation.isValid"
+            >
+              <span
+                class="loading loading-spinner loading-sm mr-2"
+                v-if="loading"
+              ></span>
+              <Package class="w-4 h-4 mr-2" v-else />
+              {{
+                stockUpdateValidation.requiresApproval
+                  ? 'Submit for Approval'
+                  : 'Update Stock'
+              }}
+            </button>
+          </div>
+        </form>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="closeUpdateModal">close</button>
+      </form>
+    </dialog>
+
+    <!-- Details Modal -->
+    <dialog
+      id="details_modal"
+      class="modal"
+      :class="{
+        'modal-open': showDetailsModal && selectedItem && selectedItem.id,
+      }"
+    >
+      <div class="modal-box max-w-4xl">
+        <h3 class="font-bold text-lg text-primaryColor mb-6">
+          {{ selectedItem?.item_name }} Details
+        </h3>
+
+        <div class="space-y-6">
+          <!-- Menu Item Image -->
+          <div v-if="selectedItem?.image_url" class="text-center">
+            <img
+              :src="selectedItem.image_url"
+              :alt="selectedItem.item_name"
+              class="w-64 h-48 object-cover rounded-xl mx-auto shadow-lg border border-black/10"
+            />
+          </div>
+
+          <!-- Item Information -->
+          <div
+            class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
+          >
+            <div class="form-control">
+              <label class="label mb-1">
+                <span
+                  class="label-text text-black/70 font-medium text-sm sm:text-base"
+                  >Item Code</span
+                >
+              </label>
+              <div class="text-sm text-primaryColor font-semibold">
+                {{ selectedItem?.item_code }}
+              </div>
+            </div>
+
+            <div class="form-control">
+              <label class="label mb-1">
+                <span
+                  class="label-text text-black/70 font-medium text-sm sm:text-base"
+                  >Recipe</span
+                >
+              </label>
+              <div class="text-sm text-primaryColor font-semibold">
+                {{ selectedItem?.recipe_name }}
+              </div>
+            </div>
+
+            <div class="form-control">
+              <label class="label mb-1">
+                <span
+                  class="label-text text-black/70 font-medium text-sm sm:text-base"
+                  >Category</span
+                >
+              </label>
+              <div class="text-sm text-primaryColor font-semibold">
+                {{ selectedItem?.category }}
+              </div>
+            </div>
+
+            <div class="form-control">
+              <label class="label mb-1">
+                <span
+                  class="label-text text-black/70 font-medium text-sm sm:text-base"
+                  >Unit of Measure</span
+                >
+              </label>
+              <div class="text-sm text-primaryColor font-semibold">
+                {{ selectedItem?.unit_of_measure }}
+              </div>
+            </div>
+
+            <div class="form-control">
+              <label class="label mb-1">
+                <span
+                  class="label-text text-black/70 font-medium text-sm sm:text-base"
+                  >Featured</span
+                >
+              </label>
+              <div>
+                <span
+                  class="badge badge-sm"
+                  :class="
+                    selectedItem?.is_featured
+                      ? 'badge-warning'
+                      : 'badge-neutral'
+                  "
+                >
+                  {{ selectedItem?.is_featured ? 'Yes' : 'No' }}
+                </span>
+              </div>
+            </div>
+
+            <div class="form-control">
+              <label class="label mb-1">
+                <span
+                  class="label-text text-black/70 font-medium text-sm sm:text-base"
+                  >Status</span
+                >
+              </label>
+              <div>
+                <span
+                  class="badge badge-sm"
+                  :class="getStockLevelBadgeClass(selectedItem)"
+                >
+                  {{ getStockLevelText(selectedItem) }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stock & Pricing Information -->
+          <div
+            class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
+          >
+            <div class="form-control">
+              <label class="label mb-1">
+                <span
+                  class="label-text text-black/70 font-medium text-sm sm:text-base"
+                  >Available Stock</span
+                >
+              </label>
+              <div class="text-sm text-primaryColor font-semibold">
+                {{ selectedItem?.available_quantity }}
+                {{ selectedItem?.unit_of_measure }}
+              </div>
+            </div>
+
+            <div class="form-control">
+              <label class="label mb-1">
+                <span
+                  class="label-text text-black/70 font-medium text-sm sm:text-base"
+                  >Reorder Point</span
+                >
+              </label>
+              <div class="text-sm text-primaryColor font-semibold">
+                {{ selectedItem?.reorder_point || 0 }}
+                {{ selectedItem?.unit_of_measure }}
+              </div>
+            </div>
+
+            <div class="form-control">
+              <label class="label mb-1">
+                <span
+                  class="label-text text-black/70 font-medium text-sm sm:text-base"
+                  >Selling Price</span
+                >
+              </label>
+              <div class="text-sm text-success font-semibold">
+                {{ formatCurrency(selectedItem?.selling_price) }}
+              </div>
+            </div>
+
+            <div class="form-control">
+              <label class="label mb-1">
+                <span
+                  class="label-text text-black/70 font-medium text-sm sm:text-base"
+                  >Unit Cost</span
+                >
+              </label>
+              <div class="text-sm text-primaryColor font-semibold">
+                {{ formatCurrency(selectedItem?.unit_cost) }}
+              </div>
+            </div>
+
+            <div class="form-control">
+              <label class="label mb-1">
+                <span
+                  class="label-text text-black/70 font-medium text-sm sm:text-base"
+                  >Profit Margin</span
+                >
+              </label>
+              <div
+                class="text-sm font-semibold"
+                :class="
+                  getProfitMarginColor(
+                    calculateProfitMargin(
+                      selectedItem?.selling_price,
+                      selectedItem?.unit_cost
+                    )
+                  )
+                "
+              >
+                {{
+                  calculateProfitMargin(
+                    selectedItem?.selling_price,
+                    selectedItem?.unit_cost
+                  )
+                }}%
+              </div>
+            </div>
+
+            <div class="form-control">
+              <label class="label mb-1">
+                <span
+                  class="label-text text-black/70 font-medium text-sm sm:text-base"
+                  >Last Updated</span
+                >
+              </label>
+              <div class="text-sm text-primaryColor font-semibold">
+                {{ formatDate(selectedItem?.updated_at) }}
               </div>
             </div>
           </div>
 
           <!-- Production History -->
-          <div class="bg-gray-50 p-4 rounded-lg">
-            <h4 class="font-semibold text-primaryColor mb-3">
+          <div
+            class="bg-secondaryColor/10 border border-primaryColor/20 p-4 rounded-xl"
+          >
+            <h4 class="font-semibold text-primaryColor mb-4">
+              <Activity class="w-4 h-4 inline mr-2" />
               Production History
             </h4>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div class="text-center">
                 <div class="text-2xl font-bold text-primaryColor">
-                  {{ selectedItem.total_produced || 0 }}
+                  {{ selectedItem?.total_produced || 0 }}
                 </div>
-                <div class="text-sm text-gray-600">Total Produced</div>
+                <div class="text-xs text-primaryColor">Total Produced</div>
+                <div class="text-xs text-gray-500">
+                  {{ selectedItem?.unit_of_measure }}
+                </div>
               </div>
               <div class="text-center">
                 <div class="text-2xl font-bold text-info">
-                  {{ selectedItem.last_batch_size || 0 }}
+                  {{ selectedItem?.last_batch_size || 0 }}
                 </div>
-                <div class="text-sm text-gray-600">Last Batch Size</div>
+                <div class="text-xs text-primaryColor">Last Batch Size</div>
+                <div class="text-xs text-gray-500">
+                  {{ selectedItem?.unit_of_measure }}
+                </div>
               </div>
               <div class="text-center">
                 <div class="text-2xl font-bold text-success">
                   {{
-                    selectedItem.last_produced_date
+                    selectedItem?.last_produced_date
                       ? formatDate(selectedItem.last_produced_date)
                       : 'Never'
                   }}
                 </div>
-                <div class="text-sm text-gray-600">Last Produced</div>
+                <div class="text-xs text-primaryColor">Last Produced</div>
+                <div class="text-xs text-gray-500">Date</div>
               </div>
             </div>
           </div>
 
           <!-- Production Capacity -->
-          <div class="bg-blue-50 p-4 rounded-lg">
-            <h4 class="font-semibold text-primaryColor mb-3">
+          <div
+            class="bg-secondaryColor/10 border border-primaryColor/20 p-4 rounded-xl"
+          >
+            <h4 class="font-semibold text-primaryColor mb-4">
+              <Target class="w-4 h-4 inline mr-2" />
               Production Capacity
             </h4>
-            <div class="space-y-2">
-              <div class="flex justify-between">
-                <span class="text-gray-600">Current Status:</span>
-                <span
-                  class="font-medium"
-                  :class="
-                    getProductionCapacity(selectedItem).can_produce
-                      ? 'text-success'
-                      : 'text-error'
-                  "
-                >
-                  {{
-                    getProductionCapacity(selectedItem).can_produce
-                      ? 'Ready for Production'
-                      : 'Capacity Limited'
-                  }}
-                </span>
+            <div
+              class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
+            >
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Current Status</span
+                  >
+                </label>
+                <div>
+                  <span
+                    class="badge badge-sm"
+                    :class="
+                      getProductionCapacity(selectedItem).can_produce
+                        ? 'badge-success'
+                        : 'badge-error'
+                    "
+                  >
+                    {{
+                      getProductionCapacity(selectedItem).can_produce
+                        ? 'Ready for Production'
+                        : 'Capacity Limited'
+                    }}
+                  </span>
+                </div>
               </div>
-              <div class="flex justify-between">
-                <span class="text-gray-600">Limiting Factor:</span>
-                <span class="font-medium">{{
-                  getProductionCapacity(selectedItem).limiting_factor
-                }}</span>
+
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Max Batches</span
+                  >
+                </label>
+                <div class="text-sm text-primaryColor font-semibold">
+                  {{ getProductionCapacity(selectedItem).max_batches }}
+                  <span class="text-xs text-black/50">batches</span>
+                </div>
+              </div>
+
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span
+                    class="label-text text-black/70 font-medium text-sm sm:text-base"
+                    >Limiting Factor</span
+                  >
+                </label>
+                <div class="text-sm text-primaryColor font-semibold">
+                  {{ getProductionCapacity(selectedItem).limiting_factor }}
+                </div>
+                <div
+                  v-if="getProductionCapacity(selectedItem).limiting_ingredient"
+                  class="text-xs text-black/50 mt-1"
+                >
+                  Ingredient:
+                  {{ getProductionCapacity(selectedItem).limiting_ingredient }}
+                </div>
               </div>
             </div>
           </div>
@@ -1532,31 +2670,32 @@
           <!-- Recent Quality Inspections -->
           <div
             v-if="
-              selectedItem.recent_inspections &&
+              selectedItem?.recent_inspections &&
               selectedItem.recent_inspections.length > 0
             "
-            class="bg-green-50 p-4 rounded-lg"
+            class="bg-secondaryColor/10 border border-primaryColor/20 p-4 rounded-xl"
           >
-            <h4 class="font-semibold text-primaryColor mb-3">
+            <h4 class="font-semibold text-primaryColor mb-4">
+              <CheckCircle class="w-4 h-4 inline mr-2" />
               Recent Quality Inspections
             </h4>
-            <div class="space-y-2">
+            <div class="space-y-3">
               <div
                 v-for="inspection in selectedItem.recent_inspections"
                 :key="inspection.inspection_date"
-                class="flex items-center justify-between p-3 bg-white rounded"
+                class="flex items-center justify-between p-3 bg-white border border-black/10 rounded-xl"
               >
                 <div>
-                  <div class="font-medium">
+                  <div class="font-medium text-primaryColor">
                     {{ formatDate(inspection.inspection_date) }}
                   </div>
-                  <div class="text-sm text-gray-600">
+                  <div class="text-sm text-black/70">
                     by {{ inspection.inspector_name }}
                   </div>
                 </div>
                 <div class="text-right">
                   <span
-                    class="badge"
+                    class="badge badge-sm"
                     :class="
                       inspection.result === 'Pass'
                         ? 'badge-success'
@@ -1567,7 +2706,7 @@
                   </span>
                   <div
                     v-if="inspection.overall_quality_score"
-                    class="text-sm text-gray-600 mt-1"
+                    class="text-sm text-primaryColor font-semibold mt-1"
                   >
                     Score: {{ inspection.overall_quality_score }}/10
                   </div>
@@ -1578,65 +2717,86 @@
         </div>
 
         <div class="modal-action">
-          <button @click="closeDetailsModal" class="btn btn-ghost">
+          <button
+            @click="closeDetailsModal"
+            class="btn btn-sm bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none font-thin"
+          >
             Close
           </button>
           <button
             @click="openUpdateModal(selectedItem, 'stock')"
-            class="btn btn-primary"
+            class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
           >
             <Package class="w-4 h-4 mr-2" />
             Update Stock
           </button>
         </div>
       </div>
-    </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="closeDetailsModal">close</button>
+      </form>
+    </dialog>
 
     <!-- Distribution Modal -->
-    <div v-if="showDistributionModal && selectedItem" class="modal modal-open">
+    <dialog
+      id="distribution_modal"
+      class="modal"
+      :class="{
+        'modal-open': showDistributionModal && selectedItem && selectedItem.id,
+      }"
+    >
       <div class="modal-box max-w-md">
-        <h3 class="font-bold text-lg text-primaryColor mb-4">
-          Distribute {{ selectedItem.item_name }}
+        <h3 class="font-bold text-lg text-primaryColor mb-6">
+          Distribute {{ selectedItem?.item_name }}
         </h3>
 
         <form @submit.prevent="recordDistribution" class="space-y-4">
           <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Available Stock</span>
+            <label class="label mb-1">
+              <span
+                class="label-text text-black/70 font-medium text-sm sm:text-base"
+                >Available Stock</span
+              >
             </label>
             <div class="text-lg font-bold text-primaryColor">
-              {{ selectedItem.available_quantity }}
-              {{ selectedItem.unit_of_measure }}
+              {{ selectedItem?.available_quantity }}
+              {{ selectedItem?.unit_of_measure }}
             </div>
           </div>
 
           <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Quantity to Distribute</span>
+            <label class="label mb-1">
+              <span
+                class="label-text text-black/70 font-medium text-sm sm:text-base"
+                >Quantity to Distribute</span
+              >
             </label>
             <input
               v-model.number="distributionForm.quantity"
               type="number"
               min="1"
-              :max="selectedItem.available_quantity"
-              class="input input-bordered"
+              :max="selectedItem?.available_quantity"
+              class="input input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
               placeholder="Enter quantity to distribute"
               required
             />
             <div class="label">
-              <span class="label-text-alt text-gray-500">
-                Unit: {{ selectedItem.unit_of_measure }}
+              <span class="label-text-alt text-black/50">
+                Unit: {{ selectedItem?.unit_of_measure }}
               </span>
             </div>
           </div>
 
           <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Branch</span>
+            <label class="label mb-1">
+              <span
+                class="label-text text-black/70 font-medium text-sm sm:text-base"
+                >Branch</span
+              >
             </label>
             <select
               v-model="distributionForm.branch_id"
-              class="select select-bordered"
+              class="select select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
               required
             >
               <option value="">Select branch</option>
@@ -1651,12 +2811,15 @@
           </div>
 
           <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Transfer Price</span>
+            <label class="label mb-1">
+              <span
+                class="label-text text-black/70 font-medium text-sm sm:text-base"
+                >Transfer Price</span
+              >
             </label>
             <div class="relative">
               <span
-                class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500"
+                class="absolute left-3 top-1/2 transform -translate-y-1/2 text-black/50"
                 >₱</span
               >
               <input
@@ -1664,13 +2827,13 @@
                 type="number"
                 min="0"
                 step="0.01"
-                class="input input-bordered pl-8"
+                class="input input-bordered w-full pl-8 bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
                 placeholder="0.00"
                 required
               />
             </div>
             <div class="label">
-              <span class="label-text-alt text-gray-500">
+              <span class="label-text-alt text-black/50">
                 Price per unit for this distribution
               </span>
             </div>
@@ -1682,13 +2845,15 @@
               distributionForm.quantity > 0 &&
               distributionForm.transfer_price > 0
             "
-            class="alert alert-info"
+            class="bg-secondaryColor/10 border border-primaryColor/20 p-4 rounded-xl"
           >
             <div class="flex items-center">
-              <PhilippinePeso class="w-5 h-5 mr-2" />
+              <PhilippinePeso class="w-5 h-5 mr-2 text-primaryColor" />
               <div>
-                <div class="font-medium">Total Distribution Cost</div>
-                <div class="text-lg font-bold">
+                <div class="font-medium text-primaryColor">
+                  Total Distribution Cost
+                </div>
+                <div class="text-lg font-bold text-primaryColor">
                   ₱{{ Number(distributionTotal).toFixed(2) }}
                 </div>
               </div>
@@ -1696,34 +2861,53 @@
           </div>
 
           <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Notes (Optional)</span>
+            <label class="label mb-1">
+              <span
+                class="label-text text-black/70 font-medium text-sm sm:text-base"
+                >Notes (Optional)</span
+              >
             </label>
             <textarea
               v-model="distributionForm.notes"
-              class="textarea textarea-bordered"
+              class="textarea textarea-bordered w-full textarea-sm bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
               rows="3"
               placeholder="Distribution notes..."
             ></textarea>
           </div>
 
-          <div class="modal-action">
+          <div class="flex justify-end gap-3 pt-4 border-t border-black/10">
             <button
               type="button"
               @click="closeDistributionModal"
-              class="btn btn-ghost"
+              class="btn btn-sm bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none font-thin"
             >
               Cancel
             </button>
-            <button type="submit" class="btn btn-info" :disabled="loading">
-              <Truck class="w-4 h-4 mr-2" v-if="!loading" />
-              <RefreshCcw class="w-4 h-4 mr-2 animate-spin" v-else />
+            <button
+              type="submit"
+              class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
+              :disabled="loading"
+            >
+              <span
+                class="loading loading-spinner loading-sm mr-2"
+                v-if="loading"
+              ></span>
+              <Truck class="w-4 h-4 mr-2" v-else />
               Record Distribution
             </button>
           </div>
         </form>
       </div>
-    </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="closeDistributionModal">close</button>
+      </form>
+    </dialog>
+
+    <!-- Production Transaction Modal -->
+    <ProductionTransactionModal
+      :show="showTransactionModal"
+      @close="closeTransactionModal"
+    />
   </div>
 </template>
 

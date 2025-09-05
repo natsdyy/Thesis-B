@@ -15,6 +15,7 @@ class ProductionInventory {
           "mi.category",
           "mi.is_featured",
           "mi.tags",
+          "mi.image_url",
           "r.recipe_name",
           "r.batch_size",
           "r.batch_unit",
@@ -109,7 +110,9 @@ class ProductionInventory {
           .orderBy("ri.sequence_order", "asc");
 
         // Get recent quality inspections
-        inventoryItem.recent_inspections = await db("quality_inspections as qi")
+        inventoryItem.recent_inspections = await db(
+          "menu_quality_inspections as qi"
+        )
           .select(
             "qi.inspection_date",
             "qi.result",
@@ -589,9 +592,9 @@ class ProductionInventory {
   }
 
   // Update initial stock for items with 0 stock based on recipe batch size
-  static async updateInitialStockFromRecipe(menuItemId, userId) {
+  static async updateInitialStockFromRecipe(inventoryId, userId) {
     try {
-      const inventoryItem = await this.getByMenuItem(menuItemId);
+      const inventoryItem = await this.getById(inventoryId);
 
       if (!inventoryItem) {
         throw new Error("Production inventory item not found");
@@ -614,7 +617,7 @@ class ProductionInventory {
       const initialStock = recipe.batch_size;
       const reorderPoint = Math.ceil(initialStock * 0.2);
 
-      await db("production_inventory").where("id", inventoryItem.id).update({
+      await db("production_inventory").where("id", inventoryId).update({
         available_quantity: initialStock,
         unit_of_measure: recipe.batch_unit,
         reorder_point: reorderPoint,
@@ -623,14 +626,14 @@ class ProductionInventory {
 
       // Log the stock update
       await this.logStockUpdate(
-        inventoryItem.id,
+        inventoryId,
         0,
         initialStock,
         userId,
         `Initial stock set from recipe batch size: ${initialStock} ${recipe.batch_unit}`
       );
 
-      return await this.getById(inventoryItem.id);
+      return await this.getById(inventoryId);
     } catch (error) {
       console.error("Error updating initial stock from recipe:", error);
       throw new Error("Failed to update initial stock from recipe");

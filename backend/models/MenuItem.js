@@ -529,8 +529,20 @@ class MenuItem {
   // Update menu item
   static async update(id, updateData, userId) {
     try {
-      // Get current item data before update for audit logging
-      const currentItem = await this.getById(id);
+      console.log("MenuItem.update called with:", { id, updateData, userId });
+
+      // Get current item data before update for audit logging (lightweight query)
+      const currentItem = await db("menu_items")
+        .select("id", "menu_item_name", "image_url", "menu_id")
+        .where("id", id)
+        .whereNull("deleted_at")
+        .first();
+
+      if (!currentItem) {
+        throw new Error("Menu item not found");
+      }
+
+      console.log("Current item before update:", currentItem);
 
       // Filter and map updateData to valid database columns
       const filteredData = {};
@@ -572,6 +584,8 @@ class MenuItem {
       if (updateData.image_url !== undefined)
         filteredData.image_url = updateData.image_url;
 
+      console.log("Filtered data to update:", filteredData);
+
       await db("menu_items")
         .where("id", id)
         .update({
@@ -579,7 +593,46 @@ class MenuItem {
           updated_at: db.fn.now(),
         });
 
-      const updatedItem = await this.getById(id);
+      // Get updated item data (lightweight query)
+      const updatedItem = await db("menu_items")
+        .select("id", "menu_item_name", "image_url", "menu_id")
+        .where("id", id)
+        .whereNull("deleted_at")
+        .first();
+
+      console.log("Backend returning updated item:", updatedItem);
+
+      // Sync with production inventory if any relevant fields were updated
+      const fieldsToSync = [
+        "menu_item_name",
+        "description",
+        "selling_price",
+        "tags",
+        "image_url",
+      ];
+
+      const hasRelevantChanges = fieldsToSync.some(
+        (field) =>
+          updateData[field] !== undefined &&
+          updateData[field] !== currentItem[field]
+      );
+
+      if (hasRelevantChanges) {
+        try {
+          await db("production_inventory").where("menu_item_id", id).update({
+            updated_at: db.fn.now(),
+          });
+          console.log(
+            `Production inventory synced for menu item ${id} after relevant field updates`
+          );
+        } catch (error) {
+          console.error(
+            "Error syncing production inventory after menu item update:",
+            error
+          );
+          // Don't throw error - this is a sync operation, not critical
+        }
+      }
 
       // Log the update action
       await AuditLogger.log({

@@ -30,6 +30,7 @@
   import SampleProductionTrendsChart from '../../components/production/SampleProductionTrendsChart.vue';
   import ProductionMetricsChart from '../../components/production/ProductionMetricsChart.vue';
   import InventoryTrendsChart from '../../components/production/InventoryTrendsChart.vue';
+  import { apiConfig } from '../../config/api.js';
 
   const productionStore = useProductionStore();
   const authStore = useAuthStore();
@@ -88,7 +89,7 @@
   });
 
   const filteredInventory = computed(() => {
-    let filtered = productionInventory.value;
+    let filtered = formattedInventory.value;
 
     if (searchQuery.value) {
       const query = searchQuery.value.toLowerCase();
@@ -136,6 +137,20 @@
       if (item.category) categories.add(item.category);
     });
     return Array.from(categories).sort();
+  });
+
+  // Format image URLs to full URLs
+  const formattedInventory = computed(() => {
+    return productionInventory.value.map((item) => {
+      if (item.image_url && item.image_url.startsWith('/uploads/')) {
+        const baseUrl = apiConfig.baseURL.replace('/api', '');
+        return {
+          ...item,
+          image_url: `${baseUrl}${item.image_url}`,
+        };
+      }
+      return item;
+    });
   });
 
   // Helper functions
@@ -215,6 +230,16 @@
       ]);
     } catch (error) {
       console.error('Error fetching data:', error);
+    }
+  };
+
+  const refreshInventory = async () => {
+    try {
+      await productionStore.forceRefreshProductionInventory();
+      showToast('success', 'Production inventory refreshed successfully');
+    } catch (error) {
+      console.error('Error refreshing inventory:', error);
+      showToast('error', 'Failed to refresh inventory');
     }
   };
 
@@ -351,23 +376,8 @@
 
   const updateInitialStock = async (item) => {
     try {
-      // Try the new function first, fallback to manual update if not available
-      if (typeof productionStore.updateInitialStockFromRecipe === 'function') {
-        await productionStore.updateInitialStockFromRecipe(item.id);
-        showToast('success', `Initial stock set from recipe batch size`);
-      } else {
-        // Fallback: Set stock to recipe batch size manually
-        const batchSize = item.recipe_batch_size || 100; // Default to 100 if not available
-        await productionStore.updateInventoryStock(
-          item.id,
-          batchSize,
-          'Initial stock from recipe'
-        );
-        showToast(
-          'success',
-          `Initial stock set to ${batchSize} ${item.unit_of_measure}`
-        );
-      }
+      await productionStore.updateInitialStockFromRecipe(item.id);
+      showToast('success', `Initial stock set from recipe batch size`);
     } catch (error) {
       showToast('error', error.message || 'Failed to update initial stock');
     }
@@ -587,7 +597,7 @@
             </div>
             <div class="flex gap-2">
               <button
-                @click="fetchData"
+                @click="refreshInventory"
                 class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
                 :disabled="loading"
               >
@@ -640,6 +650,15 @@
               @click="openDetailsModal(item)"
             >
               <div class="card-body p-6">
+                <!-- Menu Item Image -->
+                <div v-if="item.image_url" class="mb-4">
+                  <img
+                    :src="item.image_url"
+                    :alt="item.item_name"
+                    class="w-full h-32 object-cover rounded-lg"
+                  />
+                </div>
+
                 <div class="flex items-start justify-between mb-4">
                   <div class="flex-1">
                     <h3
@@ -1341,6 +1360,15 @@
         </h3>
 
         <div class="space-y-6">
+          <!-- Menu Item Image -->
+          <div v-if="selectedItem.image_url" class="text-center">
+            <img
+              :src="selectedItem.image_url"
+              :alt="selectedItem.item_name"
+              class="w-64 h-48 object-cover rounded-lg mx-auto shadow-md"
+            />
+          </div>
+
           <!-- Basic Info -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>

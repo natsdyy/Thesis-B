@@ -911,13 +911,93 @@ export const useProductionStore = defineStore('production', () => {
     error.value = null;
 
     try {
-      const response = await axios.put(
-        `${API_BASE_URL}/menu/items/${id}`,
-        updateData
-      );
+      console.log('Frontend sending update request:', { id, updateData });
+
+      // Check if updateData is FormData (contains image)
+      const isFormData = updateData instanceof FormData;
+      const endpoint = isFormData
+        ? `${API_BASE_URL}/menu/items/${id}/upload`
+        : `${API_BASE_URL}/menu/items/${id}`;
+
+      console.log('Using endpoint:', endpoint, 'FormData:', isFormData);
+
+      const response = await axios.put(endpoint, updateData);
       if (response.data.success) {
-        await fetchMenuItems();
-        return response.data.data;
+        // Update the specific item in the store instead of refetching all items
+        const updatedItem = response.data.data;
+        console.log('Backend returned updated item:', updatedItem);
+        const index = menuItems.value.findIndex((item) => item.id === id);
+        if (index !== -1) {
+          console.log('Before update - store item:', menuItems.value[index]);
+          // Merge the updated data with existing item data
+          menuItems.value[index] = {
+            ...menuItems.value[index],
+            ...updatedItem,
+          };
+
+          // Ensure image_url is properly formatted if it exists
+          if (
+            menuItems.value[index].image_url &&
+            menuItems.value[index].image_url.startsWith('/uploads/')
+          ) {
+            const baseUrl = apiConfig.baseURL.replace('/api', '');
+            menuItems.value[index].image_url =
+              `${baseUrl}${menuItems.value[index].image_url}`;
+          }
+
+          console.log('After update - store item:', menuItems.value[index]);
+        }
+
+        // Also update the corresponding item in production inventory
+        const inventoryIndex = productionInventory.value.findIndex(
+          (item) => item.menu_item_id === id
+        );
+        if (inventoryIndex !== -1) {
+          console.log('Updating production inventory item:', inventoryIndex);
+          // Update the fields that come from menu items
+          productionInventory.value[inventoryIndex] = {
+            ...productionInventory.value[inventoryIndex],
+            item_name:
+              updatedItem.menu_item_name ||
+              productionInventory.value[inventoryIndex].item_name,
+            menu_item_name:
+              updatedItem.menu_item_name ||
+              productionInventory.value[inventoryIndex].menu_item_name,
+            description:
+              updatedItem.description ||
+              productionInventory.value[inventoryIndex].description,
+            selling_price:
+              updatedItem.selling_price ||
+              productionInventory.value[inventoryIndex].selling_price,
+            menu_selling_price:
+              updatedItem.selling_price ||
+              productionInventory.value[inventoryIndex].menu_selling_price,
+            tags:
+              updatedItem.tags ||
+              productionInventory.value[inventoryIndex].tags,
+            image_url:
+              updatedItem.image_url ||
+              productionInventory.value[inventoryIndex].image_url,
+          };
+
+          // Format image URL for production inventory if needed
+          if (
+            productionInventory.value[inventoryIndex].image_url &&
+            productionInventory.value[inventoryIndex].image_url.startsWith(
+              '/uploads/'
+            )
+          ) {
+            const baseUrl = apiConfig.baseURL.replace('/api', '');
+            productionInventory.value[inventoryIndex].image_url =
+              `${baseUrl}${productionInventory.value[inventoryIndex].image_url}`;
+          }
+
+          console.log(
+            'Updated production inventory item:',
+            productionInventory.value[inventoryIndex]
+          );
+        }
+        return updatedItem;
       } else {
         throw new Error(response.data.message || 'Failed to update menu item');
       }
@@ -942,7 +1022,12 @@ export const useProductionStore = defineStore('production', () => {
         `${API_BASE_URL}/menu/items/${id}/approve`
       );
       if (response.data.success) {
-        await fetchMenuItems();
+        // Update the specific item in the store instead of refetching all items
+        const index = menuItems.value.findIndex((item) => item.id === id);
+        if (index !== -1) {
+          menuItems.value[index].is_available = true;
+        }
+        // Only refresh production inventory since a new item was added there
         await fetchProductionInventory();
         return response.data.data;
       } else {
@@ -1536,7 +1621,12 @@ export const useProductionStore = defineStore('production', () => {
         `${API_BASE_URL}/menu/production-inventory?${params}`
       );
       if (response.data.success) {
-        productionInventory.value = response.data.data;
+        // Map backend field names to frontend expected field names
+        productionInventory.value = response.data.data.map((item) => ({
+          ...item,
+          item_name: item.menu_item_name, // Map menu_item_name to item_name for frontend compatibility
+          selling_price: item.menu_selling_price || item.selling_price, // Use menu_selling_price if available
+        }));
       } else {
         throw new Error(
           response.data.message || 'Failed to fetch production inventory'
@@ -1827,6 +1917,42 @@ export const useProductionStore = defineStore('production', () => {
     }
   };
 
+  // Refresh production inventory data (useful after menu item updates)
+  const refreshProductionInventory = async () => {
+    try {
+      await fetchProductionInventory();
+    } catch (error) {
+      console.error('Error refreshing production inventory:', error);
+    }
+  };
+
+  // Force refresh production inventory from server (useful when data might be stale)
+  const forceRefreshProductionInventory = async () => {
+    try {
+      loading.value = true;
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/production-inventory`
+      );
+      if (response.data.success) {
+        // Map backend field names to frontend expected field names
+        productionInventory.value = response.data.data.map((item) => ({
+          ...item,
+          item_name: item.menu_item_name, // Map menu_item_name to item_name for frontend compatibility
+          selling_price: item.menu_selling_price || item.selling_price, // Use menu_selling_price if available
+        }));
+        console.log(
+          'Production inventory force refreshed:',
+          productionInventory.value.length,
+          'items'
+        );
+      }
+    } catch (error) {
+      console.error('Error force refreshing production inventory:', error);
+    } finally {
+      loading.value = false;
+    }
+  };
+
   // Inventory Integration Actions
   const checkRecipeAvailability = async (recipeId, batchSize = 1) => {
     try {
@@ -2028,6 +2154,8 @@ export const useProductionStore = defineStore('production', () => {
     fetchAllDistributions,
     checkDistributionAvailability,
     updateInitialStockFromRecipe,
+    refreshProductionInventory,
+    forceRefreshProductionInventory,
 
     // Inventory Integration Actions
     checkRecipeAvailability,

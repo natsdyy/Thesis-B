@@ -221,6 +221,7 @@
       // serving_size: 1, // Always 1 for customer portion
       serving_unit: 'serving',
       tags: '',
+      image_url: '', // Reset image URL
       isEditing: false, // Reset editing flags
       editingItemId: null,
     };
@@ -304,6 +305,9 @@
     // Reset form first
     resetForm();
 
+    console.log('Opening edit modal for item:', item);
+    console.log('Item image_url:', item.image_url);
+
     // Populate form with item data
     let imageUrl = item.image_url || '';
     // Convert relative image path to full URL if needed
@@ -330,6 +334,8 @@
     // Set editing mode
     menuItemForm.value.isEditing = true;
     menuItemForm.value.editingItemId = item.id;
+
+    console.log('Form populated with:', menuItemForm.value);
 
     // Open the create modal (which will now act as edit modal)
     await openCreateModal();
@@ -420,7 +426,7 @@
         `${item.item_name} approved for production successfully`
       );
       closeApproveModal();
-      await fetchMenuItems();
+      // No need to fetchMenuItems() - store is already updated
     } catch (error) {
       showToast('error', error.message || 'Failed to approve menu item');
     }
@@ -512,9 +518,19 @@
       if (imageFile.value) {
         const fd = new FormData();
         Object.entries(formData).forEach(([key, value]) => {
-          // Send all fields (null values have been converted to empty strings above)
-          if (value !== undefined) {
+          // Handle null values properly for FormData
+          if (value !== undefined && value !== null) {
             fd.append(key, value);
+          } else if (value === null) {
+            // For null values, append empty string for string fields or skip for integer fields
+            if (
+              key === 'selling_price' ||
+              key === 'description' ||
+              key === 'tags'
+            ) {
+              fd.append(key, '');
+            }
+            // Skip null values for integer fields (recipe_id, menu_id, preparation_time_minutes)
           }
         });
         fd.append('image', imageFile.value);
@@ -523,24 +539,8 @@
 
       // Check if we're editing or creating
       if (formData.isEditing && formData.editingItemId) {
-        // For update, use filtered data with proper field mapping
-        const updateData = {
-          menu_item_name: formData.item_name,
-          recipe_id: formData.recipe_id,
-          menu_id: formData.menu_id,
-          description: formData.description,
-          category: formData.category,
-          selling_price: formData.selling_price,
-          preparation_time_minutes: formData.preparation_time_minutes,
-          serving_unit: formData.serving_unit,
-          tags: formData.tags,
-          image_url: formData.image_url,
-        };
-
-        await productionStore.updateMenuItem(
-          formData.editingItemId,
-          updateData
-        );
+        // For update, use the payload (which includes image if present)
+        await productionStore.updateMenuItem(formData.editingItemId, payload);
         showToast('success', 'Menu item updated successfully');
       } else {
         // Create new item
@@ -551,6 +551,9 @@
       closeCreateModal();
       closeConfirmModal(); // Close the confirmation modal as well
       await fetchMenuItems(); // Refresh the list
+
+      // Also refresh production inventory to sync changes
+      await productionStore.forceRefreshProductionInventory();
     } catch (error) {
       // Handle specific error messages from backend
       let errorMessage = formData.isEditing
@@ -604,9 +607,20 @@
 
     // Open confirmation modal for creating/updating menu item
     const modalType = menuItemForm.value.isEditing ? 'update' : 'create';
-    openConfirmModal(modalType, {
-      menu_item_name: menuItemForm.value.item_name,
-    });
+
+    if (modalType === 'update') {
+      // For updates, we need to find the original item to pass the full object
+      const originalItem = menuItems.value.find(
+        (item) => item.id === menuItemForm.value.editingItemId
+      );
+      console.log('Found original item for update:', originalItem);
+      openConfirmModal(modalType, originalItem);
+    } else {
+      // For creates, just pass the name
+      openConfirmModal(modalType, {
+        menu_item_name: menuItemForm.value.item_name,
+      });
+    }
   };
 
   const approveMenuItem = async (itemId) => {
@@ -673,6 +687,9 @@
       // Filter and map form data to valid database fields
       // Preserve original values if form fields are empty/null
       const formData = menuItemForm.value;
+      console.log('Form data before update:', formData);
+      console.log('Item data before update:', item);
+
       const updateData = {
         menu_item_name:
           formData.item_name || item.item_name || item.menu_item_name,
@@ -699,16 +716,16 @@
         serving_unit: formData.serving_unit || item.serving_unit,
         tags: formData.tags !== undefined ? formData.tags : item.tags,
         image_url:
-          formData.image_url !== undefined
+          formData.image_url !== undefined && formData.image_url !== ''
             ? formData.image_url
             : item.image_url,
       };
 
+      console.log('Update data being sent:', updateData);
+
       await productionStore.updateMenuItem(item.id, updateData);
       showToast('success', 'Menu item updated successfully');
-      // Refresh the menu items list
-      await fetchMenuItems();
-      // Close the modal
+      // Close the modal (no need to refresh - store is already updated)
       closeCreateModal();
     } catch (error) {
       showToast('error', error.message || 'Failed to update menu item');

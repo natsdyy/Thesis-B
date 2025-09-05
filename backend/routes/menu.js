@@ -498,6 +498,53 @@ router.put("/items/:id", authenticateToken, async (req, res) => {
 
 /**
  * @swagger
+ * /api/menu/items/{id}/upload:
+ *   put:
+ *     summary: Update menu item with image
+ *     consumes:
+ *       - multipart/form-data
+ *     tags: [Menu Items]
+ */
+router.put(
+  "/items/:id/upload",
+  authenticateToken,
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      const imageUrl = req.file
+        ? `/uploads/menu-images/${req.file.filename}`
+        : null;
+
+      const payload = req.body || {};
+
+      // If image was uploaded, add image_url to the payload
+      if (imageUrl) {
+        payload.image_url = imageUrl;
+      }
+
+      const menuItem = await MenuItem.update(
+        req.params.id,
+        payload,
+        req.user.id
+      );
+
+      res.json({
+        success: true,
+        data: menuItem,
+        message: "Menu item updated successfully",
+      });
+    } catch (error) {
+      console.error("Error updating menu item with image:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to update menu item",
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
  * /api/menu/items/{id}/approve:
  *   post:
  *     summary: Approve menu item for production

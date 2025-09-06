@@ -1,6 +1,100 @@
 const { db } = require("../config/database");
 
 class ProductionInventory {
+  // Create new production inventory entry when menu item is approved for production
+  static async create(menuItemId, userId, additionalData = {}) {
+    const trx = await db.transaction();
+
+    try {
+      // Get menu item and recipe details
+      const menuItem = await trx("menu_items as mi")
+        .select(
+          "mi.*",
+          "r.recipe_name",
+          "r.batch_size",
+          "r.batch_unit",
+          "r.cost_per_batch"
+        )
+        .leftJoin("recipes as r", "mi.recipe_id", "r.id")
+        .where("mi.id", menuItemId)
+        .whereNull("mi.deleted_at")
+        .first();
+
+      if (!menuItem) {
+        throw new Error("Menu item not found");
+      }
+
+      if (!menuItem.recipe_id) {
+        throw new Error("Menu item must have an associated recipe");
+      }
+
+      // Check if production inventory already exists for this menu item
+      const existingInventory = await trx("production_inventory")
+        .where("menu_item_id", menuItemId)
+        .where("is_active", true)
+        .first();
+
+      if (existingInventory) {
+        throw new Error(
+          "Production inventory already exists for this menu item"
+        );
+      }
+
+      // Create production inventory entry with 0 initial stock
+      const [productionInventory] = await trx("production_inventory")
+        .insert({
+          menu_item_id: menuItemId,
+          recipe_id: menuItem.recipe_id,
+          available_quantity: 0, // Start with 0 stock - proper real-world practice
+          unit_of_measure: menuItem.batch_unit || "servings",
+          unit_cost: 0.0, // Will be updated after first production
+          selling_price: menuItem.selling_price || 0.0,
+          last_produced_date: null, // No production yet
+          last_batch_size: 0,
+          production_cost_per_unit: 0.0, // Will be calculated after production
+          profit_margin_percent: 0.0, // Will be calculated after production
+          is_active: true,
+          quality_status: "Approved", // Default status for approved menu items
+          next_quality_check_date: null,
+          total_produced: 0, // No production yet
+          total_sold: 0,
+          reorder_point: additionalData.reorder_point || 20, // Default reorder point
+          maximum_stock: additionalData.maximum_stock || 0,
+          created_by: userId,
+          created_at: db.fn.now(),
+          updated_at: db.fn.now(),
+        })
+        .returning("*");
+
+      // Log the creation action
+      await trx("menu_item_audit_log").insert({
+        menu_item_id: menuItemId,
+        user_id: userId,
+        action_type: "ADDED_TO_INVENTORY",
+        action_details: JSON.stringify({
+          production_inventory_id: productionInventory.id,
+          initial_stock: 0,
+          reorder_point: productionInventory.reorder_point,
+          maximum_stock: productionInventory.maximum_stock,
+          quality_status: productionInventory.quality_status,
+        }),
+        notes: `Production inventory created for "${menuItem.menu_item_name}" - Starting with 0 stock`,
+        created_at: db.fn.now(),
+      });
+
+      await trx.commit();
+
+      // Return the created production inventory with full details
+      return await this.getById(productionInventory.id);
+    } catch (error) {
+      await trx.rollback();
+      console.error("Error creating production inventory:", error);
+      throw new Error(
+        `Failed to create production inventory: ${error.message}`
+      );
+    }
+  }
+
   // Get all production inventory items with details
   static async getAll(filters = {}) {
     try {
@@ -823,6 +917,8 @@ class ProductionInventory {
   }
 
   // Update initial stock for items with 0 stock based on recipe batch size
+  // NOTE: This method is deprecated in favor of proper production workflow
+  // Stock should only be added through actual production, not from recipe batch size
   static async updateInitialStockFromRecipe(inventoryId, userId) {
     try {
       const inventoryItem = await this.getById(inventoryId);
@@ -835,7 +931,7 @@ class ProductionInventory {
         return inventoryItem; // Already has stock
       }
 
-      // Get recipe batch size
+      // Get recipe batch size for reference
       const recipe = await db("recipes")
         .select("batch_size", "batch_unit")
         .where("id", inventoryItem.recipe_id)
@@ -845,23 +941,26 @@ class ProductionInventory {
         throw new Error("Recipe not found");
       }
 
-      const initialStock = recipe.batch_size;
-      const reorderPoint = Math.ceil(initialStock * 0.2);
+      // IMPORTANT: This method now only sets initial stock to 0 and updates reorder points
+      // Stock should only be added through actual production workflow
+      const reorderPoint = Math.ceil(recipe.batch_size * 0.2); // 20% of batch size
+      const maxStock = recipe.batch_size * 2; // 2x batch size
 
       await db("production_inventory").where("id", inventoryId).update({
-        available_quantity: initialStock,
+        available_quantity: 0, // Keep at 0 - proper real-world practice
         unit_of_measure: recipe.batch_unit,
         reorder_point: reorderPoint,
+        maximum_stock: maxStock,
         updated_at: db.fn.now(),
       });
 
-      // Log the stock update
+      // Log the configuration update (not a stock addition)
       await this.logStockUpdate(
         inventoryId,
         0,
-        initialStock,
+        0, // No stock change
         userId,
-        `Initial stock set from recipe batch size: ${initialStock} ${recipe.batch_unit}`
+        `Production inventory configured - Reorder point: ${reorderPoint}, Max stock: ${maxStock}. Stock remains at 0 until actual production.`
       );
 
       return await this.getById(inventoryId);

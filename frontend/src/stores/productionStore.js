@@ -1899,7 +1899,9 @@ export const useProductionStore = defineStore('production', () => {
     }
   };
 
-  const updateInitialStockFromRecipe = async (inventoryId) => {
+  // Configure production inventory settings (reorder points, max stock) without adding actual stock
+  // Stock should only be added through actual production workflow
+  const configureProductionInventory = async (inventoryId) => {
     try {
       loading.value = true;
       const response = await axios.post(
@@ -1910,12 +1912,15 @@ export const useProductionStore = defineStore('production', () => {
         return response.data;
       }
     } catch (error) {
-      console.error('Error updating initial stock from recipe:', error);
+      console.error('Error configuring production inventory:', error);
       throw error;
     } finally {
       loading.value = false;
     }
   };
+
+  // Legacy function name for backward compatibility
+  const updateInitialStockFromRecipe = configureProductionInventory;
 
   // Refresh production inventory data (useful after menu item updates)
   const refreshProductionInventory = async () => {
@@ -2219,7 +2224,8 @@ export const useProductionStore = defineStore('production', () => {
     fetchDistributionHistory,
     fetchAllDistributions,
     checkDistributionAvailability,
-    updateInitialStockFromRecipe,
+    configureProductionInventory,
+    updateInitialStockFromRecipe, // Legacy alias
     refreshProductionInventory,
     forceRefreshProductionInventory,
     fetchRecentActivity,

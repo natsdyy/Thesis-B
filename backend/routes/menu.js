@@ -1371,6 +1371,87 @@ router.get("/production-inventory", authenticateToken, async (req, res) => {
 
 /**
  * @swagger
+ * /api/menu/production-inventory:
+ *   post:
+ *     summary: Create production inventory entry for approved menu item
+ *     tags: [Production Inventory]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - menu_item_id
+ *             properties:
+ *               menu_item_id:
+ *                 type: integer
+ *                 description: ID of the menu item to create production inventory for
+ *               reorder_point:
+ *                 type: integer
+ *                 description: Minimum stock level before reordering
+ *                 default: 20
+ *               maximum_stock:
+ *                 type: integer
+ *                 description: Maximum stock level
+ *                 default: 0
+ *     responses:
+ *       201:
+ *         description: Production inventory created successfully
+ *       400:
+ *         description: Invalid input data
+ *       409:
+ *         description: Production inventory already exists for this menu item
+ *       500:
+ *         description: Server error
+ */
+router.post("/production-inventory", authenticateToken, async (req, res) => {
+  try {
+    const { menu_item_id, reorder_point, maximum_stock } = req.body;
+
+    // Validation
+    if (!menu_item_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Menu item ID is required",
+      });
+    }
+
+    const additionalData = {
+      reorder_point: reorder_point || 20,
+      maximum_stock: maximum_stock || 0,
+    };
+
+    const productionInventory = await ProductionInventory.create(
+      menu_item_id,
+      req.user.id,
+      additionalData
+    );
+
+    res.status(201).json({
+      success: true,
+      data: productionInventory,
+      message: "Production inventory created successfully with 0 initial stock",
+    });
+  } catch (error) {
+    console.error("Error creating production inventory:", error);
+
+    if (error.message.includes("already exists")) {
+      return res.status(409).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to create production inventory",
+    });
+  }
+});
+
+/**
+ * @swagger
  * /api/menu/production-inventory/stats:
  *   get:
  *     summary: Get production inventory statistics

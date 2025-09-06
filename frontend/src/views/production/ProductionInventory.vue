@@ -99,6 +99,63 @@
     () => productionStore.productionInventoryStats
   );
 
+  // Calculate real-time statistics from current inventory data
+  const realTimeStats = computed(() => {
+    const items = productionInventory.value || [];
+
+    const totalItems = items.length;
+    const totalQuantity = items.reduce(
+      (sum, item) => sum + (item.available_quantity || 0),
+      0
+    );
+    const lowStockItems = items.filter(
+      (item) => (item.available_quantity || 0) <= (item.reorder_point || 0)
+    ).length;
+
+    // Calculate average margin only for items with actual production (non-zero cost)
+    const itemsWithProduction = items.filter(
+      (item) => item.unit_cost && item.unit_cost > 0
+    );
+    const averageMargin =
+      itemsWithProduction.length > 0
+        ? itemsWithProduction.reduce((sum, item) => {
+            const margin =
+              ((item.selling_price - item.unit_cost) / item.unit_cost) * 100;
+            return sum + margin;
+          }, 0) / itemsWithProduction.length
+        : 0;
+
+    const totalDistributed = items.reduce(
+      (sum, item) => sum + (item.total_distributed || 0),
+      0
+    );
+
+    return {
+      // Real-time calculated statistics (always accurate)
+      total_items: totalItems,
+      total_quantity: totalQuantity,
+      low_stock_items: lowStockItems,
+      average_margin: averageMargin,
+      total_distributed_all_time: totalDistributed,
+
+      // Keep only non-conflicting stats from backend
+      total_distributions:
+        productionStore.productionInventoryStats?.total_distributions || 0,
+      branches_served:
+        productionStore.productionInventoryStats?.branches_served || 0,
+      items_distributed:
+        productionStore.productionInventoryStats?.items_distributed || 0,
+      recent_distributions:
+        productionStore.productionInventoryStats?.recent_distributions || 0,
+      recent_quantity_distributed:
+        productionStore.productionInventoryStats?.recent_quantity_distributed ||
+        0,
+      total_quantity_distributed:
+        productionStore.productionInventoryStats?.total_quantity_distributed ||
+        0,
+    };
+  });
+
   // Computed properties
   const distributionTotal = computed(() => {
     return (
@@ -497,7 +554,7 @@
   };
 
   const calculateProfitMargin = (sellingPrice, costPrice) => {
-    if (!costPrice || costPrice === 0) return 0;
+    if (!costPrice || costPrice === 0) return null; // Return null for no production yet
     return Math.round(((sellingPrice - costPrice) / costPrice) * 100);
   };
 
@@ -765,12 +822,15 @@
     }
   };
 
-  const updateInitialStock = async (item) => {
+  const configureInventory = async (item) => {
     try {
       await productionStore.updateInitialStockFromRecipe(item.id);
-      showToast('success', `Initial stock set from recipe batch size`);
+      showToast(
+        'success',
+        `Production inventory configured - Stock remains at 0 until actual production`
+      );
     } catch (error) {
-      showToast('error', error.message || 'Failed to update initial stock');
+      showToast('error', error.message || 'Failed to configure inventory');
     }
   };
 
@@ -830,7 +890,7 @@
         <div
           class="stat-value text-primaryColor text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
-          {{ productionInventoryStats.total_items || 0 }}
+          {{ realTimeStats.total_items || 0 }}
         </div>
         <div class="stat-desc text-black/50 !text-xs sm:text-sm">
           Menu items in inventory
@@ -849,7 +909,7 @@
         <div
           class="stat-value text-success text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
-          {{ productionInventoryStats.total_quantity || 0 }}
+          {{ realTimeStats.total_quantity || 0 }}
         </div>
         <div class="stat-desc text-black/50 !text-xs sm:text-sm">
           Units available
@@ -870,7 +930,7 @@
         <div
           class="stat-value text-warning text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
-          {{ productionInventoryStats.low_stock_items || 0 }}
+          {{ realTimeStats.low_stock_items || 0 }}
         </div>
         <div class="stat-desc text-black/50 !text-xs sm:text-sm">
           Items below reorder point
@@ -881,15 +941,15 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <TrendingUp class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-info" />
+          <TrendingUp class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-black/50" />
         </div>
         <div class="stat-title text-black/50 !text-xs sm:text-sm">
           Avg. Margin
         </div>
         <div
-          class="stat-value text-info text-lg sm:text-xl lg:text-2xl xl:text-3xl"
+          class="stat-value text-black/50 text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
-          {{ Number(productionInventoryStats.average_margin || 0).toFixed(0) }}%
+          {{ Number(realTimeStats.average_margin || 0).toFixed(0) }}%
         </div>
         <div class="stat-desc text-black/50 !text-xs sm:text-sm">
           Profit margin
@@ -908,7 +968,7 @@
         <div
           class="stat-value text-warning text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
-          {{ productionInventoryStats.total_distributed_all_time || 0 }}
+          {{ realTimeStats.total_distributed_all_time || 0 }}
         </div>
         <div class="stat-desc text-black/50 !text-xs sm:text-sm">
           Units distributed to branches
@@ -1099,20 +1159,27 @@
                     </div>
                     <div
                       :class="
-                        getProfitMarginColor(
-                          calculateProfitMargin(
-                            item.selling_price,
-                            item.unit_cost
-                          )
-                        )
+                        calculateProfitMargin(
+                          item.selling_price,
+                          item.unit_cost
+                        ) === null
+                          ? 'text-gray-500 font-medium'
+                          : getProfitMarginColor(
+                              calculateProfitMargin(
+                                item.selling_price,
+                                item.unit_cost
+                              )
+                            )
                       "
                     >
                       {{
                         calculateProfitMargin(
                           item.selling_price,
                           item.unit_cost
-                        )
-                      }}% margin
+                        ) === null
+                          ? 'No Production Yet'
+                          : `${calculateProfitMargin(item.selling_price, item.unit_cost)}% margin`
+                      }}
                     </div>
                   </div>
                   <div class="text-right text-sm text-gray-600">
@@ -1134,15 +1201,19 @@
                     <span
                       class="font-medium"
                       :class="
-                        getProductionCapacity(item).can_produce
+                        item.available_quantity > 0
                           ? 'text-success'
-                          : 'text-error'
+                          : getProductionCapacity(item).can_produce
+                            ? 'text-warning'
+                            : 'text-error'
                       "
                     >
                       {{
-                        getProductionCapacity(item).can_produce
-                          ? 'Ready'
-                          : 'Limited'
+                        item.available_quantity > 0
+                          ? 'In Stock'
+                          : getProductionCapacity(item).can_produce
+                            ? 'Ready to Produce'
+                            : 'Limited'
                       }}
                     </span>
                   </div>
@@ -1162,7 +1233,7 @@
                   </button>
                   <button
                     v-if="item.available_quantity === 0"
-                    @click.stop="updateInitialStock(item)"
+                    @click.stop="configureInventory(item)"
                     class="btn btn-ghost btn-xs text-warning hover:bg-warning/10 flex-1"
                     :disabled="loading"
                   >
@@ -1170,7 +1241,7 @@
                       class="w-4 h-4 mr-1"
                       :class="{ 'animate-spin': loading }"
                     />
-                    Set Initial Stock
+                    Configure Inventory
                   </button>
                   <button
                     v-else
@@ -2526,20 +2597,27 @@
               <div
                 class="text-sm font-semibold"
                 :class="
-                  getProfitMarginColor(
-                    calculateProfitMargin(
-                      selectedItem?.selling_price,
-                      selectedItem?.unit_cost
-                    )
-                  )
+                  calculateProfitMargin(
+                    selectedItem?.selling_price,
+                    selectedItem?.unit_cost
+                  ) === null
+                    ? 'text-gray-500'
+                    : getProfitMarginColor(
+                        calculateProfitMargin(
+                          selectedItem?.selling_price,
+                          selectedItem?.unit_cost
+                        )
+                      )
                 "
               >
                 {{
                   calculateProfitMargin(
                     selectedItem?.selling_price,
                     selectedItem?.unit_cost
-                  )
-                }}%
+                  ) === null
+                    ? 'No Production Yet'
+                    : `${calculateProfitMargin(selectedItem?.selling_price, selectedItem?.unit_cost)}%`
+                }}
               </div>
             </div>
 
@@ -2619,15 +2697,19 @@
                   <span
                     class="badge badge-sm"
                     :class="
-                      getProductionCapacity(selectedItem).can_produce
+                      selectedItem?.available_quantity > 0
                         ? 'badge-success'
-                        : 'badge-error'
+                        : getProductionCapacity(selectedItem).can_produce
+                          ? 'badge-warning'
+                          : 'badge-error'
                     "
                   >
                     {{
-                      getProductionCapacity(selectedItem).can_produce
-                        ? 'Ready for Production'
-                        : 'Capacity Limited'
+                      selectedItem?.available_quantity > 0
+                        ? 'In Stock'
+                        : getProductionCapacity(selectedItem).can_produce
+                          ? 'Ready to Produce'
+                          : 'Capacity Limited'
                     }}
                   </span>
                 </div>

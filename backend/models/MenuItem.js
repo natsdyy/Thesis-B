@@ -373,10 +373,6 @@ class MenuItem {
       const batchSize = Number(recipe.batch_size || 1);
       const costPrice = batchSize > 0 ? costPerBatch / batchSize : 0;
 
-      // Debug the actual insert data
-      console.log("=== FINAL CHECK BEFORE INSERT ===");
-      console.log("menuId variable:", menuId, "Type:", typeof menuId);
-      console.log("recipeId variable:", recipeId, "Type:", typeof recipeId);
 
       const insertData = {
         menu_item_name: menuItemData.menu_item_name || menuItemData.item_name,
@@ -410,8 +406,6 @@ class MenuItem {
         updated_at: trx.fn.now(),
       };
 
-      console.log("Insert data object:", Object.keys(insertData));
-      console.log("Insert data values:", Object.values(insertData));
 
       // FINAL SAFETY CHECK: Ensure all numeric fields are valid
       if (!Number.isFinite(insertData.menu_id) || insertData.menu_id <= 0) {
@@ -434,10 +428,8 @@ class MenuItem {
           "menu_items",
           "item_code"
         );
-        console.log("item_code column exists:", hasItemCodeColumn);
         if (hasItemCodeColumn) {
           finalInsertData.item_code = itemCode;
-          console.log("Including item_code in insert:", itemCode);
         } else {
           console.log("item_code column does not exist, excluding from insert");
         }
@@ -463,7 +455,6 @@ class MenuItem {
         menuItemId = insertResult;
       } else if (insertResult && insertResult.rowCount === 1) {
         // PostgreSQL Result object - insert was successful, get the ID from the database
-        console.log("PostgreSQL Result object detected, fetching inserted ID");
         const insertedItem = await trx("menu_items")
           .where("item_code", itemCode)
           .where("menu_id", menuId)
@@ -472,7 +463,6 @@ class MenuItem {
 
         if (insertedItem && insertedItem.id) {
           menuItemId = insertedItem.id;
-          console.log("Retrieved inserted menu item ID:", menuItemId);
         } else {
           throw new Error(
             "Failed to retrieve inserted menu item ID from database"
@@ -483,8 +473,6 @@ class MenuItem {
         throw new Error("Failed to get menu item ID from insert result");
       }
 
-      console.log("Menu item insert result:", insertResult);
-      console.log("Extracted menuItemId:", menuItemId);
 
       // Commit the transaction first
       await trx.commit();
@@ -542,7 +530,6 @@ class MenuItem {
         throw new Error("Menu item not found");
       }
 
-      console.log("Current item before update:", currentItem);
 
       // Filter and map updateData to valid database columns
       const filteredData = {};
@@ -584,7 +571,6 @@ class MenuItem {
       if (updateData.image_url !== undefined)
         filteredData.image_url = updateData.image_url;
 
-      console.log("Filtered data to update:", filteredData);
 
       await db("menu_items")
         .where("id", id)
@@ -600,7 +586,6 @@ class MenuItem {
         .whereNull("deleted_at")
         .first();
 
-      console.log("Backend returning updated item:", updatedItem);
 
       // Sync with production inventory if any relevant fields were updated
       const fieldsToSync = [
@@ -679,36 +664,26 @@ class MenuItem {
         updated_at: db.fn.now(),
       });
 
-      // Add to production inventory
+      // Create production inventory entry with 0 initial stock (proper real-world practice)
       const menuItem = await this.getById(id);
       if (menuItem) {
-        // Get recipe batch size for initial stock
+        // Import ProductionInventory model
+        const ProductionInventory = require("./ProductionInventory");
+
+        // Get recipe batch size for reorder point calculation
         const recipe = await db("recipes")
           .select("batch_size", "batch_unit")
           .where("id", menuItem.recipe_id)
           .first();
 
-        const initialStock = recipe ? recipe.batch_size : 0;
-        const unitOfMeasure = recipe
-          ? recipe.batch_unit
-          : menuItem.serving_unit;
+        const batchSize = recipe ? recipe.batch_size : 100; // Default batch size
+        const reorderPoint = Math.ceil(batchSize * 0.2); // Set reorder point to 20% of batch size
 
-        await db("production_inventory")
-          .insert({
-            menu_item_id: id,
-            recipe_id: menuItem.recipe_id,
-            unit_of_measure: unitOfMeasure,
-            unit_cost: menuItem.cost_price,
-            selling_price: menuItem.selling_price,
-            profit_margin_percent: menuItem.profit_margin,
-            available_quantity: initialStock, // Start with recipe batch size
-            reorder_point: Math.ceil(initialStock * 0.2), // Set reorder point to 20% of batch size
-            created_by: userId,
-            created_at: db.fn.now(),
-            updated_at: db.fn.now(),
-          })
-          .onConflict("menu_item_id")
-          .merge(); // Update if exists
+        // Create production inventory with 0 initial stock
+        await ProductionInventory.create(id, userId, {
+          reorder_point: reorderPoint,
+          maximum_stock: batchSize * 2, // Set max stock to 2x batch size
+        });
 
         // Log the approval action
         await AuditLogger.log({
@@ -716,28 +691,15 @@ class MenuItem {
           user_id: userId,
           action_type: "APPROVED_FOR_PRODUCTION",
           action_details: {
-            menu_item_name: menuItem.menu_name,
+            menu_item_name: menuItem.menu_item_name,
             selling_price: menuItem.selling_price,
             cost_price: menuItem.cost_price,
             profit_margin: menuItem.profit_margin,
+            initial_stock: 0, // Now starts with 0 stock
+            reorder_point: reorderPoint,
+            maximum_stock: batchSize * 2,
           },
-          notes: `Menu item "${menuItem.menu_item_name}" approved for production and added to inventory`,
-        });
-
-        // Log inventory addition
-        await AuditLogger.log({
-          menu_item_id: id,
-          user_id: userId,
-          action_type: "ADDED_TO_INVENTORY",
-          action_details: {
-            unit_of_measure: unitOfMeasure,
-            unit_cost: menuItem.cost_price,
-            selling_price: menuItem.selling_price,
-            profit_margin_percent: menuItem.profit_margin,
-            initial_stock: initialStock,
-            reorder_point: Math.ceil(initialStock * 0.2),
-          },
-          notes: `Menu item "${menuItem.menu_item_name}" added to production inventory with initial stock of ${initialStock} ${unitOfMeasure}`,
+          notes: `Menu item "${menuItem.menu_item_name}" approved for production - Production inventory created with 0 initial stock`,
         });
       }
 

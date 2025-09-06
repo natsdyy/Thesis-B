@@ -1802,8 +1802,17 @@
                 type="button"
                 @click="createMenuForCategory"
                 class="btn bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80 btn-sm"
+                :disabled="loading"
               >
-                Create Menu for {{ menuItemForm.category }}
+                <span
+                  v-if="loading"
+                  class="loading loading-spinner loading-xs mr-1"
+                ></span>
+                {{
+                  loading
+                    ? 'Creating...'
+                    : `Create Menu for ${menuItemForm.category}`
+                }}
               </button>
             </div>
 
@@ -2101,8 +2110,13 @@
           <button
             @click="handleConfirmAction"
             class="btn bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80 btn-sm"
+            :disabled="loading"
           >
-            Confirm
+            <span
+              v-if="loading"
+              class="loading loading-spinner loading-xs mr-1"
+            ></span>
+            {{ loading ? 'Processing...' : 'Confirm' }}
           </button>
         </div>
       </div>
@@ -2200,12 +2214,21 @@
           <button
             @click="handleApproval"
             class="btn bg-primaryColor text-white border-none hover:bg-primaryColor/80 btn-sm shadow-none font-thin"
+            :disabled="loading"
           >
-            <CheckCircle class="w-4 h-4 mr-1" />
+            <CheckCircle v-if="!loading" class="w-4 h-4 mr-1" />
+            <span
+              v-if="loading"
+              class="loading loading-spinner loading-xs mr-1"
+            ></span>
             {{
-              approveModal.requireQualityCheck
-                ? 'Go to Quality Check'
-                : 'Approve for Production'
+              loading
+                ? approveModal.requireQualityCheck
+                  ? 'Redirecting...'
+                  : 'Approving...'
+                : approveModal.requireQualityCheck
+                  ? 'Go to Quality Check'
+                  : 'Approve for Production'
             }}
           </button>
         </div>
@@ -2375,9 +2398,14 @@
                 <button
                   @click="createQualityInspection(selectedMenuItem)"
                   class="btn btn-sm bg-primaryColor text-white font-thin hover:bg-primaryColor/80 hover:border-none hover:shadow-none"
+                  :disabled="loading"
                 >
-                  <Shield class="w-4 h-4 mr-1" />
-                  New Inspection
+                  <Shield v-if="!loading" class="w-4 h-4 mr-1" />
+                  <span
+                    v-if="loading"
+                    class="loading loading-spinner loading-xs mr-1"
+                  ></span>
+                  {{ loading ? 'Creating...' : 'New Inspection' }}
                 </button>
                 <button
                   @click="$router.push('/production/quality-inspection')"
@@ -2401,9 +2429,14 @@
             v-if="!selectedMenuItem.is_available"
             @click="approveMenuItem(selectedMenuItem.id)"
             class="btn btn-sm font-thin border-none bg-primaryColor hover:bg-primaryColor/80 text-white"
+            :disabled="loading"
           >
-            <CheckCircle class="w-4 h-4 mr-2" />
-            Approve for Production
+            <CheckCircle v-if="!loading" class="w-4 h-4 mr-2" />
+            <span
+              v-if="loading"
+              class="loading loading-spinner loading-xs mr-2"
+            ></span>
+            {{ loading ? 'Approving...' : 'Approve for Production' }}
           </button>
         </div>
       </div>

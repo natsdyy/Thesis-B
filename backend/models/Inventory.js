@@ -1001,11 +1001,8 @@ class Inventory {
       // Get recipe ingredients
       const ingredients = await db("recipe_ingredients as ri")
         .select("ri.*", "iit.name as ingredient_name", "iit.unit_of_measure")
-        .join(
-          "inventory_item_types as iit",
-          "ri.inventory_item_type_id",
-          "iit.id"
-        )
+        .leftJoin("inventory_items as ii", "ri.inventory_item_id", "ii.id")
+        .leftJoin("inventory_item_types as iit", "ii.item_type_id", "iit.id")
         .where("ri.recipe_id", recipeId);
 
       const recipe = await db("recipes").where("id", recipeId).first();
@@ -1022,9 +1019,8 @@ class Inventory {
 
           // Get current available inventory for this ingredient
           const currentStock = await db("inventory_items as ii")
-            .join("inventory_item_types as iit", "ii.item_type_id", "iit.id")
             .select(db.raw("SUM(ii.quantity) as total_available"))
-            .where("iit.id", ingredient.inventory_item_type_id)
+            .where("ii.id", ingredient.inventory_item_id)
             .where("ii.quantity", ">", 0)
             .where("ii.status", "available")
             .first();
@@ -1085,9 +1081,8 @@ class Inventory {
       for (const ingredient of availability.ingredient_availability) {
         // Get inventory items for this ingredient (FIFO - First In, First Out)
         const inventoryItems = await trx("inventory_items as ii")
-          .join("inventory_item_types as iit", "ii.item_type_id", "iit.id")
           .select("ii.*")
-          .where("iit.id", ingredient.inventory_item_type_id)
+          .where("ii.id", ingredient.inventory_item_id)
           .where("ii.quantity", ">", 0)
           .where("ii.status", "available")
           .orderBy("ii.received_date", "asc"); // FIFO
@@ -1338,9 +1333,10 @@ class Inventory {
       const itemsWithRecipeUsage = await Promise.all(
         lowStockItems.map(async (item) => {
           const recipeUsage = await db("recipe_ingredients as ri")
+            .join("inventory_items as ii", "ri.inventory_item_id", "ii.id")
             .join("recipes as r", "ri.recipe_id", "r.id")
             .select("r.recipe_name", "ri.quantity_required")
-            .where("ri.inventory_item_type_id", item.item_type_id)
+            .where("ii.item_type_id", item.item_type_id)
             .where("r.is_active", true);
 
           return {
@@ -1496,8 +1492,9 @@ class Inventory {
           "ri.quantity_required",
           "ri.unit"
         )
+        .join("inventory_items as ii", "ri.inventory_item_id", "ii.id")
         .join("recipes as r", "ri.recipe_id", "r.id")
-        .where("ri.inventory_item_type_id", itemTypeId)
+        .where("ii.item_type_id", itemTypeId)
         .where("r.is_active", true);
 
       // Find active production orders using these recipes

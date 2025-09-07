@@ -2334,7 +2334,7 @@
           </div>
 
           <!-- Status Quick Filters -->
-          <div class="flex flex-wrap gap-2 mb-4">
+          <div class="flex flex-wrap gap-2 mb-4 sm:flex-row w-full flex-col">
             <button
               v-for="status in historyStatusOptions"
               :key="status"

@@ -25,23 +25,58 @@ const inventoryRoutes = require("./routes/inventory");
 const grnRoutes = require("./routes/grn");
 const feedbackRoutes = require("./routes/feedback");
 const productionRoutes = require("./routes/production");
+const menuRoutes = require("./routes/menu");
+const menuAnalyticsRoutes = require("./routes/menuAnalytics");
+const attendanceRoutes = require("./routes/attendance");
 const { serve, setup } = require("./config/swagger");
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.BACKEND_PORT || 5000;
 
 // Middleware
-app.use(
-  cors({
-    origin: process.env.CORS_ORIGIN || [
-      "http://localhost:5000",
-      "http://localhost:80",
-      "http://localhost:5173",
-    ],
-    credentials: true,
-  })
-);
+// Enhanced CORS to allow localhost, LAN dev origins, and Railway deployment
+const rawCorsOrigin = process.env.CORS_ORIGIN || "";
+const envOrigins = rawCorsOrigin
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+const defaultAllowedOrigins = [
+  "http://localhost:5000", // Localhost backend
+  "http://localhost:80", //docker
+  "http://localhost:8080", // Localhost frontend
+  "http://192.168.18.5:8080", // Network frontend
+  "http://192.168.56.1:5000", // Network backend
+  "http://localhost:8080", // Localhost frontend
+  "https://countrysides.up.railway.app", // Railway deployment
+  "https://*.up.railway.app", // Railway wildcard
+];
+
+const allowList = [...defaultAllowedOrigins, ...envOrigins];
+
+const corsConfig = {
+  origin: (origin, callback) => {
+    // Allow non-browser requests or same-origin (no Origin header)
+    if (!origin) return callback(null, true);
+
+    const isLanDevOrigin = /^http:\/\/192\.168\.\d+\.\d+:(8080|80)$/.test(
+      origin
+    );
+
+    if (allowList.includes(origin) || isLanDevOrigin) {
+      return callback(null, true);
+    }
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsConfig));
 app.use(express.json());
+app.use("/uploads", express.static(require("path").join(__dirname, "uploads")));
 
 // API Routes
 app.use("/api/users", userRoutes);
@@ -60,6 +95,9 @@ app.use("/api/inventory", inventoryRoutes);
 app.use("/api/grn", grnRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/production", productionRoutes);
+app.use("/api/menu", menuRoutes);
+app.use("/api/menu/analytics", menuAnalyticsRoutes);
+app.use("/api/attendance", attendanceRoutes);
 
 // Auto-expire job
 async function autoExpireJob() {

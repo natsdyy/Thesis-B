@@ -19,7 +19,7 @@
         isScrolled ? 'bg-green-800' : 'bg-transparent',
       ]"
     >
-      <div class="container mx-auto px-20 py-4">
+      <div class="container mx-auto px-4 py-4">
         <div class="flex items-center justify-between">
           <!-- Logo and Brand -->
           <div
@@ -100,7 +100,7 @@
     <!-- Hero Section -->
     <section
       id="home"
-      class="relative min-h-screen flex items-center pt-20 hero-section overflow-hidden px-20"
+      class="relative min-h-screen flex items-center pt-20 hero-section overflow-hidden lg:px-20 px-4"
     >
       <!-- Auto-scrolling Hero Carousel -->
       <div class="absolute inset-0 w-full h-full">

@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --port 8080 --host 0.0.0.0",
     "dev:network": "vite --host",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview --port 8080 --host 0.0.0.0"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.0.0",
@@ -17,25 +17,28 @@
     "@fortawesome/vue-fontawesome": "^3.1.1",
     "axios": "^1.11.0",
     "chart.js": "^4.5.0",
-    "esbuild": "^0.25.9",
+    "esbuild": "0.24.0",
     "lucide-vue-next": "^0.539.0",
     "pikaday": "^1.8.2",
     "pinia": "^3.0.3",
+    "qrcode": "^1.5.3",
+    "qr-scanner": "^1.4.2",
     "vue": "^3.5.17",
     "vue-chartjs": "^5.3.2",
     "vue-router": "^4.5.1"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^5.2.1",
     "@tailwindcss/postcss": "^4.1.11",
+    "@vitejs/plugin-vue": "^5.2.1",
     "autoprefixer": "^10.4.21",
     "daisyui": "^5.0.50",
     "postcss": "^8.5.6",
     "prettier": "^3.6.2",
     "tailwindcss": "^4.1.11",
-    "vite": "^6.0.3"
+    "vite": "^5.4.10"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": "18.20.5",
+    "npm": ">=8.0.0"
   }
 }

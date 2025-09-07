@@ -1,5 +1,35 @@
 const Roles = require("../models/Roles");
 const RolePermission = require("../models/RolePermission");
+const jwt = require("jsonwebtoken");
+
+// Middleware to authenticate JWT token
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
+
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      message: "Access token required",
+      code: "TOKEN_REQUIRED",
+    });
+  }
+
+  try {
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET || "your-secret-key"
+    );
+    req.user = decoded;
+    next();
+  } catch (error) {
+    return res.status(403).json({
+      success: false,
+      message: "Invalid or expired token",
+      code: "INVALID_TOKEN",
+    });
+  }
+}
 
 // Middleware to check if user has required permission
 function requirePermission(permissionName) {
@@ -121,6 +151,7 @@ async function getUserPermissions(roleId) {
 }
 
 module.exports = {
+  authenticateToken,
   requirePermission,
   requireAnyPermission,
   getUserPermissions,

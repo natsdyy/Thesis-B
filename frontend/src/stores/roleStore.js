@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia';
 import axios from 'axios';
+import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = apiConfig.baseURL;
 
 export const useRoleStore = defineStore('role', {
   state: () => ({
@@ -45,8 +46,7 @@ export const useRoleStore = defineStore('role', {
           this.deletedRoles = deletedResponse.data.data;
         }
       } catch (error) {
-        this.error =
-          error.response?.data?.message || 'Failed to fetch roles';
+        this.error = error.response?.data?.message || 'Failed to fetch roles';
         console.error('Error fetching roles:', error);
       } finally {
         this.loading = false;
@@ -247,7 +247,8 @@ export const useRoleStore = defineStore('role', {
         });
         return response.data.count;
       } catch (error) {
-        this.error = error.response?.data?.message || 'Failed to get role count';
+        this.error =
+          error.response?.data?.message || 'Failed to get role count';
         console.error('Error getting role count:', error);
         throw error;
       } finally {
@@ -385,7 +386,9 @@ export const useRoleStore = defineStore('role', {
       this.error = null;
       try {
         const promises = updates.map(({ roleId, permissionIds }) =>
-          this.updateRoleWithPermissions(roleId, { permission_ids: permissionIds })
+          this.updateRoleWithPermissions(roleId, {
+            permission_ids: permissionIds,
+          })
         );
         const results = await Promise.all(promises);
         return results;

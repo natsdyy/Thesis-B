@@ -1,7 +1,7 @@
 const { db } = require("../config/database");
 
 class Supplier {
-  // Get all suppliers
+  // Get all suppliers (optimized)
   static async getAll(includeDeleted = false) {
     try {
       let query = db("suppliers");
@@ -12,10 +12,72 @@ class Supplier {
 
       const suppliers = await query.orderBy("name");
 
-      // Get statistics for each supplier
-      for (let supplier of suppliers) {
-        supplier.stats = await this.getSupplierStats(supplier.id);
+      if (suppliers.length === 0) {
+        return suppliers;
       }
+
+      const supplierIds = suppliers.map((supplier) => supplier.id);
+
+      // Batch fetch all supplier statistics in optimized queries
+
+      // 1. Get total orders for all suppliers in one query
+      const totalOrdersData = await db("purchase_orders")
+        .whereIn("supplier_id", supplierIds)
+        .where("status", "Completed")
+        .select("supplier_id")
+        .count("* as count")
+        .groupBy("supplier_id");
+
+      // Group total orders by supplier ID
+      const totalOrdersBySupplier = {};
+      totalOrdersData.forEach((orderData) => {
+        totalOrdersBySupplier[orderData.supplier_id] = parseInt(
+          orderData.count
+        );
+      });
+
+      // 2. Get average ratings for all suppliers in one query (if table exists)
+      const ratingsTableExists = await db.schema.hasTable("supplier_ratings");
+      const avgRatingsBySupplier = {};
+
+      if (ratingsTableExists) {
+        const avgRatingsData = await db("supplier_ratings")
+          .whereIn("supplier_id", supplierIds)
+          .select("supplier_id")
+          .avg("rating as avg_rating")
+          .groupBy("supplier_id");
+
+        avgRatingsData.forEach((ratingData) => {
+          avgRatingsBySupplier[ratingData.supplier_id] = ratingData.avg_rating
+            ? parseFloat(ratingData.avg_rating).toFixed(1)
+            : 0;
+        });
+      }
+
+      // 3. Get last order dates for all suppliers in one query
+      const lastOrderData = await db("purchase_orders")
+        .whereIn("supplier_id", supplierIds)
+        .where("status", "Completed")
+        .select("supplier_id", "order_date")
+        .orderBy("supplier_id")
+        .orderBy("order_date", "desc");
+
+      // Group last orders by supplier ID (get the most recent for each)
+      const lastOrdersBySupplier = {};
+      lastOrderData.forEach((orderData) => {
+        if (!lastOrdersBySupplier[orderData.supplier_id]) {
+          lastOrdersBySupplier[orderData.supplier_id] = orderData.order_date;
+        }
+      });
+
+      // Combine all statistics for each supplier
+      suppliers.forEach((supplier) => {
+        supplier.stats = {
+          total_orders: totalOrdersBySupplier[supplier.id] || 0,
+          avg_rating: avgRatingsBySupplier[supplier.id] || 0,
+          last_order_date: lastOrdersBySupplier[supplier.id] || null,
+        };
+      });
 
       return suppliers;
     } catch (error) {

@@ -11,7 +11,7 @@
     </div>
 
     <!-- Stats -->
-    <div class="stats shadow w-full mb-6">
+    <div class="stats shadow w-full mb-6 lg:stats-horizontal stats-vertical">
       <div class="stat">
         <div class="stat-figure text-primaryColor">
           <ReceiptText class="w-8 h-8" />
@@ -127,7 +127,9 @@
           </div>
         </div>
 
-        <div class="flex justify-between items-center mb-4">
+        <div
+          class="flex justify-between items-center mb-4 sm:flex-row flex-col"
+        >
           <h2 class="card-title text-primaryColor">Goods Receipt Notes</h2>
           <div
             class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center"
@@ -1361,8 +1363,9 @@
         item.id,
         itemTypeSelections.value[item.id]
       );
-      // Refresh selectedGRN from store
-      const fresh = await fetchGRNById(selectedGRN.value.id);
+      // Clear cache and refresh selectedGRN from store
+      grnStore.clearGRNCache(selectedGRN.value.id);
+      const fresh = await fetchGRNById(selectedGRN.value.id, false);
       selectedGRN.value = fresh;
       showToast('success', 'Item type mapped');
     } catch (e) {
@@ -1382,7 +1385,7 @@
       // Load inventory data only when needed
       await ensureInventoryDataLoaded();
 
-      selectedGRN.value = await fetchGRNById(id);
+      selectedGRN.value = await fetchGRNById(id, false);
 
       // Check if there are unmapped items and automatically update inventory data
       const hasUnmapped = selectedGRN.value.items?.some(
@@ -1414,8 +1417,9 @@
             );
 
             if (grnResponse.ok) {
-              // Refresh the GRN details with updated data
-              selectedGRN.value = await fetchGRNById(id);
+              // Clear cache and refresh the GRN details with updated data
+              grnStore.clearGRNCache(id);
+              selectedGRN.value = await fetchGRNById(id, false);
               showToast(
                 'success',
                 'Inventory data auto-mapped from supply request'
@@ -1484,14 +1488,23 @@
   const updateStatus = async (id, status) => {
     try {
       updatingStatus.value = id;
+      console.log('=== UPDATE STATUS DEBUG ===');
+      console.log('Updating GRN ID:', id, 'to status:', status);
 
       // Update the status - this now returns updated stats
       const updatedGRN = await updateGRNStatus(id, status, authStore.user.id);
+      console.log('Updated GRN from store:', updatedGRN);
 
       // Update the selected GRN if it's the same one
       if (selectedGRN.value && selectedGRN.value.id === id) {
         selectedGRN.value = updatedGRN;
+        console.log('Updated selectedGRN:', selectedGRN.value);
       }
+
+      // Refresh the GRN list to show updated status
+      console.log('Refreshing GRN list...');
+      await fetchGRNsWithStats();
+      console.log('GRN list refreshed');
 
       // Refresh PO data if this GRN completion affects PO status
       if (status === 'completed' && selectedGRN.value?.purchase_order_id) {
@@ -1506,6 +1519,7 @@
         }
       }
 
+      console.log('=== END UPDATE STATUS DEBUG ===');
       // Show success toast
       showToast('success', `GRN status updated to ${getStatusLabel(status)}`);
     } catch (err) {
@@ -1638,6 +1652,9 @@
   const updateInventoryData = async () => {
     try {
       updatingInventoryData.value = true;
+      console.log('=== AUTO-MAP INVENTORY DATA DEBUG ===');
+      console.log('GRN ID:', selectedGRN.value.id);
+      console.log('Current GRN items:', selectedGRN.value.items);
 
       // Call the backend method to update GRN items with inventory data
       const response = await fetch(
@@ -1650,17 +1667,29 @@
         }
       );
 
+      console.log('Response status:', response.status);
+      const responseData = await response.json();
+      console.log('Response data:', responseData);
+
       if (!response.ok) {
-        throw new Error('Failed to update inventory data');
+        throw new Error(
+          responseData.message || 'Failed to update inventory data'
+        );
       }
 
-      // Refresh the GRN details
-      selectedGRN.value = await fetchGRNById(selectedGRN.value.id);
+      // Clear cache and refresh the GRN details
+      grnStore.clearGRNCache(selectedGRN.value.id);
+      selectedGRN.value = await fetchGRNById(selectedGRN.value.id, false);
+      console.log('Updated GRN items:', selectedGRN.value.items);
+      console.log('=== END AUTO-MAP DEBUG ===');
 
-      showToast('success', 'Inventory data updated successfully');
+      showToast(
+        'success',
+        `Inventory data updated successfully. ${responseData.updatedCount || 0} items mapped.`
+      );
     } catch (error) {
       console.error('Error updating inventory data:', error);
-      showToast('error', 'Failed to update inventory data');
+      showToast('error', error.message || 'Failed to update inventory data');
     } finally {
       updatingInventoryData.value = false;
     }

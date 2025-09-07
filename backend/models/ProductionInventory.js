@@ -965,7 +965,6 @@ class ProductionInventory {
 
       return await this.getById(inventoryId);
     } catch (error) {
-      console.error("Error updating initial stock from recipe:", error);
       throw new Error("Failed to update initial stock from recipe");
     }
   }
@@ -992,6 +991,375 @@ class ProductionInventory {
     } catch (error) {
       console.error("Error deactivating production inventory item:", error);
       throw new Error("Failed to deactivate production inventory item");
+    }
+  }
+
+  // ==================== PRODUCTION EXECUTION METHODS ====================
+
+  // Execute production batch
+  static async executeProduction(executionData) {
+    const trx = await db.transaction();
+
+    try {
+      const {
+        menu_item_id,
+        recipe_id,
+        batch_size,
+        production_date,
+        assigned_to,
+        notes = null,
+      } = executionData;
+
+      // Get recipe details and ingredient requirements
+      const Recipe = require("./Recipe");
+      const recipe = await Recipe.getById(recipe_id);
+      if (!recipe) {
+        throw new Error("Recipe not found");
+      }
+
+      // Check ingredient availability
+      const ingredientCheck = await Recipe.checkIngredientAvailability(
+        recipe_id,
+        batch_size
+      );
+      if (!ingredientCheck.all_ingredients_available) {
+        throw new Error("Insufficient ingredients for production");
+      }
+
+      // Generate batch number
+      const batchNumber = this.generateBatchNumber(menu_item_id);
+
+      // Create production batch record
+      const [batchId] = await trx("production_batches")
+        .insert({
+          batch_number: batchNumber,
+          menu_item_id: menu_item_id,
+          recipe_id: recipe_id,
+          batch_size: batch_size,
+          quantity_produced: 0,
+          status: "In Progress",
+          production_date: production_date,
+          assigned_to: assigned_to,
+          notes: notes,
+          start_time: new Date(),
+          created_at: new Date(),
+          updated_at: new Date(),
+        })
+        .returning("id");
+
+      // Consume ingredients from SCM inventory
+      const Inventory = require("./Inventory");
+      const ingredientConsumption = ingredientCheck.ingredient_availability.map(
+        (ingredient) => ({
+          inventory_item_id: ingredient.inventory_item_id,
+          quantity_consumed: ingredient.required_quantity,
+          performed_by: `User ${assigned_to}`,
+        })
+      );
+
+      await Inventory.consumeIngredientsForProduction(
+        batchId,
+        ingredientConsumption
+      );
+
+      // Update production inventory (initially still 0 until batch is completed)
+      await trx("production_inventory")
+        .where("menu_item_id", menu_item_id)
+        .update({
+          last_produced_date: production_date,
+          last_batch_size: batch_size,
+          updated_at: new Date(),
+        });
+
+      await trx.commit();
+
+      return {
+        batch_id: batchId,
+        batch_number: batchNumber,
+        status: "In Progress",
+        message: "Production batch started successfully",
+      };
+    } catch (error) {
+      await trx.rollback();
+      console.error("Error executing production:", error);
+      throw new Error(error.message || "Failed to execute production");
+    }
+  }
+
+  // Get active production batches
+  static async getActiveBatches(filters = {}) {
+    try {
+      let query = db("production_batches as pb")
+        .select(
+          "pb.*",
+          "mi.menu_item_name",
+          "mi.item_code",
+          "r.recipe_name",
+          "u.name as assigned_to_name"
+        )
+        .leftJoin("menu_items as mi", "pb.menu_item_id", "mi.id")
+        .leftJoin("recipes as r", "pb.recipe_id", "r.id")
+        .leftJoin("users as u", "pb.assigned_to", "u.id")
+        .whereIn("pb.status", ["In Progress", "Quality Check"])
+        .orderBy("pb.created_at", "desc");
+
+      // Apply filters
+      if (filters.status) {
+        query = query.where("pb.status", filters.status);
+      }
+      if (filters.assigned_to) {
+        query = query.where("pb.assigned_to", filters.assigned_to);
+      }
+
+      const batches = await query;
+
+      // Calculate progress for each batch
+      return batches.map((batch) => {
+        let progress = 0;
+        if (batch.status === "In Progress") progress = 50;
+        else if (batch.status === "Quality Check") progress = 80;
+        else if (batch.status === "Completed") progress = 100;
+
+        return {
+          ...batch,
+          progress: progress,
+        };
+      });
+    } catch (error) {
+      console.error("Error fetching active batches:", error);
+      throw new Error("Failed to fetch active production batches");
+    }
+  }
+
+  // Update batch status
+  static async updateBatchStatus(
+    batchId,
+    status,
+    notes = null,
+    quantityProduced = null
+  ) {
+    const trx = await db.transaction();
+
+    try {
+      const updateData = {
+        status: status,
+        updated_at: new Date(),
+      };
+
+      if (notes) updateData.notes = notes;
+      if (quantityProduced !== null)
+        updateData.quantity_produced = quantityProduced;
+
+      // If completing the batch, set end time and update production inventory
+      if (status === "Completed") {
+        updateData.end_time = new Date();
+
+        // Get batch details
+        const batch = await trx("production_batches")
+          .where("id", batchId)
+          .first();
+
+        if (!batch) {
+          throw new Error("Production batch not found");
+        }
+
+        const finalQuantity = quantityProduced || batch.batch_size;
+
+        // Update production inventory with completed quantity
+        await trx("production_inventory")
+          .where("menu_item_id", batch.menu_item_id)
+          .increment("available_quantity", finalQuantity)
+          .increment("total_produced", finalQuantity)
+          .update({
+            last_produced_date: new Date(),
+            last_batch_size: finalQuantity,
+            updated_at: new Date(),
+          });
+      }
+
+      // Update the batch
+      await trx("production_batches").where("id", batchId).update(updateData);
+
+      await trx.commit();
+
+      // Return updated batch
+      return await this.getBatchById(batchId);
+    } catch (error) {
+      await trx.rollback();
+      console.error("Error updating batch status:", error);
+      throw new Error("Failed to update batch status");
+    }
+  }
+
+  // Get batch by ID
+  static async getBatchById(batchId) {
+    try {
+      const batch = await db("production_batches as pb")
+        .select(
+          "pb.*",
+          "mi.menu_item_name",
+          "mi.item_code",
+          "r.recipe_name",
+          "u.name as assigned_to_name"
+        )
+        .leftJoin("menu_items as mi", "pb.menu_item_id", "mi.id")
+        .leftJoin("recipes as r", "pb.recipe_id", "r.id")
+        .leftJoin("users as u", "pb.assigned_to", "u.id")
+        .where("pb.id", batchId)
+        .first();
+
+      return batch;
+    } catch (error) {
+      console.error("Error fetching batch by ID:", error);
+      throw new Error("Failed to fetch batch details");
+    }
+  }
+
+  // Get ingredient requirements for production
+  static async getIngredientRequirements(menuItemId, customBatchSize = null) {
+    try {
+      // Convert menuItemId to integer to ensure proper type
+      const menuId = parseInt(menuItemId);
+      if (isNaN(menuId)) {
+        throw new Error("Invalid menu item ID");
+      }
+
+      // First try to get from production inventory
+      let productionItem = await db("production_inventory as pi")
+        .select("pi.*", "r.batch_size as recipe_batch_size")
+        .leftJoin("recipes as r", "pi.recipe_id", "r.id")
+        .where("pi.menu_item_id", menuId)
+        .first();
+
+      // If not in production inventory, get directly from menu item
+      if (!productionItem) {
+        const menuItem = await db("menu_items as mi")
+          .select(
+            "mi.*",
+            "r.batch_size as recipe_batch_size",
+            "r.id as recipe_id"
+          )
+          .leftJoin("recipes as r", "mi.recipe_id", "r.id")
+          .where("mi.id", menuId)
+          .where("mi.deleted_at", null) // Only get non-deleted items
+          .first();
+
+        if (!menuItem) {
+          // Let's check if the menu item exists at all
+          const menuExists = await db("menu_items").where("id", menuId).first();
+
+          if (!menuExists) {
+            throw new Error(`Menu item with ID ${menuId} does not exist`);
+          } else if (menuExists.deleted_at) {
+            throw new Error(`Menu item with ID ${menuId} has been deleted`);
+          } else {
+            throw new Error(
+              `Menu item with ID ${menuId} has no associated recipe`
+            );
+          }
+        }
+
+        if (!menuItem.recipe_id) {
+          throw new Error(
+            `Menu item "${menuItem.menu_item_name}" has no associated recipe`
+          );
+        }
+
+        productionItem = {
+          recipe_id: menuItem.recipe_id,
+          recipe_batch_size: menuItem.recipe_batch_size,
+        };
+      }
+
+      const batchSize =
+        customBatchSize || productionItem.recipe_batch_size || 1;
+
+      // Get recipe ingredient requirements
+      const Recipe = require("./Recipe");
+      const availability = await Recipe.checkIngredientAvailability(
+        productionItem.recipe_id,
+        batchSize
+      );
+
+      return availability.ingredient_availability;
+    } catch (error) {
+      console.error("Error fetching ingredient requirements:", error.message);
+      throw new Error(
+        `Failed to fetch ingredient requirements: ${error.message}`
+      );
+    }
+  }
+
+  // Generate batch number
+  static generateBatchNumber(menuItemId) {
+    const date = new Date();
+    const year = date.getFullYear().toString().substr(-2);
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hour = String(date.getHours()).padStart(2, "0");
+    const minute = String(date.getMinutes()).padStart(2, "0");
+
+    return `BATCH-${menuItemId}-${year}${month}${day}${hour}${minute}`;
+  }
+
+  // Create production inventory entry (called when quality inspection is approved)
+  static async createFromQualityApproval(menuItemId, recipeId, createdBy) {
+    const trx = await db.transaction();
+
+    try {
+      // Check if production inventory already exists
+      const existing = await trx("production_inventory")
+        .where("menu_item_id", menuItemId)
+        .first();
+
+      if (existing) {
+        return existing;
+      }
+
+      // Get menu item and recipe details
+      const menuItem = await trx("menu_items as mi")
+        .select("mi.*", "r.batch_unit", "r.cost_per_batch")
+        .leftJoin("recipes as r", "mi.recipe_id", "r.id")
+        .where("mi.id", menuItemId)
+        .first();
+
+      if (!menuItem) {
+        throw new Error("Menu item not found");
+      }
+
+      // Create production inventory entry
+      const [inventoryId] = await trx("production_inventory")
+        .insert({
+          menu_item_id: menuItemId,
+          recipe_id: recipeId,
+          available_quantity: 0, // Default quantity 0 - ready for production
+          unit_of_measure: menuItem.batch_unit || "servings",
+          unit_cost: 0, // Will be calculated after first production
+          selling_price: menuItem.selling_price || 0,
+          production_cost_per_unit: 0,
+          profit_margin_percent: 0,
+          is_active: true,
+          quality_status: "Approved",
+          total_produced: 0,
+          total_sold: 0,
+          reorder_point: 0,
+          maximum_stock: 0,
+          created_by: createdBy,
+          created_at: new Date(),
+          updated_at: new Date(),
+        })
+        .returning("id");
+
+      await trx.commit();
+
+      return await this.getById(inventoryId);
+    } catch (error) {
+      await trx.rollback();
+      console.error(
+        "Error creating production inventory from quality approval:",
+        error
+      );
+      throw new Error("Failed to create production inventory entry");
     }
   }
 }

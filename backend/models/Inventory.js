@@ -494,6 +494,23 @@ class Inventory {
           }
           break;
 
+        case "production_consumption":
+          // Production consumption behaves like regular consumption
+          newQuantity =
+            parseFloat(currentItem.quantity) -
+            parseFloat(transactionData.quantity);
+          if (newQuantity < 0) {
+            throw new Error("Insufficient stock available for production");
+          }
+          break;
+
+        case "production_output":
+          // Production output behaves like receipt (add to quantity)
+          newQuantity =
+            parseFloat(currentItem.quantity) +
+            parseFloat(transactionData.quantity);
+          break;
+
         default:
           // For other transaction types, use the quantity as adjustment
           newQuantity =
@@ -1150,21 +1167,7 @@ class Inventory {
       const consumptionRecords = [];
 
       for (const consumption of ingredientConsumption) {
-        // Create consumption transaction
-        const [transaction] = await trx("inventory_transactions")
-          .insert({
-            inventory_item_id: consumption.inventory_item_id,
-            transaction_type: "production_consumption",
-            quantity: -consumption.quantity_consumed,
-            reference_number: `BATCH-${productionBatchId}`,
-            reason: "Production ingredient consumption",
-            notes: `Consumed for production batch ${productionBatchId}`,
-            performed_by: consumption.performed_by || "Production System",
-            transaction_date: new Date(),
-          })
-          .returning("*");
-
-        // Update inventory item quantity
+        // Get inventory item first to get unit cost
         const inventoryItem = await trx("inventory_items")
           .where("id", consumption.inventory_item_id)
           .first();
@@ -1174,6 +1177,26 @@ class Inventory {
             `Inventory item ${consumption.inventory_item_id} not found`
           );
         }
+
+        // Create consumption transaction
+        const quantityConsumed = parseFloat(consumption.quantity_consumed);
+        const unitCost = parseFloat(inventoryItem.unit_cost || 0);
+        const totalValue = quantityConsumed * unitCost;
+
+        const [transaction] = await trx("inventory_transactions")
+          .insert({
+            inventory_item_id: consumption.inventory_item_id,
+            transaction_type: "production_consumption",
+            quantity: -quantityConsumed,
+            unit_cost: unitCost,
+            total_value: totalValue,
+            reference_number: `BATCH-${productionBatchId}`,
+            reason: "Production ingredient consumption",
+            notes: `Consumed for production batch ${productionBatchId}`,
+            performed_by: consumption.performed_by || "Production System",
+            transaction_date: new Date(),
+          })
+          .returning("*");
 
         const newQuantity =
           parseFloat(inventoryItem.quantity) -
@@ -1276,11 +1299,19 @@ class Inventory {
         .returning("*");
 
       // Create inventory transaction
+      const quantityProduced =
+        finishedGoodsData.quantity_produced || batch.quantity_produced;
+      const unitCost =
+        finishedGoodsData.unit_cost ||
+        batch.actual_cost / (batch.quantity_produced || 1);
+      const totalValue = finishedGoodsData.total_value || batch.actual_cost;
+
       await trx("inventory_transactions").insert({
         inventory_item_id: inventoryItem.id,
         transaction_type: "production_output",
-        quantity:
-          finishedGoodsData.quantity_produced || batch.quantity_produced,
+        quantity: quantityProduced,
+        unit_cost: unitCost,
+        total_value: totalValue,
         reference_number: `BATCH-${productionBatchId}`,
         reason: "Production output",
         notes: `Finished goods from production batch ${batch.batch_number}`,
@@ -1601,16 +1632,16 @@ class Inventory {
           "iit.name as item_type",
           "ic.name as category",
           db.raw(
-            "SUM(CASE WHEN it.transaction_type = 'consumption' THEN it.quantity ELSE 0 END) as total_consumed"
+            "SUM(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') THEN it.quantity ELSE 0 END) as total_consumed"
           ),
           db.raw(
             "SUM(CASE WHEN it.transaction_type = 'receipt' THEN it.quantity ELSE 0 END) as total_received"
           ),
           db.raw(
-            "COUNT(CASE WHEN it.transaction_type = 'consumption' THEN 1 END) as consumption_frequency"
+            "COUNT(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') THEN 1 END) as consumption_frequency"
           ),
           db.raw(
-            "AVG(CASE WHEN it.transaction_type = 'consumption' THEN it.quantity ELSE NULL END) as avg_consumption_per_transaction"
+            "AVG(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') THEN it.quantity ELSE NULL END) as avg_consumption_per_transaction"
           ),
           db.raw("MAX(it.transaction_date) as last_consumption_date")
         )
@@ -1694,11 +1725,14 @@ class Inventory {
         .select(
           db.raw("DATE_TRUNC('month', it.transaction_date) as month"),
           db.raw(
-            "SUM(CASE WHEN it.transaction_type = 'consumption' THEN it.quantity ELSE 0 END) as monthly_consumption"
+            "SUM(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') THEN it.quantity ELSE 0 END) as monthly_consumption"
           )
         )
         .where("ii.item_name", itemName)
-        .where("it.transaction_type", "consumption")
+        .whereIn("it.transaction_type", [
+          "consumption",
+          "production_consumption",
+        ])
         .groupBy(db.raw("DATE_TRUNC('month', it.transaction_date)"))
         .orderBy("month", "desc")
         .limit(periods);
@@ -1781,11 +1815,14 @@ class Inventory {
           db.raw("EXTRACT(MONTH FROM it.transaction_date) as month"),
           db.raw("EXTRACT(YEAR FROM it.transaction_date) as year"),
           db.raw(
-            "SUM(CASE WHEN it.transaction_type = 'consumption' THEN it.quantity ELSE 0 END) as consumption"
+            "SUM(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') THEN it.quantity ELSE 0 END) as consumption"
           )
         )
         .where("ii.item_name", itemName)
-        .where("it.transaction_type", "consumption")
+        .whereIn("it.transaction_type", [
+          "consumption",
+          "production_consumption",
+        ])
         .groupBy("month", "year")
         .orderBy("year", "desc")
         .orderBy("month", "asc");
@@ -1926,13 +1963,16 @@ class Inventory {
         .select(
           "ic.name as category",
           db.raw(
-            "SUM(CASE WHEN it.transaction_type = 'consumption' THEN it.quantity ELSE 0 END) as total_consumed"
+            "SUM(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') THEN it.quantity ELSE 0 END) as total_consumed"
           ),
           db.raw(
-            "COUNT(CASE WHEN it.transaction_type = 'consumption' THEN 1 END) as transaction_count"
+            "COUNT(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') THEN 1 END) as transaction_count"
           )
         )
-        .where("it.transaction_type", "consumption")
+        .whereIn("it.transaction_type", [
+          "consumption",
+          "production_consumption",
+        ])
         .where("it.transaction_date", ">=", dateFilter)
         .groupBy("ic.name")
         .orderBy("total_consumed", "desc");
@@ -2005,10 +2045,10 @@ class Inventory {
             "SUM(CASE WHEN it.transaction_type = 'receipt' THEN it.quantity ELSE 0 END) as total_received"
           ),
           db.raw(
-            "SUM(CASE WHEN it.transaction_type = 'consumption' THEN it.quantity ELSE 0 END) as total_consumed"
+            "SUM(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') THEN it.quantity ELSE 0 END) as total_consumed"
           ),
           db.raw(
-            "AVG(CASE WHEN it.transaction_type = 'consumption' THEN it.quantity ELSE NULL END) as avg_consumption"
+            "AVG(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') THEN it.quantity ELSE NULL END) as avg_consumption"
           )
         )
         .where("it.transaction_date", ">=", dateFilter)

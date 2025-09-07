@@ -14,14 +14,20 @@
     Handshake,
     ArrowRightLeft,
     Trash2,
+    Factory,
   } from 'lucide-vue-next';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
+  import { useRouter } from 'vue-router';
 
   // Props
   const props = defineProps({
     show: {
       type: Boolean,
       default: false,
+    },
+    initialFilter: {
+      type: Object,
+      default: () => ({}),
     },
   });
 
@@ -30,6 +36,7 @@
 
   // Store
   const inventoryStore = useInventoryStore();
+  const router = useRouter();
 
   // Local state
   const loading = ref(false);
@@ -60,6 +67,8 @@
     { value: 'expiry', label: 'Expiry' },
     { value: 'damage', label: 'Damage' },
     { value: 'disposal', label: 'Disposal' },
+    { value: 'production_consumption', label: 'Production Consumption' },
+    { value: 'production_output', label: 'Production Output' },
   ];
 
   // Computed properties
@@ -70,6 +79,16 @@
     if (!filters.value.category_id) return [];
     return itemTypes.value.filter(
       (type) => type.category_id == filters.value.category_id
+    );
+  });
+
+  // Check if we're viewing production transactions
+  const isViewingProductionTransactions = computed(() => {
+    return (
+      filters.value.transaction_type === 'production_consumption' ||
+      filters.value.transaction_type === 'production_output' ||
+      (filters.value.transaction_type &&
+        filters.value.transaction_type.includes('production'))
     );
   });
 
@@ -205,6 +224,22 @@
         description:
           'Item was disposed due to damage, expiry, or other reasons',
       },
+      production_consumption: {
+        icon: Package,
+        color: 'text-primary',
+        label: 'Production',
+        bgColor: 'bg-primary/10',
+        badgeColor: 'bg-primary/20 text-primary',
+        description: 'Item was consumed for production batch',
+      },
+      production_output: {
+        icon: Package,
+        color: 'text-success',
+        label: 'Produced',
+        bgColor: 'bg-success/10',
+        badgeColor: 'bg-success/20 text-success',
+        description: 'Finished goods added from production',
+      },
     };
     return (
       typeInfo[type] || {
@@ -231,6 +266,15 @@
       const dlg = document.getElementById('transaction_modal');
       if (newVal) {
         if (dlg?.showModal) dlg.showModal();
+
+        // Apply initial filter if provided
+        if (
+          props.initialFilter &&
+          Object.keys(props.initialFilter).length > 0
+        ) {
+          Object.assign(filters.value, props.initialFilter);
+        }
+
         fetchTransactions();
       } else {
         if (dlg?.close) dlg.close();
@@ -315,6 +359,12 @@
     console.log('Export transactions');
   };
 
+  // Navigation to Production Execution
+  const goToProductionExecution = () => {
+    router.push('/production/production-execution');
+    closeModal();
+  };
+
   // Smart pagination helper (similar to RequestSupply)
   const getPageRange = () => {
     const current = currentPage.value;
@@ -357,9 +407,19 @@
       <!-- Header -->
       <div class="flex justify-between items-center mb-6">
         <h3 class="font-bold text-xl text-primaryColor">Transaction History</h3>
-        <button @click="closeModal" class="btn btn-ghost btn-sm btn-circle">
-          <X class="w-5 h-5" />
-        </button>
+        <div class="flex items-center gap-2">
+          <button
+            v-if="isViewingProductionTransactions"
+            @click="goToProductionExecution"
+            class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10"
+          >
+            <Factory class="w-4 h-4 mr-1" />
+            Production Execution
+          </button>
+          <button @click="closeModal" class="btn btn-ghost btn-sm btn-circle">
+            <X class="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       <!-- Filters -->

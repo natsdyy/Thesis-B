@@ -2993,4 +2993,348 @@ async function generateAnalyticsReport(reportType, dateFrom, dateTo, format) {
   }
 }
 
+// ==================== PRODUCTION EXECUTION ====================
+
+/**
+ * @swagger
+ * /api/production/inventory:
+ *   get:
+ *     summary: Get production inventory (ready for production)
+ *     tags: [Production Execution]
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *         description: Filter by status
+ *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *         description: Filter by category
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search in menu item name or recipe name
+ *     responses:
+ *       200:
+ *         description: List of production inventory items
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       500:
+ *         description: Server error
+ */
+router.get("/inventory", async (req, res) => {
+  try {
+    const ProductionInventory = require("../models/ProductionInventory");
+    const filters = {
+      status: req.query.status,
+      category: req.query.category,
+      search: req.query.search,
+    };
+
+    const inventory = await ProductionInventory.getAll(filters);
+
+    res.json({
+      success: true,
+      data: inventory,
+    });
+  } catch (error) {
+    console.error("Error fetching production inventory:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch production inventory",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/production/execute:
+ *   post:
+ *     summary: Execute production batch
+ *     tags: [Production Execution]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - menu_item_id
+ *               - recipe_id
+ *               - batch_size
+ *               - production_date
+ *               - assigned_to
+ *             properties:
+ *               menu_item_id:
+ *                 type: integer
+ *               recipe_id:
+ *                 type: integer
+ *               batch_size:
+ *                 type: number
+ *               production_date:
+ *                 type: string
+ *                 format: date
+ *               assigned_to:
+ *                 type: integer
+ *               notes:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Production executed successfully
+ *       400:
+ *         description: Invalid input data or insufficient ingredients
+ *       500:
+ *         description: Server error
+ */
+router.post("/execute", async (req, res) => {
+  try {
+    const ProductionInventory = require("../models/ProductionInventory");
+    const executionData = req.body;
+
+    // Validation
+    if (
+      !executionData.menu_item_id ||
+      !executionData.recipe_id ||
+      !executionData.batch_size ||
+      !executionData.production_date ||
+      !executionData.assigned_to
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields",
+      });
+    }
+
+    const result = await ProductionInventory.executeProduction(executionData);
+
+    res.status(201).json({
+      success: true,
+      message: "Production executed successfully",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error executing production:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to execute production",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/production/batches:
+ *   get:
+ *     summary: Get active production batches
+ *     tags: [Production Execution]
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *         description: Filter by batch status
+ *       - in: query
+ *         name: assigned_to
+ *         schema:
+ *           type: integer
+ *         description: Filter by assigned user
+ *     responses:
+ *       200:
+ *         description: List of active production batches
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       500:
+ *         description: Server error
+ */
+router.get("/batches", async (req, res) => {
+  try {
+    const ProductionBatch = require("../models/ProductionInventory");
+    const filters = {
+      status: req.query.status || "In Progress",
+      assigned_to: req.query.assigned_to,
+    };
+
+    const batches = await ProductionBatch.getActiveBatches(filters);
+
+    res.json({
+      success: true,
+      data: batches,
+    });
+  } catch (error) {
+    console.error("Error fetching production batches:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch production batches",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/production/batches/{id}/status:
+ *   patch:
+ *     summary: Update production batch status
+ *     tags: [Production Execution]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [In Progress, Quality Check, Completed, Failed]
+ *               notes:
+ *                 type: string
+ *               quantity_produced:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: Batch status updated successfully
+ *       400:
+ *         description: Invalid status
+ *       404:
+ *         description: Batch not found
+ *       500:
+ *         description: Server error
+ */
+router.patch("/batches/:id/status", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, notes, quantity_produced } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: "Status is required",
+      });
+    }
+
+    const validStatuses = [
+      "In Progress",
+      "Quality Check",
+      "Completed",
+      "Failed",
+    ];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status",
+      });
+    }
+
+    const ProductionBatch = require("../models/ProductionInventory");
+    const updatedBatch = await ProductionBatch.updateBatchStatus(
+      id,
+      status,
+      notes,
+      quantity_produced
+    );
+
+    res.json({
+      success: true,
+      message: `Production batch ${status.toLowerCase()} successfully`,
+      data: updatedBatch,
+    });
+  } catch (error) {
+    console.error("Error updating batch status:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update batch status",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/production/ingredient-requirements/{menuItemId}:
+ *   get:
+ *     summary: Get ingredient requirements for production
+ *     tags: [Production Execution]
+ *     parameters:
+ *       - in: path
+ *         name: menuItemId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: batch_size
+ *         schema:
+ *           type: number
+ *         description: Custom batch size (optional)
+ *     responses:
+ *       200:
+ *         description: Ingredient requirements with availability
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       404:
+ *         description: Menu item not found
+ *       500:
+ *         description: Server error
+ */
+router.get("/ingredient-requirements/:menuItemId", async (req, res) => {
+  try {
+    const { menuItemId } = req.params;
+    const batchSize = req.query.batch_size
+      ? parseFloat(req.query.batch_size)
+      : null;
+
+    const ProductionInventory = require("../models/ProductionInventory");
+    const requirements = await ProductionInventory.getIngredientRequirements(
+      menuItemId,
+      batchSize
+    );
+
+    res.json({
+      success: true,
+      data: requirements,
+    });
+  } catch (error) {
+    console.error("Error fetching ingredient requirements:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch ingredient requirements",
+    });
+  }
+});
+
 module.exports = router;

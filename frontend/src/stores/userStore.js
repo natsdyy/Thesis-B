@@ -180,6 +180,38 @@ export const useUserStore = defineStore('user', () => {
     error.value = null;
   };
 
+  // Get production staff (users with production roles)
+  const getProductionStaff = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/users`, {
+        params: {
+          department: 'Production',
+          includeDeleted: false,
+        },
+      });
+
+      if (response.data.success) {
+        return response.data.data.filter(
+          (user) =>
+            user.department === 'Production' ||
+            user.roles?.some((role) => role.name?.includes('Production'))
+        );
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch production staff'
+        );
+      }
+    } catch (err) {
+      console.error('Error fetching production staff:', err);
+      // Return all users as fallback
+      return users.value.filter(
+        (user) =>
+          user.department === 'Production' ||
+          user.roles?.some((role) => role.name?.includes('Production'))
+      );
+    }
+  };
+
   return {
     // State
     users,
@@ -198,6 +230,7 @@ export const useUserStore = defineStore('user', () => {
     deleteUser,
     restoreUser,
     getUserWithPermissions,
+    getProductionStaff,
     clearError,
   };
 });

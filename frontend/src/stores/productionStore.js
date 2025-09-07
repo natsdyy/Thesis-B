@@ -2117,6 +2117,169 @@ export const useProductionStore = defineStore('production', () => {
     }
   };
 
+  // ==================== PRODUCTION EXECUTION METHODS ====================
+
+  // Get production inventory (ready for production)
+  const getProductionInventory = async (filters = {}) => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/production/inventory`, {
+        params: filters,
+        timeout: 10000,
+      });
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch production inventory'
+        );
+      }
+    } catch (err) {
+      console.error('Error fetching production inventory:', err);
+      throw err;
+    }
+  };
+
+  // Execute production batch
+  const executeProduction = async (executionData) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/production/execute`,
+        executionData,
+        { timeout: 15000 }
+      );
+
+      if (response.data.success) {
+        // Refresh production inventory after successful execution
+        await fetchProductionInventory();
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to execute production'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to execute production';
+      console.error('Error executing production:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Get active production batches
+  const getActiveBatches = async (filters = {}) => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/production/batches`, {
+        params: filters,
+        timeout: 10000,
+      });
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch active batches'
+        );
+      }
+    } catch (err) {
+      console.error('Error fetching active batches:', err);
+      throw err;
+    }
+  };
+
+  // Update batch status
+  const updateBatchStatus = async (
+    batchId,
+    status,
+    notes = null,
+    quantityProduced = null
+  ) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.patch(
+        `${API_BASE_URL}/production/batches/${batchId}/status`,
+        {
+          status,
+          notes,
+          quantity_produced: quantityProduced,
+        },
+        { timeout: 10000 }
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to update batch status'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to update batch status';
+      console.error('Error updating batch status:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Get ingredient requirements for production
+  const getIngredientRequirements = async (menuItemId, batchSize = null) => {
+    try {
+      const params = {};
+      if (batchSize) params.batch_size = batchSize;
+
+      const response = await axios.get(
+        `${API_BASE_URL}/production/ingredient-requirements/${menuItemId}`,
+        { params, timeout: 10000 }
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch ingredient requirements'
+        );
+      }
+    } catch (err) {
+      console.error('Error fetching ingredient requirements:', err);
+      throw err;
+    }
+  };
+
+  // Get production history
+  const getProductionHistory = async (filters = {}) => {
+    try {
+      // This would typically be a separate endpoint, but for now we can use existing data
+      const response = await axios.get(`${API_BASE_URL}/production/batches`, {
+        params: { ...filters, status: 'Completed' },
+        timeout: 10000,
+      });
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch production history'
+        );
+      }
+    } catch (err) {
+      console.error('Error fetching production history:', err);
+      return []; // Return empty array if fails
+    }
+  };
+
   return {
     // State
     productionOrders,
@@ -2240,5 +2403,13 @@ export const useProductionStore = defineStore('production', () => {
     inventoryStats,
     lowStockAlerts,
     expiringItems,
+
+    // Production Execution Actions
+    getProductionInventory,
+    executeProduction,
+    getActiveBatches,
+    updateBatchStatus,
+    getIngredientRequirements,
+    getProductionHistory,
   };
 });

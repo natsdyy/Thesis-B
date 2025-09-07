@@ -144,8 +144,8 @@ export const menuItems = [
       { name: 'Sample Planning', route: '/production/sample-planning' },
       { name: 'Quality Inspection', route: '/production/quality-inspection' },
       {
-        name: 'Production Inventory',
-        route: '/production/production-inventory',
+        name: 'Production Execution',
+        route: '/production/production-execution',
       },
     ],
   },
@@ -155,6 +155,13 @@ export const menuItems = [
     route: '/production/recipes',
     department: 'Production',
   },
+  {
+    name: 'Production Inventory',
+    icon: Package,
+    route: '/production/production-inventory',
+    department: 'Production',
+  },
+
 
   // Customer Relationship
   {

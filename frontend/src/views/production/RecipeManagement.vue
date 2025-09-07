@@ -1252,7 +1252,7 @@
                 </button>
                 <button
                   @click="showDeleteConfirmation(recipe)"
-                  class="btn btn-xs bg-white text-error border border-error/30 hover:bg-error/10 hover:border-error/50 rounded-lg shadow-none"
+                  class="btn btn-xs bg-white text-error border border-error/30 hover:bg-error/10 hover:border-error/50 rounded-lg shadow-none font-thin"
                 >
                   <Trash2 class="w-4 h-4 mr-1" />
                   Delete

@@ -839,6 +839,13 @@
     console.log(`${type}: ${message}`);
   };
 
+  const clearFilters = () => {
+    searchQuery.value = '';
+    categoryFilter.value = '';
+    statusFilter.value = '';
+    currentPage.value = 1;
+  };
+
   // Lifecycle
   onMounted(() => {
     fetchData();
@@ -941,7 +948,9 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <TrendingUp class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-black/50" />
+          <TrendingUp
+            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-black/50"
+          />
         </div>
         <div class="stat-title text-black/50 !text-xs sm:text-sm">
           Avg. Margin
@@ -1070,11 +1079,16 @@
                   type="text"
                   placeholder="Search inventory items..."
                   class="input input-bordered w-full pl-10"
+                  :disabled="loading"
                 />
               </div>
             </div>
             <div class="flex gap-2">
-              <select v-model="categoryFilter" class="select select-bordered">
+              <select
+                v-model="categoryFilter"
+                class="select select-bordered"
+                :disabled="loading"
+              >
                 <option value="">All Categories</option>
                 <option
                   v-for="category in availableCategories"
@@ -1084,7 +1098,11 @@
                   {{ category }}
                 </option>
               </select>
-              <select v-model="statusFilter" class="select select-bordered">
+              <select
+                v-model="statusFilter"
+                class="select select-bordered"
+                :disabled="loading"
+              >
                 <option value="">All Status</option>
                 <option value="low_stock">Low Stock</option>
                 <option value="featured">Featured</option>
@@ -1094,7 +1112,62 @@
 
           <!-- Inventory Grid -->
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Loading State - Skeleton Cards -->
             <div
+              v-if="loading"
+              v-for="n in 6"
+              :key="`skeleton-${n}`"
+              class="card bg-white border border-gray-200 animate-pulse"
+            >
+              <div class="card-body p-6">
+                <!-- Skeleton Image -->
+                <div class="mb-4">
+                  <div class="w-full h-32 bg-gray-200 rounded-lg"></div>
+                </div>
+
+                <div class="flex items-start justify-between mb-4">
+                  <div class="flex-1">
+                    <!-- Skeleton Title -->
+                    <div class="h-6 bg-gray-200 rounded mb-2 w-3/4"></div>
+                    <!-- Skeleton Subtitle -->
+                    <div class="h-4 bg-gray-200 rounded mb-2 w-1/2"></div>
+                    <!-- Skeleton Badges -->
+                    <div class="flex items-center gap-2 mb-3">
+                      <div class="h-5 bg-gray-200 rounded w-16"></div>
+                      <div class="h-5 bg-gray-200 rounded w-20"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Skeleton Stock Info -->
+                <div class="mb-4">
+                  <div class="h-4 bg-gray-200 rounded mb-1 w-2/3"></div>
+                  <div class="h-4 bg-gray-200 rounded w-1/3"></div>
+                </div>
+
+                <!-- Skeleton Financial Info -->
+                <div class="mb-4">
+                  <div class="h-4 bg-gray-200 rounded mb-1 w-1/2"></div>
+                  <div class="h-4 bg-gray-200 rounded w-1/4"></div>
+                </div>
+
+                <!-- Skeleton Production Info -->
+                <div class="mb-4">
+                  <div class="h-4 bg-gray-200 rounded mb-1 w-3/4"></div>
+                  <div class="h-4 bg-gray-200 rounded w-1/2"></div>
+                </div>
+
+                <!-- Skeleton Buttons -->
+                <div class="flex gap-2">
+                  <div class="h-8 bg-gray-200 rounded flex-1"></div>
+                  <div class="h-8 bg-gray-200 rounded flex-1"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Actual Inventory Items -->
+            <div
+              v-else-if="paginatedInventory.length > 0"
               v-for="item in paginatedInventory"
               :key="item.id"
               class="card bg-white border border-gray-200 hover:shadow-xl duration-300 cursor-pointer"
@@ -1280,8 +1353,48 @@
             </div>
           </div>
 
+          <!-- Empty State -->
+          <div
+            v-if="!loading && paginatedInventory.length === 0"
+            class="text-center py-12"
+          >
+            <div class="mb-4">
+              <Package class="w-16 h-16 mx-auto text-gray-400" />
+            </div>
+            <h3 class="text-xl font-semibold text-gray-600 mb-2">
+              No inventory items found
+            </h3>
+            <p class="text-gray-500 mb-6 max-w-md mx-auto">
+              {{
+                searchQuery || categoryFilter || statusFilter
+                  ? 'Try adjusting your search filters to find inventory items.'
+                  : 'No production inventory items are available at the moment.'
+              }}
+            </p>
+            <div class="flex gap-3 justify-center">
+              <button
+                v-if="searchQuery || categoryFilter || statusFilter"
+                @click="clearFilters"
+                class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
+              >
+                <X class="w-4 h-4 mr-1" />
+                Clear Filters
+              </button>
+              <button
+                @click="fetchData"
+                class="btn bg-primaryColor font-thin hover:border-none hover:shadow-none btn-sm text-white"
+              >
+                <RefreshCcw class="w-4 h-4 mr-1" />
+                Refresh
+              </button>
+            </div>
+          </div>
+
           <!-- Pagination -->
-          <div v-if="totalPages > 1" class="flex justify-center mt-6">
+          <div
+            v-if="!loading && totalPages > 1"
+            class="flex justify-center mt-6"
+          >
             <div class="btn-group">
               <button
                 @click="currentPage--"
@@ -2695,13 +2808,13 @@
                 </label>
                 <div>
                   <span
-                    class="badge badge-sm"
+                    class="badge badge-sm border-none font-medium"
                     :class="
                       selectedItem?.available_quantity > 0
-                        ? 'badge-success'
+                        ? 'badge-success bg-success/20 text-success'
                         : getProductionCapacity(selectedItem).can_produce
-                          ? 'badge-warning'
-                          : 'badge-error'
+                          ? 'badge-warning bg-warning/20 text-warning'
+                          : 'badge-error bg-error/20 text-error'
                     "
                   >
                     {{

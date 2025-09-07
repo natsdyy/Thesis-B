@@ -382,6 +382,38 @@
         badgeColor: 'bg-warning/20 text-warning',
         description: 'Item details were updated',
       },
+      'In Progress': {
+        icon: Activity,
+        color: 'text-warning',
+        label: 'Production Started',
+        bgColor: 'bg-warning/10',
+        badgeColor: 'bg-warning/20 text-warning',
+        description: 'Production batch started',
+      },
+      Completed: {
+        icon: CheckCircle,
+        color: 'text-success',
+        label: 'Production Completed',
+        bgColor: 'bg-success/10',
+        badgeColor: 'bg-success/20 text-success',
+        description: 'Production batch completed',
+      },
+      'Quality Check': {
+        icon: AlertCircle,
+        color: 'text-info',
+        label: 'Quality Check',
+        bgColor: 'bg-info/10',
+        badgeColor: 'bg-info/20 text-info',
+        description: 'Production batch in quality check',
+      },
+      Failed: {
+        icon: AlertTriangle,
+        color: 'text-error',
+        label: 'Production Failed',
+        bgColor: 'bg-error/10',
+        badgeColor: 'bg-error/20 text-error',
+        description: 'Production batch failed',
+      },
     };
     return (
       typeInfo[actionType] || {
@@ -2015,7 +2047,7 @@
           <p class="text-gray-500">Recent inventory changes will appear here</p>
         </div>
 
-        <div v-else class="space-y-4">
+        <div v-else class="space-y-4 overflow-y-auto">
           <div
             v-for="activity in recentActivity.slice(0, 5)"
             :key="activity.id"
@@ -2054,7 +2086,11 @@
               </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+            <!-- Inventory Activity Details -->
+            <div
+              v-if="activity.activity_source === 'inventory'"
+              class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3"
+            >
               <div class="text-center">
                 <div class="text-xs text-gray-500 mb-1">Previous</div>
                 <div class="font-semibold text-gray-700">
@@ -2079,6 +2115,31 @@
                 >
                   {{ activity.quantity_change > 0 ? '+' : ''
                   }}{{ activity.quantity_change || 0 }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Production Activity Details -->
+            <div
+              v-else-if="activity.activity_source === 'production'"
+              class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3"
+            >
+              <div class="text-center">
+                <div class="text-xs text-gray-500 mb-1">Batch Size</div>
+                <div class="font-semibold text-gray-700">
+                  {{ activity.batch_size || 0 }}
+                </div>
+              </div>
+              <div class="text-center">
+                <div class="text-xs text-gray-500 mb-1">Produced</div>
+                <div class="font-semibold text-gray-700">
+                  {{ activity.quantity_produced || 0 }}
+                </div>
+              </div>
+              <div class="text-center">
+                <div class="text-xs text-gray-500 mb-1">Status</div>
+                <div class="font-semibold text-gray-700">
+                  {{ activity.action_type }}
                 </div>
               </div>
             </div>

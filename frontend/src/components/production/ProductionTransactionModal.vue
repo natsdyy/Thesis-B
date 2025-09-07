@@ -67,6 +67,11 @@
     { value: 'APPROVED_FOR_PRODUCTION', label: 'Approved for Production' },
     { value: 'ADDED_TO_INVENTORY', label: 'Added to Inventory' },
     { value: 'DELETED', label: 'Deleted' },
+    // Production execution types
+    { value: 'In Progress', label: 'Production Started' },
+    { value: 'Completed', label: 'Production Completed' },
+    { value: 'Quality Check', label: 'Quality Check' },
+    { value: 'Failed', label: 'Production Failed' },
   ];
 
   // Computed properties
@@ -201,6 +206,39 @@
         bgColor: 'bg-error/10',
         badgeColor: 'bg-error/20 text-error',
         description: 'Item was deleted',
+      },
+      // Production execution types
+      'In Progress': {
+        icon: Activity,
+        color: 'text-warning',
+        label: 'Production Started',
+        bgColor: 'bg-warning/10',
+        badgeColor: 'bg-warning/20 text-warning',
+        description: 'Production batch started',
+      },
+      Completed: {
+        icon: CheckCircle,
+        color: 'text-success',
+        label: 'Production Completed',
+        bgColor: 'bg-success/10',
+        badgeColor: 'bg-success/20 text-success',
+        description: 'Production batch completed',
+      },
+      'Quality Check': {
+        icon: Search,
+        color: 'text-info',
+        label: 'Quality Check',
+        bgColor: 'bg-info/10',
+        badgeColor: 'bg-info/20 text-info',
+        description: 'Production batch in quality check',
+      },
+      Failed: {
+        icon: X,
+        color: 'text-error',
+        label: 'Production Failed',
+        bgColor: 'bg-error/10',
+        badgeColor: 'bg-error/20 text-error',
+        description: 'Production batch failed',
       },
     };
     return (
@@ -804,10 +842,14 @@
                     </div>
                   </td>
 
-                  <!-- Quantity Change -->
+                  <!-- Quantity Change / Batch Info -->
                   <td>
                     <div class="text-sm">
-                      <div class="flex items-center gap-2">
+                      <!-- For audit log transactions -->
+                      <div
+                        v-if="transaction.source === 'audit'"
+                        class="flex items-center gap-2"
+                      >
                         <span class="text-xs text-gray-500">
                           {{ transaction.old_quantity || 0 }} →
                         </span>
@@ -815,7 +857,22 @@
                           {{ transaction.new_quantity || 0 }}
                         </span>
                       </div>
+                      <!-- For production batch transactions -->
                       <div
+                        v-else-if="transaction.source === 'production'"
+                        class="flex items-center gap-2"
+                      >
+                        <span class="text-xs text-gray-500">
+                          Batch: {{ transaction.batch_number }}
+                        </span>
+                        <span class="font-medium">
+                          {{ transaction.quantity_produced || 0 }} produced
+                        </span>
+                      </div>
+
+                      <!-- Change indicator for audit logs -->
+                      <div
+                        v-if="transaction.source === 'audit'"
                         class="text-xs font-medium"
                         :class="{
                           'text-success': transaction.quantity_change > 0,
@@ -825,6 +882,13 @@
                       >
                         {{ transaction.quantity_change > 0 ? '+' : ''
                         }}{{ transaction.quantity_change || 0 }}
+                      </div>
+                      <!-- Batch size for production -->
+                      <div
+                        v-else-if="transaction.source === 'production'"
+                        class="text-xs text-gray-500"
+                      >
+                        Size: {{ transaction.batch_size || 0 }}
                       </div>
                     </div>
                   </td>

@@ -551,8 +551,8 @@ class ProductionInventory {
   // Get recent activity for production inventory
   static async getRecentActivity(limit = 10) {
     try {
-      // Use raw PostgreSQL query for better performance
-      const activities = await db.raw(
+      // Get inventory update activities
+      const inventoryActivities = await db.raw(
         `
         SELECT 
           mal.id,
@@ -563,7 +563,8 @@ class ProductionInventory {
           mal.user_id,
           COALESCE(mi.menu_item_name, 'Unknown Item') as item_name,
           COALESCE(pi.available_quantity, 0) as available_quantity,
-          COALESCE(u.name, 'Unknown User') as performed_by
+          COALESCE(u.name, 'Unknown User') as performed_by,
+          'inventory' as activity_source
         FROM menu_item_audit_log mal
         LEFT JOIN menu_items mi ON mal.menu_item_id = mi.id AND mi.deleted_at IS NULL
         LEFT JOIN production_inventory pi ON mal.menu_item_id = pi.menu_item_id
@@ -575,11 +576,57 @@ class ProductionInventory {
         ["INVENTORY_UPDATED", limit]
       );
 
-      // Parse action_details and add quantity information
-      return activities.rows.map((activity) => {
-        const details = activity.action_details
-          ? JSON.parse(activity.action_details)
-          : {};
+      // Get production batch activities
+      const productionActivities = await db.raw(
+        `
+        SELECT 
+          pb.id,
+          pb.status as action_type,
+          CONCAT('{"batch_number":"', pb.batch_number, '","status":"', pb.status, '","description":"Batch #', pb.batch_number, ' - ', pb.status, '"}') as action_details,
+          pb.notes,
+          pb.updated_at as created_at,
+          pb.assigned_to as user_id,
+          COALESCE(mi.menu_item_name, 'Unknown Item') as item_name,
+          COALESCE(pi.available_quantity, 0) as available_quantity,
+          COALESCE(u.name, 'Unknown User') as performed_by,
+          'production' as activity_source,
+          pb.batch_size,
+          pb.quantity_produced
+        FROM production_batches pb
+        LEFT JOIN menu_items mi ON pb.menu_item_id = mi.id AND mi.deleted_at IS NULL
+        LEFT JOIN production_inventory pi ON pb.menu_item_id = pi.menu_item_id
+        LEFT JOIN users u ON pb.assigned_to = u.id
+        WHERE pb.status IN ('In Progress', 'Completed', 'Quality Check', 'Failed')
+        ORDER BY pb.updated_at DESC
+        LIMIT ?
+      `,
+        [limit]
+      );
+
+      // Combine and sort activities
+      const allActivities = [
+        ...inventoryActivities.rows,
+        ...productionActivities.rows,
+      ]
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .slice(0, limit);
+
+      // Parse and format activities
+      return allActivities.map((activity) => {
+        let details = {};
+        if (activity.action_details) {
+          try {
+            details = JSON.parse(activity.action_details);
+          } catch (e) {
+            // If parsing fails, create a simple details object
+            details = {
+              description: activity.action_details,
+              batch_number: activity.batch_number || null,
+              status: activity.action_type,
+            };
+          }
+        }
+
         return {
           id: activity.id,
           action_type: activity.action_type,
@@ -591,6 +638,11 @@ class ProductionInventory {
           created_at: activity.created_at,
           notes: activity.notes,
           action_details: activity.action_details,
+          activity_source: activity.activity_source,
+          batch_size: activity.batch_size || 0,
+          quantity_produced: activity.quantity_produced || 0,
+          batch_number: details.batch_number || null,
+          description: details.description || activity.action_details,
         };
       });
     } catch (error) {
@@ -1086,7 +1138,7 @@ class ProductionInventory {
     }
   }
 
-  // Get active production batches
+  // Get production batches (active or completed based on filters)
   static async getActiveBatches(filters = {}) {
     try {
       let query = db("production_batches as pb")
@@ -1100,13 +1152,23 @@ class ProductionInventory {
         .leftJoin("menu_items as mi", "pb.menu_item_id", "mi.id")
         .leftJoin("recipes as r", "pb.recipe_id", "r.id")
         .leftJoin("users as u", "pb.assigned_to", "u.id")
-        .whereIn("pb.status", ["In Progress", "Quality Check"])
         .orderBy("pb.created_at", "desc");
 
-      // Apply filters
+      // Apply status filter
       if (filters.status) {
-        query = query.where("pb.status", filters.status);
+        if (filters.status === "Completed") {
+          // For completed batches, get all completed batches
+          query = query.where("pb.status", "Completed");
+        } else {
+          // For active batches, get in progress and quality check
+          query = query.whereIn("pb.status", ["In Progress", "Quality Check"]);
+        }
+      } else {
+        // Default: get active batches (in progress and quality check)
+        query = query.whereIn("pb.status", ["In Progress", "Quality Check"]);
       }
+
+      // Apply other filters
       if (filters.assigned_to) {
         query = query.where("pb.assigned_to", filters.assigned_to);
       }
@@ -1123,6 +1185,25 @@ class ProductionInventory {
         return {
           ...batch,
           progress: progress,
+          // Add formatted dates for history display
+          formatted_start_time: batch.start_time
+            ? new Date(batch.start_time).toLocaleDateString("en-PH", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "N/A",
+          formatted_end_time: batch.end_time
+            ? new Date(batch.end_time).toLocaleDateString("en-PH", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "N/A",
         };
       });
     } catch (error) {
@@ -1165,16 +1246,43 @@ class ProductionInventory {
 
         const finalQuantity = quantityProduced || batch.batch_size;
 
-        // Update production inventory with completed quantity
+        // Calculate production cost from consumed ingredients
+        const productionCost = await this.calculateProductionCost(batchId, trx);
+
+        // Calculate new unit cost (average cost method)
+        const currentInventory = await trx("production_inventory")
+          .where("menu_item_id", batch.menu_item_id)
+          .first();
+
+        let newUnitCost = 0;
+        if (currentInventory) {
+          const currentQuantity = currentInventory.available_quantity || 0;
+          const currentTotalCost =
+            (currentInventory.unit_cost || 0) * currentQuantity;
+          const newTotalCost = currentTotalCost + productionCost;
+          const newTotalQuantity = currentQuantity + finalQuantity;
+
+          newUnitCost =
+            newTotalQuantity > 0 ? newTotalCost / newTotalQuantity : 0;
+        } else {
+          newUnitCost = finalQuantity > 0 ? productionCost / finalQuantity : 0;
+        }
+
+        // Update production inventory with completed quantity and new unit cost
         await trx("production_inventory")
           .where("menu_item_id", batch.menu_item_id)
           .increment("available_quantity", finalQuantity)
           .increment("total_produced", finalQuantity)
           .update({
+            unit_cost: newUnitCost,
+            production_cost_per_unit: newUnitCost,
             last_produced_date: new Date(),
             last_batch_size: finalQuantity,
             updated_at: new Date(),
           });
+
+        // Update batch with actual cost
+        updateData.actual_cost = productionCost;
       }
 
       // Update the batch
@@ -1188,6 +1296,31 @@ class ProductionInventory {
       await trx.rollback();
       console.error("Error updating batch status:", error);
       throw new Error("Failed to update batch status");
+    }
+  }
+
+  // Calculate production cost from consumed ingredients
+  static async calculateProductionCost(batchId, trx = null) {
+    const dbInstance = trx || db;
+
+    try {
+      // Get all inventory transactions for this production batch
+      const transactions = await dbInstance("inventory_transactions")
+        .select("unit_cost", "quantity")
+        .where("reference_number", `BATCH-${batchId}`)
+        .where("transaction_type", "production_consumption");
+
+      // Calculate total cost (quantity is negative for consumption, so we use absolute value)
+      const totalCost = transactions.reduce((sum, transaction) => {
+        const cost =
+          Math.abs(transaction.quantity) * (transaction.unit_cost || 0);
+        return sum + cost;
+      }, 0);
+
+      return totalCost;
+    } catch (error) {
+      console.error("Error calculating production cost:", error);
+      return 0;
     }
   }
 

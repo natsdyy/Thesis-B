@@ -50,7 +50,7 @@
   const showDistributionModal = ref(false);
   const selectedItem = ref(null);
   const currentPage = ref(1);
-  const itemsPerPage = ref(12);
+  const itemsPerPage = ref(1);
   const expandedItems = ref(new Set());
 
   // Recent activity and transaction modal state
@@ -299,6 +299,10 @@
 
   const totalPages = computed(() => {
     return Math.ceil(filteredInventory.value.length / itemsPerPage.value);
+  });
+
+  const totalItems = computed(() => {
+    return filteredInventory.value.length;
   });
 
   // Get unique categories for filter
@@ -846,6 +850,42 @@
     currentPage.value = 1;
   };
 
+  // Pagination methods (matching SCM TransactionModal pattern)
+  const goToPage = (page) => {
+    currentPage.value = page;
+  };
+
+  const nextPage = () => {
+    if (currentPage.value < totalPages.value) {
+      currentPage.value++;
+    }
+  };
+
+  const prevPage = () => {
+    if (currentPage.value > 1) {
+      currentPage.value--;
+    }
+  };
+
+  // Smart pagination helper (matching SCM pattern)
+  const getPageRange = () => {
+    const current = currentPage.value;
+    const total = totalPages.value;
+    const range = [];
+
+    // Show pages around current page
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+
+    for (let i = start; i <= end; i++) {
+      if (i !== 1 && i !== total) {
+        range.push(i);
+      }
+    }
+
+    return range;
+  };
+
   // Lifecycle
   onMounted(() => {
     fetchData();
@@ -1390,28 +1430,90 @@
             </div>
           </div>
 
-          <!-- Pagination -->
+          <!-- Enhanced Pagination (matching SCM TransactionModal pattern) -->
           <div
+            class="flex flex-col sm:flex-row justify-between items-center mt-6"
             v-if="!loading && totalPages > 1"
-            class="flex justify-center mt-6"
           >
-            <div class="btn-group">
+            <div class="text-sm text-black/60 mb-2 sm:mb-0">
+              Showing {{ (currentPage - 1) * itemsPerPage + 1 }} to
+              {{ Math.min(currentPage * itemsPerPage, totalItems) }}
+              of {{ totalItems }} inventory items
+            </div>
+
+            <div class="join space-x-1">
               <button
-                @click="currentPage--"
-                :disabled="currentPage === 1"
-                class="btn btn-outline btn-sm"
+                class="join-item btn font-thin !bg-gray-200 text-black/50 btn-sm border border-none hover:bg-gray-300"
+                :disabled="currentPage <= 1"
+                @click="prevPage"
               >
-                Previous
+                « Prev
               </button>
-              <button class="btn btn-outline btn-sm btn-active">
-                {{ currentPage }} of {{ totalPages }}
-              </button>
+
+              <!-- First page -->
               <button
-                @click="currentPage++"
-                :disabled="currentPage === totalPages"
-                class="btn btn-outline btn-sm"
+                v-if="totalPages > 1"
+                class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                :class="{
+                  'btn-active': currentPage === 1,
+                  '!bg-primaryColor text-white': currentPage === 1,
+                }"
+                @click="goToPage(1)"
               >
-                Next
+                1
+              </button>
+
+              <!-- Ellipsis before current page group -->
+              <button
+                v-if="currentPage > 4"
+                class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                disabled
+              >
+                ...
+              </button>
+
+              <!-- Current page group -->
+              <button
+                v-for="page in getPageRange()"
+                :key="page"
+                class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                :class="{
+                  'btn-active': currentPage === page,
+                  '!bg-primaryColor text-white': currentPage === page,
+                }"
+                @click="goToPage(page)"
+              >
+                {{ page }}
+              </button>
+
+              <!-- Ellipsis after current page group -->
+              <button
+                v-if="currentPage < totalPages - 3"
+                class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                disabled
+              >
+                ...
+              </button>
+
+              <!-- Last page -->
+              <button
+                v-if="totalPages > 1 && currentPage < totalPages"
+                class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                :class="{
+                  'btn-active': currentPage === totalPages,
+                  '!bg-primaryColor text-white': currentPage === totalPages,
+                }"
+                @click="goToPage(totalPages)"
+              >
+                {{ totalPages }}
+              </button>
+
+              <button
+                class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                :disabled="currentPage >= totalPages"
+                @click="nextPage"
+              >
+                Next »
               </button>
             </div>
           </div>

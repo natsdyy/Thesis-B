@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, computed, onMounted } from 'vue';
+  import { ref, computed, onMounted, watch } from 'vue';
   import {
     ChefHat,
     Plus,
@@ -202,19 +202,44 @@
   const currentUser = computed(() => authStore.user);
   const isUserAuthenticated = computed(() => authStore.isAuthenticated);
 
-  // Filter inventory items to only show food-related ingredients
+  // Auto-calculate total cost per batch based on ingredients
+  const totalCostPerBatch = computed(() => {
+    if (!ingredients.value || ingredients.value.length === 0) return 0;
+
+    return ingredients.value.reduce((total, ingredient) => {
+      const quantity = parseFloat(ingredient.quantity_required || 0);
+      const costPerUnit = parseFloat(ingredient.cost_per_unit || 0);
+      return total + quantity * costPerUnit;
+    }, 0);
+  });
+
+  // Filter inventory items to only show food-related ingredients (excluding expired)
   const foodIngredients = computed(() => {
     if (!itemTypes.value || itemTypes.value.length === 0) return [];
 
     // Food-related category names: "Beverages" and "Materials"
     const foodCategoryNames = ['Beverages', 'Materials'];
 
-    const filtered = itemTypes.value.filter((item) =>
-      foodCategoryNames.includes(item.category_name)
-    );
+    const filtered = itemTypes.value.filter((item) => {
+      // Only include food-related categories
+      const isFoodCategory = foodCategoryNames.includes(item.category_name);
+
+      // Exclude expired items
+      const isNotExpired = item.status !== 'expired';
+
+      // Exclude items with quantity 0 (disposed)
+      const hasStock = (item.quantity || 0) > 0;
+
+      // Check if item is expiring soon (within 7 days) for warning
+      const isExpiringSoon = item.expiry_date
+        ? new Date(item.expiry_date) - new Date() <= 7 * 24 * 60 * 60 * 1000
+        : false;
+
+      return isFoodCategory && isNotExpired && hasStock;
+    });
 
     console.log('All inventory items:', itemTypes.value); // Debug log
-    console.log('Filtered food ingredients:', filtered); // Debug log
+    console.log('Filtered food ingredients (excluding expired):', filtered); // Debug log
 
     return filtered;
   });
@@ -515,6 +540,7 @@
 
       const recipeData = {
         ...recipeForm.value,
+        cost_per_batch: totalCostPerBatch.value, // Use auto-calculated cost
         created_by: authStore.user.id, // Using current authenticated user ID
       };
 
@@ -552,6 +578,7 @@
 
       const updatedData = {
         ...recipeForm.value,
+        cost_per_batch: totalCostPerBatch.value, // Use auto-calculated cost
       };
 
       console.log('Ingredients being sent to updateRecipe:', ingredients.value);
@@ -776,6 +803,13 @@
     return selectedItem ? selectedItem.quantity || 0 : 0;
   };
 
+  const getSelectedIngredient = () => {
+    if (!ingredientForm.value.inventory_item_id) return null;
+    return foodIngredients.value.find(
+      (item) => item.id === ingredientForm.value.inventory_item_id
+    );
+  };
+
   // Helpers for Check Stock modal
   const getInventoryItemById = (inventoryItemId) => {
     if (!inventoryItemId) return null;
@@ -810,6 +844,46 @@
     if (!Number.isFinite(num)) return '0.00';
     return num.toFixed(2);
   };
+
+  // Helper function to check if ingredient is expiring soon
+  const isIngredientExpiringSoon = (ingredient) => {
+    if (!ingredient.expiry_date) return false;
+    const expiryDate = new Date(ingredient.expiry_date);
+    const today = new Date();
+    const daysUntilExpiry = Math.ceil(
+      (expiryDate - today) / (1000 * 60 * 60 * 24)
+    );
+    return daysUntilExpiry <= 7 && daysUntilExpiry > 0;
+  };
+
+  // Helper function to get expiry warning message
+  const getExpiryWarning = (ingredient) => {
+    if (!ingredient.expiry_date) return null;
+    const expiryDate = new Date(ingredient.expiry_date);
+    const today = new Date();
+    const daysUntilExpiry = Math.ceil(
+      (expiryDate - today) / (1000 * 60 * 60 * 24)
+    );
+
+    if (daysUntilExpiry <= 0) return 'EXPIRED';
+    if (daysUntilExpiry <= 3)
+      return `Expires in ${daysUntilExpiry} day${daysUntilExpiry === 1 ? '' : 's'}`;
+    if (daysUntilExpiry <= 7) return `Expires in ${daysUntilExpiry} days`;
+    return null;
+  };
+
+  // Watch for ingredient changes to update cost in real-time
+  watch(
+    () => ingredients.value,
+    () => {
+      // Cost is automatically updated via computed property
+      console.log(
+        'Ingredients changed, total cost updated to:',
+        totalCostPerBatch.value
+      );
+    },
+    { deep: true }
+  );
 
   // Lifecycle
   onMounted(async () => {
@@ -1386,7 +1460,7 @@
               </div>
             </div>
 
-            <!-- Cost per Batch -->
+            <!-- Cost per Batch (Auto-calculated) -->
             <div class="form-control">
               <label class="label mb-1">
                 <span
@@ -1394,14 +1468,28 @@
                 >
                   Cost per Batch
                 </span>
+                <span class="text-xs text-gray-500 ml-2">
+                  (Auto-calculated from ingredients)
+                </span>
               </label>
-              <input
-                v-model="recipeForm.cost_per_batch"
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-              />
+              <div class="relative">
+                <input
+                  :value="totalCostPerBatch.toFixed(2)"
+                  type="text"
+                  readonly
+                  class="input input-sm sm:input-md input-bordered w-full bg-gray-50 border-primaryColor/30 text-black/70 cursor-not-allowed"
+                />
+                <div
+                  class="absolute right-3 top-1/2 transform -translate-y-1/2"
+                >
+                  <span class="text-primaryColor font-semibold">₱</span>
+                </div>
+              </div>
+              <div class="text-xs text-gray-500 mt-1">
+                Total cost based on {{ ingredients.length }} ingredient{{
+                  ingredients.length !== 1 ? 's' : ''
+                }}
+              </div>
             </div>
 
             <!-- Status -->
@@ -1540,6 +1628,41 @@
             </div>
           </div>
 
+          <!-- Cost Breakdown -->
+          <div v-if="ingredients.length > 0" class="border-t pt-6">
+            <h4 class="font-semibold text-primaryColor text-lg mb-4">
+              Cost Breakdown
+            </h4>
+            <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <div class="space-y-2">
+                <div
+                  v-for="ingredient in ingredients"
+                  :key="ingredient.id"
+                  class="flex justify-between items-center text-sm"
+                >
+                  <span class="text-gray-700">
+                    {{ getItemTypeName(ingredient.inventory_item_id) }}
+                  </span>
+                  <span class="font-medium text-primaryColor">
+                    ₱{{
+                      (
+                        ingredient.quantity_required * ingredient.cost_per_unit
+                      ).toFixed(2)
+                    }}
+                  </span>
+                </div>
+                <div class="border-t border-gray-300 pt-2 mt-3">
+                  <div class="flex justify-between items-center font-semibold">
+                    <span class="text-gray-800">Total Cost per Batch:</span>
+                    <span class="text-primaryColor text-lg">
+                      ₱{{ totalCostPerBatch.toFixed(2) }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Form Actions -->
           <div class="flex justify-end gap-3 pt-8 border-t border-black/10">
             <button
@@ -1646,6 +1769,39 @@
                     }}
                   </span>
                 </div>
+                <!-- Expiry Date Information -->
+                <div
+                  v-if="getSelectedIngredient()?.expiry_date"
+                  class="flex justify-between"
+                >
+                  <span class="font-medium">Expiry Date:</span>
+                  <span class="ml-1 font-bold">
+                    {{
+                      new Date(
+                        getSelectedIngredient()?.expiry_date
+                      ).toLocaleDateString()
+                    }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Expiry Warning -->
+            <div
+              v-if="
+                ingredientForm.inventory_item_id &&
+                getSelectedIngredient() &&
+                isIngredientExpiringSoon(getSelectedIngredient())
+              "
+              class="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg"
+            >
+              <div class="text-sm font-medium text-yellow-800 mb-1">
+                <AlertTriangle class="w-4 h-4 inline mr-1" />
+                Expiring Soon
+              </div>
+              <div class="text-xs text-yellow-700">
+                {{ getExpiryWarning(getSelectedIngredient()) }} - Consider using
+                this ingredient soon or check for fresher stock.
               </div>
             </div>
 

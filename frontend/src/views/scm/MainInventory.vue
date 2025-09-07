@@ -230,6 +230,10 @@
     return Math.ceil(groupedInventory.value.length / itemsPerPage.value);
   });
 
+  const totalItems = computed(() => {
+    return groupedInventory.value.length;
+  });
+
   // Helper functions
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -923,6 +927,49 @@
     setTimeout(() => {
       toast.value.show = false;
     }, 3000);
+  };
+
+  // Clear filters helper
+  const clearFilters = () => {
+    searchQuery.value = '';
+    categoryFilter.value = '';
+    currentPage.value = 1;
+  };
+
+  // Pagination methods (matching SCM TransactionModal pattern)
+  const goToPage = (page) => {
+    currentPage.value = page;
+  };
+
+  const nextPage = () => {
+    if (currentPage.value < totalPages.value) {
+      currentPage.value++;
+    }
+  };
+
+  const prevPage = () => {
+    if (currentPage.value > 1) {
+      currentPage.value--;
+    }
+  };
+
+  // Smart pagination helper (matching SCM pattern)
+  const getPageRange = () => {
+    const current = currentPage.value;
+    const total = totalPages.value;
+    const range = [];
+
+    // Show pages around current page
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+
+    for (let i = start; i <= end; i++) {
+      if (i !== 1 && i !== total) {
+        range.push(i);
+      }
+    }
+
+    return range;
   };
 
   // Modal functions
@@ -2266,8 +2313,9 @@
                   type="text"
                   placeholder="Search items..."
                   class="input input-bordered input-sm join-item"
+                  :disabled="loading"
                 />
-                <button class="btn btn-sm join-item">
+                <button class="btn btn-sm join-item" :disabled="loading">
                   <Search class="w-4 h-4" />
                 </button>
               </div>
@@ -2275,6 +2323,7 @@
               <select
                 v-model="categoryFilter"
                 class="select select-bordered select-sm"
+                :disabled="loading"
               >
                 <option value="">All Categories</option>
                 <option
@@ -2290,7 +2339,39 @@
 
           <!-- Grouped Inventory Display -->
           <div class="space-y-4">
+            <!-- Loading State - Skeleton Cards -->
             <div
+              v-if="loading"
+              v-for="n in 5"
+              :key="`skeleton-${n}`"
+              class="inventory-group border border-gray-200 rounded-lg overflow-hidden animate-pulse"
+            >
+              <!-- Skeleton Item Header -->
+              <div class="item-header">
+                <div class="flex justify-between items-center p-4 bg-base-100">
+                  <div class="flex-1">
+                    <!-- Skeleton Title -->
+                    <div class="h-6 bg-gray-200 rounded mb-2 w-3/4"></div>
+                    <!-- Skeleton Subtitle -->
+                    <div class="h-4 bg-gray-200 rounded w-1/2"></div>
+                  </div>
+                  <div class="text-right mr-4">
+                    <!-- Skeleton Total Stock -->
+                    <div class="h-6 bg-gray-200 rounded mb-1 w-16"></div>
+                    <div class="h-4 bg-gray-200 rounded w-20"></div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <!-- Skeleton Badges -->
+                    <div class="h-5 bg-gray-200 rounded w-16"></div>
+                    <div class="h-5 bg-gray-200 rounded w-5"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Actual Inventory Items -->
+            <div
+              v-else-if="groupedInventory.length > 0"
               v-for="item in groupedInventory"
               :key="item.id"
               class="inventory-group border border-gray-200 rounded-lg overflow-hidden"
@@ -2482,40 +2563,125 @@
             </div>
 
             <!-- Empty State -->
-            <div v-if="groupedInventory.length === 0" class="text-center py-12">
+            <div
+              v-if="!loading && groupedInventory.length === 0"
+              class="text-center py-12"
+            >
               <Package class="w-16 h-16 mx-auto text-gray-400 mb-4" />
               <h3 class="text-lg font-medium text-gray-600 mb-2">
                 No inventory found
               </h3>
-              <p class="text-gray-500">Try adjusting your search or filters</p>
+              <p class="text-gray-500">
+                {{
+                  searchQuery || categoryFilter
+                    ? 'Try adjusting your search or filters'
+                    : 'No inventory items available at the moment'
+                }}
+              </p>
+              <div class="flex gap-3 justify-center mt-4">
+                <button
+                  v-if="searchQuery || categoryFilter"
+                  @click="clearFilters"
+                  class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
+                >
+                  <X class="w-4 h-4 mr-1" />
+                  Clear Filters
+                </button>
+                <button
+                  @click="fetchData"
+                  class="btn btn-primary btn-sm text-white"
+                >
+                  <RefreshCcw class="w-4 h-4 mr-1" />
+                  Refresh
+                </button>
+              </div>
             </div>
           </div>
 
-          <!-- Pagination -->
-          <div v-if="totalPages > 1" class="flex justify-center">
-            <div class="join">
+          <!-- Enhanced Pagination (matching SCM TransactionModal pattern) -->
+          <div
+            class="flex flex-col sm:flex-row justify-between items-center mt-6"
+            v-if="!loading && totalPages > 1"
+          >
+            <div class="text-sm text-black/60 mb-2 sm:mb-0">
+              Showing {{ (currentPage - 1) * itemsPerPage + 1 }} to
+              {{ Math.min(currentPage * itemsPerPage, totalItems) }}
+              of {{ totalItems }} inventory items
+            </div>
+
+            <div class="join space-x-1">
               <button
-                @click="currentPage = Math.max(1, currentPage - 1)"
-                class="join-item btn btn-sm"
-                :disabled="currentPage === 1"
+                class="join-item btn font-thin !bg-gray-200 text-black/50 btn-sm border border-none hover:bg-gray-300"
+                :disabled="currentPage <= 1"
+                @click="prevPage"
               >
-                «
+                « Prev
               </button>
+
+              <!-- First page -->
               <button
-                v-for="page in totalPages"
+                v-if="totalPages > 1"
+                class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                :class="{
+                  'btn-active': currentPage === 1,
+                  '!bg-primaryColor text-white': currentPage === 1,
+                }"
+                @click="goToPage(1)"
+              >
+                1
+              </button>
+
+              <!-- Ellipsis before current page group -->
+              <button
+                v-if="currentPage > 4"
+                class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                disabled
+              >
+                ...
+              </button>
+
+              <!-- Current page group -->
+              <button
+                v-for="page in getPageRange()"
                 :key="page"
-                @click="currentPage = page"
-                class="join-item btn btn-sm"
-                :class="{ 'btn-active': currentPage === page }"
+                class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                :class="{
+                  'btn-active': currentPage === page,
+                  '!bg-primaryColor text-white': currentPage === page,
+                }"
+                @click="goToPage(page)"
               >
                 {{ page }}
               </button>
+
+              <!-- Ellipsis after current page group -->
               <button
-                @click="currentPage = Math.min(totalPages, currentPage + 1)"
-                class="join-item btn btn-sm"
-                :disabled="currentPage === totalPages"
+                v-if="currentPage < totalPages - 3"
+                class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                disabled
               >
-                »
+                ...
+              </button>
+
+              <!-- Last page -->
+              <button
+                v-if="totalPages > 1 && currentPage < totalPages"
+                class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                :class="{
+                  'btn-active': currentPage === totalPages,
+                  '!bg-primaryColor text-white': currentPage === totalPages,
+                }"
+                @click="goToPage(totalPages)"
+              >
+                {{ totalPages }}
+              </button>
+
+              <button
+                class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                :disabled="currentPage >= totalPages"
+                @click="nextPage"
+              >
+                Next »
               </button>
             </div>
           </div>

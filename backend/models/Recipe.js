@@ -308,11 +308,12 @@ class Recipe {
           const requiredQuantity =
             parseFloat(ingredient.quantity_required) * scaleFactor;
 
-          // Get current inventory for this ingredient
+          // Get current inventory for this ingredient (excluding expired items)
           const currentStock = await db("inventory_items as ii")
             .select(db.raw("SUM(ii.quantity) as total_available"))
             .where("ii.id", ingredient.inventory_item_id)
             .where("ii.quantity", ">", 0)
+            .where("ii.status", "available") // Exclude expired items
             .first();
 
           const availableQuantity = parseFloat(

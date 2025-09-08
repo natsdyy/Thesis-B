@@ -28,13 +28,23 @@ class Employee {
   // Get all employees
   static async getAll(includeDeleted = false) {
     try {
-      let query = db("employees").select("*");
+      let query = db("employees")
+        .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
+        .select("employees.*", db.raw("user_roles.role as role"));
 
       if (!includeDeleted) {
-        query = query.whereNull("deleted_at");
+        query = query.whereNull("employees.deleted_at");
       }
 
-      const employees = await query.orderBy("created_at", "desc");
+      // Exclude System/Super Admin while allowing employees without a role
+      query = query.where((qb) => {
+        qb.whereNotIn("user_roles.role", [
+          "System Admin",
+          "Super Admin",
+        ]).orWhereNull("user_roles.role");
+      });
+
+      const employees = await query.orderBy("employees.created_at", "desc");
       return employees;
     } catch (error) {
       console.error("Error fetching employees:", error);
@@ -92,10 +102,17 @@ class Employee {
       }
 
       const employees = await db("employees")
-        .select("*")
-        .where("department", department)
-        .whereNull("deleted_at")
-        .orderBy("first_name");
+        .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
+        .select("employees.*", db.raw("user_roles.role as role"))
+        .where("employees.department", department)
+        .whereNull("employees.deleted_at")
+        .where((qb) => {
+          qb.whereNotIn("user_roles.role", [
+            "System Admin",
+            "Super Admin",
+          ]).orWhereNull("user_roles.role");
+        })
+        .orderBy("employees.first_name");
 
       return employees;
     } catch (error) {
@@ -258,25 +275,27 @@ class Employee {
     if (!data.emergency_contact_address?.trim())
       errors.push("Emergency contact address is required");
 
-    // Phone number format validation (Philippine format)
-    const phoneRegex = /^\+63\s\d{3}\s\d{3}\s\d{4}$/;
-    if (data.phone_number && !phoneRegex.test(data.phone_number)) {
-      errors.push("Phone number must be in format: +63 900 000 0000");
+    // Phone number format validation (Philippine mobile): allow 09XXXXXXXXX or +639XXXXXXXXX
+    const phLocalRegex = /^09\d{9}$/;
+    const phIntlRegex = /^\+639\d{9}$/;
+    const isValidPH = (v) => phLocalRegex.test(v) || phIntlRegex.test(v);
+    if (data.phone_number && !isValidPH(data.phone_number)) {
+      errors.push("Phone number must be 09XXXXXXXXX or +639XXXXXXXXX");
     }
     if (
       data.emergency_contact_number &&
-      !phoneRegex.test(data.emergency_contact_number)
+      !isValidPH(data.emergency_contact_number)
     ) {
       errors.push(
-        "Emergency contact number must be in format: +63 900 000 0000"
+        "Emergency contact number must be 09XXXXXXXXX or +639XXXXXXXXX"
       );
     }
     if (
       data.alternate_contact_number &&
-      !phoneRegex.test(data.alternate_contact_number)
+      !isValidPH(data.alternate_contact_number)
     ) {
       errors.push(
-        "Alternate contact number must be in format: +63 900 000 0000"
+        "Alternate contact number must be 09XXXXXXXXX or +639XXXXXXXXX"
       );
     }
 
@@ -401,6 +420,7 @@ class Employee {
           emergency_contact_email:
             data.emergency_contact_email?.trim().toLowerCase() || null,
           status: "Active",
+          photo_url: data.photo_url || null,
           created_by: createdBy,
           created_at: new Date(),
           updated_at: new Date(),
@@ -522,6 +542,10 @@ class Employee {
           emergency_contact_address: data.emergency_contact_address.trim(),
           emergency_contact_email:
             data.emergency_contact_email?.trim().toLowerCase() || null,
+          photo_url:
+            data.photo_url !== undefined
+              ? data.photo_url
+              : existingEmployee.photo_url,
           updated_by: updatedBy,
           updated_at: new Date(),
         })

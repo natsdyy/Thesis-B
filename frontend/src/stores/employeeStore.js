@@ -137,7 +137,11 @@ export const useEmployeeStore = defineStore('employee', {
         const data = await response.json();
 
         if (data.success) {
-          this.employees = data.data;
+          // Safety: exclude System/Super Admin on client even if backend missed it
+          this.employees = (data.data || []).filter((e) => {
+            const r = (e.role || '').toLowerCase();
+            return r !== 'system admin' && r !== 'super admin';
+          });
           return data.data;
         } else {
           throw new Error(data.message || 'Failed to fetch employees');
@@ -299,6 +303,48 @@ export const useEmployeeStore = defineStore('employee', {
         }
       } catch (error) {
         console.error('Error creating employee:', error);
+        this.setError(error.message);
+        throw error;
+      } finally {
+        this.setLoading(false);
+      }
+    },
+
+    // Create new employee with photo (multipart)
+    async createEmployeeWithPhoto(formData) {
+      this.setLoading(true);
+      this.clearError();
+
+      try {
+        const response = await fetch(`${apiConfig.baseURL}/employees/upload`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+          },
+          body: formData,
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.message || `HTTP error! status: ${response.status}`
+          );
+        }
+
+        if (data.success) {
+          this.employees.unshift(data.data);
+          this.employeeStats.total_employees += 1;
+          if ((data.data.status || 'Active') === 'Active') {
+            this.employeeStats.active_employees += 1;
+          }
+          this.employeeStats.new_this_month += 1;
+          return data.data;
+        } else {
+          throw new Error(data.message || 'Failed to create employee');
+        }
+      } catch (error) {
+        console.error('Error creating employee with photo:', error);
         this.setError(error.message);
         throw error;
       } finally {

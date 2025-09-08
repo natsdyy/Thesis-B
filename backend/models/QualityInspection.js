@@ -136,8 +136,8 @@ class QualityInspection {
           "mi.menu_item_name as item_name",
           "mi.item_code",
           "sp.sample_batch_number",
-          "u.name as inspector_name",
-          "au.name as approved_by_name"
+          "e.name as inspector_name",
+          "ae.name as approved_by_name"
         )
         .leftJoin("menu_items as mi", "qi.menu_item_id", "mi.id")
         .leftJoin(
@@ -145,8 +145,8 @@ class QualityInspection {
           "qi.sample_production_id",
           "sp.id"
         )
-        .leftJoin("users as u", "qi.inspector_id", "u.id")
-        .leftJoin("users as au", "qi.approved_by", "au.id")
+        .leftJoin("employees as e", "qi.inspector_id", "e.id")
+        .leftJoin("employees as ae", "qi.approved_by", "ae.id")
         .whereNull("qi.deleted_at");
 
       // Apply filters
@@ -203,8 +203,8 @@ class QualityInspection {
           "sp.batch_unit",
           "sp.production_cost",
           "r.recipe_name",
-          "u.name as inspector_name",
-          "au.name as approved_by_name"
+          "e.name as inspector_name",
+          "ae.name as approved_by_name"
         )
         .leftJoin("menu_items as mi", "qi.menu_item_id", "mi.id")
         .leftJoin(
@@ -213,8 +213,8 @@ class QualityInspection {
           "sp.id"
         )
         .leftJoin("recipes as r", "mi.recipe_id", "r.id")
-        .leftJoin("users as u", "qi.inspector_id", "u.id")
-        .leftJoin("users as au", "qi.approved_by", "au.id")
+        .leftJoin("employees as e", "qi.inspector_id", "e.id")
+        .leftJoin("employees as ae", "qi.approved_by", "ae.id")
         .where("qi.id", id)
         .whereNull("qi.deleted_at")
         .first();
@@ -433,7 +433,7 @@ class QualityInspection {
         menu_item_id: currentInspection.menu_item_id,
         sample_production_id: currentInspection.sample_production_id,
         quality_inspection_id: id,
-        user_id: userId,
+        employee_id: userId,
         action_type: "QUALITY_INSPECTION",
         action_details: {
           inspection_number: currentInspection.inspection_number,
@@ -576,7 +576,7 @@ class QualityInspection {
         menu_item_id: currentInspection.menu_item_id,
         sample_production_id: currentInspection.sample_production_id,
         quality_inspection_id: id,
-        user_id: userId,
+        employee_id: userId,
         action_type: "QUALITY_FAILED",
         action_details: {
           inspection_number: currentInspection.inspection_number,
@@ -618,7 +618,7 @@ class QualityInspection {
         menu_item_id: currentInspection.menu_item_id,
         sample_production_id: currentInspection.sample_production_id,
         quality_inspection_id: id,
-        user_id: userId,
+        employee_id: userId,
         action_type: "QUALITY_INSPECTION",
         action_details: {
           inspection_number: currentInspection.inspection_number,
@@ -682,8 +682,8 @@ class QualityInspection {
   static async getByMenuItem(menuItemId) {
     try {
       return await db("menu_quality_inspections as qi")
-        .select("qi.*", "u.name as inspector_name", "sp.sample_batch_number")
-        .leftJoin("users as u", "qi.inspector_id", "u.id")
+        .select("qi.*", "e.name as inspector_name", "sp.sample_batch_number")
+        .leftJoin("employees as e", "qi.inspector_id", "e.id")
         .leftJoin(
           "sample_productions as sp",
           "qi.sample_production_id",
@@ -707,7 +707,7 @@ class QualityInspection {
           "mi.item_name",
           "mi.item_code",
           "sp.sample_batch_number",
-          "u.name as inspector_name"
+          "e.name as inspector_name"
         )
         .leftJoin("menu_items as mi", "qi.menu_item_id", "mi.id")
         .leftJoin(
@@ -715,7 +715,7 @@ class QualityInspection {
           "qi.sample_production_id",
           "sp.id"
         )
-        .leftJoin("users as u", "qi.inspector_id", "u.id")
+        .leftJoin("employees as e", "qi.inspector_id", "e.id")
         .where("qi.result", "Pending")
         .whereNull("qi.deleted_at")
         .orderBy("qi.inspection_date", "asc")
@@ -742,7 +742,7 @@ class QualityInspection {
         menu_item_id: currentInspection.menu_item_id,
         sample_production_id: currentInspection.sample_production_id,
         quality_inspection_id: id,
-        user_id: userId,
+        employee_id: userId,
         action_type: "DELETED",
         action_details: {
           inspection_number: currentInspection.inspection_number,

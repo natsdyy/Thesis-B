@@ -12,8 +12,8 @@ class SampleProduction {
           "mi.menu_item_name",
           "mi.item_code",
           "r.recipe_name",
-          "u.name as assigned_to_name",
-          "cu.name as created_by_name",
+          "e.name as assigned_to_name",
+          "ce.name as created_by_name",
           db.raw("COUNT(qi.id) as inspection_count"),
           db.raw(
             "COUNT(CASE WHEN qi.result = 'Pass' THEN 1 END) as passed_inspections"
@@ -21,8 +21,8 @@ class SampleProduction {
         )
         .leftJoin("menu_items as mi", "sp.menu_item_id", "mi.id")
         .leftJoin("recipes as r", "sp.recipe_id", "r.id")
-        .leftJoin("users as u", "sp.assigned_to", "u.id")
-        .leftJoin("users as cu", "sp.created_by", "cu.id")
+        .leftJoin("employees as e", "sp.assigned_to", "e.id")
+        .leftJoin("employees as ce", "sp.created_by", "ce.id")
         .leftJoin(
           "menu_quality_inspections as qi",
           "sp.id",
@@ -34,8 +34,8 @@ class SampleProduction {
           "mi.menu_item_name",
           "mi.item_code",
           "r.recipe_name",
-          "u.name",
-          "cu.name"
+          "e.name",
+          "ce.name"
         );
 
       // Apply filters
@@ -110,13 +110,13 @@ class SampleProduction {
           "r.instructions",
           "r.batch_size",
           "r.batch_unit",
-          "u.name as assigned_to_name",
-          "cu.name as created_by_name"
+          "e.name as assigned_to_name",
+          "ce.name as created_by_name"
         )
         .leftJoin("menu_items as mi", "sp.menu_item_id", "mi.id")
         .leftJoin("recipes as r", "sp.recipe_id", "r.id")
-        .leftJoin("users as u", "sp.assigned_to", "u.id")
-        .leftJoin("users as cu", "sp.created_by", "cu.id")
+        .leftJoin("employees as e", "sp.assigned_to", "e.id")
+        .leftJoin("employees as ce", "sp.created_by", "ce.id")
         .where("sp.id", id)
         .whereNull("sp.deleted_at")
         .first();
@@ -316,7 +316,7 @@ class SampleProduction {
       await AuditLogger.log({
         menu_item_id: currentSample.menu_item_id,
         sample_production_id: id,
-        user_id: userId,
+        employee_id: userId,
         action_type: actionType,
         action_details: {
           sample_batch_number: currentSample.sample_batch_number,
@@ -511,7 +511,7 @@ class SampleProduction {
       await AuditLogger.log({
         menu_item_id: currentSample.menu_item_id,
         sample_production_id: id,
-        user_id: userId,
+        employee_id: userId,
         action_type: "SAMPLE_ARCHIVED",
         action_details: {
           sample_batch_number: currentSample.sample_batch_number,
@@ -537,11 +537,11 @@ class SampleProduction {
       let query = db("menu_item_audit_log as al")
         .select(
           "al.*",
-          "u.name as user_name",
+          "e.name as user_name",
           "mi.menu_item_name",
           "sp.sample_batch_number"
         )
-        .leftJoin("users as u", "al.user_id", "u.id")
+        .leftJoin("employees as e", "al.user_id", "e.id")
         .leftJoin("menu_items as mi", "al.menu_item_id", "mi.id")
         .leftJoin(
           "sample_productions as sp",
@@ -640,7 +640,7 @@ class SampleProduction {
       await AuditLogger.log({
         menu_item_id: currentSample.menu_item_id,
         sample_production_id: id,
-        user_id: userId,
+        employee_id: userId,
         action_type: "SAMPLE_COMPLETED", // Using this for deletion as well
         action_details: {
           sample_batch_number: currentSample.sample_batch_number,

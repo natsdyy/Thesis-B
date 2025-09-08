@@ -28,11 +28,23 @@ const setupAxiosInterceptors = () => {
     },
     (error) => {
       if (error.response?.status === 401) {
-        // Token is invalid or expired
+        const requestUrl = error.config?.url || '';
+        const isLoginRequest = requestUrl.includes('/auth/login');
+        const isOnLoginPage =
+          typeof window !== 'undefined' &&
+          window.location?.pathname === '/login';
+
+        // Do NOT redirect for the login endpoint or when already on the login page
+        if (isLoginRequest || isOnLoginPage) {
+          return Promise.reject(error);
+        }
+
+        // For other 401s (expired/invalid token), clear session and redirect
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         localStorage.removeItem('isAuthenticated');
         window.location.href = '/login';
+        return; // stop further handling
       }
       return Promise.reject(error);
     }

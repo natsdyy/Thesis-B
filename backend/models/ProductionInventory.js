@@ -69,7 +69,7 @@ class ProductionInventory {
       // Log the creation action
       await trx("menu_item_audit_log").insert({
         menu_item_id: menuItemId,
-        user_id: userId,
+        employee_id: userId,
         action_type: "ADDED_TO_INVENTORY",
         action_details: JSON.stringify({
           production_inventory_id: productionInventory.id,
@@ -113,12 +113,12 @@ class ProductionInventory {
           "r.recipe_name",
           "r.batch_size",
           "r.batch_unit",
-          "u.name as created_by_name"
+          "e.name as created_by_name"
         )
         .leftJoin("menu_items as mi", "pi.menu_item_id", "mi.id")
         .leftJoin("menus as m", "mi.menu_id", "m.id")
         .leftJoin("recipes as r", "pi.recipe_id", "r.id")
-        .leftJoin("users as u", "pi.created_by", "u.id")
+        .leftJoin("employees as e", "pi.created_by", "e.id")
         .where("pi.is_active", true)
         .whereNull("mi.deleted_at")
         .whereNull("m.deleted_at");
@@ -218,12 +218,12 @@ class ProductionInventory {
           "r.batch_size",
           "r.batch_unit",
           "r.cost_per_batch",
-          "u.name as created_by_name"
+          "e.name as created_by_name"
         )
         .leftJoin("menu_items as mi", "pi.menu_item_id", "mi.id")
         .leftJoin("menus as m", "mi.menu_id", "m.id")
         .leftJoin("recipes as r", "pi.recipe_id", "r.id")
-        .leftJoin("users as u", "pi.created_by", "u.id")
+        .leftJoin("employees as e", "pi.created_by", "e.id")
         .where("pi.id", id)
         .whereNull("mi.deleted_at")
         .whereNull("m.deleted_at")
@@ -253,9 +253,9 @@ class ProductionInventory {
             "qi.inspection_date",
             "qi.result",
             "qi.overall_quality_score",
-            "u.name as inspector_name"
+            "e.name as inspector_name"
           )
-          .leftJoin("users as u", "qi.inspector_id", "u.id")
+          .leftJoin("employees as e", "qi.inspector_id", "e.id")
           .where("qi.menu_item_id", inventoryItem.menu_item_id)
           .whereNull("qi.deleted_at")
           .orderBy("qi.inspection_date", "desc")
@@ -470,7 +470,7 @@ class ProductionInventory {
 
       await db("menu_item_audit_log").insert({
         menu_item_id: inventoryItem.menu_item_id,
-        user_id: userId,
+        employee_id: userId,
         action_type: "INVENTORY_UPDATED",
         action_details: JSON.stringify({
           production_inventory_id: inventoryId,
@@ -563,12 +563,12 @@ class ProductionInventory {
           mal.user_id,
           COALESCE(mi.menu_item_name, 'Unknown Item') as item_name,
           COALESCE(pi.available_quantity, 0) as available_quantity,
-          COALESCE(u.name, 'Unknown User') as performed_by,
+          COALESCE(e.name, 'Unknown Employee') as performed_by,
           'inventory' as activity_source
         FROM menu_item_audit_log mal
         LEFT JOIN menu_items mi ON mal.menu_item_id = mi.id AND mi.deleted_at IS NULL
         LEFT JOIN production_inventory pi ON mal.menu_item_id = pi.menu_item_id
-        LEFT JOIN users u ON mal.user_id = u.id
+        LEFT JOIN employees e ON mal.employee_id = e.id
         WHERE mal.action_type = ?
         ORDER BY mal.created_at DESC
         LIMIT ?
@@ -588,14 +588,14 @@ class ProductionInventory {
           pb.assigned_to as user_id,
           COALESCE(mi.menu_item_name, 'Unknown Item') as item_name,
           COALESCE(pi.available_quantity, 0) as available_quantity,
-          COALESCE(u.name, 'Unknown User') as performed_by,
+          COALESCE(e.name, 'Unknown Employee') as performed_by,
           'production' as activity_source,
           pb.batch_size,
           pb.quantity_produced
         FROM production_batches pb
         LEFT JOIN menu_items mi ON pb.menu_item_id = mi.id AND mi.deleted_at IS NULL
         LEFT JOIN production_inventory pi ON pb.menu_item_id = pi.menu_item_id
-        LEFT JOIN users u ON pb.assigned_to = u.id
+        LEFT JOIN employees e ON pb.assigned_to = e.id
         WHERE pb.status IN ('In Progress', 'Completed', 'Quality Check', 'Failed')
         ORDER BY pb.updated_at DESC
         LIMIT ?
@@ -677,7 +677,7 @@ class ProductionInventory {
       if (search) {
         whereConditions.push(`(
           mi.menu_item_name ILIKE $${queryParams.length + 1} OR
-          u.name ILIKE $${queryParams.length + 1} OR
+          e.name ILIKE $${queryParams.length + 1} OR
           mal.notes ILIKE $${queryParams.length + 1}
         )`);
         queryParams.push(`%${search}%`);
@@ -713,7 +713,7 @@ class ProductionInventory {
         SELECT COUNT(*) as count
         FROM menu_item_audit_log mal
         LEFT JOIN menu_items mi ON mal.menu_item_id = mi.id AND mi.deleted_at IS NULL
-        LEFT JOIN users u ON mal.user_id = u.id
+        LEFT JOIN employees e ON mal.employee_id = e.id
         WHERE ${whereClause}
       `;
 
@@ -732,11 +732,11 @@ class ProductionInventory {
           mal.menu_item_id,
           COALESCE(mi.menu_item_name, 'Unknown Item') as item_name,
           COALESCE(pi.available_quantity, 0) as available_quantity,
-          COALESCE(u.name, 'Unknown User') as performed_by
+          COALESCE(e.name, 'Unknown Employee') as performed_by
         FROM menu_item_audit_log mal
         LEFT JOIN menu_items mi ON mal.menu_item_id = mi.id AND mi.deleted_at IS NULL
         LEFT JOIN production_inventory pi ON mal.menu_item_id = pi.menu_item_id
-        LEFT JOIN users u ON mal.user_id = u.id
+        LEFT JOIN employees e ON mal.employee_id = e.id
         WHERE ${whereClause}
         ORDER BY mal.created_at DESC
         LIMIT ? OFFSET ?
@@ -846,7 +846,7 @@ class ProductionInventory {
           "mi.menu_item_name",
           "mi.item_code",
           "b.branch_name",
-          "u.name as distributed_by_name"
+          "e.name as distributed_by_name"
         )
         .leftJoin(
           "production_inventory as pi",
@@ -855,7 +855,7 @@ class ProductionInventory {
         )
         .leftJoin("menu_items as mi", "pid.menu_item_id", "mi.id")
         .leftJoin("branches as b", "pid.branch_id", "b.id")
-        .leftJoin("users as u", "pid.distributed_by", "u.id")
+        .leftJoin("employees as e", "pid.distributed_by", "e.id")
         .where("pid.menu_item_id", menuItemId);
 
       // Apply filters
@@ -889,7 +889,7 @@ class ProductionInventory {
           "mi.item_code",
           "mi.category",
           "b.branch_name",
-          "u.name as distributed_by_name"
+          "e.name as distributed_by_name"
         )
         .leftJoin(
           "production_inventory as pi",
@@ -898,7 +898,7 @@ class ProductionInventory {
         )
         .leftJoin("menu_items as mi", "pid.menu_item_id", "mi.id")
         .leftJoin("branches as b", "pid.branch_id", "b.id")
-        .leftJoin("users as u", "pid.distributed_by", "u.id");
+        .leftJoin("employees as e", "pid.distributed_by", "e.id");
 
       // Apply filters
       if (filters.branch_id) {
@@ -1032,7 +1032,7 @@ class ProductionInventory {
       // Log deactivation
       await db("menu_item_audit_log").insert({
         production_inventory_id: id,
-        user_id: userId,
+        employee_id: userId,
         action_type: "INVENTORY_DEACTIVATED",
         action_details: JSON.stringify({ deactivated: true }),
         notes: "Production inventory item deactivated",
@@ -1147,11 +1147,11 @@ class ProductionInventory {
           "mi.menu_item_name",
           "mi.item_code",
           "r.recipe_name",
-          "u.name as assigned_to_name"
+          "e.name as assigned_to_name"
         )
         .leftJoin("menu_items as mi", "pb.menu_item_id", "mi.id")
         .leftJoin("recipes as r", "pb.recipe_id", "r.id")
-        .leftJoin("users as u", "pb.assigned_to", "u.id")
+        .leftJoin("employees as e", "pb.assigned_to", "e.id")
         .orderBy("pb.created_at", "desc");
 
       // Apply status filter
@@ -1333,11 +1333,11 @@ class ProductionInventory {
           "mi.menu_item_name",
           "mi.item_code",
           "r.recipe_name",
-          "u.name as assigned_to_name"
+          "e.name as assigned_to_name"
         )
         .leftJoin("menu_items as mi", "pb.menu_item_id", "mi.id")
         .leftJoin("recipes as r", "pb.recipe_id", "r.id")
-        .leftJoin("users as u", "pb.assigned_to", "u.id")
+        .leftJoin("employees as e", "pb.assigned_to", "e.id")
         .where("pb.id", batchId)
         .first();
 

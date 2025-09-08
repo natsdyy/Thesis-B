@@ -41,7 +41,7 @@ export const menuItems = [
       { name: 'Add Schedules', route: '/hr/schedules/add' },
       { name: 'Positions', route: '/hr/positions' },
       { name: 'Leave Management', route: '/hr/leave' },
-      { name: 'Add Employee', route: '/hr/employees/add' },
+      { name: 'Add Employee', route: '/hr/add-employee' },
     ],
   },
   {
@@ -161,7 +161,6 @@ export const menuItems = [
     route: '/production/production-inventory',
     department: 'Production',
   },
-
 
   // Customer Relationship
   {

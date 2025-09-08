@@ -24,22 +24,20 @@
     PhoneCall,
   } from 'lucide-vue-next';
   import { useAuthStore } from '../../stores/authStore.js';
+  import { useEmployeeStore } from '../../stores/employeeStore.js';
   import { apiConfig } from '../../config/api.js';
 
   const authStore = useAuthStore();
+  const employeeStore = useEmployeeStore();
 
   // Reactive state
   const activeTab = ref('basic');
   const loading = ref(false);
   const saving = ref(false);
 
-  // Stats for display
-  const employeeStats = ref({
-    total_employees: 0,
-    active_employees: 0,
-    departments: 0,
-    new_this_month: 0,
-  });
+  // Access store data
+  const employeeStats = computed(() => employeeStore.employeeStats);
+  const storeLoading = computed(() => employeeStore.loading);
 
   // Form data
   const employeeForm = ref({
@@ -330,16 +328,10 @@
       saving.value = true;
       closeConfirmModal();
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      const newEmployee = {
-        id: Date.now(),
-        employee_id: `EMP${Date.now().toString().slice(-6)}`,
-        ...employeeForm.value,
-        created_at: new Date().toISOString(),
-        status: 'Active',
-      };
+      // Use employee store to create employee
+      const newEmployee = await employeeStore.createEmployee(
+        employeeForm.value
+      );
 
       showToast('success', 'Employee added successfully!');
       openSuccessModal(newEmployee);
@@ -348,7 +340,10 @@
       resetForm();
     } catch (error) {
       console.error('Error adding employee:', error);
-      showToast('error', 'Failed to add employee. Please try again.');
+      showToast(
+        'error',
+        error.message || 'Failed to add employee. Please try again.'
+      );
     } finally {
       saving.value = false;
     }
@@ -394,13 +389,7 @@
   // Fetch employee stats
   const fetchEmployeeStats = async () => {
     try {
-      // Simulate API call
-      employeeStats.value = {
-        total_employees: 45,
-        active_employees: 42,
-        departments: 6,
-        new_this_month: 3,
-      };
+      await employeeStore.fetchEmployeeStats();
     } catch (error) {
       console.error('Error fetching employee stats:', error);
     }

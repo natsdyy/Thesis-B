@@ -55,7 +55,7 @@
     age: '',
     citizenship: '',
     department: '',
-    job_title: '',
+    role_id: '',
     employee_type: '',
 
     // Salary Information
@@ -91,24 +91,9 @@
     employeeData: null,
   });
 
-  // Department and job title options
-  const departments = [
-    'Human Resource',
-    'Finance',
-    'SCM',
-    'Production',
-    'CRM',
-    'Branch',
-  ];
-
-  const jobTitles = {
-    'Human Resource': ['Manager', 'Staff'],
-    Finance: ['Manager', 'Staff'],
-    SCM: ['Manager', 'Staff'],
-    Production: ['Manager', 'Staff'],
-    CRM: ['Manager', 'Staff'],
-    Branch: ['Manager', 'Cook', 'Cashier', 'Waiter'],
-  };
+  // Departments and roles data
+  const departmentsWithRoles = ref({});
+  const departments = computed(() => Object.keys(departmentsWithRoles.value));
 
   const civilStatuses = ['Single', 'Married'];
 
@@ -116,9 +101,9 @@
   const employeeTypes = ['Full-time', 'Part-time'];
 
   // Computed properties
-  const availableJobTitles = computed(() => {
+  const availableRoles = computed(() => {
     return employeeForm.value.department
-      ? jobTitles[employeeForm.value.department] || []
+      ? departmentsWithRoles.value[employeeForm.value.department] || []
       : [];
   });
 
@@ -138,7 +123,7 @@
       form.age &&
       form.citizenship &&
       form.department &&
-      form.job_title &&
+      form.role_id &&
       form.employee_type;
 
     // Salary Information - Required fields
@@ -172,7 +157,7 @@
     if (form.age) completedFields++;
     if (form.citizenship) completedFields++;
     if (form.department) completedFields++;
-    if (form.job_title) completedFields++;
+    if (form.role_id) completedFields++;
     if (form.employee_type) completedFields++;
     if (form.pagibig_number) completedFields++;
     if (form.sss_number) completedFields++;
@@ -207,11 +192,11 @@
     }
   );
 
-  // Watch for department changes to reset job title
+  // Watch for department changes to reset role
   watch(
     () => employeeForm.value.department,
     () => {
-      employeeForm.value.job_title = '';
+      employeeForm.value.role_id = '';
     }
   );
 
@@ -364,7 +349,7 @@
       age: '',
       citizenship: '',
       department: '',
-      job_title: '',
+      role_id: '',
       employee_type: '',
       pagibig_number: '',
       sss_number: '',
@@ -395,8 +380,42 @@
     }
   };
 
+  // Fetch departments with roles
+  const fetchDepartmentsWithRoles = async () => {
+    try {
+      const response = await fetch(
+        `${apiConfig.baseURL}/employees/departments-with-roles`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        departmentsWithRoles.value = data.data;
+      } else {
+        throw new Error(
+          data.message || 'Failed to fetch departments with roles'
+        );
+      }
+    } catch (error) {
+      console.error('Error fetching departments with roles:', error);
+      showToast('error', 'Failed to load departments and roles');
+    }
+  };
+
   onMounted(() => {
     fetchEmployeeStats();
+    fetchDepartmentsWithRoles();
   });
 </script>
 
@@ -810,37 +829,37 @@
               </label>
             </div>
 
-            <!-- Job Title -->
+            <!-- Role -->
             <div class="form-control">
               <label class="label mb-1">
                 <span
                   class="label-text text-black/70 font-medium text-sm sm:text-base"
                 >
-                  Job Title <span class="text-red-500">*</span>
+                  Role <span class="text-red-500">*</span>
                 </span>
               </label>
               <select
-                v-model="employeeForm.job_title"
+                v-model="employeeForm.role_id"
                 class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-                :class="{ 'select-error': formErrors.job_title }"
+                :class="{ 'select-error': formErrors.role_id }"
                 :disabled="!employeeForm.department"
                 required
               >
-                <option value="">Select job title</option>
+                <option value="">Select role</option>
                 <option
-                  v-for="title in availableJobTitles"
-                  :key="title"
-                  :value="title"
+                  v-for="role in availableRoles"
+                  :key="role.role_id"
+                  :value="role.role_id"
                 >
-                  {{ title }}
+                  {{ role.role }}
                 </option>
               </select>
               <span class="text-xs text-gray-500 mt-1">
                 {{ !employeeForm.department ? 'Select department first' : '' }}
               </span>
-              <label v-if="formErrors.job_title" class="label">
+              <label v-if="formErrors.role_id" class="label">
                 <span class="label-text-alt text-error">{{
-                  formErrors.job_title
+                  formErrors.role_id
                 }}</span>
               </label>
             </div>
@@ -1232,7 +1251,11 @@
                 <strong>Department:</strong> {{ employeeForm.department }}
               </div>
               <div>
-                <strong>Job Title:</strong> {{ employeeForm.job_title }}
+                <strong>Role:</strong>
+                {{
+                  availableRoles.find((r) => r.role_id == employeeForm.role_id)
+                    ?.role || 'N/A'
+                }}
               </div>
               <div><strong>Type:</strong> {{ employeeForm.employee_type }}</div>
             </div>
@@ -1304,8 +1327,12 @@
                 {{ successModal.employeeData?.department }}
               </div>
               <div>
-                <strong>Job Title:</strong>
-                {{ successModal.employeeData?.job_title }}
+                <strong>Role:</strong>
+                {{
+                  availableRoles.find(
+                    (r) => r.role_id == successModal.employeeData?.role_id
+                  )?.role || 'N/A'
+                }}
               </div>
               <div>
                 <strong>Status:</strong> {{ successModal.employeeData?.status }}

@@ -80,8 +80,8 @@ const routes = [
     component: DashboardLayout,
     children: scmRoutes,
     meta: {
-      title: 'Supply Chain',
-      department: 'Supply Chain',
+      title: 'Supply Chain Management',
+      department: 'SCM',
       requiresAuth: true,
       requiresDepartmentAccess: true,
     },
@@ -116,23 +116,23 @@ const routes = [
     component: DashboardLayout,
     children: crmRoutes,
     meta: {
-      title: 'Customer Relationship',
-      department: 'Customer Relationship',
+      title: 'Customer Relationship Management',
+      department: 'CRM',
       requiresAuth: true,
       requiresDepartmentAccess: true,
     },
   },
-  // Admin routes (Super Admin and Admin department only)
+  // Admin routes (Super Admin only)
   {
     path: '/admin',
     component: DashboardLayout,
     children: adminRoutes,
     meta: {
-      title: 'Administration',
-      department: 'Admin',
+      title: 'System Administration',
+      department: 'System',
       requiresAuth: true,
       requiresDepartmentAccess: true,
-      adminOnly: true, // Only Admin department users and Super Admin
+      adminOnly: true, // Only Super Admin
     },
   },
   // 404 Not Found
@@ -168,13 +168,8 @@ function canAccessDepartment(userRole, userDepartment, routeDepartment) {
 
 // Helper function to check admin access
 function canAccessAdminRoutes(userRole, userDepartment) {
-  // Super Admin can access everything
-  if (userRole === 'Super Admin') {
-    return true;
-  }
-
-  // Only Admin department users can access admin routes
-  return userDepartment === 'Admin';
+  // Only Super Admin can access admin routes
+  return userRole === 'Super Admin' && userDepartment === 'System';
 }
 
 // Add a global navigation guard
@@ -256,10 +251,11 @@ function getUserDashboardRoute(userDepartment) {
   const departmentRoutes = {
     'Human Resource': '/hr/dashboard',
     Finance: '/finance/dashboard',
-    'Supply Chain': '/scm/dashboard',
+    SCM: '/scm/dashboard',
     Production: '/production/dashboard',
-    'Customer Relationship': '/crm/dashboard',
-    Admin: '/admin/dashboard',
+    CRM: '/crm/dashboard',
+    Branch: '/branch/dashboard',
+    System: '/admin/dashboard',
   };
 
   return departmentRoutes[userDepartment] || '/dashboard';

@@ -1,4 +1,5 @@
 const { db } = require("../config/database");
+const bcrypt = require("bcryptjs");
 
 class Employee {
   // Generate unique employee ID
@@ -132,6 +133,99 @@ class Employee {
     }
   }
 
+  // Authentication methods
+  static async hashPassword(password) {
+    const saltRounds = 12;
+    return await bcrypt.hash(password, saltRounds);
+  }
+
+  static async comparePassword(plainPassword, hashedPassword) {
+    return await bcrypt.compare(plainPassword, hashedPassword);
+  }
+
+  static isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  }
+
+  // Find employee by email for authentication
+  static async findByEmail(email) {
+    try {
+      const employee = await db("employees")
+        .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
+        .select(
+          "employees.*",
+          "user_roles.role",
+          "user_roles.description as role_description"
+        )
+        .where("employees.email", email)
+        .where("employees.status", "Active")
+        .where("employees.is_active", true)
+        .whereNull("employees.deleted_at")
+        .first();
+
+      return employee;
+    } catch (error) {
+      console.error("Error finding employee by email:", error);
+      throw error;
+    }
+  }
+
+  // Authenticate employee
+  static async authenticate(email, password) {
+    try {
+      const employee = await this.findByEmail(email);
+
+      if (!employee) {
+        return { success: false, message: "Invalid email or password" };
+      }
+
+      if (!employee.password) {
+        return {
+          success: false,
+          message: "Account not activated. Please contact administrator.",
+        };
+      }
+
+      const isValidPassword = await this.comparePassword(
+        password,
+        employee.password
+      );
+
+      if (!isValidPassword) {
+        return { success: false, message: "Invalid email or password" };
+      }
+
+      // Update last login
+      await db("employees")
+        .where("employee_id", employee.employee_id)
+        .update({ last_login: new Date() });
+
+      // Remove password from returned data
+      delete employee.password;
+
+      return { success: true, employee };
+    } catch (error) {
+      console.error("Error authenticating employee:", error);
+      return { success: false, message: "Authentication failed" };
+    }
+  }
+
+  // Set or update employee password
+  static async setPassword(employeeId, password) {
+    try {
+      const hashedPassword = await this.hashPassword(password);
+      await db("employees")
+        .where("employee_id", employeeId)
+        .update({ password: hashedPassword });
+
+      return true;
+    } catch (error) {
+      console.error("Error setting employee password:", error);
+      throw error;
+    }
+  }
+
   // Validate employee data
   static validateEmployeeData(data) {
     const errors = [];
@@ -148,7 +242,7 @@ class Employee {
     if (!data.age) errors.push("Age is required");
     if (!data.citizenship?.trim()) errors.push("Citizenship is required");
     if (!data.department) errors.push("Department is required");
-    if (!data.job_title?.trim()) errors.push("Job title is required");
+    if (!data.role_id) errors.push("Role is required");
     if (!data.employee_type) errors.push("Employee type is required");
     if (!data.pagibig_number?.trim())
       errors.push("PAG-IBIG number is required");
@@ -231,6 +325,34 @@ class Employee {
       // Generate employee ID
       const employeeId = await this.generateEmployeeId();
 
+      // Set default password as last name if not provided
+      let hashedPassword = null;
+      if (data.password) {
+        hashedPassword = await this.hashPassword(data.password);
+      } else {
+        // Use last name as default password
+        const defaultPassword = data.last_name.trim();
+        hashedPassword = await this.hashPassword(defaultPassword);
+      }
+
+      // Validate role exists and is active
+      const role = await db("user_roles")
+        .where("role_id", data.role_id)
+        .whereNull("deleted_at")
+        .where("is_active", true)
+        .first();
+
+      if (!role) {
+        throw new Error("Invalid or inactive role selected");
+      }
+
+      // Validate role belongs to the selected department
+      if (role.department !== data.department) {
+        throw new Error(
+          `Role does not belong to ${data.department} department`
+        );
+      }
+
       // Check for duplicate government benefit numbers
       const existingEmployee = await db("employees")
         .where(function () {
@@ -254,6 +376,8 @@ class Employee {
           middle_name: data.middle_name?.trim() || null,
           last_name: data.last_name.trim(),
           email: data.email?.trim().toLowerCase() || null,
+          password: hashedPassword,
+          is_active: true,
           phone_number: data.phone_number.trim(),
           address: data.address.trim(),
           postal_code: data.postal_code.trim(),
@@ -263,7 +387,7 @@ class Employee {
           age: parseInt(data.age),
           citizenship: data.citizenship.trim(),
           department: data.department,
-          job_title: data.job_title.trim(),
+          role_id: data.role_id,
           employee_type: data.employee_type,
           pagibig_number: data.pagibig_number.trim(),
           sss_number: data.sss_number.trim(),
@@ -334,6 +458,24 @@ class Employee {
         throw new Error("Cannot update a deleted employee");
       }
 
+      // Validate role exists and is active
+      const role = await db("user_roles")
+        .where("role_id", data.role_id)
+        .whereNull("deleted_at")
+        .where("is_active", true)
+        .first();
+
+      if (!role) {
+        throw new Error("Invalid or inactive role selected");
+      }
+
+      // Validate role belongs to the selected department
+      if (role.department !== data.department) {
+        throw new Error(
+          `Role does not belong to ${data.department} department`
+        );
+      }
+
       // Check for duplicate government benefit numbers (excluding current employee)
       const duplicateEmployee = await db("employees")
         .where(function () {
@@ -367,7 +509,7 @@ class Employee {
           age: parseInt(data.age),
           citizenship: data.citizenship.trim(),
           department: data.department,
-          job_title: data.job_title.trim(),
+          role_id: data.role_id,
           employee_type: data.employee_type,
           pagibig_number: data.pagibig_number.trim(),
           sss_number: data.sss_number.trim(),
@@ -494,6 +636,52 @@ class Employee {
         throw error;
       }
       throw new Error("Failed to delete employee. Please try again.");
+    }
+  }
+
+  // Get roles by department
+  static async getRolesByDepartment(department) {
+    try {
+      if (!department) {
+        throw new Error("Department is required");
+      }
+
+      const roles = await db("user_roles")
+        .select("role_id", "role", "department", "description")
+        .where("department", department)
+        .whereNull("deleted_at")
+        .where("is_active", true)
+        .orderBy("role");
+
+      return roles;
+    } catch (error) {
+      console.error("Error fetching roles by department:", error);
+      throw new Error("Failed to retrieve department roles");
+    }
+  }
+
+  // Get all available departments with their roles
+  static async getDepartmentsWithRoles() {
+    try {
+      const departments = await db("user_roles")
+        .select("department")
+        .whereNull("deleted_at")
+        .where("is_active", true)
+        .where("department", "!=", "System") // Exclude system roles
+        .groupBy("department")
+        .orderBy("department");
+
+      const departmentsWithRoles = {};
+
+      for (const dept of departments) {
+        const roles = await this.getRolesByDepartment(dept.department);
+        departmentsWithRoles[dept.department] = roles;
+      }
+
+      return departmentsWithRoles;
+    } catch (error) {
+      console.error("Error fetching departments with roles:", error);
+      throw new Error("Failed to retrieve departments and roles");
     }
   }
 

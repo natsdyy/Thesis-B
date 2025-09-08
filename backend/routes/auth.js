@@ -1,5 +1,5 @@
 const express = require("express");
-const User = require("../models/User");
+const Employee = require("../models/Employee");
 const jwt = require("jsonwebtoken");
 const router = express.Router();
 
@@ -105,53 +105,29 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    const authResult = await User.authenticate(trimmedEmail, password);
+    const authResult = await Employee.authenticate(trimmedEmail, password);
 
     if (!authResult.success) {
-      let statusCode;
-
-      switch (authResult.code) {
-        case "MISSING_CREDENTIALS":
-        case "INVALID_EMAIL_FORMAT":
-          statusCode = 400;
-          break;
-        case "INVALID_CREDENTIALS":
-          statusCode = 401;
-          break;
-        case "ACCOUNT_DEACTIVATED":
-        case "ACCOUNT_INACTIVE":
-        case "NO_ROLE_ASSIGNED":
-        case "ROLE_DELETED":
-        case "ROLE_DEACTIVATED":
-          statusCode = 403;
-          break;
-        case "AUTHENTICATION_ERROR":
-        case "ROLE_VALIDATION_ERROR":
-          statusCode = 500;
-          break;
-        default:
-          statusCode = 401;
-      }
-
-      return res.status(statusCode).json({
+      return res.status(401).json({
         success: false,
         message: authResult.message,
-        code: authResult.code,
+        code: "INVALID_CREDENTIALS",
       });
     }
 
-    // Get user with permissions
-    const userWithPermissions = await User.getWithPermissions(
-      authResult.user.id
-    );
+    const employee = authResult.employee;
 
     // Generate JWT token
     const token = jwt.sign(
       {
-        id: userWithPermissions.id,
-        email: userWithPermissions.email,
-        role: userWithPermissions.role,
-        department: userWithPermissions.department,
+        id: employee.id,
+        employee_id: employee.employee_id,
+        email: employee.email,
+        role_id: employee.role_id,
+        role: employee.role,
+        department: employee.department,
+        first_name: employee.first_name,
+        last_name: employee.last_name,
       },
       process.env.JWT_SECRET || "your-secret-key",
       {
@@ -161,10 +137,19 @@ router.post("/login", async (req, res) => {
 
     res.json({
       success: true,
-      message: authResult.message,
-      code: authResult.code,
+      message: "Login successful",
+      code: "LOGIN_SUCCESS",
       data: {
-        user: userWithPermissions,
+        user: {
+          id: employee.id,
+          employee_id: employee.employee_id,
+          first_name: employee.first_name,
+          last_name: employee.last_name,
+          email: employee.email,
+          role_id: employee.role_id,
+          role: employee.role,
+          department: employee.department,
+        },
         token: token,
       },
     });
@@ -239,7 +224,7 @@ router.post("/validate-session", async (req, res) => {
     if (!user_id) {
       return res.status(400).json({
         success: false,
-        message: "User ID is required",
+        message: "Employee ID is required",
         code: "MISSING_USER_ID",
       });
     }
@@ -247,79 +232,64 @@ router.post("/validate-session", async (req, res) => {
     if (isNaN(user_id)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid user ID format",
+        message: "Invalid employee ID format",
         code: "INVALID_USER_ID",
       });
     }
 
-    const user = await User.getById(user_id);
+    const employee = await Employee.getById(user_id);
 
-    if (!user) {
+    if (!employee) {
       return res.status(404).json({
         success: false,
-        message: "User account not found",
+        message: "Employee account not found",
         code: "USER_NOT_FOUND",
       });
     }
 
-    // Check if user is active
-    if (user.deleted_at) {
+    // Check if employee is active
+    if (employee.deleted_at) {
       return res.status(403).json({
         success: false,
-        message: "User account has been deactivated",
+        message: "Employee account has been deactivated",
         code: "ACCOUNT_DEACTIVATED",
       });
     }
 
-    if (!user.is_active) {
+    if (!employee.is_active || employee.status !== "Active") {
       return res.status(403).json({
         success: false,
-        message: "User account is currently inactive",
+        message: "Employee account is currently inactive",
         code: "ACCOUNT_INACTIVE",
       });
     }
 
-    // Validate user role
-    const roleValidation = await User.validateUserRole(user);
-    if (!roleValidation.valid) {
-      let message;
-      switch (roleValidation.code) {
-        case "NO_ROLE_ASSIGNED":
-          message =
-            "No role has been assigned to your account. Please contact your administrator.";
-          break;
-        case "ROLE_DELETED":
-          message =
-            "Your assigned role has been removed. Please contact your administrator for role reassignment.";
-          break;
-        case "ROLE_DEACTIVATED":
-          message =
-            "Your assigned role has been temporarily deactivated. Please contact your administrator.";
-          break;
-        case "ROLE_VALIDATION_ERROR":
-          message =
-            "Unable to verify your role permissions. Please try again or contact your administrator.";
-          break;
-        default:
-          message = `Access denied: ${roleValidation.reason}. Please contact your administrator.`;
-      }
-
+    // Check if role is active
+    if (!employee.role_id) {
       return res.status(403).json({
         success: false,
-        message,
-        code: roleValidation.code,
+        message: "No role assigned to your account",
+        code: "NO_ROLE_ASSIGNED",
       });
     }
 
-    // Get updated user with permissions
-    const userWithPermissions = await User.getWithPermissions(user_id);
-
+    // Get employee with role information
+    const employeeWithRole = await Employee.findByEmail(employee.email);
     res.json({
       success: true,
       message: "Session is valid",
       code: "SESSION_VALID",
       data: {
-        user: userWithPermissions,
+        user: {
+          id: employeeWithRole.id,
+          employee_id: employeeWithRole.employee_id,
+          first_name: employeeWithRole.first_name,
+          last_name: employeeWithRole.last_name,
+          email: employeeWithRole.email,
+          role_id: employeeWithRole.role_id,
+          role: employeeWithRole.role,
+          department: employeeWithRole.department,
+        },
       },
     });
   } catch (error) {

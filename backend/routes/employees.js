@@ -91,6 +91,68 @@ router.get("/stats", async (req, res) => {
 
 /**
  * @swagger
+ * /api/employees/departments-with-roles:
+ *   get:
+ *     summary: Get all departments with their available roles
+ *     tags: [Employees]
+ *     responses:
+ *       200:
+ *         description: Departments with roles retrieved successfully
+ */
+router.get("/departments-with-roles", async (req, res) => {
+  try {
+    const departmentsWithRoles = await Employee.getDepartmentsWithRoles();
+    res.json({
+      success: true,
+      data: departmentsWithRoles,
+    });
+  } catch (error) {
+    console.error("Error fetching departments with roles:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching departments with roles",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/employees/roles/{department}:
+ *   get:
+ *     summary: Get roles for a specific department
+ *     tags: [Employees]
+ *     parameters:
+ *       - in: path
+ *         name: department
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Department name
+ *     responses:
+ *       200:
+ *         description: Department roles retrieved successfully
+ */
+router.get("/roles/:department", async (req, res) => {
+  try {
+    const { department } = req.params;
+    const roles = await Employee.getRolesByDepartment(department);
+    res.json({
+      success: true,
+      data: roles,
+    });
+  } catch (error) {
+    console.error("Error fetching department roles:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching department roles",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
  * /api/employees/{id}:
  *   get:
  *     summary: Get employee by ID

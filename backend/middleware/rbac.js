@@ -1,5 +1,6 @@
 const Roles = require("../models/Roles");
 const RolePermission = require("../models/RolePermission");
+const Employee = require("../models/Employee");
 const jwt = require("jsonwebtoken");
 
 // Middleware to authenticate JWT token

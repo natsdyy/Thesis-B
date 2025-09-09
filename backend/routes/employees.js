@@ -1,6 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const Employee = require("../models/Employee");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+const { authenticateToken } = require("../middleware/rbac");
 
 /**
  * @swagger
@@ -301,6 +305,71 @@ router.post("/", async (req, res) => {
     });
   }
 });
+
+// =================== PHOTO UPLOAD (similar to menu upload) ===================
+const uploadsDir = path.join(__dirname, "..", "uploads", "employee-photos");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (req, file, cb) {
+    const timestamp = Date.now();
+    const ext = path.extname(file.originalname);
+    const base = path
+      .basename(file.originalname, ext)
+      .replace(/[^a-zA-Z0-9_-]/g, "");
+    cb(null, `employee-${timestamp}-${base}${ext}`);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith("image/")) {
+      return cb(new Error("Only image uploads are allowed"));
+    }
+    cb(null, true);
+  },
+});
+
+// Upload photo and create employee in one request
+router.post(
+  "/upload",
+  authenticateToken,
+  upload.single("photo"),
+  async (req, res) => {
+    try {
+      const photoUrl = req.file
+        ? `/uploads/employee-photos/${req.file.filename}`
+        : null;
+
+      const payload = req.body || {};
+      const createdBy = req.user?.id || null;
+
+      const employee = await Employee.create(
+        { ...payload, photo_url: photoUrl },
+        createdBy
+      );
+
+      res.status(201).json({
+        success: true,
+        data: employee,
+        message: "Employee created with photo successfully",
+      });
+    } catch (error) {
+      console.error("Error uploading photo or creating employee:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to upload photo/create employee",
+      });
+    }
+  }
+);
 
 /**
  * @swagger

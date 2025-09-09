@@ -113,7 +113,9 @@ class ProductionInventory {
           "r.recipe_name",
           "r.batch_size",
           "r.batch_unit",
-          "e.name as created_by_name"
+          db.raw(
+            "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as created_by_name"
+          )
         )
         .leftJoin("menu_items as mi", "pi.menu_item_id", "mi.id")
         .leftJoin("menus as m", "mi.menu_id", "m.id")
@@ -218,7 +220,9 @@ class ProductionInventory {
           "r.batch_size",
           "r.batch_unit",
           "r.cost_per_batch",
-          "e.name as created_by_name"
+          db.raw(
+            "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as created_by_name"
+          )
         )
         .leftJoin("menu_items as mi", "pi.menu_item_id", "mi.id")
         .leftJoin("menus as m", "mi.menu_id", "m.id")
@@ -253,7 +257,9 @@ class ProductionInventory {
             "qi.inspection_date",
             "qi.result",
             "qi.overall_quality_score",
-            "e.name as inspector_name"
+            db.raw(
+              "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as inspector_name"
+            )
           )
           .leftJoin("employees as e", "qi.inspector_id", "e.id")
           .where("qi.menu_item_id", inventoryItem.menu_item_id)
@@ -560,10 +566,10 @@ class ProductionInventory {
           mal.action_details,
           mal.notes,
           mal.created_at,
-          mal.user_id,
+          mal.employee_id as user_id,
           COALESCE(mi.menu_item_name, 'Unknown Item') as item_name,
           COALESCE(pi.available_quantity, 0) as available_quantity,
-          COALESCE(e.name, 'Unknown Employee') as performed_by,
+          COALESCE(COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,''), 'Unknown Employee') as performed_by,
           'inventory' as activity_source
         FROM menu_item_audit_log mal
         LEFT JOIN menu_items mi ON mal.menu_item_id = mi.id AND mi.deleted_at IS NULL
@@ -588,7 +594,7 @@ class ProductionInventory {
           pb.assigned_to as user_id,
           COALESCE(mi.menu_item_name, 'Unknown Item') as item_name,
           COALESCE(pi.available_quantity, 0) as available_quantity,
-          COALESCE(e.name, 'Unknown Employee') as performed_by,
+          COALESCE(COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,''), 'Unknown Employee') as performed_by,
           'production' as activity_source,
           pb.batch_size,
           pb.quantity_produced
@@ -728,11 +734,11 @@ class ProductionInventory {
           mal.action_details,
           mal.notes,
           mal.created_at,
-          mal.user_id,
+          mal.employee_id as user_id,
           mal.menu_item_id,
           COALESCE(mi.menu_item_name, 'Unknown Item') as item_name,
           COALESCE(pi.available_quantity, 0) as available_quantity,
-          COALESCE(e.name, 'Unknown Employee') as performed_by
+          COALESCE(COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,''), 'Unknown Employee') as performed_by
         FROM menu_item_audit_log mal
         LEFT JOIN menu_items mi ON mal.menu_item_id = mi.id AND mi.deleted_at IS NULL
         LEFT JOIN production_inventory pi ON mal.menu_item_id = pi.menu_item_id
@@ -846,7 +852,9 @@ class ProductionInventory {
           "mi.menu_item_name",
           "mi.item_code",
           "b.branch_name",
-          "e.name as distributed_by_name"
+          db.raw(
+            "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as distributed_by_name"
+          )
         )
         .leftJoin(
           "production_inventory as pi",
@@ -889,7 +897,9 @@ class ProductionInventory {
           "mi.item_code",
           "mi.category",
           "b.branch_name",
-          "e.name as distributed_by_name"
+          db.raw(
+            "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as distributed_by_name"
+          )
         )
         .leftJoin(
           "production_inventory as pi",
@@ -1147,7 +1157,9 @@ class ProductionInventory {
           "mi.menu_item_name",
           "mi.item_code",
           "r.recipe_name",
-          "e.name as assigned_to_name"
+          db.raw(
+            "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as assigned_to_name"
+          )
         )
         .leftJoin("menu_items as mi", "pb.menu_item_id", "mi.id")
         .leftJoin("recipes as r", "pb.recipe_id", "r.id")
@@ -1333,7 +1345,9 @@ class ProductionInventory {
           "mi.menu_item_name",
           "mi.item_code",
           "r.recipe_name",
-          "e.name as assigned_to_name"
+          db.raw(
+            "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as assigned_to_name"
+          )
         )
         .leftJoin("menu_items as mi", "pb.menu_item_id", "mi.id")
         .leftJoin("recipes as r", "pb.recipe_id", "r.id")

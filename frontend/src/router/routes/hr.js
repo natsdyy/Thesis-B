@@ -12,6 +12,14 @@ export default [
     component: () => import('../../views/hr/Employee.vue'),
     meta: { title: 'Employee Management' },
   },
+
+  {
+    path: 'employee-manager',
+    name: 'HREmployeeManager',
+    component: () => import('../../views/hr/EmployeeManager.vue'),
+    meta: { title: 'Employee Manager' },
+  },
+
   {
     path: 'add-employee',
     name: 'HRAddEmployee',

@@ -34,6 +34,9 @@
   const activeTab = ref('basic');
   const loading = ref(false);
   const saving = ref(false);
+  // Photo upload state
+  const photoFile = ref(null);
+  const photoPreview = ref('');
 
   // Access store data
   const employeeStats = computed(() => employeeStore.employeeStats);
@@ -142,7 +145,7 @@
 
   const completionPercentage = computed(() => {
     const form = employeeForm.value;
-    const totalFields = 21; // Total required fields
+    const totalFields = 20; // Total required fields
     let completedFields = 0;
 
     // Count completed required fields
@@ -205,21 +208,22 @@
     const errors = {};
     const form = employeeForm.value;
 
-    // Validate phone number format (Philippine)
-    if (
-      form.phone_number &&
-      !form.phone_number.match(/^\+63\s\d{3}\s\d{3}\s\d{4}$/)
-    ) {
-      errors.phone_number = 'Phone number must be in format: +63 900 000 0000';
+    // Validate phone number format (Philippine) - allow 09XXXXXXXXX or +639XXXXXXXXX
+    if (form.phone_number) {
+      const isLocalPH = /^09\d{9}$/.test(form.phone_number);
+      const isIntlPH = /^\+639\d{9}$/.test(form.phone_number);
+      if (!isLocalPH && !isIntlPH) {
+        errors.phone_number = 'Use 09XXXXXXXXX or +639XXXXXXXXX';
+      }
     }
 
     // Validate emergency contact number format
-    if (
-      form.emergency_contact_number &&
-      !form.emergency_contact_number.match(/^\+63\s\d{3}\s\d{3}\s\d{4}$/)
-    ) {
-      errors.emergency_contact_number =
-        'Emergency contact number must be in format: +63 900 000 0000';
+    if (form.emergency_contact_number) {
+      const isLocalPH = /^09\d{9}$/.test(form.emergency_contact_number);
+      const isIntlPH = /^\+639\d{9}$/.test(form.emergency_contact_number);
+      if (!isLocalPH && !isIntlPH) {
+        errors.emergency_contact_number = 'Use 09XXXXXXXXX or +639XXXXXXXXX';
+      }
     }
 
     // Validate email format
@@ -244,21 +248,48 @@
     return Object.keys(errors).length === 0;
   };
 
-  // Format phone number input
-  const formatPhoneNumber = (input, field) => {
-    let value = input.replace(/\D/g, '');
+  // Philippine phone input handler: accepts only 09XXXXXXXXX or +639XXXXXXXXX
+  const handlePHPhoneInput = (rawInput, field) => {
+    const input = String(rawInput || '');
 
-    if (value.startsWith('63')) {
-      value = value.substring(2);
+    // If starts with +, normalize to +639XXXXXXXXX
+    if (input.trim().startsWith('+')) {
+      // Keep only digits, remember it is intended as +63
+      let digits = input.replace(/\D/g, '');
+      if (!digits.startsWith('63')) {
+        // Force country code 63
+        digits = '63' + digits.replace(/^\+?/, '').replace(/^63?/, '');
+      }
+      // Keep country code + 10 digits for mobile
+      digits = digits.substring(0, 12); // 63 + 10 digits
+      const localPart = digits.substring(2); // after 63
+      employeeForm.value[field] = '+63' + localPart;
+      return;
     }
 
-    if (value.length >= 10) {
-      value = value.substring(0, 10);
-      const formatted = `+63 ${value.substring(0, 3)} ${value.substring(3, 6)} ${value.substring(6)}`;
-      employeeForm.value[field] = formatted;
-    } else {
-      employeeForm.value[field] = input;
+    // Local format: keep digits only
+    let local = input.replace(/\D/g, '');
+
+    // If user types starting with 63, convert to international
+    if (local.startsWith('63')) {
+      const afterCC = local.substring(2).substring(0, 10);
+      employeeForm.value[field] = '+63' + afterCC;
+      return;
     }
+
+    // Ensure it starts with 09 for local numbers
+    if (local.startsWith('9')) {
+      local = '0' + local;
+    }
+    if (!local.startsWith('0')) {
+      // If doesn't start with 0, just keep as is until it does
+      // Limit to 11 digits regardless
+      employeeForm.value[field] = local.substring(0, 11);
+      return;
+    }
+    // Limit to 11 digits for local
+    local = local.substring(0, 11);
+    employeeForm.value[field] = local;
   };
 
   // Modal functions
@@ -273,7 +304,8 @@
       title: 'Add New Employee',
       message: `Are you sure you want to add ${employeeForm.value.first_name} ${employeeForm.value.last_name} as a new employee?`,
       confirmText: 'Add Employee',
-      confirmClass: 'btn-success',
+      confirmClass:
+        'bg-primaryColor text-white hover:bg-primaryColor/80 border-none',
       onConfirm: handleSubmitEmployee,
     };
     document.getElementById('confirmation_modal').showModal();
@@ -313,10 +345,36 @@
       saving.value = true;
       closeConfirmModal();
 
-      // Use employee store to create employee
-      const newEmployee = await employeeStore.createEmployee(
-        employeeForm.value
-      );
+      let newEmployee;
+      if (photoFile.value) {
+        const formData = new FormData();
+        Object.entries(employeeForm.value).forEach(([key, val]) => {
+          formData.append(key, val == null ? '' : val);
+        });
+        formData.append('photo', photoFile.value);
+
+        if (typeof employeeStore.createEmployeeWithPhoto === 'function') {
+          newEmployee = await employeeStore.createEmployeeWithPhoto(formData);
+        } else {
+          // Fallback direct multipart request if store method isn't available (HMR/desync safety)
+          const res = await fetch(`${apiConfig.baseURL}/employees/upload`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem('token')}`,
+            },
+            body: formData,
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success) {
+            throw new Error(
+              data.message || `HTTP error! status: ${res.status}`
+            );
+          }
+          newEmployee = data.data;
+        }
+      } else {
+        newEmployee = await employeeStore.createEmployee(employeeForm.value);
+      }
 
       showToast('success', 'Employee added successfully!');
       openSuccessModal(newEmployee);
@@ -363,12 +421,26 @@
     };
     formErrors.value = {};
     activeTab.value = 'basic';
+    photoFile.value = null;
+    photoPreview.value = '';
   };
 
   // Toast notification
   const showToast = (type, message) => {
     // Implementation would depend on your toast system
     console.log(`${type}: ${message}`);
+  };
+
+  const onPhotoSelected = (event) => {
+    const file = event.target.files?.[0];
+    photoFile.value = file || null;
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => (photoPreview.value = e.target?.result || '');
+      reader.readAsDataURL(file);
+    } else {
+      photoPreview.value = '';
+    }
   };
 
   // Fetch employee stats
@@ -565,6 +637,31 @@
     <!-- Form Content -->
     <div class="card bg-accentColor shadow-xl border border-black/10">
       <div class="card-body p-6">
+        <!-- Photo Upload -->
+        <div class="mb-6">
+          <h2 class="card-title text-primaryColor text-xl mb-2">Photo</h2>
+          <div class="flex items-center gap-4">
+            <div class="avatar">
+              <div
+                class="w-16 rounded-full ring ring-primaryColor ring-offset-base-100 ring-offset-2 overflow-hidden bg-gray-100"
+              >
+                <img v-if="photoPreview" :src="photoPreview" alt="Preview" />
+                <div
+                  v-else
+                  class="w-16 h-16 flex items-center justify-center text-xs text-gray-400"
+                >
+                  No photo
+                </div>
+              </div>
+            </div>
+            <input
+              type="file"
+              accept="image/*"
+              class="file-input file-input-bordered file-input-sm"
+              @change="onPhotoSelected"
+            />
+          </div>
+        </div>
         <!-- Basic Information Tab -->
         <div v-if="activeTab === 'basic'" class="space-y-6">
           <div class="mb-6">
@@ -646,14 +743,15 @@
                 >
               </label>
               <input
-                v-model="employeeForm.phone_number"
+                :value="employeeForm.phone_number"
+                @input="handlePHPhoneInput($event.target.value, 'phone_number')"
                 type="text"
-                placeholder="+63 900 000 0000"
+                placeholder="09XXXXXXXXX or +639XXXXXXXXX"
                 class="input input-sm sm:input-md input-bordered w-full"
                 required
               />
               <span class="text-xs text-gray-500 mt-1"
-                >Philippine number format only</span
+                >Use Philippine mobile format only</span
               >
             </div>
 
@@ -1085,13 +1183,13 @@
                 <input
                   :value="employeeForm.emergency_contact_number"
                   @input="
-                    formatPhoneNumber(
+                    handlePHPhoneInput(
                       $event.target.value,
                       'emergency_contact_number'
                     )
                   "
                   type="text"
-                  placeholder="+63 900 000 0000"
+                  placeholder="09XXXXXXXXX or +639XXXXXXXXX"
                   class="input input-bordered pl-10 w-full"
                   :class="{
                     'input-error': formErrors.emergency_contact_number,
@@ -1125,13 +1223,13 @@
                 <input
                   :value="employeeForm.alternate_contact_number"
                   @input="
-                    formatPhoneNumber(
+                    handlePHPhoneInput(
                       $event.target.value,
                       'alternate_contact_number'
                     )
                   "
                   type="text"
-                  placeholder="+63 900 000 0000 (optional)"
+                  placeholder="09XXXXXXXXX or +639XXXXXXXXX (optional)"
                   class="input input-bordered pl-10 w-full"
                 />
               </div>
@@ -1217,7 +1315,7 @@
 
             <button
               @click="openConfirmModal"
-              class="btn btn-primary btn-sm bg-primaryColor hover:bg-primaryColor/90 font-thin"
+              class="btn btn-primary btn-sm bg-primaryColor hover:bg-primaryColor/90 font-thin border-none shadow-none"
               :disabled="!isFormValid || saving"
             >
               <Save class="w-4 h-4 mr-1" />
@@ -1329,9 +1427,8 @@
               <div>
                 <strong>Role:</strong>
                 {{
-                  availableRoles.find(
-                    (r) => r.role_id == successModal.employeeData?.role_id
-                  )?.role || 'N/A'
+                  availableRoles.find((r) => r.role_id == employeeForm.role_id)
+                    ?.role || 'N/A'
                 }}
               </div>
               <div>
@@ -1354,7 +1451,7 @@
         <div class="modal-action">
           <button
             @click="closeSuccessModal"
-            class="btn btn-sm btn-primary bg-primaryColor font-thin"
+            class="btn btn-sm btn-primary bg-primaryColor font-thin hover:bg-primaryColor/80 border-none shadow-none"
           >
             Continue
           </button>

@@ -18,6 +18,15 @@ export const useEmployeeStore = defineStore('employee', {
       status: '',
       search: '',
     },
+    pagination: {
+      page: 1,
+      limit: 10,
+      total: 0,
+      totalPages: 0,
+      hasNext: false,
+      hasPrev: false,
+    },
+    hasMore: true,
   }),
 
   getters: {
@@ -110,14 +119,21 @@ export const useEmployeeStore = defineStore('employee', {
       };
     },
 
-    // Fetch all employees
-    async fetchEmployees(includeDeleted = false) {
+    // Fetch all employees with pagination
+    async fetchEmployees(
+      includeDeleted = false,
+      page = 1,
+      limit = 10,
+      append = false
+    ) {
       this.setLoading(true);
       this.clearError();
 
       try {
         const params = new URLSearchParams();
         if (includeDeleted) params.append('includeDeleted', 'true');
+        params.append('page', page.toString());
+        params.append('limit', limit.toString());
 
         const response = await fetch(
           `${apiConfig.baseURL}/employees?${params}`,
@@ -138,11 +154,36 @@ export const useEmployeeStore = defineStore('employee', {
 
         if (data.success) {
           // Safety: exclude System/Super Admin on client even if backend missed it
-          this.employees = (data.data || []).filter((e) => {
+          const filteredEmployees = (data.data || []).filter((e) => {
             const r = (e.role || '').toLowerCase();
             return r !== 'system admin' && r !== 'super admin';
           });
-          return data.data;
+
+          if (append) {
+            // Append to existing employees for lazy loading
+            this.employees = [...this.employees, ...filteredEmployees];
+          } else {
+            // Replace employees for new search/filter
+            this.employees = filteredEmployees;
+          }
+
+          // Update pagination info
+          this.pagination = data.pagination || {
+            page: 1,
+            limit: 10,
+            total: 0,
+            totalPages: 0,
+            hasNext: false,
+            hasPrev: false,
+          };
+
+          // Update hasMore flag
+          this.hasMore = data.pagination?.hasNext || false;
+
+          return {
+            data: filteredEmployees,
+            pagination: data.pagination,
+          };
         } else {
           throw new Error(data.message || 'Failed to fetch employees');
         }
@@ -153,6 +194,19 @@ export const useEmployeeStore = defineStore('employee', {
       } finally {
         this.setLoading(false);
       }
+    },
+
+    // Load more employees for lazy loading
+    async loadMoreEmployees(includeDeleted = false) {
+      if (!this.hasMore || this.loading) return;
+
+      const nextPage = this.pagination.page + 1;
+      await this.fetchEmployees(
+        includeDeleted,
+        nextPage,
+        this.pagination.limit,
+        true
+      );
     },
 
     // Fetch employee statistics
@@ -461,6 +515,144 @@ export const useEmployeeStore = defineStore('employee', {
       }
     },
 
+    // Comprehensive employee termination
+    async terminateEmployee(id, terminationData) {
+      this.setLoading(true);
+      this.clearError();
+
+      try {
+        const response = await fetch(
+          `${apiConfig.baseURL}/employees/${id}/terminate`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${localStorage.getItem('token')}`,
+            },
+            body: JSON.stringify(terminationData),
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.message || `HTTP error! status: ${response.status}`
+          );
+        }
+
+        if (data.success) {
+          // Update employee in the store
+          const index = this.employees.findIndex(
+            (emp) => emp.id === parseInt(id)
+          );
+          if (index !== -1) {
+            const oldStatus = this.employees[index].status;
+            this.employees[index] = data.data.employee;
+
+            // Update stats if status changed from Active to Terminated
+            if (oldStatus === 'Active') {
+              this.employeeStats.active_employees -= 1;
+            }
+          }
+
+          return data.data;
+        } else {
+          throw new Error(data.message || 'Failed to terminate employee');
+        }
+      } catch (error) {
+        console.error('Error terminating employee:', error);
+        this.setError(error.message);
+        throw error;
+      } finally {
+        this.setLoading(false);
+      }
+    },
+
+    // Get termination record for an employee
+    async getTerminationRecord(id) {
+      this.setLoading(true);
+      this.clearError();
+
+      try {
+        const response = await fetch(
+          `${apiConfig.baseURL}/employees/${id}/termination`,
+          {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${localStorage.getItem('token')}`,
+            },
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            return null; // No termination record found
+          }
+          throw new Error(
+            data.message || `HTTP error! status: ${response.status}`
+          );
+        }
+
+        if (data.success) {
+          return data.data;
+        } else {
+          throw new Error(data.message || 'Failed to fetch termination record');
+        }
+      } catch (error) {
+        console.error('Error fetching termination record:', error);
+        this.setError(error.message);
+        throw error;
+      } finally {
+        this.setLoading(false);
+      }
+    },
+
+    // Update termination checklist
+    async updateTerminationChecklist(id, checklistData) {
+      this.setLoading(true);
+      this.clearError();
+
+      try {
+        const response = await fetch(
+          `${apiConfig.baseURL}/employees/${id}/termination/checklist`,
+          {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${localStorage.getItem('token')}`,
+            },
+            body: JSON.stringify(checklistData),
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.message || `HTTP error! status: ${response.status}`
+          );
+        }
+
+        if (data.success) {
+          return data.data;
+        } else {
+          throw new Error(
+            data.message || 'Failed to update termination checklist'
+          );
+        }
+      } catch (error) {
+        console.error('Error updating termination checklist:', error);
+        this.setError(error.message);
+        throw error;
+      } finally {
+        this.setLoading(false);
+      }
+    },
+
     // Delete employee (soft delete)
     async deleteEmployee(id) {
       this.setLoading(true);
@@ -556,6 +748,58 @@ export const useEmployeeStore = defineStore('employee', {
       }
     },
 
+    // Restore terminated employee back to active status
+    async restoreTerminatedEmployee(id) {
+      this.setLoading(true);
+      this.clearError();
+
+      try {
+        const response = await fetch(
+          `${apiConfig.baseURL}/employees/${id}/restore-terminated`,
+          {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${localStorage.getItem('token')}`,
+            },
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.message || `HTTP error! status: ${response.status}`
+          );
+        }
+
+        if (data.success) {
+          // Update the employee in the store
+          const employeeIndex = this.employees.findIndex(
+            (emp) => emp.id === id
+          );
+          if (employeeIndex !== -1) {
+            this.employees[employeeIndex] = data.data;
+          }
+
+          // Update stats
+          this.employeeStats.active_employees += 1;
+
+          return data.data;
+        } else {
+          throw new Error(
+            data.message || 'Failed to restore terminated employee'
+          );
+        }
+      } catch (error) {
+        console.error('Error restoring terminated employee:', error);
+        this.setError(error.message);
+        throw error;
+      } finally {
+        this.setLoading(false);
+      }
+    },
+
     // Fetch employees by department
     async fetchEmployeesByDepartment(department) {
       this.setLoading(true);
@@ -588,6 +832,45 @@ export const useEmployeeStore = defineStore('employee', {
         }
       } catch (error) {
         console.error('Error fetching department employees:', error);
+        this.setError(error.message);
+        throw error;
+      } finally {
+        this.setLoading(false);
+      }
+    },
+
+    // Fetch departments with their available roles
+    async fetchDepartmentsWithRoles() {
+      this.setLoading(true);
+      this.clearError();
+
+      try {
+        const response = await fetch(
+          `${apiConfig.baseURL}/employees/departments-with-roles`,
+          {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${localStorage.getItem('token')}`,
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data.success) {
+          return data.data;
+        } else {
+          throw new Error(
+            data.message || 'Failed to fetch departments with roles'
+          );
+        }
+      } catch (error) {
+        console.error('Error fetching departments with roles:', error);
         this.setError(error.message);
         throw error;
       } finally {

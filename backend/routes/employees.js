@@ -42,19 +42,29 @@ const { authenticateToken } = require("../middleware/rbac");
  */
 router.get("/", async (req, res) => {
   try {
-    const { includeDeleted, department } = req.query;
+    const { includeDeleted, department, page = 1, limit = 10 } = req.query;
 
-    let employees;
+    let result;
     if (department) {
-      employees = await Employee.getByDepartment(department);
+      result = await Employee.getByDepartment(
+        department,
+        includeDeleted === "true",
+        parseInt(page),
+        parseInt(limit)
+      );
     } else {
-      employees = await Employee.getAll(includeDeleted === "true");
+      result = await Employee.getAll(
+        includeDeleted === "true",
+        parseInt(page),
+        parseInt(limit)
+      );
     }
 
     res.json({
       success: true,
-      data: employees,
-      count: employees.length,
+      data: result.data,
+      pagination: result.pagination,
+      count: result.data.length,
     });
   } catch (error) {
     console.error("Error fetching employees:", error);
@@ -271,7 +281,7 @@ router.get("/employee-id/:employeeId", async (req, res) => {
  *       400:
  *         description: Validation error
  */
-router.post("/", async (req, res) => {
+router.post("/", authenticateToken, async (req, res) => {
   try {
     const employeeData = req.body;
 
@@ -398,7 +408,7 @@ router.post(
  *       404:
  *         description: Employee not found
  */
-router.put("/:id", async (req, res) => {
+router.put("/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const employeeData = req.body;
@@ -483,7 +493,7 @@ router.put("/:id", async (req, res) => {
  *       404:
  *         description: Employee not found
  */
-router.patch("/:id/status", async (req, res) => {
+router.patch("/:id/status", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
@@ -550,7 +560,7 @@ router.patch("/:id/status", async (req, res) => {
  *       404:
  *         description: Employee not found
  */
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const deletedBy = req.user?.id || null;
@@ -611,7 +621,7 @@ router.delete("/:id", async (req, res) => {
  *       404:
  *         description: Employee not found
  */
-router.patch("/:id/restore", async (req, res) => {
+router.patch("/:id/restore", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const restoredBy = req.user?.id || null;
@@ -646,6 +656,274 @@ router.patch("/:id/restore", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error restoring employee",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/employees/{id}/terminate:
+ *   post:
+ *     summary: Terminate employee with comprehensive details
+ *     tags: [Employees]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Employee ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - termination_reason
+ *               - last_working_day
+ *             properties:
+ *               termination_reason:
+ *                 type: string
+ *                 enum: [Resignation, Performance Issues, Misconduct, End of Contract, Company Restructuring, Health Issues, Other]
+ *               last_working_day:
+ *                 type: string
+ *                 format: date
+ *               handover_notes:
+ *                 type: string
+ *               final_payroll_processed:
+ *                 type: boolean
+ *                 default: false
+ *               system_access_revoked:
+ *                 type: boolean
+ *                 default: false
+ *     responses:
+ *       200:
+ *         description: Employee terminated successfully
+ *       400:
+ *         description: Validation error or employee already terminated
+ *       404:
+ *         description: Employee not found
+ */
+router.post("/:id/terminate", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const terminationData = req.body;
+    const terminatedBy = req.user?.id || null;
+
+    const result = await Employee.terminateEmployee(
+      id,
+      terminationData,
+      terminatedBy
+    );
+
+    res.json({
+      success: true,
+      data: result,
+      message: "Employee terminated successfully",
+    });
+  } catch (error) {
+    console.error("Error terminating employee:", error);
+
+    if (
+      error.message.includes("Invalid") ||
+      error.message === "Employee not found" ||
+      error.message.includes("already terminated") ||
+      error.message.includes("Cannot terminate") ||
+      error.message.includes("required")
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Error terminating employee",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/employees/{id}/termination:
+ *   get:
+ *     summary: Get termination record for an employee
+ *     tags: [Employees]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Employee ID
+ *     responses:
+ *       200:
+ *         description: Termination record retrieved successfully
+ *       404:
+ *         description: Termination record not found
+ */
+router.get("/:id/termination", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const termination = await Employee.getTerminationRecord(id);
+
+    if (!termination) {
+      return res.status(404).json({
+        success: false,
+        message: "Termination record not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: termination,
+    });
+  } catch (error) {
+    console.error("Error fetching termination record:", error);
+
+    if (error.message === "Invalid employee ID provided") {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Error fetching termination record",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/employees/{id}/termination/checklist:
+ *   patch:
+ *     summary: Update termination checklist items
+ *     tags: [Employees]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Employee ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               final_payroll_processed:
+ *                 type: boolean
+ *               system_access_revoked:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Termination checklist updated successfully
+ *       404:
+ *         description: Termination record not found
+ */
+router.patch(
+  "/:id/termination/checklist",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const checklistData = req.body;
+      const updatedBy = req.user?.id || null;
+
+      const updated = await Employee.updateTerminationChecklist(
+        id,
+        checklistData,
+        updatedBy
+      );
+
+      res.json({
+        success: true,
+        data: updated,
+        message: "Termination checklist updated successfully",
+      });
+    } catch (error) {
+      console.error("Error updating termination checklist:", error);
+
+      if (
+        error.message === "Invalid employee ID provided" ||
+        error.message === "Termination record not found"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        message: "Error updating termination checklist",
+        error: error.message,
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/employees/{id}/restore-terminated:
+ *   patch:
+ *     summary: Restore terminated employee back to active status
+ *     tags: [Employees]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Employee ID
+ *     responses:
+ *       200:
+ *         description: Terminated employee restored successfully
+ *       400:
+ *         description: Employee cannot be restored (not terminated)
+ *       404:
+ *         description: Employee not found
+ */
+router.patch("/:id/restore-terminated", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const restoredBy = req.user?.id || null;
+    const employee = await Employee.restoreTerminatedEmployee(id, restoredBy);
+
+    res.json({
+      success: true,
+      data: employee,
+      message: "Terminated employee restored successfully",
+    });
+  } catch (error) {
+    console.error("Error restoring terminated employee:", error);
+
+    if (
+      error.message.includes("Invalid") ||
+      error.message === "Employee not found" ||
+      error.message.includes("not terminated") ||
+      error.message.includes("cannot be restored")
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Error restoring terminated employee",
       error: error.message,
     });
   }

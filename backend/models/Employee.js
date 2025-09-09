@@ -25,8 +25,8 @@ class Employee {
     }
   }
 
-  // Get all employees
-  static async getAll(includeDeleted = false) {
+  // Get all employees with pagination
+  static async getAll(includeDeleted = false, page = 1, limit = 10) {
     try {
       let query = db("employees")
         .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
@@ -44,8 +44,41 @@ class Employee {
         ]).orWhereNull("user_roles.role");
       });
 
-      const employees = await query.orderBy("employees.created_at", "desc");
-      return employees;
+      // Get total count for pagination (separate query to avoid GROUP BY issues)
+      const totalResult = await db("employees")
+        .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
+        .where((qb) => {
+          if (!includeDeleted) {
+            qb.whereNull("employees.deleted_at");
+          }
+          qb.where((subQb) => {
+            subQb
+              .whereNotIn("user_roles.role", ["System Admin", "Super Admin"])
+              .orWhereNull("user_roles.role");
+          });
+        })
+        .count("* as count")
+        .first();
+      const total = parseInt(totalResult.count);
+
+      // Apply pagination
+      const offset = (page - 1) * limit;
+      const employees = await query
+        .orderBy("employees.created_at", "desc")
+        .limit(limit)
+        .offset(offset);
+
+      return {
+        data: employees,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page < Math.ceil(total / limit),
+          hasPrev: page > 1,
+        },
+      };
     } catch (error) {
       console.error("Error fetching employees:", error);
       throw new Error("Failed to retrieve employees from database");
@@ -94,27 +127,70 @@ class Employee {
     }
   }
 
-  // Get employees by department
-  static async getByDepartment(department) {
+  // Get employees by department with pagination
+  static async getByDepartment(
+    department,
+    includeDeleted = false,
+    page = 1,
+    limit = 10
+  ) {
     try {
       if (!department) {
         throw new Error("Department is required");
       }
 
-      const employees = await db("employees")
+      let query = db("employees")
         .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
         .select("employees.*", db.raw("user_roles.role as role"))
-        .where("employees.department", department)
-        .whereNull("employees.deleted_at")
-        .where((qb) => {
-          qb.whereNotIn("user_roles.role", [
-            "System Admin",
-            "Super Admin",
-          ]).orWhereNull("user_roles.role");
-        })
-        .orderBy("employees.first_name");
+        .where("employees.department", department);
 
-      return employees;
+      if (!includeDeleted) {
+        query = query.whereNull("employees.deleted_at");
+      }
+
+      query = query.where((qb) => {
+        qb.whereNotIn("user_roles.role", [
+          "System Admin",
+          "Super Admin",
+        ]).orWhereNull("user_roles.role");
+      });
+
+      // Get total count for pagination (separate query to avoid GROUP BY issues)
+      const totalResult = await db("employees")
+        .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
+        .where("employees.department", department)
+        .where((qb) => {
+          if (!includeDeleted) {
+            qb.whereNull("employees.deleted_at");
+          }
+          qb.where((subQb) => {
+            subQb
+              .whereNotIn("user_roles.role", ["System Admin", "Super Admin"])
+              .orWhereNull("user_roles.role");
+          });
+        })
+        .count("* as count")
+        .first();
+      const total = parseInt(totalResult.count);
+
+      // Apply pagination
+      const offset = (page - 1) * limit;
+      const employees = await query
+        .orderBy("employees.first_name")
+        .limit(limit)
+        .offset(offset);
+
+      return {
+        data: employees,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page < Math.ceil(total / limit),
+          hasPrev: page > 1,
+        },
+      };
     } catch (error) {
       console.error("Error fetching employees by department:", error);
       throw new Error("Failed to retrieve department employees");
@@ -243,7 +319,7 @@ class Employee {
     }
   }
 
-  // Validate employee data
+  // Validate employee data for creation
   static validateEmployeeData(data) {
     const errors = [];
 
@@ -274,6 +350,144 @@ class Employee {
       errors.push("Emergency contact number is required");
     if (!data.emergency_contact_address?.trim())
       errors.push("Emergency contact address is required");
+
+    // Phone number format validation (Philippine mobile): allow 09XXXXXXXXX or +639XXXXXXXXX
+    const phLocalRegex = /^09\d{9}$/;
+    const phIntlRegex = /^\+639\d{9}$/;
+    const isValidPH = (v) => phLocalRegex.test(v) || phIntlRegex.test(v);
+    if (data.phone_number && !isValidPH(data.phone_number)) {
+      errors.push("Phone number must be 09XXXXXXXXX or +639XXXXXXXXX");
+    }
+    if (
+      data.emergency_contact_number &&
+      !isValidPH(data.emergency_contact_number)
+    ) {
+      errors.push(
+        "Emergency contact number must be 09XXXXXXXXX or +639XXXXXXXXX"
+      );
+    }
+    if (
+      data.alternate_contact_number &&
+      !isValidPH(data.alternate_contact_number)
+    ) {
+      errors.push(
+        "Alternate contact number must be 09XXXXXXXXX or +639XXXXXXXXX"
+      );
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (data.email && !emailRegex.test(data.email)) {
+      errors.push("Please enter a valid email address");
+    }
+    if (
+      data.emergency_contact_email &&
+      !emailRegex.test(data.emergency_contact_email)
+    ) {
+      errors.push("Please enter a valid emergency contact email address");
+    }
+
+    // Age validation
+    if (data.age && (parseInt(data.age) < 18 || parseInt(data.age) > 65)) {
+      errors.push("Age must be between 18 and 65");
+    }
+
+    // Length validations
+    if (data.first_name && data.first_name.length > 100)
+      errors.push("First name must not exceed 100 characters");
+    if (data.middle_name && data.middle_name.length > 100)
+      errors.push("Middle name must not exceed 100 characters");
+    if (data.last_name && data.last_name.length > 100)
+      errors.push("Last name must not exceed 100 characters");
+    if (data.postal_code && data.postal_code.length > 10)
+      errors.push("Postal code must not exceed 10 characters");
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+    };
+  }
+
+  // Validate employee data for updates (more lenient)
+  static validateEmployeeDataForUpdate(data) {
+    const errors = [];
+
+    // Only validate fields that are provided and not empty
+    if (data.first_name !== undefined && !data.first_name?.trim()) {
+      errors.push("First name is required");
+    }
+    if (data.last_name !== undefined && !data.last_name?.trim()) {
+      errors.push("Last name is required");
+    }
+    if (data.phone_number !== undefined && !data.phone_number?.trim()) {
+      errors.push("Phone number is required");
+    }
+    if (data.address !== undefined && !data.address?.trim()) {
+      errors.push("Address is required");
+    }
+    if (data.postal_code !== undefined && !data.postal_code?.trim()) {
+      errors.push("Postal code is required");
+    }
+    if (data.civil_status !== undefined && !data.civil_status) {
+      errors.push("Civil status is required");
+    }
+    if (data.sex !== undefined && !data.sex) {
+      errors.push("Sex is required");
+    }
+    if (data.birthday !== undefined && !data.birthday) {
+      errors.push("Birthday is required");
+    }
+    if (data.age !== undefined && !data.age) {
+      errors.push("Age is required");
+    }
+    if (data.citizenship !== undefined && !data.citizenship?.trim()) {
+      errors.push("Citizenship is required");
+    }
+    if (data.department !== undefined && !data.department) {
+      errors.push("Department is required");
+    }
+    if (data.role_id !== undefined && !data.role_id) {
+      errors.push("Role is required");
+    }
+    if (data.employee_type !== undefined && !data.employee_type) {
+      errors.push("Employee type is required");
+    }
+    if (data.pagibig_number !== undefined && !data.pagibig_number?.trim()) {
+      errors.push("PAG-IBIG number is required");
+    }
+    if (data.sss_number !== undefined && !data.sss_number?.trim()) {
+      errors.push("SSS number is required");
+    }
+    if (
+      data.philhealth_number !== undefined &&
+      !data.philhealth_number?.trim()
+    ) {
+      errors.push("PhilHealth number is required");
+    }
+    if (
+      data.emergency_contact_name !== undefined &&
+      !data.emergency_contact_name?.trim()
+    ) {
+      errors.push("Emergency contact name is required");
+    }
+    if (
+      data.emergency_relationship !== undefined &&
+      !data.emergency_relationship?.trim()
+    ) {
+      errors.push("Emergency relationship is required");
+    }
+    if (
+      data.emergency_contact_number !== undefined &&
+      !data.emergency_contact_number?.trim()
+    ) {
+      errors.push("Emergency contact number is required");
+    }
+    if (
+      data.emergency_contact_address !== undefined &&
+      !data.emergency_contact_address?.trim()
+    ) {
+      errors.push("Emergency contact address is required");
+    }
 
     // Phone number format validation (Philippine mobile): allow 09XXXXXXXXX or +639XXXXXXXXX
     const phLocalRegex = /^09\d{9}$/;
@@ -462,8 +676,8 @@ class Employee {
         throw new Error("Invalid employee ID provided");
       }
 
-      // Validate input
-      const validation = this.validateEmployeeData(data);
+      // Validate input using update-specific validation
+      const validation = this.validateEmployeeDataForUpdate(data);
       if (!validation.isValid) {
         throw new Error(`Validation failed: ${validation.errors.join(", ")}`);
       }
@@ -478,77 +692,124 @@ class Employee {
         throw new Error("Cannot update a deleted employee");
       }
 
-      // Validate role exists and is active
-      const role = await db("user_roles")
-        .where("role_id", data.role_id)
-        .whereNull("deleted_at")
-        .where("is_active", true)
-        .first();
+      // Validate role exists and is active (only if role_id is being updated)
+      if (data.role_id !== undefined) {
+        const role = await db("user_roles")
+          .where("role_id", data.role_id)
+          .whereNull("deleted_at")
+          .where("is_active", true)
+          .first();
 
-      if (!role) {
-        throw new Error("Invalid or inactive role selected");
+        if (!role) {
+          throw new Error("Invalid or inactive role selected");
+        }
+
+        // Validate role belongs to the selected department (only if both are being updated)
+        if (
+          data.department !== undefined &&
+          role.department !== data.department
+        ) {
+          throw new Error(
+            `Role does not belong to ${data.department} department`
+          );
+        }
       }
 
-      // Validate role belongs to the selected department
-      if (role.department !== data.department) {
-        throw new Error(
-          `Role does not belong to ${data.department} department`
-        );
+      // Check for duplicate government benefit numbers (only for fields being updated)
+      if (data.pagibig_number || data.sss_number || data.philhealth_number) {
+        const duplicateQuery = db("employees")
+          .where("id", "!=", id)
+          .whereNull("deleted_at");
+
+        let hasConditions = false;
+        if (data.pagibig_number) {
+          duplicateQuery.where("pagibig_number", data.pagibig_number);
+          hasConditions = true;
+        }
+        if (data.sss_number) {
+          if (hasConditions) {
+            duplicateQuery.orWhere("sss_number", data.sss_number);
+          } else {
+            duplicateQuery.where("sss_number", data.sss_number);
+            hasConditions = true;
+          }
+        }
+        if (data.philhealth_number) {
+          if (hasConditions) {
+            duplicateQuery.orWhere("philhealth_number", data.philhealth_number);
+          } else {
+            duplicateQuery.where("philhealth_number", data.philhealth_number);
+          }
+        }
+
+        const duplicateEmployee = await duplicateQuery.first();
+
+        if (duplicateEmployee) {
+          throw new Error(
+            "Another employee with these government benefit numbers already exists"
+          );
+        }
       }
 
-      // Check for duplicate government benefit numbers (excluding current employee)
-      const duplicateEmployee = await db("employees")
-        .where(function () {
-          this.where("pagibig_number", data.pagibig_number)
-            .orWhere("sss_number", data.sss_number)
-            .orWhere("philhealth_number", data.philhealth_number);
-        })
-        .where("id", "!=", id)
-        .whereNull("deleted_at")
-        .first();
+      // Build update object with only provided fields
+      const updateData = {
+        updated_by: updatedBy,
+        updated_at: new Date(),
+      };
 
-      if (duplicateEmployee) {
-        throw new Error(
-          "Another employee with these government benefit numbers already exists"
-        );
-      }
+      // Only update fields that are provided in the data
+      if (data.first_name !== undefined)
+        updateData.first_name = data.first_name.trim();
+      if (data.middle_name !== undefined)
+        updateData.middle_name = data.middle_name?.trim() || null;
+      if (data.last_name !== undefined)
+        updateData.last_name = data.last_name.trim();
+      if (data.email !== undefined)
+        updateData.email = data.email?.trim().toLowerCase() || null;
+      if (data.phone_number !== undefined)
+        updateData.phone_number = data.phone_number.trim();
+      if (data.address !== undefined) updateData.address = data.address.trim();
+      if (data.postal_code !== undefined)
+        updateData.postal_code = data.postal_code.trim();
+      if (data.civil_status !== undefined)
+        updateData.civil_status = data.civil_status;
+      if (data.sex !== undefined) updateData.sex = data.sex;
+      if (data.birthday !== undefined) updateData.birthday = data.birthday;
+      if (data.age !== undefined) updateData.age = parseInt(data.age);
+      if (data.citizenship !== undefined)
+        updateData.citizenship = data.citizenship.trim();
+      if (data.department !== undefined)
+        updateData.department = data.department;
+      if (data.role_id !== undefined) updateData.role_id = data.role_id;
+      if (data.employee_type !== undefined)
+        updateData.employee_type = data.employee_type;
+      if (data.pagibig_number !== undefined)
+        updateData.pagibig_number = data.pagibig_number.trim();
+      if (data.sss_number !== undefined)
+        updateData.sss_number = data.sss_number.trim();
+      if (data.philhealth_number !== undefined)
+        updateData.philhealth_number = data.philhealth_number.trim();
+      if (data.emergency_contact_name !== undefined)
+        updateData.emergency_contact_name = data.emergency_contact_name.trim();
+      if (data.emergency_relationship !== undefined)
+        updateData.emergency_relationship = data.emergency_relationship.trim();
+      if (data.emergency_contact_number !== undefined)
+        updateData.emergency_contact_number =
+          data.emergency_contact_number.trim();
+      if (data.alternate_contact_number !== undefined)
+        updateData.alternate_contact_number =
+          data.alternate_contact_number?.trim() || null;
+      if (data.emergency_contact_address !== undefined)
+        updateData.emergency_contact_address =
+          data.emergency_contact_address.trim();
+      if (data.emergency_contact_email !== undefined)
+        updateData.emergency_contact_email =
+          data.emergency_contact_email?.trim().toLowerCase() || null;
+      if (data.photo_url !== undefined) updateData.photo_url = data.photo_url;
 
       const [employee] = await db("employees")
         .where("id", id)
-        .update({
-          first_name: data.first_name.trim(),
-          middle_name: data.middle_name?.trim() || null,
-          last_name: data.last_name.trim(),
-          email: data.email?.trim().toLowerCase() || null,
-          phone_number: data.phone_number.trim(),
-          address: data.address.trim(),
-          postal_code: data.postal_code.trim(),
-          civil_status: data.civil_status,
-          sex: data.sex,
-          birthday: data.birthday,
-          age: parseInt(data.age),
-          citizenship: data.citizenship.trim(),
-          department: data.department,
-          role_id: data.role_id,
-          employee_type: data.employee_type,
-          pagibig_number: data.pagibig_number.trim(),
-          sss_number: data.sss_number.trim(),
-          philhealth_number: data.philhealth_number.trim(),
-          emergency_contact_name: data.emergency_contact_name.trim(),
-          emergency_relationship: data.emergency_relationship.trim(),
-          emergency_contact_number: data.emergency_contact_number.trim(),
-          alternate_contact_number:
-            data.alternate_contact_number?.trim() || null,
-          emergency_contact_address: data.emergency_contact_address.trim(),
-          emergency_contact_email:
-            data.emergency_contact_email?.trim().toLowerCase() || null,
-          photo_url:
-            data.photo_url !== undefined
-              ? data.photo_url
-              : existingEmployee.photo_url,
-          updated_by: updatedBy,
-          updated_at: new Date(),
-        })
+        .update(updateData)
         .returning("*");
 
       return employee;
@@ -620,6 +881,188 @@ class Employee {
         throw error;
       }
       throw new Error("Failed to update employee status. Please try again.");
+    }
+  }
+
+  // Comprehensive employee termination
+  static async terminateEmployee(id, terminationData, terminatedBy = null) {
+    const trx = await db.transaction();
+
+    try {
+      if (!id || isNaN(id)) {
+        throw new Error("Invalid employee ID provided");
+      }
+
+      // Validate termination data
+      const {
+        termination_reason,
+        last_working_day,
+        handover_notes,
+        final_payroll_processed,
+        system_access_revoked,
+      } = terminationData;
+
+      if (!termination_reason) {
+        throw new Error("Termination reason is required");
+      }
+
+      if (!last_working_day) {
+        throw new Error("Last working day is required");
+      }
+
+      const validReasons = [
+        "Resignation",
+        "Performance Issues",
+        "Misconduct",
+        "End of Contract",
+        "Company Restructuring",
+        "Health Issues",
+        "Other",
+      ];
+      if (!validReasons.includes(termination_reason)) {
+        throw new Error("Invalid termination reason provided");
+      }
+
+      // Check if employee exists and is not already terminated
+      const existingEmployee = await trx("employees").where("id", id).first();
+      if (!existingEmployee) {
+        throw new Error("Employee not found");
+      }
+
+      if (existingEmployee.deleted_at) {
+        throw new Error("Cannot terminate a deleted employee");
+      }
+
+      if (existingEmployee.status === "Terminated") {
+        throw new Error("Employee is already terminated");
+      }
+
+      // Update employee status to Terminated
+      const [updatedEmployee] = await trx("employees")
+        .where("id", id)
+        .update({
+          status: "Terminated",
+          updated_by: terminatedBy,
+          updated_at: new Date(),
+        })
+        .returning("*");
+
+      // Create termination record
+      const [terminationRecord] = await trx("employee_terminations")
+        .insert({
+          employee_id: id,
+          termination_reason,
+          last_working_day,
+          handover_notes: handover_notes || null,
+          final_payroll_processed: final_payroll_processed || false,
+          system_access_revoked: system_access_revoked || false,
+          terminated_by: terminatedBy,
+          terminated_at: new Date(),
+          created_at: new Date(),
+          updated_at: new Date(),
+        })
+        .returning("*");
+
+      await trx.commit();
+
+      return {
+        employee: updatedEmployee,
+        termination: terminationRecord,
+      };
+    } catch (error) {
+      await trx.rollback();
+      console.error("Error terminating employee:", error);
+
+      if (
+        error.message.includes("Invalid") ||
+        error.message.includes("not found") ||
+        error.message.includes("Cannot terminate") ||
+        error.message.includes("already terminated") ||
+        error.message.includes("required")
+      ) {
+        throw error;
+      }
+
+      throw new Error("Failed to terminate employee. Please try again.");
+    }
+  }
+
+  // Get termination record for an employee
+  static async getTerminationRecord(employeeId) {
+    try {
+      if (!employeeId || isNaN(employeeId)) {
+        throw new Error("Invalid employee ID provided");
+      }
+
+      const termination = await db("employee_terminations")
+        .leftJoin(
+          "employees",
+          "employee_terminations.employee_id",
+          "employees.id"
+        )
+        .leftJoin("users", "employee_terminations.terminated_by", "users.id")
+        .select(
+          "employee_terminations.*",
+          "employees.first_name",
+          "employees.last_name",
+          "employees.employee_id as emp_id",
+          "users.name as terminated_by_name"
+        )
+        .where("employee_terminations.employee_id", employeeId)
+        .first();
+
+      return termination;
+    } catch (error) {
+      console.error("Error fetching termination record:", error);
+      if (error.message === "Invalid employee ID provided") {
+        throw error;
+      }
+      throw new Error("Failed to retrieve termination record");
+    }
+  }
+
+  // Update termination checklist items
+  static async updateTerminationChecklist(
+    employeeId,
+    checklistData,
+    updatedBy = null
+  ) {
+    try {
+      if (!employeeId || isNaN(employeeId)) {
+        throw new Error("Invalid employee ID provided");
+      }
+
+      const { final_payroll_processed, system_access_revoked } = checklistData;
+
+      const [updated] = await db("employee_terminations")
+        .where("employee_id", employeeId)
+        .update({
+          final_payroll_processed:
+            final_payroll_processed !== undefined
+              ? final_payroll_processed
+              : db.raw("final_payroll_processed"),
+          system_access_revoked:
+            system_access_revoked !== undefined
+              ? system_access_revoked
+              : db.raw("system_access_revoked"),
+          updated_at: new Date(),
+        })
+        .returning("*");
+
+      if (!updated) {
+        throw new Error("Termination record not found");
+      }
+
+      return updated;
+    } catch (error) {
+      console.error("Error updating termination checklist:", error);
+      if (
+        error.message === "Invalid employee ID provided" ||
+        error.message === "Termination record not found"
+      ) {
+        throw error;
+      }
+      throw new Error("Failed to update termination checklist");
     }
   }
 
@@ -746,6 +1189,63 @@ class Employee {
         throw error;
       }
       throw new Error("Failed to restore employee. Please try again.");
+    }
+  }
+
+  // Restore terminated employee back to active status
+  static async restoreTerminatedEmployee(id, restoredBy = null) {
+    const trx = await db.transaction();
+
+    try {
+      if (!id || isNaN(id)) {
+        throw new Error("Invalid employee ID provided");
+      }
+
+      // Check if employee exists and is terminated
+      const existingEmployee = await trx("employees").where("id", id).first();
+      if (!existingEmployee) {
+        throw new Error("Employee not found");
+      }
+
+      if (existingEmployee.status !== "Terminated") {
+        throw new Error("Employee is not terminated and cannot be restored");
+      }
+
+      // Update employee status back to Active
+      const [updatedEmployee] = await trx("employees")
+        .where("id", id)
+        .update({
+          status: "Active",
+          updated_by: restoredBy,
+          updated_at: new Date(),
+        })
+        .returning("*");
+
+      // Archive the termination record (don't delete for audit purposes)
+      await trx("employee_terminations").where("employee_id", id).update({
+        restored_at: new Date(),
+        restored_by: restoredBy,
+        updated_at: new Date(),
+      });
+
+      await trx.commit();
+
+      return updatedEmployee;
+    } catch (error) {
+      await trx.rollback();
+      console.error("Error restoring terminated employee:", error);
+
+      if (
+        error.message.includes("Invalid") ||
+        error.message.includes("not found") ||
+        error.message.includes("not terminated") ||
+        error.message.includes("cannot be restored")
+      ) {
+        throw error;
+      }
+      throw new Error(
+        "Failed to restore terminated employee. Please try again."
+      );
     }
   }
 }

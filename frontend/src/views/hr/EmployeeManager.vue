@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, computed, onMounted, watch } from 'vue';
+  import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
   import { useRouter } from 'vue-router';
   import {
     Users,
@@ -12,6 +12,9 @@
     Trash2,
     UserX,
     EllipsisVertical,
+    UserCheck,
+    Shield,
+    AlertTriangle,
   } from 'lucide-vue-next';
   import { useEmployeeStore } from '../../stores/employeeStore.js';
   import { apiConfig } from '../../config/api.js';
@@ -25,6 +28,8 @@
   const statusFilter = ref('');
   const currentPage = ref(1);
   const itemsPerPage = ref(10);
+  const showDeletedEmployees = ref(false);
+  const loadingMore = ref(false);
 
   // Toast state (mirrors other views)
   const toast = ref({ show: false, type: 'success', message: '' });
@@ -38,6 +43,7 @@
     title: '',
     message: '',
     onConfirm: null,
+    loading: false,
   });
 
   // Termination modal state
@@ -49,8 +55,6 @@
     handoverNotes: '',
     finalPayroll: false,
     systemAccess: false,
-    equipmentReturn: false,
-    exitInterview: false,
   });
   const openConfirm = (title, message, onConfirm) => {
     confirmModal.value = { show: true, title, message, onConfirm };
@@ -63,12 +67,98 @@
       title: '',
       message: '',
       onConfirm: null,
+      loading: false,
     };
+  };
+
+  // Termination modal functions
+  const openTerminationModal = (emp) => {
+    // Check if employee is already terminated
+    if (emp.status === 'Terminated') {
+      showToast(
+        'warning',
+        `${emp.first_name} ${emp.last_name} is already terminated.`
+      );
+      return;
+    }
+
+    terminationModal.value = {
+      show: true,
+      employee: emp,
+      terminationReason: '',
+      lastWorkingDay: '',
+      handoverNotes: '',
+      finalPayroll: false,
+      systemAccess: false,
+    };
+    document.getElementById('termination_modal')?.showModal();
+  };
+
+  const closeTerminationModal = () => {
+    document.getElementById('termination_modal')?.close();
+    terminationModal.value = {
+      show: false,
+      employee: null,
+      terminationReason: '',
+      lastWorkingDay: '',
+      handoverNotes: '',
+      finalPayroll: false,
+      systemAccess: false,
+    };
+  };
+
+  const processTermination = async () => {
+    try {
+      // Close confirmation modal first
+      closeConfirm();
+
+      // Prepare termination data
+      const terminationData = {
+        termination_reason: terminationModal.value.terminationReason,
+        last_working_day: terminationModal.value.lastWorkingDay,
+        handover_notes: terminationModal.value.handoverNotes || null,
+        final_payroll_processed: terminationModal.value.finalPayroll,
+        system_access_revoked: terminationModal.value.systemAccess,
+      };
+
+      // Use the employee store's comprehensive termination method
+      await employeeStore.terminateEmployee(
+        terminationModal.value.employee.id,
+        terminationData
+      );
+
+      showToast(
+        'success',
+        `${terminationModal.value.employee.first_name} ${terminationModal.value.employee.last_name} has been terminated with comprehensive details recorded`
+      );
+      closeTerminationModal();
+
+      // Small delay to ensure backend has processed the termination
+      setTimeout(async () => {
+        await employeeStore.fetchEmployees(
+          showDeletedEmployees.value,
+          1,
+          itemsPerPage.value
+        ); // Refresh the list
+      }, 500);
+    } catch (err) {
+      showToast('error', err.message || 'Failed to terminate employee');
+    }
+  };
+
+  const showTerminationConfirmation = () => {
+    openConfirm(
+      'Terminate Employee',
+      `Are you sure you want to terminate ${terminationModal.value.employee.first_name} ${terminationModal.value.employee.last_name}? This action cannot be undone.`,
+      processTermination
+    );
   };
 
   // Loading and error from store
   const loading = computed(() => employeeStore.loading);
   const error = computed(() => employeeStore.error);
+  const pagination = computed(() => employeeStore.pagination);
+  const hasMore = computed(() => employeeStore.hasMore);
 
   // Base employees list
   const employees = computed(() => employeeStore.employees || []);
@@ -117,14 +207,8 @@
     );
   });
 
-  // Pagination
-  const totalPages = computed(() =>
-    Math.max(1, Math.ceil(filteredEmployees.value.length / itemsPerPage.value))
-  );
-  const paginatedEmployees = computed(() => {
-    const start = (currentPage.value - 1) * itemsPerPage.value;
-    return filteredEmployees.value.slice(start, start + itemsPerPage.value);
-  });
+  // Use filtered employees directly since we're using server-side pagination
+  const paginatedEmployees = computed(() => filteredEmployees.value);
 
   // Keep current page in range when filters/data change
   watch([filteredEmployees, itemsPerPage], () => {
@@ -133,10 +217,50 @@
 
   const refresh = async () => {
     try {
-      await employeeStore.fetchEmployees();
+      await employeeStore.fetchEmployees(
+        showDeletedEmployees.value,
+        1,
+        itemsPerPage.value
+      );
       showToast('success', 'Employee list refreshed');
     } catch (e) {
       showToast('error', e.message || 'Failed to refresh employees');
+    }
+  };
+
+  // Load more employees for lazy loading
+  const loadMore = async () => {
+    if (loadingMore.value || !hasMore.value) return;
+
+    loadingMore.value = true;
+    try {
+      await employeeStore.loadMoreEmployees(showDeletedEmployees.value);
+    } catch (error) {
+      showToast('error', error.message || 'Failed to load more employees');
+    } finally {
+      loadingMore.value = false;
+    }
+  };
+
+  // Toggle showing deleted employees
+  const toggleDeletedEmployees = async () => {
+    try {
+      await employeeStore.fetchEmployees(
+        showDeletedEmployees.value,
+        1,
+        itemsPerPage.value
+      );
+      showToast(
+        'success',
+        showDeletedEmployees.value
+          ? 'Showing deleted employees'
+          : 'Hiding deleted employees'
+      );
+    } catch (error) {
+      showToast(
+        'error',
+        error.message || 'Failed to toggle deleted employees view'
+      );
     }
   };
 
@@ -269,6 +393,8 @@
   // Save employee function
   const saveEmployee = async () => {
     try {
+      confirmModal.value.loading = true; // Set loading state
+
       if (employeeForm.value.isEditing) {
         await employeeStore.updateEmployee(
           employeeForm.value.editingEmployeeId,
@@ -277,9 +403,17 @@
         showToast('success', 'Employee updated successfully');
       }
       closeEditModal();
-      await employeeStore.fetchEmployees(); // Refresh the list
+      closeConfirm(); // Close the confirmation modal
+      await employeeStore.fetchEmployees(
+        showDeletedEmployees.value,
+        1,
+        itemsPerPage.value
+      ); // Refresh the list
     } catch (err) {
       showToast('error', err.message || 'Failed to save employee');
+      closeConfirm(); // Close the confirmation modal even on error
+    } finally {
+      confirmModal.value.loading = false; // Reset loading state
     }
   };
 
@@ -291,16 +425,63 @@
     );
   };
   const terminateEmployee = (emp) => {
+    openTerminationModal(emp);
+  };
+
+  // Restore terminated employee
+  const restoreEmployee = (emp) => {
     openConfirm(
-      'Terminate Employee',
-      `Are you sure you want to mark ${emp.first_name} ${emp.last_name} as Terminated?`,
+      'Restore Employee',
+      `Are you sure you want to restore ${emp.first_name} ${emp.last_name} back to active status? This will change their status from "Terminated" to "Active".`,
       async () => {
         try {
-          await employeeStore.updateEmployeeStatus(emp.id, 'Terminated');
-          showToast('success', 'Employee terminated');
+          confirmModal.value.loading = true;
+          await employeeStore.restoreTerminatedEmployee(emp.id);
+          showToast(
+            'success',
+            `${emp.first_name} ${emp.last_name} has been restored to active status`
+          );
           closeConfirm();
+          await employeeStore.fetchEmployees(
+            showDeletedEmployees.value,
+            1,
+            itemsPerPage.value
+          ); // Refresh the list
         } catch (err) {
-          showToast('error', err.message || 'Failed to terminate employee');
+          showToast('error', err.message || 'Failed to restore employee');
+        } finally {
+          confirmModal.value.loading = false;
+        }
+      }
+    );
+  };
+
+  // Restore deleted employee
+  const restoreDeletedEmployee = (emp) => {
+    openConfirm(
+      'Restore Deleted Employee',
+      `Are you sure you want to restore ${emp.first_name} ${emp.last_name}? This will remove them from the deleted list and make them active again.`,
+      async () => {
+        try {
+          confirmModal.value.loading = true;
+          await employeeStore.restoreEmployee(emp.id);
+          showToast(
+            'success',
+            `${emp.first_name} ${emp.last_name} has been restored from deleted status`
+          );
+          closeConfirm();
+          await employeeStore.fetchEmployees(
+            showDeletedEmployees.value,
+            1,
+            itemsPerPage.value
+          ); // Refresh the list
+        } catch (err) {
+          showToast(
+            'error',
+            err.message || 'Failed to restore deleted employee'
+          );
+        } finally {
+          confirmModal.value.loading = false;
         }
       }
     );
@@ -314,6 +495,11 @@
           await employeeStore.deleteEmployee(emp.id);
           showToast('success', 'Employee deleted');
           closeConfirm();
+          await employeeStore.fetchEmployees(
+            showDeletedEmployees.value,
+            1,
+            itemsPerPage.value
+          ); // Refresh the list
         } catch (err) {
           showToast('error', err.message || 'Failed to delete employee');
         }
@@ -337,7 +523,11 @@
       day: 'numeric',
     });
   };
-  const statusBadgeClass = (status) => {
+  const statusBadgeClass = (status, isDeleted = false) => {
+    if (isDeleted) {
+      return 'badge-sm border-none bg-gray-500/20 text-gray-500';
+    }
+
     switch ((status || '').toLowerCase()) {
       case 'active':
         return 'badge-sm border-none bg-success/20 text-success';
@@ -363,41 +553,47 @@
   // Fetch departments with roles
   const fetchDepartmentsWithRoles = async () => {
     try {
-      const response = await fetch(
-        `${apiConfig.baseURL}/employees/departments-with-roles`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      if (data.success) {
-        departmentsWithRoles.value = data.data;
-      } else {
-        throw new Error(
-          data.message || 'Failed to fetch departments with roles'
-        );
-      }
+      const data = await employeeStore.fetchDepartmentsWithRoles();
+      departmentsWithRoles.value = data;
     } catch (error) {
       console.error('Error fetching departments with roles:', error);
       showToast('error', 'Failed to load departments and roles');
     }
   };
 
+  // Infinite scroll functionality
+  const handleScroll = () => {
+    const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
+    const scrollPercentage = (scrollTop + clientHeight) / scrollHeight;
+
+    // Load more when user scrolls to 80% of the page
+    if (
+      scrollPercentage > 0.8 &&
+      hasMore.value &&
+      !loadingMore.value &&
+      !loading.value
+    ) {
+      loadMore();
+    }
+  };
+
   onMounted(async () => {
     if (!employees.value?.length) {
-      await employeeStore.fetchEmployees();
+      await employeeStore.fetchEmployees(
+        showDeletedEmployees.value,
+        1,
+        itemsPerPage.value
+      );
     }
     await fetchDepartmentsWithRoles();
+
+    // Add scroll listener for infinite scroll
+    window.addEventListener('scroll', handleScroll);
+  });
+
+  // Cleanup scroll listener
+  onUnmounted(() => {
+    window.removeEventListener('scroll', handleScroll);
   });
 </script>
 
@@ -562,20 +758,14 @@
                   <div
                     :class="[
                       'badge badge-sm border-none',
-                      emp.status === 'Active'
-                        ? 'bg-success/20 text-success'
-                        : emp.status === 'On Leave'
-                          ? 'bg-warning/20 text-warning'
-                          : emp.status === 'Inactive'
-                            ? 'bg-neutral/20 text-neutral'
-                            : 'bg-error/20 text-error',
+                      statusBadgeClass(emp.status, emp.deleted_at),
                     ]"
                   >
                     <BadgeCheck
-                      v-if="emp.status === 'Active'"
+                      v-if="emp.status === 'Active' && !emp.deleted_at"
                       class="w-3 h-3 mr-1"
                     />
-                    {{ emp.status || '—' }}
+                    {{ emp.deleted_at ? 'Deleted' : emp.status || '—' }}
                   </div>
                 </td>
                 <td>
@@ -593,17 +783,29 @@
                           ><Eye class="w-3 h-3" /> View</a
                         >
                       </li>
-                      <li>
+                      <li v-if="emp.status !== 'Terminated' && !emp.deleted_at">
                         <a @click="updateEmployee(emp)"
                           ><Edit class="w-3 h-3" /> Update</a
                         >
                       </li>
-                      <li>
+                      <li v-if="emp.status !== 'Terminated' && !emp.deleted_at">
                         <a @click="terminateEmployee(emp)" class="text-warning"
                           ><UserX class="w-3 h-3" /> Terminate</a
                         >
                       </li>
-                      <li>
+                      <li v-if="emp.status === 'Terminated' && !emp.deleted_at">
+                        <a @click="restoreEmployee(emp)" class="text-success"
+                          ><UserCheck class="w-3 h-3" /> Restore</a
+                        >
+                      </li>
+                      <li v-if="emp.deleted_at">
+                        <a
+                          @click="restoreDeletedEmployee(emp)"
+                          class="text-success"
+                          ><UserCheck class="w-3 h-3" /> Restore Deleted</a
+                        >
+                      </li>
+                      <li v-if="!emp.deleted_at">
                         <a @click="deleteEmployee(emp)" class="text-error"
                           ><Trash2 class="w-3 h-3" /> Delete</a
                         >
@@ -617,47 +819,49 @@
         </div>
 
         <!-- Pagination -->
+        <!-- Load More Section -->
         <div
-          class="flex flex-col sm:flex-row justify-between items-center p-4 gap-3 border-t"
-          v-if="filteredEmployees.length > itemsPerPage"
+          class="flex flex-col items-center p-4 gap-3 border-t-1 border-black/10"
+          v-if="employees.length > 0"
         >
           <div class="text-xs sm:text-sm text-black/60">
-            Showing {{ (currentPage - 1) * itemsPerPage + 1 }} to
-            {{ Math.min(currentPage * itemsPerPage, filteredEmployees.length) }}
-            of {{ filteredEmployees.length }} employees
+            Showing {{ employees.length }} of {{ pagination.total }} employees
           </div>
 
-          <div class="join">
-            <button
-              class="join-item btn btn-xs sm:btn-sm !bg-gray-200 text-black/60 border-none"
-              :disabled="currentPage <= 1"
-              @click="currentPage--"
-            >
-              « Prev
-            </button>
+          <!-- Load More Button -->
+          <button
+            v-if="hasMore"
+            @click="loadMore"
+            :disabled="loadingMore"
+            class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/90 border-none"
+          >
+            <span
+              v-if="loadingMore"
+              class="loading loading-spinner loading-xs mr-2"
+            ></span>
+            {{ loadingMore ? 'Loading...' : 'Load More' }}
+          </button>
 
-            <button
-              v-for="page in totalPages"
-              :key="page"
-              class="join-item btn btn-xs sm:btn-sm !bg-gray-200 text-black/60 border-none"
-              :class="{
-                'btn-active !bg-primaryColor text-white': currentPage === page,
-              }"
-              @click="currentPage = page"
-            >
-              {{ page }}
-            </button>
-
-            <button
-              class="join-item btn btn-xs sm:btn-sm !bg-gray-200 text-black/60 border-none"
-              :disabled="currentPage >= totalPages"
-              @click="currentPage++"
-            >
-              Next »
-            </button>
+          <!-- No more data message -->
+          <div v-else-if="employees.length > 0" class="text-sm text-gray-500">
+            All employees loaded
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Toggle for showing deleted employees -->
+    <div class="flex items-center gap-2 justify-end border-t border-black/10 p-4">
+      <input
+        type="checkbox"
+        v-model="showDeletedEmployees"
+        @change="toggleDeletedEmployees"
+        class="checkbox checkbox-sm checked:bg-primaryColor text-white checked:border-primaryColor"
+        id="show-deleted"
+      />
+      <label for="show-deleted" class="text-sm font-medium text-gray-700">
+        Show Deleted
+      </label>
     </div>
 
     <!-- Toast -->
@@ -681,14 +885,20 @@
         <button
           class="btn btn-sm border-none shadow-none font-thin"
           @click="closeConfirm"
+          :disabled="confirmModal.loading"
         >
           Cancel
         </button>
         <button
           class="btn btn-sm bg-primaryColor text-white border-none font-thin"
           @click="confirmModal.onConfirm"
+          :disabled="confirmModal.loading"
         >
-          Confirm
+          <span
+            v-if="confirmModal.loading"
+            class="loading loading-spinner loading-xs"
+          ></span>
+          {{ confirmModal.loading ? 'Updating...' : 'Confirm' }}
         </button>
       </div>
     </div>
@@ -743,9 +953,16 @@
                   <span
                     :class="[
                       'badge',
-                      statusBadgeClass(selectedEmployee.status),
+                      statusBadgeClass(
+                        selectedEmployee.status,
+                        selectedEmployee.deleted_at
+                      ),
                     ]"
-                    >{{ selectedEmployee.status }}</span
+                    >{{
+                      selectedEmployee.deleted_at
+                        ? 'Deleted'
+                        : selectedEmployee.status
+                    }}</span
                   >
                 </div>
               </div>
@@ -815,9 +1032,19 @@
               <div class="flex justify-between">
                 <span class="text-gray-600">Status:</span>
                 <span
-                  :class="['badge', statusBadgeClass(selectedEmployee.status)]"
+                  :class="[
+                    'badge',
+                    statusBadgeClass(
+                      selectedEmployee.status,
+                      selectedEmployee.deleted_at
+                    ),
+                  ]"
                 >
-                  {{ selectedEmployee.status || '—' }}
+                  {{
+                    selectedEmployee.deleted_at
+                      ? 'Deleted'
+                      : selectedEmployee.status || '—'
+                  }}
                 </span>
               </div>
             </div>
@@ -1232,6 +1459,237 @@
     </div>
     <form method="dialog" class="modal-backdrop">
       <button @click="closeEditModal">close</button>
+    </form>
+  </dialog>
+
+  <!-- Termination Modal -->
+  <dialog id="termination_modal" class="modal">
+    <div
+      class="modal-box max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-black/10 bg-white/95 shadow-lg"
+    >
+      <h3
+        class="font-bold text-xl text-error mb-4 border-b border-error/20 pb-3"
+      >
+        <UserX class="w-6 h-6 inline mr-2" />
+        Employee Termination Process
+      </h3>
+
+      <div v-if="terminationModal.employee" class="space-y-6">
+        <!-- Employee Information -->
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+          <h4 class="font-semibold text-red-800 mb-3">
+            Employee to be Terminated
+          </h4>
+          <div class="flex items-center gap-4">
+            <div class="avatar">
+              <div class="w-12 h-12 rounded-full overflow-hidden bg-red-100">
+                <img
+                  v-if="terminationModal.employee.photo_url"
+                  :src="getPhotoUrl(terminationModal.employee.photo_url)"
+                  class="w-full h-full object-cover"
+                />
+                <div
+                  v-else
+                  class="w-12 h-12 flex items-center justify-center text-red-600 text-sm font-semibold"
+                >
+                  {{ (terminationModal.employee.first_name || 'E').charAt(0) }}
+                </div>
+              </div>
+            </div>
+            <div>
+              <div class="font-semibold text-red-800">
+                {{ terminationModal.employee.first_name }}
+                {{ terminationModal.employee.last_name }}
+              </div>
+              <div class="text-sm text-red-600">
+                {{ terminationModal.employee.role }} •
+                {{ terminationModal.employee.department }}
+              </div>
+              <div class="text-xs text-red-500">
+                Employee ID: {{ terminationModal.employee.employee_id }}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Termination Process Information -->
+        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <h4 class="font-semibold text-yellow-800 mb-3 flex items-center">
+            <AlertTriangle class="w-5 h-5 mr-2" />
+            Important: Termination Process Overview
+          </h4>
+          <div class="text-sm text-yellow-700 space-y-2">
+            <p><strong>What happens when you terminate an employee:</strong></p>
+            <ul class="list-disc list-inside space-y-1 ml-4">
+              <li>Employee status will be changed to "Terminated"</li>
+              <li>Employee will lose access to all company systems</li>
+              <li>Final payroll processing will be initiated</li>
+              <li>All pending work must be handed over</li>
+            </ul>
+            <p class="mt-3 font-medium">
+              This action is <strong>irreversible</strong> and should only be
+              done after proper documentation and approval.
+            </p>
+          </div>
+        </div>
+
+        <!-- Termination Details Form -->
+        <div
+          class="grid grid-cols-1 lg:grid-cols-2 gap-4 bg-white border border-black/10 p-4 rounded-xl"
+        >
+          <div class="form-control">
+            <label class="label mb-1">
+              <span
+                class="label-text text-black/70 font-medium text-sm sm:text-base"
+              >
+                Termination Reason <span class="text-red-500">*</span>
+              </span>
+            </label>
+            <select
+              v-model="terminationModal.terminationReason"
+              class="select select-sm sm:select-md select-bordered w-full bg-white border-red-300 text-black/70 focus:border-red-500"
+              required
+            >
+              <option value="" disabled>Select reason</option>
+              <option value="Resignation">Resignation</option>
+              <option value="Performance Issues">Performance Issues</option>
+              <option value="Misconduct">Misconduct</option>
+              <option value="Redundancy">Redundancy</option>
+              <option value="End of Contract">End of Contract</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
+          <div class="form-control">
+            <label class="label mb-1">
+              <span
+                class="label-text text-black/70 font-medium text-sm sm:text-base"
+              >
+                Last Working Day <span class="text-red-500">*</span>
+              </span>
+            </label>
+            <input
+              v-model="terminationModal.lastWorkingDay"
+              type="date"
+              class="input input-sm sm:input-md input-bordered w-full bg-white border-red-300 text-black/70 focus:border-red-500"
+              required
+            />
+          </div>
+
+          <div class="form-control lg:col-span-2">
+            <label class="label mb-1">
+              <span
+                class="label-text text-black/70 font-medium text-sm sm:text-base"
+              >
+                Handover Notes
+              </span>
+            </label>
+            <textarea
+              v-model="terminationModal.handoverNotes"
+              class="textarea textarea-sm sm:textarea-md textarea-bordered w-full bg-white border-red-300 text-black/70 focus:border-red-500"
+              placeholder="Document any pending work, projects, or important information that needs to be transferred..."
+              rows="3"
+            ></textarea>
+          </div>
+        </div>
+
+        <!-- Post-Termination Checklist -->
+        <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+          <h4 class="font-semibold text-gray-800 mb-3">
+            Post-Termination Checklist
+          </h4>
+          <p class="text-sm text-gray-600 mb-4">
+            Please confirm the following actions will be completed:
+          </p>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input
+                v-model="terminationModal.finalPayroll"
+                type="checkbox"
+                class="checkbox checkbox-sm border-red-300 checked:bg-red-500"
+              />
+              <div>
+                <div class="font-medium text-gray-800">
+                  Final Payroll Processing
+                </div>
+                <div class="text-xs text-gray-600">
+                  Calculate final salary, benefits, and deductions
+                </div>
+              </div>
+            </label>
+
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input
+                v-model="terminationModal.systemAccess"
+                type="checkbox"
+                class="checkbox checkbox-sm border-red-300 checked:bg-red-500"
+              />
+              <div>
+                <div class="font-medium text-gray-800">
+                  System Access Revocation
+                </div>
+                <div class="text-xs text-gray-600">
+                  Disable all company system accounts
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Legal Notice -->
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+          <h4 class="font-semibold text-red-800 mb-2 flex items-center">
+            <Shield class="w-5 h-5 mr-2" />
+            Legal and Compliance Notice
+          </h4>
+          <div class="text-sm text-red-700 space-y-2">
+            <p>By proceeding with this termination, you acknowledge that:</p>
+            <ul class="list-disc list-inside space-y-1 ml-4">
+              <li>All legal requirements for termination have been met</li>
+              <li>Proper notice period has been given (if applicable)</li>
+              <li>
+                Employee has been informed of their rights and obligations
+              </li>
+              <li>All company policies and procedures have been followed</li>
+              <li>Documentation has been properly maintained</li>
+            </ul>
+            <p class="mt-3 font-medium">
+              This action will be logged and may be subject to audit.
+            </p>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex justify-end gap-3 pt-4 border-t border-black/10">
+          <button
+            type="button"
+            @click="closeTerminationModal"
+            class="btn btn-sm font-thin border-none bg-gray-200 hover:bg-gray-300 text-black/50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            @click="showTerminationConfirmation"
+            class="btn btn-sm font-thin border-none bg-red-500 hover:bg-red-600 text-white"
+            :disabled="
+              !terminationModal.terminationReason ||
+              !terminationModal.lastWorkingDay ||
+              loading
+            "
+          >
+            <span
+              class="loading loading-spinner loading-sm mr-2"
+              v-if="loading"
+            ></span>
+            {{ loading ? 'Processing...' : 'Terminate Employee' }}
+          </button>
+        </div>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button @click="closeTerminationModal">close</button>
     </form>
   </dialog>
 </template>

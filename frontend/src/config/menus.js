@@ -41,7 +41,7 @@ export const menuItems = [
       { name: 'Add Schedules', route: '/hr/schedules/add' },
       { name: 'Positions', route: '/hr/positions' },
       { name: 'Leave Management', route: '/hr/leave' },
-      { name: 'Add Employee', route: '/hr/employees/add' },
+      { name: 'Add Employee', route: '/hr/add-employee' },
     ],
   },
   {
@@ -144,8 +144,8 @@ export const menuItems = [
       { name: 'Sample Planning', route: '/production/sample-planning' },
       { name: 'Quality Inspection', route: '/production/quality-inspection' },
       {
-        name: 'Production Inventory',
-        route: '/production/production-inventory',
+        name: 'Production Execution',
+        route: '/production/production-execution',
       },
     ],
   },
@@ -153,6 +153,12 @@ export const menuItems = [
     name: 'Recipe Management',
     icon: BookOpen,
     route: '/production/recipes',
+    department: 'Production',
+  },
+  {
+    name: 'Production Inventory',
+    icon: Package,
+    route: '/production/production-inventory',
     department: 'Production',
   },
 

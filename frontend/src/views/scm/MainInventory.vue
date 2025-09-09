@@ -822,6 +822,20 @@
         description:
           'Item was disposed due to damage, expiry, or other reasons',
       },
+      production_consumption: {
+        icon: Package,
+        color: 'text-primary',
+        label: 'Production',
+        badgeColor: 'bg-primary/20 text-primary',
+        description: 'Item was consumed for production batch',
+      },
+      production_output: {
+        icon: Package,
+        color: 'text-success',
+        label: 'Produced',
+        badgeColor: 'bg-success/20 text-success',
+        description: 'Finished goods added from production',
+      },
     };
     return (
       typeInfo[type] || {
@@ -991,6 +1005,25 @@
 
   const closeTransactionModal = () => {
     transactionModal.value = { show: false };
+  };
+
+  // Handle query parameters for production integration
+  const handleQueryParameters = () => {
+    const query = router.currentRoute.value.query;
+
+    // Check if we should open transaction modal with production filter
+    if (query.filter === 'production' && query.transaction_type) {
+      // Open transaction modal with production transactions filter
+      transactionModal.value = {
+        show: true,
+        initialFilter: {
+          transaction_type: query.transaction_type,
+        },
+      };
+
+      // Clear the query parameters after handling
+      router.replace({ path: '/scm/main-inventory' });
+    }
   };
 
   // Batch-specific actions
@@ -1614,6 +1647,9 @@
       console.log('Debug - Categories:', categories.value);
       console.log('Debug - Item Types:', itemTypes.value);
       console.log('Debug - Current Inventory:', currentInventory.value);
+
+      // Handle query parameters for production integration
+      handleQueryParameters();
       console.log('Debug - Inventory Summary:', inventorySummary.value);
       console.log('Debug - Stats:', stats.value);
 
@@ -4091,6 +4127,7 @@
     <!-- Transaction Modal -->
     <TransactionModal
       :show="transactionModal.show"
+      :initial-filter="transactionModal.initialFilter"
       @close="closeTransactionModal"
     />
 

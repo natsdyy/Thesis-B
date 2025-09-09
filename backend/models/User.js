@@ -172,7 +172,7 @@ class User {
   static async create({
     name,
     email,
-    password = "admin123",
+    password = null,
     role_id = null,
     department = null,
   }) {
@@ -184,6 +184,12 @@ class User {
 
       if (!email || !this.isValidEmail(email)) {
         throw new Error("Valid email address is required");
+      }
+
+      // If no password provided, use last name as default password
+      if (!password) {
+        const nameParts = name.trim().split(" ");
+        password = nameParts[nameParts.length - 1]; // Use last name as default password
       }
 
       const passwordValidation = this.validatePassword(password);

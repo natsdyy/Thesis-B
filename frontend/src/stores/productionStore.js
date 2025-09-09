@@ -1998,22 +1998,70 @@ export const useProductionStore = defineStore('production', () => {
         }
       });
 
-      const response = await axios.get(
-        `${API_BASE_URL}/menu/production-inventory/audit-logs?${queryParams.toString()}`
+      // Fetch both audit logs and production batch transactions
+      const [auditLogsResponse, productionBatchesResponse] = await Promise.all([
+        axios.get(
+          `${API_BASE_URL}/menu/production-inventory/audit-logs?${queryParams.toString()}`
+        ),
+        axios.get(
+          `${API_BASE_URL}/production/batches?${queryParams.toString()}`
+        ),
+      ]);
+
+      let allTransactions = [];
+
+      // Process audit logs
+      if (auditLogsResponse.data.success) {
+        const auditLogs = auditLogsResponse.data.data.map((log) => ({
+          ...log,
+          transaction_type: 'audit_log',
+          source: 'audit',
+        }));
+        allTransactions = [...allTransactions, ...auditLogs];
+      }
+
+      // Process production batches
+      if (productionBatchesResponse.data.success) {
+        const productionBatches = productionBatchesResponse.data.data.map(
+          (batch) => ({
+            id: batch.id,
+            action_type: batch.status,
+            item_name: batch.menu_item_name,
+            menu_item_id: batch.menu_item_id,
+            created_at: batch.updated_at,
+            performed_by: batch.assigned_to_name,
+            notes: batch.notes,
+            transaction_type: 'production_batch',
+            source: 'production',
+            batch_number: batch.batch_number,
+            batch_size: batch.batch_size,
+            quantity_produced: batch.quantity_produced,
+            production_date: batch.production_date,
+            start_time: batch.start_time,
+            end_time: batch.end_time,
+          })
+        );
+        allTransactions = [...allTransactions, ...productionBatches];
+      }
+
+      // Sort by date (most recent first)
+      allTransactions.sort(
+        (a, b) => new Date(b.created_at) - new Date(a.created_at)
       );
 
-      if (response.data.success) {
-        return {
-          data: response.data.data,
-          total: response.data.total,
-          page: response.data.page,
-          totalPages: response.data.totalPages,
-        };
-      } else {
-        throw new Error(
-          response.data.message || 'Failed to fetch transactions'
-        );
-      }
+      // Apply pagination
+      const page = parseInt(params.page) || 1;
+      const limit = parseInt(params.limit) || 10;
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + limit;
+      const paginatedTransactions = allTransactions.slice(startIndex, endIndex);
+
+      return {
+        data: paginatedTransactions,
+        total: allTransactions.length,
+        page: page,
+        totalPages: Math.ceil(allTransactions.length / limit),
+      };
     } catch (error) {
       console.error('Error fetching transactions:', error);
       error.value =
@@ -2114,6 +2162,169 @@ export const useProductionStore = defineStore('production', () => {
       throw err;
     } finally {
       loading.value = false;
+    }
+  };
+
+  // ==================== PRODUCTION EXECUTION METHODS ====================
+
+  // Get production inventory (ready for production)
+  const getProductionInventory = async (filters = {}) => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/production/inventory`, {
+        params: filters,
+        timeout: 10000,
+      });
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch production inventory'
+        );
+      }
+    } catch (err) {
+      console.error('Error fetching production inventory:', err);
+      throw err;
+    }
+  };
+
+  // Execute production batch
+  const executeProduction = async (executionData) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/production/execute`,
+        executionData,
+        { timeout: 15000 }
+      );
+
+      if (response.data.success) {
+        // Refresh production inventory after successful execution
+        await fetchProductionInventory();
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to execute production'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to execute production';
+      console.error('Error executing production:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Get active production batches
+  const getActiveBatches = async (filters = {}) => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/production/batches`, {
+        params: filters,
+        timeout: 10000,
+      });
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch active batches'
+        );
+      }
+    } catch (err) {
+      console.error('Error fetching active batches:', err);
+      throw err;
+    }
+  };
+
+  // Update batch status
+  const updateBatchStatus = async (
+    batchId,
+    status,
+    notes = null,
+    quantityProduced = null
+  ) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.patch(
+        `${API_BASE_URL}/production/batches/${batchId}/status`,
+        {
+          status,
+          notes,
+          quantity_produced: quantityProduced,
+        },
+        { timeout: 10000 }
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to update batch status'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to update batch status';
+      console.error('Error updating batch status:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Get ingredient requirements for production
+  const getIngredientRequirements = async (menuItemId, batchSize = null) => {
+    try {
+      const params = {};
+      if (batchSize) params.batch_size = batchSize;
+
+      const response = await axios.get(
+        `${API_BASE_URL}/production/ingredient-requirements/${menuItemId}`,
+        { params, timeout: 10000 }
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch ingredient requirements'
+        );
+      }
+    } catch (err) {
+      console.error('Error fetching ingredient requirements:', err);
+      throw err;
+    }
+  };
+
+  // Get production history
+  const getProductionHistory = async (filters = {}) => {
+    try {
+      // This would typically be a separate endpoint, but for now we can use existing data
+      const response = await axios.get(`${API_BASE_URL}/production/batches`, {
+        params: { ...filters, status: 'Completed' },
+        timeout: 10000,
+      });
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch production history'
+        );
+      }
+    } catch (err) {
+      console.error('Error fetching production history:', err);
+      return []; // Return empty array if fails
     }
   };
 
@@ -2240,5 +2451,13 @@ export const useProductionStore = defineStore('production', () => {
     inventoryStats,
     lowStockAlerts,
     expiringItems,
+
+    // Production Execution Actions
+    getProductionInventory,
+    executeProduction,
+    getActiveBatches,
+    updateBatchStatus,
+    getIngredientRequirements,
+    getProductionHistory,
   };
 });

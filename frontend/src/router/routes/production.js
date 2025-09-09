@@ -36,4 +36,10 @@ export default [
     component: () => import('../../views/production/ProductionInventory.vue'),
     meta: { title: 'Production Inventory' },
   },
+  {
+    path: 'production-execution',
+    name: 'ProductionExecution',
+    component: () => import('../../views/production/ProductionExecution.vue'),
+    meta: { title: 'Production Execution' },
+  },
 ];

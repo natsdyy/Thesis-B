@@ -69,7 +69,7 @@ class ProductionInventory {
       // Log the creation action
       await trx("menu_item_audit_log").insert({
         menu_item_id: menuItemId,
-        user_id: userId,
+        employee_id: userId,
         action_type: "ADDED_TO_INVENTORY",
         action_details: JSON.stringify({
           production_inventory_id: productionInventory.id,
@@ -113,12 +113,12 @@ class ProductionInventory {
           "r.recipe_name",
           "r.batch_size",
           "r.batch_unit",
-          "u.name as created_by_name"
+          "e.name as created_by_name"
         )
         .leftJoin("menu_items as mi", "pi.menu_item_id", "mi.id")
         .leftJoin("menus as m", "mi.menu_id", "m.id")
         .leftJoin("recipes as r", "pi.recipe_id", "r.id")
-        .leftJoin("users as u", "pi.created_by", "u.id")
+        .leftJoin("employees as e", "pi.created_by", "e.id")
         .where("pi.is_active", true)
         .whereNull("mi.deleted_at")
         .whereNull("m.deleted_at");
@@ -218,12 +218,12 @@ class ProductionInventory {
           "r.batch_size",
           "r.batch_unit",
           "r.cost_per_batch",
-          "u.name as created_by_name"
+          "e.name as created_by_name"
         )
         .leftJoin("menu_items as mi", "pi.menu_item_id", "mi.id")
         .leftJoin("menus as m", "mi.menu_id", "m.id")
         .leftJoin("recipes as r", "pi.recipe_id", "r.id")
-        .leftJoin("users as u", "pi.created_by", "u.id")
+        .leftJoin("employees as e", "pi.created_by", "e.id")
         .where("pi.id", id)
         .whereNull("mi.deleted_at")
         .whereNull("m.deleted_at")
@@ -253,9 +253,9 @@ class ProductionInventory {
             "qi.inspection_date",
             "qi.result",
             "qi.overall_quality_score",
-            "u.name as inspector_name"
+            "e.name as inspector_name"
           )
-          .leftJoin("users as u", "qi.inspector_id", "u.id")
+          .leftJoin("employees as e", "qi.inspector_id", "e.id")
           .where("qi.menu_item_id", inventoryItem.menu_item_id)
           .whereNull("qi.deleted_at")
           .orderBy("qi.inspection_date", "desc")
@@ -470,7 +470,7 @@ class ProductionInventory {
 
       await db("menu_item_audit_log").insert({
         menu_item_id: inventoryItem.menu_item_id,
-        user_id: userId,
+        employee_id: userId,
         action_type: "INVENTORY_UPDATED",
         action_details: JSON.stringify({
           production_inventory_id: inventoryId,
@@ -551,8 +551,8 @@ class ProductionInventory {
   // Get recent activity for production inventory
   static async getRecentActivity(limit = 10) {
     try {
-      // Use raw PostgreSQL query for better performance
-      const activities = await db.raw(
+      // Get inventory update activities
+      const inventoryActivities = await db.raw(
         `
         SELECT 
           mal.id,
@@ -563,11 +563,12 @@ class ProductionInventory {
           mal.user_id,
           COALESCE(mi.menu_item_name, 'Unknown Item') as item_name,
           COALESCE(pi.available_quantity, 0) as available_quantity,
-          COALESCE(u.name, 'Unknown User') as performed_by
+          COALESCE(e.name, 'Unknown Employee') as performed_by,
+          'inventory' as activity_source
         FROM menu_item_audit_log mal
         LEFT JOIN menu_items mi ON mal.menu_item_id = mi.id AND mi.deleted_at IS NULL
         LEFT JOIN production_inventory pi ON mal.menu_item_id = pi.menu_item_id
-        LEFT JOIN users u ON mal.user_id = u.id
+        LEFT JOIN employees e ON mal.employee_id = e.id
         WHERE mal.action_type = ?
         ORDER BY mal.created_at DESC
         LIMIT ?
@@ -575,11 +576,57 @@ class ProductionInventory {
         ["INVENTORY_UPDATED", limit]
       );
 
-      // Parse action_details and add quantity information
-      return activities.rows.map((activity) => {
-        const details = activity.action_details
-          ? JSON.parse(activity.action_details)
-          : {};
+      // Get production batch activities
+      const productionActivities = await db.raw(
+        `
+        SELECT 
+          pb.id,
+          pb.status as action_type,
+          CONCAT('{"batch_number":"', pb.batch_number, '","status":"', pb.status, '","description":"Batch #', pb.batch_number, ' - ', pb.status, '"}') as action_details,
+          pb.notes,
+          pb.updated_at as created_at,
+          pb.assigned_to as user_id,
+          COALESCE(mi.menu_item_name, 'Unknown Item') as item_name,
+          COALESCE(pi.available_quantity, 0) as available_quantity,
+          COALESCE(e.name, 'Unknown Employee') as performed_by,
+          'production' as activity_source,
+          pb.batch_size,
+          pb.quantity_produced
+        FROM production_batches pb
+        LEFT JOIN menu_items mi ON pb.menu_item_id = mi.id AND mi.deleted_at IS NULL
+        LEFT JOIN production_inventory pi ON pb.menu_item_id = pi.menu_item_id
+        LEFT JOIN employees e ON pb.assigned_to = e.id
+        WHERE pb.status IN ('In Progress', 'Completed', 'Quality Check', 'Failed')
+        ORDER BY pb.updated_at DESC
+        LIMIT ?
+      `,
+        [limit]
+      );
+
+      // Combine and sort activities
+      const allActivities = [
+        ...inventoryActivities.rows,
+        ...productionActivities.rows,
+      ]
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .slice(0, limit);
+
+      // Parse and format activities
+      return allActivities.map((activity) => {
+        let details = {};
+        if (activity.action_details) {
+          try {
+            details = JSON.parse(activity.action_details);
+          } catch (e) {
+            // If parsing fails, create a simple details object
+            details = {
+              description: activity.action_details,
+              batch_number: activity.batch_number || null,
+              status: activity.action_type,
+            };
+          }
+        }
+
         return {
           id: activity.id,
           action_type: activity.action_type,
@@ -591,6 +638,11 @@ class ProductionInventory {
           created_at: activity.created_at,
           notes: activity.notes,
           action_details: activity.action_details,
+          activity_source: activity.activity_source,
+          batch_size: activity.batch_size || 0,
+          quantity_produced: activity.quantity_produced || 0,
+          batch_number: details.batch_number || null,
+          description: details.description || activity.action_details,
         };
       });
     } catch (error) {
@@ -625,7 +677,7 @@ class ProductionInventory {
       if (search) {
         whereConditions.push(`(
           mi.menu_item_name ILIKE $${queryParams.length + 1} OR
-          u.name ILIKE $${queryParams.length + 1} OR
+          e.name ILIKE $${queryParams.length + 1} OR
           mal.notes ILIKE $${queryParams.length + 1}
         )`);
         queryParams.push(`%${search}%`);
@@ -661,7 +713,7 @@ class ProductionInventory {
         SELECT COUNT(*) as count
         FROM menu_item_audit_log mal
         LEFT JOIN menu_items mi ON mal.menu_item_id = mi.id AND mi.deleted_at IS NULL
-        LEFT JOIN users u ON mal.user_id = u.id
+        LEFT JOIN employees e ON mal.employee_id = e.id
         WHERE ${whereClause}
       `;
 
@@ -680,11 +732,11 @@ class ProductionInventory {
           mal.menu_item_id,
           COALESCE(mi.menu_item_name, 'Unknown Item') as item_name,
           COALESCE(pi.available_quantity, 0) as available_quantity,
-          COALESCE(u.name, 'Unknown User') as performed_by
+          COALESCE(e.name, 'Unknown Employee') as performed_by
         FROM menu_item_audit_log mal
         LEFT JOIN menu_items mi ON mal.menu_item_id = mi.id AND mi.deleted_at IS NULL
         LEFT JOIN production_inventory pi ON mal.menu_item_id = pi.menu_item_id
-        LEFT JOIN users u ON mal.user_id = u.id
+        LEFT JOIN employees e ON mal.employee_id = e.id
         WHERE ${whereClause}
         ORDER BY mal.created_at DESC
         LIMIT ? OFFSET ?
@@ -794,7 +846,7 @@ class ProductionInventory {
           "mi.menu_item_name",
           "mi.item_code",
           "b.branch_name",
-          "u.name as distributed_by_name"
+          "e.name as distributed_by_name"
         )
         .leftJoin(
           "production_inventory as pi",
@@ -803,7 +855,7 @@ class ProductionInventory {
         )
         .leftJoin("menu_items as mi", "pid.menu_item_id", "mi.id")
         .leftJoin("branches as b", "pid.branch_id", "b.id")
-        .leftJoin("users as u", "pid.distributed_by", "u.id")
+        .leftJoin("employees as e", "pid.distributed_by", "e.id")
         .where("pid.menu_item_id", menuItemId);
 
       // Apply filters
@@ -837,7 +889,7 @@ class ProductionInventory {
           "mi.item_code",
           "mi.category",
           "b.branch_name",
-          "u.name as distributed_by_name"
+          "e.name as distributed_by_name"
         )
         .leftJoin(
           "production_inventory as pi",
@@ -846,7 +898,7 @@ class ProductionInventory {
         )
         .leftJoin("menu_items as mi", "pid.menu_item_id", "mi.id")
         .leftJoin("branches as b", "pid.branch_id", "b.id")
-        .leftJoin("users as u", "pid.distributed_by", "u.id");
+        .leftJoin("employees as e", "pid.distributed_by", "e.id");
 
       // Apply filters
       if (filters.branch_id) {
@@ -965,7 +1017,6 @@ class ProductionInventory {
 
       return await this.getById(inventoryId);
     } catch (error) {
-      console.error("Error updating initial stock from recipe:", error);
       throw new Error("Failed to update initial stock from recipe");
     }
   }
@@ -981,7 +1032,7 @@ class ProductionInventory {
       // Log deactivation
       await db("menu_item_audit_log").insert({
         production_inventory_id: id,
-        user_id: userId,
+        employee_id: userId,
         action_type: "INVENTORY_DEACTIVATED",
         action_details: JSON.stringify({ deactivated: true }),
         notes: "Production inventory item deactivated",
@@ -992,6 +1043,456 @@ class ProductionInventory {
     } catch (error) {
       console.error("Error deactivating production inventory item:", error);
       throw new Error("Failed to deactivate production inventory item");
+    }
+  }
+
+  // ==================== PRODUCTION EXECUTION METHODS ====================
+
+  // Execute production batch
+  static async executeProduction(executionData) {
+    const trx = await db.transaction();
+
+    try {
+      const {
+        menu_item_id,
+        recipe_id,
+        batch_size,
+        production_date,
+        assigned_to,
+        notes = null,
+      } = executionData;
+
+      // Get recipe details and ingredient requirements
+      const Recipe = require("./Recipe");
+      const recipe = await Recipe.getById(recipe_id);
+      if (!recipe) {
+        throw new Error("Recipe not found");
+      }
+
+      // Check ingredient availability
+      const ingredientCheck = await Recipe.checkIngredientAvailability(
+        recipe_id,
+        batch_size
+      );
+      if (!ingredientCheck.all_ingredients_available) {
+        throw new Error("Insufficient ingredients for production");
+      }
+
+      // Generate batch number
+      const batchNumber = this.generateBatchNumber(menu_item_id);
+
+      // Create production batch record
+      const [batchId] = await trx("production_batches")
+        .insert({
+          batch_number: batchNumber,
+          menu_item_id: menu_item_id,
+          recipe_id: recipe_id,
+          batch_size: batch_size,
+          quantity_produced: 0,
+          status: "In Progress",
+          production_date: production_date,
+          assigned_to: assigned_to,
+          notes: notes,
+          start_time: new Date(),
+          created_at: new Date(),
+          updated_at: new Date(),
+        })
+        .returning("id");
+
+      // Consume ingredients from SCM inventory
+      const Inventory = require("./Inventory");
+      const ingredientConsumption = ingredientCheck.ingredient_availability.map(
+        (ingredient) => ({
+          inventory_item_id: ingredient.inventory_item_id,
+          quantity_consumed: ingredient.required_quantity,
+          performed_by: `User ${assigned_to}`,
+        })
+      );
+
+      await Inventory.consumeIngredientsForProduction(
+        batchId,
+        ingredientConsumption
+      );
+
+      // Update production inventory (initially still 0 until batch is completed)
+      await trx("production_inventory")
+        .where("menu_item_id", menu_item_id)
+        .update({
+          last_produced_date: production_date,
+          last_batch_size: batch_size,
+          updated_at: new Date(),
+        });
+
+      await trx.commit();
+
+      return {
+        batch_id: batchId,
+        batch_number: batchNumber,
+        status: "In Progress",
+        message: "Production batch started successfully",
+      };
+    } catch (error) {
+      await trx.rollback();
+      console.error("Error executing production:", error);
+      throw new Error(error.message || "Failed to execute production");
+    }
+  }
+
+  // Get production batches (active or completed based on filters)
+  static async getActiveBatches(filters = {}) {
+    try {
+      let query = db("production_batches as pb")
+        .select(
+          "pb.*",
+          "mi.menu_item_name",
+          "mi.item_code",
+          "r.recipe_name",
+          "e.name as assigned_to_name"
+        )
+        .leftJoin("menu_items as mi", "pb.menu_item_id", "mi.id")
+        .leftJoin("recipes as r", "pb.recipe_id", "r.id")
+        .leftJoin("employees as e", "pb.assigned_to", "e.id")
+        .orderBy("pb.created_at", "desc");
+
+      // Apply status filter
+      if (filters.status) {
+        if (filters.status === "Completed") {
+          // For completed batches, get all completed batches
+          query = query.where("pb.status", "Completed");
+        } else {
+          // For active batches, get in progress and quality check
+          query = query.whereIn("pb.status", ["In Progress", "Quality Check"]);
+        }
+      } else {
+        // Default: get active batches (in progress and quality check)
+        query = query.whereIn("pb.status", ["In Progress", "Quality Check"]);
+      }
+
+      // Apply other filters
+      if (filters.assigned_to) {
+        query = query.where("pb.assigned_to", filters.assigned_to);
+      }
+
+      const batches = await query;
+
+      // Calculate progress for each batch
+      return batches.map((batch) => {
+        let progress = 0;
+        if (batch.status === "In Progress") progress = 50;
+        else if (batch.status === "Quality Check") progress = 80;
+        else if (batch.status === "Completed") progress = 100;
+
+        return {
+          ...batch,
+          progress: progress,
+          // Add formatted dates for history display
+          formatted_start_time: batch.start_time
+            ? new Date(batch.start_time).toLocaleDateString("en-PH", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "N/A",
+          formatted_end_time: batch.end_time
+            ? new Date(batch.end_time).toLocaleDateString("en-PH", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "N/A",
+        };
+      });
+    } catch (error) {
+      console.error("Error fetching active batches:", error);
+      throw new Error("Failed to fetch active production batches");
+    }
+  }
+
+  // Update batch status
+  static async updateBatchStatus(
+    batchId,
+    status,
+    notes = null,
+    quantityProduced = null
+  ) {
+    const trx = await db.transaction();
+
+    try {
+      const updateData = {
+        status: status,
+        updated_at: new Date(),
+      };
+
+      if (notes) updateData.notes = notes;
+      if (quantityProduced !== null)
+        updateData.quantity_produced = quantityProduced;
+
+      // If completing the batch, set end time and update production inventory
+      if (status === "Completed") {
+        updateData.end_time = new Date();
+
+        // Get batch details
+        const batch = await trx("production_batches")
+          .where("id", batchId)
+          .first();
+
+        if (!batch) {
+          throw new Error("Production batch not found");
+        }
+
+        const finalQuantity = quantityProduced || batch.batch_size;
+
+        // Calculate production cost from consumed ingredients
+        const productionCost = await this.calculateProductionCost(batchId, trx);
+
+        // Calculate new unit cost (average cost method)
+        const currentInventory = await trx("production_inventory")
+          .where("menu_item_id", batch.menu_item_id)
+          .first();
+
+        let newUnitCost = 0;
+        if (currentInventory) {
+          const currentQuantity = currentInventory.available_quantity || 0;
+          const currentTotalCost =
+            (currentInventory.unit_cost || 0) * currentQuantity;
+          const newTotalCost = currentTotalCost + productionCost;
+          const newTotalQuantity = currentQuantity + finalQuantity;
+
+          newUnitCost =
+            newTotalQuantity > 0 ? newTotalCost / newTotalQuantity : 0;
+        } else {
+          newUnitCost = finalQuantity > 0 ? productionCost / finalQuantity : 0;
+        }
+
+        // Update production inventory with completed quantity and new unit cost
+        await trx("production_inventory")
+          .where("menu_item_id", batch.menu_item_id)
+          .increment("available_quantity", finalQuantity)
+          .increment("total_produced", finalQuantity)
+          .update({
+            unit_cost: newUnitCost,
+            production_cost_per_unit: newUnitCost,
+            last_produced_date: new Date(),
+            last_batch_size: finalQuantity,
+            updated_at: new Date(),
+          });
+
+        // Update batch with actual cost
+        updateData.actual_cost = productionCost;
+      }
+
+      // Update the batch
+      await trx("production_batches").where("id", batchId).update(updateData);
+
+      await trx.commit();
+
+      // Return updated batch
+      return await this.getBatchById(batchId);
+    } catch (error) {
+      await trx.rollback();
+      console.error("Error updating batch status:", error);
+      throw new Error("Failed to update batch status");
+    }
+  }
+
+  // Calculate production cost from consumed ingredients
+  static async calculateProductionCost(batchId, trx = null) {
+    const dbInstance = trx || db;
+
+    try {
+      // Get all inventory transactions for this production batch
+      const transactions = await dbInstance("inventory_transactions")
+        .select("unit_cost", "quantity")
+        .where("reference_number", `BATCH-${batchId}`)
+        .where("transaction_type", "production_consumption");
+
+      // Calculate total cost (quantity is negative for consumption, so we use absolute value)
+      const totalCost = transactions.reduce((sum, transaction) => {
+        const cost =
+          Math.abs(transaction.quantity) * (transaction.unit_cost || 0);
+        return sum + cost;
+      }, 0);
+
+      return totalCost;
+    } catch (error) {
+      console.error("Error calculating production cost:", error);
+      return 0;
+    }
+  }
+
+  // Get batch by ID
+  static async getBatchById(batchId) {
+    try {
+      const batch = await db("production_batches as pb")
+        .select(
+          "pb.*",
+          "mi.menu_item_name",
+          "mi.item_code",
+          "r.recipe_name",
+          "e.name as assigned_to_name"
+        )
+        .leftJoin("menu_items as mi", "pb.menu_item_id", "mi.id")
+        .leftJoin("recipes as r", "pb.recipe_id", "r.id")
+        .leftJoin("employees as e", "pb.assigned_to", "e.id")
+        .where("pb.id", batchId)
+        .first();
+
+      return batch;
+    } catch (error) {
+      console.error("Error fetching batch by ID:", error);
+      throw new Error("Failed to fetch batch details");
+    }
+  }
+
+  // Get ingredient requirements for production
+  static async getIngredientRequirements(menuItemId, customBatchSize = null) {
+    try {
+      // Convert menuItemId to integer to ensure proper type
+      const menuId = parseInt(menuItemId);
+      if (isNaN(menuId)) {
+        throw new Error("Invalid menu item ID");
+      }
+
+      // First try to get from production inventory
+      let productionItem = await db("production_inventory as pi")
+        .select("pi.*", "r.batch_size as recipe_batch_size")
+        .leftJoin("recipes as r", "pi.recipe_id", "r.id")
+        .where("pi.menu_item_id", menuId)
+        .first();
+
+      // If not in production inventory, get directly from menu item
+      if (!productionItem) {
+        const menuItem = await db("menu_items as mi")
+          .select(
+            "mi.*",
+            "r.batch_size as recipe_batch_size",
+            "r.id as recipe_id"
+          )
+          .leftJoin("recipes as r", "mi.recipe_id", "r.id")
+          .where("mi.id", menuId)
+          .where("mi.deleted_at", null) // Only get non-deleted items
+          .first();
+
+        if (!menuItem) {
+          // Let's check if the menu item exists at all
+          const menuExists = await db("menu_items").where("id", menuId).first();
+
+          if (!menuExists) {
+            throw new Error(`Menu item with ID ${menuId} does not exist`);
+          } else if (menuExists.deleted_at) {
+            throw new Error(`Menu item with ID ${menuId} has been deleted`);
+          } else {
+            throw new Error(
+              `Menu item with ID ${menuId} has no associated recipe`
+            );
+          }
+        }
+
+        if (!menuItem.recipe_id) {
+          throw new Error(
+            `Menu item "${menuItem.menu_item_name}" has no associated recipe`
+          );
+        }
+
+        productionItem = {
+          recipe_id: menuItem.recipe_id,
+          recipe_batch_size: menuItem.recipe_batch_size,
+        };
+      }
+
+      const batchSize =
+        customBatchSize || productionItem.recipe_batch_size || 1;
+
+      // Get recipe ingredient requirements
+      const Recipe = require("./Recipe");
+      const availability = await Recipe.checkIngredientAvailability(
+        productionItem.recipe_id,
+        batchSize
+      );
+
+      return availability.ingredient_availability;
+    } catch (error) {
+      console.error("Error fetching ingredient requirements:", error.message);
+      throw new Error(
+        `Failed to fetch ingredient requirements: ${error.message}`
+      );
+    }
+  }
+
+  // Generate batch number
+  static generateBatchNumber(menuItemId) {
+    const date = new Date();
+    const year = date.getFullYear().toString().substr(-2);
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hour = String(date.getHours()).padStart(2, "0");
+    const minute = String(date.getMinutes()).padStart(2, "0");
+
+    return `BATCH-${menuItemId}-${year}${month}${day}${hour}${minute}`;
+  }
+
+  // Create production inventory entry (called when quality inspection is approved)
+  static async createFromQualityApproval(menuItemId, recipeId, createdBy) {
+    const trx = await db.transaction();
+
+    try {
+      // Check if production inventory already exists
+      const existing = await trx("production_inventory")
+        .where("menu_item_id", menuItemId)
+        .first();
+
+      if (existing) {
+        return existing;
+      }
+
+      // Get menu item and recipe details
+      const menuItem = await trx("menu_items as mi")
+        .select("mi.*", "r.batch_unit", "r.cost_per_batch")
+        .leftJoin("recipes as r", "mi.recipe_id", "r.id")
+        .where("mi.id", menuItemId)
+        .first();
+
+      if (!menuItem) {
+        throw new Error("Menu item not found");
+      }
+
+      // Create production inventory entry
+      const [inventoryId] = await trx("production_inventory")
+        .insert({
+          menu_item_id: menuItemId,
+          recipe_id: recipeId,
+          available_quantity: 0, // Default quantity 0 - ready for production
+          unit_of_measure: menuItem.batch_unit || "servings",
+          unit_cost: 0, // Will be calculated after first production
+          selling_price: menuItem.selling_price || 0,
+          production_cost_per_unit: 0,
+          profit_margin_percent: 0,
+          is_active: true,
+          quality_status: "Approved",
+          total_produced: 0,
+          total_sold: 0,
+          reorder_point: 0,
+          maximum_stock: 0,
+          created_by: createdBy,
+          created_at: new Date(),
+          updated_at: new Date(),
+        })
+        .returning("id");
+
+      await trx.commit();
+
+      return await this.getById(inventoryId);
+    } catch (error) {
+      await trx.rollback();
+      console.error(
+        "Error creating production inventory from quality approval:",
+        error
+      );
+      throw new Error("Failed to create production inventory entry");
     }
   }
 }

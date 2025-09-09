@@ -622,7 +622,7 @@
         :class="{ 'tab-active': activeTab === 'salary' }"
       >
         <PhilippinePeso class="w-4 h-4 mr-1" />
-        Salary Information
+        Benefits Information
       </button>
       <button
         @click="activeTab = 'emergency'"
@@ -1004,7 +1004,7 @@
         <div v-if="activeTab === 'salary'" class="space-y-6">
           <div class="mb-6">
             <h2 class="card-title text-primaryColor text-xl mb-2">
-              Salary Information
+              Benefits Information
             </h2>
             <p class="text-sm text-gray-600">
               Enter the employee's government benefit information.

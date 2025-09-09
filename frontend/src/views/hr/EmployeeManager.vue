@@ -707,8 +707,10 @@
               <tr class="bg-primaryColor text-white">
                 <th class="whitespace-nowrap">Name</th>
                 <th class="whitespace-nowrap">Email</th>
+                <th class="whitespace-nowrap">Phone</th>
+                <th class="whitespace-nowrap">Address</th>
                 <th class="whitespace-nowrap">Department</th>
-                <th class="whitespace-nowrap">Role</th>
+                <th class="whitespace-nowrap">Position</th>
                 <th class="whitespace-nowrap">Status</th>
                 <th class="whitespace-nowrap">Actions</th>
               </tr>
@@ -742,6 +744,8 @@
                   </div>
                 </td>
                 <td class="text-sm">{{ emp.email || '—' }}</td>
+                <td class="text-sm">{{ emp.phone_number || '—' }}</td>
+                <td class="text-sm">{{ emp.address || '—' }}</td>
                 <td>
                   <div class="badge badge-ghost badge-sm">
                     {{ emp.department || '—' }}
@@ -843,7 +847,7 @@
           </button>
 
           <!-- No more data message -->
-          <div v-else-if="employees.length > 0" class="text-sm text-gray-500">
+          <div v-else-if="employees.length > 0" class="text-xs text-gray-500">
             All employees loaded
           </div>
         </div>

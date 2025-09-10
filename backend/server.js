@@ -29,6 +29,7 @@ const menuRoutes = require("./routes/menu");
 const menuAnalyticsRoutes = require("./routes/menuAnalytics");
 const attendanceRoutes = require("./routes/attendance");
 const employeeRoutes = require("./routes/employees");
+const branchRequestRoutes = require("./routes/branchRequests");
 const { serve, setup } = require("./config/swagger");
 
 const app = express();
@@ -100,6 +101,7 @@ app.use("/api/menu", menuRoutes);
 app.use("/api/menu/analytics", menuAnalyticsRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/employees", employeeRoutes);
+app.use("/api/branch-requests", branchRequestRoutes);
 
 // Auto-expire job
 async function autoExpireJob() {

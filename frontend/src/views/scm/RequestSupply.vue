@@ -2,6 +2,7 @@
   import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
   import { useSupplyRequestStore } from '../../stores/supplyRequestStore.js';
   import { useBudgetReleaseStore } from '../../stores/budgetReleaseStore.js';
+  import { useBranchRequestStore } from '../../stores/branchRequestStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
   import cashRequestReceiptModal from '../../components/scm/cashRequestReceiptModal.vue';
@@ -11,6 +12,7 @@
     ReceiptText,
     CheckCircle,
     XCircle,
+    Info,
     Clock,
     RefreshCcw,
     Plus,
@@ -25,7 +27,7 @@
     TrendingDown,
     DollarSign,
     FileCheck,
-    Info,
+    Eye,
     TriangleAlert,
     PhilippinePeso,
   } from 'lucide-vue-next';
@@ -33,6 +35,7 @@
   // Stores
   const supplyRequestStore = useSupplyRequestStore();
   const budgetReleaseStore = useBudgetReleaseStore();
+  const branchRequestStore = useBranchRequestStore();
   const authStore = useAuthStore();
   const inventoryStore = useInventoryStore();
 
@@ -47,6 +50,8 @@
 
   const showReceipt = ref(false);
   const receiptData = ref(null);
+  const showBranchRequestModal = ref(false);
+  const selectedBranchRequest = ref(null);
 
   function closeReceipt() {
     showReceipt.value = false;
@@ -342,6 +347,11 @@
   // Computed properties using store data
   const allRequests = computed(() => supplyRequestStore.requests);
   const pendingReceipts = computed(() => budgetReleaseStore.pendingReceipts);
+  const pendingBranchRequests = computed(() =>
+    branchRequestStore.requests.filter(
+      (r) => r.status === 'Sent' && r.status !== 'Cancelled'
+    )
+  );
 
   // Add these missing computed properties
   const requestStats = computed(() => supplyRequestStore.stats);
@@ -958,6 +968,64 @@
     }
   };
 
+  // View branch request function
+  const viewBranchRequest = (request) => {
+    selectedBranchRequest.value = request;
+    showBranchRequestModal.value = true;
+  };
+
+  // Close branch request modal
+  const closeBranchRequestModal = () => {
+    showBranchRequestModal.value = false;
+    selectedBranchRequest.value = null;
+  };
+
+  // Acknowledge branch request function
+  const acknowledgeBranchRequest = async (requestId) => {
+    loading.value = true;
+    try {
+      // Find the branch request
+      const request = pendingBranchRequests.value.find(
+        (r) => r.request_id === requestId
+      );
+      if (!request) {
+        showToast('error', 'Branch request not found');
+        return;
+      }
+
+      // Check if request is cancelled
+      if (request.status === 'Cancelled') {
+        showToast('error', 'Cannot acknowledge a cancelled request');
+        return;
+      }
+
+      await branchRequestStore.acknowledgeRequest(
+        request.id,
+        authStore.user?.name || 'SCM User',
+        'Request acknowledged by SCM department'
+      );
+
+      showToast('success', `Branch request #${requestId} acknowledged`);
+
+      // Refresh data
+      await fetchBranchRequests();
+    } catch (err) {
+      showToast('error', err.message || 'Failed to acknowledge branch request');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Fetch branch requests
+  const fetchBranchRequests = async () => {
+    try {
+      // Fetch all branch requests and filter on the frontend to ensure we get the latest status
+      await branchRequestStore.fetchRequestsWithItems({});
+    } catch (error) {
+      console.error('Error fetching branch requests:', error);
+    }
+  };
+
   // Enhanced data fetching to include inventory data
   const fetchAllData = async () => {
     loading.value = true;
@@ -966,6 +1034,7 @@
         supplyRequestStore.fetchRequests({ department: 'SCM' }),
         supplyRequestStore.fetchStats({ department: 'SCM' }),
         budgetReleaseStore.fetchPendingReceipts('SCM'),
+        branchRequestStore.fetchRequestsWithItems({ status: 'Sent' }),
         inventoryStore.fetchCategories(),
         inventoryStore.fetchItemTypes(),
       ]);
@@ -1655,6 +1724,19 @@
         </div>
         <div class="stat-desc text-black/50">Budget released by Finance</div>
       </div>
+
+      <div
+        class="stat sm:!border sm:!border-l-0 sm:!border-r-0 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
+      >
+        <div class="stat-figure">
+          <Send class="w-8 h-8 text-primary" />
+        </div>
+        <div class="stat-title text-black/50">Branch Requests</div>
+        <div class="stat-value text-primary">
+          {{ pendingBranchRequests.length }}
+        </div>
+        <div class="stat-desc text-black/50">Awaiting acknowledgment</div>
+      </div>
     </div>
 
     <!-- Add this new section in the template after the stats -->
@@ -1732,6 +1814,111 @@
                     <FileCheck class="w-4 h-4 mr-1" />
                     {{ loading ? 'Confirming...' : 'Confirm Receipt' }}
                   </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Branch Request Section - Only appears when branches have sent requests -->
+    <div
+      class="card bg-primary/5 border-primary/20 shadow-xl mb-6 border mx-auto"
+      v-if="pendingBranchRequests.length > 0"
+    >
+      <div class="card-body">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="card-title text-primary">
+            <Send class="w-6 h-6 mr-2 text-primary" />
+            Branch Requests - Acknowledge
+          </h2>
+          <div
+            class="badge badge-md border-none font-medium bg-primary/20 text-primary"
+          >
+            {{ pendingBranchRequests.length }} Pending
+          </div>
+        </div>
+
+        <div class="alert alert-info mb-4">
+          <Info class="w-6 h-6 mr-2" />
+          <span
+            >Branches have sent the following supply requests. Please
+            acknowledge to let them know you've received their request.</span
+          >
+        </div>
+
+        <div class="overflow-x-auto">
+          <table
+            class="table table-zebra text-black/50 border border-primary/20 custom-zebra"
+          >
+            <thead class="text-accentColor">
+              <tr class="bg-primary text-accentColor">
+                <th>Request ID</th>
+                <th>Branch</th>
+                <th>Description</th>
+                <th>Type</th>
+                <th>Priority</th>
+                <th>Sent Date</th>
+                <th>Requested By</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="request in pendingBranchRequests"
+                :key="request.request_id"
+                class="hover:bg-primary/10"
+              >
+                <td class="font-mono font-medium text-primary">
+                  {{ request.request_id }}
+                </td>
+                <td class="font-semibold">{{ request.branch_name }}</td>
+                <td class="text-wrap">{{ request.request_description }}</td>
+                <td>
+                  <div class="badge badge-outline">
+                    {{ request.request_type }}
+                  </div>
+                </td>
+                <td>
+                  <div
+                    class="badge"
+                    :class="{
+                      'bg-success/10 text-success':
+                        request.priority === 'High' ||
+                        request.priority === 'Urgent',
+                      'bg-warning/10 text-warning':
+                        request.priority === 'Normal',
+                      'bg-info/10 text-info': request.priority === 'Low',
+                    }"
+                  >
+                    {{ request.priority }}
+                  </div>
+                </td>
+                <td>
+                  <div>
+                    <span>{{ formatManilaDate(request.created_at) }}</span>
+                  </div>
+                </td>
+                <td>{{ request.requested_by }}</td>
+                <td>
+                  <div class="flex gap-2">
+                    <button
+                      class="btn btn-sm bg-info text-white font-thin border-none hover:bg-info/80"
+                      @click="viewBranchRequest(request)"
+                    >
+                      <Info class="w-4 h-4 mr-1" />
+                      View
+                    </button>
+                    <button
+                      class="btn btn-sm bg-primary text-white font-thin border-none hover:bg-primary/80"
+                      @click="acknowledgeBranchRequest(request.request_id)"
+                      :disabled="loading"
+                    >
+                      <CheckCircle class="w-4 h-4 mr-1" />
+                      {{ loading ? 'Acknowledging...' : 'Acknowledge' }}
+                    </button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -3418,6 +3605,118 @@
       </div>
     </div>
   </transition>
+
+  <!-- Branch Request View Modal -->
+  <div
+    v-if="showBranchRequestModal && selectedBranchRequest"
+    class="modal modal-open z-[9999]"
+  >
+    <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-4xl">
+      <h3 class="text-lg font-bold mb-4 text-black">Branch Request Details</h3>
+
+      <!-- Request Information -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div>
+          <p class="text-sm text-gray-600">Request ID</p>
+          <p class="font-semibold font-mono text-primary">
+            {{ selectedBranchRequest.request_id }}
+          </p>
+        </div>
+        <div>
+          <p class="text-sm text-gray-600">Branch</p>
+          <p class="font-semibold">{{ selectedBranchRequest.branch_name }}</p>
+        </div>
+        <div>
+          <p class="text-sm text-gray-600">Type</p>
+          <div class="badge badge-outline">
+            {{ selectedBranchRequest.request_type }}
+          </div>
+        </div>
+        <div>
+          <p class="text-sm text-gray-600">Priority</p>
+          <div
+            class="badge"
+            :class="{
+              'bg-success/10 text-success':
+                selectedBranchRequest.priority === 'High' ||
+                selectedBranchRequest.priority === 'Urgent',
+              'bg-warning/10 text-warning':
+                selectedBranchRequest.priority === 'Normal',
+              'bg-info/10 text-info': selectedBranchRequest.priority === 'Low',
+            }"
+          >
+            {{ selectedBranchRequest.priority }}
+          </div>
+        </div>
+        <div>
+          <p class="text-sm text-gray-600">Sent Date</p>
+          <p class="font-semibold">
+            {{ formatManilaDate(selectedBranchRequest.created_at) }}
+          </p>
+        </div>
+        <div>
+          <p class="text-sm text-gray-600">Requested By</p>
+          <p class="font-semibold">{{ selectedBranchRequest.requested_by }}</p>
+        </div>
+      </div>
+
+      <div class="mb-6">
+        <p class="text-sm text-gray-600 mb-2">Description</p>
+        <p class="font-medium">
+          {{ selectedBranchRequest.request_description }}
+        </p>
+      </div>
+
+      <!-- Requested Items -->
+      <div class="mb-6">
+        <h4 class="text-lg font-semibold mb-4">Requested Items</h4>
+        <div class="overflow-x-auto">
+          <table class="table table-sm">
+            <thead>
+              <tr class="bg-primary text-accentColor">
+                <th>Item Name</th>
+                <th>Quantity</th>
+                <th>Unit</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in selectedBranchRequest.items" :key="item.id">
+                <td class="font-medium">{{ item.item_name }}</td>
+                <td class="font-semibold">{{ item.item_quantity }}</td>
+                <td>{{ item.item_unit }}</td>
+                <td class="text-sm text-gray-600">
+                  {{ item.item_notes || '-' }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-action">
+        <button
+          @click="closeBranchRequestModal"
+          class="btn btn-sm font-thin bg-gray-200 text-black/50 border-none hover:bg-gray-300 shadow-none"
+        >
+          Close
+        </button>
+        <button
+          @click="acknowledgeBranchRequest(selectedBranchRequest.request_id)"
+          :disabled="loading"
+          class="btn btn-sm bg-primary text-white font-thin border-none hover:bg-primary/80"
+        >
+          <span
+            v-if="loading"
+            class="loading loading-spinner loading-sm"
+          ></span>
+          <CheckCircle v-else class="w-4 h-4 mr-1" />
+          {{ loading ? 'Acknowledging...' : 'Acknowledge Request' }}
+        </button>
+      </div>
+    </div>
+    <div class="modal-backdrop" @click="closeBranchRequestModal"></div>
+  </div>
 </template>
 
 <style scoped>

@@ -1,21 +1,9 @@
-import { defineAsyncComponent } from 'vue';
-
 // Branch components
-const BranchDashboard = defineAsyncComponent(
-  () => import('../../views/branch/BranchDashboard.vue')
-);
-const BranchSales = defineAsyncComponent(
-  () => import('../../views/branch/BranchSales.vue')
-);
-const BranchInventory = defineAsyncComponent(
-  () => import('../../views/branch/BranchInventory.vue')
-);
-const BranchEmployees = defineAsyncComponent(
-  () => import('../../views/branch/BranchEmployees.vue')
-);
-const BranchProfile = defineAsyncComponent(
-  () => import('../../views/branch/BranchProfile.vue')
-);
+const BranchDashboard = () => import('../../views/branch/BranchDashboard.vue');
+const BranchSales = () => import('../../views/branch/BranchSales.vue');
+const BranchInventory = () => import('../../views/branch/BranchInventory.vue');
+const BranchEmployees = () => import('../../views/branch/BranchEmployees.vue');
+const BranchProfile = () => import('../../views/branch/BranchProfile.vue');
 
 // Role-based access control
 const rolePermissions = {

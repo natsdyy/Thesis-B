@@ -1876,13 +1876,13 @@
                 <td class="font-semibold">{{ request.branch_name }}</td>
                 <td class="text-wrap">{{ request.request_description }}</td>
                 <td>
-                  <div class="badge badge-outline">
+                  <div class="badge badge-outline badge-sm">
                     {{ request.request_type }}
                   </div>
                 </td>
                 <td>
                   <div
-                    class="badge"
+                    class="badge badge-sm"
                     :class="{
                       'bg-success/10 text-success':
                         request.priority === 'High' ||
@@ -3618,7 +3618,7 @@
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div>
           <p class="text-sm text-gray-600">Request ID</p>
-          <p class="font-semibold font-mono text-primary">
+          <p class="font-semibold font-mono text-primaryColor">
             {{ selectedBranchRequest.request_id }}
           </p>
         </div>
@@ -3628,14 +3628,14 @@
         </div>
         <div>
           <p class="text-sm text-gray-600">Type</p>
-          <div class="badge badge-outline">
+          <div class="badge badge-outline badge-sm">
             {{ selectedBranchRequest.request_type }}
           </div>
         </div>
         <div>
           <p class="text-sm text-gray-600">Priority</p>
           <div
-            class="badge"
+            class="badge badge-sm"
             :class="{
               'bg-success/10 text-success':
                 selectedBranchRequest.priority === 'High' ||
@@ -3673,11 +3673,10 @@
         <div class="overflow-x-auto">
           <table class="table table-sm">
             <thead>
-              <tr class="bg-primary text-accentColor">
-                <th>Item Name</th>
-                <th>Quantity</th>
-                <th>Unit</th>
-                <th>Notes</th>
+              <tr class="bg-primaryColor text-accentColor">
+                <th class="!font-thin">Item Name</th>
+                <th class="!font-thin">Quantity</th>
+                <th class="!font-thin">Unit</th>
               </tr>
             </thead>
             <tbody>
@@ -3685,9 +3684,6 @@
                 <td class="font-medium">{{ item.item_name }}</td>
                 <td class="font-semibold">{{ item.item_quantity }}</td>
                 <td>{{ item.item_unit }}</td>
-                <td class="text-sm text-gray-600">
-                  {{ item.item_notes || '-' }}
-                </td>
               </tr>
             </tbody>
           </table>
@@ -3704,7 +3700,7 @@
         <button
           @click="acknowledgeBranchRequest(selectedBranchRequest.request_id)"
           :disabled="loading"
-          class="btn btn-sm bg-primary text-white font-thin border-none hover:bg-primary/80"
+          class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
         >
           <span
             v-if="loading"

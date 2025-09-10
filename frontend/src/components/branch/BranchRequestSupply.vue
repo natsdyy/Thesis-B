@@ -1520,7 +1520,9 @@
               {{ requestToSend.request_description }}
             </p>
           </div>
-          <p class="text-blue-600 text-sm mt-2 font-medium">
+          <p
+            class="text-primaryColor text-sm mt-2 font-medium flex items-center"
+          >
             <Info class="w-4 h-4 mr-1" />
             Once sent, you cannot edit this request.
           </p>
@@ -1539,7 +1541,7 @@
           <button
             @click="confirmSendRequest"
             :disabled="sendingRequest"
-            class="btn btn-sm bg-success text-white font-thin border-none hover:bg-success/80"
+            class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
           >
             <span
               v-if="sendingRequest"

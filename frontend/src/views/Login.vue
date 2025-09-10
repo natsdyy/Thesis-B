@@ -351,7 +351,7 @@
 
     <button
       @click="openScanner"
-      class="absolute top-8 right-8 text-gray-600 hover:text-gray-800 transition-colors z-10 cursor-pointer flex items-center space-x-2 hover:bg-white/20 rounded-lg px-3 py-2 hover:underline"
+      class="absolute top-8 right-8 text-gray-600 hover:text-gray-800 transition-colors z-10 cursor-pointer flex items-center space-x-2 hover:bg-white/20 rounded-lg px-3 py-2 hover:underline text-sm"
     >
       Scan for Attendance
     </button>

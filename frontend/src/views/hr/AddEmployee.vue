@@ -25,10 +25,12 @@
   } from 'lucide-vue-next';
   import { useAuthStore } from '../../stores/authStore.js';
   import { useEmployeeStore } from '../../stores/employeeStore.js';
+  import { useBranchStore } from '../../stores/branchStore.js';
   import { apiConfig } from '../../config/api.js';
 
   const authStore = useAuthStore();
   const employeeStore = useEmployeeStore();
+  const branchStore = useBranchStore();
 
   // Reactive state
   const activeTab = ref('basic');
@@ -60,6 +62,8 @@
     department: '',
     role_id: '',
     employee_type: '',
+    // Branch Assignment
+    branch_id: '',
 
     // Salary Information
     pagibig_number: '',
@@ -110,6 +114,9 @@
       : [];
   });
 
+  // Active branches for assignment (used when department is Branch)
+  const activeBranches = computed(() => branchStore.activeBranches || []);
+
   const isFormValid = computed(() => {
     const form = employeeForm.value;
 
@@ -127,7 +134,9 @@
       form.citizenship &&
       form.department &&
       form.role_id &&
-      form.employee_type;
+      form.employee_type &&
+      // Require branch assignment when department is Branch
+      (form.department !== 'Branch' ? true : !!form.branch_id);
 
     // Salary Information - Required fields
     const salaryValid =
@@ -145,7 +154,7 @@
 
   const completionPercentage = computed(() => {
     const form = employeeForm.value;
-    const totalFields = 20; // Total required fields
+    const totalFields = 21; // Total required fields (includes conditional branch when needed)
     let completedFields = 0;
 
     // Count completed required fields
@@ -162,6 +171,7 @@
     if (form.department) completedFields++;
     if (form.role_id) completedFields++;
     if (form.employee_type) completedFields++;
+    if (form.department === 'Branch' && form.branch_id) completedFields++;
     if (form.pagibig_number) completedFields++;
     if (form.sss_number) completedFields++;
     if (form.philhealth_number) completedFields++;
@@ -200,6 +210,10 @@
     () => employeeForm.value.department,
     () => {
       employeeForm.value.role_id = '';
+      // Reset branch when switching out of Branch department
+      if (employeeForm.value.department !== 'Branch') {
+        employeeForm.value.branch_id = '';
+      }
     }
   );
 
@@ -409,6 +423,7 @@
       department: '',
       role_id: '',
       employee_type: '',
+      branch_id: '',
       pagibig_number: '',
       sss_number: '',
       philhealth_number: '',
@@ -488,6 +503,10 @@
   onMounted(() => {
     fetchEmployeeStats();
     fetchDepartmentsWithRoles();
+    // Load branches for assignment
+    branchStore.fetchActiveBranches().catch((e) => {
+      console.error('Failed to load branches', e);
+    });
   });
 </script>
 
@@ -960,6 +979,42 @@
                   formErrors.role_id
                 }}</span>
               </label>
+            </div>
+
+            <!-- Assign to Branch (only when department is Branch) -->
+            <div
+              class="form-control lg:col-span-2"
+              v-if="employeeForm.department === 'Branch'"
+            >
+              <label class="label mb-1">
+                <span
+                  class="label-text text-black/70 font-medium text-sm sm:text-base"
+                >
+                  Assign to Branch <span class="text-red-500">*</span>
+                </span>
+              </label>
+              <div class="relative">
+                <Building
+                  class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"
+                />
+                <select
+                  v-model="employeeForm.branch_id"
+                  class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor pl-10"
+                  required
+                >
+                  <option value="">Select branch</option>
+                  <option
+                    v-for="branch in activeBranches"
+                    :key="branch.id"
+                    :value="branch.id"
+                  >
+                    {{ branch.name }} ({{ branch.code }})
+                  </option>
+                </select>
+                <span class="text-xs text-gray-500 mt-1"
+                  >Only active branches are shown</span
+                >
+              </div>
             </div>
 
             <!-- Employee Type -->

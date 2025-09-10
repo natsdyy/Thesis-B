@@ -18,9 +18,11 @@
   } from 'lucide-vue-next';
   import { useEmployeeStore } from '../../stores/employeeStore.js';
   import { apiConfig } from '../../config/api.js';
+  import { useBranchStore } from '../../stores/branchStore.js';
 
   const router = useRouter();
   const employeeStore = useEmployeeStore();
+  const branchStore = useBranchStore();
 
   // UI state
   const searchQuery = ref('');
@@ -294,6 +296,7 @@
     alternate_contact_number: '',
     emergency_contact_email: '',
     emergency_contact_address: '',
+    branch_id: '',
     isEditing: false,
     editingEmployeeId: null,
   });
@@ -310,6 +313,14 @@
       ? departmentsWithRoles.value[employeeForm.value.department] || []
       : [];
   });
+  const activeBranches = computed(() => branchStore.activeBranches || []);
+
+  // Helper function to get branch name by ID
+  const getBranchName = (branchId) => {
+    if (!branchId || !activeBranches.value.length) return '';
+    const branch = activeBranches.value.find((b) => b.id === branchId);
+    return branch ? branch.name : '';
+  };
 
   const openEditModal = (emp) => {
     // Reset form first
@@ -332,6 +343,7 @@
       alternate_contact_number: emp.alternate_contact_number || '',
       emergency_contact_email: emp.emergency_contact_email || '',
       emergency_contact_address: emp.emergency_contact_address || '',
+      branch_id: emp.branch_id || '',
       isEditing: true,
       editingEmployeeId: emp.id,
     };
@@ -363,6 +375,7 @@
       alternate_contact_number: '',
       emergency_contact_email: '',
       emergency_contact_address: '',
+      branch_id: '',
       isEditing: false,
       editingEmployeeId: null,
     };
@@ -586,6 +599,12 @@
       );
     }
     await fetchDepartmentsWithRoles();
+    // Load active branches for branch assignment
+    try {
+      await branchStore.fetchActiveBranches();
+    } catch (e) {
+      console.error('Failed to load branches', e);
+    }
 
     // Add scroll listener for infinite scroll
     window.addEventListener('scroll', handleScroll);
@@ -749,6 +768,12 @@
                 <td>
                   <div class="badge badge-ghost badge-sm">
                     {{ emp.department || '—' }}
+                    <span
+                      v-if="emp.branch_id && getBranchName(emp.branch_id)"
+                      class="text-xs text-gray-500"
+                    >
+                      ({{ getBranchName(emp.branch_id) }}).
+                    </span>
                   </div>
                 </td>
                 <td>
@@ -855,7 +880,9 @@
     </div>
 
     <!-- Toggle for showing deleted employees -->
-    <div class="flex items-center gap-2 justify-end border-t border-black/10 p-4">
+    <div
+      class="flex items-center gap-2 justify-end border-t border-black/10 p-4"
+    >
       <input
         type="checkbox"
         v-model="showDeletedEmployees"
@@ -1294,6 +1321,33 @@
             <span class="text-xs text-gray-500 mt-1">
               {{ !employeeForm.department ? 'Select department first' : '' }}
             </span>
+          </div>
+
+          <!-- Assign to Branch (visible when department is Branch) -->
+          <div
+            class="form-control lg:col-span-2"
+            v-if="employeeForm.department === 'Branch'"
+          >
+            <label class="label mb-1">
+              <span
+                class="label-text text-black/70 font-medium text-sm sm:text-base"
+              >
+                Assign to Branch <span class="text-red-500">*</span>
+              </span>
+            </label>
+            <select
+              v-model="employeeForm.branch_id"
+              class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+              required
+            >
+              <option value="">Select branch</option>
+              <option v-for="b in activeBranches" :key="b.id" :value="b.id">
+                {{ b.name }} ({{ b.code }})
+              </option>
+            </select>
+            <span class="text-xs text-gray-500 mt-1"
+              >Only active branches are shown</span
+            >
           </div>
 
           <div class="form-control">

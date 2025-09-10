@@ -337,6 +337,12 @@ class Employee {
     if (!data.department) errors.push("Department is required");
     if (!data.role_id) errors.push("Role is required");
     if (!data.employee_type) errors.push("Employee type is required");
+    // Branch assignment: require branch_id when department is Branch
+    if (data.department === "Branch" && !data.branch_id) {
+      errors.push(
+        "Branch assignment is required for Branch department employees"
+      );
+    }
     if (!data.pagibig_number?.trim())
       errors.push("PAG-IBIG number is required");
     if (!data.sss_number?.trim()) errors.push("SSS number is required");
@@ -622,6 +628,7 @@ class Employee {
           department: data.department,
           role_id: data.role_id,
           employee_type: data.employee_type,
+          branch_id: data.branch_id || null,
           pagibig_number: data.pagibig_number.trim(),
           sss_number: data.sss_number.trim(),
           philhealth_number: data.philhealth_number.trim(),
@@ -715,6 +722,16 @@ class Employee {
         }
       }
 
+      // If changing department to Branch, require a branch assignment
+      if (
+        data.department === "Branch" &&
+        (data.branch_id === undefined || data.branch_id === null)
+      ) {
+        throw new Error(
+          "Branch assignment (branch_id) is required for Branch department employees"
+        );
+      }
+
       // Check for duplicate government benefit numbers (only for fields being updated)
       if (data.pagibig_number || data.sss_number || data.philhealth_number) {
         const duplicateQuery = db("employees")
@@ -806,6 +823,8 @@ class Employee {
         updateData.emergency_contact_email =
           data.emergency_contact_email?.trim().toLowerCase() || null;
       if (data.photo_url !== undefined) updateData.photo_url = data.photo_url;
+      if (data.branch_id !== undefined)
+        updateData.branch_id = data.branch_id || null;
 
       const [employee] = await db("employees")
         .where("id", id)

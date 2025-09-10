@@ -126,6 +126,10 @@
         router.push('/production');
       } else if (userDepartment === 'Customer Relationship') {
         router.push('/crm');
+      } else if (userDepartment === 'Branch') {
+        // All Branch department users should go to branch dashboard
+        // Super Admin can switch branches, others will be handled by BranchLayout
+        router.push('/branch/dashboard');
       } else {
         router.push('/dashboard');
       }

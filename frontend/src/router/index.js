@@ -8,9 +8,11 @@ import financeRoutes from './routes/finance';
 import productionRoutes from './routes/production';
 import crmRoutes from './routes/crm';
 import adminRoutes from './routes/admin';
+import branchRoutes from './routes/branch';
 
 // Import layout components
 import DashboardLayout from '../layouts/DashboardLayout.vue';
+import BranchLayout from '../layouts/BranchLayout.vue';
 
 // Import page components
 import HomePage from '../views/HomePage.vue';
@@ -133,6 +135,29 @@ const routes = [
       requiresAuth: true,
       requiresDepartmentAccess: true,
       adminOnly: true, // Only Super Admin
+    },
+  },
+  // Branch routes
+  {
+    path: '/branch',
+    component: BranchLayout,
+    children: branchRoutes,
+    meta: {
+      title: 'Branch Operations',
+      department: 'Branch',
+      requiresAuth: true,
+      requiresDepartmentAccess: true,
+    },
+  },
+  // Standalone POS route (separate from branch layout)
+  {
+    path: '/pos',
+    name: 'POS',
+    component: () => import('../views/branch/BranchPOS.vue'),
+    meta: {
+      title: 'Point of Sale',
+      requiresAuth: true,
+      requiresDepartmentAccess: true,
     },
   },
   // 404 Not Found

@@ -150,6 +150,7 @@ router.post("/login", async (req, res) => {
           role_id: employee.role_id,
           role: employee.role,
           department: employee.department,
+          branch_id: employee.branch_id,
         },
         token: token,
       },
@@ -291,6 +292,7 @@ router.post("/validate-session", async (req, res) => {
           role_id: employeeWithRole.role_id,
           role: employeeWithRole.role,
           department: employeeWithRole.department,
+          branch_id: employeeWithRole.branch_id,
         },
       },
     });

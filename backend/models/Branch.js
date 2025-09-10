@@ -59,9 +59,9 @@ class Branch {
   }
 
   // Get all branches
-  static async getAll(includeStats = false) {
+  static async getAll(includeStats = false, includeDeleted = false) {
     try {
-      let branches = await db("branches")
+      let query = db("branches")
         .leftJoin("employees", "branches.manager_id", "employees.id")
         .select(
           "branches.*",
@@ -70,14 +70,21 @@ class Branch {
           ),
           "employees.email as manager_email",
           "employees.department as manager_department"
-        )
-        .orderBy("branches.name");
+        );
+
+      // Only exclude soft-deleted branches if includeDeleted is false
+      if (!includeDeleted) {
+        query = query.whereNull("branches.deleted_at");
+      }
+
+      let branches = await query.orderBy("branches.name");
 
       if (includeStats) {
         // Add employee count for each branch
         for (let branch of branches) {
           const employeeCount = await db("employees")
             .where("branch_id", branch.id)
+            .whereNull("deleted_at")
             .count("id as count")
             .first();
           branch.user_count = parseInt(employeeCount.count) || 0;
@@ -98,17 +105,13 @@ class Branch {
         throw new Error("Invalid branch ID provided");
       }
 
-      console.log("Fetching branch with ID:", id);
-
-      // First, try to get the basic branch data
+      // First, try to get the basic branch data (including soft-deleted for validation)
       const branch = await db("branches").where("id", id).first();
 
       if (!branch) {
         console.log("No branch found with ID:", id);
         return null;
       }
-
-      console.log("Branch found:", branch);
 
       // If branch has a manager_id, try to get manager details
       if (branch.manager_id) {
@@ -303,15 +306,20 @@ class Branch {
         throw new Error("Invalid branch ID provided");
       }
 
-      // Check if branch exists
+      // Check if branch exists and is not already deleted
       const existingBranch = await this.getById(id);
       if (!existingBranch) {
         throw new Error("Branch not found");
       }
 
+      if (existingBranch.deleted_at) {
+        throw new Error("Branch is already deleted");
+      }
+
       // Check if branch has assigned employees
       const employeeCount = await db("employees")
         .where("branch_id", id)
+        .whereNull("deleted_at")
         .count("id as count")
         .first();
 
@@ -321,7 +329,11 @@ class Branch {
         );
       }
 
-      await db("branches").where("id", id).del();
+      // Soft delete - set deleted_at timestamp
+      await db("branches").where("id", id).update({
+        deleted_at: db.fn.now(),
+        updated_at: db.fn.now(),
+      });
 
       return true;
     } catch (error) {
@@ -331,12 +343,53 @@ class Branch {
       if (
         error.message.includes("Invalid") ||
         error.message.includes("not found") ||
-        error.message.includes("Cannot delete")
+        error.message.includes("Cannot delete") ||
+        error.message.includes("already deleted")
       ) {
         throw error;
       }
 
       throw new Error("Failed to delete branch. Please try again.");
+    }
+  }
+
+  // Restore soft-deleted branch
+  static async restore(id) {
+    try {
+      if (!id || isNaN(id)) {
+        throw new Error("Invalid branch ID provided");
+      }
+
+      // Check if branch exists and is soft-deleted
+      const existingBranch = await db("branches").where("id", id).first();
+      if (!existingBranch) {
+        throw new Error("Branch not found");
+      }
+
+      if (!existingBranch.deleted_at) {
+        throw new Error("Branch is not deleted");
+      }
+
+      // Restore branch by removing deleted_at timestamp
+      await db("branches").where("id", id).update({
+        deleted_at: null,
+        updated_at: db.fn.now(),
+      });
+
+      return true;
+    } catch (error) {
+      console.error("Error restoring branch:", error);
+
+      // Re-throw validation errors
+      if (
+        error.message.includes("Invalid") ||
+        error.message.includes("not found") ||
+        error.message.includes("not deleted")
+      ) {
+        throw error;
+      }
+
+      throw new Error("Failed to restore branch. Please try again.");
     }
   }
 

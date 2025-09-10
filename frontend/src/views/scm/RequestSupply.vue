@@ -1074,11 +1074,10 @@
       onConfirm: config.onConfirm,
     };
 
-    document.getElementById('confirmation_modal').showModal();
+    confirmModal.value.show = true;
   };
 
   const closeConfirmModal = () => {
-    document.getElementById('confirmation_modal')?.close();
     confirmModal.value = {
       show: false,
       type: '',
@@ -1142,16 +1141,13 @@
     }
 
     if (type === 'create' || type === 'edit') {
-      document.getElementById('request_form_modal').showModal();
+      modal.value.show = true;
     } else {
-      document.getElementById('universal_modal').showModal();
+      modal.value.show = true;
     }
   };
 
   const closeModal = () => {
-    document.getElementById('request_form_modal')?.close();
-    document.getElementById('universal_modal')?.close();
-    document.getElementById('confirmation_modal')?.close();
     modal.value = {
       type: null,
       show: false,
@@ -2602,7 +2598,10 @@
   />
 
   <!-- Create Request Modal -->
-  <dialog id="create_request_modal" class="modal">
+  <div
+    v-if="modal.show && (modal.type === 'create' || modal.type === 'edit')"
+    class="modal modal-open"
+  >
     <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-6xl">
       <h3 class="font-bold text-lg">Create Request</h3>
       <div class="overflow-x-auto">
@@ -2806,10 +2805,11 @@
         </button>
       </div>
     </div>
-  </dialog>
+    <div class="modal-backdrop" @click="closeModal"></div>
+  </div>
 
   <!-- Enhanced Confirmation Modal -->
-  <dialog id="confirmation_modal" class="modal">
+  <div v-if="confirmModal.show" class="modal modal-open">
     <div class="modal-box bg-accentColor text-black/50 shadow-lg">
       <h3 class="font-bold text-lg mb-4">{{ confirmModal.title }}</h3>
 
@@ -2884,10 +2884,14 @@
         </button>
       </div>
     </div>
-  </dialog>
+    <div class="modal-backdrop" @click="closeConfirmModal"></div>
+  </div>
 
   <!-- Universal Modal for Edit/Send/Cancel -->
-  <dialog id="universal_modal" class="modal">
+  <div
+    v-if="modal.show && modal.type !== 'create' && modal.type !== 'edit'"
+    class="modal modal-open"
+  >
     <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-6xl">
       <!-- View Request Modal Content -->
       <template v-if="modal.type === 'viewRequest'">
@@ -3252,10 +3256,14 @@
         </div>
       </template>
     </div>
-  </dialog>
+    <div class="modal-backdrop" @click="closeModal"></div>
+  </div>
 
   <!-- Enhanced Request Form Modal -->
-  <dialog id="request_form_modal" class="modal">
+  <div
+    v-if="modal.show && (modal.type === 'create' || modal.type === 'edit')"
+    class="modal modal-open"
+  >
     <div
       class="modal-box bg-accentColor text-black/50 shadow-lg max-w-7xl max-h-[90vh] overflow-y-auto"
     >
@@ -3596,7 +3604,8 @@
         </button>
       </div>
     </div>
-  </dialog>
+    <div class="modal-backdrop" @click="closeModal"></div>
+  </div>
 
   <!-- Toast Notification -->
   <transition

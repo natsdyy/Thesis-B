@@ -21,6 +21,9 @@
     Phone,
     Mail,
     MapPin,
+    EllipsisVertical,
+    BadgeCheck,
+    UserCheck,
   } from 'lucide-vue-next';
 
   const branchStore = useBranchStore();
@@ -35,6 +38,7 @@
   const branchUsers = ref([]);
   const grammarLoading = ref(false);
   const formLoading = ref(false);
+  const showDeletedBranches = ref(false);
 
   // Toast state (following EmployeeManager pattern)
   const toast = ref({ show: false, type: 'success', message: '' });
@@ -54,11 +58,9 @@
 
   const openConfirm = (title, message, onConfirm) => {
     confirmModal.value = { show: true, title, message, onConfirm };
-    document.getElementById('confirm_modal')?.showModal();
   };
 
   const closeConfirm = () => {
-    document.getElementById('confirm_modal')?.close();
     confirmModal.value = {
       show: false,
       title: '',
@@ -69,9 +71,9 @@
   };
 
   // Modal refs
-  const branchModal = ref(null);
-  const usersModal = ref(null);
-  const googleMapsModal = ref(null);
+  const branchModal = ref(false);
+  const usersModal = ref(false);
+  const googleMapsModal = ref(false);
 
   // OpenStreetMap (Leaflet) related data
   const locationSearch = ref('');
@@ -132,24 +134,22 @@
 
   const loadBranchManagers = async () => {
     try {
-      const response = await fetch(`${apiConfig.baseURL}/branches/managers`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await branchStore.fetchBranchManagers();
       availableEmployees.value = data;
     } catch (error) {
       console.error('Failed to load branch managers:', error);
       availableEmployees.value = [];
+      showToast('error', 'Failed to load branch managers');
     }
+  };
+
+  const statusBadgeClass = (isActive, isDeleted = false) => {
+    if (isDeleted) {
+      return 'badge-sm border-none bg-gray-500/20 text-gray-500';
+    }
+    return isActive
+      ? 'badge-sm border-none bg-success/20 text-success'
+      : 'badge-sm border-none bg-error/20 text-error';
   };
 
   // AI-powered grammar correction function for description
@@ -283,7 +283,7 @@
     selectedAddress.value = '';
 
     // Open the modal
-    googleMapsModal.value.showModal();
+    googleMapsModal.value = true;
 
     // Initialize map after modal opens
     setTimeout(() => {
@@ -448,7 +448,7 @@
 
   // Close Google Maps modal
   const closeGoogleMapsModal = () => {
-    googleMapsModal.value.close();
+    googleMapsModal.value = false;
     locationSearch.value = '';
     selectedAddress.value = '';
 
@@ -670,7 +670,11 @@
 
   const loadBranches = async () => {
     try {
-      await branchStore.fetchBranches(true);
+      const branches = await branchStore.fetchBranches(
+        true,
+        showDeletedBranches.value
+      );
+      console.log('Loaded branches:', branches);
       await branchStore.fetchBranchStats();
       showToast('success', 'Branches loaded successfully');
     } catch (error) {
@@ -679,10 +683,20 @@
     }
   };
 
+  // Toggle showing deleted branches
+  const toggleDeletedBranches = async () => {
+    try {
+      await loadBranches();
+    } catch (error) {
+      console.error('Failed to toggle deleted branches:', error);
+      showToast('error', 'Failed to load branches');
+    }
+  };
+
   const openCreateModal = () => {
     editingBranch.value = null;
     resetForm();
-    branchModal.value.showModal();
+    branchModal.value = true;
   };
 
   const editBranch = (branch) => {
@@ -702,11 +716,11 @@
       }
     }
     Object.assign(branchForm.value, branchData);
-    branchModal.value.showModal();
+    branchModal.value = true;
   };
 
   const closeModal = () => {
-    branchModal.value.close();
+    branchModal.value = false;
     resetForm();
   };
 
@@ -724,46 +738,58 @@
     };
   };
 
-  const submitBranch = async () => {
-    formLoading.value = true;
-    try {
-      if (editingBranch.value) {
-        await branchStore.updateBranch(
-          editingBranch.value.id,
-          branchForm.value
-        );
-        showToast(
-          'success',
-          `Branch "${branchForm.value.name}" updated successfully`
-        );
-      } else {
-        await branchStore.createBranch(branchForm.value);
-        showToast(
-          'success',
-          `Branch "${branchForm.value.name}" created successfully`
-        );
-      }
+  const submitBranch = () => {
+    const action = editingBranch.value ? 'update' : 'create';
+    const actionText = editingBranch.value ? 'update' : 'create';
 
-      closeModal();
-      await branchStore.fetchBranchStats();
-    } catch (error) {
-      console.error('Failed to save branch:', error);
-      showToast('error', error.message || 'Failed to save branch');
-    } finally {
-      formLoading.value = false;
-    }
+    openConfirm(
+      `${actionText.charAt(0).toUpperCase() + actionText.slice(1)} Branch`,
+      `Are you sure you want to ${actionText} the branch "${branchForm.value.name}"?`,
+      async () => {
+        try {
+          confirmModal.value.loading = true;
+
+          if (editingBranch.value) {
+            await branchStore.updateBranch(
+              editingBranch.value.id,
+              branchForm.value
+            );
+            showToast(
+              'success',
+              `Branch "${branchForm.value.name}" updated successfully`
+            );
+          } else {
+            await branchStore.createBranch(branchForm.value);
+            showToast(
+              'success',
+              `Branch "${branchForm.value.name}" created successfully`
+            );
+          }
+
+          closeModal();
+          closeConfirm();
+          await branchStore.fetchBranchStats();
+        } catch (error) {
+          console.error('Failed to save branch:', error);
+          showToast('error', error.message || 'Failed to save branch');
+        } finally {
+          confirmModal.value.loading = false;
+        }
+      }
+    );
   };
 
   const deleteBranch = async (branch) => {
     openConfirm(
       'Delete Branch',
-      `Are you sure you want to delete "${branch.name}"? This action cannot be undone.`,
+      `Are you sure you want to delete "${branch.name}"? The branch will be soft-deleted and can be restored later.`,
       async () => {
         try {
           confirmModal.value.loading = true;
           await branchStore.deleteBranch(branch.id);
           await branchStore.fetchBranchStats();
           showToast('success', `Branch "${branch.name}" deleted successfully`);
+          closeConfirm();
         } catch (error) {
           console.error('Failed to delete branch:', error);
           showToast('error', error.message || 'Failed to delete branch');
@@ -774,22 +800,60 @@
     );
   };
 
-  const toggleBranchStatus = async (branchId) => {
-    try {
-      await branchStore.toggleBranchStatus(branchId);
-      await branchStore.fetchBranchStats();
-      showToast('success', 'Branch status updated successfully');
-    } catch (error) {
-      console.error('Failed to toggle branch status:', error);
-      showToast('error', error.message || 'Failed to update branch status');
-    }
+  // Restore deleted branch
+  const restoreBranch = async (branch) => {
+    openConfirm(
+      'Restore Branch',
+      `Are you sure you want to restore "${branch.name}"? This will remove it from the deleted list and make it active again.`,
+      async () => {
+        try {
+          confirmModal.value.loading = true;
+          await branchStore.restoreBranch(branch.id);
+          await branchStore.fetchBranchStats();
+          showToast('success', `Branch "${branch.name}" restored successfully`);
+          closeConfirm();
+        } catch (error) {
+          console.error('Failed to restore branch:', error);
+          showToast('error', error.message || 'Failed to restore branch');
+        } finally {
+          confirmModal.value.loading = false;
+        }
+      }
+    );
+  };
+
+  const toggleBranchStatus = (branchId) => {
+    const branch = branchStore.branches.find((b) => b.id === branchId);
+    const newStatus = branch?.is_active ? 'inactive' : 'active';
+
+    openConfirm(
+      'Update Branch Status',
+      `Are you sure you want to ${newStatus === 'active' ? 'activate' : 'deactivate'} the branch "${branch?.name}"?`,
+      async () => {
+        try {
+          confirmModal.value.loading = true;
+          await branchStore.toggleBranchStatus(branchId);
+          await branchStore.fetchBranchStats();
+          showToast(
+            'success',
+            `Branch ${newStatus === 'active' ? 'activated' : 'deactivated'} successfully`
+          );
+          closeConfirm();
+        } catch (error) {
+          console.error('Failed to toggle branch status:', error);
+          showToast('error', error.message || 'Failed to update branch status');
+        } finally {
+          confirmModal.value.loading = false;
+        }
+      }
+    );
   };
 
   const viewBranchUsers = async (branch) => {
     selectedBranch.value = branch;
     try {
       branchUsers.value = await branchStore.fetchBranchUsers(branch.id);
-      usersModal.value.showModal();
+      usersModal.value = true;
     } catch (error) {
       console.error('Failed to fetch branch users:', error);
       showToast('error', error.message || 'Failed to fetch branch users');
@@ -797,7 +861,7 @@
   };
 
   const closeUsersModal = () => {
-    usersModal.value.close();
+    usersModal.value = false;
     selectedBranch.value = null;
     branchUsers.value = [];
   };
@@ -808,9 +872,13 @@
   };
 
   // Lifecycle
-  onMounted(() => {
-    loadBranches();
-    loadBranchManagers();
+  onMounted(async () => {
+    try {
+      await loadBranches();
+      await loadBranchManagers();
+    } catch (error) {
+      console.error('Failed to initialize component:', error);
+    }
   });
 </script>
 <template>
@@ -829,7 +897,7 @@
     <div class="flex justify-end mb-6">
       <button
         @click="openCreateModal"
-        class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none"
+        class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none btn-sm font-thin"
       >
         <Plus class="w-4 h-4 mr-2" />
         Add Branch
@@ -956,7 +1024,7 @@
                 <th>Branch Info</th>
                 <th>Location</th>
                 <th>Manager</th>
-                <th>Users</th>
+
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -994,59 +1062,74 @@
                     >
                       {{ branch.manager_email }}
                     </div>
-                    <div
-                      v-if="branch.manager_department"
-                      class="text-base-content/50 text-xs"
-                    >
-                      {{ branch.manager_department }}
-                    </div>
                   </div>
                   <div v-else class="text-base-content/50 text-sm">
                     No manager assigned
                   </div>
                 </td>
+
                 <td>
-                  <div class="text-center">
-                    <div class="badge badge-outline">
-                      {{ branch.user_count || 0 }}
-                    </div>
+                  <div
+                    :class="[
+                      'badge',
+                      statusBadgeClass(branch.is_active, branch.deleted_at),
+                    ]"
+                  >
+                    <BadgeCheck
+                      v-if="branch.is_active && !branch.deleted_at"
+                      class="w-3 h-3 mr-1"
+                    />
+                    {{
+                      branch.deleted_at
+                        ? 'Deleted'
+                        : branch.is_active
+                          ? 'Active'
+                          : 'Inactive'
+                    }}
                   </div>
                 </td>
                 <td>
-                  <div class="form-control">
-                    <label class="cursor-pointer label">
-                      <input
-                        type="checkbox"
-                        :checked="branch.is_active"
-                        @change="toggleBranchStatus(branch.id)"
-                        class="toggle"
-                      />
-                    </label>
-                  </div>
-                </td>
-                <td>
-                  <div class="flex gap-2">
-                    <button
-                      @click="viewBranchUsers(branch)"
-                      class="btn btn-ghost btn-sm"
-                      title="View Users"
+                  <div class="dropdown dropdown-left">
+                    <EllipsisVertical
+                      class="w-4 h-4 cursor-pointer"
+                      tabindex="0"
+                    />
+                    <ul
+                      tabindex="0"
+                      class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-44"
                     >
-                      <Eye class="w-4 h-4" />
-                    </button>
-                    <button
-                      @click="editBranch(branch)"
-                      class="btn btn-ghost btn-sm"
-                      title="Edit Branch"
-                    >
-                      <Edit class="w-4 h-4" />
-                    </button>
-                    <button
-                      @click="deleteBranch(branch)"
-                      class="btn btn-ghost btn-sm text-error"
-                      title="Delete Branch"
-                    >
-                      <Trash2 class="w-4 h-4" />
-                    </button>
+                      <li v-if="!branch.deleted_at">
+                        <a @click="viewBranchUsers(branch)">
+                          <Eye class="w-3 h-3" /> View Users
+                        </a>
+                      </li>
+                      <li v-if="!branch.deleted_at">
+                        <a @click="editBranch(branch)">
+                          <Edit class="w-3 h-3" /> Edit Branch
+                        </a>
+                      </li>
+                      <li v-if="!branch.deleted_at">
+                        <a
+                          @click="toggleBranchStatus(branch.id)"
+                          :class="
+                            branch.is_active ? 'text-warning' : 'text-success'
+                          "
+                        >
+                          <CheckCircle class="w-3 h-3" />
+                          {{ branch.is_active ? 'Deactivate' : 'Activate' }}
+                        </a>
+                      </li>
+                      <li v-if="!branch.deleted_at">
+                        <a @click="deleteBranch(branch)" class="text-error">
+                          <Trash2 class="w-3 h-3" /> Delete Branch
+                        </a>
+                      </li>
+                      <li v-if="branch.deleted_at">
+                        <a @click="restoreBranch(branch)" class="text-success">
+                          <UserCheck class="w-3 h-3" /> Restore Branch
+                        </a>
+                      </li>
+                    </ul>
                   </div>
                 </td>
               </tr>
@@ -1077,10 +1160,26 @@
           </button>
         </div>
       </div>
+
+      <!-- Toggle for showing deleted branches -->
+      <div
+        class="flex items-center gap-2 justify-end border-t border-black/10 p-4"
+      >
+        <input
+          type="checkbox"
+          v-model="showDeletedBranches"
+          @change="toggleDeletedBranches"
+          class="checkbox checkbox-sm checked:bg-primaryColor text-white checked:border-primaryColor"
+          id="show-deleted"
+        />
+        <label for="show-deleted" class="text-sm font-medium text-gray-700">
+          Show Deleted
+        </label>
+      </div>
     </div>
 
     <!-- Create/Edit Modal -->
-    <dialog ref="branchModal" class="modal">
+    <div v-if="branchModal" class="modal modal-open">
       <div
         class="modal-box bg-accentColor text-black/50 shadow-lg w-11/12 max-w-4xl max-h-[90vh] overflow-y-auto"
       >
@@ -1408,13 +1507,11 @@
           </div>
         </form>
       </div>
-      <form method="dialog" class="modal-backdrop">
-        <button type="button" @click="closeModal">close</button>
-      </form>
-    </dialog>
+      <div class="modal-backdrop" @click="closeModal"></div>
+    </div>
 
     <!-- Users Modal -->
-    <dialog ref="usersModal" class="modal">
+    <div v-if="usersModal" class="modal modal-open">
       <div
         :class="[
           'modal-box w-11/12 max-w-2xl transition-colors duration-300',
@@ -1450,13 +1547,11 @@
           <button @click="closeUsersModal" class="btn">Close</button>
         </div>
       </div>
-      <form method="dialog" class="modal-backdrop">
-        <button type="button" @click="closeUsersModal">close</button>
-      </form>
-    </dialog>
+      <div class="modal-backdrop" @click="closeUsersModal"></div>
+    </div>
 
     <!-- Google Maps Modal -->
-    <dialog ref="googleMapsModal" class="modal">
+    <div v-if="googleMapsModal" class="modal modal-open">
       <div :class="['modal-box max-w-4xl', themeStore.themeClasses.modal]">
         <h3 class="font-bold text-lg mb-4 text-primaryColor">
           <font-awesome-icon icon="fa-solid fa-map" /> Location Picker
@@ -1600,10 +1695,8 @@
           </button>
         </div>
       </div>
-      <form method="dialog" class="modal-backdrop">
-        <button type="button" @click="closeGoogleMapsModal">close</button>
-      </form>
-    </dialog>
+      <div class="modal-backdrop" @click="closeGoogleMapsModal"></div>
+    </div>
 
     <!-- Toast Notification -->
     <transition
@@ -1614,7 +1707,7 @@
       leave-from-class="translate-x-0 opacity-100"
       leave-to-class="translate-x-full opacity-0"
     >
-      <div class="toast toast-end z-[100000]" v-if="toast.show">
+      <div class="toast toast-end z-[999999]" v-if="toast.show">
         <div
           v-if="toast.type === 'success'"
           class="alert alert-success shadow-lg max-w-xs sm:max-w-sm"
@@ -1643,7 +1736,7 @@
     </transition>
 
     <!-- Confirmation Modal -->
-    <dialog id="confirm_modal" class="modal">
+    <div v-if="confirmModal.show" class="modal modal-open">
       <div class="modal-box bg-accentColor text-black/70">
         <h3 class="font-bold text-lg mb-2">{{ confirmModal.title }}</h3>
         <p class="py-2">{{ confirmModal.message }}</p>
@@ -1664,13 +1757,30 @@
               v-if="confirmModal.loading"
               class="loading loading-spinner loading-xs"
             ></span>
-            {{ confirmModal.loading ? 'Processing...' : 'Confirm' }}
+            {{
+              confirmModal.loading
+                ? confirmModal.title.includes('Create')
+                  ? 'Creating...'
+                  : confirmModal.title.includes('Update')
+                    ? 'Updating...'
+                    : confirmModal.title.includes('Delete')
+                      ? 'Deleting...'
+                      : confirmModal.title.includes('Status')
+                        ? 'Updating...'
+                        : 'Processing...'
+                : 'Confirm'
+            }}
           </button>
         </div>
       </div>
-      <form method="dialog" class="modal-backdrop">
-        <button @click="closeConfirm">close</button>
-      </form>
-    </dialog>
+      <div class="modal-backdrop" @click="closeConfirm"></div>
+    </div>
   </div>
 </template>
+
+<style scoped>
+  /* Ensure toast appears above all modals */
+  .toast {
+    z-index: 999999 !important;
+  }
+</style>

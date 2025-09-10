@@ -271,16 +271,16 @@ router.get(
   requirePermission("Manage Branch Management"),
   async (req, res) => {
     try {
-      const { active, include_stats } = req.query;
+      const { active, include_stats, includeDeleted } = req.query;
 
       let branches;
 
       if (include_stats === "true") {
-        branches = await Branch.getAll(true);
+        branches = await Branch.getAll(true, includeDeleted === "true");
       } else if (active === "true") {
         branches = await Branch.getActiveBranches();
       } else {
-        branches = await Branch.getAll();
+        branches = await Branch.getAll(false, includeDeleted === "true");
       }
 
       // Filter by active status if specified
@@ -548,11 +548,71 @@ router.delete(
         res.status(404).json({ error: error.message });
       } else if (
         error.message.includes("Cannot delete") ||
-        error.message.includes("Invalid")
+        error.message.includes("Invalid") ||
+        error.message.includes("already deleted")
       ) {
         res.status(400).json({ error: error.message });
       } else {
         res.status(500).json({ error: "Failed to delete branch" });
+      }
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/branches/{id}/restore:
+ *   patch:
+ *     summary: Restore a soft-deleted branch
+ *     tags: [Branches]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Branch ID
+ *     responses:
+ *       200:
+ *         description: Branch restored successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Branch restored successfully"
+ *       400:
+ *         description: Bad request - Branch is not deleted
+ *       404:
+ *         description: Branch not found
+ *       500:
+ *         description: Failed to restore branch
+ */
+router.patch(
+  "/:id/restore",
+  requirePermission("Manage Branch Management"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const branchId = parseInt(id);
+
+      await Branch.restore(branchId);
+      res.json({ message: "Branch restored successfully" });
+    } catch (error) {
+      console.error("Error restoring branch:", error);
+      if (error.message.includes("not found")) {
+        res.status(404).json({ error: error.message });
+      } else if (
+        error.message.includes("not deleted") ||
+        error.message.includes("Invalid")
+      ) {
+        res.status(400).json({ error: error.message });
+      } else {
+        res.status(500).json({ error: "Failed to restore branch" });
       }
     }
   }

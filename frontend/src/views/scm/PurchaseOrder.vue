@@ -27,8 +27,7 @@
   const router = useRouter();
 
   const getApiUrl = (endpoint) => {
-    const baseUrl =
-      import.meta.env.VITE_API_BASE_URL || '/api';
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
     return `${baseUrl}/${endpoint}`;
   };
 
@@ -961,11 +960,10 @@
       orderForm.value.order_date = `${year}-${month}-${day}`;
     }
 
-    document.getElementById('purchase_order_modal').showModal();
+    modal.value.show = true;
   };
 
   const closeModal = () => {
-    document.getElementById('purchase_order_modal')?.close();
     modal.value = { type: null, show: false, order: null };
     resetForm();
   };
@@ -992,11 +990,9 @@
     supplyRequestModal.value.selectedDate = getPhilippineDateString();
     supplyRequestModal.value.currentPage = 1;
     supplyRequestModal.value.showItemSelection = false; // Reset to request selection view
-    document.getElementById('supply_request_modal').showModal();
   };
 
   const closeSupplyRequestModal = () => {
-    document.getElementById('supply_request_modal')?.close();
     supplyRequestModal.value.show = false;
     supplyRequestModal.value.selectedRequest = null;
     supplyRequestModal.value.selectedItems = [];
@@ -1107,7 +1103,6 @@
     ]; // Store selected items
 
     // Close the modal
-    document.getElementById('supply_request_modal')?.close();
     supplyRequestModal.value.show = false;
     supplyRequestModal.value.selectedRequest = null;
     supplyRequestModal.value.selectedItems = [];
@@ -1160,7 +1155,6 @@
       }
 
       receiptModal.value = { show: true, order: fullOrderDetails };
-      document.getElementById('purchase_order_receipt_modal').showModal();
     } catch (error) {
       showToast('error', 'Failed to load order details for receipt');
     } finally {
@@ -1169,7 +1163,6 @@
   };
 
   const closeReceiptModal = () => {
-    document.getElementById('purchase_order_receipt_modal')?.close();
     receiptModal.value = { show: false, order: null };
   };
 
@@ -1184,11 +1177,9 @@
 
     returnModal.value = { show: true, order };
     resetReturnForm();
-    document.getElementById('return_modal').showModal();
   };
 
   const closeReturnModal = () => {
-    document.getElementById('return_modal')?.close();
     returnModal.value = { show: false, order: null };
     resetReturnForm();
   };
@@ -1472,11 +1463,10 @@
       order,
       onConfirm: config.onConfirm,
     };
-    document.getElementById('confirmation_modal').showModal();
+    confirmModal.value.show = true;
   };
 
   const closeConfirmModal = () => {
-    document.getElementById('confirmation_modal')?.close();
     confirmModal.value = {
       show: false,
       type: '',
@@ -1622,11 +1612,6 @@
     }
 
     ratingModal.value = { show: true, purchaseOrder, supplierName };
-
-    nextTick(() => {
-      const modalElement = document.getElementById('supplier_rating_modal');
-      if (modalElement) modalElement.showModal();
-    });
   };
 
   const closeRatingModal = () => {
@@ -1666,7 +1651,6 @@
         order: order,
         loading: false,
       };
-      document.getElementById('grn_confirm_modal').showModal();
     } catch (error) {
       console.error('Error creating GRN:', error);
       showToast('error', error.message || 'Failed to create GRN');
@@ -1727,7 +1711,6 @@
 
   const closeGRNConfirmModal = () => {
     // Close the modal first
-    document.getElementById('grn_confirm_modal')?.close();
 
     // Reset the entire modal state with proper reactivity
     grnConfirmModal.value = {
@@ -1804,8 +1787,6 @@
   const cleanupModals = () => {
     // Reset GRN confirm modal state
     grnConfirmModal.value = { show: false, order: null, loading: false };
-    // Close any open modals
-    document.getElementById('grn_confirm_modal')?.close();
   };
 
   // Lifecycle with progressive loading
@@ -3056,7 +3037,7 @@
   </Teleport>
 
   <!-- Purchase Order Modal -->
-  <dialog id="purchase_order_modal" class="modal">
+  <div v-if="modal.show" class="modal modal-open">
     <div class="modal-box max-w-4xl">
       <h3 class="font-bold text-lg mb-4">
         {{
@@ -3304,10 +3285,11 @@
         </div>
       </form>
     </div>
-  </dialog>
+    <div class="modal-backdrop" @click="closeModal"></div>
+  </div>
 
   <!-- Supply Request Modal -->
-  <dialog id="supply_request_modal" class="modal">
+  <div v-if="supplyRequestModal.show" class="modal modal-open">
     <div class="modal-box max-w-7xl">
       <!-- Header with back button for item selection -->
       <div class="flex items-center justify-between mb-4">
@@ -3759,10 +3741,11 @@
         </button>
       </div>
     </div>
-  </dialog>
+    <div class="modal-backdrop" @click="closeSupplyRequestModal"></div>
+  </div>
 
   <!-- Receipt Modal -->
-  <dialog id="purchase_order_receipt_modal" class="modal">
+  <div v-if="receiptModal.show" class="modal modal-open">
     <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-6xl">
       <div class="flex justify-between items-center mb-2 text-black">
         <div class="flex items-center gap-2 mb-2 w-full">
@@ -3939,10 +3922,11 @@
         </button>
       </div>
     </div>
-  </dialog>
+    <div class="modal-backdrop" @click="closeReceiptModal"></div>
+  </div>
 
   <!-- Return Modal -->
-  <dialog id="return_modal" class="modal">
+  <div v-if="returnModal.show" class="modal modal-open">
     <div class="modal-box max-w-md">
       <h3 class="font-bold text-lg mb-4">Return Items</h3>
 
@@ -4020,10 +4004,11 @@
         </div>
       </form>
     </div>
-  </dialog>
+    <div class="modal-backdrop" @click="closeReturnModal"></div>
+  </div>
 
   <!-- Confirmation Modal -->
-  <dialog id="confirmation_modal" class="modal">
+  <div v-if="confirmModal.show" class="modal modal-open">
     <div class="modal-box">
       <h3 class="font-bold text-lg mb-4">{{ confirmModal.title }}</h3>
       <p class="py-4">{{ confirmModal.message }}</p>
@@ -4045,10 +4030,15 @@
         </button>
       </div>
     </div>
-  </dialog>
+    <div class="modal-backdrop" @click="closeConfirmModal"></div>
+  </div>
 
   <!-- GRN Confirmation Modal -->
-  <dialog id="grn_confirm_modal" class="modal" @click="handleModalClick">
+  <div
+    v-if="grnConfirmModal.show"
+    class="modal modal-open"
+    @click="handleModalClick"
+  >
     <div class="modal-box" @click.stop>
       <h3 class="font-bold text-lg mb-4">Create Goods Receipt Note</h3>
       <div class="py-4">
@@ -4106,7 +4096,8 @@
         </button>
       </div>
     </div>
-  </dialog>
+    <div class="modal-backdrop" @click="closeGRNConfirmModal"></div>
+  </div>
 
   <!-- Audit Trail Component - Direct usage without wrapper modal -->
   <POreturnItems

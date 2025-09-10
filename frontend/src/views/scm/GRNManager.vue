@@ -427,7 +427,7 @@
     </div>
 
     <!-- GRN Details Modal -->
-    <dialog id="grn_details_modal" class="modal">
+    <div v-if="selectedGRN" class="modal modal-open">
       <div class="modal-box max-w-6xl max-h-[90vh] overflow-y-auto">
         <h3 class="font-bold text-lg mb-4">GRN Details</h3>
 
@@ -900,10 +900,15 @@
           </button>
         </div>
       </div>
-    </dialog>
+      <div class="modal-backdrop" @click="closeGRNDetails"></div>
+    </div>
 
     <!-- Confirmation Modal -->
-    <dialog id="confirmation_modal" class="modal" @click="handleModalClick">
+    <div
+      v-if="confirmModal.show"
+      class="modal modal-open"
+      @click="handleModalClick"
+    >
       <div class="modal-box" @click.stop>
         <h3 class="font-bold text-lg mb-4">{{ confirmModal.title }}</h3>
         <p class="py-4">{{ confirmModal.message }}</p>
@@ -972,7 +977,8 @@
           </button>
         </div>
       </div>
-    </dialog>
+      <div class="modal-backdrop" @click="closeConfirmModal"></div>
+    </div>
   </div>
 </template>
 
@@ -1445,7 +1451,7 @@
         }
       });
 
-      document.getElementById('grn_details_modal').showModal();
+      selectedGRN.value = grn;
     } catch (err) {
       console.error('Error viewing GRN details:', err);
       showToast('error', 'Failed to load GRN details');
@@ -1481,7 +1487,6 @@
   };
 
   const closeGRNDetails = () => {
-    document.getElementById('grn_details_modal')?.close();
     selectedGRN.value = null;
   };
 
@@ -1729,11 +1734,10 @@
       message: config.message,
       onConfirm: config.onConfirm,
     };
-    document.getElementById('confirmation_modal').showModal();
+    confirmModal.value.show = true;
   };
 
   const closeConfirmModal = () => {
-    document.getElementById('confirmation_modal')?.close();
     confirmModal.value = {
       show: false,
       type: '',

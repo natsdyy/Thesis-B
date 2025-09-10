@@ -50,7 +50,7 @@
   const showDistributionModal = ref(false);
   const selectedItem = ref(null);
   const currentPage = ref(1);
-  const itemsPerPage = ref(1);
+  const itemsPerPage = ref(6);
   const expandedItems = ref(new Set());
 
   // Recent activity and transaction modal state

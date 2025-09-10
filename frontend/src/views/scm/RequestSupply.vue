@@ -26,6 +26,7 @@
     DollarSign,
     FileCheck,
     Info,
+    TriangleAlert,
     PhilippinePeso,
   } from 'lucide-vue-next';
 
@@ -313,7 +314,7 @@
 
   // Request List Date Filter
   const requestListFilter = ref({
-    selectedDate: getPhilippineDateString(),
+    selectedDate: '', // Show all requests by default
     showDatePicker: false,
   });
 
@@ -365,17 +366,18 @@
   const updateQuickDateCounts = () => {
     quickDateOptions.value.forEach((option) => {
       option.count = allRequests.value.filter((request) => {
-        // Convert UTC to Asia/Manila and get YYYY-MM-DD
-        const manilaDate = new Date(
-          new Date(request.request_date).toLocaleString('en-US', {
-            timeZone: 'Asia/Manila',
-          })
-        );
-        const normalized = manilaDate.toLocaleDateString('en-CA', {
+        // Simple approach: convert to Philippine time using Intl.DateTimeFormat
+        const requestDate = new Date(request.request_date);
+        const philippineDate = new Intl.DateTimeFormat('en-CA', {
           timeZone: 'Asia/Manila',
-        });
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(requestDate);
+
         return (
-          normalized === option.date && request.request_status !== 'Cancelled'
+          philippineDate === option.date &&
+          request.request_status !== 'Cancelled'
         );
       }).length;
     });
@@ -385,29 +387,26 @@
   const filteredRequestsByDate = computed(() => {
     const selectedDate = requestListFilter.value.selectedDate;
 
-    allRequests.value.forEach((r) => {
-      // Convert UTC to Asia/Manila and get YYYY-MM-DD
-      const manilaDate = new Date(
-        new Date(r.request_date).toLocaleString('en-US', {
-          timeZone: 'Asia/Manila',
-        })
+    // If no date is selected, show all requests
+    if (!selectedDate) {
+      return allRequests.value.filter(
+        (request) => request.request_status !== 'Cancelled'
       );
-      const normalized = manilaDate.toLocaleDateString('en-CA', {
-        timeZone: 'Asia/Manila',
-      });
-    });
+    }
 
     return allRequests.value.filter((request) => {
-      const manilaDate = new Date(
-        new Date(request.request_date).toLocaleString('en-US', {
-          timeZone: 'Asia/Manila',
-        })
-      );
-      const normalized = manilaDate.toLocaleDateString('en-CA', {
+      // Simple approach: convert to Philippine time using Intl.DateTimeFormat
+      const requestDate = new Date(request.request_date);
+      const philippineDate = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Asia/Manila',
-      });
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(requestDate);
+
       return (
-        normalized === selectedDate && request.request_status !== 'Cancelled'
+        philippineDate === selectedDate &&
+        request.request_status !== 'Cancelled'
       );
     });
   });
@@ -1375,10 +1374,16 @@
         requestDate.value = requestDatePicker.toString();
       },
     });
+
+    // Set up auto-refresh every 5 minutes
+    refreshInterval = setInterval(refreshAllData, 5 * 60 * 1000);
   });
 
   onBeforeUnmount(() => {
     if (requestDatePicker) requestDatePicker.destroy();
+    if (refreshInterval) {
+      clearInterval(refreshInterval);
+    }
   });
 
   // Update stats display to use store stats
@@ -1433,16 +1438,6 @@
 
   // Auto-refresh data periodically (optional)
   let refreshInterval;
-  onMounted(() => {
-    // Set up auto-refresh every 5 minutes
-    refreshInterval = setInterval(refreshAllData, 5 * 60 * 1000);
-  });
-
-  onBeforeUnmount(() => {
-    if (refreshInterval) {
-      clearInterval(refreshInterval);
-    }
-  });
 
   // Add more comprehensive stats using backend data
   const enhancedStats = computed(() => ({
@@ -1791,7 +1786,11 @@
               <Calendar class="w-5 h-5 text-primaryColor" />
               <div>
                 <h3 class="font-semibold text-primaryColor">
-                  {{ formatPhilippineDate(requestListFilter.selectedDate) }}
+                  {{
+                    requestListFilter.selectedDate
+                      ? formatPhilippineDate(requestListFilter.selectedDate)
+                      : 'All Requests'
+                  }}
                 </h3>
                 <p class="text-sm text-black/60">
                   Showing {{ filteredRequestsByDate.length }} request{{
@@ -1901,19 +1900,30 @@
             <ReceiptText class="w-16 h-16 text-primaryColor" />
           </div>
           <h3 class="text-lg font-semibold mb-2 text-primaryColor">
-            No requests found for
-            {{ formatPhilippineDate(requestListFilter.selectedDate) }}
+            No requests found
+            {{
+              requestListFilter.selectedDate
+                ? 'for ' + formatPhilippineDate(requestListFilter.selectedDate)
+                : ''
+            }}
           </h3>
           <p class="text-black/50 mb-4">
-            Try selecting a different date or create a new request for this
-            date.
+            {{
+              requestListFilter.selectedDate
+                ? 'Try selecting a different date or create a new request for this date.'
+                : 'Create a new request to get started.'
+            }}
           </p>
           <button
             class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
             @click="openModal('create')"
           >
             <Plus class="w-4 h-4 mr-2" />
-            Add Request for This Date
+            {{
+              requestListFilter.selectedDate
+                ? 'Add Request for This Date'
+                : 'Add New Request'
+            }}
           </button>
         </div>
 
@@ -2597,219 +2607,8 @@
     }"
   />
 
-  <!-- Create Request Modal -->
-  <div
-    v-if="modal.show && (modal.type === 'create' || modal.type === 'edit')"
-    class="modal modal-open"
-  >
-    <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-6xl">
-      <h3 class="font-bold text-lg">Create Request</h3>
-      <div class="overflow-x-auto">
-        <table
-          class="table table-sm table-zebra text-black/50 border border-black/10 custom-zebra"
-        >
-          <thead class="text-primaryColor">
-            <tr class="bg-primaryColor text-accentColor">
-              <th>Item No.</th>
-              <th>Item Name</th>
-              <th>Quantity</th>
-              <th>Unit</th>
-              <th>Type</th>
-              <th>Unit Price</th>
-              <th>Amount (₱)</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in paginatedRequestModal" :key="row.id">
-              <td>{{ row.id }}</td>
-
-              <td>
-                <input
-                  type="text"
-                  v-model="row.item_name"
-                  placeholder="Type here"
-                  class="input input-xs input-ghost focus:bg-accentColor focus:border-primaryColor focus:text-black"
-                />
-              </td>
-
-              <td>
-                <input
-                  type="number"
-                  v-model.number="row.item_quantity"
-                  placeholder="0"
-                  min="0"
-                  class="input input-xs input-ghost focus:bg-accentColor focus:border-primaryColor focus:text-black"
-                />
-              </td>
-
-              <td>
-                <!-- Show dropdown for "Other Materials", readonly input for others -->
-                <select
-                  v-if="row.item_type === 'Other Materials'"
-                  v-model="row.item_unit"
-                  class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor"
-                >
-                  <option value="" disabled>Select Unit</option>
-                  <option
-                    v-for="unit in commonUnitOptions"
-                    :key="unit"
-                    :value="unit"
-                  >
-                    {{ unit }}
-                  </option>
-                </select>
-                <input
-                  v-else
-                  v-model="row.item_unit"
-                  type="text"
-                  class="input input-xs w-full bg-gray-100 border-primaryColor/30 text-black/70"
-                  readonly
-                  :placeholder="getUnitOfMeasure(row.item_type)"
-                />
-              </td>
-
-              <td>
-                <select v-model="row.item_type">
-                  <option value="" disabled>Category</option>
-                  <option
-                    v-for="itemType in availableItemTypes"
-                    :key="itemType.id"
-                    :value="itemType.name"
-                  >
-                    {{ itemType.name }}
-                  </option>
-                </select>
-              </td>
-              <td>
-                <input
-                  type="number"
-                  v-model.number="row.item_unitPrice"
-                  placeholder="0"
-                  min="0"
-                  step="0.01"
-                  class="input input-xs input-ghost focus:bg-accentColor focus:border-primaryColor focus:text-black"
-                />
-              </td>
-              <td>
-                <p class="text-sm text-black">
-                  {{
-                    (
-                      (Number(row.item_unitPrice) || 0) *
-                      (Number(row.item_quantity) || 0)
-                    ).toFixed(2)
-                  }}
-                </p>
-              </td>
-              <td class="flex justify-center">
-                <button
-                  class="btn btn-ghost btn-xs text-error hover:bg-error/10 rounded-full hover:border-error/10 hover:border-2"
-                  @click="removeRowRequest(row.id)"
-                >
-                  <X class="w-4 h-4" />
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <!-- Request Item Pagination -->
-        <div
-          class="join mt-4 justify-end space-x-1"
-          v-if="rowRequest.length > rowRequestModalPerPage"
-        >
-          <button
-            class="join-item btn font-thin !bg-gray-200 text-black/50 btn-xs border border-none hover:bg-gray-300"
-            :disabled="requestModalCurrentPage <= 1"
-            @click="requestModalCurrentPage--"
-            :class="{ 'btn-disabled': requestModalCurrentPage <= 1 }"
-          >
-            « Prev
-          </button>
-
-          <button
-            class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-xs shadow-none"
-            v-for="page in totalPagesRequestModal"
-            :key="page"
-            :class="{
-              'btn-active': requestModalCurrentPage === page,
-              '!bg-primaryColor text-white': requestModalCurrentPage === page,
-            }"
-            @click="requestModalCurrentPage = page"
-          >
-            {{ page }}
-          </button>
-
-          <button
-            class="join-item btn font-thin btn-xs !bg-gray-200 text-black/50 border border-none"
-            :disabled="
-              requestModalCurrentPage >=
-              Math.ceil(rowRequest.length / rowRequestModalPerPage)
-            "
-            @click="requestModalCurrentPage++"
-            :class="{
-              'btn-disabled':
-                requestModalCurrentPage >=
-                Math.ceil(rowRequest.length / rowRequestModalPerPage),
-            }"
-          >
-            Next »
-          </button>
-        </div>
-        <div class="flex justify-between mt-4">
-          <div class="flex justify-start">
-            <button
-              class="btn btn-sm bg-primaryColor text-white font-thin border border-none hover:bg-primaryColor/80 shadow-none"
-              @click="addRowRequest"
-            >
-              <Plus class="w-4 h-4 mr-2 text-white" />
-              Add Item
-            </button>
-          </div>
-          <div class="flex space-x-0.5 items-center">
-            <p class="flex items-center text-xs font-semibold text-black">
-              TOTAL
-            </p>
-            <div class="flex justify-end gap-2 w-50 bg-gray-200 rounded-xs p-1">
-              <p class="text-sm text-black">₱</p>
-              <p class="text-sm text-black">{{ totalAmount }}</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Request Description -->
-        <div class="form-control mb-4 mt-4">
-          <label class="label">
-            <span class="label-text text-black/50">Request Description</span>
-          </label>
-          <textarea
-            v-model="modal.data.request_description"
-            class="textarea textarea-bordered w-full bg-white border border-black/10 text-black/50 cursor-pointer"
-            rows="3"
-            required
-          ></textarea>
-        </div>
-      </div>
-      <div class="modal-action">
-        <button
-          class="btn btn-sm font-thin bg-gray-200 text-black/50 border border-none hover:bg-gray-300 shadow-none"
-          @click="closeModal"
-        >
-          Cancel
-        </button>
-        <button
-          class="btn btn-sm bg-primaryColor text-white font-thin border border-none hover:bg-primaryColor/80 shadow-none"
-          @click="openConfirmModal('create')"
-        >
-          Create
-        </button>
-      </div>
-    </div>
-    <div class="modal-backdrop" @click="closeModal"></div>
-  </div>
-
   <!-- Enhanced Confirmation Modal -->
-  <div v-if="confirmModal.show" class="modal modal-open">
+  <div v-if="confirmModal.show" class="modal modal-open z-[9999]">
     <div class="modal-box bg-accentColor text-black/50 shadow-lg">
       <h3 class="font-bold text-lg mb-4">{{ confirmModal.title }}</h3>
 
@@ -2843,21 +2642,9 @@
           v-if="
             confirmModal.type === 'cancel' || confirmModal.type === 'delete'
           "
-          class="alert alert-warning mt-3"
+          class="alert alert-warning mt-3 flex items-center gap-2"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="stroke-current shrink-0 h-6 w-6"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
-            />
-          </svg>
+          <TriangleAlert class="w-6 h-6" />
           <span class="text-sm">This action cannot be undone!</span>
         </div>
       </div>
@@ -2890,7 +2677,7 @@
   <!-- Universal Modal for Edit/Send/Cancel -->
   <div
     v-if="modal.show && modal.type !== 'create' && modal.type !== 'edit'"
-    class="modal modal-open"
+    class="modal modal-open z-[9997]"
   >
     <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-6xl">
       <!-- View Request Modal Content -->

@@ -1,39 +1,55 @@
-const { db } = require('../config/database');
+const { db } = require("../config/database");
 
 class Branch {
+  // Generate unique branch code
+  static async generateBranchCode() {
+    try {
+      const lastBranch = await db("branches")
+        .select("code")
+        .whereNotNull("code")
+        .orderBy("id", "desc")
+        .first();
+
+      if (!lastBranch) {
+        return "BRN001";
+      }
+
+      const lastCode = lastBranch.code;
+      const numPart = parseInt(lastCode.replace("BRN", "")) + 1;
+      return `BRN${numPart.toString().padStart(3, "0")}`;
+    } catch (error) {
+      console.error("Error generating branch code:", error);
+      // Fallback to timestamp-based code
+      return `BRN${Date.now().toString().slice(-3)}`;
+    }
+  }
+
   // Validation helpers
   static validateBranchData(data) {
     const errors = [];
 
     if (!data.name || data.name.trim().length === 0) {
-      errors.push('Branch name is required');
+      errors.push("Branch name is required");
     } else if (data.name.trim().length > 255) {
-      errors.push('Branch name must not exceed 255 characters');
-    }
-
-    if (!data.code || data.code.trim().length === 0) {
-      errors.push('Branch code is required');
-    } else if (data.code.trim().length > 50) {
-      errors.push('Branch code must not exceed 50 characters');
+      errors.push("Branch name must not exceed 255 characters");
     }
 
     if (!data.address || data.address.trim().length === 0) {
-      errors.push('Branch address is required');
+      errors.push("Branch address is required");
     } else if (data.address.trim().length > 500) {
-      errors.push('Branch address must not exceed 500 characters');
+      errors.push("Branch address must not exceed 500 characters");
     }
 
-    if (data.email && !this.isValidEmail(data.email)) {
-      errors.push('Invalid email format');
-    }
-
-    if (data.manager_id && (typeof data.manager_id !== 'number' || data.manager_id <= 0)) {
-      errors.push('Invalid manager ID');
+    if (
+      data.manager_id &&
+      (typeof data.manager_id !== "number" || data.manager_id <= 0)
+    ) {
+      errors.push("Invalid manager ID");
     }
 
     return {
       isValid: errors.length === 0,
-      errors
+      errors,
     };
   }
 
@@ -45,31 +61,33 @@ class Branch {
   // Get all branches
   static async getAll(includeStats = false) {
     try {
-      let branches = await db('branches')
-        .leftJoin('users', 'branches.manager_id', 'users.id')
+      let branches = await db("branches")
+        .leftJoin("employees", "branches.manager_id", "employees.id")
         .select(
-          'branches.*',
-          'users.name as manager_name',
-          'users.email as manager_email',
-          'users.department as manager_department'
+          "branches.*",
+          db.raw(
+            "CONCAT(employees.first_name, ' ', employees.last_name) as manager_name"
+          ),
+          "employees.email as manager_email",
+          "employees.department as manager_department"
         )
-        .orderBy('branches.name');
+        .orderBy("branches.name");
 
       if (includeStats) {
-        // Add user count for each branch
+        // Add employee count for each branch
         for (let branch of branches) {
-          const userCount = await db('users')
-            .where('branch_id', branch.id)
-            .count('id as count')
+          const employeeCount = await db("employees")
+            .where("branch_id", branch.id)
+            .count("id as count")
             .first();
-          branch.user_count = parseInt(userCount.count) || 0;
+          branch.user_count = parseInt(employeeCount.count) || 0;
         }
       }
 
       return branches;
     } catch (error) {
-      console.error('Error fetching branches:', error);
-      throw new Error('Failed to retrieve branches from database');
+      console.error("Error fetching branches:", error);
+      throw new Error("Failed to retrieve branches from database");
     }
   }
 
@@ -77,64 +95,84 @@ class Branch {
   static async getById(id) {
     try {
       if (!id || isNaN(id)) {
-        throw new Error('Invalid branch ID provided');
+        throw new Error("Invalid branch ID provided");
       }
 
-      const branch = await db('branches')
-        .leftJoin('users', 'branches.manager_id', 'users.id')
-        .select(
-          'branches.*',
-          'users.name as manager_name',
-          'users.email as manager_email',
-          'users.department as manager_department'
-        )
-        .where('branches.id', id)
-        .first();
+      console.log("Fetching branch with ID:", id);
 
-      if (branch) {
-        // Add user count
-        const userCount = await db('users')
-          .where('branch_id', id)
-          .count('id as count')
+      // First, try to get the basic branch data
+      const branch = await db("branches").where("id", id).first();
+
+      if (!branch) {
+        console.log("No branch found with ID:", id);
+        return null;
+      }
+
+      console.log("Branch found:", branch);
+
+      // If branch has a manager_id, try to get manager details
+      if (branch.manager_id) {
+        try {
+          const manager = await db("employees")
+            .where("id", branch.manager_id)
+            .first();
+
+          if (manager) {
+            branch.manager_name = `${manager.first_name} ${manager.last_name}`;
+            branch.manager_email = manager.email;
+            branch.manager_department = manager.department;
+          }
+        } catch (managerError) {
+          console.log("Error fetching manager details:", managerError.message);
+          // Continue without manager details
+        }
+      }
+
+      // Add employee count
+      try {
+        const employeeCount = await db("employees")
+          .where("branch_id", id)
+          .count("id as count")
           .first();
-        branch.user_count = parseInt(userCount.count) || 0;
+        branch.user_count = parseInt(employeeCount.count) || 0;
+      } catch (countError) {
+        console.log("Error fetching employee count:", countError.message);
+        branch.user_count = 0;
       }
 
       return branch;
     } catch (error) {
-      console.error('Error fetching branch by ID:', error);
-      if (error.message === 'Invalid branch ID provided') {
+      console.error("Error fetching branch by ID:", error);
+      if (error.message === "Invalid branch ID provided") {
         throw error;
       }
-      throw new Error('Failed to retrieve branch information');
+      throw new Error("Failed to retrieve branch information");
     }
   }
 
   // Get branch by code
   static async getBranchByCode(code) {
     try {
-      const branch = await db('branches')
-        .where('code', code)
-        .first();
+      const branch = await db("branches").where("code", code).first();
 
       return branch;
     } catch (error) {
-      console.error('Error fetching branch by code:', error);
-      throw new Error('Failed to retrieve branch by code');
+      console.error("Error fetching branch by code:", error);
+      throw new Error("Failed to retrieve branch by code");
     }
   }
 
   // Get active branches only
   static async getActiveBranches() {
     try {
-      const branches = await db('branches')
-        .where('is_active', true)
-        .orderBy('name');
+      const branches = await db("branches")
+        .where("is_active", true)
+        .orderBy("name");
 
       return branches;
     } catch (error) {
-      console.error('Error fetching active branches:', error);
-      throw new Error('Failed to retrieve active branches');
+      console.error("Error fetching active branches:", error);
+      throw new Error("Failed to retrieve active branches");
     }
   }
 
@@ -144,19 +182,16 @@ class Branch {
       // Validate input
       const validation = this.validateBranchData(branchData);
       if (!validation.isValid) {
-        throw new Error(`Validation failed: ${validation.errors.join(', ')}`);
+        throw new Error(`Validation failed: ${validation.errors.join(", ")}`);
       }
 
-      // Check if branch code already exists
-      const existingBranch = await this.getBranchByCode(branchData.code.trim());
-      if (existingBranch) {
-        throw new Error('Branch code already exists');
-      }
+      // Generate unique branch code
+      const branchCode = await this.generateBranchCode();
 
       // Prepare data for insertion
       const insertData = {
         name: branchData.name.trim(),
-        code: branchData.code.trim(),
+        code: branchCode,
         address: branchData.address.trim(),
         phone: branchData.phone?.trim() || null,
         email: branchData.email?.trim() || null,
@@ -165,33 +200,34 @@ class Branch {
         state: branchData.state?.trim() || null,
         postal_code: branchData.postal_code?.trim() || null,
         country: branchData.country?.trim() || null,
-        is_active: branchData.is_active !== undefined ? branchData.is_active : true,
+        is_active:
+          branchData.is_active !== undefined ? branchData.is_active : true,
         opening_hours: branchData.opening_hours || null,
         description: branchData.description?.trim() || null,
         created_at: new Date(),
-        updated_at: new Date()
+        updated_at: new Date(),
       };
 
-      const [branch] = await db('branches')
-        .insert(insertData)
-        .returning('*');
+      const [branch] = await db("branches").insert(insertData).returning("*");
 
       return branch;
     } catch (error) {
-      console.error('Error creating branch:', error);
+      console.error("Error creating branch:", error);
 
       // Handle specific database errors
-      if (error.code === '23505') {
-        throw new Error('Branch code already exists');
+      if (error.code === "23505") {
+        throw new Error("Branch code already exists");
       }
 
       // Re-throw validation errors
-      if (error.message.includes('Validation failed') ||
-          error.message.includes('already exists')) {
+      if (
+        error.message.includes("Validation failed") ||
+        error.message.includes("already exists")
+      ) {
         throw error;
       }
 
-      throw new Error('Failed to create branch. Please try again.');
+      throw new Error("Failed to create branch. Please try again.");
     }
   }
 
@@ -199,37 +235,27 @@ class Branch {
   static async update(id, branchData) {
     try {
       if (!id || isNaN(id)) {
-        throw new Error('Invalid branch ID provided');
+        throw new Error("Invalid branch ID provided");
       }
 
       // Check if branch exists
       const existingBranch = await this.getById(id);
       if (!existingBranch) {
-        throw new Error('Branch not found');
+        throw new Error("Branch not found");
       }
 
       // Validate input
       const validation = this.validateBranchData(branchData);
       if (!validation.isValid) {
-        throw new Error(`Validation failed: ${validation.errors.join(', ')}`);
+        throw new Error(`Validation failed: ${validation.errors.join(", ")}`);
       }
 
-      // Check if branch code already exists (excluding current branch)
-      if (branchData.code && branchData.code.trim() !== existingBranch.code) {
-        const codeExists = await db('branches')
-          .where('code', branchData.code.trim())
-          .whereNot('id', id)
-          .first();
-
-        if (codeExists) {
-          throw new Error('Branch code already exists');
-        }
-      }
+      // Note: Branch code is auto-generated and cannot be manually changed
+      // If code is provided in update, we ignore it for security
 
       // Prepare data for update
       const updateData = {
         name: branchData.name.trim(),
-        code: branchData.code.trim(),
         address: branchData.address.trim(),
         phone: branchData.phone?.trim() || null,
         email: branchData.email?.trim() || null,
@@ -238,30 +264,35 @@ class Branch {
         state: branchData.state?.trim() || null,
         postal_code: branchData.postal_code?.trim() || null,
         country: branchData.country?.trim() || null,
-        is_active: branchData.is_active !== undefined ? branchData.is_active : existingBranch.is_active,
+        is_active:
+          branchData.is_active !== undefined
+            ? branchData.is_active
+            : existingBranch.is_active,
         opening_hours: branchData.opening_hours || null,
         description: branchData.description?.trim() || null,
-        updated_at: new Date()
+        updated_at: new Date(),
       };
 
-      const [branch] = await db('branches')
-        .where('id', id)
+      const [branch] = await db("branches")
+        .where("id", id)
         .update(updateData)
-        .returning('*');
+        .returning("*");
 
       return branch;
     } catch (error) {
-      console.error('Error updating branch:', error);
+      console.error("Error updating branch:", error);
 
       // Re-throw validation errors
-      if (error.message.includes('Invalid') ||
-          error.message.includes('not found') ||
-          error.message.includes('Validation failed') ||
-          error.message.includes('already exists')) {
+      if (
+        error.message.includes("Invalid") ||
+        error.message.includes("not found") ||
+        error.message.includes("Validation failed") ||
+        error.message.includes("already exists")
+      ) {
         throw error;
       }
 
-      throw new Error('Failed to update branch. Please try again.');
+      throw new Error("Failed to update branch. Please try again.");
     }
   }
 
@@ -269,41 +300,43 @@ class Branch {
   static async delete(id) {
     try {
       if (!id || isNaN(id)) {
-        throw new Error('Invalid branch ID provided');
+        throw new Error("Invalid branch ID provided");
       }
 
       // Check if branch exists
       const existingBranch = await this.getById(id);
       if (!existingBranch) {
-        throw new Error('Branch not found');
+        throw new Error("Branch not found");
       }
 
-      // Check if branch has assigned users
-      const userCount = await db('users')
-        .where('branch_id', id)
-        .count('id as count')
+      // Check if branch has assigned employees
+      const employeeCount = await db("employees")
+        .where("branch_id", id)
+        .count("id as count")
         .first();
 
-      if (parseInt(userCount.count) > 0) {
-        throw new Error(`Cannot delete branch. ${userCount.count} users are assigned to this branch.`);
+      if (parseInt(employeeCount.count) > 0) {
+        throw new Error(
+          `Cannot delete branch. ${employeeCount.count} employees are assigned to this branch.`
+        );
       }
 
-      await db('branches')
-        .where('id', id)
-        .del();
+      await db("branches").where("id", id).del();
 
       return true;
     } catch (error) {
-      console.error('Error deleting branch:', error);
+      console.error("Error deleting branch:", error);
 
       // Re-throw validation errors
-      if (error.message.includes('Invalid') ||
-          error.message.includes('not found') ||
-          error.message.includes('Cannot delete')) {
+      if (
+        error.message.includes("Invalid") ||
+        error.message.includes("not found") ||
+        error.message.includes("Cannot delete")
+      ) {
         throw error;
       }
 
-      throw new Error('Failed to delete branch. Please try again.');
+      throw new Error("Failed to delete branch. Please try again.");
     }
   }
 
@@ -311,55 +344,123 @@ class Branch {
   static async getUsers(branchId) {
     try {
       if (!branchId || isNaN(branchId)) {
-        throw new Error('Invalid branch ID provided');
+        throw new Error("Invalid branch ID provided");
       }
 
       // Check if branch exists
       const branch = await this.getById(branchId);
       if (!branch) {
-        throw new Error('Branch not found');
+        throw new Error("Branch not found");
       }
 
-      const users = await db('users')
-        .leftJoin('user_roles', 'users.role_id', 'user_roles.role_id')
-        .select(
-          'users.*',
-          'user_roles.role',
-          'user_roles.department'
-        )
-        .where('users.branch_id', branchId)
-        .whereNull('users.deleted_at')
-        .orderBy('users.name');
+      const users = await db("employees")
+        .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
+        .select("employees.*", "user_roles.role", "user_roles.department")
+        .where("employees.branch_id", branchId)
+        .whereNull("employees.deleted_at")
+        .orderBy("employees.first_name");
 
       return users;
     } catch (error) {
-      console.error('Error fetching branch users:', error);
+      console.error("Error fetching branch users:", error);
 
-      if (error.message.includes('Invalid') ||
-          error.message.includes('not found')) {
+      if (
+        error.message.includes("Invalid") ||
+        error.message.includes("not found")
+      ) {
         throw error;
       }
 
-      throw new Error('Failed to retrieve branch users');
+      throw new Error("Failed to retrieve branch users");
+    }
+  }
+
+  // Get employees by department for manager selection
+  static async getEmployeesByDepartment(department) {
+    try {
+      if (!department) {
+        throw new Error("Department is required");
+      }
+
+      const employees = await db("employees")
+        .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
+        .select(
+          "employees.id",
+          "employees.employee_id",
+          "employees.first_name",
+          "employees.last_name",
+          "employees.email",
+          "employees.department",
+          "user_roles.role"
+        )
+        .where("employees.department", department)
+        .where("employees.status", "Active")
+        .whereNull("employees.deleted_at")
+        .whereNull("user_roles.deleted_at")
+        .where("user_roles.is_active", true)
+        .orderBy("employees.first_name");
+
+      return employees;
+    } catch (error) {
+      console.error("Error fetching employees by department:", error);
+      throw new Error("Failed to retrieve department employees");
+    }
+  }
+
+  // Get branch managers (employees from Branch department with Manager role)
+  static async getBranchManagers() {
+    try {
+      const employees = await db("employees")
+        .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
+        .select(
+          "employees.id",
+          "employees.employee_id",
+          "employees.first_name",
+          "employees.last_name",
+          "employees.email",
+          "employees.department",
+          "user_roles.role"
+        )
+        .where("employees.department", "Branch")
+        .where("user_roles.role", "Manager")
+        .where("employees.status", "Active")
+        .whereNull("employees.deleted_at")
+        .whereNull("user_roles.deleted_at")
+        .where("user_roles.is_active", true)
+        .orderBy("employees.first_name");
+
+      return employees;
+    } catch (error) {
+      console.error("Error fetching branch managers:", error);
+      throw new Error("Failed to retrieve branch managers");
     }
   }
 
   // Get branch statistics
   static async getBranchStats() {
     try {
-      const totalBranches = await db('branches').count('id as count').first();
-      const activeBranches = await db('branches').where('is_active', true).count('id as count').first();
-      const totalUsersInBranches = await db('users').whereNotNull('branch_id').count('id as count').first();
+      const totalBranches = await db("branches").count("id as count").first();
+      const activeBranches = await db("branches")
+        .where("is_active", true)
+        .count("id as count")
+        .first();
+      const totalEmployeesInBranches = await db("employees")
+        .whereNotNull("branch_id")
+        .count("id as count")
+        .first();
 
       return {
         total_branches: parseInt(totalBranches.count) || 0,
         active_branches: parseInt(activeBranches.count) || 0,
-        inactive_branches: (parseInt(totalBranches.count) || 0) - (parseInt(activeBranches.count) || 0),
-        total_users_in_branches: parseInt(totalUsersInBranches.count) || 0
+        inactive_branches:
+          (parseInt(totalBranches.count) || 0) -
+          (parseInt(activeBranches.count) || 0),
+        total_employees_in_branches:
+          parseInt(totalEmployeesInBranches.count) || 0,
       };
     } catch (error) {
-      console.error('Error fetching branch statistics:', error);
-      throw new Error('Failed to retrieve branch statistics');
+      console.error("Error fetching branch statistics:", error);
+      throw new Error("Failed to retrieve branch statistics");
     }
   }
 }

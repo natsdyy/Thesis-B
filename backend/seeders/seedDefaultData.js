@@ -280,6 +280,52 @@ async function assignDefaultPermissions() {
         permissionMap["Manage CRM Dashboard"],
         permissionMap["View Customer Feedback"],
       ].filter(Boolean),
+
+      // Branch Department
+      "Manager-Branch": [
+        // Branch Manager - Full branch operations
+        permissionMap["Manage Dashboard"],
+        permissionMap["Manage Inventory"],
+        permissionMap["View Inventory Reports"],
+        permissionMap["Manage Sales Order"],
+        permissionMap["Manage Payment"],
+        permissionMap["Manage Customer"],
+        permissionMap["Manage Employees"],
+        permissionMap["View Employee Records"],
+        permissionMap["Manage  Attendance"],
+        permissionMap["View Attendance Reports"],
+      ].filter(Boolean),
+
+      "Cook-Branch": [
+        // Cook - Inventory and production access
+        permissionMap["Manage Dashboard"],
+        permissionMap["Manage Inventory"],
+        permissionMap["View Inventory Reports"],
+        permissionMap["Manage Production"],
+        permissionMap["View Production Reports"],
+      ].filter(Boolean),
+
+      "Kitchen Assistant-Branch": [
+        // Kitchen Assistant - Basic inventory access
+        permissionMap["Manage Dashboard"],
+        permissionMap["Manage Inventory"],
+        permissionMap["View Inventory Reports"],
+      ].filter(Boolean),
+
+      "Cashier-Branch": [
+        // Cashier - Sales and payment access
+        permissionMap["Manage Dashboard"],
+        permissionMap["Manage Sales Order"],
+        permissionMap["Manage Payment"],
+        permissionMap["Manage Customer"],
+      ].filter(Boolean),
+
+      "Waiter-Branch": [
+        // Waiter - Customer service access
+        permissionMap["Manage Dashboard"],
+        permissionMap["Manage Customer"],
+        permissionMap["Manage Sales Order"],
+      ].filter(Boolean),
     };
 
     let assignmentCount = 0;

@@ -123,13 +123,6 @@
       console.log('BranchStore branches:', branchStore.branches);
 
       const success = await branchContextStore.initializeBranchContext();
-      console.log('Branch context initialized:', success);
-      console.log('Current branch:', currentBranch.value);
-      console.log('Available branches:', availableBranches.value);
-      console.log('User role:', userRole.value);
-      console.log('Can switch branches:', canSwitchBranches.value);
-      console.log('User data:', user.value);
-      console.log('User branch_id:', user.value?.branch_id);
 
       if (success) {
         // Set selected branch ID for Super Admin

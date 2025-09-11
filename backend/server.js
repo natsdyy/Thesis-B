@@ -30,6 +30,7 @@ const attendanceRoutes = require("./routes/attendance");
 const employeeRoutes = require("./routes/employees");
 const branchRequestRoutes = require("./routes/branchRequests");
 const branchDistributionRoutes = require("./routes/branchDistributions");
+const branchInventoryRoutes = require("./routes/branchInventory");
 const { serve, setup } = require("./config/swagger");
 
 const app = express();
@@ -102,6 +103,7 @@ app.use("/api/attendance", attendanceRoutes);
 app.use("/api/employees", employeeRoutes);
 app.use("/api/branch-requests", branchRequestRoutes);
 app.use("/api/branch-distributions", branchDistributionRoutes);
+app.use("/api/branch-inventory", branchInventoryRoutes);
 
 // Auto-expire job
 async function autoExpireJob() {

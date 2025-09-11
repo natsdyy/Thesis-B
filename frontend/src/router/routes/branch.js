@@ -21,9 +21,9 @@ function checkBranchAccess(to, from, next) {
   const userDepartment = user.department;
   const userBranchId = user.branch_id;
 
-  // Allow access if user is Super Admin or from Branch department
-  if (userRole === 'Super Admin' || userDepartment === 'Branch') {
-    // Extract operation from route name (e.g., 'BranchPOS' -> 'pos')
+  // Allow access if user is Super Admin or has a branch_id (indicating they're assigned to a branch)
+  if (userRole === 'Super Admin' || userBranchId) {
+    // Extract operation from route name (e.g., 'BranchInventory' -> 'inventory')
     const operation =
       to.name?.replace('Branch', '').toLowerCase() || 'dashboard';
 
@@ -39,9 +39,9 @@ function checkBranchAccess(to, from, next) {
     return;
   }
 
-  // If not Branch department or Super Admin, redirect to main dashboard
+  // If not authorized, redirect to login
   console.warn('User not authorized for branch operations');
-  next('/dashboard');
+  next('/login');
 }
 
 // Branch routes

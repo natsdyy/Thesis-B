@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, computed, onMounted } from 'vue';
+  import { ref, computed, onMounted, watch } from 'vue';
   import { useBranchRequestStore } from '../../stores/branchRequestStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
@@ -85,6 +85,21 @@
     return now.toISOString().split('T')[0];
   };
 
+  // Toast notification function
+  const showToast = (type, message) => {
+    // Simple toast implementation - you can replace with your preferred toast library
+    const toast = document.createElement('div');
+    toast.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg ${
+      type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+    }`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+      document.body.removeChild(toast);
+    }, 3000);
+  };
+
   // Request form data
   const requestForm = ref({
     request_type: '',
@@ -130,7 +145,7 @@
   const filteredRequests = computed(() => {
     let filtered = requests.value;
 
-    // Filter by search query
+    // Filter by search query only (status filtering is done on server side)
     if (searchQuery.value.trim()) {
       const query = searchQuery.value.toLowerCase();
       filtered = filtered.filter(
@@ -141,12 +156,8 @@
       );
     }
 
-    // Filter by status
-    if (statusFilter.value) {
-      filtered = filtered.filter(
-        (request) => request.status === statusFilter.value
-      );
-    }
+    // Note: Status filtering is now handled on the server side in loadRequests()
+    // This prevents double filtering which was causing the issue
 
     return filtered;
   });
@@ -420,9 +431,65 @@
           status: statusFilter.value || undefined,
         };
 
-        requests.value = await branchRequestStore.fetchRequestsByBranch(
+        console.log('Loading requests with filters:', filters);
+        console.log('Current branch ID:', currentBranch.value.id);
+        console.log('Inventory type (source_type):', props.inventoryType);
+
+        // Fetch requests from both SCM and Production source types
+        console.log(
+          'Fetching requests from both SCM and Production source types...'
+        );
+
+        // Fetch SCM requests
+        const scmFilters = {
+          source_type: 'scm',
+          status: statusFilter.value || undefined,
+        };
+        console.log('SCM filters:', scmFilters);
+
+        const scmRequests = await branchRequestStore.fetchRequestsByBranch(
           currentBranch.value.id,
-          filters
+          scmFilters
+        );
+        console.log('SCM requests:', scmRequests);
+        console.log('SCM request count:', scmRequests.length);
+        console.log(
+          'SCM request statuses:',
+          scmRequests.map((req) => req.status)
+        );
+
+        // Fetch Production requests
+        const productionFilters = {
+          source_type: 'production',
+          status: statusFilter.value || undefined,
+        };
+        console.log('Production filters:', productionFilters);
+
+        const productionRequests =
+          await branchRequestStore.fetchRequestsByBranch(
+            currentBranch.value.id,
+            productionFilters
+          );
+        console.log('Production requests:', productionRequests);
+        console.log('Production request count:', productionRequests.length);
+        console.log(
+          'Production request statuses:',
+          productionRequests.map((req) => req.status)
+        );
+
+        // Combine both source types
+        requests.value = [...scmRequests, ...productionRequests];
+        console.log(
+          'Combined requests from both source types:',
+          requests.value
+        );
+        console.log('Total combined request count:', requests.value.length);
+
+        console.log('Final loaded requests:', requests.value);
+        console.log('Final request count:', requests.value.length);
+        console.log(
+          'Final request statuses:',
+          requests.value.map((req) => req.status)
         );
       } else {
         // Fallback to general requests if no branch context
@@ -431,7 +498,9 @@
           status: statusFilter.value || undefined,
         };
 
+        console.log('Loading requests with filters (no branch):', filters);
         requests.value = await branchRequestStore.fetchRequests(filters);
+        console.log('Loaded requests (no branch):', requests.value);
       }
     } catch (error) {
       console.error('Error loading requests:', error);
@@ -570,6 +639,30 @@
     }
   };
 
+  // Status update functionality
+  const updateRequestStatus = async (request, newStatus) => {
+    try {
+      loading.value = true;
+
+      await branchRequestStore.updateRequestStatus(
+        request.id,
+        newStatus,
+        authStore.user?.name || 'Branch User',
+        `Status updated to ${newStatus}`
+      );
+
+      // Refresh the requests list
+      await loadRequests();
+
+      showToast('success', `Request status updated to ${newStatus}`);
+    } catch (error) {
+      console.error('Error updating request status:', error);
+      showToast('error', 'Failed to update request status');
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const confirmDeleteRequest = async () => {
     deletingRequest.value = true;
     try {
@@ -586,6 +679,12 @@
       deletingRequest.value = false;
     }
   };
+
+  // Watch for status filter changes
+  watch(statusFilter, (newStatus) => {
+    console.log('Status filter changed to:', newStatus);
+    loadRequests();
+  });
 
   // Initialize
   onMounted(() => {
@@ -789,6 +888,37 @@
                         >
                           <a @click="cancelRequest(request)" class="text-error"
                             >Cancel Request</a
+                          >
+                        </li>
+                        <!-- Status Update Options -->
+                        <li
+                          class="hover:bg-black/10"
+                          v-if="request.status === 'Acknowledged'"
+                        >
+                          <a
+                            @click="updateRequestStatus(request, 'In Progress')"
+                            class="text-info"
+                            >Mark as In Progress</a
+                          >
+                        </li>
+                        <li
+                          class="hover:bg-black/10"
+                          v-if="request.status === 'In Progress'"
+                        >
+                          <a
+                            @click="updateRequestStatus(request, 'Completed')"
+                            class="text-success"
+                            >Mark as Completed</a
+                          >
+                        </li>
+                        <li
+                          class="hover:bg-black/10"
+                          v-if="request.status === 'Acknowledged'"
+                        >
+                          <a
+                            @click="updateRequestStatus(request, 'Completed')"
+                            class="text-success"
+                            >Mark as Completed</a
                           >
                         </li>
                       </ul>

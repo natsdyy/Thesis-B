@@ -53,6 +53,13 @@
   const showBranchRequestModal = ref(false);
   const selectedBranchRequest = ref(null);
 
+  // Tab system state
+  const activeTab = ref('supply-requests');
+  const branchRequestCurrentPage = ref(1);
+  const branchRequestPerPage = ref(10);
+  const branchRequestSearchQuery = ref('');
+  const branchRequestStatusFilter = ref('Acknowledged');
+
   function closeReceipt() {
     showReceipt.value = false;
     receiptData.value = null;
@@ -969,7 +976,7 @@
   };
 
   // View branch request function
-  const viewBranchRequest = (request) => {
+  const viewBranchRequestModal = (request) => {
     selectedBranchRequest.value = request;
     showBranchRequestModal.value = true;
   };
@@ -1035,6 +1042,7 @@
         supplyRequestStore.fetchStats({ department: 'SCM' }),
         budgetReleaseStore.fetchPendingReceipts('SCM'),
         branchRequestStore.fetchRequestsWithItems({ status: 'Sent' }),
+        branchRequestStore.fetchRequestsWithItems({}), // Fetch all branch requests for the tab
         inventoryStore.fetchCategories(),
         inventoryStore.fetchItemTypes(),
       ]);
@@ -1595,6 +1603,182 @@
     }
     return years;
   });
+
+  // Branch request computed properties
+  const allBranchRequests = computed(() => branchRequestStore.requests || []);
+
+  const filteredBranchRequests = computed(() => {
+    let filtered = allBranchRequests.value;
+
+    // Filter by search query
+    if (branchRequestSearchQuery.value.trim()) {
+      const query = branchRequestSearchQuery.value.toLowerCase();
+      filtered = filtered.filter(
+        (request) =>
+          request.request_id.toLowerCase().includes(query) ||
+          request.request_description.toLowerCase().includes(query) ||
+          request.requested_by.toLowerCase().includes(query) ||
+          (request.branch_name &&
+            request.branch_name.toLowerCase().includes(query))
+      );
+    }
+
+    // Filter by status
+    if (
+      branchRequestStatusFilter.value &&
+      branchRequestStatusFilter.value !== 'All Status'
+    ) {
+      filtered = filtered.filter(
+        (request) => request.status === branchRequestStatusFilter.value
+      );
+    }
+
+    return filtered;
+  });
+
+  const paginatedBranchRequests = computed(() => {
+    const start =
+      (branchRequestCurrentPage.value - 1) * branchRequestPerPage.value;
+    const end = start + branchRequestPerPage.value;
+    return filteredBranchRequests.value.slice(start, end);
+  });
+
+  const totalBranchRequestPages = computed(() => {
+    return Math.ceil(
+      filteredBranchRequests.value.length / branchRequestPerPage.value
+    );
+  });
+
+  // Branch request status badge helper
+  const getBranchRequestStatusBadge = (status) => {
+    const statusMap = {
+      Draft: { class: 'bg-warning/10 text-warning', text: 'Draft' },
+      Sent: { class: 'bg-info/10 text-info', text: 'Sent' },
+      Acknowledged: {
+        class: 'bg-primary/10 text-primary',
+        text: 'Acknowledged',
+      },
+      'In Progress': {
+        class: 'bg-warning/10 text-warning',
+        text: 'In Progress',
+      },
+      Completed: { class: 'bg-success/10 text-success', text: 'Completed' },
+      Cancelled: { class: 'bg-error/10 text-error', text: 'Cancelled' },
+    };
+    return (
+      statusMap[status] || { class: 'bg-neutral/10 text-neutral', text: status }
+    );
+  };
+
+  // Branch request pagination helper
+  const getBranchRequestPageRange = () => {
+    const current = branchRequestCurrentPage.value;
+    const total = totalBranchRequestPages.value;
+    const range = [];
+
+    // Show pages around current page
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+
+    for (let i = start; i <= end; i++) {
+      if (i !== 1 && i !== total) {
+        range.push(i);
+      }
+    }
+
+    return range;
+  };
+
+  // Branch request management functions
+  const viewBranchRequest = async (request) => {
+    try {
+      const fullRequest = await branchRequestStore.fetchRequestById(request.id);
+      if (!fullRequest) {
+        console.error('Failed to fetch request details');
+        return;
+      }
+      selectedBranchRequest.value = fullRequest;
+      showBranchRequestModal.value = true;
+    } catch (error) {
+      console.error('Error fetching request details for viewing:', error);
+      showToast('error', 'Failed to fetch request details');
+    }
+  };
+
+  const acknowledgeBranchRequestFromTab = async (requestId) => {
+    try {
+      loading.value = true;
+      const request = allBranchRequests.value.find(
+        (r) => r.request_id === requestId
+      );
+      if (!request) {
+        showToast('error', 'Request not found');
+        return;
+      }
+
+      await branchRequestStore.acknowledgeRequest(
+        request.id,
+        authStore.user?.name || 'SCM User',
+        'Request acknowledged by SCM'
+      );
+
+      showToast('success', 'Request acknowledged successfully');
+      await fetchAllData();
+    } catch (error) {
+      console.error('Error acknowledging request:', error);
+      showToast('error', 'Failed to acknowledge request');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const updateBranchRequestStatus = async (requestId, status, notes = null) => {
+    try {
+      loading.value = true;
+      const request = allBranchRequests.value.find(
+        (r) => r.request_id === requestId
+      );
+      if (!request) {
+        showToast('error', 'Request not found');
+        return;
+      }
+
+      await branchRequestStore.updateRequestStatus(
+        request.id,
+        status,
+        authStore.user?.name || 'SCM User',
+        notes
+      );
+
+      showToast('success', `Request ${status.toLowerCase()} successfully`);
+      await fetchAllData();
+    } catch (error) {
+      console.error('Error updating request status:', error);
+      showToast('error', 'Failed to update request status');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const markBranchRequestInProgress = (requestId) => {
+    updateBranchRequestStatus(
+      requestId,
+      'In Progress',
+      'Request is being processed'
+    );
+  };
+
+  const completeBranchRequest = (requestId) => {
+    updateBranchRequestStatus(requestId, 'Completed', 'Request completed');
+  };
+
+  const cancelBranchRequest = (requestId) => {
+    updateBranchRequestStatus(
+      requestId,
+      'Cancelled',
+      'Request cancelled by SCM'
+    );
+  };
 </script>
 
 <template>
@@ -1927,404 +2111,777 @@
       </div>
     </div>
 
-    <!-- Request List -->
+    <!-- Tab System -->
     <div
       class="card bg-accentColor shadow-xl mb-6 border border-black/10 mx-auto"
     >
-      <div class="card-body">
-        <div class="flex justify-between items-center mb-4">
-          <h2 class="card-title text-primaryColor">Request List</h2>
-          <div class="flex gap-2 md:flex-row flex-col">
-            <button
-              class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
-              @click="fetchAllData"
-              :class="{ loading: loading }"
-              :disabled="loading"
-            >
-              <RefreshCcw
-                v-if="!loading"
-                class="w-4 h-4 mr-2 text-primaryColor"
-              />
-              <span
-                class="loading loading-spinner loading-xs"
-                v-if="loading"
-              ></span>
-              Refresh
-            </button>
-            <button
-              class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
-              @click="openModal('create')"
-            >
-              <Plus class="w-4 h-4 mr-2 text-primaryColor" />
-              Add Request
-            </button>
-          </div>
-        </div>
-
-        <!-- Enhanced Date Filter Section -->
-        <div
-          class="mb-6 p-4 bg-white/5 rounded-lg border border-primaryColor/20"
-        >
-          <div
-            class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
-          >
-            <!-- Current Date Display -->
-            <div class="flex items-center gap-3">
-              <Calendar class="w-5 h-5 text-primaryColor" />
-              <div>
-                <h3 class="font-semibold text-primaryColor">
-                  {{
-                    requestListFilter.selectedDate
-                      ? formatPhilippineDate(requestListFilter.selectedDate)
-                      : 'All Requests'
-                  }}
-                </h3>
-                <p class="text-sm text-black/60">
-                  Showing {{ filteredRequestsByDate.length }} request{{
-                    filteredRequestsByDate.length !== 1 ? 's' : ''
-                  }}
-                </p>
-              </div>
-            </div>
-
-            <!-- Date Navigation and Filter Controls -->
-            <div class="flex flex-col sm:flex-row gap-3">
-              <!-- Quick Date Buttons -->
-              <div class="flex gap-2 md:flex-row flex-col">
-                <button
-                  v-for="option in quickDateOptions"
-                  :key="option.date"
-                  class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
-                  :class="{
-                    'bg-primaryColor text-white':
-                      requestListFilter.selectedDate === option.date,
-                    'bg-white text-primaryColor hover:bg-primaryColor/10':
-                      requestListFilter.selectedDate !== option.date,
-                  }"
-                  @click="selectQuickDate(option)"
-                >
-                  {{ option.label }}
-                  <span
-                    class="badge badge-xs ml-1 bg-secondaryColor border-none b"
-                    :class="
-                      requestListFilter.selectedDate === option.date
-                        ? 'badge-ghost'
-                        : 'badge-primaryColor/10 text-primaryColor'
-                    "
-                  >
-                    {{ option.count }}
-                  </span>
-                </button>
-              </div>
-
-              <!-- Date Navigation -->
-              <div class="flex items-center gap-1">
-                <button
-                  class="btn btn-sm btn-ghost text-primaryColor hover:bg-primaryColor/10"
-                  @click="goToPreviousDay"
-                  title="Previous Day"
-                >
-                  ‹
-                </button>
-
-                <!-- Custom Date Picker -->
-                <div class="relative">
-                  <button
-                    class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                    @click="toggleDatePicker"
-                  >
-                    <Calendar class="w-4 h-4 mr-1" />
-                    Pick Date
-                  </button>
-
-                  <input
-                    v-if="requestListFilter.showDatePicker"
-                    type="date"
-                    :value="requestListFilter.selectedDate"
-                    @change="selectCustomDate"
-                    @blur="requestListFilter.showDatePicker = false"
-                    class="absolute top-full left-0 mt-1 input input-sm input-bordered bg-white border-primaryColor/30 text-black/70 z-10"
-                    style="min-width: 150px"
-                    ref="datePickerInput"
-                  />
-                </div>
-
-                <button
-                  class="btn btn-sm btn-ghost text-primaryColor hover:bg-primaryColor/10"
-                  @click="goToNextDay"
-                  title="Next Day"
-                >
-                  ›
-                </button>
-
-                <button
-                  class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                  @click="goToToday"
-                  :class="{
-                    'btn-disabled':
-                      requestListFilter.selectedDate ===
-                      getPhilippineDateString(),
-                  }"
-                >
-                  Today
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Loading State -->
-        <div v-if="loading && !hasRequests" class="flex justify-center py-8">
-          <span class="loading loading-spinner loading-xs"></span>
-        </div>
-
-        <!-- Empty State -->
-        <div
-          v-else-if="filteredRequestsByDate.length === 0"
-          class="text-center py-8"
-        >
-          <div class="mb-4 items-center justify-center flex">
-            <ReceiptText class="w-16 h-16 text-primaryColor" />
-          </div>
-          <h3 class="text-lg font-semibold mb-2 text-primaryColor">
-            No requests found
-            {{
-              requestListFilter.selectedDate
-                ? 'for ' + formatPhilippineDate(requestListFilter.selectedDate)
-                : ''
-            }}
-          </h3>
-          <p class="text-black/50 mb-4">
-            {{
-              requestListFilter.selectedDate
-                ? 'Try selecting a different date or create a new request for this date.'
-                : 'Create a new request to get started.'
-            }}
-          </p>
+      <div class="card-body p-0">
+        <!-- Tab Navigation -->
+        <div class="tabs tabs-boxed bg-white/5 p-2 mb-6">
           <button
-            class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
-            @click="openModal('create')"
+            class="tab tab-lg font-medium"
+            :class="{
+              'tab-active bg-primaryColor text-white':
+                activeTab === 'supply-requests',
+              'text-black/70 hover:bg-white/10':
+                activeTab !== 'supply-requests',
+            }"
+            @click="activeTab = 'supply-requests'"
           >
-            <Plus class="w-4 h-4 mr-2" />
-            {{
-              requestListFilter.selectedDate
-                ? 'Add Request for This Date'
-                : 'Add New Request'
-            }}
+            <ReceiptText class="w-4 h-4 mr-2" />
+            Supply Requests
+          </button>
+          <button
+            class="tab tab-lg font-medium"
+            :class="{
+              'tab-active bg-primaryColor text-white':
+                activeTab === 'branch-requests',
+              'text-black/70 hover:bg-white/10':
+                activeTab !== 'branch-requests',
+            }"
+            @click="activeTab = 'branch-requests'"
+          >
+            <FileCheck class="w-4 h-4 mr-2" />
+            Branch Requests
+            <span
+              class="badge badge-sm ml-2 bg-secondaryColor text-primaryColor"
+            >
+              {{ allBranchRequests.length }}
+            </span>
           </button>
         </div>
 
-        <!-- Table List -->
-        <div v-else class="overflow-x-auto bg-accentColor">
-          <table
-            class="table table-zebra text-black/50 border border-black/10 custom-zebra"
-          >
-            <thead class="text-secondaryColor">
-              <tr class="bg-primaryColor text-accentColor">
-                <th>Request ID</th>
-                <th>Request Date</th>
-                <th class="w-1/4">Request Description</th>
-                <th>Total Amount</th>
-                <th>Items</th>
-                <th>Priority</th>
-                <th>Request Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="request in paginatedRequests"
-                :key="request.request_id"
-                class="hover:bg-secondaryColor/10"
+        <!-- Supply Requests Tab Content -->
+        <div v-if="activeTab === 'supply-requests'" class="p-6">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="card-title text-primaryColor">Supply Request List</h2>
+            <div class="flex gap-2 md:flex-row flex-col">
+              <button
+                class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
+                @click="fetchAllData"
+                :class="{ loading: loading }"
+                :disabled="loading"
               >
-                <td class="font-mono font-medium">{{ request.request_id }}</td>
-                <td>
-                  <div class="flex flex-col">
-                    <span>{{ formatManilaDate(request.request_date) }}</span>
-                    <!-- Remove or comment out the time line -->
-                    <!-- <span class="text-xs text-black/50">{{ formatManilaTime(request.request_date) }}</span> -->
-                  </div>
-                </td>
-                <td class="text-wrap">
-                  <div>
-                    <p class="font-medium">{{ request.request_description }}</p>
-                    <p class="text-xs text-black/50">
-                      {{ request.request_type }}
-                    </p>
-                  </div>
-                </td>
-                <!-- Add total amount column -->
-                <td class="font-semibold text-primaryColor">
-                  ₱{{
-                    parseFloat(request.total_amount || 0).toLocaleString(
-                      'en-PH',
-                      {
-                        minimumFractionDigits: 2,
-                      }
-                    )
-                  }}
-                </td>
-                <!-- Add item count -->
-                <td class="text-center">
-                  <span
-                    class="badge badge-sm bg-primaryColor/10 text-primaryColor"
-                  >
-                    {{ request.item_count }} item{{
-                      request.item_count !== '1' ? 's' : ''
-                    }}
-                  </span>
-                </td>
-                <!-- Add priority -->
-                <td>
-                  <div
-                    class="badge badge-sm border-none"
-                    :class="{
-                      'bg-error/10 text-error': request.priority === 'Urgent',
-                      'bg-warning/10 text-warning': request.priority === 'High',
-                      'bg-info/10 text-info': request.priority === 'Normal',
-                      'bg-success/10 text-success': request.priority === 'Low',
-                    }"
-                  >
-                    {{ request.priority }}
-                  </div>
-                </td>
-                <td>
-                  <div
-                    class="badge badge-sm badge-soft border-none"
-                    :class="{
-                      'bg-info/10 text-info':
-                        request.request_status === 'To Request',
-                      'bg-success/10 text-success':
-                        request.request_status === 'Approved',
-                      'bg-error/10 text-error':
-                        request.request_status === 'Rejected',
-                      'bg-warning/10 text-warning':
-                        request.request_status === 'Pending',
-                    }"
-                  >
-                    {{ request.request_status }}
-                  </div>
-                </td>
-                <td>
-                  <div class="dropdown dropdown-left">
-                    <label
-                      tabindex="0"
-                      class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
-                    >
-                      <EllipsisVertical class="w-4 h-4" />
-                    </label>
-                    <ul
-                      tabindex="0"
-                      class="dropdown-content z-[1] menu p-2 shadow bg-accentColor rounded-box w-52 border border-black/10"
-                    >
-                      <li class="hover:bg-black/10">
-                        <a
-                          @click="confirmViewRequest(request)"
-                          class="text-primary"
-                          >View Request</a
-                        >
-                      </li>
-                      <li
-                        class="hover:bg-black/10"
-                        v-if="
-                          request.request_status === 'To Request' ||
-                          request.request_status === 'Sent Back'
-                        "
-                      >
-                        <a @click="editRequest(request)" class="text-warning"
-                          >Edit</a
-                        >
-                      </li>
-                      <li
-                        class="hover:bg-black/10"
-                        v-if="
-                          request.request_status === 'To Request' ||
-                          request.request_status === 'Sent Back'
-                        "
-                      >
-                        <a @click="confirmSend(request)" class="text-success"
-                          >Send Request</a
-                        >
-                      </li>
-                      <li
-                        class="hover:bg-black/10"
-                        v-if="request.request_status === 'Pending'"
-                      >
-                        <a @click="confirmCancel(request)" class="text-error"
-                          >Cancel Request</a
-                        >
-                      </li>
-                      <li
-                        class="hover:bg-black/10"
-                        v-if="
-                          request.request_status === 'To Request' ||
-                          request.request_status === 'Sent Back'
-                        "
-                      >
-                        <a @click="confirmDelete(request)" class="text-error"
-                          >Delete Request</a
-                        >
-                      </li>
-                    </ul>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Enhanced Pagination with Date Context -->
-        <div
-          class="flex flex-col sm:flex-row justify-between items-center mt-4"
-          v-if="totalPages > 1"
-        >
-          <div class="text-sm text-black/60 mb-2 sm:mb-0">
-            Showing {{ (currentPage - 1) * requestsPerPage + 1 }} to
-            {{
-              Math.min(
-                currentPage * requestsPerPage,
-                filteredRequestsByDate.length
-              )
-            }}
-            of {{ filteredRequestsByDate.length }} requests for
-            {{ formatPhilippineDate(requestListFilter.selectedDate) }}
+                <RefreshCcw
+                  v-if="!loading"
+                  class="w-4 h-4 mr-2 text-primaryColor"
+                />
+                <span
+                  class="loading loading-spinner loading-xs"
+                  v-if="loading"
+                ></span>
+                Refresh
+              </button>
+              <button
+                class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
+                @click="openModal('create')"
+              >
+                <Plus class="w-4 h-4 mr-2 text-primaryColor" />
+                Add Request
+              </button>
+            </div>
           </div>
 
-          <div class="join space-x-1">
-            <button
-              class="join-item btn font-thin !bg-gray-200 text-black/50 btn-sm border border-none hover:bg-gray-300"
-              :disabled="currentPage <= 1"
-              @click="currentPage--"
-              :class="{ 'btn-disabled': currentPage <= 1 }"
+          <!-- Enhanced Date Filter Section -->
+          <div
+            class="mb-6 p-4 bg-white/5 rounded-lg border border-primaryColor/20"
+          >
+            <div
+              class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
             >
-              « Prev
-            </button>
+              <!-- Current Date Display -->
+              <div class="flex items-center gap-3">
+                <Calendar class="w-5 h-5 text-primaryColor" />
+                <div>
+                  <h3 class="font-semibold text-primaryColor">
+                    {{
+                      requestListFilter.selectedDate
+                        ? formatPhilippineDate(requestListFilter.selectedDate)
+                        : 'All Requests'
+                    }}
+                  </h3>
+                  <p class="text-sm text-black/60">
+                    Showing {{ filteredRequestsByDate.length }} request{{
+                      filteredRequestsByDate.length !== 1 ? 's' : ''
+                    }}
+                  </p>
+                </div>
+              </div>
 
-            <button
-              class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
-              v-for="page in totalPages"
-              :key="page"
-              :class="{
-                'btn-active': currentPage === page,
-                '!bg-primaryColor text-white': currentPage === page,
-              }"
-              @click="currentPage = page"
-            >
-              {{ page }}
-            </button>
+              <!-- Date Navigation and Filter Controls -->
+              <div class="flex flex-col sm:flex-row gap-3">
+                <!-- Quick Date Buttons -->
+                <div class="flex gap-2 md:flex-row flex-col">
+                  <button
+                    v-for="option in quickDateOptions"
+                    :key="option.date"
+                    class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
+                    :class="{
+                      'bg-primaryColor text-white':
+                        requestListFilter.selectedDate === option.date,
+                      'bg-white text-primaryColor hover:bg-primaryColor/10':
+                        requestListFilter.selectedDate !== option.date,
+                    }"
+                    @click="selectQuickDate(option)"
+                  >
+                    {{ option.label }}
+                    <span
+                      class="badge badge-xs ml-1 bg-secondaryColor border-none b"
+                      :class="
+                        requestListFilter.selectedDate === option.date
+                          ? 'badge-ghost'
+                          : 'badge-primaryColor/10 text-primaryColor'
+                      "
+                    >
+                      {{ option.count }}
+                    </span>
+                  </button>
+                </div>
 
+                <!-- Date Navigation -->
+                <div class="flex items-center gap-1">
+                  <button
+                    class="btn btn-sm btn-ghost text-primaryColor hover:bg-primaryColor/10"
+                    @click="goToPreviousDay"
+                    title="Previous Day"
+                  >
+                    ‹
+                  </button>
+
+                  <!-- Custom Date Picker -->
+                  <div class="relative">
+                    <button
+                      class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                      @click="toggleDatePicker"
+                    >
+                      <Calendar class="w-4 h-4 mr-1" />
+                      Pick Date
+                    </button>
+
+                    <input
+                      v-if="requestListFilter.showDatePicker"
+                      type="date"
+                      :value="requestListFilter.selectedDate"
+                      @change="selectCustomDate"
+                      @blur="requestListFilter.showDatePicker = false"
+                      class="absolute top-full left-0 mt-1 input input-sm input-bordered bg-white border-primaryColor/30 text-black/70 z-10"
+                      style="min-width: 150px"
+                      ref="datePickerInput"
+                    />
+                  </div>
+
+                  <button
+                    class="btn btn-sm btn-ghost text-primaryColor hover:bg-primaryColor/10"
+                    @click="goToNextDay"
+                    title="Next Day"
+                  >
+                    ›
+                  </button>
+
+                  <button
+                    class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                    @click="goToToday"
+                    :class="{
+                      'btn-disabled':
+                        requestListFilter.selectedDate ===
+                        getPhilippineDateString(),
+                    }"
+                  >
+                    Today
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Loading State -->
+          <div v-if="loading && !hasRequests" class="flex justify-center py-8">
+            <span class="loading loading-spinner loading-xs"></span>
+          </div>
+
+          <!-- Empty State -->
+          <div
+            v-else-if="filteredRequestsByDate.length === 0"
+            class="text-center py-8"
+          >
+            <div class="mb-4 items-center justify-center flex">
+              <ReceiptText class="w-16 h-16 text-primaryColor" />
+            </div>
+            <h3 class="text-lg font-semibold mb-2 text-primaryColor">
+              No requests found
+              {{
+                requestListFilter.selectedDate
+                  ? 'for ' +
+                    formatPhilippineDate(requestListFilter.selectedDate)
+                  : ''
+              }}
+            </h3>
+            <p class="text-black/50 mb-4">
+              {{
+                requestListFilter.selectedDate
+                  ? 'Try selecting a different date or create a new request for this date.'
+                  : 'Create a new request to get started.'
+              }}
+            </p>
             <button
-              class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
-              :disabled="currentPage >= totalPages"
-              @click="currentPage++"
-              :class="{ 'btn-disabled': currentPage >= totalPages }"
+              class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
+              @click="openModal('create')"
             >
-              Next »
+              <Plus class="w-4 h-4 mr-2" />
+              {{
+                requestListFilter.selectedDate
+                  ? 'Add Request for This Date'
+                  : 'Add New Request'
+              }}
             </button>
+          </div>
+
+          <!-- Table List -->
+          <div v-else class="overflow-x-auto bg-accentColor">
+            <table
+              class="table table-zebra text-black/50 border border-black/10 custom-zebra"
+            >
+              <thead class="text-secondaryColor">
+                <tr class="bg-primaryColor text-accentColor">
+                  <th>Request ID</th>
+                  <th>Request Date</th>
+                  <th class="w-1/4">Request Description</th>
+                  <th>Total Amount</th>
+                  <th>Items</th>
+                  <th>Priority</th>
+                  <th>Request Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="request in paginatedRequests"
+                  :key="request.request_id"
+                  class="hover:bg-secondaryColor/10"
+                >
+                  <td class="font-mono font-medium">
+                    {{ request.request_id }}
+                  </td>
+                  <td>
+                    <div class="flex flex-col">
+                      <span>{{ formatManilaDate(request.request_date) }}</span>
+                      <!-- Remove or comment out the time line -->
+                      <!-- <span class="text-xs text-black/50">{{ formatManilaTime(request.request_date) }}</span> -->
+                    </div>
+                  </td>
+                  <td class="text-wrap">
+                    <div>
+                      <p class="font-medium">
+                        {{ request.request_description }}
+                      </p>
+                      <p class="text-xs text-black/50">
+                        {{ request.request_type }}
+                      </p>
+                    </div>
+                  </td>
+                  <!-- Add total amount column -->
+                  <td class="font-semibold text-primaryColor">
+                    ₱{{
+                      parseFloat(request.total_amount || 0).toLocaleString(
+                        'en-PH',
+                        {
+                          minimumFractionDigits: 2,
+                        }
+                      )
+                    }}
+                  </td>
+                  <!-- Add item count -->
+                  <td class="text-center">
+                    <span
+                      class="badge badge-sm bg-primaryColor/10 text-primaryColor"
+                    >
+                      {{ request.item_count }} item{{
+                        request.item_count !== '1' ? 's' : ''
+                      }}
+                    </span>
+                  </td>
+                  <!-- Add priority -->
+                  <td>
+                    <div
+                      class="badge badge-sm border-none"
+                      :class="{
+                        'bg-error/10 text-error': request.priority === 'Urgent',
+                        'bg-warning/10 text-warning':
+                          request.priority === 'High',
+                        'bg-info/10 text-info': request.priority === 'Normal',
+                        'bg-success/10 text-success':
+                          request.priority === 'Low',
+                      }"
+                    >
+                      {{ request.priority }}
+                    </div>
+                  </td>
+                  <td>
+                    <div
+                      class="badge badge-sm badge-soft border-none"
+                      :class="{
+                        'bg-info/10 text-info':
+                          request.request_status === 'To Request',
+                        'bg-success/10 text-success':
+                          request.request_status === 'Approved',
+                        'bg-error/10 text-error':
+                          request.request_status === 'Rejected',
+                        'bg-warning/10 text-warning':
+                          request.request_status === 'Pending',
+                      }"
+                    >
+                      {{ request.request_status }}
+                    </div>
+                  </td>
+                  <td>
+                    <div class="dropdown dropdown-left">
+                      <label
+                        tabindex="0"
+                        class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
+                      >
+                        <EllipsisVertical class="w-4 h-4" />
+                      </label>
+                      <ul
+                        tabindex="0"
+                        class="dropdown-content z-[1] menu p-2 shadow bg-accentColor rounded-box w-52 border border-black/10"
+                      >
+                        <li class="hover:bg-black/10">
+                          <a
+                            @click="confirmViewRequest(request)"
+                            class="text-primary"
+                            >View Request</a
+                          >
+                        </li>
+                        <li
+                          class="hover:bg-black/10"
+                          v-if="
+                            request.request_status === 'To Request' ||
+                            request.request_status === 'Sent Back'
+                          "
+                        >
+                          <a @click="editRequest(request)" class="text-warning"
+                            >Edit</a
+                          >
+                        </li>
+                        <li
+                          class="hover:bg-black/10"
+                          v-if="
+                            request.request_status === 'To Request' ||
+                            request.request_status === 'Sent Back'
+                          "
+                        >
+                          <a @click="confirmSend(request)" class="text-success"
+                            >Send Request</a
+                          >
+                        </li>
+                        <li
+                          class="hover:bg-black/10"
+                          v-if="request.request_status === 'Pending'"
+                        >
+                          <a @click="confirmCancel(request)" class="text-error"
+                            >Cancel Request</a
+                          >
+                        </li>
+                        <li
+                          class="hover:bg-black/10"
+                          v-if="
+                            request.request_status === 'To Request' ||
+                            request.request_status === 'Sent Back'
+                          "
+                        >
+                          <a @click="confirmDelete(request)" class="text-error"
+                            >Delete Request</a
+                          >
+                        </li>
+                      </ul>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Enhanced Pagination with Date Context -->
+          <div
+            class="flex flex-col sm:flex-row justify-between items-center mt-4"
+            v-if="totalPages > 1"
+          >
+            <div class="text-sm text-black/60 mb-2 sm:mb-0">
+              Showing {{ (currentPage - 1) * requestsPerPage + 1 }} to
+              {{
+                Math.min(
+                  currentPage * requestsPerPage,
+                  filteredRequestsByDate.length
+                )
+              }}
+              of {{ filteredRequestsByDate.length }} requests for
+              {{ formatPhilippineDate(requestListFilter.selectedDate) }}
+            </div>
+
+            <div class="join space-x-1">
+              <button
+                class="join-item btn font-thin !bg-gray-200 text-black/50 btn-sm border border-none hover:bg-gray-300"
+                :disabled="currentPage <= 1"
+                @click="currentPage--"
+                :class="{ 'btn-disabled': currentPage <= 1 }"
+              >
+                « Prev
+              </button>
+
+              <button
+                class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                v-for="page in totalPages"
+                :key="page"
+                :class="{
+                  'btn-active': currentPage === page,
+                  '!bg-primaryColor text-white': currentPage === page,
+                }"
+                @click="currentPage = page"
+              >
+                {{ page }}
+              </button>
+
+              <button
+                class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                :disabled="currentPage >= totalPages"
+                @click="currentPage++"
+                :class="{ 'btn-disabled': currentPage >= totalPages }"
+              >
+                Next »
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Branch Requests Tab Content -->
+        <div v-if="activeTab === 'branch-requests'" class="p-6">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="card-title text-primaryColor">
+              Branch Request Management
+            </h2>
+            <div class="flex gap-2 md:flex-row flex-col">
+              <button
+                class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
+                @click="fetchAllData"
+                :class="{ loading: loading }"
+                :disabled="loading"
+              >
+                <RefreshCcw
+                  v-if="!loading"
+                  class="w-4 h-4 mr-2 text-primaryColor"
+                />
+                <span
+                  class="loading loading-spinner loading-xs"
+                  v-if="loading"
+                ></span>
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <!-- Search and Filters -->
+          <div class="flex flex-col md:flex-row gap-4 mb-6">
+            <!-- Search -->
+            <div class="flex-1">
+              <div class="relative">
+                <Search
+                  class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"
+                />
+                <input
+                  v-model="branchRequestSearchQuery"
+                  type="text"
+                  placeholder="Search branch requests..."
+                  class="input input-bordered w-full pl-10"
+                />
+              </div>
+            </div>
+
+            <!-- Status Filter -->
+            <select
+              v-model="branchRequestStatusFilter"
+              class="select select-bordered"
+            >
+              <option value="All Status">All Status</option>
+              <option value="Draft">Draft</option>
+              <option value="Sent">Sent</option>
+              <option value="Acknowledged">Acknowledged</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Completed">Completed</option>
+              <option value="Cancelled">Cancelled</option>
+            </select>
+          </div>
+
+          <!-- Branch Requests Table -->
+          <div v-if="paginatedBranchRequests.length > 0" class="space-y-4">
+            <div class="overflow-x-auto table-responsive">
+              <table class="table w-full table-xs">
+                <thead>
+                  <tr>
+                    <th>Request ID</th>
+                    <th>Branch</th>
+                    <th>Type</th>
+                    <th>Description</th>
+                    <th>Priority</th>
+                    <th>Status</th>
+                    <th>Requested By</th>
+                    <th>Date</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="request in paginatedBranchRequests"
+                    :key="request.id"
+                  >
+                    <td>
+                      <div class="font-semibold">{{ request.request_id }}</div>
+                    </td>
+                    <td>
+                      <div class="">
+                        {{ request.branch_name || 'Unknown Branch' }}
+                      </div>
+                    </td>
+                    <td>
+                      <div class="badge badge-outline badge-sm">
+                        {{ request.request_type }}
+                      </div>
+                    </td>
+                    <td>
+                      <div class="max-w-xs truncate">
+                        {{ request.request_description }}
+                      </div>
+                    </td>
+                    <td>
+                      <div
+                        class="badge badge-sm border-none"
+                        :class="{
+                          'bg-error/10 text-error': request.priority === 'High',
+                          'bg-warning/10 text-warning':
+                            request.priority === 'Normal',
+                          'bg-info/10 text-info': request.priority === 'Low',
+                        }"
+                      >
+                        {{ request.priority }}
+                      </div>
+                    </td>
+                    <td>
+                      <div
+                        class="badge"
+                        :class="
+                          getBranchRequestStatusBadge(request.status).class
+                        "
+                      >
+                        {{ getBranchRequestStatusBadge(request.status).text }}
+                      </div>
+                    </td>
+                    <td>{{ request.requested_by }}</td>
+                    <td>
+                      <div class="text-sm">
+                        {{ formatDate(request.request_date) }}
+                      </div>
+                      <div class="text-xs text-gray-500">
+                        {{ formatTime(request.created_at) }}
+                      </div>
+                    </td>
+                    <td>
+                      <div class="dropdown dropdown-left">
+                        <label
+                          tabindex="0"
+                          class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
+                        >
+                          <EllipsisVertical class="w-4 h-4" />
+                        </label>
+                        <ul
+                          tabindex="0"
+                          class="dropdown-content z-[1] menu p-2 shadow bg-accentColor rounded-box w-52 border border-black/10"
+                        >
+                          <li class="hover:bg-black/10">
+                            <a
+                              @click="viewBranchRequestModal(request)"
+                              class="text-primary"
+                              >View Request</a
+                            >
+                          </li>
+                          <li
+                            class="hover:bg-black/10"
+                            v-if="request.status === 'Sent'"
+                          >
+                            <a
+                              @click="
+                                acknowledgeBranchRequestFromTab(
+                                  request.request_id
+                                )
+                              "
+                              class="text-success"
+                              >Acknowledge</a
+                            >
+                          </li>
+                          <li
+                            class="hover:bg-black/10"
+                            v-if="request.status === 'Acknowledged'"
+                          >
+                            <a
+                              @click="
+                                markBranchRequestInProgress(request.request_id)
+                              "
+                              class="text-warning"
+                              >Mark In Progress</a
+                            >
+                          </li>
+                          <li
+                            class="hover:bg-black/10"
+                            v-if="request.status === 'In Progress'"
+                          >
+                            <a
+                              @click="completeBranchRequest(request.request_id)"
+                              class="text-success"
+                              >Complete</a
+                            >
+                          </li>
+                          <li
+                            class="hover:bg-black/10"
+                            v-if="
+                              ['Sent', 'Acknowledged', 'In Progress'].includes(
+                                request.status
+                              )
+                            "
+                          >
+                            <a
+                              @click="cancelBranchRequest(request.request_id)"
+                              class="text-error"
+                              >Cancel</a
+                            >
+                          </li>
+                        </ul>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="flex justify-between items-center mt-6">
+              <!-- Summary -->
+              <div class="text-sm text-black/60">
+                <span>
+                  Showing
+                  {{
+                    (branchRequestCurrentPage - 1) * branchRequestPerPage + 1
+                  }}
+                  to
+                  {{
+                    Math.min(
+                      branchRequestCurrentPage * branchRequestPerPage,
+                      filteredBranchRequests.length
+                    )
+                  }}
+                  of {{ filteredBranchRequests.length }} records
+                </span>
+              </div>
+
+              <!-- Pagination with Ellipsis -->
+              <div class="join space-x-1">
+                <button
+                  class="join-item btn font-thin !bg-gray-200 text-black/50 btn-sm border border-none hover:bg-gray-300"
+                  :disabled="branchRequestCurrentPage <= 1"
+                  @click="branchRequestCurrentPage--"
+                >
+                  « Prev
+                </button>
+
+                <!-- First page -->
+                <button
+                  v-if="totalBranchRequestPages > 1"
+                  class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                  :class="{
+                    'btn-active': branchRequestCurrentPage === 1,
+                    '!bg-primaryColor text-white':
+                      branchRequestCurrentPage === 1,
+                  }"
+                  @click="branchRequestCurrentPage = 1"
+                >
+                  1
+                </button>
+
+                <!-- Ellipsis before current page group -->
+                <button
+                  v-if="branchRequestCurrentPage > 4"
+                  class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                  disabled
+                >
+                  ...
+                </button>
+
+                <!-- Current page group -->
+                <button
+                  v-for="page in getBranchRequestPageRange()"
+                  :key="page"
+                  class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                  :class="{
+                    'btn-active': branchRequestCurrentPage === page,
+                    '!bg-primaryColor text-white':
+                      branchRequestCurrentPage === page,
+                  }"
+                  @click="branchRequestCurrentPage = page"
+                >
+                  {{ page }}
+                </button>
+
+                <!-- Ellipsis after current page group -->
+                <button
+                  v-if="branchRequestCurrentPage < totalBranchRequestPages - 3"
+                  class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                  disabled
+                >
+                  ...
+                </button>
+
+                <!-- Last page -->
+                <button
+                  v-if="
+                    totalBranchRequestPages > 1 &&
+                    branchRequestCurrentPage < totalBranchRequestPages
+                  "
+                  class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                  :class="{
+                    'btn-active':
+                      branchRequestCurrentPage === totalBranchRequestPages,
+                    '!bg-primaryColor text-white':
+                      branchRequestCurrentPage === totalBranchRequestPages,
+                  }"
+                  @click="branchRequestCurrentPage = totalBranchRequestPages"
+                >
+                  {{ totalBranchRequestPages }}
+                </button>
+
+                <button
+                  class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                  :disabled="
+                    branchRequestCurrentPage >= totalBranchRequestPages
+                  "
+                  @click="branchRequestCurrentPage++"
+                >
+                  Next »
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Empty State -->
+          <div v-else class="text-center py-12">
+            <FileCheck class="w-16 h-16 mx-auto text-gray-400 mb-4" />
+            <h3 class="text-lg font-medium text-gray-900 mb-2">
+              No branch requests found
+            </h3>
+            <p class="text-gray-600 mb-6">
+              No branch requests match your current filters
+            </p>
           </div>
         </div>
       </div>
     </div>
+
     <!-- Request History with Improved UI -->
     <div
       class="card bg-accentColor shadow-xl mb-6 border border-black/10 mx-auto"

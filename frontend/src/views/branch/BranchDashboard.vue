@@ -168,7 +168,7 @@
         </p>
       </div>
       <div class="flex items-center space-x-2">
-        <div class="badge badge-success">
+        <div class="badge bg-success/20 font-medium text-success ">
           <CheckCircle class="w-3 h-3 mr-1" />
           Active
         </div>

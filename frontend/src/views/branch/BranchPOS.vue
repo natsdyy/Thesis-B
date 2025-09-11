@@ -225,16 +225,23 @@
 <template>
   <div class="space-y-6">
     <!-- Manager Login Required -->
-    <div v-if="needsManagerLogin" class="text-center py-12">
-      <div class="max-w-md mx-auto">
+    <div
+      v-if="needsManagerLogin"
+      class="min-h-screen flex items-center justify-center py-6 lg:py-12"
+    >
+      <div class="max-w-sm sm:max-w-md lg:max-w-lg mx-auto px-4 w-full">
         <div
-          class="p-6 bg-secondaryColor/10 border border-primaryColor rounded-lg"
+          class="p-4 sm:p-6 bg-secondaryColor/10 border border-primaryColor rounded-lg shadow-lg"
         >
-          <Shield class="w-16 h-16 mx-auto text-primaryColor mb-4" />
-          <h2 class="text-xl font-bold text-primaryColor mb-2">
+          <Shield
+            class="w-12 h-12 sm:w-16 sm:h-16 mx-auto text-primaryColor mb-4"
+          />
+          <h2
+            class="text-lg sm:text-xl font-bold text-primaryColor mb-2 text-center"
+          >
             Manager Login Required
           </h2>
-          <p class="text-primaryColor mb-4">
+          <p class="text-sm sm:text-base text-primaryColor mb-4 text-center">
             {{
               userRole === 'Manager'
                 ? 'Please login to start the POS session'
@@ -242,41 +249,47 @@
             }}
           </p>
 
-          <div v-if="userRole === 'Manager'" class="space-y-4">
+          <div v-if="userRole === 'Manager'" class="space-y-3 sm:space-y-4">
             <div class="form-control">
               <label class="label">
-                <span class="label-text">Manager Email</span>
+                <span class="label-text text-sm sm:text-base"
+                  >Manager Email</span
+                >
               </label>
               <input
                 v-model="managerLoginForm.email"
                 type="email"
                 placeholder="Enter manager email"
-                class="input input-bordered w-full"
+                class="input input-bordered w-full input-sm sm:input-md"
                 @keyup.enter="handleManagerLogin"
               />
             </div>
             <div class="form-control">
               <label class="label">
-                <span class="label-text">Manager Password</span>
+                <span class="label-text text-sm sm:text-base"
+                  >Manager Password</span
+                >
               </label>
               <input
                 v-model="managerLoginForm.password"
                 type="password"
                 placeholder="Enter manager password"
-                class="input input-bordered w-full"
+                class="input input-bordered w-full input-sm sm:input-md"
                 @keyup.enter="handleManagerLogin"
               />
             </div>
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text">Confirm Password</span>
+                <span class="label-text text-sm sm:text-base"
+                  >Confirm Password</span
+                >
               </label>
               <input
                 v-model="managerLoginForm.confirmPassword"
                 type="password"
                 placeholder="Confirm manager password"
-                class="input input-bordered w-full"
+                class="input input-bordered w-full input-sm sm:input-md"
                 @keyup.enter="handleManagerLogin"
               />
             </div>
@@ -288,7 +301,7 @@
 
             <button
               @click="handleManagerLogin"
-              class="btn bg-primaryColor text-white w-full font-thin border-none hover:bg-primaryColor/80"
+              class="btn bg-primaryColor text-white w-full font-thin border-none hover:bg-primaryColor/80 btn-sm sm:btn-md"
               :disabled="
                 !managerLoginForm.email ||
                 !managerLoginForm.password ||
@@ -296,11 +309,11 @@
               "
             >
               <Shield class="w-4 h-4 mr-2" />
-              Start POS Session
+              <span class="text-sm sm:text-base">Start POS Session</span>
             </button>
           </div>
 
-          <div v-else class="space-y-4">
+          <div v-else class="space-y-3 sm:space-y-4">
             <div class="text-sm text-primaryColor">
               <p>
                 <strong>Current User:</strong> {{ user?.name }} ({{ userRole }})
@@ -315,39 +328,45 @@
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text">Manager Email</span>
+                <span class="label-text text-sm sm:text-base"
+                  >Manager Email</span
+                >
               </label>
               <input
                 v-model="managerLoginForm.email"
                 type="email"
                 placeholder="Enter manager email"
-                class="input input-bordered w-full"
+                class="input input-bordered w-full input-sm sm:input-md"
                 @keyup.enter="handleManagerLogin"
               />
             </div>
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text">Manager Password</span>
+                <span class="label-text text-sm sm:text-base"
+                  >Manager Password</span
+                >
               </label>
               <input
                 v-model="managerLoginForm.password"
                 type="password"
                 placeholder="Enter manager password"
-                class="input input-bordered w-full"
+                class="input input-bordered w-full input-sm sm:input-md"
                 @keyup.enter="handleManagerLogin"
               />
             </div>
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text">Confirm Password</span>
+                <span class="label-text text-sm sm:text-base"
+                  >Confirm Password</span
+                >
               </label>
               <input
                 v-model="managerLoginForm.confirmPassword"
                 type="password"
                 placeholder="Confirm manager password"
-                class="input input-bordered w-full"
+                class="input input-bordered w-full input-sm sm:input-md"
                 @keyup.enter="handleManagerLogin"
               />
             </div>
@@ -359,7 +378,7 @@
 
             <button
               @click="handleManagerLogin"
-              class="btn bg-primaryColor text-white w-full font-thin border-none hover:bg-primaryColor/80"
+              class="btn bg-primaryColor text-white w-full font-thin border-none hover:bg-primaryColor/80 btn-sm sm:btn-md"
               :disabled="
                 !managerLoginForm.email ||
                 !managerLoginForm.password ||
@@ -367,30 +386,36 @@
               "
             >
               <Shield class="w-4 h-4 mr-2" />
-              Start POS Session
+              <span class="text-sm sm:text-base">Start POS Session</span>
             </button>
           </div>
-
-          <button
-            @click="router.push('/branch/dashboard')"
-            class="btn btn-outline btn-sm mt-4 font-thin"
-          >
-            Return to Dashboard
-          </button>
+          <div class="flex justify-center">
+            <button
+              @click="router.push('/branch/dashboard')"
+              class="btn btn-outline btn-sm sm:btn-md mt-4 font-thin"
+            >
+              <span class="text-sm sm:text-base">Return to Dashboard</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- Access Denied Screen -->
-    <div v-else-if="accessDenied" class="text-center py-12">
-      <div class="max-w-md mx-auto">
-        <div class="p-6 bg-red-50 border border-red-200 rounded-lg">
-          <UserX class="w-16 h-16 mx-auto text-red-500 mb-4" />
-          <h2 class="text-xl font-bold text-red-800 mb-2">Access Denied</h2>
-          <p class="text-red-600 mb-4">
+    <div
+      v-else-if="accessDenied"
+      class="min-h-screen flex items-center justify-center py-6 lg:py-12"
+    >
+      <div class="max-w-sm sm:max-w-md lg:max-w-lg mx-auto px-4 w-full">
+        <div class="p-4 sm:p-6 bg-red-50 border border-red-200 rounded-lg">
+          <UserX class="w-12 h-12 sm:w-16 sm:h-16 mx-auto text-red-500 mb-4" />
+          <h2 class="text-lg sm:text-xl font-bold text-red-800 mb-2">
+            Access Denied
+          </h2>
+          <p class="text-sm sm:text-base text-red-600 mb-4">
             You don't have permission to access the POS system.
           </p>
-          <div class="space-y-2 text-sm text-red-700">
+          <div class="space-y-2 text-xs sm:text-sm text-red-700">
             <p><strong>Required Roles:</strong> Manager or Cashier</p>
             <p><strong>Your Role:</strong> {{ userRole || 'Unknown' }}</p>
             <p v-if="!user?.branch_id">
@@ -399,9 +424,9 @@
           </div>
           <button
             @click="router.push('/branch/dashboard')"
-            class="btn btn-outline btn-error mt-4 font-thin"
+            class="btn btn-outline btn-error mt-4 font-thin btn-sm sm:btn-md"
           >
-            Return to Dashboard
+            <span class="text-sm sm:text-base">Return to Dashboard</span>
           </button>
         </div>
       </div>
@@ -410,13 +435,17 @@
     <!-- POS Interface (only shown if access granted) -->
     <div v-else>
       <!-- Header -->
-      <div class="flex items-center justify-between">
+      <div
+        class="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+      >
         <div>
-          <h1 class="text-3xl font-bold text-primaryColor">Point of Sale</h1>
-          <p class="text-gray-600 mt-1">
+          <h1 class="text-2xl sm:text-3xl font-bold text-primaryColor">
+            Point of Sale
+          </h1>
+          <p class="text-sm sm:text-base text-gray-600 mt-1">
             {{ currentBranch?.name }} - POS System
           </p>
-          <div class="flex items-center space-x-2 mt-2">
+          <div class="flex flex-wrap items-center gap-2 mt-2">
             <div class="badge badge-info">
               <Shield class="w-3 h-3 mr-1" />
               {{ userRole }}
@@ -431,9 +460,9 @@
             </div>
           </div>
         </div>
-        <div class="text-right">
-          <p class="text-sm text-gray-600">Logged in as</p>
-          <p class="font-medium">{{ user?.name }}</p>
+        <div class="text-left sm:text-right">
+          <p class="text-xs sm:text-sm text-gray-600">Logged in as</p>
+          <p class="font-medium text-sm sm:text-base">{{ user?.name }}</p>
           <div
             v-if="isManagerSessionActive && managerInfo"
             class="text-xs text-gray-500 mt-1"
@@ -444,74 +473,76 @@
           <button
             v-if="userRole === 'Manager' && isManagerSessionActive"
             @click="handleManagerLogout"
-            class="btn btn-sm btn-outline btn-error mt-2"
+            class="btn btn-xs sm:btn-sm btn-outline btn-error mt-2"
           >
-            End Session
+            <span class="text-xs sm:text-sm">End Session</span>
           </button>
         </div>
       </div>
 
       <!-- Stats Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div
+        class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6"
+      >
         <div class="card bg-white shadow-lg">
-          <div class="card-body">
+          <div class="card-body p-4 sm:p-6">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-gray-600">Today's Sales</p>
-                <p class="text-2xl font-bold text-primaryColor">
+                <p class="text-xs sm:text-sm text-gray-600">Today's Sales</p>
+                <p class="text-lg sm:text-2xl font-bold text-primaryColor">
                   ₱{{ stats.todaySales.toLocaleString() }}
                 </p>
               </div>
-              <div class="p-3 bg-green-100 rounded-full">
-                <TrendingUp class="w-6 h-6 text-green-600" />
+              <div class="p-2 sm:p-3 bg-green-100 rounded-full">
+                <TrendingUp class="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
               </div>
             </div>
           </div>
         </div>
 
         <div class="card bg-white shadow-lg">
-          <div class="card-body">
+          <div class="card-body p-4 sm:p-6">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-gray-600">Transactions</p>
-                <p class="text-2xl font-bold text-primaryColor">
+                <p class="text-xs sm:text-sm text-gray-600">Transactions</p>
+                <p class="text-lg sm:text-2xl font-bold text-primaryColor">
                   {{ stats.todayTransactions }}
                 </p>
               </div>
-              <div class="p-3 bg-blue-100 rounded-full">
-                <CreditCard class="w-6 h-6 text-blue-600" />
+              <div class="p-2 sm:p-3 bg-blue-100 rounded-full">
+                <CreditCard class="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
               </div>
             </div>
           </div>
         </div>
 
         <div class="card bg-white shadow-lg">
-          <div class="card-body">
+          <div class="card-body p-4 sm:p-6">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-gray-600">Average Sale</p>
-                <p class="text-2xl font-bold text-primaryColor">
+                <p class="text-xs sm:text-sm text-gray-600">Average Sale</p>
+                <p class="text-lg sm:text-2xl font-bold text-primaryColor">
                   ₱{{ stats.averageTransaction.toFixed(2) }}
                 </p>
               </div>
-              <div class="p-3 bg-purple-100 rounded-full">
-                <Package class="w-6 h-6 text-purple-600" />
+              <div class="p-2 sm:p-3 bg-purple-100 rounded-full">
+                <Package class="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
               </div>
             </div>
           </div>
         </div>
 
         <div class="card bg-white shadow-lg">
-          <div class="card-body">
+          <div class="card-body p-4 sm:p-6">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-gray-600">Active Orders</p>
-                <p class="text-2xl font-bold text-primaryColor">
+                <p class="text-xs sm:text-sm text-gray-600">Active Orders</p>
+                <p class="text-lg sm:text-2xl font-bold text-primaryColor">
                   {{ stats.activeOrders }}
                 </p>
               </div>
-              <div class="p-3 bg-orange-100 rounded-full">
-                <Clock class="w-6 h-6 text-orange-600" />
+              <div class="p-2 sm:p-3 bg-orange-100 rounded-full">
+                <Clock class="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" />
               </div>
             </div>
           </div>
@@ -520,24 +551,26 @@
 
       <!-- POS Interface Placeholder -->
       <div class="card bg-white shadow-lg">
-        <div class="card-body">
-          <h2 class="card-title text-primaryColor mb-4">
+        <div class="card-body p-4 sm:p-6">
+          <h2 class="card-title text-primaryColor mb-4 text-lg sm:text-xl">
             <CreditCard class="w-5 h-5" />
             POS Interface
           </h2>
 
-          <div class="text-center py-12">
-            <CreditCard class="w-16 h-16 mx-auto text-gray-400 mb-4" />
-            <h3 class="text-lg font-medium text-gray-900 mb-2">
+          <div class="text-center py-8 sm:py-12">
+            <CreditCard
+              class="w-12 h-12 sm:w-16 sm:h-16 mx-auto text-gray-400 mb-4"
+            />
+            <h3 class="text-base sm:text-lg font-medium text-gray-900 mb-2">
               POS System Coming Soon
             </h3>
-            <p class="text-gray-600 mb-4">
+            <p class="text-sm sm:text-base text-gray-600 mb-4">
               The full POS interface will be implemented with tablet-friendly
               design
             </p>
             <div class="alert alert-info">
-              <AlertCircle class="w-5 h-5" />
-              <span
+              <AlertCircle class="w-4 h-4 sm:w-5 sm:h-5" />
+              <span class="text-xs sm:text-sm"
                 >This will be a separate device login with branch
                 indicator</span
               >

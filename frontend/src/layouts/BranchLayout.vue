@@ -12,6 +12,8 @@
     Package,
     Users,
     UserCircle,
+    Menu,
+    X,
   } from 'lucide-vue-next';
   import { useBranchContextStore } from '../stores/branchContextStore';
   import { useAuthStore } from '../stores/authStore';
@@ -27,6 +29,7 @@
   // Local state
   const selectedBranchId = ref('');
   const toast = ref({ show: false, type: 'success', message: '' });
+  const mobileMenuOpen = ref(false);
 
   // Computed properties from stores
   const currentBranch = computed(() => branchContextStore.currentBranch);
@@ -147,6 +150,14 @@
     }, 3000);
   };
 
+  const toggleMobileMenu = () => {
+    mobileMenuOpen.value = !mobileMenuOpen.value;
+  };
+
+  const closeMobileMenu = () => {
+    mobileMenuOpen.value = false;
+  };
+
   // Watch for current branch changes
   watch(currentBranch, (newBranch) => {
     if (newBranch && canSwitchBranches.value) {
@@ -169,16 +180,16 @@
     <!-- Branch Header -->
     <div class="bg-primaryColor text-white shadow-lg">
       <div class="container mx-auto px-4 py-3">
-        <div class="flex items-center justify-between">
+        <div class="flex flex-row items-center justify-between gap-2 sm:gap-4">
           <!-- Branch Info -->
-          <div class="flex items-center space-x-4">
+          <div class="flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0">
             <div class="flex items-center space-x-2">
-              <Store class="w-6 h-6" />
-              <div>
-                <h1 class="text-lg font-semibold">
+              <Store class="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
+              <div class="min-w-0">
+                <h1 class="text-sm sm:text-lg font-semibold truncate">
                   {{ currentBranch?.name || user?.name || 'Branch Operations' }}
                 </h1>
-                <p class="text-sm opacity-80">
+                <p class="text-xs sm:text-sm opacity-80 truncate">
                   {{ currentBranch?.code || 'No Branch Assigned' }} •
                   {{ userRole }}
                 </p>
@@ -186,35 +197,79 @@
             </div>
           </div>
 
-          <!-- Branch Selector (Super Admin Only) -->
-          <div v-if="canSwitchBranches" class="flex items-center space-x-4">
-            <select
-              v-model="selectedBranchId"
-              @change="handleBranchChange"
-              class="select select-sm bg-white text-primaryColor border-none"
-              :disabled="loading"
-            >
-              <option value="">Select Branch</option>
-              <option
-                v-for="branch in availableBranches"
-                :key="branch.id"
-                :value="branch.id"
+          <!-- Desktop Controls -->
+          <div class="hidden lg:flex items-center space-x-4">
+            <!-- Branch Selector (Super Admin Only) -->
+            <div v-if="canSwitchBranches" class="flex items-center space-x-4">
+              <select
+                v-model="selectedBranchId"
+                @change="handleBranchChange"
+                class="select select-sm bg-white text-primaryColor border-none"
+                :disabled="loading"
               >
-                {{ branch.name }} ({{ branch.code }})
-              </option>
-            </select>
+                <option value="">Select Branch</option>
+                <option
+                  v-for="branch in availableBranches"
+                  :key="branch.id"
+                  :value="branch.id"
+                >
+                  {{ branch.name }} ({{ branch.code }})
+                </option>
+              </select>
+            </div>
+
+            <!-- User Info -->
+            <div class="flex items-center space-x-4">
+              <div class="text-right">
+                <p class="text-sm font-medium">{{ user?.name || 'User' }}</p>
+                <p class="text-xs opacity-80">{{ userRole }}</p>
+              </div>
+              <div
+                class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center"
+              >
+                <User class="w-4 h-4" />
+              </div>
+            </div>
           </div>
 
-          <!-- User Info -->
-          <div class="flex items-center space-x-4">
-            <div class="text-right">
-              <p class="text-sm font-medium">{{ user?.name || 'User' }}</p>
-              <p class="text-xs opacity-80">{{ userRole }}</p>
+          <!-- Mobile Controls -->
+          <div class="flex lg:hidden items-center space-x-2">
+            <!-- Mobile Branch Selector -->
+            <div v-if="canSwitchBranches" class="max-w-32 sm:max-w-40">
+              <select
+                v-model="selectedBranchId"
+                @change="handleBranchChange"
+                class="select select-xs bg-white text-primaryColor border-none w-full text-xs"
+                :disabled="loading"
+              >
+                <option value="">Select Branch</option>
+                <option
+                  v-for="branch in availableBranches"
+                  :key="branch.id"
+                  :value="branch.id"
+                >
+                  {{ branch.name }}
+                </option>
+              </select>
             </div>
-            <div
-              class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center"
-            >
-              <User class="w-4 h-4" />
+
+            <!-- Mobile User Info -->
+            <div class="flex items-center space-x-2">
+              <div class="text-right hidden sm:block">
+                <p class="text-sm font-medium">{{ user?.name || 'User' }}</p>
+                <p class="text-xs opacity-80">{{ userRole }}</p>
+              </div>
+              <div class="text-right sm:hidden">
+                <p class="text-xs font-medium">
+                  {{ user?.name?.split(' ')[0] || 'User' }}
+                </p>
+                <p class="text-xs opacity-80">{{ userRole }}</p>
+              </div>
+              <div
+                class="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-white/20 flex items-center justify-center"
+              >
+                <User class="w-3 h-3 sm:w-4 sm:h-4" />
+              </div>
             </div>
           </div>
         </div>
@@ -225,7 +280,8 @@
     <div class="bg-white border-b border-gray-200 shadow-sm">
       <div class="container mx-auto px-4">
         <nav class="flex justify-between items-center">
-          <div class="flex space-x-8">
+          <!-- Desktop Navigation -->
+          <div class="hidden lg:flex space-x-8">
             <router-link
               v-for="operation in availableOperations"
               :key="operation"
@@ -242,8 +298,11 @@
             </router-link>
           </div>
 
-          <!-- POS Access Button (for authorized users) -->
-          <div v-if="canAccessPOS" class="flex items-center space-x-4">
+          <!-- Desktop POS Button -->
+          <div
+            v-if="canAccessPOS"
+            class="hidden lg:flex items-center space-x-4"
+          >
             <router-link
               to="/pos"
               class="btn btn-sm bg-white text-primaryColor hover:bg-white/90 border-none"
@@ -252,12 +311,61 @@
               Open POS
             </router-link>
           </div>
+
+          <!-- Mobile Menu Button -->
+          <div class="flex lg:hidden items-center justify-between w-full">
+            <div class="flex space-x-4">
+              <!-- Mobile POS Button -->
+              <router-link
+                v-if="canAccessPOS"
+                to="/pos"
+                class="btn btn-sm text-primaryColor bg-white border-none"
+                @click="closeMobileMenu"
+              >
+                <CreditCard class="w-4 h-4 mr-1" />
+                <span class="hidden sm:inline">POS</span>
+              </router-link>
+            </div>
+
+            <button
+              @click="toggleMobileMenu"
+              class="btn btn-ghost btn-sm"
+              :class="{ 'text-primaryColor': mobileMenuOpen }"
+            >
+              <Menu v-if="!mobileMenuOpen" class="w-5 h-5" />
+              <X v-else class="w-5 h-5" />
+            </button>
+          </div>
         </nav>
+
+        <!-- Mobile Navigation Menu -->
+        <div
+          v-if="mobileMenuOpen"
+          class="lg:hidden border-t border-gray-200 bg-white"
+        >
+          <div class="py-2">
+            <router-link
+              v-for="operation in availableOperations"
+              :key="operation"
+              :to="`/branch/${operation}`"
+              :class="[
+                'flex items-center space-x-3 py-3 px-4 text-sm font-medium transition-colors',
+                isActiveRoute(operation)
+                  ? 'bg-primaryColor/10 text-primaryColor border-r-4 border-primaryColor'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+              ]"
+              @click="closeMobileMenu"
+            >
+              <component :is="getOperationIcon(operation)" class="w-5 h-5" />
+              <span>{{ getOperationLabel(operation) }}</span>
+            </router-link>
+          </div>
+        </div>
       </div>
     </div>
 
     <!-- Main Content -->
-    <main class="container mx-auto px-4 py-6">
+    <main class="container mx-auto px-4 py-4 lg:py-6">
       <!-- Loading State -->
       <div v-if="loading" class="flex justify-center items-center py-12">
         <div class="text-center">
@@ -376,5 +484,32 @@
   /* Loading spinner */
   .loading {
     border-color: transparent;
+  }
+
+  /* Mobile menu animation */
+  .mobile-menu-enter-active,
+  .mobile-menu-leave-active {
+    transition: all 0.3s ease;
+  }
+
+  .mobile-menu-enter-from,
+  .mobile-menu-leave-to {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  /* Responsive text sizing */
+  @media (max-width: 640px) {
+    .container {
+      padding-left: 1rem;
+      padding-right: 1rem;
+    }
+  }
+
+  /* Ensure proper spacing on mobile */
+  @media (max-width: 1024px) {
+    .container {
+      max-width: 100%;
+    }
   }
 </style>

@@ -4882,126 +4882,122 @@
             </p>
           </div>
         </div>
+      </div>
+    </div>
 
-        <!-- Branch Distribution History -->
-        <div class="card bg-base-100 border border-gray-200 mt-6">
-          <div class="card-body p-4">
-            <div class="flex items-center justify-between mb-2">
-              <h3 class="font-semibold text-base">Distribution History</h3>
-              <button
-                class="btn btn-xs btn-outline"
-                :disabled="historyLoading"
-                @click="fetchDistributionHistory(historyPagination.page || 1)"
-              >
-                <RefreshCcw
-                  class="w-3 h-3 mr-1"
-                  :class="{ 'animate-spin': historyLoading }"
-                />
-                Refresh
-              </button>
-            </div>
-            <div class="overflow-x-auto">
-              <table class="table table-zebra w-full text-sm">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Reference</th>
-                    <th>Branch</th>
-                    <th>Prepared By</th>
-                    <th class="text-right">Total</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="dist in distributionHistory" :key="dist.id">
-                    <td>
-                      {{ new Date(dist.created_at).toLocaleString('en-PH') }}
-                    </td>
-                    <td class="font-mono">{{ dist.reference }}</td>
-                    <td>{{ dist.branch_name || 'Branch' }}</td>
-                    <td>{{ dist.prepared_by }}</td>
-                    <td class="text-right">
-                      ₱{{ Number(dist.total_amount || 0).toFixed(2) }}
-                    </td>
-                    <td>
-                      <span
-                        class="badge badge-sm border-none font-medium"
-                        :class="
-                          dist.status === 'completed'
-                            ? 'badge-success text-success bg-success/20'
-                            : 'badge-warning text-warning bg-warning/20'
-                        "
-                      >
-                        {{
-                          dist.status === 'completed'
-                            ? 'Completed'
-                            : 'Delivered'
-                        }}
-                      </span>
-                    </td>
-                    <td class="flex gap-2">
-                      <button
-                        class="btn btn-ghost btn-xs"
-                        @click="openHistoryReceipt(dist.id)"
-                      >
-                        View
-                      </button>
-                      <button
-                        class="btn btn-ghost btn-xs"
-                        @click="
-                          (() => {
-                            openHistoryReceipt(dist.id);
-                            setTimeout(() => window.print(), 300);
-                          })()
-                        "
-                      >
-                        Print
-                      </button>
-                    </td>
-                  </tr>
-                  <tr v-if="!distributionHistory.length">
-                    <td colspan="7" class="text-center text-gray-400 py-6">
-                      No distributions found
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+    <!-- Branch Distribution History -->
+    <div class="card bg-base-100 border border-gray-200 mt-10">
+      <div class="card-body p-4">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="font-semibold text-base">Distribution History</h3>
+          <button
+            class="btn btn-xs btn-outline"
+            :disabled="historyLoading"
+            @click="fetchDistributionHistory(historyPagination.page || 1)"
+          >
+            <RefreshCcw
+              class="w-3 h-3 mr-1"
+              :class="{ 'animate-spin': historyLoading }"
+            />
+            Refresh
+          </button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="table table-zebra w-full text-sm">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Reference</th>
+                <th>Branch</th>
+                <th>Prepared By</th>
+                <th class="text-right">Total</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="dist in distributionHistory" :key="dist.id">
+                <td>
+                  {{ new Date(dist.created_at).toLocaleString('en-PH') }}
+                </td>
+                <td class="font-mono">{{ dist.reference }}</td>
+                <td>{{ dist.branch_name || 'Branch' }}</td>
+                <td>{{ dist.prepared_by }}</td>
+                <td class="text-right">
+                  ₱{{ Number(dist.total_amount || 0).toFixed(2) }}
+                </td>
+                <td>
+                  <span
+                    class="badge badge-sm border-none font-medium"
+                    :class="
+                      dist.status === 'completed'
+                        ? 'badge-success text-success bg-success/20'
+                        : 'badge-warning text-warning bg-warning/20'
+                    "
+                  >
+                    {{
+                      dist.status === 'completed' ? 'Completed' : 'Delivered'
+                    }}
+                  </span>
+                </td>
+                <td class="flex gap-2">
+                  <button
+                    class="btn btn-ghost btn-xs"
+                    @click="openHistoryReceipt(dist.id)"
+                  >
+                    View
+                  </button>
+                  <button
+                    class="btn btn-ghost btn-xs"
+                    @click="
+                      (() => {
+                        openHistoryReceipt(dist.id);
+                        setTimeout(() => window.print(), 300);
+                      })()
+                    "
+                  >
+                    Print
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="!distributionHistory.length">
+                <td colspan="7" class="text-center text-gray-400 py-6">
+                  No distributions found
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-            <!-- Pagination -->
-            <div class="flex items-center justify-between mt-3">
-              <div class="text-xs text-gray-500">
-                Page {{ historyPagination.page }} of
-                {{ historyPagination.pages }} • Total:
-                {{ historyPagination.total }}
-              </div>
-              <div class="join">
-                <button
-                  class="btn btn-xs join-item"
-                  :disabled="
-                    (historyPagination.page || 1) <= 1 || historyLoading
-                  "
-                  @click="
-                    fetchDistributionHistory((historyPagination.page || 1) - 1)
-                  "
-                >
-                  Prev
-                </button>
-                <button
-                  class="btn btn-xs join-item"
-                  :disabled="
-                    (historyPagination.page || 1) >=
-                      (historyPagination.pages || 1) || historyLoading
-                  "
-                  @click="
-                    fetchDistributionHistory((historyPagination.page || 1) + 1)
-                  "
-                >
-                  Next
-                </button>
-              </div>
-            </div>
+        <!-- Pagination -->
+        <div class="flex items-center justify-between mt-3">
+          <div class="text-xs text-gray-500">
+            Page {{ historyPagination.page }} of {{ historyPagination.pages }} •
+            Total:
+            {{ historyPagination.total }}
+          </div>
+          <div class="join">
+            <button
+              class="btn btn-xs join-item"
+              :disabled="(historyPagination.page || 1) <= 1 || historyLoading"
+              @click="
+                fetchDistributionHistory((historyPagination.page || 1) - 1)
+              "
+            >
+              Prev
+            </button>
+            <button
+              class="btn btn-xs join-item"
+              :disabled="
+                (historyPagination.page || 1) >=
+                  (historyPagination.pages || 1) || historyLoading
+              "
+              @click="
+                fetchDistributionHistory((historyPagination.page || 1) + 1)
+              "
+            >
+              Next
+            </button>
           </div>
         </div>
       </div>

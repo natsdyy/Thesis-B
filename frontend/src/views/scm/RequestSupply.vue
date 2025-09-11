@@ -2008,23 +2008,23 @@
 
     <!-- Branch Request Section - Only appears when branches have sent requests -->
     <div
-      class="card bg-primary/5 border-primary/20 shadow-xl mb-6 border mx-auto"
+      class="card bg-primaryColor/5 border-primaryColor/20 shadow-xl mb-6 border mx-auto"
       v-if="pendingBranchRequests.length > 0"
     >
       <div class="card-body">
         <div class="flex justify-between items-center mb-4">
-          <h2 class="card-title text-primary">
-            <Send class="w-6 h-6 mr-2 text-primary" />
+          <h2 class="card-title text-primaryColor">
+            <Send class="w-6 h-6 mr-2 text-primaryColor" />
             Branch Requests - Acknowledge
           </h2>
           <div
-            class="badge badge-md border-none font-medium bg-primary/20 text-primary"
+            class="badge badge-md border-none font-medium bg-primaryColor/20 text-primaryColor"
           >
             {{ pendingBranchRequests.length }} Pending
           </div>
         </div>
 
-        <div class="alert alert-info mb-4">
+        <div class="alert bg-primaryColor/10 border-primaryColor/20 mb-4">
           <Info class="w-6 h-6 mr-2" />
           <span
             >Branches have sent the following supply requests. Please
@@ -2034,10 +2034,10 @@
 
         <div class="overflow-x-auto">
           <table
-            class="table table-zebra text-black/50 border border-primary/20 custom-zebra"
+            class="table table-zebra text-black/50 border border-primaryColor/20 custom-zebra"
           >
-            <thead class="text-accentColor">
-              <tr class="bg-primary text-accentColor">
+            <thead class="text-black/50">
+              <tr class="text-black/50">
                 <th>Request ID</th>
                 <th>Branch</th>
                 <th>Description</th>
@@ -2068,12 +2068,12 @@
                   <div
                     class="badge badge-sm"
                     :class="{
-                      'bg-success/10 text-success':
+                      'bg-success/10 text-success border-success/20':
                         request.priority === 'High' ||
                         request.priority === 'Urgent',
-                      'bg-warning/10 text-warning':
+                      'bg-warning/10 text-warning border-warning/20':
                         request.priority === 'Normal',
-                      'bg-info/10 text-info': request.priority === 'Low',
+                      'bg-info/10 text-info border-info/20': request.priority === 'Low',
                     }"
                   >
                     {{ request.priority }}
@@ -2088,14 +2088,14 @@
                 <td>
                   <div class="flex gap-2">
                     <button
-                      class="btn btn-sm bg-info text-white font-thin border-none hover:bg-info/80"
+                      class="btn btn-sm bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300"
                       @click="viewBranchRequest(request)"
                     >
                       <Info class="w-4 h-4 mr-1" />
                       View
                     </button>
                     <button
-                      class="btn btn-sm bg-primary text-white font-thin border-none hover:bg-primary/80"
+                      class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
                       @click="acknowledgeBranchRequest(request.request_id)"
                       :disabled="loading"
                     >

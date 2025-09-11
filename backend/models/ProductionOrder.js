@@ -10,14 +10,18 @@ class ProductionOrder {
           "r.recipe_name",
           "r.recipe_code",
           "r.category as recipe_category",
-          "u_created.name as created_by_name",
-          "u_assigned.name as assigned_to_name",
+          db.raw(
+            "COALESCE(u_created.first_name,'') || ' ' || COALESCE(u_created.last_name,'') as created_by_name"
+          ),
+          db.raw(
+            "COALESCE(u_assigned.first_name,'') || ' ' || COALESCE(u_assigned.last_name,'') as assigned_to_name"
+          ),
           db.raw("COUNT(pb.id) as batch_count"),
           db.raw("SUM(pb.quantity_produced) as total_produced")
         )
         .leftJoin("recipes as r", "po.recipe_id", "r.id")
-        .leftJoin("users as u_created", "po.created_by", "u_created.id")
-        .leftJoin("users as u_assigned", "po.assigned_to", "u_assigned.id")
+        .leftJoin("employees as u_created", "po.created_by", "u_created.id")
+        .leftJoin("employees as u_assigned", "po.assigned_to", "u_assigned.id")
         .leftJoin("production_batches as pb", "po.id", "pb.production_order_id")
         .whereNull("po.deleted_at")
         .groupBy(
@@ -82,8 +86,8 @@ class ProductionOrder {
           "u_assigned.name as assigned_to_name"
         )
         .leftJoin("recipes as r", "po.recipe_id", "r.id")
-        .leftJoin("users as u_created", "po.created_by", "u_created.id")
-        .leftJoin("users as u_assigned", "po.assigned_to", "u_assigned.id")
+        .leftJoin("employees as u_created", "po.created_by", "u_created.id")
+        .leftJoin("employees as u_assigned", "po.assigned_to", "u_assigned.id")
         .where("po.id", id)
         .whereNull("po.deleted_at")
         .first();
@@ -91,8 +95,13 @@ class ProductionOrder {
       if (order) {
         // Get batches for this order
         order.batches = await db("production_batches as pb")
-          .select("pb.*", "u.name as produced_by_name")
-          .leftJoin("users as u", "pb.produced_by", "u.id")
+          .select(
+            "pb.*",
+            db.raw(
+              "COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'') as produced_by_name"
+            )
+          )
+          .leftJoin("employees as u", "pb.produced_by", "u.id")
           .where("pb.production_order_id", id)
           .orderBy("pb.created_at", "desc");
 
@@ -100,11 +109,19 @@ class ProductionOrder {
         order.work_orders = await db("work_orders as wo")
           .select(
             "wo.*",
-            "u_assigned.name as assigned_to_name",
-            "u_created.name as created_by_name"
+            db.raw(
+              "COALESCE(u_assigned.first_name,'') || ' ' || COALESCE(u_assigned.last_name,'') as assigned_to_name"
+            ),
+            db.raw(
+              "COALESCE(u_created.first_name,'') || ' ' || COALESCE(u_created.last_name,'') as created_by_name"
+            )
           )
-          .leftJoin("users as u_assigned", "wo.assigned_to", "u_assigned.id")
-          .leftJoin("users as u_created", "wo.created_by", "u_created.id")
+          .leftJoin(
+            "employees as u_assigned",
+            "wo.assigned_to",
+            "u_assigned.id"
+          )
+          .leftJoin("employees as u_created", "wo.created_by", "u_created.id")
           .where("wo.production_order_id", id)
           .orderBy("wo.scheduled_start", "asc");
       }

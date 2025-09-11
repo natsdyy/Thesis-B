@@ -6,10 +6,9 @@ require("dotenv").config();
 
 // Import database configuration and models
 const { testConnection, runMigrations } = require("./config/database");
-const User = require("./models/User");
+const Employee = require("./models/Employee");
 
 // Import routes
-const userRoutes = require("./routes/users");
 const roleRoutes = require("./routes/roles");
 const permissionRoutes = require("./routes/permissions");
 const rolePermissionRoutes = require("./routes/rolePermissions");
@@ -82,7 +81,6 @@ app.use(express.json());
 app.use("/uploads", express.static(require("path").join(__dirname, "uploads")));
 
 // API Routes
-app.use("/api/users", userRoutes);
 app.use("/api/roles", roleRoutes);
 app.use("/api/permissions", permissionRoutes);
 app.use("/api/role-permissions", rolePermissionRoutes);

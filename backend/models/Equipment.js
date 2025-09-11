@@ -5,8 +5,13 @@ class Equipment {
   static async getAll(filters = {}) {
     try {
       let query = db("equipment as e")
-        .select("e.*", "u_created.name as created_by_name")
-        .leftJoin("users as u_created", "e.created_by", "u_created.id");
+        .select(
+          "e.*",
+          db.raw(
+            "COALESCE(u_created.first_name,'') || ' ' || COALESCE(u_created.last_name,'') as created_by_name"
+          )
+        )
+        .leftJoin("employees as u_created", "e.created_by", "u_created.id");
 
       // Apply filters
       if (filters.status) {
@@ -40,8 +45,13 @@ class Equipment {
   static async getById(id) {
     try {
       const equipment = await db("equipment as e")
-        .select("e.*", "u_created.name as created_by_name")
-        .leftJoin("users as u_created", "e.created_by", "u_created.id")
+        .select(
+          "e.*",
+          db.raw(
+            "COALESCE(u_created.first_name,'') || ' ' || COALESCE(u_created.last_name,'') as created_by_name"
+          )
+        )
+        .leftJoin("employees as u_created", "e.created_by", "u_created.id")
         .where("e.id", id)
         .first();
 

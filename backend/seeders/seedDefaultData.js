@@ -1,7 +1,7 @@
 const Permission = require("../models/Permission");
 const Roles = require("../models/Roles");
 const RolePermission = require("../models/RolePermission");
-const User = require("../models/User");
+const Employee = require("../models/Employee");
 
 async function seedDefaultPermissions() {
   try {
@@ -336,10 +336,10 @@ async function createDefaultUsers() {
     };
 
     try {
-      const existingUser = await User.getByEmail(adminUser.email);
+      const existingUser = await Employee.findByEmail(adminUser.email);
 
       if (!existingUser) {
-        const newUser = await User.create(adminUser);
+        const newUser = await Employee.create(adminUser);
         console.log(`✅ Created system administrator: ${adminUser.name}`);
 
         console.log("\n🔑 System Administrator Credentials:");

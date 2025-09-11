@@ -1019,13 +1019,18 @@ class Employee {
           "employee_terminations.employee_id",
           "employees.id"
         )
-        .leftJoin("users", "employee_terminations.terminated_by", "users.id")
+        .leftJoin(
+          "employees",
+          "employee_terminations.terminated_by",
+          "employees.id"
+        )
         .select(
           "employee_terminations.*",
           "employees.first_name",
           "employees.last_name",
           "employees.employee_id as emp_id",
-          "users.name as terminated_by_name"
+          "employees.first_name as terminated_by_first_name",
+          "employees.last_name as terminated_by_last_name"
         )
         .where("employee_terminations.employee_id", employeeId)
         .first();

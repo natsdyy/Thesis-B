@@ -395,15 +395,7 @@ router.put("/change-password", async (req, res) => {
       });
     }
 
-    const user = await User.updatePassword(user_id, new_password);
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-        code: "USER_NOT_FOUND",
-      });
-    }
+    await Employee.setPassword(user_id, new_password);
 
     res.json({
       success: true,

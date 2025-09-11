@@ -11,7 +11,9 @@ class ProductionWaste {
           "r.recipe_name as batch_product_name",
           "iit.name as item_type_name",
           "ic.name as category_name",
-          "u.name as reported_by_name"
+          db.raw(
+            "COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'') as reported_by_name"
+          )
         )
         .leftJoin("production_batches as pb", "pw.production_batch_id", "pb.id")
         .leftJoin("recipes as r", "pb.recipe_id", "r.id")
@@ -21,7 +23,7 @@ class ProductionWaste {
           "iit.id"
         )
         .leftJoin("inventory_categories as ic", "iit.category_id", "ic.id")
-        .leftJoin("users as u", "pw.reported_by", "u.id");
+        .leftJoin("employees as u", "pw.reported_by", "u.id");
 
       // Apply filters
       if (filters.waste_type) {
@@ -72,7 +74,9 @@ class ProductionWaste {
           "r.recipe_name as batch_product_name",
           "iit.name as item_type_name",
           "ic.name as category_name",
-          "u.name as reported_by_name"
+          db.raw(
+            "COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'') as reported_by_name"
+          )
         )
         .leftJoin("production_batches as pb", "pw.production_batch_id", "pb.id")
         .leftJoin("recipes as r", "pb.recipe_id", "r.id")
@@ -82,7 +86,7 @@ class ProductionWaste {
           "iit.id"
         )
         .leftJoin("inventory_categories as ic", "iit.category_id", "ic.id")
-        .leftJoin("users as u", "pw.reported_by", "u.id")
+        .leftJoin("employees as u", "pw.reported_by", "u.id")
         .where("pw.id", id)
         .first();
 

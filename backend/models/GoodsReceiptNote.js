@@ -18,12 +18,14 @@ class GoodsReceiptNote {
       let query = db("goods_receipt_notes as grn")
         .leftJoin("purchase_orders as po", "grn.purchase_order_id", "po.id")
         .leftJoin("suppliers as s", "grn.supplier_id", "s.id")
-        .leftJoin("users as u", "grn.received_by", "u.id")
+        .leftJoin("employees as u", "grn.received_by", "u.id")
         .select(
           "grn.*",
           "po.po_number",
           "s.name as supplier_name",
-          "u.name as received_by_name"
+          db.raw(
+            "COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'') as received_by_name"
+          )
         )
         .whereNull("grn.deleted_at");
 
@@ -56,7 +58,7 @@ class GoodsReceiptNote {
         )
         .leftJoin("inventory_item_types as it", "gi.item_type_id", "it.id")
         .leftJoin("inventory_categories as ic", "it.category_id", "ic.id")
-        .leftJoin("users as u", "gi.inspected_by", "u.id")
+        .leftJoin("employees as u", "gi.inspected_by", "u.id")
         .select(
           "gi.*",
           "poi.item_name as po_item_name",
@@ -66,7 +68,9 @@ class GoodsReceiptNote {
           "it.unit_of_measure as item_unit_of_measure",
           "ic.name as category_name",
           "ic.description as category_description",
-          "u.name as inspector_name"
+          db.raw(
+            "COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'') as inspector_name"
+          )
         )
         .whereIn("gi.grn_id", grnIds)
         .orderBy("gi.grn_id")
@@ -106,12 +110,14 @@ class GoodsReceiptNote {
       const grn = await db("goods_receipt_notes as grn")
         .leftJoin("purchase_orders as po", "grn.purchase_order_id", "po.id")
         .leftJoin("suppliers as s", "grn.supplier_id", "s.id")
-        .leftJoin("users as u", "grn.received_by", "u.id")
+        .leftJoin("employees as u", "grn.received_by", "u.id")
         .select(
           "grn.*",
           "po.po_number",
           "s.name as supplier_name",
-          "u.name as received_by_name"
+          db.raw(
+            "COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'') as received_by_name"
+          )
         )
         .where("grn.id", id)
         .first();
@@ -139,7 +145,7 @@ class GoodsReceiptNote {
         )
         .leftJoin("inventory_item_types as it", "gi.item_type_id", "it.id")
         .leftJoin("inventory_categories as ic", "it.category_id", "ic.id")
-        .leftJoin("users as u", "gi.inspected_by", "u.id")
+        .leftJoin("employees as u", "gi.inspected_by", "u.id")
         .select(
           "gi.*",
           "poi.item_name as po_item_name",
@@ -149,7 +155,9 @@ class GoodsReceiptNote {
           "it.unit_of_measure as item_unit_of_measure",
           "ic.name as category_name",
           "ic.description as category_description",
-          "u.name as inspector_name"
+          db.raw(
+            "COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'') as inspector_name"
+          )
         )
         .where("gi.grn_id", grnId)
         .orderBy("gi.id");

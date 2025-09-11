@@ -1188,7 +1188,7 @@
                     :key="staff.id"
                     :value="staff.id"
                   >
-                    {{ staff.name }}
+                    {{ staff.first_name }} {{ staff.last_name }}
                   </option>
                 </select>
               </div>

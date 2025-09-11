@@ -120,12 +120,14 @@ class MenuItem {
           "r.batch_size",
           "r.batch_unit",
           "r.cost_per_batch",
-          "u.name as created_by_name",
+          db.raw(
+            "COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'') as created_by_name"
+          ),
           "mi.image_url"
         )
         .leftJoin("menus as m", "mi.menu_id", "m.id")
         .leftJoin("recipes as r", "mi.recipe_id", "r.id")
-        .leftJoin("users as u", "mi.created_by", "u.id")
+        .leftJoin("employees as u", "mi.created_by", "u.id")
         .where("mi.id", id)
         .whereNull("mi.deleted_at")
         .first();

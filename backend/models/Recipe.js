@@ -7,15 +7,15 @@ class Recipe {
       let query = db("recipes as r")
         .select(
           "r.*",
-          "u.name as created_by_name",
+          db.raw("concat(u.first_name,' ',u.last_name) as created_by_name"),
           db.raw("COUNT(ri.id) as ingredient_count"),
           db.raw("COUNT(DISTINCT po.id) as usage_count")
         )
-        .leftJoin("users as u", "r.created_by", "u.id")
+        .leftJoin("employees as u", "r.created_by", "u.id")
         .leftJoin("recipe_ingredients as ri", "r.id", "ri.recipe_id")
         .leftJoin("production_orders as po", "r.id", "po.recipe_id")
         .whereNull("r.deleted_at")
-        .groupBy("r.id", "u.name");
+        .groupBy("r.id", "u.first_name", "u.last_name");
 
       // Apply filters
       if (filters.category) {
@@ -45,8 +45,11 @@ class Recipe {
   static async getById(id) {
     try {
       const recipe = await db("recipes as r")
-        .select("r.*", "u.name as created_by_name")
-        .leftJoin("users as u", "r.created_by", "u.id")
+        .select(
+          "r.*",
+          db.raw("concat(u.first_name,' ',u.last_name) as created_by_name")
+        )
+        .leftJoin("employees as u", "r.created_by", "u.id")
         .where("r.id", id)
         .whereNull("r.deleted_at")
         .first();

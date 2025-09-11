@@ -17,6 +17,12 @@ export const useInventoryStore = defineStore('inventory', () => {
   const loading = ref(false);
   const error = ref(null);
   const categoriesForRequests = ref([]); // New state for centralized categories
+  // Distribution draft cart (SCM + Production)
+  const distributionCart = ref({
+    branch_id: '',
+    items: [], // { key, source: 'scm'|'production', item, item_id, name, unit, unit_price, quantity }
+    notes: '',
+  });
   // Recent activity
   const recentActivity = ref([]);
 
@@ -58,6 +64,21 @@ export const useInventoryStore = defineStore('inventory', () => {
     };
   });
 
+  // Cart totals
+  const cartItemCount = computed(() => distributionCart.value.items.length);
+  const cartTotalQuantity = computed(() =>
+    distributionCart.value.items.reduce(
+      (s, it) => s + Number(it.quantity || 0),
+      0
+    )
+  );
+  const cartTotalValue = computed(() =>
+    distributionCart.value.items.reduce(
+      (s, it) => s + Number(it.unit_price || 0) * Number(it.quantity || 0),
+      0
+    )
+  );
+
   // Actions
   const fetchCategories = async () => {
     loading.value = true;
@@ -79,6 +100,72 @@ export const useInventoryStore = defineStore('inventory', () => {
     } finally {
       loading.value = false;
     }
+  };
+
+  // ===== Distribution Cart Actions =====
+  const setCartBranch = (branchId) => {
+    distributionCart.value.branch_id = branchId || '';
+  };
+
+  const clearDistributionCart = () => {
+    distributionCart.value = { branch_id: '', items: [], notes: '' };
+  };
+
+  const addToDistributionCart = ({
+    source,
+    item,
+    item_id,
+    name,
+    unit,
+    unit_price,
+    quantity,
+    branch_id,
+  }) => {
+    if (!branch_id && !distributionCart.value.branch_id) {
+      throw new Error('Branch is required');
+    }
+    const effectiveBranch = branch_id || distributionCart.value.branch_id;
+    if (
+      distributionCart.value.branch_id &&
+      effectiveBranch !== distributionCart.value.branch_id
+    ) {
+      throw new Error('Selected branch differs from current cart branch');
+    }
+    distributionCart.value.branch_id = effectiveBranch;
+    const key = `${source}:${item_id}`;
+    const existing = distributionCart.value.items.find((it) => it.key === key);
+    if (existing) {
+      existing.quantity = Number(existing.quantity) + Number(quantity || 0);
+      existing.unit_price = Number(unit_price || existing.unit_price || 0);
+    } else {
+      distributionCart.value.items.push({
+        key,
+        source,
+        item,
+        item_id,
+        name,
+        unit,
+        unit_price: Number(unit_price || 0),
+        quantity: Number(quantity || 0),
+      });
+    }
+  };
+
+  const updateCartItem = (key, { quantity, unit_price }) => {
+    const idx = distributionCart.value.items.findIndex((it) => it.key === key);
+    if (idx === -1) return;
+    if (quantity !== undefined)
+      distributionCart.value.items[idx].quantity = Number(quantity);
+    if (unit_price !== undefined)
+      distributionCart.value.items[idx].unit_price = Number(unit_price);
+  };
+
+  const removeFromCart = (key) => {
+    distributionCart.value.items = distributionCart.value.items.filter(
+      (it) => it.key !== key
+    );
+    if (distributionCart.value.items.length === 0)
+      distributionCart.value.branch_id = '';
   };
 
   const fetchItemTypes = async () => {
@@ -658,6 +745,92 @@ export const useInventoryStore = defineStore('inventory', () => {
     }
   };
 
+  // Branch distribution (SCM inventory → branch)
+  // This uses the existing stock adjustment endpoint with adjustment_type 'transfer_out'
+  // and computes the new quantity after distribution.
+  const distributeToBranch = async ({
+    inventory_item_id,
+    current_quantity,
+    branch_id,
+    quantity,
+    transfer_price,
+    notes,
+    performed_by = null,
+    reference_number = null,
+  }) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const new_quantity =
+        parseFloat(current_quantity || 0) - parseFloat(quantity || 0);
+      if (new_quantity < 0) {
+        throw new Error('Distributed quantity exceeds available stock');
+      }
+
+      // Resolve performed_by from auth store if not provided
+      let actorName = performed_by;
+      try {
+        if (!actorName) {
+          const { useAuthStore } = await import('./authStore.js');
+          const authStore = useAuthStore();
+          const u = authStore?.user;
+          if (u) {
+            actorName =
+              [u.first_name, u.last_name].filter(Boolean).join(' ') ||
+              u.full_name ||
+              u.email ||
+              'System';
+          }
+        }
+      } catch (_) {
+        actorName = performed_by || 'System';
+      }
+
+      const payload = {
+        inventory_item_id,
+        adjustment_type: 'reduce_quantity', // use supported adjustment type
+        new_quantity,
+        reason: 'Branch Distribution',
+        // Carry context; backend can log these in audit trail
+        notes:
+          notes || `Distributed to branch ${branch_id} @ ${transfer_price}`,
+        reference_number,
+        performed_by: actorName || 'System',
+        branch_id,
+        transfer_price,
+        audit_action: 'transfer_out',
+      };
+
+      const response = await axios.post(
+        `${API_BASE_URL}/inventory/adjustment`,
+        payload
+      );
+
+      if (response.data.success) {
+        await Promise.all([
+          fetchCurrentInventory(),
+          fetchStats(),
+          fetchRecentActivity(),
+        ]);
+        return response.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to distribute to branch'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to distribute to branch';
+      console.error('Error distributing to branch:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   // DEV: Seed backdated consumption transactions for testing forecasting
   const seedTestConsumption = async (inventoryItemId, entries = []) => {
     // entries: [{ date: Date|string, quantity: number }]
@@ -779,15 +952,19 @@ export const useInventoryStore = defineStore('inventory', () => {
     lowStockItems,
     loading,
     error,
+    distributionCart,
     categoriesForRequests, // New state
     recentActivity,
 
-    // Getters
+    // GettersWz
     totalValue,
     totalItems,
     categoriesWithCounts,
     itemTypesByCategory,
     alertsCount,
+    cartItemCount,
+    cartTotalQuantity,
+    cartTotalValue,
 
     // Actions
     fetchCategories,
@@ -810,6 +987,12 @@ export const useInventoryStore = defineStore('inventory', () => {
     fetchDisposedItems,
     singleConsumption,
     stockAdjustment,
+    distributeToBranch,
+    setCartBranch,
+    clearDistributionCart,
+    addToDistributionCart,
+    updateCartItem,
+    removeFromCart,
     configureAlert,
     getAlertConfiguration,
     acknowledgeAlert,

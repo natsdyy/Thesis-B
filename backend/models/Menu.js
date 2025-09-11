@@ -7,16 +7,16 @@ class Menu {
       let query = db("menus as m")
         .select(
           "m.*",
-          "u.name as created_by_name",
+          db.raw("concat(u.first_name,' ',u.last_name) as created_by_name"),
           db.raw("COUNT(mi.id) as item_count"),
           db.raw(
             "COUNT(CASE WHEN mi.is_available = true THEN 1 END) as available_items"
           )
         )
-        .leftJoin("users as u", "m.created_by", "u.id")
+        .leftJoin("employees as u", "m.created_by", "u.id")
         .leftJoin("menu_items as mi", "m.id", "mi.menu_id")
         .whereNull("m.deleted_at")
-        .groupBy("m.id", "u.name");
+        .groupBy("m.id", "u.first_name", "u.last_name");
 
       // Apply filters
       if (filters.category) {
@@ -46,8 +46,11 @@ class Menu {
   static async getById(id) {
     try {
       const menu = await db("menus as m")
-        .select("m.*", "u.name as created_by_name")
-        .leftJoin("users as u", "m.created_by", "u.id")
+        .select(
+          "m.*",
+          db.raw("concat(u.first_name,' ',u.last_name) as created_by_name")
+        )
+        .leftJoin("employees as u", "m.created_by", "u.id")
         .where("m.id", id)
         .whereNull("m.deleted_at")
         .first();
@@ -61,10 +64,10 @@ class Menu {
             "r.category as recipe_category",
             "r.batch_size",
             "r.batch_unit",
-            "u.name as created_by_name"
+            db.raw("concat(u.first_name,' ',u.last_name) as created_by_name")
           )
           .leftJoin("recipes as r", "mi.recipe_id", "r.id")
-          .leftJoin("users as u", "mi.created_by", "u.id")
+          .leftJoin("employees as u", "mi.created_by", "u.id")
           .where("mi.menu_id", id)
           .whereNull("mi.deleted_at")
           .orderBy("mi.sequence_order", "asc");
@@ -185,7 +188,7 @@ class Menu {
         .whereNull("deleted_at")
         .where("is_active", true)
         .orderBy("menu_name", "asc");
-      
+
       return menus;
     } catch (error) {
       console.error("Error fetching menus by category:", error);

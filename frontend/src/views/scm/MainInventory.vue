@@ -25,21 +25,78 @@
     Trash,
     ArrowRightLeft,
     Info,
+    Truck,
+    Building2,
   } from 'lucide-vue-next';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
+  import { useBranchStore } from '../../stores/branchStore.js';
+  import { useProductionStore } from '../../stores/productionStore.js';
   import InventoryConsumptionModal from '../../components/scm/InventoryConsumptionModal.vue';
   import InventoryAdjustmentModal from '../../components/scm/InventoryAdjustmentModal.vue';
   import TransactionModal from '../../components/scm/TransactionModal.vue';
   import InventoryDetailsModal from '../../components/scm/InventoryDetailsModal.vue';
+  import BranchDistributionModal from '../../components/scm/BranchDistributionModal.vue';
+  import BranchDistributionReceiptModal from '../../components/scm/BranchDistributionReceiptModal.vue';
+  import { useBranchDistributionStore } from '../../stores/branchDistributionStore.js';
+  import { useAuthStore } from '../../stores/authStore.js';
   import { useRouter } from 'vue-router';
 
   const router = useRouter();
 
   // Store
   const inventoryStore = useInventoryStore();
+  const branchStore = useBranchStore();
+  const productionStore = useProductionStore();
+  const branchDistributionStore = useBranchDistributionStore();
+  const authStore = useAuthStore();
 
   // Access store values as computed properties
   const categories = computed(() => inventoryStore.categories);
+  // Branch Distribution History state
+  const historyLoading = computed(() => branchDistributionStore.isLoading);
+  const distributionHistory = computed(
+    () => branchDistributionStore.distributions || []
+  );
+  const historyPagination = computed(() => branchDistributionStore.pagination);
+
+  const fetchDistributionHistory = async (page = 1) => {
+    try {
+      await branchDistributionStore.fetchDistributions({ page, limit: 10 });
+    } catch (_) {
+      // noop toast handled in store
+    }
+  };
+
+  const openHistoryReceipt = async (id) => {
+    try {
+      const dist = await branchDistributionStore.fetchDistributionById(id);
+      if (!dist) return;
+      const receiptForModal = {
+        completed_at: dist.created_at,
+        reference: dist.reference,
+        branch_name: dist.branch_name,
+        prepared_by:
+          dist.prepared_by ||
+          `${authStore?.user?.first_name || ''} ${authStore?.user?.last_name || ''}`.trim() ||
+          authStore?.user?.full_name ||
+          authStore?.user?.email ||
+          'System',
+        received_by: '',
+        notes: dist.notes,
+        items: (dist.items || []).map((it) => ({
+          source: it.source,
+          item_name: it.name,
+          item_quantity: it.qty,
+          item_unit: it.unit,
+          item_unitPrice: it.unit_price,
+          item_amount: it.amount,
+        })),
+        total_amount: dist.total_amount,
+      };
+      distributionReceipt.value = { show: true, receipt: receiptForModal };
+    } catch (_) {}
+  };
+
   const itemTypes = computed(() => inventoryStore.itemTypes);
   const currentInventory = computed(() => inventoryStore.currentInventory);
   const inventorySummary = computed(() => inventoryStore.inventorySummary);
@@ -50,6 +107,101 @@
   const loading = computed(() => inventoryStore.loading);
   const error = computed(() => inventoryStore.error);
   const alertsCount = computed(() => inventoryStore.alertsCount);
+
+  // Branches (from branchStore)
+  const branches = computed(() => branchStore.branches || []);
+
+  // Branch Distribution computed properties
+  const availableInventoryForDistribution = computed(() => {
+    if (distributionInventoryType.value === 'production') {
+      return productionStore.productionInventory || [];
+    }
+    return currentInventory.value || [];
+  });
+
+  const filteredDistributionInventory = computed(() => {
+    let filtered = availableInventoryForDistribution.value;
+
+    if (distributionSearchQuery.value) {
+      const query = distributionSearchQuery.value.toLowerCase();
+      filtered = filtered.filter((item) => {
+        const itemName =
+          distributionInventoryType.value === 'production'
+            ? item.item_name || item.menu_item_name
+            : item.item_name || item.item_type_name;
+        const categoryField = (
+          item.category ||
+          item.category_name ||
+          ''
+        ).toLowerCase();
+        return (
+          itemName?.toLowerCase().includes(query) ||
+          item.item_code?.toLowerCase().includes(query) ||
+          categoryField.includes(query)
+        );
+      });
+    }
+
+    if (distributionCategoryFilter.value) {
+      filtered = filtered.filter(
+        (item) =>
+          (item.category || item.category_name) ===
+          distributionCategoryFilter.value
+      );
+    }
+
+    // Only show items with available stock and not expired (for SCM)
+    filtered = filtered.filter((item) => {
+      const quantity =
+        distributionInventoryType.value === 'production'
+          ? item.available_quantity || 0
+          : parseFloat(item.quantity) || 0;
+      if (quantity <= 0) return false;
+      if (distributionInventoryType.value !== 'scm') return true;
+      const exp = item.expiry_date || item.expiry || null;
+      if (!exp || exp === 'N/A') return true;
+      const today = new Date();
+      const expDate = new Date(exp);
+      return expDate >= new Date(today.toDateString());
+    });
+
+    return filtered.sort((a, b) => {
+      const nameA =
+        distributionInventoryType.value === 'production'
+          ? a.item_name || a.menu_item_name
+          : a.item_name || a.item_type_name;
+      const nameB =
+        distributionInventoryType.value === 'production'
+          ? b.item_name || b.menu_item_name
+          : b.item_name || b.item_type_name;
+      return nameA?.localeCompare(nameB) || 0;
+    });
+  });
+
+  const paginatedDistributionInventory = computed(() => {
+    const start =
+      (distributionCurrentPage.value - 1) * distributionItemsPerPage.value;
+    return filteredDistributionInventory.value.slice(
+      start,
+      start + distributionItemsPerPage.value
+    );
+  });
+
+  const totalDistributionPages = computed(() => {
+    return Math.ceil(
+      filteredDistributionInventory.value.length /
+        distributionItemsPerPage.value
+    );
+  });
+
+  const availableDistributionCategories = computed(() => {
+    const categories = new Set();
+    availableInventoryForDistribution.value.forEach((item) => {
+      const cat = item.category || item.category_name;
+      if (cat) categories.add(cat);
+    });
+    return Array.from(categories).sort();
+  });
 
   // Local state
   const activeTab = ref('overview');
@@ -91,6 +243,15 @@
   const disposedToDate = ref('');
   const disposedCategoryFilter = ref('');
 
+  // Branch Distribution state
+  // branches now from branchStore, productionInventory from productionStore
+  const distributionLoading = ref(false);
+  const distributionSearchQuery = ref('');
+  const distributionCategoryFilter = ref('');
+  const distributionInventoryType = ref('scm'); // 'scm' or 'production'
+  const distributionCurrentPage = ref(1);
+  const distributionItemsPerPage = ref(12);
+
   // Modal state
   const modal = ref({
     type: null,
@@ -122,7 +283,11 @@
     expiry_date: '',
     notes: '',
     supplier_id: null,
-    received_by: 'SCM User',
+    received_by:
+      `${authStore?.user?.first_name || ''} ${authStore?.user?.last_name || ''}`.trim() ||
+      authStore?.user?.full_name ||
+      authStore?.user?.email ||
+      'System',
   });
 
   // Toast state
@@ -1173,9 +1338,6 @@
   const formatBatchNumber = (batchNumber) => {
     if (!batchNumber || batchNumber === 'N/A') return 'N/A';
 
-    // Debug: Log the actual batch number to see the format
-    console.log('Formatting batch number:', batchNumber);
-
     // Handle PO-generated batch numbers: PO-1756625418014-ITEM-32-6-20250831
     if (batchNumber.startsWith('PO-')) {
       const parts = batchNumber.split('-');
@@ -1421,7 +1583,11 @@
                 reason: firstItem.reason,
                 reference_number: consumptionData.reference_number,
                 notes: consumptionData.notes,
-                performed_by: 'SCM User',
+                performed_by:
+                  `${authStore?.user?.first_name || ''} ${authStore?.user?.last_name || ''}`.trim() ||
+                  authStore?.user?.full_name ||
+                  authStore?.user?.email ||
+                  'System',
               });
             } else {
               await inventoryStore.bulkConsumption(consumptionData);
@@ -1473,7 +1639,11 @@
               reason: adjustmentData.reason,
               reference_number: adjustmentData.reference_number,
               notes: adjustmentData.notes,
-              performed_by: 'SCM User',
+              performed_by:
+                `${authStore?.user?.first_name || ''} ${authStore?.user?.last_name || ''}`.trim() ||
+                authStore?.user?.full_name ||
+                authStore?.user?.email ||
+                'System',
               new_expiry_date: adjustmentData.new_expiry_date, // pass through
               disposal_cost: adjustmentData.disposal_cost ?? null,
             });
@@ -1503,11 +1673,15 @@
     };
   };
 
+  const confirmLoading = ref(false);
+
   const handleConfirmAction = async () => {
     if (confirmModal.value.onConfirm) {
       try {
+        confirmLoading.value = true;
         await confirmModal.value.onConfirm();
       } finally {
+        confirmLoading.value = false;
         closeConfirmModal();
       }
     }
@@ -1626,6 +1800,317 @@
     }
   };
 
+  // Branch Distribution Methods
+  const fetchBranches = async () => {
+    try {
+      await branchStore.fetchBranches(true);
+    } catch (error) {
+      console.error('Error fetching branches:', error);
+      showToast('error', 'Failed to fetch branches');
+    }
+  };
+
+  const fetchProductionInventory = async () => {
+    try {
+      await productionStore.fetchProductionInventory();
+    } catch (error) {
+      console.error('Error fetching production inventory:', error);
+      showToast('error', 'Failed to fetch production inventory');
+    }
+  };
+
+  const openDistributionModal = (item) => {
+    if (!item || !item.id) {
+      console.error('Invalid item provided to openDistributionModal:', item);
+      return;
+    }
+    modal.value = { type: 'distribution', show: true, item };
+  };
+
+  const handleDistribution = async (distributionData) => {
+    try {
+      const isProduction = distributionInventoryType.value === 'production';
+      const itemName = isProduction
+        ? distributionData.item.item_name ||
+          distributionData.item.menu_item_name
+        : distributionData.item.item_name ||
+          distributionData.item.item_type_name;
+
+      // Build confirmation details
+      const qtyLabel = `${parseFloat(distributionData.quantity).toLocaleString()} ${distributionData.item.unit_of_measure || 'units'}`;
+      const branchName =
+        branches.value.find((b) => b.id === distributionData.branch_id)?.name ||
+        'Selected Branch';
+
+      confirmModal.value = {
+        show: true,
+        title: 'Confirm Distribution',
+        message: `Distribute ${qtyLabel} of ${itemName} to ${branchName}?`,
+        onConfirm: async () => {
+          try {
+            if (isProduction) {
+              await productionStore.recordDistribution(
+                distributionData.item.menu_item_id || distributionData.item.id,
+                {
+                  branch_id: distributionData.branch_id,
+                  quantity: distributionData.quantity,
+                  transfer_price: distributionData.transfer_price,
+                  notes: distributionData.notes,
+                }
+              );
+            } else {
+              await inventoryStore.distributeToBranch({
+                inventory_item_id: distributionData.item.id,
+                current_quantity: distributionData.item.quantity,
+                branch_id: distributionData.branch_id,
+                quantity: distributionData.quantity,
+                transfer_price: distributionData.transfer_price,
+                notes: distributionData.notes,
+                performed_by:
+                  `${authStore?.user?.first_name || ''} ${authStore?.user?.last_name || ''}`.trim() ||
+                  authStore?.user?.full_name ||
+                  authStore?.user?.email ||
+                  'System',
+              });
+            }
+
+            showToast(
+              'success',
+              `${itemName} distributed successfully to ${branchName}`
+            );
+            closeModal();
+            // Refresh data
+            if (isProduction) {
+              await fetchProductionInventory();
+            } else {
+              await inventoryStore.fetchCurrentInventory();
+            }
+          } catch (err) {
+            showToast(
+              'error',
+              err.message || `Failed to distribute ${itemName}`
+            );
+          }
+        },
+      };
+      document.getElementById('inventory_confirm_modal')?.showModal();
+    } catch (error) {
+      showToast('error', error.message || 'Failed to process distribution');
+    }
+  };
+
+  // Add-to-cart from modal (draft receipt)
+  const handleAddToDistributionCart = (distributionData) => {
+    try {
+      const isProduction = distributionInventoryType.value === 'production';
+      const name = isProduction
+        ? distributionData.item.item_name ||
+          distributionData.item.menu_item_name
+        : distributionData.item.item_name ||
+          distributionData.item.item_type_name;
+      const unit = distributionData.item.unit_of_measure || 'units';
+      const unitPrice = Number(distributionData.transfer_price || 0);
+
+      inventoryStore.addToDistributionCart({
+        source: isProduction ? 'production' : 'scm',
+        item: distributionData.item,
+        item_id: distributionData.item.id,
+        name,
+        unit,
+        unit_price: unitPrice,
+        quantity: Number(distributionData.quantity || 0),
+        branch_id: distributionData.branch_id,
+      });
+
+      showToast('success', `${name} added to draft`);
+      closeModal();
+    } catch (err) {
+      showToast('error', err.message || 'Failed to add to draft');
+    }
+  };
+
+  const switchDistributionInventoryType = (type) => {
+    distributionInventoryType.value = type;
+    distributionCurrentPage.value = 1;
+    distributionSearchQuery.value = '';
+    distributionCategoryFilter.value = '';
+  };
+
+  const goToDistributionPage = (page) => {
+    if (page >= 1 && page <= totalDistributionPages.value) {
+      distributionCurrentPage.value = page;
+    }
+  };
+
+  const changeDistributionItemsPerPage = (newPerPage) => {
+    distributionItemsPerPage.value = newPerPage;
+    distributionCurrentPage.value = 1;
+  };
+
+  // Draft checkout: process cart items and build receipt
+  const checkoutDistributionDraft = async () => {
+    try {
+      const cart = inventoryStore.distributionCart;
+      if (!cart.branch_id || cart.items.length === 0) {
+        showToast('error', 'Select a branch and add at least one item');
+        return;
+      }
+
+      confirmModal.value = {
+        show: true,
+        title: 'Confirm Branch Distribution',
+        message: '',
+        details: {
+          branch_name:
+            branches.value.find((b) => b.id === cart.branch_id)?.name ||
+            'Branch',
+          items: cart.items.map((x) => ({
+            key: x.key,
+            name: x.name,
+            source: x.source,
+            qty: Number(x.quantity || 0),
+            unit: x.unit,
+            price: Number(x.unit_price || 0),
+            amount: Number(x.unit_price || 0) * Number(x.quantity || 0),
+          })),
+          total: cart.items.reduce(
+            (s, x) => s + Number(x.unit_price || 0) * Number(x.quantity || 0),
+            0
+          ),
+          notes: inventoryStore.distributionCart.notes || '',
+        },
+        onConfirm: async () => {
+          try {
+            // Step 1: Create consolidated receipt first
+            const preparedName =
+              `${authStore?.user?.first_name || ''} ${authStore?.user?.last_name || ''}`.trim() ||
+              authStore?.user?.full_name ||
+              authStore?.user?.email ||
+              'System';
+
+            const receiptData = {
+              branch_id: cart.branch_id,
+              prepared_by: preparedName,
+              total_amount: cart.items.reduce(
+                (s, x) => s + Number(x.unit_price) * Number(x.quantity),
+                0
+              ),
+              notes: inventoryStore.distributionCart.notes || '',
+              items: cart.items.map((x) => ({
+                source: x.source,
+                item_ref_id: x.item_id,
+                name: x.name,
+                unit: x.unit,
+                qty: x.quantity,
+                unit_price: x.unit_price,
+                amount: Number(x.unit_price) * Number(x.quantity),
+                notes: null,
+              })),
+            };
+
+            const createdReceipt =
+              await branchDistributionStore.createDistribution(receiptData);
+
+            // Step 2: Execute stock movements using existing endpoints
+            for (const it of cart.items) {
+              if (it.source === 'production') {
+                await productionStore.recordDistribution(
+                  it.item?.menu_item_id || it.item_id,
+                  {
+                    branch_id: cart.branch_id,
+                    quantity: it.quantity,
+                    transfer_price: it.unit_price,
+                    notes: `Receipt: ${createdReceipt.reference}`,
+                  }
+                );
+              } else {
+                await inventoryStore.distributeToBranch({
+                  inventory_item_id: it.item_id,
+                  current_quantity: it.item.quantity,
+                  branch_id: cart.branch_id,
+                  quantity: it.quantity,
+                  transfer_price: it.unit_price,
+                  notes: `Receipt: ${createdReceipt.reference}`,
+                  performed_by:
+                    `${authStore?.user?.first_name || ''} ${authStore?.user?.last_name || ''}`.trim() ||
+                    authStore?.user?.full_name ||
+                    authStore?.user?.email ||
+                    'System',
+                });
+              }
+            }
+
+            // Step 3: Clear cart and show receipt
+            inventoryStore.clearDistributionCart();
+            showToast(
+              'success',
+              `Distribution completed - Receipt ${createdReceipt.reference}`
+            );
+
+            // Step 4: Show the persisted receipt in modal
+            const fullName =
+              `${authStore?.user?.first_name || ''} ${authStore?.user?.last_name || ''}`.trim() ||
+              authStore?.user?.full_name ||
+              authStore?.user?.email ||
+              'SCM User';
+
+            const receiptForModal = {
+              completed_at: createdReceipt.created_at,
+              reference: createdReceipt.reference,
+              branch_name: createdReceipt.branch_name,
+              prepared_by: createdReceipt.prepared_by || fullName,
+              received_by: '',
+              notes: createdReceipt.notes,
+              items: createdReceipt.items.map((item) => ({
+                source: item.source,
+                item_name: item.name,
+                item_quantity: item.qty,
+                item_unit: item.unit,
+                item_unitPrice: item.unit_price,
+                item_amount: item.amount,
+              })),
+              total_amount: createdReceipt.total_amount,
+            };
+
+            distributionReceipt.value = {
+              show: true,
+              receipt: receiptForModal,
+            };
+          } catch (err) {
+            showToast('error', err.message || 'Checkout failed');
+          }
+        },
+      };
+      document.getElementById('inventory_confirm_modal')?.showModal();
+    } catch (err) {
+      showToast('error', err.message || 'Failed to checkout');
+    }
+  };
+
+  // Remove a single item from confirm modal (also updates cart and totals)
+  const removeItemFromConfirm = (key) => {
+    try {
+      if (!key) return;
+      inventoryStore.removeFromCart(key);
+      // Recompute confirm details
+      const cart = inventoryStore.distributionCart;
+      if (!confirmModal.value?.details) return;
+      confirmModal.value.details.items =
+        confirmModal.value.details.items.filter((x) => x.key !== key);
+      confirmModal.value.details.total = cart.items.reduce(
+        (s, x) => s + Number(x.unit_price || 0) * Number(x.quantity || 0),
+        0
+      );
+
+      // If cart is empty, close modal
+      if (cart.items.length === 0) {
+        closeConfirmModal();
+      }
+    } catch (err) {
+      showToast('error', err.message || 'Failed to remove item');
+    }
+  };
+
   // Lifecycle
   onMounted(async () => {
     try {
@@ -1638,40 +2123,22 @@
         inventoryStore.fetchExpiringItems(),
         inventoryStore.fetchLowStockItems(),
         inventoryStore.fetchRecentActivity(),
+        fetchBranches(),
+        fetchProductionInventory(),
+        fetchDistributionHistory(1),
       ]);
 
       // Load disposed items for reports
       await loadDisposedItems();
 
-      // Add this debug logging
-      console.log('Debug - Categories:', categories.value);
-      console.log('Debug - Item Types:', itemTypes.value);
-      console.log('Debug - Current Inventory:', currentInventory.value);
-
       // Handle query parameters for production integration
       handleQueryParameters();
-      console.log('Debug - Inventory Summary:', inventorySummary.value);
-      console.log('Debug - Stats:', stats.value);
-
-      // Add these additional debug logs
-      console.log('Debug - Store object:', inventoryStore);
-      console.log('Debug - Loading state:', loading.value);
-      console.log('Debug - Error state:', error.value);
 
       // Test individual API calls
       try {
-        console.log('Testing individual API calls...');
         const categoriesResponse = await inventoryStore.fetchCategories();
-        console.log('Categories API response:', categoriesResponse);
 
         const inventoryResponse = await inventoryStore.fetchCurrentInventory();
-        console.log('Inventory API response:', inventoryResponse);
-
-        console.log('After individual calls - Categories:', categories.value);
-        console.log(
-          'After individual calls - Inventory:',
-          currentInventory.value
-        );
       } catch (err) {
         console.error('API call error:', err);
       }
@@ -1687,6 +2154,12 @@
   onUnmounted(() => {
     document.removeEventListener('keydown', handleForecastKeyNavigation);
   });
+
+  // Receipt modal state
+  const distributionReceipt = ref({ show: false, receipt: null });
+  const closeDistributionReceipt = () => {
+    distributionReceipt.value = { show: false, receipt: null };
+  };
 
   // Watch for search/filter changes to reset pagination
   watch([searchQuery, categoryFilter], () => {
@@ -1883,6 +2356,14 @@
       >
         <TrendingDown class="w-4 h-4 mr-1" />
         Reports
+      </button>
+      <button
+        @click="activeTab = 'distribution'"
+        class="tab"
+        :class="{ 'tab-active': activeTab === 'distribution' }"
+      >
+        <Truck class="w-4 h-4 mr-1" />
+        Branch Distribution
       </button>
     </div>
 
@@ -4073,6 +4554,456 @@
             </div>
           </div>
         </div>
+
+        <!-- Branch Distribution Tab -->
+        <div v-if="activeTab === 'distribution'" class="space-y-6">
+          <div
+            class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
+          >
+            <h2
+              class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl"
+            >
+              Branch Distribution
+            </h2>
+
+            <div class="flex flex-col sm:flex-row gap-2">
+              <!-- Inventory Type Toggle -->
+              <div class="join">
+                <button
+                  @click="switchDistributionInventoryType('scm')"
+                  class="btn btn-sm join-item font-thin"
+                  :class="{
+                    'bg-primaryColor text-white':
+                      distributionInventoryType === 'scm',
+                    'btn-outline border-none':
+                      distributionInventoryType !== 'scm',
+                  }"
+                >
+                  <Package class="w-4 h-4 mr-1" />
+                  SCM Inventory
+                </button>
+                <button
+                  @click="switchDistributionInventoryType('production')"
+                  class="btn btn-sm join-item font-thin"
+                  :class="{
+                    'bg-primaryColor text-white':
+                      distributionInventoryType === 'production',
+                    'btn-outline border-none':
+                      distributionInventoryType !== 'production',
+                  }"
+                >
+                  <Building2 class="w-4 h-4 mr-1" />
+                  Production Inventory
+                </button>
+              </div>
+
+              <button
+                @click="refreshData"
+                class="btn btn-sm btn-outline"
+                :disabled="loading"
+              >
+                <RefreshCcw
+                  class="w-4 h-4 mr-1"
+                  :class="{ 'animate-spin': loading }"
+                />
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <!-- Distribution Statistics -->
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="stat bg-base-100 border border-gray-200 rounded-lg">
+              <div class="stat-figure text-primary">
+                <Package class="w-8 h-8" />
+              </div>
+              <div class="stat-title">Total Items</div>
+              <div class="stat-value text-primary">
+                {{ filteredDistributionInventory.length }}
+              </div>
+              <div class="stat-desc">
+                {{
+                  distributionInventoryType === 'production'
+                    ? 'Production Items'
+                    : 'SCM Items'
+                }}
+              </div>
+            </div>
+
+            <div class="stat bg-base-100 border border-gray-200 rounded-lg">
+              <div class="stat-figure text-success">
+                <CheckCircle class="w-8 h-8" />
+              </div>
+              <div class="stat-title">Available Stock</div>
+              <div class="stat-value text-success">
+                {{
+                  filteredDistributionInventory
+                    .reduce((sum, item) => {
+                      const qty =
+                        distributionInventoryType === 'production'
+                          ? item.available_quantity || 0
+                          : parseFloat(item.quantity) || 0;
+                      return sum + qty;
+                    }, 0)
+                    .toLocaleString()
+                }}
+              </div>
+              <div class="stat-desc">Total units available</div>
+            </div>
+
+            <div class="stat bg-base-100 border border-gray-200 rounded-lg">
+              <div class="stat-figure text-info">
+                <Building2 class="w-8 h-8" />
+              </div>
+              <div class="stat-title">Branches</div>
+              <div class="stat-value text-info">{{ branches.length }}</div>
+              <div class="stat-desc">Available branches</div>
+            </div>
+
+            <div class="stat bg-base-100 border border-gray-200 rounded-lg">
+              <div class="stat-figure text-warning">
+                <Truck class="w-8 h-8" />
+              </div>
+              <div class="stat-title">Categories</div>
+              <div class="stat-value text-warning">
+                {{ availableDistributionCategories.length }}
+              </div>
+              <div class="stat-desc">Item categories</div>
+            </div>
+          </div>
+
+          <!-- Filters -->
+          <div class="card bg-base-100 border border-gray-200">
+            <div class="card-body p-4">
+              <div class="flex flex-col sm:flex-row gap-4">
+                <!-- Search -->
+                <div class="form-control flex-1">
+                  <div class="relative">
+                    <Search
+                      class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"
+                    />
+                    <input
+                      v-model="distributionSearchQuery"
+                      type="text"
+                      placeholder="Search items..."
+                      class="input input-bordered w-full pl-10 text-sm"
+                    />
+                  </div>
+                </div>
+
+                <!-- Category Filter -->
+                <div class="form-control">
+                  <select
+                    v-model="distributionCategoryFilter"
+                    class="select select-bordered"
+                  >
+                    <option value="">All Categories</option>
+                    <option
+                      v-for="category in availableDistributionCategories"
+                      :key="category"
+                      :value="category"
+                    >
+                      {{ category }}
+                    </option>
+                  </select>
+                </div>
+
+                <!-- Items Per Page -->
+                <div class="form-control">
+                  <select
+                    v-model="distributionItemsPerPage"
+                    @change="
+                      changeDistributionItemsPerPage(distributionItemsPerPage)
+                    "
+                    class="select select-bordered"
+                  >
+                    <option :value="6">6 per page</option>
+                    <option :value="12">12 per page</option>
+                    <option :value="24">24 per page</option>
+                    <option :value="48">48 per page</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Inventory Items Grid -->
+          <div
+            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6"
+          >
+            <div
+              v-for="item in paginatedDistributionInventory"
+              :key="item.id"
+              class="card bg-white border border-gray-200 hover:shadow-xl duration-300"
+            >
+              <div class="card-body p-4 flex flex-col h-full">
+                <div
+                  class="flex justify-between items-start mb-2"
+                  style="min-height: 40px"
+                >
+                  <h3
+                    class="card-title text-sm sm:text-base font-semibold text-primaryColor"
+                  >
+                    {{
+                      distributionInventoryType === 'production'
+                        ? item.item_name || item.menu_item_name
+                        : item.item_name || item.item_type_name
+                    }}
+                  </h3>
+                  <div
+                    class="badge badge-xs sm:badge-sm border"
+                    :class="{
+                      'bg-success/20 text-success border-success/30':
+                        (distributionInventoryType === 'production'
+                          ? item.available_quantity
+                          : parseFloat(item.quantity)) > 50,
+                      'bg-warning/20 text-warning border-warning/30':
+                        (distributionInventoryType === 'production'
+                          ? item.available_quantity
+                          : parseFloat(item.quantity)) <= 50 &&
+                        (distributionInventoryType === 'production'
+                          ? item.available_quantity
+                          : parseFloat(item.quantity)) > 10,
+                      'bg-error/20 text-error border-error/30':
+                        (distributionInventoryType === 'production'
+                          ? item.available_quantity
+                          : parseFloat(item.quantity)) <= 10,
+                    }"
+                  >
+                    {{
+                      distributionInventoryType === 'production'
+                        ? (item.available_quantity || 0).toLocaleString()
+                        : (parseFloat(item.quantity) || 0).toLocaleString()
+                    }}
+                    {{ item.unit_of_measure || 'units' }}
+                  </div>
+                </div>
+
+                <div
+                  class="text-xs text-gray-600 mb-2"
+                  style="min-height: 36px"
+                >
+                  <div v-if="item.category || item.category_name" class="mb-1">
+                    <span class="font-medium">Category:</span>
+                    {{ item.category || item.category_name }}
+                  </div>
+                  <div v-if="item.item_code" class="mb-1">
+                    <span class="font-medium">Code:</span> {{ item.item_code }}
+                  </div>
+                  <div
+                    v-if="
+                      distributionInventoryType === 'production' &&
+                      item.selling_price
+                    "
+                    class="mb-1"
+                  >
+                    <span class="font-medium">Price:</span> ₱{{
+                      parseFloat(item.selling_price).toLocaleString()
+                    }}
+                  </div>
+                </div>
+
+                <div class="card-actions justify-end mt-auto">
+                  <button
+                    @click="openDistributionModal(item)"
+                    class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
+                    :disabled="
+                      (distributionInventoryType === 'production'
+                        ? item.available_quantity
+                        : parseFloat(item.quantity)) <= 0
+                    "
+                  >
+                    <Truck class="w-4 h-4 mr-1" />
+                    Distribute
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pagination -->
+          <div
+            v-if="totalDistributionPages > 1"
+            class="flex justify-center mt-6"
+          >
+            <div class="join">
+              <button
+                class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                :disabled="distributionCurrentPage === 1"
+                @click="goToDistributionPage(distributionCurrentPage - 1)"
+                :class="{ 'btn-disabled': distributionCurrentPage === 1 }"
+              >
+                « Prev
+              </button>
+
+              <button
+                class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                v-for="page in totalDistributionPages"
+                :key="page"
+                :class="{
+                  'btn-active': distributionCurrentPage === page,
+                  '!bg-primaryColor text-white':
+                    distributionCurrentPage === page,
+                }"
+                @click="goToDistributionPage(page)"
+              >
+                {{ page }}
+              </button>
+
+              <button
+                class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                :disabled="distributionCurrentPage >= totalDistributionPages"
+                @click="goToDistributionPage(distributionCurrentPage + 1)"
+                :class="{
+                  'btn-disabled':
+                    distributionCurrentPage >= totalDistributionPages,
+                }"
+              >
+                Next »
+              </button>
+            </div>
+          </div>
+
+          <!-- Empty State -->
+          <div
+            v-if="filteredDistributionInventory.length === 0"
+            class="text-center py-12"
+          >
+            <Package class="w-16 h-16 mx-auto text-gray-400 mb-4" />
+            <h3 class="text-lg font-semibold text-gray-600 mb-2">
+              No Items Available
+            </h3>
+            <p class="text-gray-500">
+              {{
+                distributionSearchQuery || distributionCategoryFilter
+                  ? 'No items match your current filters.'
+                  : `No ${distributionInventoryType === 'production' ? 'production' : 'SCM'} inventory items available for distribution.`
+              }}
+            </p>
+          </div>
+        </div>
+
+        <!-- Branch Distribution History -->
+        <div class="card bg-base-100 border border-gray-200 mt-6">
+          <div class="card-body p-4">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="font-semibold text-base">Distribution History</h3>
+              <button
+                class="btn btn-xs btn-outline"
+                :disabled="historyLoading"
+                @click="fetchDistributionHistory(historyPagination.page || 1)"
+              >
+                <RefreshCcw
+                  class="w-3 h-3 mr-1"
+                  :class="{ 'animate-spin': historyLoading }"
+                />
+                Refresh
+              </button>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="table table-zebra w-full text-sm">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Reference</th>
+                    <th>Branch</th>
+                    <th>Prepared By</th>
+                    <th class="text-right">Total</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="dist in distributionHistory" :key="dist.id">
+                    <td>
+                      {{ new Date(dist.created_at).toLocaleString('en-PH') }}
+                    </td>
+                    <td class="font-mono">{{ dist.reference }}</td>
+                    <td>{{ dist.branch_name || 'Branch' }}</td>
+                    <td>{{ dist.prepared_by }}</td>
+                    <td class="text-right">
+                      ₱{{ Number(dist.total_amount || 0).toFixed(2) }}
+                    </td>
+                    <td>
+                      <span
+                        class="badge badge-sm border-none font-medium"
+                        :class="
+                          dist.status === 'completed'
+                            ? 'badge-success text-success bg-success/20'
+                            : 'badge-warning text-warning bg-warning/20'
+                        "
+                      >
+                        {{
+                          dist.status === 'completed'
+                            ? 'Completed'
+                            : 'Delivered'
+                        }}
+                      </span>
+                    </td>
+                    <td class="flex gap-2">
+                      <button
+                        class="btn btn-ghost btn-xs"
+                        @click="openHistoryReceipt(dist.id)"
+                      >
+                        View
+                      </button>
+                      <button
+                        class="btn btn-ghost btn-xs"
+                        @click="
+                          (() => {
+                            openHistoryReceipt(dist.id);
+                            setTimeout(() => window.print(), 300);
+                          })()
+                        "
+                      >
+                        Print
+                      </button>
+                    </td>
+                  </tr>
+                  <tr v-if="!distributionHistory.length">
+                    <td colspan="7" class="text-center text-gray-400 py-6">
+                      No distributions found
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="flex items-center justify-between mt-3">
+              <div class="text-xs text-gray-500">
+                Page {{ historyPagination.page }} of
+                {{ historyPagination.pages }} • Total:
+                {{ historyPagination.total }}
+              </div>
+              <div class="join">
+                <button
+                  class="btn btn-xs join-item"
+                  :disabled="
+                    (historyPagination.page || 1) <= 1 || historyLoading
+                  "
+                  @click="
+                    fetchDistributionHistory((historyPagination.page || 1) - 1)
+                  "
+                >
+                  Prev
+                </button>
+                <button
+                  class="btn btn-xs join-item"
+                  :disabled="
+                    (historyPagination.page || 1) >=
+                      (historyPagination.pages || 1) || historyLoading
+                  "
+                  @click="
+                    fetchDistributionHistory((historyPagination.page || 1) + 1)
+                  "
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -4088,11 +5019,79 @@
       @submit="handleConsumption"
     />
 
+    <BranchDistributionModal
+      :show="modal.show && modal.type === 'distribution'"
+      :item="modal.item"
+      :branches="branches"
+      :inventory-type="distributionInventoryType"
+      :loading="distributionLoading"
+      @close="closeModal"
+      @add-to-cart="handleAddToDistributionCart"
+    />
+
     <!-- Confirmation Modal (consistent with GRN Manager) -->
     <dialog id="inventory_confirm_modal" class="modal">
-      <div class="modal-box">
-        <h3 class="font-bold text-lg mb-4">{{ confirmModal.title }}</h3>
-        <p class="py-4">{{ confirmModal.message }}</p>
+      <div class="modal-box max-w-3xl">
+        <h3 class="font-bold text-lg mb-2">{{ confirmModal.title }}</h3>
+        <p v-if="confirmModal.message" class="mb-2">
+          {{ confirmModal.message }}
+        </p>
+
+        <!-- Details table (optional) -->
+        <div v-if="confirmModal.details" class="mb-4">
+          <div class="text-sm mb-2">
+            <span class="font-medium">Branch:</span>
+            {{ confirmModal.details.branch_name }}
+          </div>
+          <div class="overflow-x-auto">
+            <table class="table table-xs w-full">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Item</th>
+                  <th>Source</th>
+                  <th class="text-right">Qty</th>
+                  <th>Unit</th>
+                  <th class="text-right">Unit Price</th>
+                  <th class="text-right">Amount</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(x, idx) in confirmModal.details.items"
+                  :key="x.key || idx"
+                >
+                  <td>{{ idx + 1 }}</td>
+                  <td>{{ x.name }}</td>
+                  <td>{{ x.source.toUpperCase() }}</td>
+                  <td class="text-right">{{ x.qty.toLocaleString() }}</td>
+                  <td>{{ x.unit }}</td>
+                  <td class="text-right">₱{{ x.price.toLocaleString() }}</td>
+                  <td class="text-right">₱{{ x.amount.toLocaleString() }}</td>
+                  <td class="text-right">
+                    <button
+                      class="btn btn-ghost btn-xs text-error"
+                      @click="removeItemFromConfirm(x.key)"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td colspan="6" class="text-right font-semibold">Total</td>
+                  <td class="text-right font-semibold">
+                    ₱{{ confirmModal.details.total.toLocaleString() }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-if="confirmModal.details.notes" class="text-xs mt-2">
+            <span class="font-medium">Notes:</span>
+            {{ confirmModal.details.notes }}
+          </div>
+        </div>
 
         <div class="modal-action">
           <button
@@ -4104,14 +5103,50 @@
           </button>
           <button
             type="button"
-            class="btn bg-primaryColor text-white btn-sm font-thin border-none hover:bg-primaryColor/80"
+            class="btn bg-primaryColor text-white btn-sm font-thin border-none hover:bg-primaryColor/80 disabled:opacity-60 disabled:cursor-not-allowed"
             @click="handleConfirmAction"
+            :disabled="confirmLoading"
           >
-            Confirm
+            <span v-if="confirmLoading">Confirming...</span>
+            <span v-else>Confirm</span>
           </button>
         </div>
       </div>
     </dialog>
+
+    <!-- Draft Checkout Controls (floating action) -->
+    <div
+      class="fixed bottom-6 right-6 z-40"
+      v-if="inventoryStore.cartItemCount > 0"
+    >
+      <div class="card shadow-xl bg-base-100">
+        <div class="card-body p-4">
+          <div class="text-sm font-medium">Draft Distribution</div>
+          <div class="text-xs text-gray-500">
+            {{ inventoryStore.cartItemCount }} items • ₱{{
+              inventoryStore.cartTotalValue.toLocaleString()
+            }}
+          </div>
+          <div class="mt-2 flex gap-2">
+            <button class="btn btn-xs" @click="checkoutDistributionDraft">
+              Checkout
+            </button>
+            <button
+              class="btn btn-xs btn-ghost"
+              @click="inventoryStore.clearDistributionCart"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <BranchDistributionReceiptModal
+      :show="distributionReceipt.show"
+      :receipt="distributionReceipt.receipt"
+      :onClose="closeDistributionReceipt"
+    />
 
     <InventoryAdjustmentModal
       :show="modal.show && modal.type === 'adjustment'"

@@ -557,6 +557,11 @@ class Inventory {
         transaction_date: transactionData.transaction_date || new Date(),
         adjustment_type: transactionData.adjustment_type || null,
         disposal_cost: transactionData.disposal_cost || null,
+        audit_action:
+          transactionData.audit_action ||
+          (transactionData.reason === "Branch Distribution"
+            ? "transfer_out"
+            : null),
         // For clarity in reporting, mark transaction_type as 'disposal' when disposing
         // but keep inventory_items.status as 'expired' due to enum constraint.
         created_at: new Date(),

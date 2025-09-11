@@ -54,6 +54,7 @@
     date_to: '',
     category_id: '',
     item_type_id: '',
+    audit_action: '',
   });
 
   // Available filter options
@@ -69,6 +70,11 @@
     { value: 'disposal', label: 'Disposal' },
     { value: 'production_consumption', label: 'Production Consumption' },
     { value: 'production_output', label: 'Production Output' },
+  ];
+
+  const auditActions = [
+    { value: '', label: 'All Audit Actions' },
+    { value: 'transfer_out', label: 'Transfer Out' },
   ];
 
   // Computed properties
@@ -328,6 +334,7 @@
       date_to: '',
       category_id: '',
       item_type_id: '',
+      audit_action: '',
     };
     currentPage.value = 1; // Reset to first page when filters are cleared
     fetchTransactions();
@@ -519,6 +526,26 @@
               </select>
             </div>
 
+            <!-- Audit Action -->
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text text-sm font-medium">Audit Action</span>
+              </label>
+              <select
+                v-model="filters.audit_action"
+                class="select select-bordered select-sm w-full"
+                @change="applyFilters"
+              >
+                <option
+                  v-for="act in auditActions"
+                  :key="act.value"
+                  :value="act.value"
+                >
+                  {{ act.label }}
+                </option>
+              </select>
+            </div>
+
             <!-- Date From -->
             <div class="form-control">
               <label class="label">
@@ -608,6 +635,7 @@
                   <th class="text-sm font-medium">Type</th>
                   <th class="text-sm font-medium">Item</th>
                   <th class="text-sm font-medium">Category</th>
+                  <th class="text-sm font-medium">Audit</th>
                   <th class="text-sm font-medium">Quantity</th>
                   <th class="text-sm font-medium">Value</th>
                   <th class="text-sm font-medium">Date</th>
@@ -673,6 +701,16 @@
                   <td>
                     <span class="text-sm text-gray-600">
                       {{ transaction.category_name }}
+                    </span>
+                  </td>
+
+                  <!-- Audit Action Badge -->
+                  <td>
+                    <span
+                      v-if="transaction.audit_action === 'transfer_out'"
+                      class="badge badge-sm border-none bg-primary/10 text-primary"
+                    >
+                      Transfer Out
                     </span>
                   </td>
 

@@ -1993,6 +1993,7 @@
             unit: x.unit,
             price: Number(x.unit_price || 0),
             amount: Number(x.unit_price || 0) * Number(x.quantity || 0),
+            expiry_date: x.item?.expiry_date || null,
           })),
           total: cart.items.reduce(
             (s, x) => s + Number(x.unit_price || 0) * Number(x.quantity || 0),
@@ -2025,6 +2026,9 @@
                 qty: x.quantity,
                 unit_price: x.unit_price,
                 amount: Number(x.unit_price) * Number(x.quantity),
+                category:
+                  x.item?.category_name || x.item?.category || 'Uncategorized',
+                expiry_date: x.item?.expiry_date || null,
                 notes: null,
               })),
             };

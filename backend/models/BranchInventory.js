@@ -4,25 +4,40 @@ class BranchInventory {
   // Get branch inventory by branch ID
   static async getByBranch(branchId, filters = {}) {
     try {
-      let query = db("branch_inventory")
-        .where("branch_id", branchId)
-        .whereNull("deleted_at");
+      // Base branch inventory
+      let query = db("branch_inventory as bi")
+        .where("bi.branch_id", branchId)
+        .whereNull("bi.deleted_at")
+        // Join to production inventory -> menu_items to enrich with selling_price and image_url
+        .leftJoin("menu_items as mi", function () {
+          this.on("bi.item_type", "=", db.raw("?", "production"))
+            .andOn("mi.menu_item_name", "=", "bi.item_name")
+            .andOnNull("mi.deleted_at");
+        })
+        .select(
+          "bi.*",
+          // Prefer branch stored selling_price if present; fallback to menu_items.selling_price
+          db.raw(
+            "COALESCE(bi.selling_price, mi.selling_price) as selling_price"
+          ),
+          "mi.image_url"
+        );
 
       // Apply filters
       if (filters.item_type) {
-        query = query.where("item_type", filters.item_type);
+        query = query.where("bi.item_type", filters.item_type);
       }
       if (filters.category) {
-        query = query.where("category", filters.category);
+        query = query.where("bi.category", filters.category);
       }
       if (filters.status) {
-        query = query.where("status", filters.status);
+        query = query.where("bi.status", filters.status);
       }
       if (filters.search) {
-        query = query.where("item_name", "like", `%${filters.search}%`);
+        query = query.where("bi.item_name", "like", `%${filters.search}%`);
       }
 
-      return await query.orderBy(["item_type", "item_name"]);
+      return await query.orderBy(["bi.item_type", "bi.item_name"]);
     } catch (error) {
       console.error("Error fetching branch inventory:", error);
       throw error;

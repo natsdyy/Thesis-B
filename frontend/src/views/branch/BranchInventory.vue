@@ -1,6 +1,8 @@
 <script setup>
   import { ref, computed, onMounted, watch } from 'vue';
+  import { useToast } from 'vue-toastification';
   import {
+    Calendar,
     Package,
     Search,
     Filter,
@@ -41,11 +43,13 @@
   import { useBranchInventoryStore } from '../../stores/branchInventoryStore';
   import BranchDistributionReceiptModal from '../../components/scm/BranchDistributionReceiptModal.vue';
   import BranchRequestSupply from '../../components/branch/BranchRequestSupply.vue';
+  import { apiConfig } from '../../config/api';
 
   const branchContextStore = useBranchContextStore();
   const branchDistributionStore = useBranchDistributionStore();
   const authStore = useAuthStore();
   const branchInventoryStore = useBranchInventoryStore();
+  const toast = useToast();
 
   // Local state following MainInventory pattern
   const activeTab = ref('overview');
@@ -56,6 +60,9 @@
   const currentPage = ref(1);
   const itemsPerPage = ref(12);
   const loading = ref(false);
+
+  // Alerts tab state to mirror MainInventory
+  const alertTab = ref('expiring');
 
   // Real data from branch inventory store
   const branchInventory = computed(() => branchInventoryStore.inventory || []);
@@ -117,11 +124,22 @@
   const lowStockItems = computed(
     () => branchInventoryStore.lowStockItems || []
   );
-  const recentActivity = computed(
-    () => branchInventoryStore.recentActivity || []
-  );
+  const recentActivity = ref([]);
   const alerts = ref([]);
   const reports = ref([]);
+
+  // Helper sets for acknowledging alerts (UI-only)
+  const acknowledgedExpiring = ref(new Set());
+  const acknowledgedLowStock = ref(new Set());
+
+  const acknowledgeExpiring = (item) => {
+    acknowledgedExpiring.value.add(
+      item.id || `${item.id || item.item_type_id}-${item.expiry_date}`
+    );
+  };
+  const acknowledgeLowStock = (item) => {
+    acknowledgedLowStock.value.add(item.id || item.item_type_id);
+  };
 
   // Category summary for overview
   const categorySummary = computed(() => {
@@ -148,10 +166,12 @@
     // Determine status for each category
     return Object.values(categories).map((category) => {
       const lowStockItems = category.items.filter(
-        (item) => item.quantity <= item.minimum_stock && item.quantity > 0
+        (item) =>
+          parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
+          parseFloat(item.quantity) > 0
       ).length;
       const outOfStockItems = category.items.filter(
-        (item) => item.quantity === 0
+        (item) => parseFloat(item.quantity) === 0
       ).length;
 
       let status = 'active';
@@ -300,6 +320,102 @@
       : batchNumber;
   };
 
+  // Date/expiry helpers to align with MainInventory
+  const formatDate = (date) => {
+    try {
+      const d = new Date(date);
+      if (Number.isNaN(d.getTime())) return 'N/A';
+      return d.toLocaleDateString();
+    } catch (e) {
+      return 'N/A';
+    }
+  };
+
+  const formatShortDate = (date) => {
+    try {
+      const d = new Date(date);
+      if (Number.isNaN(d.getTime())) return 'N/A';
+      return d.toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    } catch (e) {
+      return 'N/A';
+    }
+  };
+
+  const getDaysUntilExpiry = (date) => {
+    if (!date) return Infinity;
+    const now = new Date();
+    const d = new Date(date);
+    return Math.ceil((d - now) / (1000 * 60 * 60 * 24));
+  };
+
+  const getExpirySeverityLevel = (item) => {
+    const days = getDaysUntilExpiry(item.expiry_date);
+    if (!Number.isFinite(days)) return 'info';
+    if (days <= 0) return 'critical';
+    if (days <= 3) return 'warning';
+    return 'info';
+  };
+
+  const getExpiryFriendlyText = (date) => {
+    const days = getDaysUntilExpiry(date);
+    const d = formatDate(date);
+    if (!Number.isFinite(days)) return `Expiry: ${d}`;
+    if (days < 0) {
+      const ago = Math.abs(days);
+      return ago <= 1 ? `Expired today (${d})` : `Expired ${ago}d ago (${d})`;
+    }
+    if (days === 0) return `Expires today (${d})`;
+    if (days === 1) return `Expires tomorrow (${d})`;
+    return `Expires in ${days}d (${d})`;
+  };
+
+  const getLowStockSeverity = (item) => {
+    const current = parseFloat(item.quantity || item.current_stock || 0);
+    const min = parseFloat(item.minimum_stock || item.min_stock_level || 0);
+    if (current <= 0) return 'critical';
+    if (current <= min) return 'warning';
+    return 'info';
+  };
+
+  const estimateDaysOfCover = (item) => {
+    // Simple placeholder: assume daily usage of 1 unit if unknown
+    const current = parseFloat(item.quantity || 0);
+    const dailyUsage = 1;
+    if (current <= 0) return 0;
+    return Math.max(0, Math.floor(current / dailyUsage));
+  };
+
+  const viewBatchDetails = (/* item */) => {
+    // Placeholder action hook for future modal
+  };
+
+  // Mirror ProductionInventory behavior: compute formatted inventory with full image URLs
+  const formatImageUrl = (url) => {
+    if (!url) return url;
+    if (url.startsWith('/uploads/')) {
+      const baseUrl = (apiConfig?.baseURL || '').replace('/api', '');
+      return `${baseUrl}${url}`;
+    }
+    return url;
+  };
+
+  const formattedBranchInventory = computed(() => {
+    return branchInventory.value.map((item) => {
+      if (
+        inventoryType.value === 'production' &&
+        item.image_url &&
+        item.image_url.startsWith('/uploads/')
+      ) {
+        return { ...item, image_url: formatImageUrl(item.image_url) };
+      }
+      return item;
+    });
+  });
+
   // Transaction modal handler
   const openTransactionModal = () => {
     // This would open a transaction modal - for now just log
@@ -339,9 +455,15 @@
   const canEdit = computed(() => branchContextStore.canAccessInventory);
 
   const currentInventoryData = computed(() => {
-    return inventoryType.value === 'scm'
-      ? branchInventory.value
-      : productionInventory.value;
+    const source =
+      inventoryType.value === 'scm'
+        ? formattedBranchInventory.value.filter(
+            (item) => item.item_type === 'scm'
+          )
+        : formattedBranchInventory.value.filter(
+            (item) => item.item_type === 'production'
+          );
+    return source;
   });
 
   const currentStats = computed(() => {
@@ -370,9 +492,11 @@
 
     // Filter by status
     if (statusFilter.value === 'low_stock') {
-      items = items.filter((item) => item.quantity <= item.minimum_stock);
+      items = items.filter(
+        (item) => parseFloat(item.quantity) <= parseFloat(item.minimum_stock)
+      );
     } else if (statusFilter.value === 'out_of_stock') {
-      items = items.filter((item) => item.quantity === 0);
+      items = items.filter((item) => parseFloat(item.quantity) === 0);
     }
 
     return items;
@@ -413,11 +537,22 @@
 
   // Methods
   const getStockStatus = (item) => {
-    if (item.quantity === 0)
+    if (parseFloat(item.quantity) === 0)
       return { status: 'out', class: 'badge-error', text: 'Out of Stock' };
-    if (item.quantity <= item.minimum_stock)
+    if (parseFloat(item.quantity) <= parseFloat(item.minimum_stock))
       return { status: 'low', class: 'badge-warning', text: 'Low Stock' };
     return { status: 'good', class: 'badge-success', text: 'In Stock' };
+  };
+
+  // Consistent item display name across different data shapes
+  const getItemDisplayName = (item) => {
+    return (
+      item?.item_name ||
+      item?.name ||
+      item?.item_type_name ||
+      item?.item ||
+      'Unnamed Item'
+    );
   };
 
   const loadBranchInventory = async () => {
@@ -433,30 +568,40 @@
       await branchInventoryStore.loadAllData(currentBranch.value.id);
 
       // Calculate SCM stats
+      const scmItems = branchInventory.value.filter(
+        (item) => item.item_type === 'scm'
+      );
       inventoryStats.value = {
-        totalItems: branchInventory.value.length,
-        lowStockItems: branchInventory.value.filter(
-          (item) => item.quantity <= item.minimum_stock && item.quantity > 0
+        totalItems: scmItems.length,
+        lowStockItems: scmItems.filter(
+          (item) =>
+            parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
+            parseFloat(item.quantity) > 0
         ).length,
-        outOfStockItems: branchInventory.value.filter(
-          (item) => item.quantity === 0
+        outOfStockItems: scmItems.filter(
+          (item) => parseFloat(item.quantity) === 0
         ).length,
-        totalValue: branchInventory.value.reduce(
+        totalValue: scmItems.reduce(
           (total, item) => total + parseFloat(item.total_value || 0),
           0
         ),
       };
 
       // Calculate Production stats
+      const productionItems = branchInventory.value.filter(
+        (item) => item.item_type === 'production'
+      );
       productionStats.value = {
-        totalItems: productionInventory.value.length,
-        lowStockItems: productionInventory.value.filter(
-          (item) => item.quantity <= item.minimum_stock && item.quantity > 0
+        totalItems: productionItems.length,
+        lowStockItems: productionItems.filter(
+          (item) =>
+            parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
+            parseFloat(item.quantity) > 0
         ).length,
-        outOfStockItems: productionInventory.value.filter(
-          (item) => item.quantity === 0
+        outOfStockItems: productionItems.filter(
+          (item) => parseFloat(item.quantity) === 0
         ).length,
-        totalValue: productionInventory.value.reduce(
+        totalValue: productionItems.reduce(
           (total, item) => total + parseFloat(item.total_value || 0),
           0
         ),
@@ -491,7 +636,10 @@
         });
 
         // Add low stock warning if applicable
-        if (item.quantity <= item.minimum_stock && item.quantity > 0) {
+        if (
+          parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
+          parseFloat(item.quantity) > 0
+        ) {
           realRecentActivity.push({
             id: `low_stock_${item.id}`,
             transaction_type: 'alert',
@@ -516,7 +664,7 @@
         }
 
         // Add out of stock warning if applicable
-        if (item.quantity === 0) {
+        if (parseFloat(item.quantity) === 0) {
           realRecentActivity.push({
             id: `out_stock_${item.id}`,
             transaction_type: 'alert',
@@ -556,9 +704,22 @@
 
       // Low stock alerts
       const lowStockItems = branchInventory.value.filter(
-        (item) => item.quantity <= item.minimum_stock && item.quantity > 0
+        (item) =>
+          parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
+          parseFloat(item.quantity) > 0
       );
       console.log('Low stock items for alerts:', lowStockItems);
+      console.log(
+        'Debug - Item details:',
+        branchInventory.value.map((item) => ({
+          name: item.item_name,
+          quantity: item.quantity,
+          minimum_stock: item.minimum_stock,
+          isLowStock:
+            parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
+            parseFloat(item.quantity) > 0,
+        }))
+      );
       lowStockItems.forEach((item, index) => {
         realAlerts.push({
           id: `low_stock_${item.id}`,
@@ -574,7 +735,7 @@
 
       // Out of stock alerts
       const outOfStockItems = branchInventory.value.filter(
-        (item) => item.quantity === 0
+        (item) => parseFloat(item.quantity) === 0
       );
       outOfStockItems.forEach((item, index) => {
         realAlerts.push({
@@ -615,10 +776,9 @@
       alerts.value = realAlerts;
 
       // Low stock items
-      lowStockItems.value = [
-        ...branchInventory.value,
-        ...productionInventory.value,
-      ].filter((item) => item.quantity <= item.minimum_stock);
+      lowStockItems.value = branchInventory.value.filter(
+        (item) => parseFloat(item.quantity) <= parseFloat(item.minimum_stock)
+      );
 
       // Generate real reports from branch inventory data
       const realReports = [];
@@ -630,10 +790,12 @@
         0
       );
       const lowStockCount = branchInventory.value.filter(
-        (item) => item.quantity <= item.minimum_stock && item.quantity > 0
+        (item) =>
+          parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
+          parseFloat(item.quantity) > 0
       ).length;
       const outOfStockCount = branchInventory.value.filter(
-        (item) => item.quantity === 0
+        (item) => parseFloat(item.quantity) === 0
       ).length;
 
       realReports.push({
@@ -661,7 +823,9 @@
           status: 'completed',
           data: {
             items: branchInventory.value.filter(
-              (item) => item.quantity <= item.minimum_stock && item.quantity > 0
+              (item) =>
+                parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
+                parseFloat(item.quantity) > 0
             ),
             count: lowStockCount,
           },
@@ -677,24 +841,26 @@
           date: new Date().toISOString().split('T')[0],
           status: 'completed',
           data: {
-            items: branchInventory.value.filter((item) => item.quantity === 0),
+            items: branchInventory.value.filter(
+              (item) => parseFloat(item.quantity) === 0
+            ),
             count: outOfStockCount,
           },
         });
       }
 
       // Inventory value analysis report
-      const scmItems = branchInventory.value.filter(
+      const scmItemsForReport = branchInventory.value.filter(
         (item) => item.item_type === 'scm'
       );
-      const productionItems = branchInventory.value.filter(
+      const productionItemsForReport = branchInventory.value.filter(
         (item) => item.item_type === 'production'
       );
-      const scmValue = scmItems.reduce(
+      const scmValue = scmItemsForReport.reduce(
         (sum, item) => sum + parseFloat(item.total_value || 0),
         0
       );
-      const productionValue = productionItems.reduce(
+      const productionValue = productionItemsForReport.reduce(
         (sum, item) => sum + parseFloat(item.total_value || 0),
         0
       );
@@ -886,12 +1052,12 @@
 
       // Show success message
       console.log('Distribution accepted successfully');
-      alert(
+      toast.success(
         'Distribution accepted successfully! Items have been added to your inventory.'
       );
     } catch (error) {
       console.error('Error accepting distribution:', error);
-      alert('Error accepting distribution: ' + error.message);
+      toast.error('Error accepting distribution: ' + error.message);
     } finally {
       distributionActionLoading.value = false;
     }
@@ -987,7 +1153,7 @@
 
       // Validate rejection form
       if (!rejectionForm.value.reason.trim()) {
-        alert('Please provide a reason for rejection.');
+        toast.warning('Please provide a reason for rejection.');
         return;
       }
 
@@ -1011,12 +1177,12 @@
 
       // Show success message
       console.log('Distribution rejected successfully');
-      alert(
+      toast.success(
         'Distribution rejected successfully! Quantities have been returned to main inventory.'
       );
     } catch (error) {
       console.error('Error rejecting distribution:', error);
-      alert('Error rejecting distribution: ' + error.message);
+      toast.error('Error rejecting distribution: ' + error.message);
     } finally {
       distributionActionLoading.value = false;
     }
@@ -1658,6 +1824,10 @@
                         <th>Item</th>
                         <th>Category</th>
                         <th>Quantity</th>
+                        <th v-if="inventoryType === 'production'">
+                          Selling Price
+                        </th>
+                        <th>Expiry</th>
                         <th>Status</th>
                         <th>Last Updated</th>
                         <th v-if="canEdit">Actions</th>
@@ -1666,12 +1836,36 @@
                     <tbody>
                       <tr v-for="item in paginatedInventory" :key="item.id">
                         <td>
-                          <div class="font-semibold">{{ item.name }}</div>
-                          <div class="text-sm text-gray-500">
-                            ₱{{ item.cost_price }} per {{ item.unit }}
-                            <span v-if="item.selling_price" class="ml-2">
-                              (Sell: ₱{{ item.selling_price }})
-                            </span>
+                          <div class="flex items-center gap-2">
+                            <div
+                              v-if="
+                                inventoryType === 'production' && item.image_url
+                              "
+                              class="avatar"
+                            >
+                              <div class="w-6 rounded">
+                                <img :src="item.image_url" alt="item" />
+                              </div>
+                            </div>
+                            <div class="font-semibold">
+                              {{ getItemDisplayName(item) }}
+                            </div>
+                          </div>
+
+                          <div
+                            v-if="item.expiry_date"
+                            class="text-[11px] mt-1"
+                            :class="{
+                              'text-error':
+                                getDaysUntilExpiry(item.expiry_date) <= 0,
+                              'text-warning':
+                                getDaysUntilExpiry(item.expiry_date) > 0 &&
+                                getDaysUntilExpiry(item.expiry_date) <= 7,
+                              'text-gray-500':
+                                getDaysUntilExpiry(item.expiry_date) > 7,
+                            }"
+                          >
+                            {{ getExpiryFriendlyText(item.expiry_date) }}
                           </div>
                         </td>
                         <td>
@@ -1686,6 +1880,20 @@
                           <div class="text-sm text-gray-500">
                             Min: {{ item.minimum_stock }}
                           </div>
+                        </td>
+                        <td v-if="inventoryType === 'production'">
+                          <div class="font-medium" v-if="item.selling_price">
+                            ₱{{
+                              parseFloat(item.selling_price).toLocaleString()
+                            }}
+                          </div>
+                          <div v-else class="text-gray-400">N/A</div>
+                        </td>
+                        <td>
+                          <span v-if="item.expiry_date" class="text-xs">
+                            {{ formatShortDate(item.expiry_date) }}
+                          </span>
+                          <span v-else class="text-gray-400 text-xs">N/A</span>
                         </td>
                         <td>
                           <div
@@ -1771,59 +1979,243 @@
             <h2
               class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl"
             >
-              <Bell class="w-5 h-5 sm:w-6 sm:h-6" />
               Inventory Alerts
             </h2>
+
+            <div class="tabs tabs-boxed">
+              <button
+                @click="alertTab = 'expiring'"
+                class="tab tab-sm"
+                :class="{ 'tab-active': alertTab === 'expiring' }"
+              >
+                Expiring Soon
+              </button>
+              <button
+                @click="alertTab = 'lowstock'"
+                class="tab tab-sm"
+                :class="{ 'tab-active': alertTab === 'lowstock' }"
+              >
+                Low Stock
+              </button>
+            </div>
           </div>
 
-          <!-- Alerts List -->
-          <div class="space-y-4">
+          <!-- Expiring Items -->
+          <div v-if="alertTab === 'expiring'" class="space-y-3">
             <div
-              v-for="alert in alerts"
-              :key="alert.id"
-              class="card bg-white shadow-lg"
+              v-for="item in branchInventory.filter((i) => i.expiry_date)"
+              :key="item.id"
+              class="border border-gray-200 rounded-lg bg-base-100 p-3 flex items-start gap-3"
             >
-              <div class="card-body">
-                <div class="flex items-start justify-between">
-                  <div class="flex items-start space-x-3">
-                    <div
-                      class="p-2 rounded-full"
-                      :class="
-                        alert.severity === 'error'
-                          ? 'bg-red-100'
-                          : 'bg-orange-100'
-                      "
-                    >
-                      <AlertTriangle
-                        class="w-5 h-5"
-                        :class="
-                          alert.severity === 'error'
-                            ? 'text-red-600'
-                            : 'text-orange-600'
-                        "
-                      />
-                    </div>
-                    <div>
-                      <h3 class="font-semibold text-gray-900">
-                        {{ alert.message }}
-                      </h3>
-                      <p class="text-sm text-gray-600 mt-1">
-                        Item: {{ alert.item }} • {{ alert.time }}
-                      </p>
+              <div>
+                <XCircle
+                  v-if="getExpirySeverityLevel(item) === 'critical'"
+                  class="w-5 h-5 text-error"
+                />
+                <AlertTriangle
+                  v-else-if="getExpirySeverityLevel(item) === 'warning'"
+                  class="w-5 h-5 text-warning"
+                />
+                <Calendar v-else class="w-5 h-5 text-info" />
+              </div>
+
+              <div class="flex-1">
+                <div class="flex justify-between items-start">
+                  <div>
+                    <h3 class="font-semibold text-sm text-primaryColor">
+                      {{ item.item_name || item.name }}
+                    </h3>
+                    <div class="text-xs text-gray-600">
+                      {{ item.category }}
                     </div>
                   </div>
-                  <div
-                    class="badge badge-sm border-none font-medium"
-                    :class="
-                      alert.severity === 'error'
-                        ? 'bg-error/20 text-error'
-                        : 'bg-warning/20 text-warning'
-                    "
-                  >
-                    {{ alert.severity === 'error' ? 'Critical' : 'Warning' }}
+                  <div>
+                    <span
+                      v-if="getExpirySeverityLevel(item) === 'critical'"
+                      class="badge bg-error/20 badge-sm text-error"
+                      >Expired / Today</span
+                    >
+                    <span
+                      v-else-if="getExpirySeverityLevel(item) === 'warning'"
+                      class="badge bg-warning/20 badge-sm text-warning"
+                      >Expiring ≤ 3d</span
+                    >
+                    <span v-else class="badge bg-info/20 badge-sm text-info"
+                      >Expiring ≤ 7d</span
+                    >
                   </div>
                 </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2 text-xs">
+                  <div>
+                    <div class="text-gray-500">Expiry Date</div>
+                    <div class="font-medium">
+                      {{ formatDate(item.expiry_date) }}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500">Days Left</div>
+                    <div class="font-medium">
+                      {{ Math.max(0, getDaysUntilExpiry(item.expiry_date)) }}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500">Quantity</div>
+                    <div class="font-medium">
+                      {{ parseFloat(item.quantity).toLocaleString() }}
+                      {{ item.unit }}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500">Batch</div>
+                    <div class="font-medium">
+                      {{ formatBatchNumber(item.batch_number) }}
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <button
+                    class="btn btn-ghost btn-xs"
+                    @click="viewBatchDetails(item)"
+                  >
+                    View Item
+                  </button>
+                  <button class="btn btn-ghost btn-xs" disabled>
+                    Mark for Disposal
+                  </button>
+                  <button
+                    class="btn btn-outline btn-xs"
+                    :class="{
+                      'btn-disabled': acknowledgedExpiring.has(
+                        item.id || `${item.id}-${item.expiry_date}`
+                      ),
+                    }"
+                    @click="acknowledgeExpiring(item)"
+                  >
+                    Acknowledge
+                  </button>
+                </div>
               </div>
+            </div>
+
+            <div
+              v-if="branchInventory.filter((i) => i.expiry_date).length === 0"
+              class="text-center py-8"
+            >
+              <CheckCircle class="w-12 h-12 mx-auto text-success mb-2" />
+              <p class="text-gray-500">No items expiring soon!</p>
+            </div>
+          </div>
+
+          <!-- Low Stock Items -->
+          <div v-if="alertTab === 'lowstock'" class="space-y-3">
+            <div
+              v-for="item in branchInventory.filter(
+                (i) => parseFloat(i.quantity) <= parseFloat(i.minimum_stock)
+              )"
+              :key="item.id"
+              class="border border-gray-200 rounded-lg bg-base-100 p-3 flex items-start gap-3"
+            >
+              <div>
+                <XCircle
+                  v-if="getLowStockSeverity(item) === 'critical'"
+                  class="w-5 h-5 text-error"
+                />
+                <AlertTriangle
+                  v-else-if="getLowStockSeverity(item) === 'warning'"
+                  class="w-5 h-5 text-warning"
+                />
+                <Bell v-else class="w-5 h-5 text-info" />
+              </div>
+
+              <div class="flex-1">
+                <div class="flex justify-between items-start">
+                  <div>
+                    <h3 class="font-semibold text-sm text-primaryColor">
+                      {{ item.item_name || item.name }}
+                    </h3>
+                    <div class="text-xs text-gray-600">
+                      {{ item.category }}
+                    </div>
+                  </div>
+                  <div>
+                    <span
+                      v-if="getLowStockSeverity(item) === 'critical'"
+                      class="badge bg-error/20 badge-sm text-error"
+                      >Critical</span
+                    >
+                    <span
+                      v-else-if="getLowStockSeverity(item) === 'warning'"
+                      class="badge bg-warning/20 badge-sm text-warning"
+                      >Warning</span
+                    >
+                    <span v-else class="badge bg-info/20 badge-sm text-info"
+                      >Info</span
+                    >
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2 text-xs">
+                  <div>
+                    <div class="text-gray-500">Current Stock</div>
+                    <div class="font-medium">
+                      {{ parseFloat(item.quantity).toLocaleString() }}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500">Min Level</div>
+                    <div class="font-medium">
+                      {{ parseFloat(item.minimum_stock).toLocaleString() }}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500">Variance</div>
+                    <div class="font-medium">
+                      {{
+                        (
+                          parseFloat(item.quantity) -
+                          parseFloat(item.minimum_stock)
+                        ).toLocaleString()
+                      }}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500">Days of Cover</div>
+                    <div class="font-medium">
+                      {{ estimateDaysOfCover(item) }}
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <button class="btn btn-ghost btn-xs">View Item</button>
+                  <button class="btn btn-ghost btn-xs" disabled>
+                    Create Supply Request
+                  </button>
+                  <button
+                    class="btn btn-outline btn-xs"
+                    :class="{
+                      'btn-disabled': acknowledgedLowStock.has(item.id),
+                    }"
+                    @click="acknowledgeLowStock(item)"
+                  >
+                    Acknowledge
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div
+              v-if="
+                branchInventory.filter(
+                  (i) => parseFloat(i.quantity) <= parseFloat(i.minimum_stock)
+                ).length === 0
+              "
+              class="text-center py-8"
+            >
+              <CheckCircle class="w-12 h-12 mx-auto text-success mb-2" />
+              <p class="text-gray-500">No low stock alerts!</p>
             </div>
           </div>
         </div>

@@ -57,6 +57,8 @@ class BranchDistribution {
         qty: item.qty,
         unit_price: item.unit_price,
         amount: item.amount,
+        category: item.category || "Uncategorized",
+        expiry_date: item.expiry_date || null,
         notes: item.notes || null,
       }));
 
@@ -420,12 +422,22 @@ class BranchDistribution {
           await trx("branch_inventory").insert({
             item_name: item.name,
             item_type: item.source,
-            category: "Distributed",
+            category: item.category || "Distributed",
             quantity: item.qty,
             unit: item.unit,
             unit_cost: item.unit_price,
+            // For production sourced items, preserve selling price and image when available
+            selling_price:
+              item.source === "production" && item.menu_selling_price
+                ? item.menu_selling_price
+                : null,
             total_value: item.amount,
             minimum_stock: Math.ceil(item.qty * 0.15), // 15% of quantity
+            expiry_date: item.expiry_date || null,
+            image_url:
+              item.source === "production" && item.image_url
+                ? item.image_url
+                : null,
             branch_id: distribution.branch_id,
             status: "active",
             created_at: db.fn.now(),

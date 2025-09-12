@@ -11,12 +11,40 @@ import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 import { fas } from '@fortawesome/free-solid-svg-icons';
 import { far } from '@fortawesome/free-regular-svg-icons';
 import { fab } from '@fortawesome/free-brands-svg-icons';
+import Toast from 'vue-toastification';
 
 const app = createApp(App);
 const pinia = createPinia();
 
 app.use(pinia);
 app.use(router);
+
+// Configure toast notifications
+const toastOptions = {
+  position: 'top-right',
+  timeout: 5000,
+  closeOnClick: true,
+  pauseOnFocusLoss: true,
+  pauseOnHover: true,
+  draggable: true,
+  draggablePercent: 0.6,
+  showCloseButtonOnHover: false,
+  hideProgressBar: false,
+  closeButton: 'button',
+  icon: true,
+  rtl: false,
+  transition: 'Vue-Toastification__bounce',
+  maxToasts: 20,
+  newestOnTop: true,
+  filterBeforeCreate: (toast, toasts) => {
+    if (toasts.filter((t) => t.type === toast.type).length !== 0) {
+      return false;
+    }
+    return toast;
+  },
+};
+
+app.use(Toast, toastOptions);
 
 // Initialize authentication
 const authStore = useAuthStore();

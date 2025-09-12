@@ -479,6 +479,94 @@ class BranchDistribution {
 
     return result > 0;
   }
+
+  /**
+   * Get all distribution items with detailed information for production inventory
+   * @param {Object} options - Query options
+   * @param {number} options.page - Page number
+   * @param {number} options.limit - Items per page
+   * @param {string} options.startDate - Start date filter
+   * @param {string} options.endDate - End date filter
+   * @param {number} options.branch_id - Branch filter
+   * @param {string} options.search - Search term
+   * @returns {Promise<Object>} Paginated distribution items
+   */
+  static async getAllDistributionItems(options = {}) {
+    const {
+      page = 1,
+      limit = 50,
+      startDate,
+      endDate,
+      branch_id,
+      search,
+    } = options;
+    const offset = (page - 1) * limit;
+
+    let query = db("branch_distribution_items as bdi")
+      .leftJoin("branch_distributions as bd", "bdi.distribution_id", "bd.id")
+      .leftJoin("branches as b", "bd.branch_id", "b.id")
+      .leftJoin("production_inventory as pi", function () {
+        this.on("bdi.item_ref_id", "pi.id").andOn(
+          "bdi.source",
+          "=",
+          db.raw("'production'")
+        );
+      })
+      .leftJoin("menu_items as mi", "pi.menu_item_id", "mi.id")
+      .select(
+        "bdi.*",
+        "bd.reference",
+        "bd.created_at as distribution_date",
+        "bd.prepared_by as distributed_by_name",
+        "b.name as branch_name",
+        "b.id as branch_id",
+        "mi.menu_item_name",
+        "mi.item_code",
+        "mi.category"
+      )
+      .where("bdi.source", "production"); // Only production items
+
+    // Apply filters
+    if (branch_id) {
+      query = query.where("bd.branch_id", branch_id);
+    }
+    if (startDate) {
+      query = query.where("bd.created_at", ">=", startDate);
+    }
+    if (endDate) {
+      query = query.where("bd.created_at", "<=", endDate);
+    }
+    if (search) {
+      query = query.where(function () {
+        this.where("bdi.name", "ilike", `%${search}%`)
+          .orWhere("mi.menu_item_name", "ilike", `%${search}%`)
+          .orWhere("mi.item_code", "ilike", `%${search}%`)
+          .orWhere("b.name", "ilike", `%${search}%`);
+      });
+    }
+
+    const total = await query
+      .clone()
+      .clearSelect()
+      .clearOrder()
+      .count("* as count")
+      .first();
+
+    const items = await query
+      .orderBy("bd.created_at", "desc")
+      .limit(limit)
+      .offset(offset);
+
+    return {
+      distributions: items,
+      pagination: {
+        page,
+        limit,
+        total: parseInt(total.count),
+        pages: Math.ceil(parseInt(total.count) / limit),
+      },
+    };
+  }
 }
 
 module.exports = BranchDistribution;

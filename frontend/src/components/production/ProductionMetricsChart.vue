@@ -105,7 +105,7 @@
                 -{{ metricsData.costReduction }}% vs last period
               </p>
             </div>
-            <DollarSign class="w-8 h-8 text-orange-600" />
+            <PhilippinePeso class="w-8 h-8 text-orange-600" />
           </div>
         </div>
       </div>
@@ -276,6 +276,7 @@
     TrendingUp,
     ArrowDown,
     BarChart3,
+    PhilippinePeso,
   } from 'lucide-vue-next';
   import { useProductionStore } from '../../stores/productionStore.js';
 

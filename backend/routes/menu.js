@@ -8,6 +8,8 @@ const MenuItem = require("../models/MenuItem");
 const SampleProduction = require("../models/SampleProduction");
 const QualityInspection = require("../models/QualityInspection");
 const ProductionInventory = require("../models/ProductionInventory");
+const BranchDistribution = require("../models/BranchDistribution");
+const Branch = require("../models/Branch");
 const AuditLogger = require("../models/AuditLogger");
 const InventoryService = require("../services/InventoryService");
 const { authenticateToken } = require("../middleware/rbac");
@@ -1558,6 +1560,72 @@ router.get(
 
 /**
  * @swagger
+ * /api/menu/production-inventory/branches:
+ *   get:
+ *     summary: Get active branches for distribution
+ *     tags: [Production Inventory]
+ */
+router.get(
+  "/production-inventory/branches",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const branches = await Branch.getActiveBranches();
+      res.json(branches);
+    } catch (error) {
+      console.error("Error fetching branches for distribution:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch branches",
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/menu/production-inventory/distributions:
+ *   get:
+ *     summary: Get all branch distributions with filters
+ *     tags: [Production Inventory]
+ */
+router.get(
+  "/production-inventory/distributions",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const options = {
+        page: parseInt(req.query.page) || 1,
+        limit: parseInt(req.query.limit) || 50,
+        branch_id: req.query.branch_id,
+        startDate: req.query.date_from,
+        endDate: req.query.date_to,
+        search: req.query.search,
+      };
+
+      const result = await BranchDistribution.getAllDistributionItems(options);
+
+      res.json({
+        success: true,
+        data: result.distributions,
+        pagination: {
+          page: result.pagination.page,
+          pages: result.pagination.pages,
+          total: result.pagination.total,
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching distributions:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch distributions",
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
  * /api/menu/production-inventory/{id}:
  *   get:
  *     summary: Get production inventory item by ID
@@ -1819,43 +1887,6 @@ router.get(
       res.status(500).json({
         success: false,
         message: error.message || "Failed to fetch distribution history",
-      });
-    }
-  }
-);
-
-/**
- * @swagger
- * /api/menu/production-inventory/distributions:
- *   get:
- *     summary: Get all distributions with filters
- *     tags: [Production Inventory]
- */
-router.get(
-  "/production-inventory/distributions",
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const filters = {
-        branch_id: req.query.branch_id,
-        menu_item_id: req.query.menu_item_id,
-        date_from: req.query.date_from,
-        date_to: req.query.date_to,
-        search: req.query.search,
-      };
-
-      const distributions =
-        await ProductionInventory.getAllDistributions(filters);
-
-      res.json({
-        success: true,
-        data: distributions,
-      });
-    } catch (error) {
-      console.error("Error fetching distributions:", error);
-      res.status(500).json({
-        success: false,
-        message: error.message || "Failed to fetch distributions",
       });
     }
   }

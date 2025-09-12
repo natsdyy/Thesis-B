@@ -22,6 +22,8 @@
     X,
     ChevronDown,
     ChevronUp,
+    ChevronLeft,
+    ChevronRight,
     Truck,
     History,
     Handshake,
@@ -89,6 +91,14 @@
   const distributions = ref([]);
   const distributionLoading = ref(false);
 
+  // Distribution pagination and filtering
+  const distributionCurrentPage = ref(1);
+  const distributionItemsPerPage = ref(10);
+  const distributionSearchQuery = ref('');
+  const distributionBranchFilter = ref('');
+  const distributionDateFrom = ref('');
+  const distributionDateTo = ref('');
+
   // Access store data
   const loading = computed(() => productionStore.loading);
   const error = computed(() => productionStore.error);
@@ -154,6 +164,58 @@
         productionStore.productionInventoryStats?.total_quantity_distributed ||
         0,
     };
+  });
+
+  // Filtered distributions
+  const filteredDistributions = computed(() => {
+    let filtered = [...distributions.value];
+
+    if (distributionSearchQuery.value) {
+      const query = distributionSearchQuery.value.toLowerCase();
+      filtered = filtered.filter(
+        (dist) =>
+          dist.menu_item_name?.toLowerCase().includes(query) ||
+          dist.item_code?.toLowerCase().includes(query) ||
+          dist.branch_name?.toLowerCase().includes(query)
+      );
+    }
+
+    if (distributionBranchFilter.value) {
+      filtered = filtered.filter(
+        (dist) => dist.branch_id === distributionBranchFilter.value
+      );
+    }
+
+    if (distributionDateFrom.value) {
+      filtered = filtered.filter(
+        (dist) =>
+          new Date(dist.distribution_date) >=
+          new Date(distributionDateFrom.value)
+      );
+    }
+
+    if (distributionDateTo.value) {
+      filtered = filtered.filter(
+        (dist) =>
+          new Date(dist.distribution_date) <= new Date(distributionDateTo.value)
+      );
+    }
+
+    return filtered;
+  });
+
+  // Distribution pagination
+  const totalDistributionPages = computed(() => {
+    return Math.ceil(
+      filteredDistributions.value.length / distributionItemsPerPage.value
+    );
+  });
+
+  const paginatedDistributions = computed(() => {
+    const start =
+      (distributionCurrentPage.value - 1) * distributionItemsPerPage.value;
+    const end = start + distributionItemsPerPage.value;
+    return filteredDistributions.value.slice(start, end);
   });
 
   // Computed properties
@@ -668,9 +730,11 @@
   const fetchBranches = async () => {
     try {
       const branchData = await productionStore.fetchBranches();
-      branches.value = branchData;
+      console.log('Fetched branches data:', branchData);
+      branches.value = branchData || [];
     } catch (error) {
       console.error('Error fetching branches:', error);
+      branches.value = [];
     }
   };
 
@@ -678,7 +742,21 @@
     try {
       distributionLoading.value = true;
       const distributionData = await productionStore.fetchAllDistributions();
-      distributions.value = distributionData;
+      // Map BranchDistribution data to expected format
+      distributions.value = distributionData.map((dist) => ({
+        id: dist.id,
+        menu_item_name: dist.menu_item_name || dist.name,
+        item_code: dist.item_code,
+        branch_name: dist.branch_name,
+        branch_id: dist.branch_id,
+        quantity_distributed: dist.qty,
+        transfer_price: dist.unit_price,
+        distribution_date: dist.distribution_date,
+        distributed_by_name: dist.distributed_by_name,
+        notes: dist.notes,
+        reference: dist.reference,
+        category: dist.category,
+      }));
     } catch (error) {
       console.error('Error fetching distributions:', error);
     } finally {
@@ -918,6 +996,25 @@
     return range;
   };
 
+  // Distribution pagination helper
+  const getDistributionPageRange = () => {
+    const current = distributionCurrentPage.value;
+    const total = totalDistributionPages.value;
+    const range = [];
+
+    // Show pages around current page
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+
+    for (let i = start; i <= end; i++) {
+      if (i !== 1 && i !== total) {
+        range.push(i);
+      }
+    }
+
+    return range;
+  };
+
   // Lifecycle
   onMounted(() => {
     fetchData();
@@ -934,6 +1031,19 @@
       fetchDistributions();
     }
   });
+
+  // Watch for distribution filter changes to reset pagination
+  watch(
+    [
+      distributionSearchQuery,
+      distributionBranchFilter,
+      distributionDateFrom,
+      distributionDateTo,
+    ],
+    () => {
+      distributionCurrentPage.value = 1;
+    }
+  );
 </script>
 
 <template>
@@ -1776,6 +1886,109 @@
                 </button>
               </div>
 
+              <!-- Distribution Filters -->
+              <div v-if="distributions.length > 0" class="mb-6 space-y-4">
+                <div
+                  class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+                >
+                  <!-- Search -->
+                  <div class="form-control">
+                    <label class="label">
+                      <span class="label-text">Search</span>
+                    </label>
+                    <div class="relative">
+                      <Search
+                        class="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                      />
+                      <input
+                        v-model="distributionSearchQuery"
+                        type="text"
+                        placeholder="Search distributions..."
+                        class="input input-bordered w-full pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  <!-- Branch Filter -->
+                  <div class="form-control">
+                    <label class="label">
+                      <span class="label-text">Branch</span>
+                    </label>
+                    <select
+                      v-model="distributionBranchFilter"
+                      class="select select-bordered"
+                    >
+                      <option value="">All Branches</option>
+                      <option
+                        v-for="branch in branches"
+                        :key="branch.id"
+                        :value="branch.id"
+                      >
+                        {{ branch.name }}
+                      </option>
+                    </select>
+                  </div>
+
+                  <!-- Date From -->
+                  <div class="form-control">
+                    <label class="label">
+                      <span class="label-text">From Date</span>
+                    </label>
+                    <input
+                      v-model="distributionDateFrom"
+                      type="date"
+                      class="input input-bordered"
+                    />
+                  </div>
+
+                  <!-- Date To -->
+                  <div class="form-control">
+                    <label class="label">
+                      <span class="label-text">To Date</span>
+                    </label>
+                    <input
+                      v-model="distributionDateTo"
+                      type="date"
+                      class="input input-bordered"
+                    />
+                  </div>
+                </div>
+
+                <!-- Results Summary -->
+                <div
+                  class="flex justify-between items-center text-sm text-gray-600"
+                >
+                  <div>
+                    Showing {{ paginatedDistributions.length }} of
+                    {{ filteredDistributions.length }} distributions
+                    <span
+                      v-if="
+                        distributionSearchQuery ||
+                        distributionBranchFilter ||
+                        distributionDateFrom ||
+                        distributionDateTo
+                      "
+                    >
+                      (filtered from {{ distributions.length }} total)
+                    </span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <label class="label">
+                      <span class="label-text">Per page:</span>
+                    </label>
+                    <select
+                      v-model="distributionItemsPerPage"
+                      class="select select-sm select-bordered"
+                    >
+                      <option value="5">5</option>
+                      <option value="10">10</option>
+                      <option value="20">20</option>
+                      <option value="50">50</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
               <!-- Distribution Table -->
               <div v-if="distributionLoading" class="text-center py-8">
                 <RefreshCcw
@@ -1797,6 +2010,19 @@
                 </p>
               </div>
 
+              <div
+                v-else-if="filteredDistributions.length === 0"
+                class="text-center py-8"
+              >
+                <Search class="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 class="text-lg font-medium text-gray-600 mb-2">
+                  No Matching Distributions
+                </h3>
+                <p class="text-sm text-gray-500">
+                  Try adjusting your search criteria or filters.
+                </p>
+              </div>
+
               <div v-else class="overflow-x-auto">
                 <table class="table table-zebra w-full">
                   <thead>
@@ -1813,7 +2039,7 @@
                   </thead>
                   <tbody>
                     <tr
-                      v-for="distribution in distributions"
+                      v-for="distribution in paginatedDistributions"
                       :key="distribution.id"
                     >
                       <td>
@@ -1871,6 +2097,58 @@
                     </tr>
                   </tbody>
                 </table>
+
+                <!-- Distribution Pagination -->
+                <div
+                  v-if="totalDistributionPages > 1"
+                  class="flex justify-center items-center mt-6 space-x-2"
+                >
+                  <button
+                    @click="
+                      distributionCurrentPage = Math.max(
+                        1,
+                        distributionCurrentPage - 1
+                      )
+                    "
+                    :disabled="distributionCurrentPage <= 1"
+                    class="btn btn-sm btn-outline"
+                  >
+                    <ChevronLeft class="w-4 h-4" />
+                    Previous
+                  </button>
+
+                  <div class="join">
+                    <button
+                      v-for="page in getDistributionPageRange()"
+                      :key="page"
+                      @click="distributionCurrentPage = page"
+                      :class="[
+                        'btn btn-sm join-item',
+                        page === distributionCurrentPage
+                          ? 'btn-primary'
+                          : 'btn-outline',
+                      ]"
+                    >
+                      {{ page }}
+                    </button>
+                  </div>
+
+                  <button
+                    @click="
+                      distributionCurrentPage = Math.min(
+                        totalDistributionPages,
+                        distributionCurrentPage + 1
+                      )
+                    "
+                    :disabled="
+                      distributionCurrentPage >= totalDistributionPages
+                    "
+                    class="btn btn-sm btn-outline"
+                  >
+                    Next
+                    <ChevronRight class="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -2008,7 +2286,7 @@
     <div
       class="card bg-gradient-to-br from-base-100 to-base-50 border border-gray-200 shadow-lg"
     >
-      <div class="card-body p-6 overflow-y-auto">
+      <div class="card-body p-6 overflow-y-auto max-h-[500px]">
         <div class="flex justify-between items-center mb-6">
           <div class="flex items-center gap-3">
             <div

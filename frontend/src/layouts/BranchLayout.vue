@@ -14,6 +14,10 @@
     UserCircle,
     Menu,
     X,
+    ChevronDown,
+    Settings,
+    Clock,
+    LogOut,
   } from 'lucide-vue-next';
   import { useBranchContextStore } from '../stores/branchContextStore';
   import { useAuthStore } from '../stores/authStore';
@@ -151,6 +155,22 @@
     mobileMenuOpen.value = false;
   };
 
+  const showLogoutModal = ref(false);
+
+  const requestLogout = () => {
+    showLogoutModal.value = true;
+  };
+
+  const cancelLogout = () => {
+    showLogoutModal.value = false;
+  };
+
+  const confirmLogout = () => {
+    showLogoutModal.value = false;
+    authStore.logout();
+    router.push('/login');
+  };
+
   // Watch for current branch changes
   watch(currentBranch, (newBranch) => {
     if (newBranch && canSwitchBranches.value) {
@@ -211,17 +231,93 @@
               </select>
             </div>
 
-            <!-- User Info -->
-            <div class="flex items-center space-x-4">
-              <div class="text-right">
-                <p class="text-sm font-medium">{{ user?.name || 'User' }}</p>
-                <p class="text-xs opacity-80">{{ userRole }}</p>
-              </div>
+            <!-- User Profile Dropdown -->
+            <div class="dropdown dropdown-end">
               <div
-                class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center"
+                tabindex="0"
+                role="button"
+                class="flex items-center space-x-3 p-2 rounded-lg hover:bg-white/20 transition-colors cursor-pointer"
               >
-                <User class="w-4 h-4" />
+                <!-- User Avatar -->
+                <div
+                  class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center"
+                >
+                  <User class="w-4 h-4" />
+                </div>
+
+                <!-- User Info -->
+                <div class="flex flex-col items-start">
+                  <span class="text-sm font-medium">{{
+                    user?.name || 'User'
+                  }}</span>
+                  <span class="text-xs opacity-80">{{ userRole }}</span>
+                </div>
+
+                <!-- Dropdown Arrow -->
+                <ChevronDown class="w-4 h-4 opacity-80" />
               </div>
+
+              <!-- Dropdown Menu -->
+              <ul
+                tabindex="0"
+                class="dropdown-content menu rounded-lg shadow-lg border w-64 p-2 mt-2 bg-white text-gray-800"
+              >
+                <!-- User Info Header -->
+                <li class="px-3 py-2 border-b mb-2">
+                  <div class="flex items-center space-x-3">
+                    <div
+                      class="w-10 h-10 rounded-full bg-primaryColor flex items-center justify-center"
+                    >
+                      <span class="text-sm font-medium text-white">
+                        {{ user?.name?.charAt(0) || 'U' }}
+                      </span>
+                    </div>
+                    <div>
+                      <p class="font-medium">{{ user?.name || 'User' }}</p>
+                      <p class="text-sm opacity-70">{{ user?.email || '' }}</p>
+                    </div>
+                  </div>
+                </li>
+
+                <!-- Menu Items -->
+                <li>
+                  <a
+                    class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    <User class="w-4 h-4 text-primaryColor" />
+                    <span class="text-sm">Profile</span>
+                  </a>
+                </li>
+
+                <li>
+                  <a
+                    class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    <Settings class="w-4 h-4 text-primaryColor" />
+                    <span class="text-sm">Account Settings</span>
+                  </a>
+                </li>
+
+                <li>
+                  <a
+                    class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    <Clock class="w-4 h-4 text-primaryColor" />
+                    <span class="text-sm">Attendance</span>
+                  </a>
+                </li>
+
+                <!-- Divider + Logout -->
+                <li class="border-t mt-2 pt-2">
+                  <a
+                    @click="requestLogout"
+                    class="flex items-center space-x-3 px-3 py-2 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
+                  >
+                    <LogOut class="w-4 h-4 text-red-600" />
+                    <span class="text-sm text-red-700">Log Out</span>
+                  </a>
+                </li>
+              </ul>
             </div>
           </div>
 
@@ -453,6 +549,20 @@
         ]"
       >
         <span>{{ toast.message }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Logout Confirmation Modal -->
+  <div v-if="showLogoutModal" class="modal modal-open">
+    <div class="modal-box bg-white">
+      <h3 class="font-bold text-lg mb-2">Confirm Logout</h3>
+      <p class="py-2">Are you sure you want to log out?</p>
+      <div class="modal-action">
+        <button class="btn btn-ghost btn-sm font-thin border-none" @click="cancelLogout">Cancel</button>
+        <button class="btn bg-error/30 text-error btn-sm font-thin border-none" @click="confirmLogout">
+          Yes, Log Out
+        </button>
       </div>
     </div>
   </div>

@@ -896,7 +896,7 @@ class ProductionInventory {
           "mi.menu_item_name",
           "mi.item_code",
           "mi.category",
-          "b.branch_name",
+          "b.name as branch_name",
           db.raw(
             "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as distributed_by_name"
           )

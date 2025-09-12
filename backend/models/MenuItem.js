@@ -16,7 +16,7 @@ class MenuItem {
           "r.cost_per_batch",
           "r.batch_size",
           "r.batch_unit",
-          "u.name as created_by_name",
+          db.raw("concat(u.first_name,' ',u.last_name) as created_by_name"),
           "mi.image_url",
           db.raw("COUNT(sp.id) as sample_count"),
           db.raw(
@@ -28,7 +28,7 @@ class MenuItem {
         )
         .leftJoin("menus as m", "mi.menu_id", "m.id")
         .leftJoin("recipes as r", "mi.recipe_id", "r.id")
-        .leftJoin("users as u", "mi.created_by", "u.id")
+        .leftJoin("employees as u", "mi.created_by", "u.id")
         .leftJoin("sample_productions as sp", "mi.id", "sp.menu_item_id")
         .leftJoin(
           "menu_quality_inspections as qi",
@@ -70,7 +70,8 @@ class MenuItem {
         "r.cost_per_batch",
         "r.batch_size",
         "r.batch_unit",
-        "u.name"
+        "u.first_name",
+        "u.last_name"
       );
 
       // Apply remaining filters after groupBy
@@ -119,12 +120,14 @@ class MenuItem {
           "r.batch_size",
           "r.batch_unit",
           "r.cost_per_batch",
-          "u.name as created_by_name",
+          db.raw(
+            "COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'') as created_by_name"
+          ),
           "mi.image_url"
         )
         .leftJoin("menus as m", "mi.menu_id", "m.id")
         .leftJoin("recipes as r", "mi.recipe_id", "r.id")
-        .leftJoin("users as u", "mi.created_by", "u.id")
+        .leftJoin("employees as u", "mi.created_by", "u.id")
         .where("mi.id", id)
         .whereNull("mi.deleted_at")
         .first();
@@ -155,11 +158,15 @@ class MenuItem {
           menuItem.sample_productions = await db("sample_productions as sp")
             .select(
               "sp.*",
-              "u.name as assigned_to_name",
-              "cu.name as created_by_name"
+              db.raw(
+                "concat(u.first_name,' ',u.last_name) as assigned_to_name"
+              ),
+              db.raw(
+                "concat(cu.first_name,' ',cu.last_name) as created_by_name"
+              )
             )
-            .leftJoin("users as u", "sp.assigned_to", "u.id")
-            .leftJoin("users as cu", "sp.created_by", "cu.id")
+            .leftJoin("employees as u", "sp.assigned_to", "u.id")
+            .leftJoin("employees as cu", "sp.created_by", "cu.id")
             .where("sp.menu_item_id", id)
             .whereNull("sp.deleted_at")
             .orderBy("sp.created_at", "desc");
@@ -178,10 +185,10 @@ class MenuItem {
           )
             .select(
               "qi.*",
-              "u.name as inspector_name",
+              db.raw("concat(u.first_name,' ',u.last_name) as inspector_name"),
               "sp.sample_batch_number"
             )
-            .leftJoin("users as u", "qi.inspector_id", "u.id")
+            .leftJoin("employees as u", "qi.inspector_id", "u.id")
             .leftJoin(
               "sample_productions as sp",
               "qi.sample_production_id",
@@ -373,7 +380,6 @@ class MenuItem {
       const batchSize = Number(recipe.batch_size || 1);
       const costPrice = batchSize > 0 ? costPerBatch / batchSize : 0;
 
-
       const insertData = {
         menu_item_name: menuItemData.menu_item_name || menuItemData.item_name,
         description: menuItemData.description || null,
@@ -405,7 +411,6 @@ class MenuItem {
         created_at: trx.fn.now(),
         updated_at: trx.fn.now(),
       };
-
 
       // FINAL SAFETY CHECK: Ensure all numeric fields are valid
       if (!Number.isFinite(insertData.menu_id) || insertData.menu_id <= 0) {
@@ -473,7 +478,6 @@ class MenuItem {
         throw new Error("Failed to get menu item ID from insert result");
       }
 
-
       // Commit the transaction first
       await trx.commit();
 
@@ -530,7 +534,6 @@ class MenuItem {
         throw new Error("Menu item not found");
       }
 
-
       // Filter and map updateData to valid database columns
       const filteredData = {};
       const allowedFields = [
@@ -571,7 +574,6 @@ class MenuItem {
       if (updateData.image_url !== undefined)
         filteredData.image_url = updateData.image_url;
 
-
       await db("menu_items")
         .where("id", id)
         .update({
@@ -585,7 +587,6 @@ class MenuItem {
         .where("id", id)
         .whereNull("deleted_at")
         .first();
-
 
       // Sync with production inventory if any relevant fields were updated
       const fieldsToSync = [
@@ -677,7 +678,9 @@ class MenuItem {
           .first();
 
         const batchSize = recipe ? recipe.batch_size : 100; // Default batch size
-        const reorderPoint = Math.ceil(batchSize * 0.2); // Set reorder point to 20% of batch size
+        // Use dynamic reorder point calculation (will be calculated based on actual stock)
+        const reorderPoint =
+          ProductionInventory.calculateDynamicReorderPoint(0); // Start with 0 stock
 
         // Create production inventory with 0 initial stock
         await ProductionInventory.create(id, userId, {
@@ -696,7 +699,7 @@ class MenuItem {
             cost_price: menuItem.cost_price,
             profit_margin: menuItem.profit_margin,
             initial_stock: 0, // Now starts with 0 stock
-            reorder_point: reorderPoint,
+            reorder_point: ProductionInventory.calculateDynamicReorderPoint(0), // Dynamic reorder point
             maximum_stock: batchSize * 2,
           },
           notes: `Menu item "${menuItem.menu_item_name}" approved for production - Production inventory created with 0 initial stock`,

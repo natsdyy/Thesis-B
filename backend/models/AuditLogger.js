@@ -60,8 +60,12 @@ class AuditLogger {
   static async getLogsForMenuItem(menuItemId, options = {}) {
     try {
       let query = db("menu_item_audit_log as al")
-        .leftJoin("users as u", "al.user_id", "u.id")
-        .select("al.*", "u.name as user_name", "u.email as user_email")
+        .leftJoin("employees as u", "al.user_id", "u.id")
+        .select(
+          "al.*",
+          db.raw("concat(u.first_name,' ',u.last_name) as user_name"),
+          "u.email as user_email"
+        )
         .where("al.menu_item_id", menuItemId)
         .orderBy("al.created_at", "desc");
 
@@ -104,8 +108,12 @@ class AuditLogger {
   static async getLogsForSampleProduction(sampleProductionId) {
     try {
       const logs = await db("menu_item_audit_log as al")
-        .leftJoin("users as u", "al.user_id", "u.id")
-        .select("al.*", "u.name as user_name", "u.email as user_email")
+        .leftJoin("employees as u", "al.user_id", "u.id")
+        .select(
+          "al.*",
+          db.raw("concat(u.first_name,' ',u.last_name) as user_name"),
+          "u.email as user_email"
+        )
         .where("al.sample_production_id", sampleProductionId)
         .orderBy("al.created_at", "desc");
 
@@ -129,8 +137,12 @@ class AuditLogger {
   static async getLogsForQualityInspection(qualityInspectionId) {
     try {
       const logs = await db("menu_item_audit_log as al")
-        .leftJoin("users as u", "al.user_id", "u.id")
-        .select("al.*", "u.name as user_name", "u.email as user_email")
+        .leftJoin("employees as u", "al.user_id", "u.id")
+        .select(
+          "al.*",
+          db.raw("concat(u.first_name,' ',u.last_name) as user_name"),
+          "u.email as user_email"
+        )
         .where("al.quality_inspection_id", qualityInspectionId)
         .orderBy("al.created_at", "desc");
 
@@ -154,7 +166,7 @@ class AuditLogger {
   static async getAllLogs(filters = {}) {
     try {
       let query = db("menu_item_audit_log as al")
-        .leftJoin("users as u", "al.user_id", "u.id")
+        .leftJoin("employees as u", "al.user_id", "u.id")
         .leftJoin("menu_items as mi", "al.menu_item_id", "mi.id")
         .leftJoin(
           "sample_productions as sp",
@@ -168,7 +180,7 @@ class AuditLogger {
         )
         .select(
           "al.*",
-          "u.name as user_name",
+          db.raw("concat(u.first_name,' ',u.last_name) as user_name"),
           "u.email as user_email",
           "mi.menu_item_name",
           "sp.sample_batch_number",

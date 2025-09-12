@@ -9,12 +9,16 @@ class WorkOrder {
           "wo.*",
           "po.product_name",
           "po.order_number as production_order_number",
-          "u_assigned.name as assigned_to_name",
-          "u_created.name as created_by_name"
+          db.raw(
+            "COALESCE(u_assigned.first_name,'') || ' ' || COALESCE(u_assigned.last_name,'') as assigned_to_name"
+          ),
+          db.raw(
+            "COALESCE(u_created.first_name,'') || ' ' || COALESCE(u_created.last_name,'') as created_by_name"
+          )
         )
         .leftJoin("production_orders as po", "wo.production_order_id", "po.id")
-        .leftJoin("users as u_assigned", "wo.assigned_to", "u_assigned.id")
-        .leftJoin("users as u_created", "wo.created_by", "u_created.id");
+        .leftJoin("employees as u_assigned", "wo.assigned_to", "u_assigned.id")
+        .leftJoin("employees as u_created", "wo.created_by", "u_created.id");
 
       // Apply filters
       if (filters.status) {
@@ -71,12 +75,16 @@ class WorkOrder {
           "wo.*",
           "po.product_name",
           "po.order_number as production_order_number",
-          "u_assigned.name as assigned_to_name",
-          "u_created.name as created_by_name"
+          db.raw(
+            "COALESCE(u_assigned.first_name,'') || ' ' || COALESCE(u_assigned.last_name,'') as assigned_to_name"
+          ),
+          db.raw(
+            "COALESCE(u_created.first_name,'') || ' ' || COALESCE(u_created.last_name,'') as created_by_name"
+          )
         )
         .leftJoin("production_orders as po", "wo.production_order_id", "po.id")
-        .leftJoin("users as u_assigned", "wo.assigned_to", "u_assigned.id")
-        .leftJoin("users as u_created", "wo.created_by", "u_created.id")
+        .leftJoin("employees as u_assigned", "wo.assigned_to", "u_assigned.id")
+        .leftJoin("employees as u_created", "wo.created_by", "u_created.id")
         .where("wo.id", id)
         .first();
 
@@ -236,11 +244,15 @@ class WorkOrder {
       return await db("work_orders as wo")
         .select(
           "wo.*",
-          "u_assigned.name as assigned_to_name",
-          "u_created.name as created_by_name"
+          db.raw(
+            "COALESCE(u_assigned.first_name,'') || ' ' || COALESCE(u_assigned.last_name,'') as assigned_to_name"
+          ),
+          db.raw(
+            "COALESCE(u_created.first_name,'') || ' ' || COALESCE(u_created.last_name,'') as created_by_name"
+          )
         )
-        .leftJoin("users as u_assigned", "wo.assigned_to", "u_assigned.id")
-        .leftJoin("users as u_created", "wo.created_by", "u_created.id")
+        .leftJoin("employees as u_assigned", "wo.assigned_to", "u_assigned.id")
+        .leftJoin("employees as u_created", "wo.created_by", "u_created.id")
         .where("wo.production_order_id", productionOrderId)
         .orderBy("wo.scheduled_start", "asc");
     } catch (error) {

@@ -1,6 +1,189 @@
 @import 'tailwindcss';
 @plugin "daisyui";
 
+/* Vue Toastification Styles */
+.Vue-Toastification__container {
+  z-index: 9999;
+  position: fixed;
+  padding: 4px;
+  width: auto !important;
+  box-sizing: border-box;
+  max-width: 320px;
+  display: flex;
+  min-height: 100%;
+  color: #fff;
+  flex-direction: column;
+  pointer-events: none;
+  padding: 0.5rem;
+}
+
+.Vue-Toastification__container.top-right {
+  top: 1em;
+  right: 1em;
+}
+
+.Vue-Toastification__container.top-right .Vue-Toastification__toast {
+  margin-left: auto;
+}
+
+.Vue-Toastification__toast {
+  max-width: 320px; /* like daisyui alert */
+  min-height: auto;
+  font-size: 0.875rem; /* text-sm */
+  padding: 8px 12px;
+  border-radius: 0.5rem; /* rounded-lg */
+  display: flex;
+  box-sizing: border-box;
+  max-height: 800px;
+  overflow: hidden;
+  font-family: Poppins;
+  cursor: pointer;
+  direction: ltr;
+  position: relative;
+
+  margin: 0 0 6px 0;
+  box-shadow:
+    0 1px 10px 0 rgba(0, 0, 0, 0.1),
+    0 2px 15px 0 rgba(0, 0, 0, 0.05);
+  justify-content: space-between;
+  pointer-events: auto;
+  color: #ffffff;
+  opacity: 0.9;
+  transition:
+    transform 0.2s,
+    opacity 0.2s,
+    box-shadow 0.2s;
+}
+
+.Vue-Toastification__toast--success {
+  background: #4caf50;
+}
+
+.Vue-Toastification__toast--error {
+  background: #f44336;
+}
+
+.Vue-Toastification__toast--warning {
+  background: #ff9800;
+}
+
+.Vue-Toastification__toast--info {
+  background: #2196f3;
+}
+
+.Vue-Toastification__toast--default {
+  background: #323232;
+}
+
+.Vue-Toastification__toast:hover {
+  opacity: 1;
+  box-shadow:
+    0 1px 10px 0 rgba(0, 0, 0, 0.15),
+    0 2px 15px 0 rgba(0, 0, 0, 0.1);
+}
+
+.Vue-Toastification__toast-body {
+  margin: auto 0;
+  flex: 1 1 auto;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+}
+
+.Vue-Toastification__toast-body .Vue-Toastification__toast-icon {
+  width: 18px;
+  height: 18px;
+  margin-right: 6px;
+}
+
+.Vue-Toastification__toast-body .Vue-Toastification__toast-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.Vue-Toastification__toast-body .Vue-Toastification__toast-text {
+  flex: 1 1 auto;
+  margin: 0;
+  word-break: break-word;
+}
+
+.Vue-Toastification__close-button {
+  color: #fff;
+  font-weight: 700;
+  font-size: 20px;
+  background: transparent;
+  outline: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.3s ease;
+  align-self: flex-start;
+  margin-left: 10px;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.Vue-Toastification__close-button:hover,
+.Vue-Toastification__close-button:focus {
+  opacity: 1;
+}
+
+.Vue-Toastification__progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  z-index: 9999;
+  opacity: 0.7;
+  background-color: rgba(255, 255, 255, 0.7);
+  transform-origin: left;
+}
+
+.Vue-Toastification__progress-bar--rtl {
+  right: 0;
+  left: auto;
+  transform-origin: right;
+}
+
+.Vue-Toastification__bounce-enter-active {
+  animation: Vue-Toastification__bounce-in 0.5s;
+}
+
+.Vue-Toastification__bounce-leave-active {
+  animation: Vue-Toastification__bounce-out 0.5s;
+}
+
+@keyframes Vue-Toastification__bounce-in {
+  0% {
+    transform: translate3d(0, -3000px, 0);
+    opacity: 0;
+  }
+  60% {
+    transform: translate3d(0, 25px, 0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(0, -10px, 0);
+  }
+}
+
+@keyframes Vue-Toastification__bounce-out {
+  0% {
+    transform: translate3d(0, -10px, 0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(0, -3000px, 0);
+    opacity: 0;
+  }
+}
+
 /* Custom CSS for your application */
 body {
   margin: 0;
@@ -76,6 +259,8 @@ p {
   --color-secondaryColor: #aad36d;
   --color-accentColor: #f9fafb;
   --color-neutralColor: #000000;
+  --color-brownColor: #866135;
+  --color-orangeColor: #f87a14;
 }
 
 #app {

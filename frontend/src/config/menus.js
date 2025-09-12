@@ -207,7 +207,7 @@ export const menuItems = [
   {
     name: 'Branch Management',
     icon: Store,
-    route: '/admin/branches',
+    route: '/admin/branch-manager',
     department: 'Administration',
     superAdminOnly: true,
   },

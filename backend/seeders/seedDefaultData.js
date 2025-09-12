@@ -1,7 +1,7 @@
 const Permission = require("../models/Permission");
 const Roles = require("../models/Roles");
 const RolePermission = require("../models/RolePermission");
-const User = require("../models/User");
+const Employee = require("../models/Employee");
 
 async function seedDefaultPermissions() {
   try {
@@ -280,6 +280,52 @@ async function assignDefaultPermissions() {
         permissionMap["Manage CRM Dashboard"],
         permissionMap["View Customer Feedback"],
       ].filter(Boolean),
+
+      // Branch Department
+      "Manager-Branch": [
+        // Branch Manager - Full branch operations
+        permissionMap["Manage Dashboard"],
+        permissionMap["Manage Inventory"],
+        permissionMap["View Inventory Reports"],
+        permissionMap["Manage Sales Order"],
+        permissionMap["Manage Payment"],
+        permissionMap["Manage Customer"],
+        permissionMap["Manage Employees"],
+        permissionMap["View Employee Records"],
+        permissionMap["Manage  Attendance"],
+        permissionMap["View Attendance Reports"],
+      ].filter(Boolean),
+
+      "Cook-Branch": [
+        // Cook - Inventory and production access
+        permissionMap["Manage Dashboard"],
+        permissionMap["Manage Inventory"],
+        permissionMap["View Inventory Reports"],
+        permissionMap["Manage Production"],
+        permissionMap["View Production Reports"],
+      ].filter(Boolean),
+
+      "Kitchen Assistant-Branch": [
+        // Kitchen Assistant - Basic inventory access
+        permissionMap["Manage Dashboard"],
+        permissionMap["Manage Inventory"],
+        permissionMap["View Inventory Reports"],
+      ].filter(Boolean),
+
+      "Cashier-Branch": [
+        // Cashier - Sales and payment access
+        permissionMap["Manage Dashboard"],
+        permissionMap["Manage Sales Order"],
+        permissionMap["Manage Payment"],
+        permissionMap["Manage Customer"],
+      ].filter(Boolean),
+
+      "Waiter-Branch": [
+        // Waiter - Customer service access
+        permissionMap["Manage Dashboard"],
+        permissionMap["Manage Customer"],
+        permissionMap["Manage Sales Order"],
+      ].filter(Boolean),
     };
 
     let assignmentCount = 0;
@@ -336,10 +382,10 @@ async function createDefaultUsers() {
     };
 
     try {
-      const existingUser = await User.getByEmail(adminUser.email);
+      const existingUser = await Employee.findByEmail(adminUser.email);
 
       if (!existingUser) {
-        const newUser = await User.create(adminUser);
+        const newUser = await Employee.create(adminUser);
         console.log(`✅ Created system administrator: ${adminUser.name}`);
 
         console.log("\n🔑 System Administrator Credentials:");

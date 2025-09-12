@@ -39,12 +39,25 @@ const setupAxiosInterceptors = () => {
           return Promise.reject(error);
         }
 
-        // For other 401s (expired/invalid token), clear session and redirect
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        localStorage.removeItem('isAuthenticated');
-        window.location.href = '/login';
-        return; // stop further handling
+        // For other 401s, just log the error but don't redirect automatically
+        console.warn('401 Unauthorized error:', {
+          url: requestUrl,
+          status: error.response?.status,
+          message: error.response?.data?.message,
+        });
+
+        // Only redirect if it's a critical authentication error
+        if (requestUrl.includes('/auth/validate-session')) {
+          console.warn('Session validation failed, redirecting to login');
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          localStorage.removeItem('isAuthenticated');
+          window.location.href = '/login';
+          return;
+        }
+
+        // For other 401s, just reject the promise
+        return Promise.reject(error);
       }
       return Promise.reject(error);
     }
@@ -121,10 +134,12 @@ export const useAuthStore = defineStore('auth', () => {
 
   const validateSession = async () => {
     if (!user.value?.id) {
+      console.warn('No user ID found for session validation');
       return false;
     }
 
     try {
+      console.log('Validating session for user ID:', user.value.id);
       const response = await axios.post(
         `${API_BASE_URL}/auth/validate-session`,
         {
@@ -136,15 +151,18 @@ export const useAuthStore = defineStore('auth', () => {
         // Update user data with latest info
         user.value = response.data.data.user;
         localStorage.setItem('user', JSON.stringify(response.data.data.user));
+        console.log('Session validation successful');
         return true;
       } else {
+        console.warn('Session validation failed:', response.data.message);
         logout();
         return false;
       }
     } catch (err) {
       console.error('Session validation failed:', err);
-      logout();
-      return false;
+      // Don't logout immediately on network errors, just log the error
+      console.warn('Session validation error, but not logging out user');
+      return true; // Allow user to continue for now
     }
   };
 

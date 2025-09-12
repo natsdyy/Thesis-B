@@ -39,73 +39,85 @@
     <div v-else-if="metricsData" class="space-y-6">
       <!-- KPI Cards -->
       <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div class="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg">
+        <div
+          class="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-lg border border-blue-200 shadow-sm"
+        >
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm font-medium text-blue-700">Total Production</p>
-              <p class="text-2xl font-bold text-blue-900">
-                {{ metricsData.totalProduction }}kg
+              <p class="text-3xl font-bold text-blue-900">
+                {{ formattedMetricsData?.totalProduction || '0kg' }}
               </p>
-              <p class="text-xs text-blue-600 mt-1">
+              <p class="text-xs text-blue-600 mt-2 flex items-center">
                 <TrendingUp class="w-3 h-3 inline mr-1" />
-                +{{ metricsData.productionGrowth }}% vs last period
+                +{{ formattedMetricsData?.productionGrowth || 0 }}% vs last
+                period
               </p>
             </div>
-            <Package class="w-8 h-8 text-blue-600" />
+            <div class="p-3 bg-blue-100 rounded-lg">
+              <Package class="w-8 h-8 text-blue-600" />
+            </div>
           </div>
         </div>
 
         <div
-          class="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg"
+          class="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-lg border border-green-200 shadow-sm"
         >
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm font-medium text-green-700">Quality Score</p>
-              <p class="text-2xl font-bold text-green-900">
-                {{ metricsData.qualityScore }}/5.0
+              <p class="text-3xl font-bold text-green-900">
+                {{ formattedMetricsData?.qualityScore || '0.0' }}/5.0
               </p>
-              <p class="text-xs text-green-600 mt-1">
+              <p class="text-xs text-green-600 mt-2 flex items-center">
                 <TrendingUp class="w-3 h-3 inline mr-1" />
-                +{{ metricsData.qualityGrowth }}% vs last period
+                +{{ formattedMetricsData?.qualityGrowth || 0 }}% vs last period
               </p>
             </div>
-            <CheckCircle class="w-8 h-8 text-green-600" />
+            <div class="p-3 bg-green-100 rounded-lg">
+              <CheckCircle class="w-8 h-8 text-green-600" />
+            </div>
           </div>
         </div>
 
         <div
-          class="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg"
+          class="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-lg border border-purple-200 shadow-sm"
         >
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm font-medium text-purple-700">Efficiency Rate</p>
-              <p class="text-2xl font-bold text-purple-900">
-                {{ metricsData.efficiencyRate }}%
+              <p class="text-3xl font-bold text-purple-900">
+                {{ formattedMetricsData?.efficiencyRate || 0 }}%
               </p>
-              <p class="text-xs text-purple-600 mt-1">
+              <p class="text-xs text-purple-600 mt-2 flex items-center">
                 <TrendingUp class="w-3 h-3 inline mr-1" />
-                +{{ metricsData.efficiencyGrowth }}% vs last period
+                +{{ formattedMetricsData?.efficiencyGrowth || 0 }}% vs last
+                period
               </p>
             </div>
-            <Target class="w-8 h-8 text-purple-600" />
+            <div class="p-3 bg-purple-100 rounded-lg">
+              <Target class="w-8 h-8 text-purple-600" />
+            </div>
           </div>
         </div>
 
         <div
-          class="bg-gradient-to-br from-orange-50 to-orange-100 p-4 rounded-lg"
+          class="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-lg border border-orange-200 shadow-sm"
         >
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm font-medium text-orange-700">Cost Efficiency</p>
-              <p class="text-2xl font-bold text-orange-900">
-                ₱{{ metricsData.costEfficiency }}
+              <p class="text-3xl font-bold text-orange-900">
+                ₱{{ formattedMetricsData?.costEfficiency || '0' }}
               </p>
-              <p class="text-xs text-orange-600 mt-1">
+              <p class="text-xs text-orange-600 mt-2 flex items-center">
                 <ArrowDown class="w-3 h-3 inline mr-1" />
-                -{{ metricsData.costReduction }}% vs last period
+                -{{ formattedMetricsData?.costReduction || 0 }}% vs last period
               </p>
             </div>
-            <DollarSign class="w-8 h-8 text-orange-600" />
+            <div class="p-3 bg-orange-100 rounded-lg">
+              <PhilippinePeso class="w-8 h-8 text-orange-600" />
+            </div>
           </div>
         </div>
       </div>
@@ -136,108 +148,209 @@
       <!-- Detailed Metrics -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Resource Utilization -->
-        <div class="bg-gray-50 p-4 rounded-lg">
-          <h4 class="font-semibold text-gray-900 mb-4">Resource Utilization</h4>
-          <div class="space-y-3">
-            <div class="flex justify-between items-center">
-              <span class="text-sm text-gray-600">Equipment Usage</span>
-              <span class="text-sm font-medium"
-                >{{ metricsData.equipmentUsage }}%</span
-              >
-            </div>
-            <div class="w-full bg-gray-200 rounded-full h-2">
-              <div
-                class="bg-blue-500 h-2 rounded-full"
-                :style="{ width: `${metricsData.equipmentUsage}%` }"
-              ></div>
-            </div>
-
-            <div class="flex justify-between items-center">
-              <span class="text-sm text-gray-600">Labor Efficiency</span>
-              <span class="text-sm font-medium"
-                >{{ metricsData.laborEfficiency }}%</span
-              >
-            </div>
-            <div class="w-full bg-gray-200 rounded-full h-2">
-              <div
-                class="bg-green-500 h-2 rounded-full"
-                :style="{ width: `${metricsData.laborEfficiency}%` }"
-              ></div>
+        <div class="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-sm">
+          <h4 class="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Target class="w-5 h-5" />
+            Resource Utilization
+          </h4>
+          <div class="space-y-5">
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <span class="text-sm font-medium text-gray-700"
+                  >Equipment Usage</span
+                >
+                <span class="text-sm font-bold text-blue-600">
+                  {{ formattedMetricsData?.equipmentUsage || 0 }}%
+                </span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-3">
+                <div
+                  class="bg-blue-500 h-3 rounded-full transition-all duration-500"
+                  :style="{
+                    width: `${formattedMetricsData?.equipmentUsage || 0}%`,
+                  }"
+                ></div>
+              </div>
             </div>
 
-            <div class="flex justify-between items-center">
-              <span class="text-sm text-gray-600">Material Yield</span>
-              <span class="text-sm font-medium"
-                >{{ metricsData.materialYield }}%</span
-              >
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <span class="text-sm font-medium text-gray-700"
+                  >Labor Efficiency</span
+                >
+                <span class="text-sm font-bold text-green-600">
+                  {{ formattedMetricsData?.laborEfficiency || 0 }}%
+                </span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-3">
+                <div
+                  class="bg-green-500 h-3 rounded-full transition-all duration-500"
+                  :style="{
+                    width: `${Math.min(formattedMetricsData?.laborEfficiency || 0, 100)}%`,
+                  }"
+                ></div>
+              </div>
             </div>
-            <div class="w-full bg-gray-200 rounded-full h-2">
-              <div
-                class="bg-purple-500 h-2 rounded-full"
-                :style="{ width: `${metricsData.materialYield}%` }"
-              ></div>
+
+            <div>
+              <div class="flex justify-between items-center mb-2">
+                <span class="text-sm font-medium text-gray-700"
+                  >Material Yield</span
+                >
+                <span class="text-sm font-bold text-purple-600">
+                  {{ formattedMetricsData?.materialYield || 0 }}%
+                </span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-3">
+                <div
+                  class="bg-purple-500 h-3 rounded-full transition-all duration-500"
+                  :style="{
+                    width: `${formattedMetricsData?.materialYield || 0}%`,
+                  }"
+                ></div>
+              </div>
             </div>
           </div>
         </div>
 
         <!-- Quality Breakdown -->
-        <div class="bg-gray-50 p-4 rounded-lg">
-          <h4 class="font-semibold text-gray-900 mb-4">Quality Breakdown</h4>
-          <div class="space-y-2">
-            <div class="flex justify-between items-center">
-              <span class="text-sm text-gray-600">Taste Score</span>
-              <span class="text-sm font-medium"
-                >{{ metricsData.qualityBreakdown.taste }}/5</span
-              >
+        <div class="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-sm">
+          <h4 class="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <CheckCircle class="w-5 h-5" />
+            Quality Breakdown
+          </h4>
+          <div class="space-y-4">
+            <div
+              class="flex justify-between items-center p-3 bg-white rounded-lg border border-gray-100"
+            >
+              <span class="text-sm font-medium text-gray-700">Taste Score</span>
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-bold text-green-600">
+                  {{ formattedMetricsData?.qualityBreakdown.taste || '0.0' }}/5
+                </span>
+                <div class="w-12 bg-gray-200 rounded-full h-2">
+                  <div
+                    class="bg-green-500 h-2 rounded-full transition-all duration-500"
+                    :style="{
+                      width: `${(parseFloat(formattedMetricsData?.qualityBreakdown.taste || 0) / 5) * 100}%`,
+                    }"
+                  ></div>
+                </div>
+              </div>
             </div>
-            <div class="flex justify-between items-center">
-              <span class="text-sm text-gray-600">Appearance Score</span>
-              <span class="text-sm font-medium"
-                >{{ metricsData.qualityBreakdown.appearance }}/5</span
+            <div
+              class="flex justify-between items-center p-3 bg-white rounded-lg border border-gray-100"
+            >
+              <span class="text-sm font-medium text-gray-700"
+                >Appearance Score</span
               >
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-bold text-blue-600">
+                  {{
+                    formattedMetricsData?.qualityBreakdown.appearance || '0.0'
+                  }}/5
+                </span>
+                <div class="w-12 bg-gray-200 rounded-full h-2">
+                  <div
+                    class="bg-blue-500 h-2 rounded-full transition-all duration-500"
+                    :style="{
+                      width: `${(parseFloat(formattedMetricsData?.qualityBreakdown.appearance || 0) / 5) * 100}%`,
+                    }"
+                  ></div>
+                </div>
+              </div>
             </div>
-            <div class="flex justify-between items-center">
-              <span class="text-sm text-gray-600">Texture Score</span>
-              <span class="text-sm font-medium"
-                >{{ metricsData.qualityBreakdown.texture }}/5</span
+            <div
+              class="flex justify-between items-center p-3 bg-white rounded-lg border border-gray-100"
+            >
+              <span class="text-sm font-medium text-gray-700"
+                >Texture Score</span
               >
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-bold text-purple-600">
+                  {{
+                    formattedMetricsData?.qualityBreakdown.texture || '0.0'
+                  }}/5
+                </span>
+                <div class="w-12 bg-gray-200 rounded-full h-2">
+                  <div
+                    class="bg-purple-500 h-2 rounded-full transition-all duration-500"
+                    :style="{
+                      width: `${(parseFloat(formattedMetricsData?.qualityBreakdown.texture || 0) / 5) * 100}%`,
+                    }"
+                  ></div>
+                </div>
+              </div>
             </div>
-            <div class="flex justify-between items-center">
-              <span class="text-sm text-gray-600">Overall Score</span>
-              <span class="text-sm font-medium"
-                >{{ metricsData.qualityBreakdown.overall }}/5</span
+            <div
+              class="flex justify-between items-center p-3 bg-white rounded-lg border border-gray-100"
+            >
+              <span class="text-sm font-medium text-gray-700"
+                >Overall Score</span
               >
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-bold text-orange-600">
+                  {{
+                    formattedMetricsData?.qualityBreakdown.overall || '0.0'
+                  }}/5
+                </span>
+                <div class="w-12 bg-gray-200 rounded-full h-2">
+                  <div
+                    class="bg-orange-500 h-2 rounded-full transition-all duration-500"
+                    :style="{
+                      width: `${(parseFloat(formattedMetricsData?.qualityBreakdown.overall || 0) / 5) * 100}%`,
+                    }"
+                  ></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         <!-- Cost Analysis -->
-        <div class="bg-gray-50 p-4 rounded-lg">
-          <h4 class="font-semibold text-gray-900 mb-4">Cost Analysis</h4>
-          <div class="space-y-2">
-            <div class="flex justify-between items-center">
-              <span class="text-sm text-gray-600">Avg. Cost per kg</span>
-              <span class="text-sm font-medium"
-                >₱{{ metricsData.costAnalysis.avgCostPerKg }}</span
+        <div class="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-sm">
+          <h4 class="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <PhilippinePeso class="w-5 h-5" />
+            Cost Analysis
+          </h4>
+          <div class="space-y-4">
+            <div
+              class="flex justify-between items-center p-3 bg-white rounded-lg border border-gray-100"
+            >
+              <span class="text-sm font-medium text-gray-700"
+                >Avg. Cost per kg</span
               >
+              <span class="text-sm font-bold text-orange-600">
+                ₱{{ formattedMetricsData?.costAnalysis.avgCostPerKg || '0' }}
+              </span>
             </div>
-            <div class="flex justify-between items-center">
-              <span class="text-sm text-gray-600">Material Cost</span>
-              <span class="text-sm font-medium"
-                >₱{{ metricsData.costAnalysis.materialCost }}</span
+            <div
+              class="flex justify-between items-center p-3 bg-white rounded-lg border border-gray-100"
+            >
+              <span class="text-sm font-medium text-gray-700"
+                >Material Cost</span
               >
+              <span class="text-sm font-bold text-blue-600">
+                ₱{{ formattedMetricsData?.costAnalysis.materialCost || '0' }}
+              </span>
             </div>
-            <div class="flex justify-between items-center">
-              <span class="text-sm text-gray-600">Labor Cost</span>
-              <span class="text-sm font-medium"
-                >₱{{ metricsData.costAnalysis.laborCost }}</span
-              >
+            <div
+              class="flex justify-between items-center p-3 bg-white rounded-lg border border-gray-100"
+            >
+              <span class="text-sm font-medium text-gray-700">Labor Cost</span>
+              <span class="text-sm font-bold text-green-600">
+                ₱{{ formattedMetricsData?.costAnalysis.laborCost || '0' }}
+              </span>
             </div>
-            <div class="flex justify-between items-center">
-              <span class="text-sm text-gray-600">Overhead Cost</span>
-              <span class="text-sm font-medium"
-                >₱{{ metricsData.costAnalysis.overheadCost }}</span
+            <div
+              class="flex justify-between items-center p-3 bg-white rounded-lg border border-gray-100"
+            >
+              <span class="text-sm font-medium text-gray-700"
+                >Overhead Cost</span
               >
+              <span class="text-sm font-bold text-purple-600">
+                ₱{{ formattedMetricsData?.costAnalysis.overheadCost || '0' }}
+              </span>
             </div>
           </div>
         </div>
@@ -276,6 +389,7 @@
     TrendingUp,
     ArrowDown,
     BarChart3,
+    PhilippinePeso,
   } from 'lucide-vue-next';
   import { useProductionStore } from '../../stores/productionStore.js';
 
@@ -344,6 +458,80 @@
       },
     },
   }));
+
+  // Enhanced computed properties for better readability
+  const formattedMetricsData = computed(() => {
+    if (!metricsData.value) return null;
+
+    const data = metricsData.value;
+
+    return {
+      // KPI Cards with better formatting
+      totalProduction: data.totalProduction
+        ? `${data.totalProduction}kg`
+        : '0kg',
+      productionGrowth: data.productionGrowth || 0,
+
+      qualityScore: data.qualityScore
+        ? parseFloat(data.qualityScore).toFixed(1)
+        : '0.0',
+      qualityGrowth: data.qualityGrowth || 0,
+
+      efficiencyRate: data.efficiencyRate || 0,
+      efficiencyGrowth: data.efficiencyGrowth || 0,
+
+      costEfficiency: data.costEfficiency
+        ? formatCurrency(data.costEfficiency)
+        : '0',
+      costReduction: data.costReduction || 0,
+
+      // Resource Utilization with better handling
+      equipmentUsage: Math.min(data.equipmentUsage || 0, 100),
+      laborEfficiency: Math.min(data.laborEfficiency || 0, 100),
+      materialYield: Math.min(data.materialYield || 0, 100),
+
+      // Quality Breakdown with proper formatting
+      qualityBreakdown: {
+        taste: data.qualityBreakdown?.taste
+          ? parseFloat(data.qualityBreakdown.taste).toFixed(1)
+          : '0.0',
+        appearance: data.qualityBreakdown?.appearance
+          ? parseFloat(data.qualityBreakdown.appearance).toFixed(1)
+          : '0.0',
+        texture: data.qualityBreakdown?.texture
+          ? parseFloat(data.qualityBreakdown.texture).toFixed(1)
+          : '0.0',
+        overall: data.qualityBreakdown?.overall
+          ? parseFloat(data.qualityBreakdown.overall).toFixed(1)
+          : '0.0',
+      },
+
+      // Cost Analysis with proper formatting
+      costAnalysis: {
+        avgCostPerKg: data.costAnalysis?.avgCostPerKg
+          ? formatCurrency(data.costAnalysis.avgCostPerKg)
+          : '0',
+        materialCost: data.costAnalysis?.materialCost
+          ? formatCurrency(data.costAnalysis.materialCost)
+          : '0',
+        laborCost: data.costAnalysis?.laborCost
+          ? formatCurrency(data.costAnalysis.laborCost)
+          : '0',
+        overheadCost: data.costAnalysis?.overheadCost
+          ? formatCurrency(data.costAnalysis.overheadCost)
+          : '0',
+      },
+    };
+  });
+
+  // Helper function for currency formatting
+  const formatCurrency = (value) => {
+    const num = parseFloat(value);
+    if (isNaN(num)) return '0';
+    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+    if (num >= 1000) return `${(num / 1000).toFixed(1)}k`;
+    return Math.round(num).toString();
+  };
 
   const qualityMetricsData = computed(() => {
     if (!metricsData.value?.qualityTrend) return null;

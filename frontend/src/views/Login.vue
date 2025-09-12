@@ -2,8 +2,192 @@
   import { ref } from 'vue';
   import { useAuthStore } from '../stores/authStore';
   import { useRouter } from 'vue-router';
-  import { Eye, EyeOff } from 'lucide-vue-next';
+  import { Eye, EyeOff, ArrowLeft } from 'lucide-vue-next';
   import { nextTick } from 'vue';
+  import { QrcodeStream } from 'vue-qrcode-reader';
+  import { computed } from 'vue';
+
+  // Attendance scanner state
+  const isScannerOpen = ref(false);
+  const scanResult = ref('');
+  const scanError = ref('');
+  const isScanning = ref(false);
+  const torchSupported = ref(false);
+  const torchOn = ref(false);
+  const availableCameras = ref([]);
+  const selectedDeviceId = ref('');
+
+  // Real-time details
+  const nowTime = ref(new Date());
+  const sessionStart = ref(null);
+  const elapsedSeconds = ref(0);
+  let clockIntervalId = null;
+
+  const scanCount = ref(0);
+  const lastScanAt = ref(null);
+  const isCopying = ref(false);
+  const copyMessage = ref('');
+
+  const currentCameraLabel = computed(() => {
+    const found = availableCameras.value.find(
+      (c) => c.id === selectedDeviceId.value
+    );
+    return found?.label || 'Default camera';
+  });
+
+  const formattedDate = computed(() =>
+    nowTime.value.toLocaleDateString('en-PH', {
+      month: 'long',
+      day: '2-digit',
+      year: 'numeric',
+    })
+  );
+
+  const startClock = () => {
+    stopClock();
+    sessionStart.value = new Date();
+    nowTime.value = new Date();
+    elapsedSeconds.value = 0;
+    clockIntervalId = setInterval(() => {
+      nowTime.value = new Date();
+      if (sessionStart.value) {
+        elapsedSeconds.value = Math.floor(
+          (Date.now() - sessionStart.value.getTime()) / 1000
+        );
+      }
+    }, 1000);
+  };
+
+  const stopClock = () => {
+    if (clockIntervalId) {
+      clearInterval(clockIntervalId);
+      clockIntervalId = null;
+    }
+  };
+
+  const formatDuration = (totalSeconds) => {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const hh = hours.toString().padStart(2, '0');
+    const mm = minutes.toString().padStart(2, '0');
+    const ss = seconds.toString().padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
+  };
+
+  const playBeep = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.type = 'sine';
+      o.frequency.value = 880;
+      g.gain.setValueAtTime(0.1, ctx.currentTime);
+      o.start();
+      o.stop(ctx.currentTime + 0.08);
+    } catch (e) {
+      // noop
+    }
+  };
+
+  const openScanner = async () => {
+    scanResult.value = '';
+    scanError.value = '';
+    torchOn.value = false;
+    isScannerOpen.value = true;
+    scanCount.value = 0;
+    lastScanAt.value = null;
+    startClock();
+    try {
+      if (navigator?.mediaDevices?.enumerateDevices) {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoInputs = devices.filter((d) => d.kind === 'videoinput');
+        availableCameras.value = videoInputs.map((d) => ({
+          id: d.deviceId,
+          label: d.label || 'Camera',
+        }));
+        if (!selectedDeviceId.value && videoInputs[0]?.deviceId) {
+          selectedDeviceId.value = videoInputs[0].deviceId;
+        }
+      }
+    } catch (err) {
+      // Non-blocking; user can still try to scan
+    }
+    document.getElementById('attendance_scanner_modal')?.showModal();
+  };
+
+  const closeScanner = () => {
+    isScannerOpen.value = false;
+    isScanning.value = false;
+    scanError.value = '';
+    torchOn.value = false;
+    stopClock();
+    document.getElementById('attendance_scanner_modal')?.close();
+  };
+
+  const onDetect = (detectedCodes) => {
+    // detectedCodes: Array of DetectedBarcode
+    const value = detectedCodes?.[0]?.rawValue || '';
+    if (value) {
+      scanResult.value = value;
+      isScanning.value = false;
+      scanCount.value += 1;
+      lastScanAt.value = new Date();
+      playBeep();
+    }
+  };
+
+  const onInit = async (promise) => {
+    try {
+      isScanning.value = true;
+      scanError.value = '';
+      await promise;
+    } catch (error) {
+      isScanning.value = false;
+      // Map common camera errors to user-friendly text
+      if (error?.name === 'NotAllowedError') {
+        scanError.value =
+          'Camera access was denied. Please allow camera permissions in your browser settings.';
+      } else if (error?.name === 'NotFoundError') {
+        scanError.value = 'No camera device found.';
+      } else if (error?.name === 'NotReadableError') {
+        scanError.value = 'Camera is already in use by another application.';
+      } else if (error?.name === 'OverconstrainedError') {
+        scanError.value =
+          'The selected camera constraints are not supported by your device.';
+      } else {
+        scanError.value = error?.message || 'Unable to start camera.';
+      }
+    }
+  };
+
+  const onCameraOn = (cameraCapabilities) => {
+    // cameraCapabilities: { torch?: boolean }
+    torchSupported.value = !!cameraCapabilities?.torch;
+  };
+
+  const toggleTorch = () => {
+    if (torchSupported.value) {
+      torchOn.value = !torchOn.value;
+    }
+  };
+
+  const copyScanResult = async () => {
+    if (!scanResult.value) return;
+    try {
+      isCopying.value = true;
+      await navigator.clipboard.writeText(scanResult.value);
+      copyMessage.value = 'Copied';
+      setTimeout(() => (copyMessage.value = ''), 1500);
+    } catch (e) {
+      copyMessage.value = 'Copy failed';
+      setTimeout(() => (copyMessage.value = ''), 1500);
+    } finally {
+      isCopying.value = false;
+    }
+  };
 
   const authStore = useAuthStore();
   const router = useRouter();
@@ -126,6 +310,10 @@
         router.push('/production');
       } else if (userDepartment === 'Customer Relationship') {
         router.push('/crm');
+      } else if (userDepartment === 'Branch') {
+        // All Branch department users should go to branch dashboard
+        // Super Admin can switch branches, others will be handled by BranchLayout
+        router.push('/branch/dashboard');
       } else {
         router.push('/dashboard');
       }
@@ -157,21 +345,176 @@
       @click="goBackHome"
       class="absolute top-8 left-8 text-gray-600 hover:text-gray-800 transition-colors z-10 cursor-pointer flex items-center space-x-2 hover:bg-white/20 rounded-lg px-3 py-2"
     >
-      <svg
-        class="w-6 h-6"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="2"
-          d="M10 19l-7-7m0 0l7-7m-7 7h18"
-        ></path>
-      </svg>
+      <ArrowLeft class="w-5 h-5" />
       <span class="text-sm font-medium">Back to Home</span>
     </button>
+
+    <button
+      @click="openScanner"
+      class="absolute top-8 right-8 text-gray-600 hover:text-gray-800 transition-colors z-10 cursor-pointer flex items-center space-x-2 hover:bg-white/20 rounded-lg px-3 py-2 hover:underline text-sm"
+    >
+      Scan for Attendance
+    </button>
+
+    <!-- Attendance Scanner Modal (DaisyUI dialog for consistency) -->
+    <dialog id="attendance_scanner_modal" class="modal">
+      <div
+        class="modal-box bg-accentColor text-black/50 shadow-lg max-w-1xl w-full max-h-[90vh] overflow-y-auto"
+      >
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-bold text-lg text-primaryColor">
+            Attendance Scanner
+          </h3>
+          <button
+            @click="closeScanner"
+            class="btn btn-xs shadow-none font-thin hover:bg-black/10 border-none"
+          >
+            ✕
+          </button>
+        </div>
+
+        <p class="text-sm mb-3">
+          Position the QR code within the frame. The scan will happen
+          automatically.
+        </p>
+
+        <!-- Real-time info bar -->
+        <div
+          class="flex flex-wrap items-center gap-2 text-xs mb-3 justify-between flex-col"
+        >
+          <div class="">
+            <h1 class="text-lg font-bold text-primaryColor">
+              {{ formattedDate }}
+            </h1>
+          </div>
+          <div class="">
+            <h1 class="text-lg font-bold text-primaryColor">
+              {{ formatDuration(elapsedSeconds) }}
+            </h1>
+          </div>
+
+          <div class="">
+            <h1 class="text-sm font-bold text-primaryColor">
+              Scans: {{ scanCount }}
+            </h1>
+          </div>
+          <div v-if="lastScanAt" class="">
+            <h1 class="text-sm font-bold text-primaryColor">
+              Last scan: {{ lastScanAt.toLocaleTimeString() }}
+            </h1>
+          </div>
+        </div>
+
+        <!-- Camera selection -->
+        <div v-if="availableCameras.length > 1" class="mb-2">
+          <label class="label mb-1"
+            ><span class="label-text text-sm">Camera:</span></label
+          >
+          <select
+            v-model="selectedDeviceId"
+            class="select select-sm select-bordered w-full"
+          >
+            <option
+              v-for="cam in availableCameras"
+              :key="cam.id"
+              :value="cam.id"
+            >
+              {{ cam.label }}
+            </option>
+          </select>
+        </div>
+
+        <div v-if="scanError" class="alert alert-error text-sm mb-3">
+          {{ scanError }}
+        </div>
+
+        <div class="card bg-white border border-black/10 mb-3">
+          <div class="card-body p-2">
+            <div class="relative rounded-lg overflow-hidden border">
+              <QrcodeStream
+                :constraints="
+                  selectedDeviceId
+                    ? { deviceId: { exact: selectedDeviceId } }
+                    : { facingMode: 'environment' }
+                "
+                :torch="torchSupported ? torchOn : undefined"
+                @init="onInit"
+                @detect="onDetect"
+                @camera-on="onCameraOn"
+              />
+            </div>
+            <div class="flex items-center justify-between mt-2">
+              <div class="flex items-center gap-2">
+                <button
+                  class="btn btn-sm"
+                  :class="torchOn ? 'btn-warning' : ''"
+                  :disabled="!torchSupported"
+                  @click="toggleTorch"
+                >
+                  {{
+                    torchSupported
+                      ? torchOn
+                        ? 'Turn torch off'
+                        : 'Turn torch on'
+                      : 'Torch not supported'
+                  }}
+                </button>
+                <span class="text-xs" v-if="isScanning">Camera active…</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="scanResult" class="card bg-white border border-black/10">
+          <div class="card-body p-3">
+            <div class="text-sm font-medium text-primaryColor mb-1">
+              Last scanned code
+            </div>
+            <div class="text-sm break-all">{{ scanResult }}</div>
+            <div class="mt-2 text-xs">
+              Scanned at: {{ lastScanAt?.toLocaleString?.() }}
+            </div>
+            <div class="mt-3 flex gap-2">
+              <button
+                class="btn btn-primary btn-sm bg-primaryColor hover:bg-primaryColor/80 border-none shadow-none font-thin"
+              >
+                Use this scan
+              </button>
+              <button
+                class="btn btn-outline btn-sm shadow-none font-thin"
+                @click="scanResult = ''"
+              >
+                Scan again
+              </button>
+              <button
+                class="btn btn-ghost btn-sm shadow-none font-thin hover:bg-black/1"
+                @click="copyScanResult"
+                :disabled="isCopying"
+              >
+                {{ copyMessage || 'Copy' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Current time footer -->
+        <div class="mt-3 text-center text-xs text-gray-600">
+          Time: {{ nowTime.toLocaleTimeString() }}
+        </div>
+
+        <div class="modal-action">
+          <button
+            @click="closeScanner"
+            class="btn btn-sm btn-outline font-thin"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="closeScanner">close</button>
+      </form>
+    </dialog>
 
     <!-- Desktop Layout -->
     <div

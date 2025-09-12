@@ -88,7 +88,7 @@
           <div class="flex items-center space-x-4">
             <button
               @click="goToLogin"
-              class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-sm cursor-pointer transition-all duration-300 shadow-md font-thin"
+              class="border border-white text-white px-6 py-2 rounded-sm cursor-pointer transition-all duration-300 shadow-md font-thin"
             >
               Login
             </button>

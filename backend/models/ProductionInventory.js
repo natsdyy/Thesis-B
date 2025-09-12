@@ -1,6 +1,48 @@
 const { db } = require("../config/database");
 
 class ProductionInventory {
+  // Calculate dynamic reorder point based on stock level percentage
+  static calculateDynamicReorderPoint(currentStock, percentage = 15) {
+    // Ensure percentage is between 10-20%
+    const clampedPercentage = Math.max(10, Math.min(20, percentage));
+
+    // Calculate reorder point as percentage of current stock
+    // But ensure minimum of 5 and maximum of 50
+    const calculatedReorderPoint = Math.ceil(
+      (currentStock * clampedPercentage) / 100
+    );
+    return Math.max(5, Math.min(50, calculatedReorderPoint));
+  }
+
+  // Update reorder point dynamically based on current stock
+  static async updateDynamicReorderPoint(productionInventoryId, userId) {
+    try {
+      const inventory = await db("production_inventory")
+        .where("id", productionInventoryId)
+        .where("is_active", true)
+        .first();
+
+      if (!inventory) {
+        throw new Error("Production inventory item not found");
+      }
+
+      const currentStock = inventory.available_quantity || 0;
+      const dynamicReorderPoint =
+        this.calculateDynamicReorderPoint(currentStock);
+
+      await db("production_inventory")
+        .where("id", productionInventoryId)
+        .update({
+          reorder_point: dynamicReorderPoint,
+          updated_at: db.fn.now(),
+        });
+
+      return dynamicReorderPoint;
+    } catch (error) {
+      console.error("Error updating dynamic reorder point:", error);
+      throw new Error("Failed to update reorder point");
+    }
+  }
   // Create new production inventory entry when menu item is approved for production
   static async create(menuItemId, userId, additionalData = {}) {
     const trx = await db.transaction();
@@ -58,7 +100,9 @@ class ProductionInventory {
           next_quality_check_date: null,
           total_produced: 0, // No production yet
           total_sold: 0,
-          reorder_point: additionalData.reorder_point || 20, // Default reorder point
+          reorder_point:
+            additionalData.reorder_point ||
+            this.calculateDynamicReorderPoint(0), // Dynamic reorder point
           maximum_stock: additionalData.maximum_stock || 0,
           created_by: userId,
           created_at: db.fn.now(),
@@ -305,8 +349,13 @@ class ProductionInventory {
         throw new Error("Production inventory item not found");
       }
 
+      // Calculate new dynamic reorder point based on updated stock
+      const dynamicReorderPoint =
+        this.calculateDynamicReorderPoint(newQuantity);
+
       await db("production_inventory").where("id", id).update({
         available_quantity: newQuantity,
+        reorder_point: dynamicReorderPoint,
         last_produced_date: db.fn.now(),
         updated_at: db.fn.now(),
       });
@@ -896,7 +945,7 @@ class ProductionInventory {
           "mi.menu_item_name",
           "mi.item_code",
           "mi.category",
-          "b.branch_name",
+          "b.name as branch_name",
           db.raw(
             "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as distributed_by_name"
           )

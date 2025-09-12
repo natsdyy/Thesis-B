@@ -24,7 +24,7 @@ export const useUserStore = defineStore('user', () => {
     error.value = null;
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/users`, {
+      const response = await axios.get(`${API_BASE_URL}/employees`, {
         params: { includeDeleted },
       });
 
@@ -47,7 +47,7 @@ export const useUserStore = defineStore('user', () => {
     error.value = null;
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/users`, userData);
+      const response = await axios.post(`${API_BASE_URL}/employees`, userData);
 
       if (response.data.success) {
         users.value.push(response.data.data);
@@ -73,7 +73,10 @@ export const useUserStore = defineStore('user', () => {
     error.value = null;
 
     try {
-      const response = await axios.put(`${API_BASE_URL}/users/${id}`, userData);
+      const response = await axios.put(
+        `${API_BASE_URL}/employees/${id}`,
+        userData
+      );
 
       if (response.data.success) {
         const index = users.value.findIndex((user) => user.id === id);
@@ -99,7 +102,7 @@ export const useUserStore = defineStore('user', () => {
     error.value = null;
 
     try {
-      const response = await axios.delete(`${API_BASE_URL}/users/${id}`);
+      const response = await axios.delete(`${API_BASE_URL}/employees/${id}`);
 
       if (response.data.success) {
         users.value = users.value.filter((user) => user.id !== id);
@@ -122,7 +125,9 @@ export const useUserStore = defineStore('user', () => {
     error.value = null;
 
     try {
-      const response = await axios.put(`${API_BASE_URL}/users/${id}/restore`);
+      const response = await axios.put(
+        `${API_BASE_URL}/employees/${id}/restore`
+      );
 
       if (response.data.success) {
         const index = users.value.findIndex((user) => user.id === id);
@@ -154,7 +159,7 @@ export const useUserStore = defineStore('user', () => {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/users/${id}/permissions`
+        `${API_BASE_URL}/employees/${id}/permissions`
       );
 
       if (response.data.success) {
@@ -183,7 +188,7 @@ export const useUserStore = defineStore('user', () => {
   // Get production staff (users with production roles)
   const getProductionStaff = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/users`, {
+      const response = await axios.get(`${API_BASE_URL}/employees`, {
         params: {
           department: 'Production',
           includeDeleted: false,
@@ -192,9 +197,9 @@ export const useUserStore = defineStore('user', () => {
 
       if (response.data.success) {
         return response.data.data.filter(
-          (user) =>
-            user.department === 'Production' ||
-            user.roles?.some((role) => role.name?.includes('Production'))
+          (employee) =>
+            employee.department === 'Production' ||
+            employee.role?.includes('Production')
         );
       } else {
         throw new Error(
@@ -203,11 +208,11 @@ export const useUserStore = defineStore('user', () => {
       }
     } catch (err) {
       console.error('Error fetching production staff:', err);
-      // Return all users as fallback
+      // Return all employees as fallback
       return users.value.filter(
-        (user) =>
-          user.department === 'Production' ||
-          user.roles?.some((role) => role.name?.includes('Production'))
+        (employee) =>
+          employee.department === 'Production' ||
+          employee.role?.includes('Production')
       );
     }
   };

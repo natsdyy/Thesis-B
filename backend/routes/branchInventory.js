@@ -1,0 +1,252 @@
+const express = require("express");
+const router = express.Router();
+const BranchInventory = require("../models/BranchInventory");
+const { authenticateToken, requirePermission } = require("../middleware/rbac");
+
+// Get branch inventory
+router.get(
+  "/:branchId",
+  authenticateToken,
+  requirePermission("Manage Inventory"),
+  async (req, res) => {
+    try {
+      const { branchId } = req.params;
+      const filters = {
+        item_type: req.query.item_type,
+        category: req.query.category,
+        status: req.query.status,
+        search: req.query.search,
+      };
+
+      // Remove undefined filters
+      Object.keys(filters).forEach((key) => {
+        if (filters[key] === undefined || filters[key] === "") {
+          delete filters[key];
+        }
+      });
+
+      const inventory = await BranchInventory.getByBranch(branchId, filters);
+
+      res.json({
+        success: true,
+        data: inventory,
+      });
+    } catch (error) {
+      console.error("Error fetching branch inventory:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch branch inventory",
+      });
+    }
+  }
+);
+
+// Get branch inventory stats
+router.get(
+  "/:branchId/stats",
+  authenticateToken,
+  requirePermission("Manage Inventory"),
+  async (req, res) => {
+    try {
+      const { branchId } = req.params;
+      const stats = await BranchInventory.getBranchStats(branchId);
+
+      res.json({
+        success: true,
+        data: stats,
+      });
+    } catch (error) {
+      console.error("Error fetching branch stats:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch branch stats",
+      });
+    }
+  }
+);
+
+// Get low stock items
+router.get(
+  "/:branchId/low-stock",
+  authenticateToken,
+  requirePermission("Manage Inventory"),
+  async (req, res) => {
+    try {
+      const { branchId } = req.params;
+      const items = await BranchInventory.getLowStockItems(branchId);
+
+      res.json({
+        success: true,
+        data: items,
+      });
+    } catch (error) {
+      console.error("Error fetching low stock items:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch low stock items",
+      });
+    }
+  }
+);
+
+// Get expiring items
+router.get(
+  "/:branchId/expiring",
+  authenticateToken,
+  requirePermission("Manage Inventory"),
+  async (req, res) => {
+    try {
+      const { branchId } = req.params;
+      const days = parseInt(req.query.days) || 7;
+      const items = await BranchInventory.getExpiringItems(branchId, days);
+
+      res.json({
+        success: true,
+        data: items,
+      });
+    } catch (error) {
+      console.error("Error fetching expiring items:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch expiring items",
+      });
+    }
+  }
+);
+
+// Get recent activity
+router.get(
+  "/:branchId/activity",
+  authenticateToken,
+  requirePermission("Manage Inventory"),
+  async (req, res) => {
+    try {
+      const { branchId } = req.params;
+      const limit = parseInt(req.query.limit) || 10;
+      const activity = await BranchInventory.getRecentActivity(branchId, limit);
+
+      res.json({
+        success: true,
+        data: activity,
+      });
+    } catch (error) {
+      console.error("Error fetching recent activity:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch recent activity",
+      });
+    }
+  }
+);
+
+// Add item to branch inventory (from distribution)
+router.post(
+  "/:branchId/items",
+  authenticateToken,
+  requirePermission("Manage Inventory"),
+  async (req, res) => {
+    try {
+      const { branchId } = req.params;
+      const itemData = req.body;
+
+      const item = await BranchInventory.addItem(branchId, itemData);
+
+      res.json({
+        success: true,
+        data: item,
+        message: "Item added to branch inventory successfully",
+      });
+    } catch (error) {
+      console.error("Error adding item to branch inventory:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to add item to branch inventory",
+      });
+    }
+  }
+);
+
+// Update item quantity
+router.put(
+  "/items/:itemId/quantity",
+  authenticateToken,
+  requirePermission("Manage Inventory"),
+  async (req, res) => {
+    try {
+      const { itemId } = req.params;
+      const { quantity, reason } = req.body;
+
+      const updatedItem = await BranchInventory.updateQuantity(
+        itemId,
+        quantity,
+        reason
+      );
+
+      res.json({
+        success: true,
+        data: updatedItem,
+        message: "Item quantity updated successfully",
+      });
+    } catch (error) {
+      console.error("Error updating item quantity:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to update item quantity",
+      });
+    }
+  }
+);
+
+// Update item status
+router.put(
+  "/items/:itemId/status",
+  authenticateToken,
+  requirePermission("Manage Inventory"),
+  async (req, res) => {
+    try {
+      const { itemId } = req.params;
+      const { status } = req.body;
+
+      const updatedItem = await BranchInventory.updateStatus(itemId, status);
+
+      res.json({
+        success: true,
+        data: updatedItem,
+        message: "Item status updated successfully",
+      });
+    } catch (error) {
+      console.error("Error updating item status:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to update item status",
+      });
+    }
+  }
+);
+
+// Delete item (soft delete)
+router.delete(
+  "/items/:itemId",
+  authenticateToken,
+  requirePermission("Manage Inventory"),
+  async (req, res) => {
+    try {
+      const { itemId } = req.params;
+
+      await BranchInventory.deleteItem(itemId);
+
+      res.json({
+        success: true,
+        message: "Item deleted successfully",
+      });
+    } catch (error) {
+      console.error("Error deleting item:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to delete item",
+      });
+    }
+  }
+);
+
+module.exports = router;

@@ -9,10 +9,12 @@ class MaintenanceSchedule {
           "ms.*",
           "e.equipment_name",
           "e.equipment_code",
-          "u_assigned.name as assigned_to_name"
+          db.raw(
+            "COALESCE(u_assigned.first_name,'') || ' ' || COALESCE(u_assigned.last_name,'') as assigned_to_name"
+          )
         )
         .leftJoin("equipment as e", "ms.equipment_id", "e.id")
-        .leftJoin("users as u_assigned", "ms.assigned_to", "u_assigned.id");
+        .leftJoin("employees as u_assigned", "ms.assigned_to", "u_assigned.id");
 
       // Apply filters
       if (filters.maintenance_type) {
@@ -58,10 +60,12 @@ class MaintenanceSchedule {
           "ms.*",
           "e.equipment_name",
           "e.equipment_code",
-          "u_assigned.name as assigned_to_name"
+          db.raw(
+            "COALESCE(u_assigned.first_name,'') || ' ' || COALESCE(u_assigned.last_name,'') as assigned_to_name"
+          )
         )
         .leftJoin("equipment as e", "ms.equipment_id", "e.id")
-        .leftJoin("users as u_assigned", "ms.assigned_to", "u_assigned.id")
+        .leftJoin("employees as u_assigned", "ms.assigned_to", "u_assigned.id")
         .where("ms.id", id)
         .first();
 
@@ -228,10 +232,12 @@ class MaintenanceSchedule {
           "ms.*",
           "e.equipment_name",
           "e.equipment_code",
-          "u_assigned.name as assigned_to_name"
+          db.raw(
+            "COALESCE(u_assigned.first_name,'') || ' ' || COALESCE(u_assigned.last_name,'') as assigned_to_name"
+          )
         )
         .leftJoin("equipment as e", "ms.equipment_id", "e.id")
-        .leftJoin("users as u_assigned", "ms.assigned_to", "u_assigned.id")
+        .leftJoin("employees as u_assigned", "ms.assigned_to", "u_assigned.id")
         .where("ms.scheduled_date", "<", today)
         .where("ms.status", "Scheduled")
         .orderBy("ms.scheduled_date", "asc");

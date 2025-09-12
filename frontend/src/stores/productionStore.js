@@ -1813,10 +1813,13 @@ export const useProductionStore = defineStore('production', () => {
   const fetchBranches = async () => {
     try {
       loading.value = true;
-      const response = await axios.get(`${API_BASE_URL}/branches?active=true`);
+      const response = await axios.get(
+        `${API_BASE_URL}/menu/production-inventory/branches`
+      );
       if (response.data) {
         return response.data;
       }
+      return [];
     } catch (error) {
       console.error('Error fetching branches:', error);
       throw error;

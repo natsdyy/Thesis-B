@@ -12,8 +12,12 @@ class SampleProduction {
           "mi.menu_item_name",
           "mi.item_code",
           "r.recipe_name",
-          "e.name as assigned_to_name",
-          "ce.name as created_by_name",
+          db.raw(
+            "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as assigned_to_name"
+          ),
+          db.raw(
+            "COALESCE(ce.first_name,'') || ' ' || COALESCE(ce.last_name,'') as created_by_name"
+          ),
           db.raw("COUNT(qi.id) as inspection_count"),
           db.raw(
             "COUNT(CASE WHEN qi.result = 'Pass' THEN 1 END) as passed_inspections"
@@ -34,8 +38,10 @@ class SampleProduction {
           "mi.menu_item_name",
           "mi.item_code",
           "r.recipe_name",
-          "e.name",
-          "ce.name"
+          "e.first_name",
+          "e.last_name",
+          "ce.first_name",
+          "ce.last_name"
         );
 
       // Apply filters
@@ -110,8 +116,12 @@ class SampleProduction {
           "r.instructions",
           "r.batch_size",
           "r.batch_unit",
-          "e.name as assigned_to_name",
-          "ce.name as created_by_name"
+          db.raw(
+            "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as assigned_to_name"
+          ),
+          db.raw(
+            "COALESCE(ce.first_name,'') || ' ' || COALESCE(ce.last_name,'') as created_by_name"
+          )
         )
         .leftJoin("menu_items as mi", "sp.menu_item_id", "mi.id")
         .leftJoin("recipes as r", "sp.recipe_id", "r.id")
@@ -537,7 +547,9 @@ class SampleProduction {
       let query = db("menu_item_audit_log as al")
         .select(
           "al.*",
-          "e.name as user_name",
+          db.raw(
+            "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as user_name"
+          ),
           "mi.menu_item_name",
           "sp.sample_batch_number"
         )

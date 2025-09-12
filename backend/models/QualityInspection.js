@@ -136,8 +136,12 @@ class QualityInspection {
           "mi.menu_item_name as item_name",
           "mi.item_code",
           "sp.sample_batch_number",
-          "e.name as inspector_name",
-          "ae.name as approved_by_name"
+          db.raw(
+            "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as inspector_name"
+          ),
+          db.raw(
+            "COALESCE(ae.first_name,'') || ' ' || COALESCE(ae.last_name,'') as approved_by_name"
+          )
         )
         .leftJoin("menu_items as mi", "qi.menu_item_id", "mi.id")
         .leftJoin(
@@ -203,8 +207,12 @@ class QualityInspection {
           "sp.batch_unit",
           "sp.production_cost",
           "r.recipe_name",
-          "e.name as inspector_name",
-          "ae.name as approved_by_name"
+          db.raw(
+            "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as inspector_name"
+          ),
+          db.raw(
+            "COALESCE(ae.first_name,'') || ' ' || COALESCE(ae.last_name,'') as approved_by_name"
+          )
         )
         .leftJoin("menu_items as mi", "qi.menu_item_id", "mi.id")
         .leftJoin(
@@ -682,7 +690,13 @@ class QualityInspection {
   static async getByMenuItem(menuItemId) {
     try {
       return await db("menu_quality_inspections as qi")
-        .select("qi.*", "e.name as inspector_name", "sp.sample_batch_number")
+        .select(
+          "qi.*",
+          db.raw(
+            "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as inspector_name"
+          ),
+          "sp.sample_batch_number"
+        )
         .leftJoin("employees as e", "qi.inspector_id", "e.id")
         .leftJoin(
           "sample_productions as sp",
@@ -707,7 +721,9 @@ class QualityInspection {
           "mi.item_name",
           "mi.item_code",
           "sp.sample_batch_number",
-          "e.name as inspector_name"
+          db.raw(
+            "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as inspector_name"
+          )
         )
         .leftJoin("menu_items as mi", "qi.menu_item_id", "mi.id")
         .leftJoin(

@@ -30,9 +30,9 @@ export default [
     },
   },
   {
-    path: 'branches',
-    name: 'AdminBranches',
-    component: () => import('../../views/admin/Branches.vue'),
+    path: 'branch-manager',
+    name: 'AdminBranchManager',
+    component: () => import('../../views/admin/BranchManager.vue'),
     meta: {
       title: 'Branch Management',
       permission: 'Manage Branch Management',

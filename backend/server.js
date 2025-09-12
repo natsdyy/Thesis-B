@@ -6,10 +6,9 @@ require("dotenv").config();
 
 // Import database configuration and models
 const { testConnection, runMigrations } = require("./config/database");
-const User = require("./models/User");
+const Employee = require("./models/Employee");
 
 // Import routes
-const userRoutes = require("./routes/users");
 const roleRoutes = require("./routes/roles");
 const permissionRoutes = require("./routes/permissions");
 const rolePermissionRoutes = require("./routes/rolePermissions");
@@ -29,6 +28,9 @@ const menuRoutes = require("./routes/menu");
 const menuAnalyticsRoutes = require("./routes/menuAnalytics");
 const attendanceRoutes = require("./routes/attendance");
 const employeeRoutes = require("./routes/employees");
+const branchRequestRoutes = require("./routes/branchRequests");
+const branchDistributionRoutes = require("./routes/branchDistributions");
+const branchInventoryRoutes = require("./routes/branchInventory");
 const { serve, setup } = require("./config/swagger");
 
 const app = express();
@@ -43,11 +45,14 @@ const envOrigins = rawCorsOrigin
   .filter(Boolean);
 
 const defaultAllowedOrigins = [
+  "http://10.196.212.241:8080", // Wi-Fi 2 frontend
+  "http://10.196.212.194:8080", // Wi-Fi frontend
+  "http://192.168.56.1:8080", // Ethernet 3 frontend
   "http://localhost:5000", // Localhost backend
   "http://localhost:80", //docker
   "http://localhost:8080", // Localhost frontend
-  "http://192.168.18.5:8080", // Network frontend
-  "http://192.168.56.1:5000", // Network backend
+  "http://192.168.18.5:8080", // Legacy network frontend
+  "http://192.168.56.1:5000", // Ethernet 3 backend
   "http://localhost:8080", // Localhost frontend
   "https://countrysides.up.railway.app", // Railway deployment
   "https://*.up.railway.app", // Railway wildcard
@@ -80,7 +85,6 @@ app.use(express.json());
 app.use("/uploads", express.static(require("path").join(__dirname, "uploads")));
 
 // API Routes
-app.use("/api/users", userRoutes);
 app.use("/api/roles", roleRoutes);
 app.use("/api/permissions", permissionRoutes);
 app.use("/api/role-permissions", rolePermissionRoutes);
@@ -100,6 +104,9 @@ app.use("/api/menu", menuRoutes);
 app.use("/api/menu/analytics", menuAnalyticsRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/employees", employeeRoutes);
+app.use("/api/branch-requests", branchRequestRoutes);
+app.use("/api/branch-distributions", branchDistributionRoutes);
+app.use("/api/branch-inventory", branchInventoryRoutes);
 
 // Auto-expire job
 async function autoExpireJob() {

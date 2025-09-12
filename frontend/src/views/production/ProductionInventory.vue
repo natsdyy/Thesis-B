@@ -22,6 +22,8 @@
     X,
     ChevronDown,
     ChevronUp,
+    ChevronLeft,
+    ChevronRight,
     Truck,
     History,
     Handshake,
@@ -50,7 +52,7 @@
   const showDistributionModal = ref(false);
   const selectedItem = ref(null);
   const currentPage = ref(1);
-  const itemsPerPage = ref(1);
+  const itemsPerPage = ref(6);
   const expandedItems = ref(new Set());
 
   // Recent activity and transaction modal state
@@ -88,6 +90,14 @@
   // Distribution data
   const distributions = ref([]);
   const distributionLoading = ref(false);
+
+  // Distribution pagination and filtering
+  const distributionCurrentPage = ref(1);
+  const distributionItemsPerPage = ref(10);
+  const distributionSearchQuery = ref('');
+  const distributionBranchFilter = ref('');
+  const distributionDateFrom = ref('');
+  const distributionDateTo = ref('');
 
   // Access store data
   const loading = computed(() => productionStore.loading);
@@ -154,6 +164,58 @@
         productionStore.productionInventoryStats?.total_quantity_distributed ||
         0,
     };
+  });
+
+  // Filtered distributions
+  const filteredDistributions = computed(() => {
+    let filtered = [...distributions.value];
+
+    if (distributionSearchQuery.value) {
+      const query = distributionSearchQuery.value.toLowerCase();
+      filtered = filtered.filter(
+        (dist) =>
+          dist.menu_item_name?.toLowerCase().includes(query) ||
+          dist.item_code?.toLowerCase().includes(query) ||
+          dist.branch_name?.toLowerCase().includes(query)
+      );
+    }
+
+    if (distributionBranchFilter.value) {
+      filtered = filtered.filter(
+        (dist) => dist.branch_id === distributionBranchFilter.value
+      );
+    }
+
+    if (distributionDateFrom.value) {
+      filtered = filtered.filter(
+        (dist) =>
+          new Date(dist.distribution_date) >=
+          new Date(distributionDateFrom.value)
+      );
+    }
+
+    if (distributionDateTo.value) {
+      filtered = filtered.filter(
+        (dist) =>
+          new Date(dist.distribution_date) <= new Date(distributionDateTo.value)
+      );
+    }
+
+    return filtered;
+  });
+
+  // Distribution pagination
+  const totalDistributionPages = computed(() => {
+    return Math.ceil(
+      filteredDistributions.value.length / distributionItemsPerPage.value
+    );
+  });
+
+  const paginatedDistributions = computed(() => {
+    const start =
+      (distributionCurrentPage.value - 1) * distributionItemsPerPage.value;
+    const end = start + distributionItemsPerPage.value;
+    return filteredDistributions.value.slice(start, end);
   });
 
   // Computed properties
@@ -312,6 +374,203 @@
       if (item.category) categories.add(item.category);
     });
     return Array.from(categories).sort();
+  });
+
+  // Production Recommendations - High Demand Items
+  const highDemandItems = computed(() => {
+    const items = productionInventory.value || [];
+
+    // Calculate demand metrics for each item
+    const itemsWithDemand = items.map((item) => {
+      const totalDistributed = item.total_distributed || 0;
+      const availableQuantity = item.available_quantity || 0;
+      const reorderPoint = item.reorder_point || 0;
+
+      // Calculate demand rate (distributions per available stock)
+      const demandRate =
+        availableQuantity > 0 ? totalDistributed / availableQuantity : 0;
+
+      // Calculate stock turnover (how quickly items are distributed)
+      const stockTurnover =
+        availableQuantity > 0
+          ? totalDistributed / Math.max(availableQuantity, 1)
+          : 0;
+
+      // Determine if item should be considered "featured" based on distribution activity
+      // Auto-feature items with high distribution volume (100+ units distributed)
+      const shouldBeFeatured = totalDistributed >= 100;
+
+      return {
+        ...item,
+        demandRate,
+        stockTurnover,
+        totalDistributed,
+        availableQuantity,
+        reorderPoint,
+        shouldBeFeatured,
+        // Show effective featured status (manual OR auto-featured)
+        effectiveFeatured: item.is_featured || shouldBeFeatured,
+      };
+    });
+
+    // Sort by demand rate and total distributed, return top 3
+    return itemsWithDemand
+      .filter((item) => item.totalDistributed > 0) // Only items with actual distribution history
+      .sort((a, b) => {
+        // Primary sort by total distributed (volume)
+        if (b.totalDistributed !== a.totalDistributed) {
+          return b.totalDistributed - a.totalDistributed;
+        }
+        // Secondary sort by demand rate
+        return b.demandRate - a.demandRate;
+      })
+      .slice(0, 3);
+  });
+
+  // Production Recommendations - Low Stock Alerts
+  const lowStockAlerts = computed(() => {
+    const items = productionInventory.value || [];
+
+    return items
+      .filter((item) => {
+        const availableQuantity = item.available_quantity || 0;
+        const reorderPoint = item.reorder_point || 0;
+        return availableQuantity <= reorderPoint && reorderPoint > 0;
+      })
+      .map((item) => ({
+        ...item,
+        availableQuantity: item.available_quantity || 0,
+        reorderPoint: item.reorder_point || 0,
+      }))
+      .sort((a, b) => {
+        // Sort by how critical the stock level is
+        const aStockRatio = a.availableQuantity / a.reorderPoint;
+        const bStockRatio = b.availableQuantity / b.reorderPoint;
+        return aStockRatio - bStockRatio;
+      })
+      .slice(0, 5); // Show top 5 most critical low stock items
+  });
+
+  // Production Recommendations - Production Suggestions
+  const productionSuggestions = computed(() => {
+    const items = productionInventory.value || [];
+
+    return items
+      .map((item) => {
+        const availableQuantity = item.available_quantity || 0;
+        const reorderPoint = item.reorder_point || 0;
+        const totalDistributed = item.total_distributed || 0;
+        const batchSize = item.batch_size || 1;
+
+        // Calculate suggested production quantity
+        let suggestedQuantity = 0;
+        let suggestionReason = '';
+
+        if (availableQuantity <= reorderPoint && reorderPoint > 0) {
+          // Critical: below reorder point
+          suggestedQuantity = Math.max(reorderPoint * 2, batchSize);
+          suggestionReason = 'Below reorder point';
+        } else if (availableQuantity <= reorderPoint * 1.5) {
+          // Warning: approaching reorder point
+          suggestedQuantity = Math.max(reorderPoint, batchSize);
+          suggestionReason = 'Approaching reorder point';
+        } else if (
+          totalDistributed > 0 &&
+          availableQuantity < totalDistributed * 0.1
+        ) {
+          // Low stock relative to historical demand
+          suggestedQuantity = Math.max(
+            Math.ceil(totalDistributed * 0.2),
+            batchSize
+          );
+          suggestionReason = 'Low stock vs. historical demand';
+        }
+
+        return {
+          ...item,
+          suggestedQuantity,
+          suggestionReason,
+          priority: availableQuantity <= reorderPoint ? 'High' : 'Medium',
+        };
+      })
+      .filter((item) => item.suggestedQuantity > 0)
+      .sort((a, b) => {
+        // Sort by priority (High first) then by suggested quantity
+        if (a.priority !== b.priority) {
+          return a.priority === 'High' ? -1 : 1;
+        }
+        return b.suggestedQuantity - a.suggestedQuantity;
+      })
+      .slice(0, 5); // Show top 5 suggestions
+  });
+
+  // Branch Performance Analytics
+  const branchPerformance = computed(() => {
+    const distributionData = distributions.value || [];
+
+    if (distributionData.length === 0) {
+      return {
+        topBranch: null,
+        branchStats: [],
+        averageDistributionSize: 0,
+        totalDistributions: 0,
+      };
+    }
+
+    // Group distributions by branch
+    const branchGroups = {};
+    distributionData.forEach((dist) => {
+      const branchName = dist.branch_name || 'Unknown Branch';
+      if (!branchGroups[branchName]) {
+        branchGroups[branchName] = {
+          branch_name: branchName,
+          total_quantity: 0,
+          distribution_count: 0,
+          total_value: 0,
+          items_distributed: new Set(),
+        };
+      }
+
+      branchGroups[branchName].total_quantity += parseFloat(
+        dist.quantity_distributed || 0
+      );
+      branchGroups[branchName].distribution_count += 1;
+      branchGroups[branchName].total_value +=
+        parseFloat(dist.transfer_price || 0) *
+        parseFloat(dist.quantity_distributed || 0);
+      branchGroups[branchName].items_distributed.add(dist.menu_item_name);
+    });
+
+    // Convert to array and calculate metrics
+    const branchStats = Object.values(branchGroups).map((branch) => ({
+      ...branch,
+      items_distributed: branch.items_distributed.size,
+      average_distribution_size:
+        branch.total_quantity / branch.distribution_count,
+      average_value_per_distribution:
+        branch.total_value / branch.distribution_count,
+    }));
+
+    // Sort by total quantity distributed
+    branchStats.sort((a, b) => b.total_quantity - a.total_quantity);
+
+    const topBranch = branchStats.length > 0 ? branchStats[0] : null;
+    const totalDistributions = distributionData.length;
+
+    // Calculate average distribution size with proper error handling
+    const totalQuantity = distributionData.reduce(
+      (sum, dist) => sum + parseFloat(dist.quantity_distributed || 0),
+      0
+    );
+    const averageDistributionSize =
+      totalDistributions > 0 ? totalQuantity / totalDistributions : 0;
+
+    return {
+      topBranch,
+      branchStats: branchStats.slice(0, 3), // Top 3 branches
+      averageDistributionSize: Math.round(averageDistributionSize) || 0,
+      totalDistributions,
+    };
   });
 
   // Format image URLs to full URLs
@@ -590,8 +849,19 @@
   };
 
   const calculateProfitMargin = (sellingPrice, costPrice) => {
-    if (!costPrice || costPrice === 0) return null; // Return null for no production yet
-    return Math.round(((sellingPrice - costPrice) / costPrice) * 100);
+    // Handle edge cases for more realistic margin display
+    if (!costPrice || costPrice === 0) return null; // No production cost recorded yet
+
+    // If cost is extremely low (less than 1 peso), it's likely incomplete data
+    if (costPrice < 1) return null;
+
+    const margin = ((sellingPrice - costPrice) / costPrice) * 100;
+
+    // Cap extremely high margins at 1000% to avoid misleading "Infinity" values
+    // Margins above 1000% usually indicate data quality issues
+    if (margin > 1000) return null;
+
+    return Math.round(margin);
   };
 
   const getProductionCapacity = (item) => {
@@ -668,9 +938,11 @@
   const fetchBranches = async () => {
     try {
       const branchData = await productionStore.fetchBranches();
-      branches.value = branchData;
+      console.log('Fetched branches data:', branchData);
+      branches.value = branchData || [];
     } catch (error) {
       console.error('Error fetching branches:', error);
+      branches.value = [];
     }
   };
 
@@ -678,7 +950,21 @@
     try {
       distributionLoading.value = true;
       const distributionData = await productionStore.fetchAllDistributions();
-      distributions.value = distributionData;
+      // Map BranchDistribution data to expected format
+      distributions.value = distributionData.map((dist) => ({
+        id: dist.id,
+        menu_item_name: dist.menu_item_name || dist.name,
+        item_code: dist.item_code,
+        branch_name: dist.branch_name,
+        branch_id: dist.branch_id,
+        quantity_distributed: dist.qty,
+        transfer_price: dist.unit_price,
+        distribution_date: dist.distribution_date,
+        distributed_by_name: dist.distributed_by_name,
+        notes: dist.notes,
+        reference: dist.reference,
+        category: dist.category,
+      }));
     } catch (error) {
       console.error('Error fetching distributions:', error);
     } finally {
@@ -918,6 +1204,25 @@
     return range;
   };
 
+  // Distribution pagination helper
+  const getDistributionPageRange = () => {
+    const current = distributionCurrentPage.value;
+    const total = totalDistributionPages.value;
+    const range = [];
+
+    // Show pages around current page
+    const start = Math.max(2, current - 1);
+    const end = Math.min(total - 1, current + 1);
+
+    for (let i = start; i <= end; i++) {
+      if (i !== 1 && i !== total) {
+        range.push(i);
+      }
+    }
+
+    return range;
+  };
+
   // Lifecycle
   onMounted(() => {
     fetchData();
@@ -934,6 +1239,19 @@
       fetchDistributions();
     }
   });
+
+  // Watch for distribution filter changes to reset pagination
+  watch(
+    [
+      distributionSearchQuery,
+      distributionBranchFilter,
+      distributionDateFrom,
+      distributionDateTo,
+    ],
+    () => {
+      distributionCurrentPage.value = 1;
+    }
+  );
 </script>
 
 <template>
@@ -1276,11 +1594,11 @@
                         {{ item.category }}
                       </span>
                       <span
-                        v-if="item.is_featured"
+                        v-if="item.is_featured || item.total_distributed >= 100"
                         class="badge badge-sm bg-yellow-100 text-yellow-800"
                       >
                         <Star class="w-3 h-3 mr-1" />
-                        Featured
+                        {{ item.is_featured ? 'Featured' : 'Popular' }}
                       </span>
                     </div>
                   </div>
@@ -1322,7 +1640,7 @@
                           item.selling_price,
                           item.unit_cost
                         ) === null
-                          ? 'No Production Yet'
+                          ? 'Cost Data Needed'
                           : `${calculateProfitMargin(item.selling_price, item.unit_cost)}% margin`
                       }}
                     </div>
@@ -1678,26 +1996,131 @@
                     Production Recommendations
                   </h4>
                   <div class="space-y-3">
-                    <div class="alert alert-info">
-                      <div class="flex items-center">
-                        <Target class="w-5 h-5 mr-2" />
-                        <div>
+                    <!-- High Demand Items -->
+                    <div
+                      v-if="highDemandItems.length > 0"
+                      class="alert bg-secondaryColor/10 border-primaryColor"
+                    >
+                      <div class="flex items-start">
+                        <Target class="w-5 h-5 mr-2 mt-0.5" />
+                        <div class="flex-1">
                           <div class="font-medium">High Demand Items</div>
-                          <div class="text-sm">
-                            Consider increasing production for frequently
-                            distributed items
+                          <div class="text-sm mt-1 space-y-1">
+                            <div
+                              v-for="item in highDemandItems"
+                              :key="item.id"
+                              class="flex justify-between items-center"
+                            >
+                              <span class="font-medium">{{
+                                item.menu_item_name || item.item_name
+                              }}</span>
+                              <span
+                                class="text-xs bg-secondaryColor/10 text-primaryColor px-2 py-1 rounded"
+                              >
+                                {{ item.totalDistributed }} distributed
+                              </span>
+                            </div>
+                          </div>
+                          <div class="text-xs text-gray-600 mt-2">
+                            Consider increasing production for these popular
+                            items
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    <div class="alert alert-warning">
+                    <!-- Low Stock Alerts -->
+                    <div
+                      v-if="lowStockAlerts.length > 0"
+                      class="alert bg-warning/10 border-warning"
+                    >
+                      <div class="flex items-start">
+                        <AlertTriangle class="w-5 h-5 mr-2 mt-0.5" />
+                        <div class="flex-1">
+                          <div class="font-medium">Low Stock Alerts</div>
+                          <div class="text-sm mt-1 space-y-1">
+                            <div
+                              v-for="item in lowStockAlerts"
+                              :key="item.id"
+                              class="flex justify-between items-center"
+                            >
+                              <span class="font-medium">{{
+                                item.menu_item_name || item.item_name
+                              }}</span>
+                              <span
+                                class="text-xs bg-warning/10 text-warning px-2 py-1 rounded"
+                              >
+                                {{ item.availableQuantity || 0 }}/{{
+                                  item.reorderPoint || 0
+                                }}
+                              </span>
+                            </div>
+                          </div>
+                          <div class="text-xs text-gray-600 mt-2">
+                            Urgent: These items need immediate restocking
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Production Suggestions -->
+                    <div
+                      v-if="productionSuggestions.length > 0"
+                      class="alert bg-success/10 border-success"
+                    >
+                      <div class="flex items-start">
+                        <CheckCircle class="w-5 h-5 mr-2 mt-0.5" />
+                        <div class="flex-1">
+                          <div class="font-medium">Production Suggestions</div>
+                          <div class="text-sm mt-1 space-y-1">
+                            <div
+                              v-for="item in productionSuggestions"
+                              :key="item.id"
+                              class="flex justify-between items-center"
+                            >
+                              <div class="flex-1">
+                                <span class="font-medium">{{
+                                  item.menu_item_name || item.item_name
+                                }}</span>
+                                <div class="text-xs text-gray-600">
+                                  {{ item.suggestionReason }}
+                                </div>
+                              </div>
+                              <span
+                                :class="[
+                                  'text-xs px-2 py-1 rounded',
+                                  item.priority === 'High'
+                                    ? 'bg-success/10 text-success'
+                                    : 'bg-warning/10 text-warning',
+                                ]"
+                              >
+                                {{ item.suggestedQuantity }} units
+                              </span>
+                            </div>
+                          </div>
+                          <div class="text-xs text-gray-600 mt-2">
+                            Recommended production quantities based on demand
+                            patterns
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- No Recommendations -->
+                    <div
+                      v-if="
+                        highDemandItems.length === 0 &&
+                        lowStockAlerts.length === 0 &&
+                        productionSuggestions.length === 0
+                      "
+                      class="alert bg-secondaryColor/10 border-primaryColor"
+                    >
                       <div class="flex items-center">
-                        <AlertTriangle class="w-5 h-5 mr-2" />
+                        <CheckCircle class="w-5 h-5 mr-2" />
                         <div>
-                          <div class="font-medium">Low Stock Alert</div>
+                          <div class="font-medium">All Good!</div>
                           <div class="text-sm">
-                            Monitor items with low available quantities
+                            No immediate production recommendations at this time
                           </div>
                         </div>
                       </div>
@@ -1709,23 +2132,40 @@
                 <div class="space-y-4">
                   <h4 class="font-medium text-gray-700">Branch Performance</h4>
                   <div class="space-y-3">
+                    <!-- Top Performing Branch -->
                     <div
+                      v-if="branchPerformance.topBranch"
                       class="flex justify-between items-center p-3 bg-gray-50 rounded"
                     >
                       <div>
                         <div class="font-medium">Top Performing Branch</div>
                         <div class="text-sm text-gray-600">
-                          Highest distribution volume
+                          {{ branchPerformance.topBranch.branch_name }}
+                        </div>
+                        <div class="text-xs text-gray-500">
+                          {{
+                            Math.round(
+                              branchPerformance.topBranch.total_quantity || 0
+                            )
+                          }}
+                          units •
+                          {{ branchPerformance.topBranch.distribution_count }}
+                          distributions
                         </div>
                       </div>
                       <div class="text-right">
                         <div class="font-bold text-success">
-                          {{ productionInventoryStats.branches_served || 0 }}
-                          branches
+                          {{
+                            formatCurrency(
+                              branchPerformance.topBranch.total_value
+                            )
+                          }}
                         </div>
+                        <div class="text-xs text-gray-500">Total Value</div>
                       </div>
                     </div>
 
+                    <!-- Distribution Efficiency -->
                     <div
                       class="flex justify-between items-center p-3 bg-gray-50 rounded"
                     >
@@ -1737,18 +2177,68 @@
                       </div>
                       <div class="text-right">
                         <div class="font-bold text-info">
-                          {{
-                            productionInventoryStats.total_distributions > 0
-                              ? Math.round(
-                                  (productionInventoryStats.total_quantity_distributed ||
-                                    0) /
-                                    productionInventoryStats.total_distributions
-                                )
-                              : 0
-                          }}
+                          {{ branchPerformance.averageDistributionSize }}
                           units
                         </div>
+                        <div class="text-xs text-gray-500">
+                          {{ branchPerformance.totalDistributions }} total
+                          distributions
+                        </div>
                       </div>
+                    </div>
+
+                    <!-- Branch Rankings -->
+                    <div
+                      v-if="branchPerformance.branchStats.length > 1"
+                      class="space-y-2"
+                    >
+                      <div class="text-sm font-medium text-gray-700">
+                        Branch Rankings
+                      </div>
+                      <div class="space-y-1">
+                        <div
+                          v-for="(
+                            branch, index
+                          ) in branchPerformance.branchStats"
+                          :key="branch.branch_name"
+                          class="flex justify-between items-center p-2 bg-white border border-gray-200 rounded text-xs"
+                        >
+                          <div class="flex items-center gap-2">
+                            <span
+                              class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold"
+                              :class="
+                                index === 0
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : index === 1
+                                    ? 'bg-gray-100 text-gray-800'
+                                    : 'bg-orange-100 text-orange-800'
+                              "
+                            >
+                              {{ index + 1 }}
+                            </span>
+                            <span class="font-medium">{{
+                              branch.branch_name
+                            }}</span>
+                          </div>
+                          <div class="text-right">
+                            <div class="font-semibold">
+                              {{ Math.round(branch.total_quantity || 0) }} units
+                            </div>
+                            <div class="text-gray-500">
+                              {{ branch.distribution_count }} orders
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- No Data State -->
+                    <div
+                      v-if="!branchPerformance.topBranch"
+                      class="text-center py-4 text-gray-500"
+                    >
+                      <Truck class="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                      <div class="text-sm">No distribution data available</div>
                     </div>
                   </div>
                 </div>
@@ -1776,6 +2266,109 @@
                 </button>
               </div>
 
+              <!-- Distribution Filters -->
+              <div v-if="distributions.length > 0" class="mb-6 space-y-4">
+                <div
+                  class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+                >
+                  <!-- Search -->
+                  <div class="form-control">
+                    <label class="label">
+                      <span class="label-text">Search</span>
+                    </label>
+                    <div class="relative">
+                      <Search
+                        class="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                      />
+                      <input
+                        v-model="distributionSearchQuery"
+                        type="text"
+                        placeholder="Search distributions..."
+                        class="input input-bordered w-full pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  <!-- Branch Filter -->
+                  <div class="form-control">
+                    <label class="label">
+                      <span class="label-text">Branch</span>
+                    </label>
+                    <select
+                      v-model="distributionBranchFilter"
+                      class="select select-bordered"
+                    >
+                      <option value="">All Branches</option>
+                      <option
+                        v-for="branch in branches"
+                        :key="branch.id"
+                        :value="branch.id"
+                      >
+                        {{ branch.name }}
+                      </option>
+                    </select>
+                  </div>
+
+                  <!-- Date From -->
+                  <div class="form-control">
+                    <label class="label">
+                      <span class="label-text">From Date</span>
+                    </label>
+                    <input
+                      v-model="distributionDateFrom"
+                      type="date"
+                      class="input input-bordered"
+                    />
+                  </div>
+
+                  <!-- Date To -->
+                  <div class="form-control">
+                    <label class="label">
+                      <span class="label-text">To Date</span>
+                    </label>
+                    <input
+                      v-model="distributionDateTo"
+                      type="date"
+                      class="input input-bordered"
+                    />
+                  </div>
+                </div>
+
+                <!-- Results Summary -->
+                <div
+                  class="flex justify-between items-center text-sm text-gray-600"
+                >
+                  <div>
+                    Showing {{ paginatedDistributions.length }} of
+                    {{ filteredDistributions.length }} distributions
+                    <span
+                      v-if="
+                        distributionSearchQuery ||
+                        distributionBranchFilter ||
+                        distributionDateFrom ||
+                        distributionDateTo
+                      "
+                    >
+                      (filtered from {{ distributions.length }} total)
+                    </span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <label class="label">
+                      <span class="label-text">Per page:</span>
+                    </label>
+                    <select
+                      v-model="distributionItemsPerPage"
+                      class="select select-sm select-bordered"
+                    >
+                      <option value="5">5</option>
+                      <option value="10">10</option>
+                      <option value="20">20</option>
+                      <option value="50">50</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
               <!-- Distribution Table -->
               <div v-if="distributionLoading" class="text-center py-8">
                 <RefreshCcw
@@ -1797,6 +2390,19 @@
                 </p>
               </div>
 
+              <div
+                v-else-if="filteredDistributions.length === 0"
+                class="text-center py-8"
+              >
+                <Search class="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 class="text-lg font-medium text-gray-600 mb-2">
+                  No Matching Distributions
+                </h3>
+                <p class="text-sm text-gray-500">
+                  Try adjusting your search criteria or filters.
+                </p>
+              </div>
+
               <div v-else class="overflow-x-auto">
                 <table class="table table-zebra w-full">
                   <thead>
@@ -1813,16 +2419,13 @@
                   </thead>
                   <tbody>
                     <tr
-                      v-for="distribution in distributions"
+                      v-for="distribution in paginatedDistributions"
                       :key="distribution.id"
                     >
                       <td>
                         <div>
                           <div class="font-medium">
                             {{ distribution.menu_item_name }}
-                          </div>
-                          <div class="text-sm text-gray-500">
-                            {{ distribution.item_code }}
                           </div>
                         </div>
                       </td>
@@ -1832,8 +2435,12 @@
                         </div>
                       </td>
                       <td>
-                        <span class="badge badge-info">
-                          {{ distribution.quantity_distributed }}
+                        <span
+                          class="badge bg-info/20 text-info font-medium badge-sm"
+                        >
+                          {{
+                            Number(distribution.quantity_distributed).toFixed(2)
+                          }}
                         </span>
                       </td>
                       <td>
@@ -1871,6 +2478,58 @@
                     </tr>
                   </tbody>
                 </table>
+
+                <!-- Distribution Pagination -->
+                <div
+                  v-if="totalDistributionPages > 1"
+                  class="flex justify-center items-center mt-6 space-x-2"
+                >
+                  <button
+                    @click="
+                      distributionCurrentPage = Math.max(
+                        1,
+                        distributionCurrentPage - 1
+                      )
+                    "
+                    :disabled="distributionCurrentPage <= 1"
+                    class="btn btn-sm btn-outline"
+                  >
+                    <ChevronLeft class="w-4 h-4" />
+                    Previous
+                  </button>
+
+                  <div class="join">
+                    <button
+                      v-for="page in getDistributionPageRange()"
+                      :key="page"
+                      @click="distributionCurrentPage = page"
+                      :class="[
+                        'btn btn-sm join-item',
+                        page === distributionCurrentPage
+                          ? 'btn-primary'
+                          : 'btn-outline',
+                      ]"
+                    >
+                      {{ page }}
+                    </button>
+                  </div>
+
+                  <button
+                    @click="
+                      distributionCurrentPage = Math.min(
+                        totalDistributionPages,
+                        distributionCurrentPage + 1
+                      )
+                    "
+                    :disabled="
+                      distributionCurrentPage >= totalDistributionPages
+                    "
+                    class="btn btn-sm btn-outline"
+                  >
+                    Next
+                    <ChevronRight class="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -2008,7 +2667,7 @@
     <div
       class="card bg-gradient-to-br from-base-100 to-base-50 border border-gray-200 shadow-lg"
     >
-      <div class="card-body p-6 overflow-y-auto">
+      <div class="card-body p-6 overflow-y-auto max-h-[500px]">
         <div class="flex justify-between items-center mb-6">
           <div class="flex items-center gap-3">
             <div
@@ -2774,19 +3433,36 @@
               <label class="label mb-1">
                 <span
                   class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Featured</span
+                  >Status</span
                 >
               </label>
-              <div>
+              <div class="flex items-center gap-2">
                 <span
-                  class="badge badge-sm"
+                  class="badge badge-sm border-none"
                   :class="
                     selectedItem?.is_featured
-                      ? 'badge-warning'
-                      : 'badge-neutral'
+                      ? 'bg-warning/20 text-warning'
+                      : selectedItem?.total_distributed >= 100
+                        ? 'bg-success/20 text-success'
+                        : 'bg-neutral/20 text-neutral'
                   "
                 >
-                  {{ selectedItem?.is_featured ? 'Yes' : 'No' }}
+                  {{
+                    selectedItem?.is_featured
+                      ? 'Featured'
+                      : selectedItem?.total_distributed >= 100
+                        ? 'Popular'
+                        : 'Standard'
+                  }}
+                </span>
+                <span
+                  v-if="
+                    selectedItem?.total_distributed >= 100 &&
+                    !selectedItem?.is_featured
+                  "
+                  class="text-xs text-gray-500"
+                >
+                  ({{ selectedItem.total_distributed }} distributed)
                 </span>
               </div>
             </div>
@@ -2891,7 +3567,7 @@
                     selectedItem?.selling_price,
                     selectedItem?.unit_cost
                   ) === null
-                    ? 'No Production Yet'
+                    ? 'Cost Data Needed'
                     : `${calculateProfitMargin(selectedItem?.selling_price, selectedItem?.unit_cost)}%`
                 }}
               </div>

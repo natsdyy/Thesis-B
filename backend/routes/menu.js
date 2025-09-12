@@ -8,6 +8,8 @@ const MenuItem = require("../models/MenuItem");
 const SampleProduction = require("../models/SampleProduction");
 const QualityInspection = require("../models/QualityInspection");
 const ProductionInventory = require("../models/ProductionInventory");
+const BranchDistribution = require("../models/BranchDistribution");
+const Branch = require("../models/Branch");
 const AuditLogger = require("../models/AuditLogger");
 const InventoryService = require("../services/InventoryService");
 const { authenticateToken } = require("../middleware/rbac");
@@ -1418,7 +1420,7 @@ router.post("/production-inventory", authenticateToken, async (req, res) => {
     }
 
     const additionalData = {
-      reorder_point: reorder_point || 20,
+      reorder_point: reorder_point || null, // Will use dynamic calculation in model
       maximum_stock: maximum_stock || 0,
     };
 
@@ -1551,6 +1553,72 @@ router.get(
       res.status(500).json({
         success: false,
         message: error.message || "Failed to fetch audit logs",
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/menu/production-inventory/branches:
+ *   get:
+ *     summary: Get active branches for distribution
+ *     tags: [Production Inventory]
+ */
+router.get(
+  "/production-inventory/branches",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const branches = await Branch.getActiveBranches();
+      res.json(branches);
+    } catch (error) {
+      console.error("Error fetching branches for distribution:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch branches",
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/menu/production-inventory/distributions:
+ *   get:
+ *     summary: Get all branch distributions with filters
+ *     tags: [Production Inventory]
+ */
+router.get(
+  "/production-inventory/distributions",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const options = {
+        page: parseInt(req.query.page) || 1,
+        limit: parseInt(req.query.limit) || 50,
+        branch_id: req.query.branch_id,
+        startDate: req.query.date_from,
+        endDate: req.query.date_to,
+        search: req.query.search,
+      };
+
+      const result = await BranchDistribution.getAllDistributionItems(options);
+
+      res.json({
+        success: true,
+        data: result.distributions,
+        pagination: {
+          page: result.pagination.page,
+          pages: result.pagination.pages,
+          total: result.pagination.total,
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching distributions:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch distributions",
       });
     }
   }
@@ -1740,6 +1808,102 @@ router.get(
   }
 );
 
+/**
+ * @swagger
+ * /api/menu/production-inventory/{id}/update-reorder-point:
+ *   put:
+ *     summary: Update reorder point dynamically based on current stock
+ *     tags: [Production Inventory]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Production inventory ID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               percentage:
+ *                 type: integer
+ *                 minimum: 10
+ *                 maximum: 20
+ *                 description: Percentage of stock for reorder point (default 15%)
+ *     responses:
+ *       200:
+ *         description: Reorder point updated successfully
+ *       400:
+ *         description: Bad request
+ *       500:
+ *         description: Server error
+ */
+router.put(
+  "/production-inventory/:id/update-reorder-point",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { percentage } = req.body;
+
+      if (!id) {
+        return res.status(400).json({
+          success: false,
+          message: "Production inventory ID is required",
+        });
+      }
+
+      // Get current inventory item
+      const inventory = await db("production_inventory")
+        .where("id", id)
+        .where("is_active", true)
+        .first();
+
+      if (!inventory) {
+        return res.status(404).json({
+          success: false,
+          message: "Production inventory item not found",
+        });
+      }
+
+      // Calculate new reorder point
+      const currentStock = inventory.available_quantity || 0;
+      const newReorderPoint = ProductionInventory.calculateDynamicReorderPoint(
+        currentStock,
+        percentage
+      );
+
+      // Update the reorder point
+      await db("production_inventory").where("id", id).update({
+        reorder_point: newReorderPoint,
+        updated_at: db.fn.now(),
+      });
+
+      res.json({
+        success: true,
+        data: {
+          id: parseInt(id),
+          current_stock: currentStock,
+          new_reorder_point: newReorderPoint,
+          percentage_used: percentage || 15,
+        },
+        message: `Reorder point updated to ${newReorderPoint} (${percentage || 15}% of current stock)`,
+      });
+    } catch (error) {
+      console.error("Error updating reorder point:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to update reorder point",
+      });
+    }
+  }
+);
+
 // ==================== DISTRIBUTION ROUTES ====================
 
 /**
@@ -1819,43 +1983,6 @@ router.get(
       res.status(500).json({
         success: false,
         message: error.message || "Failed to fetch distribution history",
-      });
-    }
-  }
-);
-
-/**
- * @swagger
- * /api/menu/production-inventory/distributions:
- *   get:
- *     summary: Get all distributions with filters
- *     tags: [Production Inventory]
- */
-router.get(
-  "/production-inventory/distributions",
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const filters = {
-        branch_id: req.query.branch_id,
-        menu_item_id: req.query.menu_item_id,
-        date_from: req.query.date_from,
-        date_to: req.query.date_to,
-        search: req.query.search,
-      };
-
-      const distributions =
-        await ProductionInventory.getAllDistributions(filters);
-
-      res.json({
-        success: true,
-        data: distributions,
-      });
-    } catch (error) {
-      console.error("Error fetching distributions:", error);
-      res.status(500).json({
-        success: false,
-        message: error.message || "Failed to fetch distributions",
       });
     }
   }

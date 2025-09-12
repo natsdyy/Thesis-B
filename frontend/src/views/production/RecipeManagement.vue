@@ -238,9 +238,6 @@
       return isFoodCategory && isNotExpired && hasStock;
     });
 
-    console.log('All inventory items:', itemTypes.value); // Debug log
-    console.log('Filtered food ingredients (excluding expired):', filtered); // Debug log
-
     return filtered;
   });
 
@@ -263,10 +260,6 @@
         productionStore.fetchDeletedRecipes(),
       ]);
 
-      console.log(
-        'Inventory store state after refresh:',
-        inventoryStore.currentInventory
-      ); // Debug log
       showToast('success', 'Data refreshed successfully');
     } catch (error) {
       console.error('Error refreshing data:', error);
@@ -800,7 +793,10 @@
     const selectedItem = foodIngredients.value.find(
       (item) => item.id === ingredientForm.value.inventory_item_id
     );
-    return selectedItem ? selectedItem.quantity || 0 : 0;
+    // Only count available items (exclude expired, disposed, etc.)
+    return selectedItem && selectedItem.status === 'available'
+      ? selectedItem.quantity || 0
+      : 0;
   };
 
   const getSelectedIngredient = () => {
@@ -815,20 +811,28 @@
     if (!inventoryItemId) return null;
     return (
       foodIngredients.value.find((item) => item.id === inventoryItemId) ||
-      itemTypes.value?.find?.((item) => item.id === inventoryItemId) ||
+      itemTypes.value?.find?.(
+        (item) => item.id === inventoryItemId && item.status === 'available'
+      ) ||
       null
     );
   };
 
   const getStockForIngredient = (ingredient) => {
     const inventoryItem = getInventoryItemById(ingredient?.inventory_item_id);
-    const quantityInStock = Number(inventoryItem?.quantity || 0);
+
+    // Only count available items (exclude expired, disposed, etc.)
+    const availableQuantity =
+      inventoryItem?.status === 'available'
+        ? Number(inventoryItem?.quantity || 0)
+        : 0;
+
     const unit =
       ingredient?.unit_of_measure ||
       ingredient?.unit ||
       inventoryItem?.unit_of_measure ||
       'units';
-    return { quantityInStock, unit };
+    return { quantityInStock: availableQuantity, unit };
   };
 
   const formatQuantity = (value) => {
@@ -909,18 +913,6 @@
       <p class="text-sm sm:text-base text-black/50 px-2">
         Manage and track recipes for Countryside Steakhouse production.
       </p>
-      <!-- Current User Info -->
-      <div v-if="isUserAuthenticated && currentUser" class="mt-2">
-        <span class="text-xs text-black/40">
-          Logged in as:
-          <span class="font-medium text-primaryColor">{{
-            currentUser.name
-          }}</span>
-          <span v-if="currentUser.department" class="ml-2 text-black/30"
-            >({{ currentUser.department }})</span
-          >
-        </span>
-      </div>
     </div>
 
     <!-- Stats -->

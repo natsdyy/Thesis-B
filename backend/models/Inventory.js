@@ -33,12 +33,12 @@ class Inventory {
     try {
       return await db("inventory_item_types as it")
         .leftJoin("inventory_categories as ic", "it.category_id", "ic.id")
-        .leftJoin("users as u", "it.approved_by", "u.id")
+        .leftJoin("employees as e", "it.approved_by", "e.id")
         .select(
           "it.*",
           "ic.name as category_name",
           "ic.description as category_description",
-          "u.name as approved_by_name"
+          db.raw("CONCAT(e.first_name, ' ', e.last_name) as approved_by_name")
         )
         .whereNull("it.deleted_at")
         .whereNull("ic.deleted_at")
@@ -557,6 +557,11 @@ class Inventory {
         transaction_date: transactionData.transaction_date || new Date(),
         adjustment_type: transactionData.adjustment_type || null,
         disposal_cost: transactionData.disposal_cost || null,
+        audit_action:
+          transactionData.audit_action ||
+          (transactionData.reason === "Branch Distribution"
+            ? "transfer_out"
+            : null),
         // For clarity in reporting, mark transaction_type as 'disposal' when disposing
         // but keep inventory_items.status as 'expired' due to enum constraint.
         created_at: new Date(),

@@ -171,7 +171,7 @@
             :class="['border-t mt-2 pt-2', themeStore.themeClasses.borderLight]"
           >
             <a
-              @click="logout"
+              @click="requestLogout"
               class="flex items-center space-x-3 px-3 py-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors cursor-pointer"
             >
               <LogOut class="w-4 h-4 text-red-600" />
@@ -184,10 +184,38 @@
       </div>
     </div>
   </header>
+
+  <!-- Logout Confirmation Modal -->
+  <div v-if="showLogoutModal" class="modal modal-open">
+    <div :class="['modal-box', themeStore.themeClasses.cardBg]">
+      <h3
+        :class="['font-bold text-lg mb-2', themeStore.themeClasses.textPrimary]"
+      >
+        Confirm Logout
+      </h3>
+      <p :class="['py-2', themeStore.themeClasses.textSecondary]">
+        Are you sure you want to log out?
+      </p>
+      <div class="modal-action">
+        <button
+          class="btn btn-ghost btn-sm font-thin border-none"
+          @click="cancelLogout"
+        >
+          Cancel
+        </button>
+        <button
+          class="btn bg-error/30 text-error btn-sm font-thin border-none"
+          @click="confirmLogout"
+        >
+          Yes, Log Out
+        </button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
-  import { computed } from 'vue';
+  import { ref, computed } from 'vue';
   import { useRoute, useRouter } from 'vue-router';
   import { useAuthStore } from '../stores/authStore';
   import { useThemeStore } from '../stores/themeStore';
@@ -234,6 +262,8 @@
   });
 
   // Methods
+  const showLogoutModal = ref(false);
+
   const toggleSidebar = () => {
     emit('toggle-sidebar');
   };
@@ -242,7 +272,16 @@
     themeStore.toggleTheme();
   };
 
-  const logout = () => {
+  const requestLogout = () => {
+    showLogoutModal.value = true;
+  };
+
+  const cancelLogout = () => {
+    showLogoutModal.value = false;
+  };
+
+  const confirmLogout = () => {
+    showLogoutModal.value = false;
     authStore.logout();
     router.push('/login');
   };

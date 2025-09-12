@@ -522,7 +522,7 @@ router.get("/branch/:branchId", authenticateToken, async (req, res) => {
  * @swagger
  * /api/branch-distributions/{id}/status:
  *   patch:
- *     summary: Update status of a branch distribution (delivered -> completed)
+ *     summary: Update status of a branch distribution
  *     tags: [Branch Distributions]
  *     security:
  *       - bearerAuth: []
@@ -541,7 +541,15 @@ router.get("/branch/:branchId", authenticateToken, async (req, res) => {
  *             properties:
  *               status:
  *                 type: string
- *                 enum: [delivered, completed]
+ *                 enum: [delivered, completed, rejected]
+ *               completed_by:
+ *                 type: string
+ *               rejected_by:
+ *                 type: string
+ *               rejection_reason:
+ *                 type: string
+ *               rejection_notes:
+ *                 type: string
  *     responses:
  *       200:
  *         description: Status updated
@@ -549,31 +557,212 @@ router.get("/branch/:branchId", authenticateToken, async (req, res) => {
 router.patch("/:id/status", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
-    if (!["delivered", "completed"].includes(status)) {
+    const {
+      status,
+      completed_by,
+      rejected_by,
+      rejection_reason,
+      rejection_notes,
+    } = req.body;
+
+    if (!["delivered", "completed", "rejected"].includes(status)) {
       return res
         .status(400)
         .json({ success: false, message: "Invalid status" });
     }
 
-    const updated = await require("../config/database")
-      .db("branch_distributions")
-      .where("id", id)
-      .update({ status, updated_at: new Date() })
-      .returning("*");
+    const details = {};
+    if (status === "completed" && completed_by) {
+      details.completed_by = completed_by;
+    }
+    if (status === "rejected") {
+      if (rejected_by) details.rejected_by = rejected_by;
+      if (rejection_reason) details.rejection_reason = rejection_reason;
+      if (rejection_notes) details.rejection_notes = rejection_notes;
+    }
 
-    if (!updated || updated.length === 0) {
+    const updated = await BranchDistribution.updateStatus(
+      parseInt(id),
+      status,
+      details
+    );
+
+    if (!updated) {
       return res
         .status(404)
         .json({ success: false, message: "Distribution not found" });
     }
 
-    res.json({ success: true, data: updated[0] });
+    res.json({ success: true, data: updated });
   } catch (error) {
     console.error("Error updating branch distribution status:", error);
     res.status(500).json({
       success: false,
       message: "Failed to update status",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/branch-distributions/{id}/reject:
+ *   post:
+ *     summary: Reject a branch distribution and return quantities to main inventory
+ *     tags: [Branch Distributions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - rejected_by
+ *               - rejection_reason
+ *             properties:
+ *               rejected_by:
+ *                 type: string
+ *               rejection_reason:
+ *                 type: string
+ *               rejection_notes:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Distribution rejected successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   $ref: '#/components/schemas/BranchDistribution'
+ *       400:
+ *         description: Invalid input or distribution cannot be rejected
+ *       404:
+ *         description: Distribution not found
+ */
+router.post("/:id/reject", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rejected_by, rejection_reason, rejection_notes } = req.body;
+
+    // Validation
+    if (!rejected_by || !rejection_reason) {
+      return res.status(400).json({
+        success: false,
+        message: "rejected_by and rejection_reason are required",
+      });
+    }
+
+    const updated = await BranchDistribution.rejectDistribution(parseInt(id), {
+      rejected_by,
+      rejection_reason,
+      rejection_notes: rejection_notes || null,
+    });
+
+    res.json({
+      success: true,
+      message:
+        "Distribution rejected successfully and quantities returned to main inventory",
+      data: updated,
+    });
+  } catch (error) {
+    console.error("Error rejecting branch distribution:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to reject distribution",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/branch-distributions/{id}/complete:
+ *   post:
+ *     summary: Complete a branch distribution and add items to branch inventory
+ *     tags: [Branch Distributions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - completed_by
+ *             properties:
+ *               completed_by:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Distribution completed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   $ref: '#/components/schemas/BranchDistribution'
+ *       400:
+ *         description: Invalid input or distribution cannot be completed
+ *       404:
+ *         description: Distribution not found
+ */
+router.post("/:id/complete", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { completed_by } = req.body;
+
+    // Validation
+    if (!completed_by) {
+      return res.status(400).json({
+        success: false,
+        message: "completed_by is required",
+      });
+    }
+
+    const updated = await BranchDistribution.completeDistribution(
+      parseInt(id),
+      {
+        completed_by,
+      }
+    );
+
+    res.json({
+      success: true,
+      message:
+        "Distribution completed successfully and items added to branch inventory",
+      data: updated,
+    });
+  } catch (error) {
+    console.error("Error completing branch distribution:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to complete distribution",
       error: error.message,
     });
   }

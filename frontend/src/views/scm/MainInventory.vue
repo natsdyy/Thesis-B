@@ -58,6 +58,20 @@
     () => branchDistributionStore.distributions || []
   );
   const historyPagination = computed(() => branchDistributionStore.pagination);
+  const historyStatusFilter = ref('');
+
+  // Filtered distribution history
+  const filteredDistributionHistory = computed(() => {
+    let filtered = [...distributionHistory.value];
+
+    if (historyStatusFilter.value) {
+      filtered = filtered.filter(
+        (dist) => dist.status === historyStatusFilter.value
+      );
+    }
+
+    return filtered;
+  });
 
   const fetchDistributionHistory = async (page = 1) => {
     try {
@@ -71,6 +85,13 @@
     try {
       const dist = await branchDistributionStore.fetchDistributionById(id);
       if (!dist) return;
+
+      // If distribution is rejected, show rejection notification instead of receipt
+      if (dist.status === 'rejected') {
+        showRejectionNotification(dist);
+        return;
+      }
+
       const receiptForModal = {
         completed_at: dist.created_at,
         reference: dist.reference,
@@ -2161,6 +2182,61 @@
     distributionReceipt.value = { show: false, receipt: null };
   };
 
+  // Rejection notification modal state
+  const rejectionNotification = ref({
+    show: false,
+    distribution: null,
+    acknowledging: false,
+  });
+
+  const showRejectionNotification = (distribution) => {
+    rejectionNotification.value = {
+      show: true,
+      distribution: distribution,
+      acknowledging: false,
+    };
+  };
+
+  const closeRejectionNotification = () => {
+    rejectionNotification.value = {
+      show: false,
+      distribution: null,
+      acknowledging: false,
+    };
+  };
+
+  const acknowledgeRejection = async () => {
+    if (!rejectionNotification.value.distribution) return;
+
+    rejectionNotification.value.acknowledging = true;
+
+    try {
+      // The quantities are already returned to inventory when the distribution was rejected
+      // We just need to close the notification
+      closeRejectionNotification();
+
+      // Show success message
+      toast.value = {
+        show: true,
+        type: 'success',
+        message:
+          'Rejection acknowledged. Quantities have been returned to inventory.',
+      };
+
+      // Refresh the distribution history
+      await fetchDistributionHistory(historyPagination.value.page || 1);
+    } catch (error) {
+      console.error('Error acknowledging rejection:', error);
+      toast.value = {
+        show: true,
+        type: 'error',
+        message: 'Failed to acknowledge rejection. Please try again.',
+      };
+    } finally {
+      rejectionNotification.value.acknowledging = false;
+    }
+  };
+
   // Watch for search/filter changes to reset pagination
   watch([searchQuery, categoryFilter], () => {
     currentPage.value = 1;
@@ -3106,7 +3182,7 @@
                 </button>
                 <button
                   @click="fetchData"
-                  class="btn btn-primary btn-sm text-white"
+                  class="btn bg-primaryColor font-thin btn-sm text-white"
                 >
                   <RefreshCcw class="w-4 h-4 mr-1" />
                   Refresh
@@ -4612,7 +4688,9 @@
           </div>
 
           <!-- Distribution Statistics -->
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div
+            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6"
+          >
             <div class="stat bg-base-100 border border-gray-200 rounded-lg">
               <div class="stat-figure text-primary">
                 <Package class="w-8 h-8" />
@@ -4888,19 +4966,30 @@
     <!-- Branch Distribution History -->
     <div class="card bg-base-100 border border-gray-200 mt-10">
       <div class="card-body p-4">
-        <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center justify-between mb-4">
           <h3 class="font-semibold text-base">Distribution History</h3>
-          <button
-            class="btn btn-xs btn-outline"
-            :disabled="historyLoading"
-            @click="fetchDistributionHistory(historyPagination.page || 1)"
-          >
-            <RefreshCcw
-              class="w-3 h-3 mr-1"
-              :class="{ 'animate-spin': historyLoading }"
-            />
-            Refresh
-          </button>
+          <div class="flex items-center gap-2">
+            <select
+              v-model="historyStatusFilter"
+              class="select select-bordered select-xs"
+            >
+              <option value="">All Status</option>
+              <option value="delivered">Delivered</option>
+              <option value="completed">Completed</option>
+              <option value="rejected">Rejected</option>
+            </select>
+            <button
+              class="btn btn-xs btn-outline"
+              :disabled="historyLoading"
+              @click="fetchDistributionHistory(historyPagination.page || 1)"
+            >
+              <RefreshCcw
+                class="w-3 h-3 mr-1"
+                :class="{ 'animate-spin': historyLoading }"
+              />
+              Refresh
+            </button>
+          </div>
         </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra w-full text-sm">
@@ -4916,7 +5005,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="dist in distributionHistory" :key="dist.id">
+              <tr v-for="dist in filteredDistributionHistory" :key="dist.id">
                 <td>
                   {{ new Date(dist.created_at).toLocaleString('en-PH') }}
                 </td>
@@ -4929,14 +5018,21 @@
                 <td>
                   <span
                     class="badge badge-sm border-none font-medium"
-                    :class="
-                      dist.status === 'completed'
-                        ? 'badge-success text-success bg-success/20'
-                        : 'badge-warning text-warning bg-warning/20'
-                    "
+                    :class="{
+                      'badge-success text-success bg-success/20':
+                        dist.status === 'completed',
+                      'badge-warning text-warning bg-warning/20':
+                        dist.status === 'delivered',
+                      'badge-error text-error bg-error/20':
+                        dist.status === 'rejected',
+                    }"
                   >
                     {{
-                      dist.status === 'completed' ? 'Completed' : 'Delivered'
+                      dist.status === 'completed'
+                        ? 'Completed'
+                        : dist.status === 'rejected'
+                          ? 'Rejected'
+                          : 'Delivered'
                     }}
                   </span>
                 </td>
@@ -4960,7 +5056,7 @@
                   </button>
                 </td>
               </tr>
-              <tr v-if="!distributionHistory.length">
+              <tr v-if="!filteredDistributionHistory.length">
                 <td colspan="7" class="text-center text-gray-400 py-6">
                   No distributions found
                 </td>
@@ -5168,6 +5264,181 @@
       :inventory-item-id="detailsModal.inventoryItemId"
       @close="closeDetailsModal"
     />
+
+    <!-- Rejection Notification Modal -->
+    <dialog :class="{ 'modal-open': rejectionNotification.show }" class="modal">
+      <div class="modal-box max-w-2xl">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="flex-shrink-0">
+            <div
+              class="w-12 h-12 bg-error/20 rounded-full flex items-center justify-center"
+            >
+              <svg
+                class="w-6 h-6 text-error"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                />
+              </svg>
+            </div>
+          </div>
+          <div>
+            <h3 class="font-bold text-lg text-error">Distribution Rejected</h3>
+            <p class="text-sm text-gray-600">
+              Reference: {{ rejectionNotification.distribution?.reference }}
+            </p>
+          </div>
+        </div>
+
+        <div v-if="rejectionNotification.distribution" class="space-y-4">
+          <!-- Rejection Details -->
+          <div class="bg-error/5 border border-error/20 rounded-lg p-4">
+            <h4 class="font-semibold text-error mb-2">Rejection Details</h4>
+            <div class="space-y-2 text-sm">
+              <div>
+                <span class="font-medium">Rejected by:</span>
+                <span class="ml-2">{{
+                  rejectionNotification.distribution.rejected_by || 'Unknown'
+                }}</span>
+              </div>
+              <div>
+                <span class="font-medium">Rejected at:</span>
+                <span class="ml-2">
+                  {{
+                    new Date(
+                      rejectionNotification.distribution.rejected_at ||
+                        rejectionNotification.distribution.created_at
+                    ).toLocaleString('en-PH')
+                  }}
+                </span>
+              </div>
+              <div>
+                <span class="font-medium">Reason:</span>
+                <p class="mt-1 text-gray-700 bg-white p-2 rounded border">
+                  {{
+                    rejectionNotification.distribution.rejection_reason ||
+                    'No reason provided'
+                  }}
+                </p>
+              </div>
+              <div v-if="rejectionNotification.distribution.rejection_notes">
+                <span class="font-medium">Notes:</span>
+                <p class="mt-1 text-gray-700 bg-white p-2 rounded border">
+                  {{ rejectionNotification.distribution.rejection_notes }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Distribution Items -->
+          <div class="bg-gray-50 rounded-lg p-4">
+            <h4 class="font-semibold mb-3">Items in Distribution</h4>
+            <div class="space-y-2">
+              <div
+                v-for="item in rejectionNotification.distribution.items || []"
+                :key="item.id"
+                class="flex justify-between items-center bg-white p-2 rounded border"
+              >
+                <div>
+                  <span class="font-medium">{{ item.name }}</span>
+                  <span class="text-sm text-gray-500 ml-2"
+                    >({{ item.source }})</span
+                  >
+                </div>
+                <div class="text-right">
+                  <div class="font-medium">{{ item.qty }} {{ item.unit }}</div>
+                  <div class="text-sm text-gray-500">
+                    ₱{{ Number(item.amount).toFixed(2) }}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="mt-3 pt-3 border-t border-gray-200">
+              <div class="flex justify-between items-center font-semibold">
+                <span>Total Amount:</span>
+                <span
+                  >₱{{
+                    Number(
+                      rejectionNotification.distribution.total_amount
+                    ).toFixed(2)
+                  }}</span
+                >
+              </div>
+            </div>
+          </div>
+
+          <!-- Action Notice -->
+          <div class="bg-warning/10 border border-warning/30 rounded-lg p-4">
+            <div class="flex items-start gap-3">
+              <svg
+                class="w-5 h-5 text-warning mt-0.5 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <div>
+                <h4 class="font-semibold text-warning mb-1">Action Required</h4>
+                <p class="text-sm text-gray-700">
+                  The quantities for these items have been automatically
+                  returned to the main inventory. Please acknowledge this
+                  rejection to confirm the inventory adjustment.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal Actions -->
+        <div class="modal-action">
+          <button
+            class="btn btn-sm bg-gray-200 font-thin text-black/50 border border-none hover:bg-gray-300"
+            @click="closeRejectionNotification"
+            :disabled="rejectionNotification.acknowledging"
+          >
+            Close
+          </button>
+          <button
+            class="btn btn-sm bg-primaryColor font-thin text-white border border-none hover:bg-primaryColor/80"
+            @click="acknowledgeRejection"
+            :disabled="rejectionNotification.acknowledging"
+            :class="{ loading: rejectionNotification.acknowledging }"
+          >
+            <svg
+              v-if="!rejectionNotification.acknowledging"
+              class="w-4 h-4 mr-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+            {{
+              rejectionNotification.acknowledging
+                ? 'Acknowledging...'
+                : 'Acknowledge & Return to Inventory'
+            }}
+          </button>
+        </div>
+      </div>
+    </dialog>
 
     <!-- Toast Notifications -->
     <div

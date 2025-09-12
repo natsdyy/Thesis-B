@@ -25,11 +25,15 @@
     Target,
     Star,
     X,
+    XCircle,
     ChevronDown,
     ChevronUp,
     Settings,
     History,
     PhilippinePeso,
+    Info,
+    ArrowRightLeft as ArrowRightLeftIcon,
+    Trash,
   } from 'lucide-vue-next';
   import { useBranchContextStore } from '../../stores/branchContextStore';
   import { useBranchDistributionStore } from '../../stores/branchDistributionStore';
@@ -74,31 +78,40 @@
     return cats.filter(Boolean).map((cat) => ({ name: cat }));
   });
 
-  const inventoryStats = computed(() => {
-    const stats = branchInventoryStore.stats || {};
-    return {
-      totalItems: stats.totalItems || 0,
-      lowStockItems: stats.lowStockItems || 0,
-      outOfStockItems: stats.outOfStockItems || 0,
-      totalValue: stats.totalValue || 0,
-    };
+  // Convert to reactive refs instead of computed properties
+  const inventoryStats = ref({
+    totalItems: 0,
+    lowStockItems: 0,
+    outOfStockItems: 0,
+    totalValue: 0,
   });
 
-  const productionStats = computed(() => {
-    const productionItems = productionInventory.value;
-    return {
-      totalItems: productionItems.length,
-      lowStockItems: productionItems.filter(
-        (item) => item.status === 'low_stock'
-      ).length,
-      outOfStockItems: productionItems.filter(
-        (item) => item.status === 'out_of_stock'
-      ).length,
-      totalValue: productionItems.reduce(
-        (sum, item) => sum + parseFloat(item.total_value || 0),
-        0
-      ),
-    };
+  const productionStats = ref({
+    totalItems: 0,
+    lowStockItems: 0,
+    outOfStockItems: 0,
+    totalValue: 0,
+  });
+
+  // Additional stats to match MainInventory
+  const expiringSoonCount = computed(() => {
+    const now = new Date();
+    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    return branchInventory.value.filter((item) => {
+      if (!item.expiry_date) return false;
+      const expiryDate = new Date(item.expiry_date);
+      return expiryDate <= sevenDaysFromNow && expiryDate > now;
+    }).length;
+  });
+
+  const expiredCount = computed(() => {
+    const now = new Date();
+    return branchInventory.value.filter((item) => {
+      if (!item.expiry_date) return false;
+      const expiryDate = new Date(item.expiry_date);
+      return expiryDate <= now;
+    }).length;
   });
 
   const lowStockItems = computed(
@@ -207,14 +220,118 @@
     }
   };
 
+  // Helper function to get transaction type info (matching MainInventory)
+  const getTransactionTypeInfo = (transactionType, adjustmentType) => {
+    const typeMap = {
+      consumption: {
+        icon: 'Minus',
+        color: 'text-error',
+        badgeColor: 'bg-error/20 text-error',
+        label: 'Consumed',
+        description: 'Item was consumed or used',
+      },
+      adjustment: {
+        icon: 'RefreshCcw',
+        color: 'text-warning',
+        badgeColor: 'bg-warning/20 text-warning',
+        label: adjustmentType === 'increase' ? 'Adjusted' : 'Adjusted',
+        description: 'Stock quantity was adjusted',
+      },
+      distribution: {
+        icon: 'Truck',
+        color: 'text-info',
+        badgeColor: 'bg-info/20 text-info',
+        label: 'Distributed',
+        description: 'Item was distributed to branch',
+      },
+      receipt: {
+        icon: 'Plus',
+        color: 'text-success',
+        badgeColor: 'bg-success/20 text-success',
+        label: 'Received',
+        description: 'Item was received from distribution',
+      },
+      disposal: {
+        icon: 'Trash',
+        color: 'text-error',
+        badgeColor: 'bg-error/20 text-error',
+        label: 'Disposed',
+        description: 'Item was disposed of',
+      },
+    };
+
+    return (
+      typeMap[transactionType] || {
+        icon: 'Package',
+        color: 'text-gray-600',
+        badgeColor: 'bg-gray-100 text-gray-600',
+        label: 'Activity',
+        description: 'Inventory activity',
+      }
+    );
+  };
+
+  // Helper function to format transaction date
+  const formatTransactionDate = (date) => {
+    if (!date) return 'Unknown';
+
+    const transactionDate = new Date(date);
+    const now = new Date();
+    const diffInDays = Math.floor(
+      (now - transactionDate) / (1000 * 60 * 60 * 24)
+    );
+
+    if (diffInDays === 0) {
+      return 'Today';
+    } else if (diffInDays === 1) {
+      return 'Yesterday';
+    } else if (diffInDays < 7) {
+      return `${diffInDays} days ago`;
+    } else {
+      return transactionDate.toLocaleDateString();
+    }
+  };
+
+  // Helper function to format batch number
+  const formatBatchNumber = (batchNumber) => {
+    if (!batchNumber || batchNumber === 'N/A') return 'N/A';
+    return batchNumber.length > 20
+      ? `${batchNumber.substring(0, 20)}...`
+      : batchNumber;
+  };
+
+  // Transaction modal handler
+  const openTransactionModal = () => {
+    // This would open a transaction modal - for now just log
+    console.log('Opening transaction modal');
+  };
+
+  // Helper function to calculate dynamic minimum stock
+  const calculateMinimumStock = (quantity) => {
+    const qty = parseFloat(quantity) || 0;
+    if (qty <= 0) return 1; // Minimum of 1 for any item
+
+    // Calculate 15% of quantity, with minimum of 1 and maximum of 50
+    const calculatedMin = Math.ceil(qty * 0.15);
+    return Math.max(1, Math.min(calculatedMin, 50));
+  };
+
   // Distribution-related state
   const pendingDistributions = ref([]);
   const distributionLoading = ref(false);
   const selectedDistribution = ref(null);
   const showAcceptanceModal = ref(false);
   const showReceiptModal = ref(false);
+  const showRejectionModal = ref(false);
   const distributionCurrentPage = ref(1);
   const distributionItemsPerPage = ref(10);
+  const distributionActionLoading = ref(false);
+
+  // Rejection form state
+  const rejectionForm = ref({
+    reason: '',
+    notes: '',
+  });
 
   // Computed
   const currentBranch = computed(() => branchContextStore.currentBranch);
@@ -353,26 +470,48 @@
         // Add distribution activity
         realRecentActivity.push({
           id: `dist_${item.id}`,
+          transaction_type: 'receipt',
           action: 'Stock Received',
+          item_name: item.item_name,
+          item_type_name: item.item_name,
           item: item.item_name,
           quantity: parseFloat(item.quantity),
+          total_value: parseFloat(item.total_value || 0),
+          value: parseFloat(item.total_value || 0),
           time: formatTimeAgo(new Date(item.created_at || new Date())),
+          transaction_date: item.created_at || new Date(),
           type: 'distribution',
+          category_name: item.category,
           category: item.category,
+          unit_of_measure: item.unit,
           unit: item.unit,
+          performed_by: 'Branch Manager',
+          reason: 'Branch Distribution',
+          batch_number: item.batch_number || null,
         });
 
         // Add low stock warning if applicable
         if (item.quantity <= item.minimum_stock && item.quantity > 0) {
           realRecentActivity.push({
             id: `low_stock_${item.id}`,
+            transaction_type: 'alert',
             action: 'Low Stock Alert',
+            item_name: item.item_name,
+            item_type_name: item.item_name,
             item: item.item_name,
             quantity: parseFloat(item.quantity),
+            total_value: parseFloat(item.total_value || 0),
+            value: parseFloat(item.total_value || 0),
             time: 'Just now',
+            transaction_date: new Date(),
             type: 'alert',
+            category_name: item.category,
             category: item.category,
+            unit_of_measure: item.unit,
             unit: item.unit,
+            performed_by: 'System',
+            notes: `Item is running low on stock (${item.quantity} ${item.unit} remaining)`,
+            batch_number: item.batch_number || null,
           });
         }
 
@@ -380,13 +519,24 @@
         if (item.quantity === 0) {
           realRecentActivity.push({
             id: `out_stock_${item.id}`,
+            transaction_type: 'alert',
             action: 'Out of Stock',
+            item_name: item.item_name,
+            item_type_name: item.item_name,
             item: item.item_name,
             quantity: 0,
+            total_value: 0,
+            value: 0,
             time: 'Just now',
+            transaction_date: new Date(),
             type: 'alert',
+            category_name: item.category,
             category: item.category,
+            unit_of_measure: item.unit,
             unit: item.unit,
+            performed_by: 'System',
+            notes: 'Item is out of stock',
+            batch_number: item.batch_number || null,
           });
         }
       });
@@ -671,57 +821,95 @@
   };
 
   const openAcceptanceModal = (distribution) => {
+    console.log('Opening acceptance modal for distribution:', distribution);
     selectedDistribution.value = distribution;
     showAcceptanceModal.value = true;
+    // Open the modal using DaisyUI's modal system
+    document.getElementById('distribution_acceptance_modal')?.showModal();
   };
 
   const closeAcceptanceModal = () => {
     selectedDistribution.value = null;
     showAcceptanceModal.value = false;
+    // Close the modal using DaisyUI's modal system
+    document.getElementById('distribution_acceptance_modal')?.close();
+  };
+
+  const openRejectionModal = (distribution) => {
+    console.log('Opening rejection modal for distribution:', distribution);
+    selectedDistribution.value = distribution;
+    showRejectionModal.value = true;
+    // Reset rejection form
+    rejectionForm.value = {
+      reason: '',
+      notes: '',
+    };
+    // Open the modal using DaisyUI's modal system
+    document.getElementById('distribution_rejection_modal')?.showModal();
+  };
+
+  const closeRejectionModal = () => {
+    selectedDistribution.value = null;
+    showRejectionModal.value = false;
+    // Reset rejection form
+    rejectionForm.value = {
+      reason: '',
+      notes: '',
+    };
+    // Close the modal using DaisyUI's modal system
+    document.getElementById('distribution_rejection_modal')?.close();
   };
 
   const acceptDistribution = async (distribution) => {
     try {
-      // Update distribution status to completed
-      await branchDistributionStore.updateDistributionStatus(
-        distribution.id,
-        'completed'
+      console.log('Starting accept distribution process for:', distribution);
+      distributionActionLoading.value = true;
+
+      // Complete distribution and add items to branch inventory
+      console.log(
+        'Completing distribution and adding items to branch inventory...'
+      );
+      await branchDistributionStore.completeDistribution(distribution.id, {
+        completed_by: authStore.user?.name || 'Branch Manager',
+      });
+      console.log(
+        'Distribution completed successfully and items added to branch inventory'
       );
 
-      // Add items to branch inventory
-      for (const item of distribution.items) {
-        if (item.source === 'scm') {
-          // Add to SCM inventory
-          await addToBranchInventory(item, 'scm');
-        } else if (item.source === 'production') {
-          // Add to production inventory
-          await addToBranchInventory(item, 'production');
-        }
-      }
-
       // Refresh data
+      console.log('Refreshing data...');
       await loadPendingDistributions();
       await loadBranchInventory();
+      console.log('Data refreshed successfully');
 
       closeAcceptanceModal();
 
       // Show success message
       console.log('Distribution accepted successfully');
+      alert(
+        'Distribution accepted successfully! Items have been added to your inventory.'
+      );
     } catch (error) {
       console.error('Error accepting distribution:', error);
+      alert('Error accepting distribution: ' + error.message);
+    } finally {
+      distributionActionLoading.value = false;
     }
   };
 
   const addToBranchInventory = async (item, type) => {
     // This would integrate with your branch inventory API
     // For now, we'll add to local state
+    const quantity = parseFloat(item.qty) || 0;
+    const minimumStock = calculateMinimumStock(quantity);
+
     const inventoryItem = {
       id: Date.now() + Math.random(),
       name: item.name,
       category: item.category || 'General',
-      quantity: parseFloat(item.qty) || 0,
+      quantity: quantity,
       unit: item.unit,
-      minimum_stock: 10, // Default minimum
+      minimum_stock: minimumStock, // Dynamic minimum stock calculation
       cost_price: parseFloat(item.unit_price) || 0,
       selling_price:
         type === 'production' ? (parseFloat(item.unit_price) || 0) * 1.2 : null,
@@ -735,13 +923,102 @@
     }
   };
 
+  const addToBranchInventoryAPI = async (item, type) => {
+    try {
+      // This function should make actual API calls to add items to branch inventory
+      // The exact API endpoint and payload structure would depend on your backend implementation
+
+      const quantity = parseFloat(item.qty) || 0;
+      const minimumStock = calculateMinimumStock(quantity);
+
+      console.log(
+        `Calculating minimum stock for ${item.name}: quantity=${quantity}, minimum=${minimumStock}`
+      );
+
+      const inventoryData = {
+        item_id: item.item_id || item.id,
+        item_name: item.name,
+        category: item.category || 'General',
+        quantity: quantity,
+        unit: item.unit,
+        unit_price: parseFloat(item.unit_price) || 0,
+        total_value: parseFloat(item.amount) || 0,
+        minimum_stock: minimumStock, // Dynamic minimum stock calculation
+        item_type: type, // 'scm' or 'production'
+        source: item.source,
+        batch_number: item.batch_number || null,
+        expiry_date: item.expiry_date || null,
+        branch_id: currentBranch.value?.id,
+        received_by: authStore.user?.name || 'Branch Manager',
+        distribution_id: item.distribution_id || null,
+      };
+
+      // Make API call to add item to branch inventory
+      // This would typically be something like:
+      // await branchInventoryStore.addInventoryItem(inventoryData);
+
+      // For now, we'll add to local state and log the action
+      console.log('Adding item to branch inventory:', inventoryData);
+
+      // Add to local state as fallback
+      if (type === 'scm') {
+        branchInventory.value.push({
+          ...inventoryData,
+          id: Date.now() + Math.random(),
+          last_updated: new Date().toISOString(),
+        });
+      } else {
+        productionInventory.value.push({
+          ...inventoryData,
+          id: Date.now() + Math.random(),
+          last_updated: new Date().toISOString(),
+        });
+      }
+    } catch (error) {
+      console.error('Error adding item to branch inventory:', error);
+      throw error; // Re-throw to be handled by the calling function
+    }
+  };
+
   const rejectDistribution = async (distribution) => {
     try {
-      // You might want to add a rejection reason or just mark as rejected
-      console.log('Distribution rejected:', distribution);
-      closeAcceptanceModal();
+      console.log('Starting reject distribution process for:', distribution);
+      distributionActionLoading.value = true;
+
+      // Validate rejection form
+      if (!rejectionForm.value.reason.trim()) {
+        alert('Please provide a reason for rejection.');
+        return;
+      }
+
+      // Reject distribution and return quantities to main inventory
+      console.log(
+        'Rejecting distribution and returning quantities to main inventory...'
+      );
+      await branchDistributionStore.rejectDistribution(distribution.id, {
+        rejected_by: authStore.user?.name || 'Branch Manager',
+        rejection_reason: rejectionForm.value.reason,
+        rejection_notes: rejectionForm.value.notes,
+      });
+      console.log(
+        'Distribution rejected successfully and quantities returned to main inventory'
+      );
+
+      // Refresh data
+      console.log('Refreshing pending distributions...');
+      await loadPendingDistributions();
+      closeRejectionModal();
+
+      // Show success message
+      console.log('Distribution rejected successfully');
+      alert(
+        'Distribution rejected successfully! Quantities have been returned to main inventory.'
+      );
     } catch (error) {
       console.error('Error rejecting distribution:', error);
+      alert('Error rejecting distribution: ' + error.message);
+    } finally {
+      distributionActionLoading.value = false;
     }
   };
 
@@ -923,80 +1200,95 @@
           </div>
 
           <!-- Stats Cards -->
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 sm:gap-6">
-            <div class="card bg-white shadow-lg">
-              <div class="card-body p-4">
-                <div class="flex items-center justify-between">
-                  <div>
-                    <p class="text-sm text-gray-600">Total Items</p>
-                    <p class="text-2xl font-bold text-primaryColor">
-                      {{
-                        inventoryStats.totalItems + productionStats.totalItems
-                      }}
-                    </p>
-                  </div>
-                  <div class="p-3 bg-blue-100 rounded-full">
-                    <Package class="w-6 h-6 text-blue-600" />
-                  </div>
-                </div>
+          <div
+            class="stats shadow w-full mb-4 sm:mb-6 bg-accentColor border border-black/10 stats-vertical lg:stats-horizontal xl:stats-horizontal rounded-lg"
+          >
+            <div
+              class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
+            >
+              <div class="stat-figure">
+                <Package
+                  class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-primaryColor"
+                />
+              </div>
+              <div class="stat-title text-black/50 !text-xs sm:text-sm">
+                Total Items
+              </div>
+              <div
+                class="stat-value text-primaryColor text-lg sm:text-xl lg:text-2xl xl:text-3xl"
+              >
+                {{ inventoryStats.totalItems + productionStats.totalItems }}
+              </div>
+              <div class="stat-desc text-black/50 !text-xs sm:text-sm">
+                Unique item types
               </div>
             </div>
 
-            <div class="card bg-white shadow-lg">
-              <div class="card-body p-4">
-                <div class="flex items-center justify-between">
-                  <div>
-                    <p class="text-sm text-gray-600">Low Stock</p>
-                    <p class="text-2xl font-bold text-orange-600">
-                      {{
-                        inventoryStats.lowStockItems +
-                        productionStats.lowStockItems
-                      }}
-                    </p>
-                  </div>
-                  <div class="p-3 bg-orange-100 rounded-full">
-                    <AlertTriangle class="w-6 h-6 text-orange-600" />
-                  </div>
-                </div>
+            <div
+              class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
+            >
+              <div class="stat-figure">
+                <CheckCircle
+                  class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-success"
+                />
+              </div>
+              <div class="stat-title text-black/50 text-xs sm:text-sm">
+                Available
+              </div>
+              <div
+                class="stat-value text-success text-lg sm:text-xl lg:text-2xl xl:text-3xl"
+              >
+                {{
+                  inventoryStats.totalItems +
+                  productionStats.totalItems -
+                  (inventoryStats.outOfStockItems +
+                    productionStats.outOfStockItems)
+                }}
+              </div>
+              <div class="stat-desc text-black/50 !text-xs sm:text-sm">
+                Stock entries
               </div>
             </div>
 
-            <div class="card bg-white shadow-lg">
-              <div class="card-body p-4">
-                <div class="flex items-center justify-between">
-                  <div>
-                    <p class="text-sm text-gray-600">Out of Stock</p>
-                    <p class="text-2xl font-bold text-red-600">
-                      {{
-                        inventoryStats.outOfStockItems +
-                        productionStats.outOfStockItems
-                      }}
-                    </p>
-                  </div>
-                  <div class="p-3 bg-red-100 rounded-full">
-                    <TrendingDown class="w-6 h-6 text-red-600" />
-                  </div>
-                </div>
+            <div
+              class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
+            >
+              <div class="stat-figure">
+                <AlertTriangle
+                  class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-warning"
+                />
+              </div>
+              <div class="stat-title text-black/50 !text-xs sm:text-sm">
+                Expiring Soon
+              </div>
+              <div
+                class="stat-value text-warning text-lg sm:text-xl lg:text-2xl xl:text-3xl"
+              >
+                {{ expiringSoonCount }}
+              </div>
+              <div class="stat-desc text-black/50 !text-xs sm:text-sm">
+                Within 7 days
               </div>
             </div>
 
-            <div class="card bg-white shadow-lg">
-              <div class="card-body p-4">
-                <div class="flex items-center justify-between">
-                  <div>
-                    <p class="text-sm text-gray-600">Total Value</p>
-                    <p class="text-2xl font-bold text-green-600">
-                      ₱{{
-                        (
-                          inventoryStats.totalValue + productionStats.totalValue
-                        ).toLocaleString()
-                      }}
-                    </p>
-                  </div>
-                  <div class="p-3 bg-green-100 rounded-full">
-                    <BarChart3 class="w-6 h-6 text-green-600" />
-                  </div>
-                </div>
+            <div
+              class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
+            >
+              <div class="stat-figure">
+                <XCircle
+                  class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-error"
+                />
+              </div>
+              <div class="stat-title text-black/50 !text-xs sm:text-sm">
+                Expired
+              </div>
+              <div
+                class="stat-value text-error text-lg sm:text-xl lg:text-2xl xl:text-3xl"
+              >
+                {{ expiredCount }}
+              </div>
+              <div class="stat-desc text-black/50 !text-xs sm:text-sm">
+                Items expired
               </div>
             </div>
           </div>
@@ -1054,60 +1346,193 @@
                     <div
                       class="w-10 h-10 rounded-full flex items-center justify-center"
                       :class="{
-                        'bg-green-100': activity.quantity > 0,
-                        'bg-red-100': activity.quantity < 0,
-                        'bg-blue-100': activity.quantity === 0,
+                        'bg-success/10': getTransactionTypeInfo(
+                          activity.transaction_type,
+                          activity.adjustment_type
+                        ).badgeColor.includes('success'),
+                        'bg-warning/10': getTransactionTypeInfo(
+                          activity.transaction_type,
+                          activity.adjustment_type
+                        ).badgeColor.includes('warning'),
+                        'bg-error/10': getTransactionTypeInfo(
+                          activity.transaction_type,
+                          activity.adjustment_type
+                        ).badgeColor.includes('error'),
+                        'bg-info/10': getTransactionTypeInfo(
+                          activity.transaction_type,
+                          activity.adjustment_type
+                        ).badgeColor.includes('info'),
+                        'bg-primary/10': getTransactionTypeInfo(
+                          activity.transaction_type,
+                          activity.adjustment_type
+                        ).badgeColor.includes('primary'),
+                        'bg-gray-100': getTransactionTypeInfo(
+                          activity.transaction_type,
+                          activity.adjustment_type
+                        ).badgeColor.includes('gray'),
                       }"
                     >
                       <component
                         :is="
-                          activity.quantity > 0
-                            ? 'Plus'
-                            : activity.quantity < 0
-                              ? 'Minus'
-                              : 'Package'
+                          getTransactionTypeInfo(
+                            activity.transaction_type,
+                            activity.adjustment_type
+                          ).icon
                         "
                         class="w-5 h-5"
-                        :class="{
-                          'text-green-600': activity.quantity > 0,
-                          'text-red-600': activity.quantity < 0,
-                          'text-blue-600': activity.quantity === 0,
-                        }"
+                        :class="
+                          getTransactionTypeInfo(
+                            activity.transaction_type,
+                            activity.adjustment_type
+                          ).color
+                        "
                       />
                     </div>
                   </div>
+
                   <div class="flex-1 min-w-0">
-                    <div class="flex items-center justify-between">
-                      <p class="text-sm font-medium text-gray-900 truncate">
-                        {{ activity.action }}
-                      </p>
-                      <span
-                        class="text-sm font-semibold"
-                        :class="{
-                          'text-green-600': activity.quantity > 0,
-                          'text-red-600': activity.quantity < 0,
-                          'text-gray-600': activity.quantity === 0,
-                        }"
-                      >
-                        {{ activity.quantity > 0 ? '+' : ''
-                        }}{{ activity.quantity
-                        }}{{ activity.unit ? ' ' + activity.unit : '' }}
-                      </span>
+                    <div class="flex justify-between items-start mb-3">
+                      <div class="flex-1">
+                        <h4 class="font-bold text-sm text-gray-900 mb-1">
+                          {{
+                            activity.item_name ||
+                            activity.item_type_name ||
+                            activity.item
+                          }}
+                        </h4>
+                        <div
+                          class="flex items-center gap-2 text-xs text-gray-600 mb-1"
+                        >
+                          <span class="bg-gray-100 px-2 py-1 rounded-full">
+                            {{ activity.category_name || activity.category }}
+                          </span>
+                          <span>•</span>
+                          <span>{{
+                            activity.unit_of_measure || activity.unit
+                          }}</span>
+                        </div>
+                        <p
+                          v-if="activity.batch_number"
+                          class="text-xs text-gray-500 font-mono bg-gray-50 px-2 py-1 rounded inline-block"
+                        >
+                          Batch: {{ formatBatchNumber(activity.batch_number) }}
+                        </p>
+                      </div>
+
+                      <div class="text-right">
+                        <div class="flex items-center gap-2 justify-end mb-1">
+                          <div
+                            class="badge badge-sm border-none font-medium"
+                            :class="
+                              getTransactionTypeInfo(
+                                activity.transaction_type,
+                                activity.adjustment_type
+                              ).badgeColor
+                            "
+                          >
+                            {{
+                              getTransactionTypeInfo(
+                                activity.transaction_type,
+                                activity.adjustment_type
+                              ).label
+                            }}
+                          </div>
+                          <div
+                            class="tooltip tooltip-left"
+                            :data-tip="
+                              getTransactionTypeInfo(
+                                activity.transaction_type,
+                                activity.adjustment_type
+                              ).description
+                            "
+                          >
+                            <Info class="w-3 h-3 text-gray-400 cursor-help" />
+                          </div>
+                        </div>
+                        <div class="text-xs text-gray-500 font-medium">
+                          {{
+                            formatTransactionDate(
+                              activity.transaction_date || activity.time
+                            )
+                          }}
+                        </div>
+                      </div>
                     </div>
-                    <p class="text-sm text-gray-600 truncate">
-                      {{ activity.item }}
-                      <span
-                        v-if="activity.category"
-                        class="text-xs text-gray-500 ml-2"
-                      >
-                        ({{ activity.category }})
-                      </span>
-                    </p>
-                    <p class="text-xs text-gray-500 mt-1">
-                      {{ activity.time }}
-                    </p>
+
+                    <div class="grid grid-cols-2 gap-4 mb-3">
+                      <div class="bg-gray-50 rounded-lg p-3">
+                        <div class="text-xs text-gray-600 mb-1">Quantity</div>
+                        <div class="text-lg font-bold text-primaryColor">
+                          {{
+                            parseFloat(activity.quantity || 0).toLocaleString()
+                          }}
+                          <span class="text-sm font-normal text-gray-500"
+                            >units</span
+                          >
+                        </div>
+                      </div>
+
+                      <div class="bg-gray-50 rounded-lg p-3">
+                        <div class="text-xs text-gray-600 mb-1">Value</div>
+                        <div class="text-lg font-bold text-success">
+                          ₱{{
+                            parseFloat(
+                              activity.total_value || activity.value || 0
+                            ).toLocaleString()
+                          }}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      v-if="activity.disposal_cost"
+                      class="bg-error/10 border border-error/20 rounded-lg p-3 mb-3"
+                    >
+                      <div class="text-xs text-error font-medium mb-1">
+                        Disposal Cost
+                      </div>
+                      <div class="text-sm font-bold text-error">
+                        ₱{{
+                          parseFloat(activity.disposal_cost).toLocaleString()
+                        }}
+                      </div>
+                    </div>
+
+                    <div
+                      class="flex justify-between items-center pt-3 border-t border-gray-100"
+                    >
+                      <div class="text-xs text-gray-500">
+                        <span class="font-medium">Performed by:</span>
+                        {{ activity.performed_by || 'Branch Manager' }}
+                      </div>
+                      <div class="text-xs text-gray-400">
+                        Transaction ID: #{{ activity.id }}
+                      </div>
+                    </div>
+
+                    <div
+                      v-if="activity.reason || activity.notes"
+                      class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg"
+                    >
+                      <div class="text-xs text-blue-700 font-medium mb-1">
+                        {{ activity.reason ? 'Reason' : 'Notes' }}
+                      </div>
+                      <p class="text-xs text-blue-800">
+                        {{ activity.reason || activity.notes }}
+                      </p>
+                    </div>
                   </div>
                 </div>
+              </div>
+
+              <div v-if="recentActivity.length > 0" class="mt-6 text-center">
+                <button
+                  @click="openTransactionModal"
+                  class="btn btn-sm btn-outline bg-primaryColor text-white font-thin hover:bg-primaryColor/90 transition-all duration-200 shadow-lg hover:shadow-xl"
+                >
+                  <BarChart3 class="w-4 h-4 mr-2" />
+                  View All Transactions
+                </button>
               </div>
             </div>
           </div>
@@ -1573,24 +1998,44 @@
                 </div>
 
                 <!-- Actions -->
-                <div class="flex justify-end space-x-2">
+                <div
+                  class="flex flex-col sm:flex-row justify-end sm:space-x-2 space-y-2 sm:space-y-0 w-full sm:w-auto"
+                >
                   <button
                     @click="viewDistributionReceipt(distribution)"
-                    class="btn btn-sm text-black/50 bg-gray-200 font-thin border border-none hover:bg-gray-300"
+                    class="btn btn-sm text-black/50 bg-gray-200 font-thin border border-none hover:bg-gray-300 w-full sm:w-auto"
                   >
                     <Eye class="w-4 h-4 mr-1" />
                     View Receipt
                   </button>
                   <button
-                    @click="openAcceptanceModal(distribution)"
-                    class="btn btn-sm text-white bg-primaryColor font-thin border border-none hover:bg-primaryColor/80"
+                    @click="
+                      () => {
+                        console.log(
+                          'Accept button clicked for distribution:',
+                          distribution
+                        );
+                        openAcceptanceModal(distribution);
+                      }
+                    "
+                    class="btn btn-sm text-white bg-primaryColor font-thin border border-none hover:bg-primaryColor/80 w-full sm:w-auto"
+                    :disabled="distributionActionLoading"
                   >
                     <CheckCircle class="w-4 h-4 mr-1" />
                     Accept Distribution
                   </button>
                   <button
-                    @click="rejectDistribution(distribution)"
-                    class="btn btn-sm text-error bg-gray-200 font-thin border border-none hover:bg-gray-300"
+                    @click="
+                      () => {
+                        console.log(
+                          'Reject button clicked for distribution:',
+                          distribution
+                        );
+                        openRejectionModal(distribution);
+                      }
+                    "
+                    class="btn btn-sm text-error bg-gray-200 font-thin border border-none hover:bg-gray-300 w-full sm:w-auto"
+                    :disabled="distributionActionLoading"
                   >
                     <X class="w-4 h-4 mr-1" />
                     Reject
@@ -1653,7 +2098,8 @@
     <dialog
       id="distribution_acceptance_modal"
       class="modal"
-      v-if="showAcceptanceModal"
+      :class="{ 'modal-open': showAcceptanceModal }"
+      @click="(e) => e.target === e.currentTarget && closeAcceptanceModal()"
     >
       <div class="modal-box w-11/12 max-w-4xl">
         <div class="flex justify-between items-center mb-6">
@@ -1782,26 +2228,164 @@
           </div>
 
           <!-- Modal Actions -->
-          <div class="modal-action">
+          <div
+            class="modal-action flex flex-col sm:flex-row w-full sm:w-auto gap-2 sm:gap-3"
+          >
             <button
               @click="closeAcceptanceModal"
-              class="btn btn-ghost btn-sm font-thin shadow-none"
+              class="btn btn-ghost btn-sm font-thin shadow-none w-full sm:w-auto"
             >
               Cancel
             </button>
             <button
               @click="rejectDistribution(selectedDistribution)"
-              class="btn btn-outline btn-sm text-error hover:bg-error/10"
+              class="btn btn-outline btn-sm text-error hover:bg-error/10 w-full sm:w-auto"
+              :disabled="distributionActionLoading"
             >
               <X class="w-4 h-4 mr-1" />
               Reject
             </button>
             <button
               @click="acceptDistribution(selectedDistribution)"
-              class="btn btn-primary btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80 shadow-none"
+              class="btn btn-primary btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80 shadow-none w-full sm:w-auto"
+              :disabled="distributionActionLoading"
             >
               <CheckCircle class="w-4 h-4 mr-1" />
-              Accept & Add to Inventory
+              <span v-if="distributionActionLoading">Processing...</span>
+              <span v-else>Accept & Add to Inventory</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Distribution Rejection Modal -->
+    <dialog
+      id="distribution_rejection_modal"
+      class="modal"
+      :class="{ 'modal-open': showRejectionModal }"
+      @click="(e) => e.target === e.currentTarget && closeRejectionModal()"
+    >
+      <div class="modal-box w-11/12 max-w-2xl">
+        <div class="flex justify-between items-center mb-6">
+          <h3 class="font-bold text-xl text-error">
+            <X class="w-6 h-6 inline mr-2" />
+            Reject Distribution
+          </h3>
+          <button
+            @click="closeRejectionModal"
+            class="btn btn-sm btn-circle btn-ghost"
+          >
+            <X class="w-4 h-4" />
+          </button>
+        </div>
+
+        <div v-if="selectedDistribution" class="space-y-6">
+          <!-- Distribution Header -->
+          <div class="card bg-base-200">
+            <div class="card-body p-4">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <h4 class="font-semibold text-lg">
+                    {{ selectedDistribution.reference }}
+                  </h4>
+                  <p class="text-sm text-gray-600">
+                    Prepared by: {{ selectedDistribution.prepared_by }}
+                  </p>
+                  <p class="text-sm text-gray-600">
+                    Date:
+                    {{
+                      new Date(
+                        selectedDistribution.created_at
+                      ).toLocaleDateString()
+                    }}
+                  </p>
+                </div>
+                <div class="text-right">
+                  <div class="text-2xl font-bold text-primaryColor">
+                    ₱{{
+                      parseFloat(
+                        selectedDistribution.total_amount
+                      ).toLocaleString()
+                    }}
+                  </div>
+                  <div
+                    class="badge badge-sm border-none font-medium bg-warning/20 text-warning"
+                  >
+                    {{ selectedDistribution.status }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Rejection Form -->
+          <div class="space-y-4">
+            <div>
+              <label class="label">
+                <span class="label-text font-medium"
+                  >Reason for Rejection *</span
+                >
+              </label>
+              <select
+                v-model="rejectionForm.reason"
+                class="select select-bordered w-full"
+                required
+              >
+                <option value="">Select a reason...</option>
+                <option value="Damaged Items">Damaged Items</option>
+                <option value="Wrong Items">Wrong Items</option>
+                <option value="Insufficient Quantity">
+                  Insufficient Quantity
+                </option>
+                <option value="Quality Issues">Quality Issues</option>
+                <option value="Expired Items">Expired Items</option>
+                <option value="Not Requested">Not Requested</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="label">
+                <span class="label-text font-medium">Additional Notes</span>
+              </label>
+              <textarea
+                v-model="rejectionForm.notes"
+                class="textarea textarea-bordered w-full h-24"
+                placeholder="Please provide additional details about the rejection..."
+              ></textarea>
+            </div>
+          </div>
+
+          <!-- Warning Message -->
+          <div class="alert alert-warning">
+            <AlertTriangle class="w-4 h-4" />
+            <span>
+              By rejecting this distribution, the items will be returned to the
+              main inventory. This action cannot be undone.
+            </span>
+          </div>
+
+          <!-- Modal Actions -->
+          <div
+            class="modal-action flex flex-col sm:flex-row w-full sm:w-auto gap-2 sm:gap-3"
+          >
+            <button
+              @click="closeRejectionModal"
+              class="btn btn-ghost btn-sm font-thin shadow-none w-full sm:w-auto"
+            >
+              Cancel
+            </button>
+            <button
+              @click="rejectDistribution(selectedDistribution)"
+              class="btn btn-error btn-sm text-white font-thin border-none hover:bg-error/80 shadow-none w-full sm:w-auto"
+              :disabled="
+                distributionActionLoading || !rejectionForm.reason.trim()
+              "
+            >
+              <X class="w-4 h-4 mr-1" />
+              <span v-if="distributionActionLoading">Rejecting...</span>
+              <span v-else>Reject Distribution</span>
             </button>
           </div>
         </div>

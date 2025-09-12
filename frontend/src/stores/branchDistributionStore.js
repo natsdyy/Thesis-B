@@ -258,27 +258,32 @@ export const useBranchDistributionStore = defineStore(
     };
 
     /**
-     * Update distribution status (delivered/completed)
+     * Update distribution status with optional details
+     * @param {number} id - Distribution ID
+     * @param {string} status - New status ('delivered', 'completed', 'rejected')
+     * @param {Object} details - Additional details for the status change
+     * @returns {Promise<Object>} Updated distribution
      */
-    const updateDistributionStatus = async (id, status) => {
+    const updateDistributionStatus = async (id, status, details = {}) => {
       loading.value = true;
       error.value = null;
       try {
         const response = await axios.patch(
           `${API_BASE_URL}/branch-distributions/${id}/status`,
-          { status }
+          { status, ...details }
         );
         if (response.data.success) {
+          const updatedDistribution = response.data.data;
           distributions.value = distributions.value.map((d) =>
-            d.id === id ? { ...d, status } : d
+            d.id === id ? updatedDistribution : d
           );
           if (
             currentDistribution.value &&
             currentDistribution.value.id === id
           ) {
-            currentDistribution.value.status = status;
+            currentDistribution.value = updatedDistribution;
           }
-          return response.data.data;
+          return updatedDistribution;
         } else {
           throw new Error(response.data.message || 'Failed to update status');
         }
@@ -288,7 +293,96 @@ export const useBranchDistributionStore = defineStore(
           err.message ||
           'Failed to update status';
         error.value = errorMessage;
-        toast.error(errorMessage);
+        throw err;
+      } finally {
+        loading.value = false;
+      }
+    };
+
+    /**
+     * Reject a distribution and return quantities to main inventory
+     * @param {number} id - Distribution ID
+     * @param {Object} rejectionData - Rejection details
+     * @param {string} rejectionData.rejected_by - User who rejected
+     * @param {string} rejectionData.rejection_reason - Reason for rejection
+     * @param {string} rejectionData.rejection_notes - Additional notes
+     * @returns {Promise<Object>} Updated distribution
+     */
+    const rejectDistribution = async (id, rejectionData) => {
+      loading.value = true;
+      error.value = null;
+      try {
+        const response = await axios.post(
+          `${API_BASE_URL}/branch-distributions/${id}/reject`,
+          rejectionData
+        );
+        if (response.data.success) {
+          const updatedDistribution = response.data.data;
+          distributions.value = distributions.value.map((d) =>
+            d.id === id ? updatedDistribution : d
+          );
+          if (
+            currentDistribution.value &&
+            currentDistribution.value.id === id
+          ) {
+            currentDistribution.value = updatedDistribution;
+          }
+          return updatedDistribution;
+        } else {
+          throw new Error(
+            response.data.message || 'Failed to reject distribution'
+          );
+        }
+      } catch (err) {
+        const errorMessage =
+          err.response?.data?.message ||
+          err.message ||
+          'Failed to reject distribution';
+        error.value = errorMessage;
+        throw err;
+      } finally {
+        loading.value = false;
+      }
+    };
+
+    /**
+     * Complete a distribution and add items to branch inventory
+     * @param {number} id - Distribution ID
+     * @param {Object} completionData - Completion details
+     * @param {string} completionData.completed_by - User who completed
+     * @returns {Promise<Object>} Updated distribution
+     */
+    const completeDistribution = async (id, completionData) => {
+      loading.value = true;
+      error.value = null;
+      try {
+        const response = await axios.post(
+          `${API_BASE_URL}/branch-distributions/${id}/complete`,
+          completionData
+        );
+        if (response.data.success) {
+          const updatedDistribution = response.data.data;
+          distributions.value = distributions.value.map((d) =>
+            d.id === id ? updatedDistribution : d
+          );
+          if (
+            currentDistribution.value &&
+            currentDistribution.value.id === id
+          ) {
+            currentDistribution.value = updatedDistribution;
+          }
+          return updatedDistribution;
+        } else {
+          throw new Error(
+            response.data.message || 'Failed to complete distribution'
+          );
+        }
+      } catch (err) {
+        const errorMessage =
+          err.response?.data?.message ||
+          err.message ||
+          'Failed to complete distribution';
+        error.value = errorMessage;
         throw err;
       } finally {
         loading.value = false;
@@ -366,6 +460,8 @@ export const useBranchDistributionStore = defineStore(
       fetchDistributionByReference,
       deleteDistribution,
       updateDistributionStatus,
+      rejectDistribution,
+      completeDistribution,
       clearCurrentDistribution,
       clearDistributions,
       updatePagination,

@@ -913,18 +913,6 @@
       <p class="text-sm sm:text-base text-black/50 px-2">
         Manage and track recipes for Countryside Steakhouse production.
       </p>
-      <!-- Current User Info -->
-      <div v-if="isUserAuthenticated && currentUser" class="mt-2">
-        <span class="text-xs text-black/40">
-          Logged in as:
-          <span class="font-medium text-primaryColor">{{
-            currentUser.name
-          }}</span>
-          <span v-if="currentUser.department" class="ml-2 text-black/30"
-            >({{ currentUser.department }})</span
-          >
-        </span>
-      </div>
     </div>
 
     <!-- Stats -->

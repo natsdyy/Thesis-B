@@ -247,6 +247,212 @@ class BranchDistribution {
   }
 
   /**
+   * Update distribution status with optional details
+   * @param {number} id - Distribution ID
+   * @param {string} status - New status ('delivered', 'completed', 'rejected')
+   * @param {Object} details - Additional details for the status change
+   * @param {string} details.completed_by - User who completed the distribution
+   * @param {string} details.rejected_by - User who rejected the distribution
+   * @param {string} details.rejection_reason - Reason for rejection
+   * @param {string} details.rejection_notes - Additional notes about rejection
+   * @returns {Promise<Object>} Updated distribution
+   */
+  static async updateStatus(id, status, details = {}) {
+    const updateData = {
+      status,
+      updated_at: db.fn.now(),
+    };
+
+    // Add completion details
+    if (status === "completed" && details.completed_by) {
+      updateData.completed_by = details.completed_by;
+      updateData.completed_at = db.fn.now();
+    }
+
+    // Add rejection details
+    if (status === "rejected") {
+      if (details.rejected_by) {
+        updateData.rejected_by = details.rejected_by;
+        updateData.rejected_at = db.fn.now();
+      }
+      if (details.rejection_reason) {
+        updateData.rejection_reason = details.rejection_reason;
+      }
+      if (details.rejection_notes) {
+        updateData.rejection_notes = details.rejection_notes;
+      }
+    }
+
+    const result = await db("branch_distributions")
+      .where("id", id)
+      .update(updateData);
+
+    if (result > 0) {
+      return await this.findByIdWithItems(id);
+    }
+
+    return null;
+  }
+
+  /**
+   * Reject distribution and return quantities to main inventory
+   * @param {number} id - Distribution ID
+   * @param {Object} rejectionData - Rejection details
+   * @param {string} rejectionData.rejected_by - User who rejected
+   * @param {string} rejectionData.rejection_reason - Reason for rejection
+   * @param {string} rejectionData.rejection_notes - Additional notes
+   * @returns {Promise<Object>} Updated distribution
+   */
+  static async rejectDistribution(id, rejectionData) {
+    const trx = await db.transaction();
+
+    try {
+      // Get the distribution with items
+      const distribution = await trx("branch_distributions")
+        .leftJoin("branches", "branch_distributions.branch_id", "branches.id")
+        .select("branch_distributions.*", "branches.name as branch_name")
+        .where("branch_distributions.id", id)
+        .first();
+
+      if (!distribution) {
+        throw new Error("Distribution not found");
+      }
+
+      if (distribution.status !== "delivered") {
+        throw new Error("Only delivered distributions can be rejected");
+      }
+
+      // Get distribution items
+      const items = await trx("branch_distribution_items").where(
+        "distribution_id",
+        id
+      );
+
+      // Return quantities to main inventory
+      for (const item of items) {
+        if (item.source === "scm") {
+          // Return to SCM inventory
+          await trx("inventory_items")
+            .where("id", item.item_ref_id)
+            .increment("quantity", item.qty);
+        } else if (item.source === "production") {
+          // Return to production inventory
+          await trx("production_inventory")
+            .where("id", item.item_ref_id)
+            .increment("available_quantity", item.qty);
+        }
+      }
+
+      // Update distribution status to rejected
+      await trx("branch_distributions").where("id", id).update({
+        status: "rejected",
+        rejected_by: rejectionData.rejected_by,
+        rejected_at: db.fn.now(),
+        rejection_reason: rejectionData.rejection_reason,
+        rejection_notes: rejectionData.rejection_notes,
+        updated_at: db.fn.now(),
+      });
+
+      await trx.commit();
+
+      // Return updated distribution
+      return await this.findByIdWithItems(id);
+    } catch (error) {
+      await trx.rollback();
+      throw error;
+    }
+  }
+
+  /**
+   * Complete distribution and add items to branch inventory
+   * @param {number} id - Distribution ID
+   * @param {Object} completionData - Completion details
+   * @param {string} completionData.completed_by - User who completed
+   * @returns {Promise<Object>} Updated distribution
+   */
+  static async completeDistribution(id, completionData) {
+    const trx = await db.transaction();
+
+    try {
+      // Get the distribution with items
+      const distribution = await trx("branch_distributions")
+        .leftJoin("branches", "branch_distributions.branch_id", "branches.id")
+        .select("branch_distributions.*", "branches.name as branch_name")
+        .where("branch_distributions.id", id)
+        .first();
+
+      if (!distribution) {
+        throw new Error("Distribution not found");
+      }
+
+      if (distribution.status !== "delivered") {
+        throw new Error("Only delivered distributions can be completed");
+      }
+
+      // Get distribution items
+      const items = await trx("branch_distribution_items").where(
+        "distribution_id",
+        id
+      );
+
+      // Add items to branch inventory
+      for (const item of items) {
+        // Check if item already exists in branch inventory by name and type
+        const existingItem = await trx("branch_inventory")
+          .where({
+            item_name: item.name,
+            item_type: item.source,
+            branch_id: distribution.branch_id,
+          })
+          .first();
+
+        if (existingItem) {
+          // Update existing item
+          await trx("branch_inventory")
+            .where("id", existingItem.id)
+            .update({
+              quantity: db.raw(`quantity + ${item.qty}`),
+              total_value: db.raw(`total_value + ${item.amount}`),
+              updated_at: db.fn.now(),
+            });
+        } else {
+          // Create new branch inventory item
+          await trx("branch_inventory").insert({
+            item_name: item.name,
+            item_type: item.source,
+            category: "Distributed",
+            quantity: item.qty,
+            unit: item.unit,
+            unit_cost: item.unit_price,
+            total_value: item.amount,
+            minimum_stock: Math.ceil(item.qty * 0.15), // 15% of quantity
+            branch_id: distribution.branch_id,
+            status: "active",
+            created_at: db.fn.now(),
+            updated_at: db.fn.now(),
+          });
+        }
+      }
+
+      // Update distribution status to completed
+      await trx("branch_distributions").where("id", id).update({
+        status: "completed",
+        completed_by: completionData.completed_by,
+        completed_at: db.fn.now(),
+        updated_at: db.fn.now(),
+      });
+
+      await trx.commit();
+
+      // Return updated distribution
+      return await this.findByIdWithItems(id);
+    } catch (error) {
+      await trx.rollback();
+      throw error;
+    }
+  }
+
+  /**
    * Delete a distribution (soft delete by updating status)
    * @param {number} id - Distribution ID
    * @returns {Promise<boolean>} Success status

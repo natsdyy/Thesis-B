@@ -259,6 +259,8 @@ p {
   --color-secondaryColor: #aad36d;
   --color-accentColor: #f9fafb;
   --color-neutralColor: #000000;
+  --color-brownColor: #866135;
+  --color-orangeColor: #f87a14;
 }
 
 #app {

@@ -1,7 +1,7 @@
 // API Configuration for different environments
 const config = {
   development: {
-    baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api',
+    baseURL: 'http://192.168.56.1:5000/api' || 'http://localhost:5000/api',
     timeout: 10000,
   },
   production: {

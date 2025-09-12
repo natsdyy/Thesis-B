@@ -40,50 +40,69 @@
     >
       <!-- Summary Cards -->
       <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div class="bg-blue-50 p-4 rounded-lg">
+        <div
+          class="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-lg border border-blue-200 shadow-sm"
+        >
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm font-medium text-blue-600">Total Stock</p>
-              <p class="text-2xl font-bold text-blue-800">{{ totalStock }}</p>
-              <p class="text-xs text-blue-600 mt-1">units available</p>
+              <p class="text-sm font-medium text-blue-700">Total Stock</p>
+              <p class="text-3xl font-bold text-blue-900">{{ totalStock }}</p>
+              <p class="text-xs text-blue-600 mt-2">units available</p>
             </div>
-            <Package class="w-8 h-8 text-blue-500" />
+            <div class="p-3 bg-blue-100 rounded-lg">
+              <Package class="w-8 h-8 text-blue-600" />
+            </div>
           </div>
         </div>
-        <div class="bg-yellow-50 p-4 rounded-lg">
+
+        <div
+          class="bg-gradient-to-br from-yellow-50 to-yellow-100 p-6 rounded-lg border border-yellow-200 shadow-sm"
+        >
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm font-medium text-yellow-600">Low Stock Items</p>
-              <p class="text-2xl font-bold text-yellow-800">
+              <p class="text-sm font-medium text-yellow-700">Low Stock Items</p>
+              <p class="text-3xl font-bold text-yellow-900">
                 {{ lowStockCount }}
               </p>
-              <p class="text-xs text-yellow-600 mt-1">need attention</p>
+              <p class="text-xs text-yellow-600 mt-2">need attention</p>
             </div>
-            <AlertTriangle class="w-8 h-8 text-yellow-500" />
+            <div class="p-3 bg-yellow-100 rounded-lg">
+              <AlertTriangle class="w-8 h-8 text-yellow-600" />
+            </div>
           </div>
         </div>
-        <div class="bg-red-50 p-4 rounded-lg">
+
+        <div
+          class="bg-gradient-to-br from-red-50 to-red-100 p-6 rounded-lg border border-red-200 shadow-sm"
+        >
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm font-medium text-red-600">Expiring Soon</p>
-              <p class="text-2xl font-bold text-red-800">
+              <p class="text-sm font-medium text-red-700">Expiring Soon</p>
+              <p class="text-3xl font-bold text-red-900">
                 {{ expiringSoonCount }}
               </p>
-              <p class="text-xs text-red-600 mt-1">within 30 days</p>
+              <p class="text-xs text-red-600 mt-2">within 30 days</p>
             </div>
-            <Clock class="w-8 h-8 text-red-500" />
+            <div class="p-3 bg-red-100 rounded-lg">
+              <Clock class="w-8 h-8 text-red-600" />
+            </div>
           </div>
         </div>
-        <div class="bg-green-50 p-4 rounded-lg">
+
+        <div
+          class="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-lg border border-green-200 shadow-sm"
+        >
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm font-medium text-green-600">Stock Turnover</p>
-              <p class="text-2xl font-bold text-green-800">
+              <p class="text-sm font-medium text-green-700">Stock Turnover</p>
+              <p class="text-3xl font-bold text-green-900">
                 {{ stockTurnover }}x
               </p>
-              <p class="text-xs text-green-600 mt-1">per month</p>
+              <p class="text-xs text-green-600 mt-2">per month</p>
             </div>
-            <TrendingUp class="w-8 h-8 text-green-500" />
+            <div class="p-3 bg-green-100 rounded-lg">
+              <TrendingUp class="w-8 h-8 text-green-600" />
+            </div>
           </div>
         </div>
       </div>
@@ -91,16 +110,20 @@
       <!-- Charts Row -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- Stock Level Trends -->
-        <div class="bg-gray-50 p-4 rounded-lg">
-          <h4 class="font-semibold text-gray-900 mb-4">Stock Level Trends</h4>
+        <div class="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-sm">
+          <h4 class="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <TrendingUp class="w-5 h-5" />
+            Stock Level Trends
+          </h4>
           <div class="h-64">
             <Line :data="stockLevelData" :options="stockChartOptions" />
           </div>
         </div>
 
         <!-- Inventory Value Chart -->
-        <div class="bg-gray-50 p-4 rounded-lg">
-          <h4 class="font-semibold text-gray-900 mb-4">
+        <div class="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-sm">
+          <h4 class="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Package class="w-5 h-5" />
             Inventory Value Trend
           </h4>
           <div class="h-64">
@@ -110,63 +133,99 @@
       </div>
 
       <!-- Category Analysis -->
-      <div class="bg-gray-50 p-4 rounded-lg">
-        <h4 class="font-semibold text-gray-900 mb-4">Stock by Category</h4>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-sm">
+        <h4 class="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <Package class="w-5 h-5" />
+          Stock by Category
+        </h4>
+        <div
+          v-if="categoryAnalysis.length > 0"
+          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+        >
           <div
             v-for="category in categoryAnalysis"
             :key="category.name"
-            class="bg-white p-4 rounded-lg"
+            class="bg-white p-4 rounded-lg border border-gray-200 hover:shadow-sm transition-shadow"
           >
-            <div class="flex justify-between items-start mb-2">
+            <div class="flex justify-between items-start mb-3">
               <h5 class="font-medium text-gray-900">{{ category.name }}</h5>
-              <span class="text-sm font-bold text-gray-700"
+              <span class="text-sm font-bold text-blue-600"
                 >{{ category.percentage }}%</span
               >
             </div>
-            <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
+            <div class="w-full bg-gray-200 rounded-full h-3 mb-3">
               <div
-                class="bg-blue-500 h-2 rounded-full"
+                class="bg-blue-500 h-3 rounded-full transition-all duration-500"
                 :style="{ width: `${category.percentage}%` }"
               ></div>
             </div>
-            <div class="flex justify-between text-xs text-gray-600">
-              <span>{{ category.items }} items</span>
-              <span>{{ category.value }}</span>
+            <div class="flex justify-between text-sm">
+              <span class="text-gray-600 font-medium">{{
+                category.formattedItems
+              }}</span>
+              <span class="text-gray-900 font-semibold">{{
+                category.formattedValue
+              }}</span>
             </div>
           </div>
+        </div>
+        <div v-else class="text-center py-8">
+          <div class="text-gray-400 mb-2">
+            <Package class="w-12 h-12 mx-auto" />
+          </div>
+          <p class="text-gray-500 text-sm">No category data available</p>
         </div>
       </div>
 
       <!-- Alerts Section -->
       <div
         v-if="alerts.length > 0"
-        class="bg-red-50 p-4 rounded-lg border border-red-200"
+        class="bg-red-50 p-6 rounded-lg border border-red-200 shadow-sm"
       >
-        <div class="flex items-center mb-3">
+        <div class="flex items-center mb-4">
           <AlertTriangle class="w-5 h-5 text-red-500 mr-2" />
           <h4 class="font-semibold text-red-900">Inventory Alerts</h4>
         </div>
-        <div class="space-y-2">
+        <div class="space-y-3">
           <div
             v-for="alert in alerts"
             :key="alert.id"
-            class="flex justify-between items-center bg-white p-3 rounded border border-red-200"
+            class="flex justify-between items-center bg-white p-4 rounded-lg border border-red-200 hover:shadow-sm transition-shadow"
           >
-            <div>
-              <p class="font-medium text-gray-900">{{ alert.itemName }}</p>
-              <p class="text-sm text-gray-600">{{ alert.message }}</p>
+            <div class="flex-1">
+              <p class="font-semibold text-gray-900 mb-1">
+                {{ alert.itemName }}
+              </p>
+              <p class="text-sm text-gray-600">{{ alert.formattedMessage }}</p>
             </div>
-            <div class="flex items-center gap-2">
-              <span
-                :class="getAlertSeverityClass(alert.severity)"
-                class="px-2 py-1 rounded-full text-xs font-medium"
-              >
-                {{ alert.severity }}
-              </span>
-              <span class="text-sm text-gray-500"
-                >{{ alert.daysLeft }} days</span
-              >
+            <div class="flex items-center gap-3 ml-4">
+              <div class="text-right">
+                <span
+                  :class="[
+                    'px-3 py-1 rounded-full text-xs font-semibold',
+                    alert.urgencyLevel.level === 'critical'
+                      ? 'bg-red-100 text-red-800'
+                      : alert.urgencyLevel.level === 'urgent'
+                        ? 'bg-orange-100 text-orange-800'
+                        : alert.urgencyLevel.level === 'warning'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : 'bg-blue-100 text-blue-800',
+                  ]"
+                >
+                  {{ alert.urgencyLevel.text }}
+                </span>
+                <p class="text-xs text-gray-500 mt-1">
+                  {{
+                    alert.urgencyLevel.level === 'critical'
+                      ? 'Immediate action needed'
+                      : alert.urgencyLevel.level === 'urgent'
+                        ? 'Order soon'
+                        : alert.urgencyLevel.level === 'warning'
+                          ? 'Monitor closely'
+                          : 'In good standing'
+                  }}
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -268,8 +327,30 @@
         display: true,
         position: 'top',
       },
+      tooltip: {
+        callbacks: {
+          title: function (context) {
+            const date = new Date(context[0].label);
+            return date.toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+            });
+          },
+        },
+      },
     },
     scales: {
+      x: {
+        ticks: {
+          callback: function (value, index, values) {
+            const date = new Date(this.getLabelForValue(value));
+            return date.toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+            });
+          },
+        },
+      },
       y: {
         beginAtZero: true,
         title: {
@@ -304,40 +385,133 @@
       legend: {
         display: false,
       },
+      tooltip: {
+        callbacks: {
+          title: function (context) {
+            const date = new Date(context[0].label);
+            return date.toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+            });
+          },
+          label: function (context) {
+            return `Value: ₱${context.parsed.y.toLocaleString()}`;
+          },
+        },
+      },
     },
     scales: {
+      x: {
+        ticks: {
+          callback: function (value, index, values) {
+            const date = new Date(this.getLabelForValue(value));
+            return date.toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+            });
+          },
+        },
+      },
       y: {
         beginAtZero: true,
         title: {
           display: true,
           text: 'Value (₱)',
         },
+        ticks: {
+          callback: function (value) {
+            return `₱${value.toLocaleString()}`;
+          },
+        },
       },
     },
   }));
 
+  // Enhanced computed properties for better readability
+  const formattedInventoryData = computed(() => {
+    if (!inventoryData.value) return null;
+
+    const data = inventoryData.value;
+
+    return {
+      // Summary stats with better formatting
+      totalStock: data.currentStats?.totalStock || 0,
+      lowStockCount: data.currentStats?.lowStockCount || 0,
+      expiringSoonCount: data.currentStats?.expiringSoonCount || 0,
+      stockTurnover: data.currentStats?.stockTurnover || 0,
+
+      // Enhanced category analysis
+      categoryAnalysis: (data.categoryAnalysis || []).map((category) => ({
+        ...category,
+        formattedValue: formatCurrency(category.value || 0),
+        formattedItems: `${category.items || 0} ${(category.items || 0) === 1 ? 'item' : 'items'}`,
+      })),
+
+      // Enhanced alerts with better formatting
+      alerts: (data.alerts || []).map((alert) => ({
+        ...alert,
+        formattedMessage: formatAlertMessage(alert),
+        urgencyLevel: getUrgencyLevel(alert.daysLeft || 0),
+      })),
+    };
+  });
+
+  // Helper functions for formatting
+  const formatCurrency = (value) => {
+    const num = parseFloat(value);
+    if (isNaN(num)) return '₱0';
+    if (num >= 1000000) return `₱${(num / 1000000).toFixed(1)}M`;
+    if (num >= 1000) return `₱${(num / 1000).toFixed(1)}k`;
+    return `₱${Math.round(num)}`;
+  };
+
+  const formatAlertMessage = (alert) => {
+    const stock = alert.currentStock || 0;
+    const threshold = alert.reorderPoint || 0;
+    return `${alert.itemName} - ${stock} units remaining (reorder at ${threshold})`;
+  };
+
+  const getUrgencyLevel = (daysLeft) => {
+    if (daysLeft <= 0)
+      return { level: 'critical', text: 'Immediate', color: 'text-red-600' };
+    if (daysLeft <= 7)
+      return {
+        level: 'urgent',
+        text: `${daysLeft} days`,
+        color: 'text-orange-600',
+      };
+    if (daysLeft <= 30)
+      return {
+        level: 'warning',
+        text: `${daysLeft} days`,
+        color: 'text-yellow-600',
+      };
+    return { level: 'info', text: `${daysLeft} days`, color: 'text-blue-600' };
+  };
+
+  // Legacy computed properties for backward compatibility
   const totalStock = computed(() => {
-    return inventoryData.value?.currentStats?.totalStock || 0;
+    return formattedInventoryData.value?.totalStock || 0;
   });
 
   const lowStockCount = computed(() => {
-    return inventoryData.value?.currentStats?.lowStockCount || 0;
+    return formattedInventoryData.value?.lowStockCount || 0;
   });
 
   const expiringSoonCount = computed(() => {
-    return inventoryData.value?.currentStats?.expiringSoonCount || 0;
+    return formattedInventoryData.value?.expiringSoonCount || 0;
   });
 
   const stockTurnover = computed(() => {
-    return inventoryData.value?.currentStats?.stockTurnover || 0;
+    return formattedInventoryData.value?.stockTurnover || 0;
   });
 
   const categoryAnalysis = computed(() => {
-    return inventoryData.value?.categoryAnalysis || [];
+    return formattedInventoryData.value?.categoryAnalysis || [];
   });
 
   const alerts = computed(() => {
-    return inventoryData.value?.alerts || [];
+    return formattedInventoryData.value?.alerts || [];
   });
 
   // Methods

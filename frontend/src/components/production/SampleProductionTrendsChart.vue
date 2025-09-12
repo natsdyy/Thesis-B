@@ -37,46 +37,73 @@
     <div v-else-if="chartData && chartData.labels.length > 0" class="space-y-4">
       <!-- Summary Cards -->
       <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div class="bg-blue-50 p-4 rounded-lg">
+        <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm font-medium text-blue-600">Total Samples</p>
-              <p class="text-2xl font-bold text-blue-800">{{ totalSamples }}</p>
+              <p class="text-sm font-medium text-blue-700">Total Samples</p>
+              <p class="text-2xl font-bold text-blue-900">
+                {{ formattedTotalSamples }}
+              </p>
+              <p class="text-xs text-blue-600 mt-1">Across all periods</p>
             </div>
-            <FlaskConical class="w-8 h-8 text-blue-500" />
+            <div class="p-2 bg-blue-100 rounded-lg">
+              <FlaskConical class="w-6 h-6 text-blue-600" />
+            </div>
           </div>
         </div>
-        <div class="bg-green-50 p-4 rounded-lg">
+
+        <div class="bg-green-50 p-4 rounded-lg border border-green-200">
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm font-medium text-green-600">Success Rate</p>
-              <p class="text-2xl font-bold text-green-800">
+              <p class="text-sm font-medium text-green-700">Success Rate</p>
+              <p class="text-2xl font-bold text-green-900">
                 {{ successRate }}%
               </p>
-            </div>
-            <CheckCircle class="w-8 h-8 text-green-500" />
-          </div>
-        </div>
-        <div class="bg-orange-50 p-4 rounded-lg">
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-sm font-medium text-orange-600">Avg. Production</p>
-              <p class="text-2xl font-bold text-orange-800">
-                {{ avgProductionTime }}h
+              <p class="text-xs text-green-600 mt-1">
+                {{
+                  sampleData.reduce(
+                    (sum, item) => sum + (item.successful_samples || 0),
+                    0
+                  )
+                }}
+                successful
               </p>
             </div>
-            <Clock class="w-8 h-8 text-orange-500" />
+            <div class="p-2 bg-green-100 rounded-lg">
+              <CheckCircle class="w-6 h-6 text-green-600" />
+            </div>
           </div>
         </div>
-        <div class="bg-purple-50 p-4 rounded-lg">
+
+        <div class="bg-orange-50 p-4 rounded-lg border border-orange-200">
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm font-medium text-purple-600">Total Yield</p>
-              <p class="text-2xl font-bold text-purple-800">
-                {{ totalYield }}kg
+              <p class="text-sm font-medium text-orange-700">
+                Avg. Production Time
               </p>
+              <p class="text-2xl font-bold text-orange-900">
+                {{ formattedAvgProductionTime }}
+              </p>
+              <p class="text-xs text-orange-600 mt-1">Per batch</p>
             </div>
-            <Package class="w-8 h-8 text-purple-500" />
+            <div class="p-2 bg-orange-100 rounded-lg">
+              <Clock class="w-6 h-6 text-orange-600" />
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-purple-50 p-4 rounded-lg border border-purple-200">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-purple-700">Total Yield</p>
+              <p class="text-2xl font-bold text-purple-900">
+                {{ formattedTotalYield }}
+              </p>
+              <p class="text-xs text-purple-600 mt-1">Total production</p>
+            </div>
+            <div class="p-2 bg-purple-100 rounded-lg">
+              <Package class="w-6 h-6 text-purple-600" />
+            </div>
           </div>
         </div>
       </div>
@@ -87,62 +114,109 @@
       </div>
 
       <!-- Status Breakdown -->
-      <div class="bg-gray-50 p-4 rounded-lg">
-        <h4 class="font-semibold text-gray-900 mb-3">
+      <div class="bg-gray-50 p-6 rounded-lg border border-gray-200">
+        <h4 class="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <Activity class="w-5 h-5" />
           Production Status Breakdown
         </h4>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div class="text-center">
+          <div
+            class="text-center p-3 bg-white rounded-lg border border-blue-200"
+          >
             <div class="text-2xl font-bold text-blue-600">
               {{ statusBreakdown.planned }}
             </div>
-            <div class="text-sm text-gray-600">Planned</div>
+            <div class="text-sm text-gray-600 font-medium">Planned</div>
+            <div class="text-xs text-gray-500 mt-1">Ready to start</div>
           </div>
-          <div class="text-center">
+          <div
+            class="text-center p-3 bg-white rounded-lg border border-yellow-200"
+          >
             <div class="text-2xl font-bold text-yellow-600">
               {{ statusBreakdown.inProgress }}
             </div>
-            <div class="text-sm text-gray-600">In Progress</div>
+            <div class="text-sm text-gray-600 font-medium">In Progress</div>
+            <div class="text-xs text-gray-500 mt-1">Currently active</div>
           </div>
-          <div class="text-center">
+          <div
+            class="text-center p-3 bg-white rounded-lg border border-green-200"
+          >
             <div class="text-2xl font-bold text-green-600">
               {{ statusBreakdown.completed }}
             </div>
-            <div class="text-sm text-gray-600">Completed</div>
+            <div class="text-sm text-gray-600 font-medium">Completed</div>
+            <div class="text-xs text-gray-500 mt-1">Successfully finished</div>
           </div>
-          <div class="text-center">
+          <div
+            class="text-center p-3 bg-white rounded-lg border border-red-200"
+          >
             <div class="text-2xl font-bold text-red-600">
               {{ statusBreakdown.failed }}
             </div>
-            <div class="text-sm text-gray-600">Failed</div>
+            <div class="text-sm text-gray-600 font-medium">Failed</div>
+            <div class="text-xs text-gray-500 mt-1">Needs attention</div>
           </div>
         </div>
       </div>
 
       <!-- Top Performing Items -->
-      <div class="bg-gray-50 p-4 rounded-lg">
-        <h4 class="font-semibold text-gray-900 mb-3">
+      <div class="bg-gray-50 p-6 rounded-lg border border-gray-200">
+        <h4 class="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <TrendingUp class="w-5 h-5" />
           Top Performing Menu Items
         </h4>
-        <div class="space-y-2">
+        <div
+          v-if="topPerformingItems && topPerformingItems.length > 0"
+          class="space-y-3"
+        >
           <div
-            v-for="item in topPerformingItems"
+            v-for="(item, index) in topPerformingItems.slice(0, 5)"
             :key="item.name"
-            class="flex justify-between items-center p-2 bg-white rounded"
+            class="flex justify-between items-center p-3 bg-white rounded-lg border border-gray-200 hover:shadow-sm transition-shadow"
           >
-            <span class="text-sm font-medium">{{ item.name }}</span>
-            <div class="flex items-center gap-2">
-              <span class="text-sm text-gray-600"
-                >{{ item.successRate }}% success</span
+            <div class="flex items-center gap-3">
+              <div
+                class="w-6 h-6 bg-primaryColor/10 text-primaryColor rounded-full flex items-center justify-center text-xs font-bold"
               >
+                {{ index + 1 }}
+              </div>
+              <span class="text-sm font-medium text-gray-900">{{
+                item.name
+              }}</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="text-right">
+                <div class="text-sm font-semibold text-gray-900">
+                  {{ item.successRate }}% success
+                </div>
+                <div class="text-xs text-gray-500">
+                  {{ item.totalSamples || 0 }} samples
+                </div>
+              </div>
               <div class="w-20 bg-gray-200 rounded-full h-2">
                 <div
-                  class="bg-green-500 h-2 rounded-full"
-                  :style="{ width: `${item.successRate}%` }"
+                  class="h-2 rounded-full transition-all duration-300"
+                  :class="
+                    item.successRate >= 80
+                      ? 'bg-green-500'
+                      : item.successRate >= 60
+                        ? 'bg-yellow-500'
+                        : 'bg-red-500'
+                  "
+                  :style="{ width: `${Math.min(item.successRate, 100)}%` }"
                 ></div>
               </div>
             </div>
           </div>
+        </div>
+        <div v-else class="text-center py-8">
+          <div class="text-gray-400 mb-2">
+            <Package class="w-12 h-12 mx-auto" />
+          </div>
+          <p class="text-gray-500 text-sm">No performance data available</p>
+          <p class="text-gray-400 text-xs mt-1">
+            Start producing samples to see performance metrics
+          </p>
         </div>
       </div>
     </div>
@@ -176,6 +250,8 @@
     CheckCircle,
     Clock,
     Package,
+    TrendingUp,
+    Activity,
   } from 'lucide-vue-next';
   import { useProductionStore } from '../../stores/productionStore.js';
 
@@ -301,11 +377,11 @@
   const successRate = computed(() => {
     if (!sampleData.value.length) return 0;
     const totalSuccessful = sampleData.value.reduce(
-      (sum, item) => sum + item.successful_samples,
+      (sum, item) => sum + (item.successful_samples || 0),
       0
     );
     const totalSamples = sampleData.value.reduce(
-      (sum, item) => sum + item.total_samples,
+      (sum, item) => sum + (item.total_samples || 0),
       0
     );
     return totalSamples > 0
@@ -315,18 +391,51 @@
 
   const avgProductionTime = computed(() => {
     if (!sampleData.value.length) return 0;
-    const totalTime = sampleData.value.reduce(
-      (sum, item) => sum + item.avg_production_time,
+    const validItems = sampleData.value.filter(
+      (item) => item.avg_production_time && item.avg_production_time > 0
+    );
+    if (validItems.length === 0) return 0;
+
+    const totalTime = validItems.reduce(
+      (sum, item) => sum + parseFloat(item.avg_production_time),
       0
     );
-    return Math.round(totalTime / sampleData.value.length);
+    return Math.round(totalTime / validItems.length);
   });
 
   const totalYield = computed(() => {
     return sampleData.value.reduce(
-      (sum, item) => sum + item.average_yield * item.total_samples,
+      (sum, item) =>
+        sum +
+        parseFloat(item.average_yield || 0) *
+          parseFloat(item.total_samples || 0),
       0
     );
+  });
+
+  // Enhanced computed properties for better readability
+  const formattedAvgProductionTime = computed(() => {
+    const time = avgProductionTime.value;
+    if (time === 0) return 'No data';
+    if (time < 1) return `${Math.round(time * 60)}m`;
+    if (time < 24) return `${time}h`;
+    return `${Math.round(time / 24)}d`;
+  });
+
+  const formattedTotalYield = computed(() => {
+    const totalYieldValue = totalYield.value;
+    if (totalYieldValue === 0) return '0kg';
+    if (totalYieldValue < 1) return `${Math.round(totalYieldValue * 1000)}g`;
+    if (totalYieldValue < 1000) return `${totalYieldValue.toFixed(1)}kg`;
+    return `${(totalYieldValue / 1000).toFixed(1)}t`;
+  });
+
+  const formattedTotalSamples = computed(() => {
+    const samples = totalSamples.value;
+    if (samples === 0) return '0';
+    if (samples < 1000) return samples.toString();
+    if (samples < 1000000) return `${(samples / 1000).toFixed(1)}k`;
+    return `${(samples / 1000000).toFixed(1)}M`;
   });
 
   const statusBreakdown = computed(() => {

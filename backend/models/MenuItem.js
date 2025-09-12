@@ -678,7 +678,9 @@ class MenuItem {
           .first();
 
         const batchSize = recipe ? recipe.batch_size : 100; // Default batch size
-        const reorderPoint = Math.ceil(batchSize * 0.2); // Set reorder point to 20% of batch size
+        // Use dynamic reorder point calculation (will be calculated based on actual stock)
+        const reorderPoint =
+          ProductionInventory.calculateDynamicReorderPoint(0); // Start with 0 stock
 
         // Create production inventory with 0 initial stock
         await ProductionInventory.create(id, userId, {
@@ -697,7 +699,7 @@ class MenuItem {
             cost_price: menuItem.cost_price,
             profit_margin: menuItem.profit_margin,
             initial_stock: 0, // Now starts with 0 stock
-            reorder_point: reorderPoint,
+            reorder_point: ProductionInventory.calculateDynamicReorderPoint(0), // Dynamic reorder point
             maximum_stock: batchSize * 2,
           },
           notes: `Menu item "${menuItem.menu_item_name}" approved for production - Production inventory created with 0 initial stock`,

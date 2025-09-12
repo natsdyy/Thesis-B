@@ -45,11 +45,14 @@ const envOrigins = rawCorsOrigin
   .filter(Boolean);
 
 const defaultAllowedOrigins = [
+  "http://10.196.212.241:8080", // Wi-Fi 2 frontend
+  "http://10.196.212.194:8080", // Wi-Fi frontend
+  "http://192.168.56.1:8080", // Ethernet 3 frontend
   "http://localhost:5000", // Localhost backend
   "http://localhost:80", //docker
   "http://localhost:8080", // Localhost frontend
-  "http://192.168.18.5:8080", // Network frontend
-  "http://192.168.56.1:5000", // Network backend
+  "http://192.168.18.5:8080", // Legacy network frontend
+  "http://192.168.56.1:5000", // Ethernet 3 backend
   "http://localhost:8080", // Localhost frontend
   "https://countrysides.up.railway.app", // Railway deployment
   "https://*.up.railway.app", // Railway wildcard

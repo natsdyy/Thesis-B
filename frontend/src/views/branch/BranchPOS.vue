@@ -589,7 +589,7 @@
 
           <!-- Menu Items Grid -->
           <div class="flex-1 p-6 overflow-y-auto max-h-[90vh]">
-            <div class="grid grid-cols-5 md:grid-cols-5 gap-4">
+            <div class="grid grid-cols-4 md:grid-cols-4 gap-4">
               <div
                 v-for="item in posStore.filteredMenuItems"
                 :key="item.id"
@@ -881,7 +881,7 @@
                 :class="
                   posStore.isOrderValid
                     ? 'bg-primaryColor hover:bg-primaryColor/80 active:bg-primaryColor/90 text-white font-thin'
-                    : 'bg-gray-400' 
+                    : 'bg-gray-400'
                 "
               >
                 <span class="hidden sm:inline">{{

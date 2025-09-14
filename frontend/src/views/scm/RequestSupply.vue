@@ -324,10 +324,34 @@
     });
   };
 
+  const formatMonthDisplay = (dateString) => {
+    const date = new Date(dateString + 'T00:00:00');
+    const isFirstDayOfMonth = date.getDate() === 1;
+
+    if (isFirstDayOfMonth) {
+      // Display as month and year
+      return date.toLocaleDateString('en-PH', {
+        year: 'numeric',
+        month: 'long',
+        timeZone: 'Asia/Manila',
+      });
+    } else {
+      // Display as full date
+      return formatPhilippineDate(dateString);
+    }
+  };
+
   // Request List Date Filter
   const requestListFilter = ref({
-    selectedDate: '', // Show all requests by default
+    selectedDate: getPhilippineDateString(), // Show today's requests by default
     showDatePicker: false,
+  });
+
+  // Month picker state
+  const showMonthPicker = ref(false);
+  const monthPicker = ref({
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
   });
 
   // Quick date filter buttons
@@ -412,19 +436,58 @@
     }
 
     return allRequests.value.filter((request) => {
-      // Simple approach: convert to Philippine time using Intl.DateTimeFormat
       const requestDate = new Date(request.request_date);
-      const philippineDate = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Manila',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).format(requestDate);
 
-      return (
-        philippineDate === selectedDate &&
-        request.request_status !== 'Cancelled'
-      );
+      // Check if we're filtering by month (when selectedDate is first day of month)
+      const selectedDateObj = new Date(selectedDate + 'T00:00:00');
+      const isFirstDayOfMonth = selectedDateObj.getDate() === 1;
+
+      if (isFirstDayOfMonth) {
+        // Filter by month and year using Philippine timezone
+        const requestYear = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Manila',
+          year: 'numeric',
+        }).format(requestDate);
+
+        const requestMonth = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Manila',
+          month: '2-digit',
+        }).format(requestDate);
+
+        const selectedYear = selectedDateObj.getFullYear().toString();
+        const selectedMonth = (selectedDateObj.getMonth() + 1)
+          .toString()
+          .padStart(2, '0');
+
+        console.log('Month Filter Debug:', {
+          requestYear,
+          requestMonth,
+          selectedYear,
+          selectedMonth,
+          requestDate: requestDate.toISOString(),
+          selectedDate: selectedDate,
+          selectedDateObj: selectedDateObj.toISOString(),
+        });
+
+        return (
+          requestYear === selectedYear &&
+          requestMonth === selectedMonth &&
+          request.request_status !== 'Cancelled'
+        );
+      } else {
+        // Filter by exact date (original behavior)
+        const philippineDate = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Manila',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(requestDate);
+
+        return (
+          philippineDate === selectedDate &&
+          request.request_status !== 'Cancelled'
+        );
+      }
     });
   });
 
@@ -457,6 +520,12 @@
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
   });
+
+  // History filter dropdown state
+  const showHistoryFilterDropdown = ref(false);
+
+  // Status filter dropdown state
+  const showStatusFilterDropdown = ref(false);
 
   // Updated history filter options
   const getHistoryFilterOptions = () => {
@@ -605,6 +674,32 @@
     historyFilterType.value = option.type;
     requestHistoryCurrentPage.value = 1;
     showCustomMonthPicker.value = false;
+    showHistoryFilterDropdown.value = false; // Close dropdown after selection
+  };
+
+  // History filter dropdown functions
+  const toggleHistoryFilterDropdown = () => {
+    showHistoryFilterDropdown.value = !showHistoryFilterDropdown.value;
+  };
+
+  const closeHistoryFilterDropdown = () => {
+    showHistoryFilterDropdown.value = false;
+  };
+
+  // Status filter dropdown functions
+  const toggleStatusFilterDropdown = () => {
+    showStatusFilterDropdown.value = !showStatusFilterDropdown.value;
+  };
+
+  const closeStatusFilterDropdown = () => {
+    showStatusFilterDropdown.value = false;
+  };
+
+  const selectStatusFilter = (status) => {
+    requestHistoryFilter.value.status =
+      requestHistoryFilter.value.status === status ? '' : status;
+    requestHistoryCurrentPage.value = 1;
+    showStatusFilterDropdown.value = false; // Close dropdown after selection
   };
 
   const toggleCustomMonthPicker = () => {
@@ -1308,6 +1403,20 @@
     requestListFilter.value.selectedDate = dateOption.date;
     currentPage.value = 1;
     requestListFilter.value.showDatePicker = false;
+    showDateDropdown.value = false; // Close dropdown after selection
+  };
+
+  // Date dropdown state
+  const showDateDropdown = ref(false);
+
+  // Close dropdown when clicking outside
+  const closeDateDropdown = () => {
+    showDateDropdown.value = false;
+  };
+
+  // Close month picker when clicking outside
+  const closeMonthPicker = () => {
+    showMonthPicker.value = false;
   };
 
   const selectCustomDate = (event) => {
@@ -1319,6 +1428,42 @@
   const toggleDatePicker = () => {
     requestListFilter.value.showDatePicker =
       !requestListFilter.value.showDatePicker;
+  };
+
+  // Month picker functions
+  const toggleMonthPicker = () => {
+    showMonthPicker.value = !showMonthPicker.value;
+  };
+
+  const applyMonthFilter = () => {
+    // Set the selected date to the first day of the selected month in Philippine timezone
+    const selectedDate = new Date(
+      monthPicker.value.year,
+      monthPicker.value.month - 1,
+      1,
+      0,
+      0,
+      0,
+      0
+    );
+
+    // Convert to Philippine timezone format
+    const philippineDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(selectedDate);
+
+    requestListFilter.value.selectedDate = philippineDate;
+    currentPage.value = 1;
+    showMonthPicker.value = false;
+
+    console.log('Applied month filter:', {
+      selectedMonth: monthPicker.value.month,
+      selectedYear: monthPicker.value.year,
+      selectedDate: philippineDate,
+    });
   };
 
   const goToPreviousDay = () => {
@@ -1454,6 +1599,15 @@
 
     // Set up auto-refresh every 5 minutes
     refreshInterval = setInterval(refreshAllData, 5 * 60 * 1000);
+
+    // Add click outside listener for date dropdown
+    document.addEventListener('click', closeDateDropdown);
+    // Add click outside listener for month picker
+    document.addEventListener('click', closeMonthPicker);
+    // Add click outside listener for history filter dropdown
+    document.addEventListener('click', closeHistoryFilterDropdown);
+    // Add click outside listener for status filter dropdown
+    document.addEventListener('click', closeStatusFilterDropdown);
   });
 
   onBeforeUnmount(() => {
@@ -1461,6 +1615,11 @@
     if (refreshInterval) {
       clearInterval(refreshInterval);
     }
+    // Remove click outside listener
+    document.removeEventListener('click', closeDateDropdown);
+    document.removeEventListener('click', closeMonthPicker);
+    document.removeEventListener('click', closeHistoryFilterDropdown);
+    document.removeEventListener('click', closeStatusFilterDropdown);
   });
 
   // Update stats display to use store stats
@@ -1786,7 +1945,7 @@
     <!-- Header -->
     <div class="text-center mb-8">
       <h1 class="text-4xl font-bold text-primaryColor mb-2 text-shadow-xs">
-        Request Supply
+        Supply Request
       </h1>
       <p class="text-black/50">
         Manage and track supply requests for Countryside Steakhouse.
@@ -2073,7 +2232,8 @@
                         request.priority === 'Urgent',
                       'bg-warning/10 text-warning border-warning/20':
                         request.priority === 'Normal',
-                      'bg-info/10 text-info border-info/20': request.priority === 'Low',
+                      'bg-info/10 text-info border-info/20':
+                        request.priority === 'Low',
                     }"
                   >
                     {{ request.priority }}
@@ -2196,7 +2356,7 @@
                   <h3 class="font-semibold text-primaryColor">
                     {{
                       requestListFilter.selectedDate
-                        ? formatPhilippineDate(requestListFilter.selectedDate)
+                        ? formatMonthDisplay(requestListFilter.selectedDate)
                         : 'All Requests'
                     }}
                   </h3>
@@ -2210,85 +2370,129 @@
 
               <!-- Date Navigation and Filter Controls -->
               <div class="flex flex-col sm:flex-row gap-3">
-                <!-- Quick Date Buttons -->
-                <div class="flex gap-2 md:flex-row flex-col">
+                <!-- Quick Date Dropdown -->
+                <div class="relative" @click.stop>
                   <button
-                    v-for="option in quickDateOptions"
-                    :key="option.date"
-                    class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
-                    :class="{
-                      'bg-primaryColor text-white':
-                        requestListFilter.selectedDate === option.date,
-                      'bg-white text-primaryColor hover:bg-primaryColor/10':
-                        requestListFilter.selectedDate !== option.date,
-                    }"
-                    @click="selectQuickDate(option)"
+                    class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                    @click="showDateDropdown = !showDateDropdown"
                   >
-                    {{ option.label }}
-                    <span
-                      class="badge badge-xs ml-1 bg-secondaryColor border-none b"
-                      :class="
-                        requestListFilter.selectedDate === option.date
-                          ? 'badge-ghost'
-                          : 'badge-primaryColor/10 text-primaryColor'
-                      "
-                    >
-                      {{ option.count }}
-                    </span>
+                    <font-awesome-icon icon="fa-solid fa-filter" />
                   </button>
+
+                  <!-- Dropdown Menu -->
+                  <div
+                    v-if="showDateDropdown"
+                    class="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50"
+                  >
+                    <div class="py-1">
+                      <button
+                        v-for="option in quickDateOptions"
+                        :key="option.date"
+                        class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
+                        :class="{
+                          'bg-primaryColor/10 text-primaryColor font-medium':
+                            requestListFilter.selectedDate === option.date,
+                          'text-gray-700':
+                            requestListFilter.selectedDate !== option.date,
+                        }"
+                        @click="selectQuickDate(option)"
+                      >
+                        <span>{{ option.label }}</span>
+                        <span
+                          class="badge badge-xs bg-secondaryColor border-none"
+                          :class="
+                            requestListFilter.selectedDate === option.date
+                              ? 'badge-ghost'
+                              : 'badge-primaryColor/10 text-primaryColor'
+                          "
+                        >
+                          {{ option.count }}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <!-- Date Navigation -->
                 <div class="flex items-center gap-1">
-                  <button
-                    class="btn btn-sm btn-ghost text-primaryColor hover:bg-primaryColor/10"
-                    @click="goToPreviousDay"
-                    title="Previous Day"
-                  >
-                    ‹
-                  </button>
-
-                  <!-- Custom Date Picker -->
-                  <div class="relative">
+                  <!-- Custom Month Picker -->
+                  <div class="relative" @click.stop>
                     <button
                       class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                      @click="toggleDatePicker"
+                      @click="toggleMonthPicker"
                     >
                       <Calendar class="w-4 h-4 mr-1" />
-                      Pick Date
+                      Custom Month
                     </button>
 
-                    <input
-                      v-if="requestListFilter.showDatePicker"
-                      type="date"
-                      :value="requestListFilter.selectedDate"
-                      @change="selectCustomDate"
-                      @blur="requestListFilter.showDatePicker = false"
-                      class="absolute top-full left-0 mt-1 input input-sm input-bordered bg-white border-primaryColor/30 text-black/70 z-10"
-                      style="min-width: 150px"
-                      ref="datePickerInput"
-                    />
+                    <!-- Custom Month Picker -->
+                    <div
+                      v-if="showMonthPicker"
+                      class="absolute top-full left-0 mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10 p-3 min-w-64"
+                    >
+                      <div class="flex items-center justify-between mb-3">
+                        <h4 class="font-medium text-sm text-black">
+                          Select Month
+                        </h4>
+                        <button
+                          @click="showMonthPicker = false"
+                          class="btn btn-ghost btn-xs"
+                        >
+                          <X class="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      <!-- Month Selection -->
+                      <div class="grid grid-cols-3 gap-2 mb-3">
+                        <button
+                          v-for="month in months"
+                          :key="month.value"
+                          class="btn btn-xs font-thin"
+                          :class="{
+                            'bg-primaryColor text-white':
+                              monthPicker.month === month.value,
+                            'btn-ghost': monthPicker.month !== month.value,
+                          }"
+                          @click="monthPicker.month = month.value"
+                        >
+                          {{ month.label }}
+                        </button>
+                      </div>
+
+                      <!-- Year Selection -->
+                      <div class="flex items-center gap-2 mb-3">
+                        <span class="text-sm text-black/70">Year:</span>
+                        <select
+                          v-model="monthPicker.year"
+                          class="select select-xs select-bordered bg-white border-primaryColor/30 text-black/70"
+                        >
+                          <option
+                            v-for="year in availableYears"
+                            :key="year"
+                            :value="year"
+                          >
+                            {{ year }}
+                          </option>
+                        </select>
+                      </div>
+
+                      <!-- Apply Button -->
+                      <div class="flex gap-2">
+                        <button
+                          @click="applyMonthFilter"
+                          class="btn btn-xs bg-primaryColor text-white font-thin"
+                        >
+                          Apply
+                        </button>
+                        <button
+                          @click="showMonthPicker = false"
+                          class="btn btn-xs btn-ghost font-thin"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
                   </div>
-
-                  <button
-                    class="btn btn-sm btn-ghost text-primaryColor hover:bg-primaryColor/10"
-                    @click="goToNextDay"
-                    title="Next Day"
-                  >
-                    ›
-                  </button>
-
-                  <button
-                    class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                    @click="goToToday"
-                    :class="{
-                      'btn-disabled':
-                        requestListFilter.selectedDate ===
-                        getPhilippineDateString(),
-                    }"
-                  >
-                    Today
-                  </button>
                 </div>
               </div>
             </div>
@@ -2311,8 +2515,7 @@
               No requests found
               {{
                 requestListFilter.selectedDate
-                  ? 'for ' +
-                    formatPhilippineDate(requestListFilter.selectedDate)
+                  ? 'for ' + formatMonthDisplay(requestListFilter.selectedDate)
                   : ''
               }}
             </h3>
@@ -2515,7 +2718,7 @@
                 )
               }}
               of {{ filteredRequestsByDate.length }} requests for
-              {{ formatPhilippineDate(requestListFilter.selectedDate) }}
+              {{ formatMonthDisplay(requestListFilter.selectedDate) }}
             </div>
 
             <div class="join space-x-1">
@@ -2580,7 +2783,7 @@
           </div>
 
           <!-- Search and Filters -->
-          <div class="flex flex-col md:flex-row gap-4 mb-6">
+          <div class="flex flex-col md:flex-row gap-4 mb-4">
             <!-- Search -->
             <div class="flex-1">
               <div class="relative">
@@ -2614,7 +2817,7 @@
           <!-- Branch Requests Table -->
           <div v-if="paginatedBranchRequests.length > 0" class="space-y-4">
             <div class="overflow-x-auto table-responsive">
-              <table class="table w-full table-xs">
+              <table class="table w-full table-xs table-zebra">
                 <thead>
                   <tr>
                     <th>Request ID</th>
@@ -2675,14 +2878,15 @@
                       </div>
                     </td>
                     <td>{{ request.requested_by }}</td>
-                    <td>
-                      <div class="text-sm">
+                    <td class="w-40 text-right whitespace-nowrap">
+                      <div class="text-sm font-medium text-gray-900">
                         {{ formatDate(request.request_date) }}
                       </div>
                       <div class="text-xs text-gray-500">
                         {{ formatTime(request.created_at) }}
                       </div>
                     </td>
+
                     <td>
                       <div class="dropdown dropdown-left">
                         <label
@@ -2961,32 +3165,46 @@
 
               <!-- Filter Controls -->
               <div class="flex flex-col sm:flex-row gap-3">
-                <!-- Quick Filter Buttons -->
-                <div class="flex gap-2 md:flex-row flex-col">
+                <!-- History Filter Dropdown -->
+                <div class="relative" @click.stop>
                   <button
-                    v-for="option in historyFilterOptions"
-                    :key="option.type"
-                    class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
-                    :class="{
-                      'bg-primaryColor text-white':
-                        historyFilterType === option.type,
-                      'bg-white text-primaryColor hover:bg-primaryColor/10':
-                        historyFilterType !== option.type,
-                    }"
-                    @click="selectHistoryFilter(option)"
+                    class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                    @click="toggleHistoryFilterDropdown"
                   >
-                    {{ option.label }}
-                    <span
-                      class="badge badge-xs ml-1 bg-secondaryColor border-none"
-                      :class="
-                        historyFilterType === option.type
-                          ? 'badge-ghost'
-                          : 'badge-primaryColor/10 text-primaryColor'
-                      "
-                    >
-                      {{ option.count }}
-                    </span>
+                    <font-awesome-icon icon="fa-solid fa-filter" />
                   </button>
+
+                  <!-- Dropdown Menu -->
+                  <div
+                    v-if="showHistoryFilterDropdown"
+                    class="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50"
+                  >
+                    <div class="py-1">
+                      <button
+                        v-for="option in historyFilterOptions"
+                        :key="option.type"
+                        class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
+                        :class="{
+                          'bg-primaryColor/10 text-primaryColor font-medium':
+                            historyFilterType === option.type,
+                          'text-gray-700': historyFilterType !== option.type,
+                        }"
+                        @click="selectHistoryFilter(option)"
+                      >
+                        <span>{{ option.label }}</span>
+                        <span
+                          class="badge badge-xs bg-secondaryColor border-none"
+                          :class="
+                            historyFilterType === option.type
+                              ? 'badge-ghost'
+                              : 'badge-primaryColor/10 text-primaryColor'
+                          "
+                        >
+                          {{ option.count }}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <!-- Custom Month Selection -->
@@ -3083,32 +3301,65 @@
             </div>
           </div>
 
-          <!-- Status Quick Filters -->
-          <div class="flex flex-wrap gap-2 mb-4 sm:flex-row w-full flex-col">
-            <button
-              v-for="status in historyStatusOptions"
-              :key="status"
-              class="btn btn-xs font-thin border border-primaryColor/30"
-              :class="{
-                'bg-primaryColor text-white':
-                  requestHistoryFilter.status === status,
-                'bg-white text-primaryColor hover:bg-primaryColor/10':
-                  requestHistoryFilter.status !== status,
-              }"
-              @click="
-                requestHistoryFilter.status =
-                  requestHistoryFilter.status === status ? '' : status
-              "
-            >
-              {{ status }}
-              <span class="badge badge-xs ml-1 bg-secondaryColor border-none">
-                {{
-                  filteredRequestHistoryByDate.filter(
-                    (r) => r.request_status === status
-                  ).length
-                }}
-              </span>
-            </button>
+          <!-- Status Filter Dropdown -->
+          <div class="flex justify-start mb-4">
+            <div class="relative" @click.stop>
+              <button
+                class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                @click="toggleStatusFilterDropdown"
+              >
+                <font-awesome-icon icon="fa-solid fa-filter" />
+                <span class="ml-2">
+                  {{ requestHistoryFilter.status || 'All Status' }}
+                </span>
+              </button>
+
+              <!-- Dropdown Menu -->
+              <div
+                v-if="showStatusFilterDropdown"
+                class="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50"
+              >
+                <div class="py-1">
+                  <!-- All Status Option -->
+                  <button
+                    class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
+                    :class="{
+                      'bg-primaryColor/10 text-primaryColor font-medium':
+                        !requestHistoryFilter.status,
+                      'text-gray-700': requestHistoryFilter.status,
+                    }"
+                    @click="selectStatusFilter('')"
+                  >
+                    <span>All Status</span>
+                    <span class="badge badge-xs bg-secondaryColor border-none">
+                      {{ filteredRequestHistoryByDate.length }}
+                    </span>
+                  </button>
+
+                  <!-- Status Options -->
+                  <button
+                    v-for="status in historyStatusOptions"
+                    :key="status"
+                    class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
+                    :class="{
+                      'bg-primaryColor/10 text-primaryColor font-medium':
+                        requestHistoryFilter.status === status,
+                      'text-gray-700': requestHistoryFilter.status !== status,
+                    }"
+                    @click="selectStatusFilter(status)"
+                  >
+                    <span>{{ status }}</span>
+                    <span class="badge badge-xs bg-secondaryColor border-none">
+                      {{
+                        filteredRequestHistoryByDate.filter(
+                          (r) => r.request_status === status
+                        ).length
+                      }}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 

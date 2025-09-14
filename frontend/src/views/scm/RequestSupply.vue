@@ -270,6 +270,9 @@
 
       // Update the request type to match the selected item type
       requestForm.value.request_type = row.item_type;
+
+      // Force reactivity update
+      requestForm.value = { ...requestForm.value };
     }
   };
 

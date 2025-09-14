@@ -49,7 +49,7 @@
   const searchQuery = ref('');
   const statusFilter = ref('');
   const reasonFilter = ref('');
-  const dateFilterType = ref('all'); // Changed from 'today' to 'all' to show all returns by default
+  const dateFilterType = ref('month'); // Changed from 'today' to 'all' to show all returns by default
   const currentPage = ref(1);
   const itemsPerPage = ref(10);
 
@@ -224,6 +224,7 @@
         (returnItem) =>
           returnItem.item_name?.toLowerCase().includes(query) ||
           returnItem.return_reason?.toLowerCase().includes(query) ||
+          returnItem.processed_by?.toLowerCase().includes(query) ||
           returnItem.logged_by?.toLowerCase().includes(query) ||
           returnItem.notes?.toLowerCase().includes(query)
       );
@@ -433,6 +434,14 @@
     showCustomMonthPicker.value = false;
   };
 
+  const handleDateFilterChange = () => {
+    if (dateFilterType.value === 'custom') {
+      showCustomMonthPicker.value = true;
+    } else {
+      showCustomMonthPicker.value = false;
+    }
+  };
+
   const toggleCustomMonthPicker = () => {
     showCustomMonthPicker.value = !showCustomMonthPicker.value;
   };
@@ -618,178 +627,141 @@
       </div>
 
       <!-- Filters and Actions -->
-      <div
-        class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6 sm:flex-row"
-      >
-        <!-- Search and Filters -->
-        <div class="flex flex-col sm:flex-row gap-3 flex-1 w-full">
-          <!-- Search -->
-          <div class="relative">
+      <div class="space-y-4 mb-6">
+        <!-- Search Bar -->
+        <div class="flex gap-3">
+          <div class="relative flex-1">
             <Search
               class="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-black/50"
             />
             <input
               v-model="searchQuery"
               type="text"
-              placeholder="Search returns..."
+              placeholder="Search returns by item, reason, or received by..."
               class="input input-sm input-bordered bg-white border-primaryColor/30 text-black/70 pl-10 w-full"
             />
           </div>
-
-          <!-- Status Filter -->
-          <select
-            v-model="statusFilter"
-            class="select select-sm select-bordered bg-white border-primaryColor/30 text-black/70 w-full"
+          <button
+            class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
+            @click="clearFilters"
           >
-            <option value="">All Statuses</option>
-            <option
-              v-for="status in uniqueStatuses"
-              :key="status"
-              :value="status"
-            >
-              {{ status }}
-            </option>
-          </select>
-
-          <!-- Reason Filter -->
-          <select
-            v-model="reasonFilter"
-            class="select select-sm select-bordered bg-white border-primaryColor/30 text-black/70 w-full"
-          >
-            <option value="">All Reasons</option>
-            <option
-              v-for="reason in uniqueReasons"
-              :key="reason"
-              :value="reason"
-            >
-              {{ reason }}
-            </option>
-          </select>
+            <RefreshCcw class="w-4 h-4 mr-1" />
+            Clear
+          </button>
         </div>
 
-        <!-- Date Filter Buttons -->
-        <div
-          class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center w-full"
-        >
-          <!-- Quick Date Buttons -->
-          <div class="flex gap-2 md:flex-row flex-col w-full">
-            <button
-              v-for="option in quickDateOptions"
-              :key="option.label"
-              class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
-              :class="{
-                'bg-primaryColor text-white':
-                  dateFilterType ===
-                  (option.label === 'Today'
-                    ? 'today'
-                    : option.label === 'This Week'
-                      ? 'week'
-                      : option.label === 'This Month'
-                        ? 'month'
-                        : ''),
-                'bg-white text-primaryColor hover:bg-primaryColor/10':
-                  dateFilterType !==
-                  (option.label === 'Today'
-                    ? 'today'
-                    : option.label === 'This Week'
-                      ? 'week'
-                      : option.label === 'This Month'
-                        ? 'month'
-                        : ''),
-              }"
-              @click="selectQuickDate(option)"
+        <!-- Filter Controls -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <!-- Status Filter -->
+          <div class="grid grid-cols-1 gap-1">
+            <label class="text-sm font-medium text-black/70">Status</label>
+            <select
+              v-model="statusFilter"
+              class="select select-sm select-bordered bg-white border-primaryColor/30 text-black/70"
             >
-              {{ option.label }}
-              <span
-                class="badge badge-xs ml-1 bg-secondaryColor border-none"
-                :class="
-                  dateFilterType ===
-                  (option.label === 'Today'
-                    ? 'today'
-                    : option.label === 'This Week'
-                      ? 'week'
-                      : option.label === 'This Month'
-                        ? 'month'
-                        : '')
-                    ? 'badge-ghost'
-                    : 'badge-primaryColor/10 text-primaryColor'
-                "
+              <option value="">All Statuses</option>
+              <option
+                v-for="status in uniqueStatuses"
+                :key="status"
+                :value="status"
               >
-                {{ option.count }}
-              </span>
-            </button>
+                {{ status }}
+              </option>
+            </select>
           </div>
 
-          <!-- Custom Month Picker -->
-          <div class="flex items-center gap-1 w-full sm:flex-row flex-col">
-            <div class="relative">
-              <button
-                class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                @click.stop="toggleCustomMonthPicker"
+          <!-- Reason Filter -->
+          <div class="grid grid-cols-1 gap-1">
+            <label class="text-sm font-medium text-black/70">Reason</label>
+            <select
+              v-model="reasonFilter"
+              class="select select-sm select-bordered bg-white border-primaryColor/30 text-black/70"
+            >
+              <option value="">All Reasons</option>
+              <option
+                v-for="reason in uniqueReasons"
+                :key="reason"
+                :value="reason"
               >
-                <Calendar class="w-4 h-4 mr-1" />
-                Custom Month
-              </button>
+                {{ reason }}
+              </option>
+            </select>
+          </div>
 
-              <div
-                v-if="showCustomMonthPicker"
-                data-custom-month-picker
-                class="absolute top-full left-0 mt-1 p-3 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10"
-                style="min-width: 200px"
+          <!-- Date Filter -->
+          <div class="grid grid-cols-1 gap-1">
+            <label class="text-sm font-medium text-black/70">Date Range</label>
+            <div class="grid grid-cols-[1fr_auto] gap-2">
+              <select
+                v-model="dateFilterType"
+                class="select select-sm select-bordered bg-white border-primaryColor/30 text-black/70"
+                @change="handleDateFilterChange"
               >
-                <div class="flex gap-2 mb-3" @click.stop>
-                  <select
-                    v-model="customMonthPicker.month"
-                    class="select select-bordered select-sm w-20"
-                  >
-                    <option v-for="month in 12" :key="month" :value="month">
-                      {{
-                        new Date(2024, month - 1).toLocaleDateString('en-US', {
-                          month: 'short',
-                        })
-                      }}
-                    </option>
-                  </select>
-                  <select
-                    v-model="customMonthPicker.year"
-                    class="select select-bordered select-sm w-24"
-                  >
-                    <option
-                      v-for="year in availableYears"
-                      :key="year"
-                      :value="year"
+                <option value="all">All Time</option>
+                <option value="today">Today</option>
+                <option value="week">This Week</option>
+                <option value="month">This Month</option>
+                <option value="custom">Custom Month</option>
+              </select>
+              <div v-if="dateFilterType === 'custom'" class="relative">
+                <button
+                  class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 h-full"
+                  @click.stop="toggleCustomMonthPicker"
+                >
+                  <Calendar class="w-4 h-4" />
+                </button>
+                <div
+                  v-if="showCustomMonthPicker"
+                  data-custom-month-picker
+                  class="absolute top-full right-0 mt-1 p-3 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10"
+                  style="min-width: 200px"
+                >
+                  <div class="grid grid-cols-2 gap-2 mb-3" @click.stop>
+                    <select
+                      v-model="customMonthPicker.month"
+                      class="select select-bordered select-sm"
                     >
-                      {{ year }}
-                    </option>
-                  </select>
-                </div>
-                <div class="flex gap-2">
-                  <button
-                    class="btn btn-sm bg-primaryColor font-thin text-white"
-                    @click.stop="selectCustomMonth"
-                  >
-                    Apply
-                  </button>
-                  <button
-                    class="btn btn-sm btn-ghost font-thin"
-                    @click.stop="showCustomMonthPicker = false"
-                  >
-                    Cancel
-                  </button>
+                      <option v-for="month in 12" :key="month" :value="month">
+                        {{
+                          new Date(2024, month - 1).toLocaleDateString(
+                            'en-US',
+                            {
+                              month: 'short',
+                            }
+                          )
+                        }}
+                      </option>
+                    </select>
+                    <select
+                      v-model="customMonthPicker.year"
+                      class="select select-bordered select-sm"
+                    >
+                      <option
+                        v-for="year in availableYears"
+                        :key="year"
+                        :value="year"
+                      >
+                        {{ year }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <button
+                      class="btn btn-sm bg-primaryColor font-thin text-white"
+                      @click.stop="selectCustomMonth"
+                    >
+                      Apply
+                    </button>
+                    <button
+                      class="btn btn-sm btn-ghost font-thin"
+                      @click.stop="showCustomMonthPicker = false"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-
-          <!-- Action Buttons -->
-          <div class="flex gap-2 w-full sm:flex-row flex-col items-center">
-            <button
-              class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
-              @click="clearFilters"
-            >
-              <RefreshCcw class="w-4 h-4 mr-1" />
-              Clear
-            </button>
           </div>
         </div>
       </div>
@@ -827,7 +799,7 @@
               <th class="text-black font-semibold">Quantity</th>
               <th class="text-black font-semibold">Reason</th>
               <th class="text-black font-semibold">Status</th>
-              <th class="text-black font-semibold">Logged By</th>
+              <th class="text-black font-semibold">Received By</th>
               <th class="text-black font-semibold">Date</th>
               <th class="text-black font-semibold">Actions</th>
             </tr>
@@ -861,7 +833,9 @@
               <td>
                 <div class="flex items-center gap-2">
                   <User class="w-4 h-4 text-black/50" />
-                  <span class="text-sm">{{ returnItem.logged_by }}</span>
+                  <span class="text-sm">{{
+                    returnItem.processed_by || returnItem.logged_by || 'N/A'
+                  }}</span>
                 </div>
               </td>
               <td>

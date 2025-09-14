@@ -20,8 +20,10 @@
   import { usePurchaseOrderStore } from '../../stores/purchaseOrderStore.js';
   import { useSupplierStore } from '../../stores/supplierStore.js';
   import { useSupplyRequestStore } from '../../stores/supplyRequestStore.js';
+  import { useAuthStore } from '../../stores/authStore.js';
   import POreturnItems from '../../components/scm/POreturnItems.vue';
   import SupplierRatingModal from '../../components/scm/SupplierRatingModal.vue';
+  import POCompletionModal from '../../components/scm/POCompletionModal.vue';
   import { useRouter } from 'vue-router';
 
   const router = useRouter();
@@ -35,6 +37,14 @@
   const getPhilippineDateString = (date = null) => {
     const targetDate = date || new Date();
     return targetDate.toISOString().split('T')[0];
+  };
+
+  const getCurrentUserName = () => {
+    return (
+      authStore.user?.name ||
+      `${authStore.user?.first_name || ''} ${authStore.user?.last_name || ''}`.trim() ||
+      'Unknown User'
+    );
   };
 
   const formatPhilippineDate = (dateString) => {
@@ -115,6 +125,7 @@
   const purchaseOrderStore = usePurchaseOrderStore();
   const supplierStore = useSupplierStore();
   const supplyRequestStore = useSupplyRequestStore();
+  const authStore = useAuthStore();
 
   // Computed properties
   const suppliers = computed(() => supplierStore.activeSuppliers);
@@ -156,7 +167,7 @@
   // Modal state
   const modal = ref({ type: null, show: false, order: null });
   const receiptModal = ref({ show: false, order: null });
-  const returnModal = ref({ show: false, order: null });
+  const returnModal = ref({ show: false, order: null, loading: false });
   const confirmModal = ref({
     show: false,
     type: '',
@@ -164,10 +175,12 @@
     message: '',
     order: null,
     onConfirm: null,
+    loading: false,
   });
   const auditTrailModal = ref({ show: false, purchaseOrderId: null });
   const ratingModal = ref({ show: false, purchaseOrder: {}, supplierName: '' });
   const grnConfirmModal = ref({ show: false, order: null, loading: false });
+  const completionModal = ref({ show: false, order: null, loading: false });
 
   // Supply request modal state
   const supplyRequestModal = ref({
@@ -1007,36 +1020,27 @@
     // The backend will check which items are actually available when we fetch them
 
     try {
-      // Fetch available items for this supply request
-      const response = await axios.get(
-        `${getApiUrl('purchase-orders/supply-request')}/${request.id}/available-items`
+      // Fetch available items for this supply request using store
+      const availableItems = await purchaseOrderStore.fetchAvailableItems(
+        request.id
       );
 
-      if (response.data.success) {
-        const availableItems = response.data.data;
-
-        if (availableItems.length === 0) {
-          showToast(
-            'error',
-            'No available items found for this supply request'
-          );
-          return;
-        }
-
-        // Update the request with available items
-        request.items = availableItems;
-
-        supplyRequestModal.value.selectedRequest = request;
-        supplyRequestModal.value.selectedItems = [];
-        supplyRequestModal.value.showItemSelection = true;
-
-        showToast(
-          'info',
-          `Select items from supply request ${request.request_id} (${availableItems.length} available items)`
-        );
-      } else {
-        showToast('error', 'Failed to fetch available items');
+      if (availableItems.length === 0) {
+        showToast('error', 'No available items found for this supply request');
+        return;
       }
+
+      // Update the request with available items
+      request.items = availableItems;
+
+      supplyRequestModal.value.selectedRequest = request;
+      supplyRequestModal.value.selectedItems = [];
+      supplyRequestModal.value.showItemSelection = true;
+
+      showToast(
+        'info',
+        `Select items from supply request ${request.request_id} (${availableItems.length} available items)`
+      );
     } catch (error) {
       showToast(
         'error',
@@ -1095,6 +1099,9 @@
       supplyRequestModal.value.selectedRequest.id;
     orderForm.value.total_amount = totalAmount;
 
+    // Auto-generate PO number with PO-{request_id} format
+    orderForm.value.po_number = `PO-${requestId}`;
+
     // Update the supply request display in the form
     orderForm.value.supply_request_display = `${supplyRequestModal.value.selectedRequest.request_id} - ${supplyRequestModal.value.selectedRequest.request_description}`;
     orderForm.value.selected_items_count = selectedItemsCount;
@@ -1131,6 +1138,7 @@
     orderForm.value.selected_items_count = 0;
     orderForm.value.selected_items = [];
     orderForm.value.total_amount = 0;
+    orderForm.value.po_number = ''; // Clear auto-generated PO number
   };
 
   // Receipt methods
@@ -1153,6 +1161,22 @@
         showToast('error', 'No items found for this purchase order');
         return;
       }
+
+      // Debug logging
+      console.log('Order Status:', fullOrderDetails.status);
+      console.log('First Item:', fullOrderDetails.items[0]);
+      console.log(
+        'Received Quantity:',
+        fullOrderDetails.items[0]?.received_quantity
+      );
+      console.log(
+        'Received Unit Price:',
+        fullOrderDetails.items[0]?.received_unit_price
+      );
+      console.log(
+        'Received Total Price:',
+        fullOrderDetails.items[0]?.received_total_price
+      );
 
       receiptModal.value = { show: true, order: fullOrderDetails };
     } catch (error) {
@@ -1180,7 +1204,7 @@
   };
 
   const closeReturnModal = () => {
-    returnModal.value = { show: false, order: null };
+    returnModal.value = { show: false, order: null, loading: false };
     resetReturnForm();
   };
 
@@ -1213,7 +1237,7 @@
         order_date:
           orderForm.value.order_date || new Date().toISOString().split('T')[0],
         expected_delivery: orderForm.value.expected_delivery || null,
-        created_by: 'SCM User',
+        created_by: getCurrentUserName(),
       };
 
       let createdOrder;
@@ -1409,6 +1433,7 @@
       showToast('error', err.message || 'Failed to log return');
     } finally {
       loading.value = false;
+      returnModal.value.loading = false;
     }
   };
 
@@ -1474,16 +1499,19 @@
       message: '',
       order: null,
       onConfirm: null,
+      loading: false,
     };
   };
 
   const handleConfirmAction = async () => {
     if (confirmModal.value.onConfirm) {
       try {
+        confirmModal.value.loading = true;
         await confirmModal.value.onConfirm();
         closeConfirmModal();
       } catch (error) {
         console.error('Confirmation action failed:', error);
+        confirmModal.value.loading = false;
       }
     }
   };
@@ -1561,6 +1589,7 @@
       return;
     }
 
+    returnModal.value.loading = true;
     openConfirmModal('return');
   };
 
@@ -1718,6 +1747,101 @@
       order: null,
       loading: false,
     };
+  };
+
+  // Completion modal methods
+  const openCompletionModal = async (order) => {
+    if (order.status === 'Completed') {
+      showToast('error', 'Purchase order is already completed');
+      return;
+    }
+
+    try {
+      loading.value = true;
+      const fullOrderDetails = await purchaseOrderStore.fetchPurchaseOrderById(
+        order.id
+      );
+      completionModal.value = {
+        show: true,
+        order: fullOrderDetails,
+        loading: false,
+      };
+    } catch (error) {
+      showToast('error', 'Failed to load order details for completion');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const closeCompletionModal = () => {
+    completionModal.value = { show: false, order: null, loading: false };
+  };
+
+  const handleCompleteOrder = async (completionData) => {
+    try {
+      completionModal.value.loading = true;
+
+      // Update the purchase order with received quantities
+      const updatedData = {
+        ...completionModal.value.order,
+        status: 'Completed',
+        completion_notes: completionData.completion_notes,
+        completed_by: getCurrentUserName(),
+      };
+
+      // Update items with received quantities - we need to update existing items, not create new ones
+      const updatedItems = completionData.items.map((item) => {
+        // Find the original item from the purchase order
+        const originalItem = completionModal.value.order.items.find(
+          (orig) => orig.id === item.id
+        );
+        return {
+          ...originalItem, // Keep all original item data
+          received_quantity: item.received_quantity,
+          received_unit_price: item.received_unit_price,
+          received_total_price: item.received_total_price,
+          received_at: new Date().toISOString(),
+          received_by: getCurrentUserName(),
+        };
+      });
+
+      await purchaseOrderStore.updatePurchaseOrder(
+        completionModal.value.order.id,
+        updatedData,
+        updatedItems
+      );
+
+      // Store the order data before closing the modal
+      const completedOrder = {
+        ...completionModal.value.order,
+        status: 'Completed',
+      };
+
+      closeCompletionModal();
+      showToast('success', 'Purchase order completed successfully');
+
+      // Check if rating modal should be shown
+      setTimeout(async () => {
+        try {
+          const existingRatingResponse =
+            await purchaseOrderStore.checkPurchaseOrderRating(
+              completedOrder.id
+            );
+          const hasExistingRating =
+            existingRatingResponse && existingRatingResponse.data;
+
+          if (!hasExistingRating) {
+            openRatingModal(completedOrder);
+          }
+        } catch (error) {
+          console.error('Error checking rating:', error);
+        }
+      }, 1000);
+    } catch (error) {
+      showToast('error', error.message || 'Failed to complete purchase order');
+    } finally {
+      completionModal.value.loading = false;
+    }
   };
 
   const handleModalClick = (event) => {
@@ -2344,6 +2468,20 @@
                           >Edit</a
                         >
                       </li>
+                      <!-- Complete Order action for non-completed orders -->
+                      <li
+                        v-if="
+                          order.status !== 'Cancelled' &&
+                          order.status !== 'Completed'
+                        "
+                        class="hover:bg-black/10"
+                      >
+                        <a
+                          @click="openCompletionModal(order)"
+                          class="text-success text-xs sm:text-sm"
+                          >Complete Order</a
+                        >
+                      </li>
                       <!-- Only show Create GRN for completed orders without pending returns -->
                       <li
                         v-if="
@@ -2834,6 +2972,20 @@
                           >View Receipt</a
                         >
                       </li>
+                      <!-- Complete Order action for non-completed orders -->
+                      <li
+                        v-if="
+                          order.status !== 'Cancelled' &&
+                          order.status !== 'Completed'
+                        "
+                        class="hover:bg-black/10"
+                      >
+                        <a
+                          @click="openCompletionModal(order)"
+                          class="text-success text-xs sm:text-sm"
+                          >Complete Order</a
+                        >
+                      </li>
                       <!-- Return Item action moved to GRN workflow -->
                     </ul>
                   </div>
@@ -3081,21 +3233,6 @@
                 Select Request
               </button>
             </div>
-            <div v-if="orderForm.supply_request_display" class="mt-2">
-              <div class="alert alert-info">
-                <div>
-                  <strong>Selected Supply Request:</strong>
-                  {{ orderForm.supply_request_display }}
-                  <br />
-                  <small
-                    >Selected Items: {{ orderForm.selected_items_count }} items
-                    | Total Amount: ₱{{
-                      orderForm.total_amount.toLocaleString()
-                    }}</small
-                  >
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -3110,9 +3247,18 @@
               v-model="orderForm.po_number"
               type="text"
               class="input input-bordered w-full"
-              placeholder="Enter PO number"
+              :placeholder="
+                orderForm.supply_request_id
+                  ? 'Auto-generated from supply request'
+                  : 'Enter PO number'
+              "
               required
-              :disabled="modal.type === 'view' || modal.type === 'edit'"
+              :disabled="
+                modal.type === 'view' ||
+                modal.type === 'edit' ||
+                orderForm.supply_request_id
+              "
+              :readonly="orderForm.supply_request_id"
             />
           </div>
 
@@ -3133,7 +3279,7 @@
                 :key="supplier.id"
                 :value="String(supplier.id)"
               >
-                {{ supplier.name }}
+                {{ supplier.name }} - {{ supplier.category }}
               </option>
             </select>
           </div>
@@ -3274,12 +3420,20 @@
           <button
             type="submit"
             class="btn bg-primaryColor text-white btn-sm font-thin"
+            :class="{ loading: loading }"
+            :disabled="loading"
             v-if="modal.type !== 'view'"
           >
+            <span
+              v-if="loading"
+              class="loading loading-spinner loading-xs"
+            ></span>
             {{
-              modal.type === 'create'
-                ? 'Create Purchase Order'
-                : 'Update Purchase Order'
+              loading
+                ? 'Processing...'
+                : modal.type === 'create'
+                  ? 'Create Purchase Order'
+                  : 'Update Purchase Order'
             }}
           </button>
         </div>
@@ -3745,7 +3899,7 @@
   </div>
 
   <!-- Receipt Modal -->
-  <div v-if="receiptModal.show" class="modal modal-open">
+  <div v-if="receiptModal.show" class="modal modal-open" style="z-index: 9999">
     <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-6xl">
       <div class="flex justify-between items-center mb-2 text-black">
         <div class="flex items-center gap-2 mb-2 w-full">
@@ -3794,10 +3948,28 @@
               <tr class="border border-black">
                 <th class="border border-black">Item No.</th>
                 <th class="border border-black">Item Name</th>
-                <th class="border border-black">Quantity</th>
+                <th class="border border-black">
+                  {{
+                    receiptModal.order.status === 'Completed'
+                      ? 'Received Qty'
+                      : 'Quantity'
+                  }}
+                </th>
                 <th class="border border-black">Unit</th>
-                <th class="border border-black">Unit Price</th>
-                <th class="border border-black">Amount (₱)</th>
+                <th class="border border-black">
+                  {{
+                    receiptModal.order.status === 'Completed'
+                      ? 'Unit Price'
+                      : 'Unit Price'
+                  }}
+                </th>
+                <th class="border border-black">
+                  {{
+                    receiptModal.order.status === 'Completed'
+                      ? 'Paid Amount (₱)'
+                      : 'Amount (₱)'
+                  }}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -3810,17 +3982,38 @@
                 <td class="border border-black">
                   {{ item.item_name || item.name || 'N/A' }}
                 </td>
-                <td class="border border-black">{{ item.quantity || 0 }}</td>
+                <td class="border border-black">
+                  {{
+                    receiptModal.order.status === 'Completed' &&
+                    item.received_quantity
+                      ? item.received_quantity
+                      : item.quantity || 0
+                  }}
+                  <!-- Debug info -->
+                  <div class="text-xs text-gray-400">
+                    Debug: Status={{ receiptModal.order.status }}, Received={{
+                      item.received_quantity
+                    }}, Ordered={{ item.quantity }}
+                  </div>
+                </td>
                 <td class="border border-black">{{ item.unit || 'pcs' }}</td>
                 <td class="border border-black">
-                  ₱{{ Number(item.unit_price || 0).toFixed(2) }}
+                  ₱{{
+                    receiptModal.order.status === 'Completed' &&
+                    item.received_unit_price
+                      ? Number(item.received_unit_price).toFixed(2)
+                      : Number(item.unit_price || 0).toFixed(2)
+                  }}
                 </td>
                 <td class="border border-black">
                   ₱{{
-                    Number(
-                      item.amount ||
-                        (item.quantity || 0) * (item.unit_price || 0)
-                    ).toFixed(2)
+                    receiptModal.order.status === 'Completed' &&
+                    item.received_total_price
+                      ? Number(item.received_total_price).toFixed(2)
+                      : Number(
+                          item.amount ||
+                            (item.quantity || 0) * (item.unit_price || 0)
+                        ).toFixed(2)
                   }}
                 </td>
               </tr>
@@ -3832,11 +4025,61 @@
                   Total
                 </td>
                 <td class="font-semibold border border-black">
-                  ₱{{ Number(receiptModal.order.total_amount || 0).toFixed(2) }}
+                  ₱{{
+                    receiptModal.order.status === 'Completed'
+                      ? Number(
+                          receiptModal.order.items?.reduce(
+                            (sum, item) =>
+                              sum + Number(item.received_total_price || 0),
+                            0
+                          ) || 0
+                        ).toFixed(2)
+                      : Number(receiptModal.order.total_amount || 0).toFixed(2)
+                  }}
                 </td>
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <!-- Order vs Received Summary (for completed orders) -->
+        <div
+          v-if="receiptModal.order.status === 'Completed'"
+          class="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg"
+        >
+          <h6 class="text-sm font-semibold text-yellow-800 mb-2">
+            Order Summary:
+          </h6>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div>
+              <span class="font-medium text-yellow-700">Ordered Amount:</span>
+              <span class="ml-2"
+                >₱{{
+                  Number(receiptModal.order.total_amount || 0).toLocaleString()
+                }}</span
+              >
+            </div>
+            <div>
+              <span class="font-medium text-yellow-700">Received Amount:</span>
+              <span class="ml-2"
+                >₱{{
+                  Number(
+                    receiptModal.order.items?.reduce(
+                      (sum, item) =>
+                        sum + Number(item.received_total_price || 0),
+                      0
+                    ) || 0
+                  ).toLocaleString()
+                }}</span
+              >
+            </div>
+          </div>
+          <div class="mt-2 text-xs text-yellow-600">
+            <em
+              >Note: This receipt shows actual received quantities and
+              amounts.</em
+            >
+          </div>
         </div>
 
         <!-- Notes Section -->
@@ -3863,7 +4106,17 @@
           <div class="flex justify-between items-center">
             <span class="text-sm text-black/70">Total Amount:</span>
             <span class="font-semibold text-black">
-              ₱{{ receiptModal.order.total_amount.toLocaleString() }}
+              ₱{{
+                receiptModal.order.status === 'Completed'
+                  ? Number(
+                      receiptModal.order.items?.reduce(
+                        (sum, item) =>
+                          sum + Number(item.received_total_price || 0),
+                        0
+                      ) || 0
+                    ).toLocaleString()
+                  : receiptModal.order.total_amount.toLocaleString()
+              }}
             </span>
           </div>
           <div
@@ -3991,6 +4244,7 @@
           <button
             type="button"
             class="btn btn-ghost btn-sm font-thin"
+            :disabled="returnModal.loading"
             @click="closeReturnModal"
           >
             Cancel
@@ -3998,8 +4252,14 @@
           <button
             type="submit"
             class="btn bg-primaryColor text-white btn-sm font-thin"
+            :class="{ loading: returnModal.loading }"
+            :disabled="returnModal.loading"
           >
-            Submit Return
+            <span
+              v-if="returnModal.loading"
+              class="loading loading-spinner loading-xs"
+            ></span>
+            {{ returnModal.loading ? 'Processing...' : 'Submit Return' }}
           </button>
         </div>
       </form>
@@ -4017,6 +4277,7 @@
         <button
           type="button"
           class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none btn-sm"
+          :disabled="confirmModal.loading"
           @click="closeConfirmModal"
         >
           Cancel
@@ -4024,9 +4285,15 @@
         <button
           type="button"
           class="btn bg-primaryColor text-white btn-sm font-thin border-none hover:bg-primaryColor/80"
+          :class="{ loading: confirmModal.loading }"
+          :disabled="confirmModal.loading"
           @click="handleConfirmAction"
         >
-          Confirm
+          <span
+            v-if="confirmModal.loading"
+            class="loading loading-spinner loading-xs"
+          ></span>
+          {{ confirmModal.loading ? 'Processing...' : 'Confirm' }}
         </button>
       </div>
     </div>
@@ -4116,6 +4383,15 @@
     :supplier-name="ratingModal.supplierName"
     @close="closeRatingModal"
     @rating-submitted="handleRatingSubmitted"
+  />
+
+  <!-- PO Completion Modal -->
+  <POCompletionModal
+    :show="completionModal.show"
+    :purchase-order="completionModal.order"
+    :loading="completionModal.loading"
+    @close="closeCompletionModal"
+    @complete="handleCompleteOrder"
   />
 </template>
 

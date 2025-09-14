@@ -288,6 +288,44 @@ export const useSupplierStore = defineStore('supplier', () => {
     }
   };
 
+  // Transaction-related methods
+  const fetchSupplierTransactions = async (supplierId, params = {}) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      // Build query string from params
+      const queryParams = new URLSearchParams();
+
+      if (params.status) queryParams.append('status', params.status);
+      if (params.page) queryParams.append('page', params.page);
+      if (params.limit) queryParams.append('limit', params.limit);
+      if (params.month) queryParams.append('month', params.month);
+      if (params.year) queryParams.append('year', params.year);
+
+      const response = await axios.get(
+        `${API_BASE_URL}/suppliers/${supplierId}/transactions?${queryParams.toString()}`
+      );
+
+      if (response.data.success) {
+        return response.data; // Return full response including pagination
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch supplier transactions'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to fetch supplier transactions';
+      console.error('Error fetching supplier transactions:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   return {
     // State
     suppliers,
@@ -311,5 +349,6 @@ export const useSupplierStore = defineStore('supplier', () => {
     deleteSupplier,
     restoreSupplier, // Make sure this is included
     fetchSuppliersWithStats,
+    fetchSupplierTransactions, // NEW: Transaction method
   };
 });

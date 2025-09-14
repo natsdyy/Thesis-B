@@ -477,6 +477,8 @@ router.post("/", async (req, res) => {
  *     responses:
  *       200:
  *         description: Supply request updated successfully
+ *       400:
+ *         description: Can only update requests with 'To Request' or 'Sent Back' status
  *       404:
  *         description: Supply request not found
  *       500:
@@ -494,11 +496,12 @@ router.put("/:id", async (req, res) => {
         message: "Supply request not found",
       });
     }
-    // Check if request can be updated (only 'To Request' status)
-    if (existingRequest.request_status !== "To Request") {
+    // Check if request can be updated (only 'To Request' and 'Sent Back' statuses)
+    if (!["To Request", "Sent Back"].includes(existingRequest.request_status)) {
       return res.status(400).json({
         success: false,
-        message: "Can only update requests with 'To Request' status",
+        message:
+          "Can only update requests with 'To Request' or 'Sent Back' status",
       });
     }
     const updatedRequest = await SupplyRequest.update(id, requestData, items);

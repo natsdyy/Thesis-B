@@ -199,7 +199,7 @@ class GoodsReceiptNote {
           supplier_id: po.supplier_id,
           received_by: grnData.received_by,
           received_date: grnData.received_date || new Date(),
-          status: "draft",
+          status: "pending_inspection",
           notes: grnData.notes,
           is_partial: grnData.is_partial || false,
         })

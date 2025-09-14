@@ -348,18 +348,6 @@
                       View Returns
                     </button>
                     <button
-                      v-if="grn.status === 'draft'"
-                      class="btn btn-xs btn-success text-white font-thin shadow-none"
-                      @click="updateStatus(grn.id, 'pending_inspection')"
-                      :disabled="updatingStatus === grn.id"
-                    >
-                      <span
-                        v-if="updatingStatus === grn.id"
-                        class="loading loading-spinner loading-xs mr-1"
-                      ></span>
-                      Start Inspection
-                    </button>
-                    <button
                       v-if="grn.status === 'passed'"
                       class="btn btn-xs btn-success text-white font-thin shadow-none"
                       @click="updateStatus(grn.id, 'completed')"

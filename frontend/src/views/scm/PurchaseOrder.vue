@@ -21,6 +21,7 @@
   import { useSupplierStore } from '../../stores/supplierStore.js';
   import { useSupplyRequestStore } from '../../stores/supplyRequestStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
+  import { useGRNStore } from '../../stores/grnStore.js';
   import POreturnItems from '../../components/scm/POreturnItems.vue';
   import SupplierRatingModal from '../../components/scm/SupplierRatingModal.vue';
   import POCompletionModal from '../../components/scm/POCompletionModal.vue';
@@ -125,6 +126,7 @@
   const purchaseOrderStore = usePurchaseOrderStore();
   const supplierStore = useSupplierStore();
   const supplyRequestStore = useSupplyRequestStore();
+  const grnStore = useGRNStore();
   const authStore = useAuthStore();
 
   // Computed properties
@@ -603,16 +605,7 @@
 
   const checkGRNCreationEligibility = async (order) => {
     try {
-      const response = await fetch(
-        getApiUrl(`purchase-orders/${order.id}/can-create-grn`)
-      );
-      const data = await response.json();
-
-      if (data.success) {
-        return data.data;
-      } else {
-        throw new Error(data.message || 'Failed to check GRN eligibility');
-      }
+      return await grnStore.checkGRNCreationEligibility(order.id);
     } catch (error) {
       console.error('Error checking GRN eligibility:', error);
       return { canCreate: false, reason: 'Error checking eligibility' };
@@ -1695,40 +1688,27 @@
 
     try {
       grnConfirmModal.value.loading = true;
-      const { useAuthStore } = await import('../../stores/authStore.js');
-      const authStore = useAuthStore();
 
-      // Use the same endpoint as the original method
-      const response = await fetch(getApiUrl(`grn/from-po/${order.id}`), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          received_by: authStore.user.id,
-          received_date: new Date().toISOString().split('T')[0],
-          notes: `GRN created from PO ${order.po_number}`,
-          is_partial: false,
-        }),
-      });
+      const grnData = {
+        received_by: authStore.user.id,
+        received_date: new Date().toISOString().split('T')[0],
+        notes: `GRN created from PO ${order.po_number}`,
+        is_partial: false,
+      };
 
-      const data = await response.json();
+      await grnStore.createGRNFromPO(order.id, grnData);
+      
+      showToast('success', 'GRN created successfully!');
 
-      if (data.success) {
-        showToast('success', 'GRN created successfully!');
+      // Immediately close the modal and reset state
+      closeGRNConfirmModal();
 
-        // Immediately close the modal and reset state
-        closeGRNConfirmModal();
-
-        // Refresh the orders list in the background (non-blocking)
-        purchaseOrderStore
-          .fetchPurchaseOrders()
-          .catch((err) =>
-            console.error('Error refreshing orders after GRN:', err)
-          );
-      } else {
-        throw new Error(data.message || 'Failed to create GRN');
-      }
+      // Refresh the orders list in the background (non-blocking)
+      purchaseOrderStore
+        .fetchPurchaseOrders()
+        .catch((err) =>
+          console.error('Error refreshing orders after GRN:', err)
+        );
     } catch (error) {
       console.error('Error creating GRN:', error);
       showToast('error', error.message || 'Failed to create GRN');

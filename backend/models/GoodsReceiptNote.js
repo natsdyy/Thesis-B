@@ -262,19 +262,25 @@ class GoodsReceiptNote {
           .whereNull("poi.deleted_at");
       }
 
-      const grnItems = poItemsWithInventoryData.map((item) => ({
-        grn_id: grn.id,
-        purchase_order_item_id: item.id,
-        // Auto-populate item_type_id from supply request data
-        item_type_id: item.inventory_item_type_id || null,
-        received_quantity: grnData.is_partial ? 0 : item.quantity,
-        ordered_quantity: item.quantity,
-        unit_cost: item.unit_price,
-        total_value: (grnData.is_partial ? 0 : item.quantity) * item.unit_price,
-        batch_number: null,
-        expiry_date: null,
-        quality_status: "pending",
-      }));
+      const grnItems = poItemsWithInventoryData.map((item) => {
+        // Use actual received quantity if available, otherwise fall back to ordered quantity
+        const actualReceivedQuantity = item.received_quantity || item.quantity;
+        const receivedQty = grnData.is_partial ? 0 : actualReceivedQuantity;
+
+        return {
+          grn_id: grn.id,
+          purchase_order_item_id: item.id,
+          // Auto-populate item_type_id from supply request data
+          item_type_id: item.inventory_item_type_id || null,
+          received_quantity: receivedQty,
+          ordered_quantity: item.quantity,
+          unit_cost: item.unit_price,
+          total_value: receivedQty * item.unit_price,
+          batch_number: null,
+          expiry_date: null,
+          quality_status: "pending",
+        };
+      });
 
       await trx("grn_items").insert(grnItems);
 

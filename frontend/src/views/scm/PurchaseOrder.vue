@@ -16,16 +16,12 @@
     Calendar,
     Link,
     ReceiptText,
-    Filter,
   } from 'lucide-vue-next';
   import { usePurchaseOrderStore } from '../../stores/purchaseOrderStore.js';
   import { useSupplierStore } from '../../stores/supplierStore.js';
   import { useSupplyRequestStore } from '../../stores/supplyRequestStore.js';
-  import { useAuthStore } from '../../stores/authStore.js';
-  import { useGRNStore } from '../../stores/grnStore.js';
   import POreturnItems from '../../components/scm/POreturnItems.vue';
   import SupplierRatingModal from '../../components/scm/SupplierRatingModal.vue';
-  import POCompletionModal from '../../components/scm/POCompletionModal.vue';
   import { useRouter } from 'vue-router';
 
   const router = useRouter();
@@ -39,14 +35,6 @@
   const getPhilippineDateString = (date = null) => {
     const targetDate = date || new Date();
     return targetDate.toISOString().split('T')[0];
-  };
-
-  const getCurrentUserName = () => {
-    return (
-      authStore.user?.name ||
-      `${authStore.user?.first_name || ''} ${authStore.user?.last_name || ''}`.trim() ||
-      'Unknown User'
-    );
   };
 
   const formatPhilippineDate = (dateString) => {
@@ -127,8 +115,6 @@
   const purchaseOrderStore = usePurchaseOrderStore();
   const supplierStore = useSupplierStore();
   const supplyRequestStore = useSupplyRequestStore();
-  const grnStore = useGRNStore();
-  const authStore = useAuthStore();
 
   // Computed properties
   const suppliers = computed(() => supplierStore.activeSuppliers);
@@ -162,17 +148,6 @@
   const historyOrdersPerPage = ref(3);
   const historyFilterType = ref('today');
   const showCustomMonthPicker = ref(false);
-
-  // Date filter state
-  const dateFilterType = ref('today');
-  const showDateDropdown = ref(false);
-
-  // Status filter dropdown state
-  const showStatusDropdown = ref(false);
-  const showHistoryStatusDropdown = ref(false);
-
-  // History date filter dropdown state
-  const showHistoryDateDropdown = ref(false);
   const customMonthPicker = ref({
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
@@ -181,7 +156,7 @@
   // Modal state
   const modal = ref({ type: null, show: false, order: null });
   const receiptModal = ref({ show: false, order: null });
-  const returnModal = ref({ show: false, order: null, loading: false });
+  const returnModal = ref({ show: false, order: null });
   const confirmModal = ref({
     show: false,
     type: '',
@@ -189,12 +164,10 @@
     message: '',
     order: null,
     onConfirm: null,
-    loading: false,
   });
   const auditTrailModal = ref({ show: false, purchaseOrderId: null });
   const ratingModal = ref({ show: false, purchaseOrder: {}, supplierName: '' });
   const grnConfirmModal = ref({ show: false, order: null, loading: false });
-  const completionModal = ref({ show: false, order: null, loading: false });
 
   // Supply request modal state
   const supplyRequestModal = ref({
@@ -248,7 +221,13 @@
     'Completed',
     'Cancelled',
   ];
-  const activeOrderStatuses = ['Draft', 'Sent', 'Confirmed', 'In Progress'];
+  const activeOrderStatuses = [
+    'Draft',
+    'Sent',
+    'Confirmed',
+    'In Progress',
+    'Completed',
+  ];
   const historyOrderStatuses = ['Completed', 'Cancelled'];
   const months = [
     { value: 1, label: 'Jan' },
@@ -268,55 +247,35 @@
   // Date filtering computed properties
   const quickDateOptions = computed(() => {
     const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
     const toYMD = (date) =>
       date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 
-    // Calculate start of week (Monday)
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - today.getDay() + 1);
-
-    // Calculate start of month
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-
     const options = [
-      { label: 'This Week', type: 'week', count: 0 },
-      { label: 'Today', type: 'today', date: toYMD(today), count: 0 },
-      { label: 'This Month', type: 'month', count: 0 },
+      { label: 'Yesterday', date: toYMD(yesterday), count: 0 },
+      { label: 'Today', date: toYMD(today), count: 0 },
+      { label: 'Tomorrow', date: toYMD(tomorrow), count: 0 },
     ];
 
-    // Calculate counts based on actual purchase order data (only active orders)
+    // Calculate counts based on actual purchase order data
     options.forEach((option) => {
       option.count = purchaseOrderStore.purchaseOrders.filter((order) => {
-        // Filter out cancelled and completed orders for active tab counts
-        if (order.status === 'Cancelled' || order.status === 'Completed')
-          return false;
+        // Filter out cancelled orders
+        if (order.status === 'Cancelled') return false;
 
-        const orderDate = new Date(order.order_date + 'T00:00:00');
-        orderDate.setHours(0, 0, 0, 0);
-
-        switch (option.type) {
-          case 'today':
-            const todayDate = new Date(today);
-            todayDate.setHours(0, 0, 0, 0);
-            return orderDate.getTime() === todayDate.getTime();
-
-          case 'week':
-            const weekStart = new Date(startOfWeek);
-            weekStart.setHours(0, 0, 0, 0);
-            const weekEnd = new Date(today);
-            weekEnd.setHours(23, 59, 59, 999);
-            return orderDate >= weekStart && orderDate <= weekEnd;
-
-          case 'month':
-            const monthStart = new Date(startOfMonth);
-            monthStart.setHours(0, 0, 0, 0);
-            const monthEnd = new Date(today);
-            monthEnd.setHours(23, 59, 59, 999);
-            return orderDate >= monthStart && orderDate <= monthEnd;
-
-          default:
-            return false;
-        }
+        // Convert UTC to Asia/Manila and get YYYY-MM-DD
+        const manilaDate = new Date(
+          new Date(order.order_date).toLocaleString('en-US', {
+            timeZone: 'Asia/Manila',
+          })
+        );
+        const normalized = manilaDate.toLocaleDateString('en-CA', {
+          timeZone: 'Asia/Manila',
+        });
+        return normalized === option.date;
       }).length;
     });
 
@@ -333,82 +292,22 @@
     // Early return for better performance
     if (!purchaseOrderStore.purchaseOrders.length) return [];
 
-    // Filter for active orders (not cancelled, and not completed for active tab)
-    let filtered = purchaseOrderStore.purchaseOrders.filter((order) => {
-      if (order.status === 'Cancelled') return false;
-      // For active tab, exclude completed orders (they go to history)
-      if (activeTab.value === 'active' && order.status === 'Completed')
-        return false;
-      return true;
-    });
+    let filtered = purchaseOrderStore.purchaseOrders.filter(
+      (order) => order.status !== 'Cancelled'
+    );
 
-    // Only apply date filtering for active orders tab
-    if (activeTab.value === 'active' && dateFilterType.value) {
-      const today = new Date();
-
-      switch (dateFilterType.value) {
-        case 'today':
-          const todayDate = new Date(today);
-          todayDate.setHours(0, 0, 0, 0);
-          filtered = filtered.filter((order) => {
-            const orderDate = new Date(order.order_date + 'T00:00:00');
-            orderDate.setHours(0, 0, 0, 0);
-            return orderDate.getTime() === todayDate.getTime();
-          });
-          break;
-
-        case 'week':
-          const startOfWeek = new Date(today);
-          startOfWeek.setDate(today.getDate() - today.getDay() + 1);
-          startOfWeek.setHours(0, 0, 0, 0);
-          const weekEnd = new Date(today);
-          weekEnd.setHours(23, 59, 59, 999);
-          filtered = filtered.filter((order) => {
-            const orderDate = new Date(order.order_date + 'T00:00:00');
-            orderDate.setHours(0, 0, 0, 0);
-            return orderDate >= startOfWeek && orderDate <= weekEnd;
-          });
-          break;
-
-        case 'month':
-          const startOfMonth = new Date(
-            today.getFullYear(),
-            today.getMonth(),
-            1
-          );
-          startOfMonth.setHours(0, 0, 0, 0);
-          const monthEnd = new Date(today);
-          monthEnd.setHours(23, 59, 59, 999);
-          filtered = filtered.filter((order) => {
-            const orderDate = new Date(order.order_date + 'T00:00:00');
-            orderDate.setHours(0, 0, 0, 0);
-            return orderDate >= startOfMonth && orderDate <= monthEnd;
-          });
-          break;
-
-        case 'custom':
-          // Custom month filter - filter by selected month and year
-          const customStartOfMonth = new Date(
-            customMonthPicker.value.year,
-            customMonthPicker.value.month - 1,
-            1
-          );
-          customStartOfMonth.setHours(0, 0, 0, 0);
-          const customEndOfMonth = new Date(
-            customMonthPicker.value.year,
-            customMonthPicker.value.month,
-            0
-          );
-          customEndOfMonth.setHours(23, 59, 59, 999);
-          filtered = filtered.filter((order) => {
-            const orderDate = new Date(order.order_date + 'T00:00:00');
-            orderDate.setHours(0, 0, 0, 0);
-            return (
-              orderDate >= customStartOfMonth && orderDate <= customEndOfMonth
-            );
-          });
-          break;
-      }
+    if (selectedDate.value) {
+      filtered = filtered.filter((order) => {
+        const orderDate = new Date(
+          new Date(order.order_date).toLocaleString('en-US', {
+            timeZone: 'Asia/Manila',
+          })
+        );
+        const normalized = orderDate.toLocaleDateString('en-CA', {
+          timeZone: 'Asia/Manila',
+        });
+        return normalized === selectedDate.value;
+      });
     }
     return filtered;
   });
@@ -641,69 +540,11 @@
   });
 
   // Filter options
-  const historyFilterOptions = computed(() => {
-    // Use Philippine timezone for consistent date handling
-    const today = new Date();
-    const philippineToday = new Date(
-      today.toLocaleString('en-US', { timeZone: 'Asia/Manila' })
-    );
-    const options = [
-      { type: 'today', label: 'Today', count: 0 },
-      { type: 'week', label: 'This Week', count: 0 },
-      { type: 'month', label: 'This Month', count: 0 },
-    ];
-
-    // Calculate counts based on actual history orders data
-    options.forEach((option) => {
-      option.count = historyOrders.value.filter((order) => {
-        // Convert order date to Philippine timezone
-        const orderDate = new Date(order.order_date);
-        const philippineOrderDate = new Date(
-          orderDate.toLocaleString('en-US', { timeZone: 'Asia/Manila' })
-        );
-        philippineOrderDate.setHours(0, 0, 0, 0);
-
-        switch (option.type) {
-          case 'today':
-            const todayDate = new Date(philippineToday);
-            todayDate.setHours(0, 0, 0, 0);
-            return philippineOrderDate.getTime() === todayDate.getTime();
-
-          case 'week':
-            const startOfWeek = new Date(philippineToday);
-            startOfWeek.setDate(
-              philippineToday.getDate() - philippineToday.getDay() + 1
-            );
-            startOfWeek.setHours(0, 0, 0, 0);
-            const weekEnd = new Date(philippineToday);
-            weekEnd.setHours(23, 59, 59, 999);
-            return (
-              philippineOrderDate >= startOfWeek &&
-              philippineOrderDate <= weekEnd
-            );
-
-          case 'month':
-            const startOfMonth = new Date(
-              philippineToday.getFullYear(),
-              philippineToday.getMonth(),
-              1
-            );
-            startOfMonth.setHours(0, 0, 0, 0);
-            const monthEnd = new Date(philippineToday);
-            monthEnd.setHours(23, 59, 59, 999);
-            return (
-              philippineOrderDate >= startOfMonth &&
-              philippineOrderDate <= monthEnd
-            );
-
-          default:
-            return false;
-        }
-      }).length;
-    });
-
-    return options;
-  });
+  const historyFilterOptions = ref([
+    { type: 'today', label: 'Today', count: 0 },
+    { type: 'week', label: 'This Week', count: 0 },
+    { type: 'month', label: 'This Month', count: 0 },
+  ]);
 
   const supplyRequestFilterOptions = ref([
     { type: 'today', label: 'Today', count: 0 },
@@ -749,7 +590,16 @@
 
   const checkGRNCreationEligibility = async (order) => {
     try {
-      return await grnStore.checkGRNCreationEligibility(order.id);
+      const response = await fetch(
+        getApiUrl(`purchase-orders/${order.id}/can-create-grn`)
+      );
+      const data = await response.json();
+
+      if (data.success) {
+        return data.data;
+      } else {
+        throw new Error(data.message || 'Failed to check GRN eligibility');
+      }
     } catch (error) {
       console.error('Error checking GRN eligibility:', error);
       return { canCreate: false, reason: 'Error checking eligibility' };
@@ -789,9 +639,9 @@
       );
 
       if (hasPassedOrCompleted) {
-        // Don't allow new GRN creation if there's already a completed GRN
-        // Failed items should be handled through returns, not new GRNs
-        return false;
+        // Allow creation if there are failed items that can be retried
+        // This matches the backend logic we updated
+        return true;
       }
 
       // If we reach here, check if all GRNs are failed
@@ -825,7 +675,7 @@
         (status) => status === 'passed' || status === 'completed'
       );
       if (hasPassedOrCompleted) {
-        return 'Cannot create GRN: Order already has a completed GRN';
+        return 'Can create new GRN: Failed items from completed GRN can be retried';
       }
 
       // Check if all GRNs are failed
@@ -874,107 +724,9 @@
 
   // Date navigation methods
   const selectQuickDate = (dateOption) => {
-    dateFilterType.value = dateOption.type;
+    selectedDate.value = dateOption.date;
     currentPage.value = 1;
     showDatePicker.value = false;
-    showDateDropdown.value = false; // Close dropdown after selection
-  };
-
-  // Date dropdown functions
-  const toggleDateDropdown = () => {
-    showDateDropdown.value = !showDateDropdown.value;
-  };
-
-  const closeDateDropdown = () => {
-    showDateDropdown.value = false;
-  };
-
-  // Display text for current date filter
-  const getDateFilterDisplayText = () => {
-    switch (dateFilterType.value) {
-      case 'today':
-        return `Today (${formatDate(new Date())})`;
-      case 'week': {
-        const startOfWeek = new Date();
-        startOfWeek.setDate(new Date().getDate() - new Date().getDay() + 1);
-        return `This Week (${formatDate(startOfWeek)} - ${formatDate(new Date())})`;
-      }
-      case 'month': {
-        const startOfMonth = new Date(
-          new Date().getFullYear(),
-          new Date().getMonth(),
-          1
-        );
-        return `This Month (${formatDate(startOfMonth)} - ${formatDate(new Date())})`;
-      }
-      case 'custom': {
-        const monthName = months.find(
-          (m) => m.value === customMonthPicker.value.month
-        )?.label;
-        return `${monthName} ${customMonthPicker.value.year}`;
-      }
-      default:
-        return 'All Orders';
-    }
-  };
-
-  // Watch for tab changes and reset date filter
-  watch(activeTab, (newTab) => {
-    if (newTab === 'active') {
-      // Reset to today filter for active orders
-      dateFilterType.value = 'today';
-      // Clear status filter if it's set to Completed (not valid for active orders)
-      if (statusFilter.value === 'Completed') {
-        statusFilter.value = '';
-      }
-    }
-    // For history tab, keep the existing history filter logic
-  });
-
-  // Status dropdown functions
-  const toggleStatusDropdown = () => {
-    showStatusDropdown.value = !showStatusDropdown.value;
-  };
-
-  const closeStatusDropdown = () => {
-    showStatusDropdown.value = false;
-  };
-
-  const selectStatusFilter = (status) => {
-    statusFilter.value = statusFilter.value === status ? '' : status;
-    currentPage.value = 1;
-    showStatusDropdown.value = false; // Close dropdown after selection
-  };
-
-  // History status dropdown functions
-  const toggleHistoryStatusDropdown = () => {
-    showHistoryStatusDropdown.value = !showHistoryStatusDropdown.value;
-  };
-
-  const closeHistoryStatusDropdown = () => {
-    showHistoryStatusDropdown.value = false;
-  };
-
-  const selectHistoryStatusFilter = (status) => {
-    historyStatusFilter.value =
-      historyStatusFilter.value === status ? '' : status;
-    historyCurrentPage.value = 1;
-    showHistoryStatusDropdown.value = false; // Close dropdown after selection
-  };
-
-  // History date dropdown functions
-  const toggleHistoryDateDropdown = () => {
-    showHistoryDateDropdown.value = !showHistoryDateDropdown.value;
-  };
-
-  const closeHistoryDateDropdown = () => {
-    showHistoryDateDropdown.value = false;
-  };
-
-  const selectHistoryDateFilter = (option) => {
-    historyFilterType.value = option.type;
-    historyCurrentPage.value = 1;
-    showHistoryDateDropdown.value = false; // Close dropdown after selection
   };
 
   const selectCustomDate = (event) => {
@@ -1056,40 +808,6 @@
     historyFilterType.value = 'custom';
     historyCurrentPage.value = 1;
     showCustomMonthPicker.value = false;
-  };
-
-  // Active Orders custom month picker functions
-  const toggleActiveCustomMonthPicker = () => {
-    showCustomMonthPicker.value = !showCustomMonthPicker.value;
-    if (showCustomMonthPicker.value) dateFilterType.value = 'custom';
-  };
-
-  const applyActiveCustomMonthFilter = () => {
-    // Set the selected date to the first day of the selected month in Philippine timezone
-    const selectedDate = new Date(
-      customMonthPicker.value.year,
-      customMonthPicker.value.month - 1,
-      1
-    );
-
-    // Convert to Philippine timezone and format as YYYY-MM-DD
-    const philippineDate = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Manila',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(selectedDate);
-
-    // Set the date filter to custom and update the display
-    dateFilterType.value = 'custom';
-    currentPage.value = 1;
-    showCustomMonthPicker.value = false;
-
-    console.log('Applied custom month filter for Active Orders:', {
-      selectedMonth: customMonthPicker.value.month,
-      selectedYear: customMonthPicker.value.year,
-      selectedDate: philippineDate,
-    });
   };
 
   const clearHistoryFilters = () => {
@@ -1289,27 +1007,36 @@
     // The backend will check which items are actually available when we fetch them
 
     try {
-      // Fetch available items for this supply request using store
-      const availableItems = await purchaseOrderStore.fetchAvailableItems(
-        request.id
+      // Fetch available items for this supply request
+      const response = await axios.get(
+        `${getApiUrl('purchase-orders/supply-request')}/${request.id}/available-items`
       );
 
-      if (availableItems.length === 0) {
-        showToast('error', 'No available items found for this supply request');
-        return;
+      if (response.data.success) {
+        const availableItems = response.data.data;
+
+        if (availableItems.length === 0) {
+          showToast(
+            'error',
+            'No available items found for this supply request'
+          );
+          return;
+        }
+
+        // Update the request with available items
+        request.items = availableItems;
+
+        supplyRequestModal.value.selectedRequest = request;
+        supplyRequestModal.value.selectedItems = [];
+        supplyRequestModal.value.showItemSelection = true;
+
+        showToast(
+          'info',
+          `Select items from supply request ${request.request_id} (${availableItems.length} available items)`
+        );
+      } else {
+        showToast('error', 'Failed to fetch available items');
       }
-
-      // Update the request with available items
-      request.items = availableItems;
-
-      supplyRequestModal.value.selectedRequest = request;
-      supplyRequestModal.value.selectedItems = [];
-      supplyRequestModal.value.showItemSelection = true;
-
-      showToast(
-        'info',
-        `Select items from supply request ${request.request_id} (${availableItems.length} available items)`
-      );
     } catch (error) {
       showToast(
         'error',
@@ -1368,9 +1095,6 @@
       supplyRequestModal.value.selectedRequest.id;
     orderForm.value.total_amount = totalAmount;
 
-    // Auto-generate PO number with PO-{request_id} format
-    orderForm.value.po_number = `PO-${requestId}`;
-
     // Update the supply request display in the form
     orderForm.value.supply_request_display = `${supplyRequestModal.value.selectedRequest.request_id} - ${supplyRequestModal.value.selectedRequest.request_description}`;
     orderForm.value.selected_items_count = selectedItemsCount;
@@ -1407,7 +1131,6 @@
     orderForm.value.selected_items_count = 0;
     orderForm.value.selected_items = [];
     orderForm.value.total_amount = 0;
-    orderForm.value.po_number = ''; // Clear auto-generated PO number
   };
 
   // Receipt methods
@@ -1430,22 +1153,6 @@
         showToast('error', 'No items found for this purchase order');
         return;
       }
-
-      // Debug logging
-      console.log('Order Status:', fullOrderDetails.status);
-      console.log('First Item:', fullOrderDetails.items[0]);
-      console.log(
-        'Received Quantity:',
-        fullOrderDetails.items[0]?.received_quantity
-      );
-      console.log(
-        'Received Unit Price:',
-        fullOrderDetails.items[0]?.received_unit_price
-      );
-      console.log(
-        'Received Total Price:',
-        fullOrderDetails.items[0]?.received_total_price
-      );
 
       receiptModal.value = { show: true, order: fullOrderDetails };
     } catch (error) {
@@ -1473,7 +1180,7 @@
   };
 
   const closeReturnModal = () => {
-    returnModal.value = { show: false, order: null, loading: false };
+    returnModal.value = { show: false, order: null };
     resetReturnForm();
   };
 
@@ -1506,7 +1213,7 @@
         order_date:
           orderForm.value.order_date || new Date().toISOString().split('T')[0],
         expected_delivery: orderForm.value.expected_delivery || null,
-        created_by: getCurrentUserName(),
+        created_by: 'SCM User',
       };
 
       let createdOrder;
@@ -1702,7 +1409,6 @@
       showToast('error', err.message || 'Failed to log return');
     } finally {
       loading.value = false;
-      returnModal.value.loading = false;
     }
   };
 
@@ -1768,19 +1474,16 @@
       message: '',
       order: null,
       onConfirm: null,
-      loading: false,
     };
   };
 
   const handleConfirmAction = async () => {
     if (confirmModal.value.onConfirm) {
       try {
-        confirmModal.value.loading = true;
         await confirmModal.value.onConfirm();
         closeConfirmModal();
       } catch (error) {
         console.error('Confirmation action failed:', error);
-        confirmModal.value.loading = false;
       }
     }
   };
@@ -1858,7 +1561,6 @@
       return;
     }
 
-    returnModal.value.loading = true;
     openConfirmModal('return');
   };
 
@@ -1964,27 +1666,40 @@
 
     try {
       grnConfirmModal.value.loading = true;
+      const { useAuthStore } = await import('../../stores/authStore.js');
+      const authStore = useAuthStore();
 
-      const grnData = {
-        received_by: authStore.user.id,
-        received_date: new Date().toISOString().split('T')[0],
-        notes: `GRN created from PO ${order.po_number}`,
-        is_partial: false,
-      };
+      // Use the same endpoint as the original method
+      const response = await fetch(getApiUrl(`grn/from-po/${order.id}`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          received_by: authStore.user.id,
+          received_date: new Date().toISOString().split('T')[0],
+          notes: `GRN created from PO ${order.po_number}`,
+          is_partial: false,
+        }),
+      });
 
-      await grnStore.createGRNFromPO(order.id, grnData);
+      const data = await response.json();
 
-      showToast('success', 'GRN created successfully!');
+      if (data.success) {
+        showToast('success', 'GRN created successfully!');
 
-      // Immediately close the modal and reset state
-      closeGRNConfirmModal();
+        // Immediately close the modal and reset state
+        closeGRNConfirmModal();
 
-      // Refresh the orders list in the background (non-blocking)
-      purchaseOrderStore
-        .fetchPurchaseOrders()
-        .catch((err) =>
-          console.error('Error refreshing orders after GRN:', err)
-        );
+        // Refresh the orders list in the background (non-blocking)
+        purchaseOrderStore
+          .fetchPurchaseOrders()
+          .catch((err) =>
+            console.error('Error refreshing orders after GRN:', err)
+          );
+      } else {
+        throw new Error(data.message || 'Failed to create GRN');
+      }
     } catch (error) {
       console.error('Error creating GRN:', error);
       showToast('error', error.message || 'Failed to create GRN');
@@ -2003,101 +1718,6 @@
       order: null,
       loading: false,
     };
-  };
-
-  // Completion modal methods
-  const openCompletionModal = async (order) => {
-    if (order.status === 'Completed') {
-      showToast('error', 'Purchase order is already completed');
-      return;
-    }
-
-    try {
-      loading.value = true;
-      const fullOrderDetails = await purchaseOrderStore.fetchPurchaseOrderById(
-        order.id
-      );
-      completionModal.value = {
-        show: true,
-        order: fullOrderDetails,
-        loading: false,
-      };
-    } catch (error) {
-      showToast('error', 'Failed to load order details for completion');
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const closeCompletionModal = () => {
-    completionModal.value = { show: false, order: null, loading: false };
-  };
-
-  const handleCompleteOrder = async (completionData) => {
-    try {
-      completionModal.value.loading = true;
-
-      // Update the purchase order with received quantities
-      const updatedData = {
-        ...completionModal.value.order,
-        status: 'Completed',
-        completion_notes: completionData.completion_notes,
-        completed_by: getCurrentUserName(),
-      };
-
-      // Update items with received quantities - we need to update existing items, not create new ones
-      const updatedItems = completionData.items.map((item) => {
-        // Find the original item from the purchase order
-        const originalItem = completionModal.value.order.items.find(
-          (orig) => orig.id === item.id
-        );
-        return {
-          ...originalItem, // Keep all original item data
-          received_quantity: item.received_quantity,
-          received_unit_price: item.received_unit_price,
-          received_total_price: item.received_total_price,
-          received_at: new Date().toISOString(),
-          received_by: getCurrentUserName(),
-        };
-      });
-
-      await purchaseOrderStore.updatePurchaseOrder(
-        completionModal.value.order.id,
-        updatedData,
-        updatedItems
-      );
-
-      // Store the order data before closing the modal
-      const completedOrder = {
-        ...completionModal.value.order,
-        status: 'Completed',
-      };
-
-      closeCompletionModal();
-      showToast('success', 'Purchase order completed successfully');
-
-      // Check if rating modal should be shown
-      setTimeout(async () => {
-        try {
-          const existingRatingResponse =
-            await purchaseOrderStore.checkPurchaseOrderRating(
-              completedOrder.id
-            );
-          const hasExistingRating =
-            existingRatingResponse && existingRatingResponse.data;
-
-          if (!hasExistingRating) {
-            openRatingModal(completedOrder);
-          }
-        } catch (error) {
-          console.error('Error checking rating:', error);
-        }
-      }, 1000);
-    } catch (error) {
-      showToast('error', error.message || 'Failed to complete purchase order');
-    } finally {
-      completionModal.value.loading = false;
-    }
   };
 
   const handleModalClick = (event) => {
@@ -2198,14 +1818,6 @@
 
       // Add keyboard event listener for Escape key
       document.addEventListener('keydown', handleEscape);
-      // Add click outside listener for date dropdown
-      document.addEventListener('click', closeDateDropdown);
-      // Add click outside listener for status dropdown
-      document.addEventListener('click', closeStatusDropdown);
-      // Add click outside listener for history status dropdown
-      document.addEventListener('click', closeHistoryStatusDropdown);
-      // Add click outside listener for history date dropdown
-      document.addEventListener('click', closeHistoryDateDropdown);
 
       // Handle route query
       try {
@@ -2228,14 +1840,6 @@
     cleanupModals();
     // Remove keyboard event listener
     document.removeEventListener('keydown', handleEscape);
-    // Remove click outside listener for date dropdown
-    document.removeEventListener('click', closeDateDropdown);
-    // Remove click outside listener for status dropdown
-    document.removeEventListener('click', closeStatusDropdown);
-    // Remove click outside listener for history status dropdown
-    document.removeEventListener('click', closeHistoryStatusDropdown);
-    // Remove click outside listener for history date dropdown
-    document.removeEventListener('click', closeHistoryDateDropdown);
   });
 
   // Add keyboard event listener for Escape key
@@ -2409,7 +2013,7 @@
                   :class="{ 'animate-spin': loading }"
                 />
                 <span class="hidden sm:inline">{{
-                  loading ? 'Refreshing...' : 'Refresh'
+                  loading ? 'Refreshing...' : 'Refresh Data'
                 }}</span>
                 <span class="sm:hidden">{{
                   loading ? 'Refreshing...' : 'Refresh'
@@ -2497,7 +2101,7 @@
                   <Calendar class="w-5 h-5 text-primaryColor" />
                   <div>
                     <h3 class="font-semibold text-primaryColor">
-                      {{ getDateFilterDisplayText() }}
+                      {{ formatPhilippineDate(selectedDate) }}
                     </h3>
                     <p class="text-sm text-black/60">
                       Showing {{ filteredOrdersByDate.length }} order{{
@@ -2509,126 +2113,83 @@
 
                 <!-- Date Navigation and Filter Controls -->
                 <div class="flex flex-col sm:flex-row gap-3">
-                  <!-- Quick Date Dropdown -->
-                  <div class="relative" @click.stop>
+                  <!-- Quick Date Buttons -->
+                  <div class="flex gap-2 md:flex-row flex-col">
                     <button
-                      class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                      @click="toggleDateDropdown"
+                      v-for="option in quickDateOptions"
+                      :key="option.date"
+                      class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
+                      :class="{
+                        'bg-primaryColor text-white':
+                          selectedDate === option.date,
+                        'bg-white text-primaryColor hover:bg-primaryColor/10':
+                          selectedDate !== option.date,
+                      }"
+                      @click="selectQuickDate(option)"
                     >
-                      <Filter class="w-4 h-4" />
+                      {{ option.label }}
+                      <span
+                        class="badge badge-xs ml-1 bg-secondaryColor border-none"
+                        :class="
+                          selectedDate === option.date
+                            ? 'badge-ghost'
+                            : 'badge-primaryColor/10 text-primaryColor'
+                        "
+                      >
+                        {{ option.count }}
+                      </span>
                     </button>
-
-                    <!-- Dropdown Menu -->
-                    <div
-                      v-if="showDateDropdown"
-                      class="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50"
-                    >
-                      <div class="py-1">
-                        <button
-                          v-for="option in quickDateOptions"
-                          :key="option.type"
-                          class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
-                          :class="{
-                            'bg-primaryColor/10 text-primaryColor font-medium':
-                              dateFilterType === option.type,
-                            'text-gray-700': dateFilterType !== option.type,
-                          }"
-                          @click="selectQuickDate(option)"
-                        >
-                          <span>{{ option.label }}</span>
-                          <span
-                            class="badge badge-xs bg-secondaryColor border-none"
-                            :class="
-                              dateFilterType === option.type
-                                ? 'badge-ghost'
-                                : 'badge-primaryColor/10 text-primaryColor'
-                            "
-                          >
-                            {{ option.count }}
-                          </span>
-                        </button>
-                      </div>
-                    </div>
                   </div>
 
-                  <!-- Custom Month Picker -->
-                  <div class="relative">
+                  <!-- Date Navigation -->
+                  <div class="flex items-center gap-1">
                     <button
-                      class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                      @click="toggleActiveCustomMonthPicker"
+                      class="btn btn-sm btn-ghost text-primaryColor hover:bg-primaryColor/10"
+                      @click="goToPreviousDay"
+                      title="Previous Day"
                     >
-                      <Calendar class="w-4 h-4 mr-1" />
-                      Custom Month
+                      ‹
                     </button>
 
-                    <!-- Custom Month Picker -->
-                    <div
-                      v-if="showCustomMonthPicker"
-                      class="absolute top-full left-0 mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10 p-3 min-w-64"
-                    >
-                      <div class="flex items-center justify-between mb-3">
-                        <h4 class="font-medium text-sm text-black">
-                          Select Month
-                        </h4>
-                        <button
-                          @click="showCustomMonthPicker = false"
-                          class="btn btn-ghost btn-xs"
-                        >
-                          <X class="w-3 h-3" />
-                        </button>
-                      </div>
+                    <!-- Custom Date Picker -->
+                    <div class="relative">
+                      <button
+                        class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                        @click="toggleDatePicker"
+                      >
+                        <Calendar class="w-4 h-4 mr-1" />
+                        Pick Date
+                      </button>
 
-                      <!-- Month Selection -->
-                      <div class="grid grid-cols-3 gap-2 mb-3">
-                        <button
-                          v-for="month in months"
-                          :key="month.value"
-                          class="btn btn-xs font-thin"
-                          :class="{
-                            'bg-primaryColor text-white':
-                              customMonthPicker.month === month.value,
-                            'btn-ghost':
-                              customMonthPicker.month !== month.value,
-                          }"
-                          @click="customMonthPicker.month = month.value"
-                        >
-                          {{ month.label }}
-                        </button>
-                      </div>
-
-                      <!-- Year Selection -->
-                      <div class="flex items-center gap-2 mb-3">
-                        <span class="text-sm text-black/70">Year:</span>
-                        <select
-                          v-model="customMonthPicker.year"
-                          class="select select-xs select-bordered bg-white border-primaryColor/30 text-black/70"
-                        >
-                          <option
-                            v-for="year in availableYears"
-                            :key="year"
-                            :value="year"
-                          >
-                            {{ year }}
-                          </option>
-                        </select>
-                      </div>
-
-                      <!-- Apply Button -->
-                      <div class="flex gap-2">
-                        <button
-                          @click="applyActiveCustomMonthFilter"
-                          class="btn btn-xs bg-primaryColor text-white font-thin"
-                        >
-                          Apply
-                        </button>
-                        <button
-                          @click="showCustomMonthPicker = false"
-                          class="btn btn-xs btn-ghost font-thin"
-                        >
-                          Cancel
-                        </button>
-                      </div>
+                      <input
+                        v-if="showDatePicker"
+                        type="date"
+                        :value="selectedDate"
+                        @change="selectCustomDate"
+                        @blur="showDatePicker = false"
+                        class="absolute top-full left-0 mt-1 input input-sm input-bordered bg-white border-primaryColor/30 text-black/70 z-10"
+                        style="min-width: 150px"
+                      />
                     </div>
+
+                    <button
+                      class="btn btn-sm btn-ghost text-primaryColor hover:bg-primaryColor/10"
+                      @click="goToNextDay"
+                      title="Next Day"
+                    >
+                      ›
+                    </button>
+
+                    <button
+                      class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                      @click="goToToday"
+                      :class="{
+                        'btn-disabled':
+                          selectedDate === getPhilippineDateString(),
+                      }"
+                    >
+                      Today
+                    </button>
                   </div>
                 </div>
               </div>
@@ -2638,74 +2199,58 @@
             <div
               class="space-y-3 sm:space-y-0 sm:flex sm:flex-wrap sm:gap-2 mb-4"
             >
-              <!-- Status Filter Dropdown -->
+              <!-- Status Filters -->
               <div class="flex flex-col sm:flex-row gap-2">
-                <div class="relative" @click.stop>
+                <span
+                  class="text-xs sm:text-sm text-black/70 font-medium self-start sm:self-center"
+                  >Status:</span
+                >
+                <div class="flex flex-wrap gap-1 sm:gap-2">
                   <button
-                    class="btn btn-xs btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                    @click="toggleStatusDropdown"
+                    v-for="status in activeOrderStatuses"
+                    :key="status"
+                    class="btn btn-xs font-thin border border-primaryColor/30 text-xs"
+                    :class="{
+                      'bg-primaryColor text-white': statusFilter === status,
+                      'bg-white text-primaryColor hover:bg-primaryColor/10':
+                        statusFilter !== status,
+                    }"
+                    @click="
+                      statusFilter = statusFilter === status ? '' : status
+                    "
                   >
-                    <Filter class="w-3 h-3 mr-1" />
-                    {{ statusFilter || 'All Status' }}
+                    {{ status }}
+                    <span
+                      class="badge badge-xs ml-1 bg-secondaryColor border-none"
+                    >
+                      {{
+                        filteredOrdersByDate.filter((o) => o.status === status)
+                          .length
+                      }}
+                    </span>
                   </button>
-
-                  <!-- Dropdown Menu -->
-                  <div
-                    v-if="showStatusDropdown"
-                    class="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50"
-                  >
-                    <div class="py-1">
-                      <button
-                        class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
-                        :class="{
-                          'bg-primaryColor/10 text-primaryColor font-medium':
-                            statusFilter === '',
-                          'text-gray-700': statusFilter !== '',
-                        }"
-                        @click="selectStatusFilter('')"
-                      >
-                        <span>All Status</span>
-                        <span
-                          class="badge badge-xs bg-secondaryColor border-none"
-                          :class="
-                            statusFilter === ''
-                              ? 'badge-ghost'
-                              : 'badge-primaryColor/10 text-primaryColor'
-                          "
-                        >
-                          {{ filteredOrdersByDate.length }}
-                        </span>
-                      </button>
-                      <button
-                        v-for="status in activeOrderStatuses"
-                        :key="status"
-                        class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
-                        :class="{
-                          'bg-primaryColor/10 text-primaryColor font-medium':
-                            statusFilter === status,
-                          'text-gray-700': statusFilter !== status,
-                        }"
-                        @click="selectStatusFilter(status)"
-                      >
-                        <span>{{ status }}</span>
-                        <span
-                          class="badge badge-xs bg-secondaryColor border-none"
-                          :class="
-                            statusFilter === status
-                              ? 'badge-ghost'
-                              : 'badge-primaryColor/10 text-primaryColor'
-                          "
-                        >
-                          {{
-                            filteredOrdersByDate.filter(
-                              (o) => o.status === status
-                            ).length
-                          }}
-                        </span>
-                      </button>
-                    </div>
-                  </div>
                 </div>
+              </div>
+
+              <!-- Supplier Filters -->
+              <div class="flex flex-col sm:flex-row gap-2">
+                <span
+                  class="text-xs sm:text-sm text-black/70 font-medium self-start sm:self-center"
+                  >Supplier:</span
+                >
+                <select
+                  v-model="supplierFilter"
+                  class="select select-xs sm:select-sm select-bordered bg-white !border-primaryColor/30 text-black/70 text-xs sm:text-sm"
+                >
+                  <option value="">All Suppliers</option>
+                  <option
+                    v-for="supplier in uniqueSuppliersByDate"
+                    :key="supplier"
+                    :value="supplier"
+                  >
+                    {{ supplier }}
+                  </option>
+                </select>
               </div>
             </div>
           </div>
@@ -2799,19 +2344,38 @@
                           >Edit</a
                         >
                       </li>
-                      <!-- Complete Order action for non-completed orders -->
+                      <!-- Only show Create GRN for completed orders without pending returns -->
                       <li
                         v-if="
-                          order.status !== 'Cancelled' &&
-                          order.status !== 'Completed'
+                          order.status === 'Completed' && canCreateNewGRN(order)
                         "
                         class="hover:bg-black/10"
                       >
                         <a
-                          @click="openCompletionModal(order)"
+                          @click="createGRNFromPO(order)"
                           class="text-success text-xs sm:text-sm"
-                          >Complete Order</a
                         >
+                          Create GRN
+                        </a>
+                      </li>
+                      <!-- Show disabled Create GRN for completed orders with pending returns -->
+                      <li
+                        v-if="
+                          order.status === 'Completed' &&
+                          !canCreateNewGRN(order)
+                        "
+                        class="hover:bg-black/10 opacity-50 cursor-not-allowed"
+                      >
+                        <a
+                          class="text-black/50 text-xs sm:text-sm cursor-not-allowed"
+                          :title="getGRNCreationReason(order)"
+                        >
+                          <span v-if="hasPendingReturns(order)">
+                            Create GRN ({{ order.pending_returns_count }}
+                            Returns Pending)
+                          </span>
+                          <span v-else> Create GRN (Already Processed) </span>
+                        </a>
                       </li>
                       <!-- Only show Cancel Order for non-cancelled and non-completed orders -->
                       <li
@@ -3015,46 +2579,32 @@
 
                 <!-- Filter Controls -->
                 <div class="flex flex-col sm:flex-row gap-3">
-                  <!-- Quick Date Dropdown -->
-                  <div class="relative" @click.stop>
+                  <!-- Quick Filter Buttons -->
+                  <div class="flex gap-2 md:flex-row flex-col">
                     <button
-                      class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                      @click="toggleHistoryDateDropdown"
+                      v-for="option in historyFilterOptions"
+                      :key="option.type"
+                      class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
+                      :class="{
+                        'bg-primaryColor text-white':
+                          historyFilterType === option.type,
+                        'bg-white text-primaryColor hover:bg-primaryColor/10':
+                          historyFilterType !== option.type,
+                      }"
+                      @click="selectHistoryFilter(option)"
                     >
-                      <Filter class="w-4 h-4" />
+                      {{ option.label }}
+                      <span
+                        class="badge badge-xs ml-1 bg-secondaryColor border-none"
+                        :class="
+                          historyFilterType === option.type
+                            ? 'badge-ghost'
+                            : 'badge-primaryColor/10 text-primaryColor'
+                        "
+                      >
+                        {{ option.count }}
+                      </span>
                     </button>
-
-                    <!-- Dropdown Menu -->
-                    <div
-                      v-if="showHistoryDateDropdown"
-                      class="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50"
-                    >
-                      <div class="py-1">
-                        <button
-                          v-for="option in historyFilterOptions"
-                          :key="option.type"
-                          class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
-                          :class="{
-                            'bg-primaryColor/10 text-primaryColor font-medium':
-                              historyFilterType === option.type,
-                            'text-gray-700': historyFilterType !== option.type,
-                          }"
-                          @click="selectHistoryDateFilter(option)"
-                        >
-                          <span>{{ option.label }}</span>
-                          <span
-                            class="badge badge-xs bg-secondaryColor border-none"
-                            :class="
-                              historyFilterType === option.type
-                                ? 'badge-ghost'
-                                : 'badge-primaryColor/10 text-primaryColor'
-                            "
-                          >
-                            {{ option.count }}
-                          </span>
-                        </button>
-                      </div>
-                    </div>
                   </div>
 
                   <!-- Custom Month Selection -->
@@ -3155,73 +2705,38 @@
             <div
               class="space-y-3 sm:space-y-0 sm:flex sm:flex-wrap sm:gap-2 mb-4"
             >
-              <!-- Status Filter Dropdown -->
+              <!-- Status Filters -->
               <div class="flex flex-col sm:flex-row gap-2">
-                <div class="relative" @click.stop>
+                <span
+                  class="text-xs sm:text-sm text-black/70 font-medium self-start sm:self-center"
+                  >Status:</span
+                >
+                <div class="flex flex-wrap gap-1 sm:gap-2">
                   <button
-                    class="btn btn-xs btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                    @click="toggleHistoryStatusDropdown"
+                    v-for="status in historyOrderStatuses"
+                    :key="status"
+                    class="btn btn-xs font-thin border border-primaryColor/30 text-xs"
+                    :class="{
+                      'bg-primaryColor text-white':
+                        historyStatusFilter === status,
+                      'bg-white text-primaryColor hover:bg-primaryColor/10':
+                        historyStatusFilter !== status,
+                    }"
+                    @click="
+                      historyStatusFilter =
+                        historyStatusFilter === status ? '' : status
+                    "
                   >
-                    <Filter class="w-3 h-3 mr-1" />
-                    {{ historyStatusFilter || 'All Status' }}
+                    {{ status }}
+                    <span
+                      class="badge badge-xs ml-1 bg-secondaryColor border-none"
+                    >
+                      {{
+                        filteredHistoryByDate.filter((o) => o.status === status)
+                          .length
+                      }}
+                    </span>
                   </button>
-
-                  <!-- Dropdown Menu -->
-                  <div
-                    v-if="showHistoryStatusDropdown"
-                    class="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50"
-                  >
-                    <div class="py-1">
-                      <button
-                        class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
-                        :class="{
-                          'bg-primaryColor/10 text-primaryColor font-medium':
-                            historyStatusFilter === '',
-                          'text-gray-700': historyStatusFilter !== '',
-                        }"
-                        @click="selectHistoryStatusFilter('')"
-                      >
-                        <span>All Status</span>
-                        <span
-                          class="badge badge-xs bg-secondaryColor border-none"
-                          :class="
-                            historyStatusFilter === ''
-                              ? 'badge-ghost'
-                              : 'badge-primaryColor/10 text-primaryColor'
-                          "
-                        >
-                          {{ filteredHistoryByDate.length }}
-                        </span>
-                      </button>
-                      <button
-                        v-for="status in historyOrderStatuses"
-                        :key="status"
-                        class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
-                        :class="{
-                          'bg-primaryColor/10 text-primaryColor font-medium':
-                            historyStatusFilter === status,
-                          'text-gray-700': historyStatusFilter !== status,
-                        }"
-                        @click="selectHistoryStatusFilter(status)"
-                      >
-                        <span>{{ status }}</span>
-                        <span
-                          class="badge badge-xs bg-secondaryColor border-none"
-                          :class="
-                            historyStatusFilter === status
-                              ? 'badge-ghost'
-                              : 'badge-primaryColor/10 text-primaryColor'
-                          "
-                        >
-                          {{
-                            filteredHistoryByDate.filter(
-                              (o) => o.status === status
-                            ).length
-                          }}
-                        </span>
-                      </button>
-                    </div>
-                  </div>
                 </div>
               </div>
 
@@ -3319,64 +2834,7 @@
                           >View Receipt</a
                         >
                       </li>
-                      <!-- Complete Order action for non-completed orders -->
-                      <li
-                        v-if="
-                          order.status !== 'Cancelled' &&
-                          order.status !== 'Completed'
-                        "
-                        class="hover:bg-black/10"
-                      >
-                        <a
-                          @click="openCompletionModal(order)"
-                          class="text-success text-xs sm:text-sm"
-                          >Complete Order</a
-                        >
-                      </li>
-                      <!-- Only show Create GRN for completed orders without pending returns -->
-                      <li
-                        v-if="
-                          order.status === 'Completed' && canCreateNewGRN(order)
-                        "
-                        class="hover:bg-black/10"
-                      >
-                        <a
-                          @click="createGRNFromPO(order)"
-                          class="text-success text-xs sm:text-sm"
-                        >
-                          Create GRN
-                        </a>
-                      </li>
-                      <!-- Show disabled Create GRN for completed orders with pending returns -->
-                      <li
-                        v-if="
-                          order.status === 'Completed' &&
-                          !canCreateNewGRN(order)
-                        "
-                        class="hover:bg-black/10 opacity-50 cursor-not-allowed"
-                      >
-                        <a
-                          class="text-black/50 text-xs sm:text-sm cursor-not-allowed"
-                          :title="getGRNCreationReason(order)"
-                        >
-                          <span v-if="hasPendingReturns(order)">
-                            Create GRN ({{ order.pending_returns_count }}
-                            Returns Pending)
-                          </span>
-                          <span v-else> Create GRN (Already Processed) </span>
-                        </a>
-                      </li>
-                      <!-- Return Items action for completed orders -->
-                      <li
-                        v-if="order.status === 'Completed'"
-                        class="hover:bg-black/10"
-                      >
-                        <a
-                          @click="openReturnModal(order)"
-                          class="text-warning text-xs sm:text-sm"
-                          >Return Items</a
-                        >
-                      </li>
+                      <!-- Return Item action moved to GRN workflow -->
                     </ul>
                   </div>
                 </div>
@@ -3623,6 +3081,21 @@
                 Select Request
               </button>
             </div>
+            <div v-if="orderForm.supply_request_display" class="mt-2">
+              <div class="alert alert-info">
+                <div>
+                  <strong>Selected Supply Request:</strong>
+                  {{ orderForm.supply_request_display }}
+                  <br />
+                  <small
+                    >Selected Items: {{ orderForm.selected_items_count }} items
+                    | Total Amount: ₱{{
+                      orderForm.total_amount.toLocaleString()
+                    }}</small
+                  >
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -3637,18 +3110,9 @@
               v-model="orderForm.po_number"
               type="text"
               class="input input-bordered w-full"
-              :placeholder="
-                orderForm.supply_request_id
-                  ? 'Auto-generated from supply request'
-                  : 'Enter PO number'
-              "
+              placeholder="Enter PO number"
               required
-              :disabled="
-                modal.type === 'view' ||
-                modal.type === 'edit' ||
-                orderForm.supply_request_id
-              "
-              :readonly="orderForm.supply_request_id"
+              :disabled="modal.type === 'view' || modal.type === 'edit'"
             />
           </div>
 
@@ -3669,7 +3133,7 @@
                 :key="supplier.id"
                 :value="String(supplier.id)"
               >
-                {{ supplier.name }} - {{ supplier.category }}
+                {{ supplier.name }}
               </option>
             </select>
           </div>
@@ -3810,20 +3274,12 @@
           <button
             type="submit"
             class="btn bg-primaryColor text-white btn-sm font-thin"
-            :class="{ loading: loading }"
-            :disabled="loading"
             v-if="modal.type !== 'view'"
           >
-            <span
-              v-if="loading"
-              class="loading loading-spinner loading-xs"
-            ></span>
             {{
-              loading
-                ? 'Processing...'
-                : modal.type === 'create'
-                  ? 'Create Purchase Order'
-                  : 'Update Purchase Order'
+              modal.type === 'create'
+                ? 'Create Purchase Order'
+                : 'Update Purchase Order'
             }}
           </button>
         </div>
@@ -4289,7 +3745,7 @@
   </div>
 
   <!-- Receipt Modal -->
-  <div v-if="receiptModal.show" class="modal modal-open" style="z-index: 9999">
+  <div v-if="receiptModal.show" class="modal modal-open">
     <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-6xl">
       <div class="flex justify-between items-center mb-2 text-black">
         <div class="flex items-center gap-2 mb-2 w-full">
@@ -4338,28 +3794,10 @@
               <tr class="border border-black">
                 <th class="border border-black">Item No.</th>
                 <th class="border border-black">Item Name</th>
-                <th class="border border-black">
-                  {{
-                    receiptModal.order.status === 'Completed'
-                      ? 'Received Qty'
-                      : 'Quantity'
-                  }}
-                </th>
+                <th class="border border-black">Quantity</th>
                 <th class="border border-black">Unit</th>
-                <th class="border border-black">
-                  {{
-                    receiptModal.order.status === 'Completed'
-                      ? 'Unit Price'
-                      : 'Unit Price'
-                  }}
-                </th>
-                <th class="border border-black">
-                  {{
-                    receiptModal.order.status === 'Completed'
-                      ? 'Paid Amount (₱)'
-                      : 'Amount (₱)'
-                  }}
-                </th>
+                <th class="border border-black">Unit Price</th>
+                <th class="border border-black">Amount (₱)</th>
               </tr>
             </thead>
             <tbody>
@@ -4372,38 +3810,17 @@
                 <td class="border border-black">
                   {{ item.item_name || item.name || 'N/A' }}
                 </td>
-                <td class="border border-black">
-                  {{
-                    receiptModal.order.status === 'Completed' &&
-                    item.received_quantity
-                      ? item.received_quantity
-                      : item.quantity || 0
-                  }}
-                  <!-- Debug info -->
-                  <div class="text-xs text-gray-400">
-                    Debug: Status={{ receiptModal.order.status }}, Received={{
-                      item.received_quantity
-                    }}, Ordered={{ item.quantity }}
-                  </div>
-                </td>
+                <td class="border border-black">{{ item.quantity || 0 }}</td>
                 <td class="border border-black">{{ item.unit || 'pcs' }}</td>
                 <td class="border border-black">
-                  ₱{{
-                    receiptModal.order.status === 'Completed' &&
-                    item.received_unit_price
-                      ? Number(item.received_unit_price).toFixed(2)
-                      : Number(item.unit_price || 0).toFixed(2)
-                  }}
+                  ₱{{ Number(item.unit_price || 0).toFixed(2) }}
                 </td>
                 <td class="border border-black">
                   ₱{{
-                    receiptModal.order.status === 'Completed' &&
-                    item.received_total_price
-                      ? Number(item.received_total_price).toFixed(2)
-                      : Number(
-                          item.amount ||
-                            (item.quantity || 0) * (item.unit_price || 0)
-                        ).toFixed(2)
+                    Number(
+                      item.amount ||
+                        (item.quantity || 0) * (item.unit_price || 0)
+                    ).toFixed(2)
                   }}
                 </td>
               </tr>
@@ -4415,61 +3832,11 @@
                   Total
                 </td>
                 <td class="font-semibold border border-black">
-                  ₱{{
-                    receiptModal.order.status === 'Completed'
-                      ? Number(
-                          receiptModal.order.items?.reduce(
-                            (sum, item) =>
-                              sum + Number(item.received_total_price || 0),
-                            0
-                          ) || 0
-                        ).toFixed(2)
-                      : Number(receiptModal.order.total_amount || 0).toFixed(2)
-                  }}
+                  ₱{{ Number(receiptModal.order.total_amount || 0).toFixed(2) }}
                 </td>
               </tr>
             </tbody>
           </table>
-        </div>
-
-        <!-- Order vs Received Summary (for completed orders) -->
-        <div
-          v-if="receiptModal.order.status === 'Completed'"
-          class="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg"
-        >
-          <h6 class="text-sm font-semibold text-yellow-800 mb-2">
-            Order Summary:
-          </h6>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-            <div>
-              <span class="font-medium text-yellow-700">Ordered Amount:</span>
-              <span class="ml-2"
-                >₱{{
-                  Number(receiptModal.order.total_amount || 0).toLocaleString()
-                }}</span
-              >
-            </div>
-            <div>
-              <span class="font-medium text-yellow-700">Received Amount:</span>
-              <span class="ml-2"
-                >₱{{
-                  Number(
-                    receiptModal.order.items?.reduce(
-                      (sum, item) =>
-                        sum + Number(item.received_total_price || 0),
-                      0
-                    ) || 0
-                  ).toLocaleString()
-                }}</span
-              >
-            </div>
-          </div>
-          <div class="mt-2 text-xs text-yellow-600">
-            <em
-              >Note: This receipt shows actual received quantities and
-              amounts.</em
-            >
-          </div>
         </div>
 
         <!-- Notes Section -->
@@ -4496,17 +3863,7 @@
           <div class="flex justify-between items-center">
             <span class="text-sm text-black/70">Total Amount:</span>
             <span class="font-semibold text-black">
-              ₱{{
-                receiptModal.order.status === 'Completed'
-                  ? Number(
-                      receiptModal.order.items?.reduce(
-                        (sum, item) =>
-                          sum + Number(item.received_total_price || 0),
-                        0
-                      ) || 0
-                    ).toLocaleString()
-                  : receiptModal.order.total_amount.toLocaleString()
-              }}
+              ₱{{ receiptModal.order.total_amount.toLocaleString() }}
             </span>
           </div>
           <div
@@ -4634,7 +3991,6 @@
           <button
             type="button"
             class="btn btn-ghost btn-sm font-thin"
-            :disabled="returnModal.loading"
             @click="closeReturnModal"
           >
             Cancel
@@ -4642,14 +3998,8 @@
           <button
             type="submit"
             class="btn bg-primaryColor text-white btn-sm font-thin"
-            :class="{ loading: returnModal.loading }"
-            :disabled="returnModal.loading"
           >
-            <span
-              v-if="returnModal.loading"
-              class="loading loading-spinner loading-xs"
-            ></span>
-            {{ returnModal.loading ? 'Processing...' : 'Submit Return' }}
+            Submit Return
           </button>
         </div>
       </form>
@@ -4667,7 +4017,6 @@
         <button
           type="button"
           class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none btn-sm"
-          :disabled="confirmModal.loading"
           @click="closeConfirmModal"
         >
           Cancel
@@ -4675,15 +4024,9 @@
         <button
           type="button"
           class="btn bg-primaryColor text-white btn-sm font-thin border-none hover:bg-primaryColor/80"
-          :class="{ loading: confirmModal.loading }"
-          :disabled="confirmModal.loading"
           @click="handleConfirmAction"
         >
-          <span
-            v-if="confirmModal.loading"
-            class="loading loading-spinner loading-xs"
-          ></span>
-          {{ confirmModal.loading ? 'Processing...' : 'Confirm' }}
+          Confirm
         </button>
       </div>
     </div>
@@ -4773,15 +4116,6 @@
     :supplier-name="ratingModal.supplierName"
     @close="closeRatingModal"
     @rating-submitted="handleRatingSubmitted"
-  />
-
-  <!-- PO Completion Modal -->
-  <POCompletionModal
-    :show="completionModal.show"
-    :purchase-order="completionModal.order"
-    :loading="completionModal.loading"
-    @close="closeCompletionModal"
-    @complete="handleCompleteOrder"
   />
 </template>
 

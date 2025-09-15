@@ -372,11 +372,6 @@ class PurchaseOrder {
         unit_price: item.item_unit_price,
         total_price: item.item_amount,
         description: item.item_notes,
-        received_quantity: null,
-        received_unit_price: null,
-        received_total_price: null,
-        received_at: null,
-        received_by: null,
       }));
 
       const createdItems = await trx("purchase_order_items")
@@ -485,11 +480,6 @@ class PurchaseOrder {
         unit_price: item.unit_price,
         total_price: item.total_price,
         description: item.description,
-        received_quantity: null,
-        received_unit_price: null,
-        received_total_price: null,
-        received_at: null,
-        received_by: null,
       }));
 
       const createdItems = await trx("purchase_order_items")
@@ -609,28 +599,16 @@ class PurchaseOrder {
         );
       }
 
-      const updateData = {
-        supplier_id: poData.supplier_id,
-        status: poData.status,
-        total_amount: poData.total_amount,
-        expected_delivery: poData.expected_delivery,
-        notes: poData.notes,
-        updated_at: new Date(),
-      };
-
-      // Add completion fields if status is being changed to Completed
-      if (
-        currentOrder.status !== "Completed" &&
-        poData.status === "Completed"
-      ) {
-        updateData.completion_notes = poData.completion_notes || null;
-        updateData.completed_at = new Date();
-        updateData.completed_by = poData.completed_by || "System";
-      }
-
       const [updatedPurchaseOrder] = await trx("purchase_orders")
         .where("id", id)
-        .update(updateData)
+        .update({
+          supplier_id: poData.supplier_id,
+          status: poData.status,
+          total_amount: poData.total_amount,
+          expected_delivery: poData.expected_delivery,
+          notes: poData.notes,
+          updated_at: new Date(),
+        })
         .returning("*");
 
       // AUTO-INVENTORY INTEGRATION: When PO status changes to "Completed", add items to inventory
@@ -642,18 +620,24 @@ class PurchaseOrder {
       }
 
       if (items) {
-        // Update existing items with received quantities instead of recreating them
-        for (const item of items) {
-          await trx("purchase_order_items")
-            .where("id", item.id)
-            .update({
-              received_quantity: item.received_quantity || null,
-              received_unit_price: item.received_unit_price || null,
-              received_total_price: item.received_total_price || null,
-              received_at: item.received_at || null,
-              received_by: item.received_by || null,
-            });
-        }
+        // Delete existing items
+        await trx("purchase_order_items").where("purchase_order_id", id).del();
+
+        // Insert new items
+        const poItems = items.map((item) => ({
+          purchase_order_id: id,
+          supply_request_item_id: item.supply_request_item_id || null,
+          item_name: item.item_name,
+          quantity: item.quantity,
+          unit: item.unit,
+          unit_price: item.unit_price,
+          total_price: item.total_price,
+          description: item.description,
+        }));
+
+        const createdItems = await trx("purchase_order_items")
+          .insert(poItems)
+          .returning("*");
       }
 
       await trx.commit();

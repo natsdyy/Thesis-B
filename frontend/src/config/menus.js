@@ -77,7 +77,7 @@ export const menuItems = [
     department: 'Supply Chain',
   },
   {
-    name: 'Supply Request',
+    name: 'Request Supply',
     icon: ReceiptText,
     route: '/scm/request-supply',
     department: 'Supply Chain',

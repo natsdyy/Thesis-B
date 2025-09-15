@@ -466,34 +466,6 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     }
   };
 
-  const fetchAvailableItems = async (supplyRequestId) => {
-    loading.value = true;
-    error.value = null;
-
-    try {
-      const response = await axios.get(
-        `${API_BASE_URL}/purchase-orders/supply-request/${supplyRequestId}/available-items`
-      );
-
-      if (response.data.success) {
-        return response.data.data;
-      } else {
-        throw new Error(
-          response.data.message || 'Failed to fetch available items'
-        );
-      }
-    } catch (err) {
-      error.value =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to fetch available items';
-      console.error('Error fetching available items:', err);
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
   const fetchStats = async (forceRefresh = false) => {
     // Return cached stats if still valid and not forcing refresh
     if (!forceRefresh && isStatsCacheValid.value) {
@@ -749,7 +721,6 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     logItemReturn,
     fetchApprovedSupplyRequests,
     fetchSupplyRequestItems,
-    fetchAvailableItems,
     fetchStats,
     cancelPurchaseOrder,
     fetchItemReturns,

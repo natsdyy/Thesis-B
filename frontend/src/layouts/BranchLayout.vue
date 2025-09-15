@@ -22,7 +22,6 @@
   import { useBranchContextStore } from '../stores/branchContextStore';
   import { useAuthStore } from '../stores/authStore';
   import { useBranchStore } from '../stores/branchStore';
-  import { apiConfig } from '../config/api';
 
   // Stores
   const branchContextStore = useBranchContextStore();
@@ -65,16 +64,6 @@
   );
   const error = computed(() => branchContextStore.error || branchStore.error);
   const user = computed(() => authStore.user);
-
-  // Profile image URL (backend serves /uploads at server root)
-  const profileImageUrl = computed(() => {
-    const url = user.value?.photo_url || user.value?.photoUrl || null;
-    if (!url) return null;
-    if (/^https?:\/\//i.test(url)) return url;
-    const apiOrigin = new URL(apiConfig.baseURL, window.location.origin).origin;
-    const path = url.startsWith('/') ? url : `/${url}`;
-    return `${apiOrigin}${path}`;
-  });
 
   // Operation icons mapping
   const operationIcons = {
@@ -251,15 +240,9 @@
               >
                 <!-- User Avatar -->
                 <div
-                  class="w-8 h-8 rounded-full overflow-hidden bg-white/20 flex items-center justify-center"
+                  class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center"
                 >
-                  <img
-                    v-if="profileImageUrl"
-                    :src="profileImageUrl"
-                    alt="Profile"
-                    class="w-full h-full object-cover"
-                  />
-                  <User v-else class="w-4 h-4" />
+                  <User class="w-4 h-4" />
                 </div>
 
                 <!-- User Info -->
@@ -283,15 +266,9 @@
                 <li class="px-3 py-2 border-b mb-2">
                   <div class="flex items-center space-x-3">
                     <div
-                      class="W-10 h-10 rounded-full overflow-hidden bg-primaryColor flex items-center justify-center"
+                      class="w-10 h-10 rounded-full bg-primaryColor flex items-center justify-center"
                     >
-                      <img
-                        v-if="profileImageUrl"
-                        :src="profileImageUrl"
-                        alt="Profile"
-                        class="w-full h-full object-cover"
-                      />
-                      <span v-else class="text-sm font-medium text-white">
+                      <span class="text-sm font-medium text-white">
                         {{ user?.name?.charAt(0) || 'U' }}
                       </span>
                     </div>
@@ -582,16 +559,8 @@
       <h3 class="font-bold text-lg mb-2">Confirm Logout</h3>
       <p class="py-2">Are you sure you want to log out?</p>
       <div class="modal-action">
-        <button
-          class="btn btn-ghost btn-sm font-thin border-none"
-          @click="cancelLogout"
-        >
-          Cancel
-        </button>
-        <button
-          class="btn bg-error/30 text-error btn-sm font-thin border-none"
-          @click="confirmLogout"
-        >
+        <button class="btn btn-ghost btn-sm font-thin border-none" @click="cancelLogout">Cancel</button>
+        <button class="btn bg-error/30 text-error btn-sm font-thin border-none" @click="confirmLogout">
           Yes, Log Out
         </button>
       </div>

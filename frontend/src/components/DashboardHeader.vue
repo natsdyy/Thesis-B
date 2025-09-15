@@ -58,15 +58,9 @@
         >
           <!-- User Avatar -->
           <div
-            class="w-8 h-8 rounded-full overflow-hidden bg-primaryColor flex items-center justify-center"
+            class="w-8 h-8 rounded-full bg-primaryColor flex items-center justify-center"
           >
-            <img
-              v-if="profileImageUrl"
-              :src="profileImageUrl"
-              alt="Profile"
-              class="w-full h-full object-cover"
-            />
-            <span v-else class="text-sm font-medium text-white">
+            <span class="text-sm font-medium text-white">
               {{ user?.name?.charAt(0) || 'J' }}
             </span>
           </div>
@@ -110,15 +104,9 @@
           >
             <div class="flex items-center space-x-3">
               <div
-                class="w-10 h-10 rounded-full overflow-hidden bg-primaryColor flex items-center justify-center"
+                class="w-10 h-10 rounded-full bg-primaryColor flex items-center justify-center"
               >
-                <img
-                  v-if="profileImageUrl"
-                  :src="profileImageUrl"
-                  alt="Profile"
-                  class="w-full h-full object-cover"
-                />
-                <span v-else class="text-sm font-medium text-white">
+                <span class="text-sm font-medium text-white">
                   {{ user?.name?.charAt(0) || 'J' }}
                 </span>
               </div>
@@ -231,7 +219,6 @@
   import { useRoute, useRouter } from 'vue-router';
   import { useAuthStore } from '../stores/authStore';
   import { useThemeStore } from '../stores/themeStore';
-  import { apiConfig } from '../config/api';
   import {
     Menu,
     ChevronRight,
@@ -255,18 +242,6 @@
 
   // Get user from auth store
   const { user } = authStore;
-
-  // Build absolute image URL for employee photo
-  const profileImageUrl = computed(() => {
-    const url = user?.photo_url || user?.photoUrl || null;
-    if (!url) return null;
-    // If already absolute (e.g., starts with http), use as-is
-    if (/^https?:\/\//i.test(url)) return url;
-    // Build from API server origin (not the /api base path)
-    const apiOrigin = new URL(apiConfig.baseURL, window.location.origin).origin;
-    const path = url.startsWith('/') ? url : `/${url}`;
-    return `${apiOrigin}${path}`;
-  });
 
   // Computed properties
   const currentPageTitle = computed(() => {

@@ -43,10 +43,6 @@
   import { useBranchInventoryStore } from '../../stores/branchInventoryStore';
   import BranchDistributionReceiptModal from '../../components/scm/BranchDistributionReceiptModal.vue';
   import BranchRequestSupply from '../../components/branch/BranchRequestSupply.vue';
-  import ItemLevelAcceptRejectModal from '../../components/branch/ItemLevelAcceptRejectModal.vue';
-  import BranchInventoryConsumptionModal from '../../components/branch/BranchInventoryConsumptionModal.vue';
-  import BranchInventoryAdjustmentModal from '../../components/branch/BranchInventoryAdjustmentModal.vue';
-  import BranchInventoryTransactionModal from '../../components/branch/BranchInventoryTransactionModal.vue';
   import { apiConfig } from '../../config/api';
 
   const branchContextStore = useBranchContextStore();
@@ -82,43 +78,12 @@
         (item) => item.item_type === 'scm'
       ) || []
   );
-  // Normalize category name from mixed shapes (string or { name })
-  const getItemCategoryName = (item) => {
-    const raw = item?.category ?? item?.category_name ?? null;
-    if (!raw) return null;
-    if (typeof raw === 'string') return raw;
-    if (typeof raw === 'object') return raw.name || null;
-    return null;
-  };
-
-  // Category lists per inventory type
-  const scmCategories = computed(() => {
-    const set = new Set(
-      (branchInventoryStore.inventory || [])
-        .filter((i) => i.item_type === 'scm')
-        .map((i) => getItemCategoryName(i))
-    );
-    set.delete(null);
-    set.delete('Uncategorized');
-    return Array.from(set).sort();
+  const categories = computed(() => {
+    const cats = [
+      ...new Set(branchInventoryStore.inventory.map((item) => item.category)),
+    ];
+    return cats.filter(Boolean).map((cat) => ({ name: cat }));
   });
-
-  const productionCategories = computed(() => {
-    const set = new Set(
-      (branchInventoryStore.inventory || [])
-        .filter((i) => i.item_type === 'production')
-        .map((i) => getItemCategoryName(i))
-    );
-    set.delete(null);
-    set.delete('Uncategorized');
-    return Array.from(set).sort();
-  });
-
-  const categories = computed(() =>
-    inventoryType.value === 'scm'
-      ? scmCategories.value
-      : productionCategories.value
-  );
 
   // Convert to reactive refs instead of computed properties
   const inventoryStats = ref({
@@ -142,8 +107,6 @@
 
     return branchInventory.value.filter((item) => {
       if (!item.expiry_date) return false;
-      // Exclude disposed items from expiring soon stats
-      if (item.status === 'disposed') return false;
       const expiryDate = new Date(item.expiry_date);
       return expiryDate <= sevenDaysFromNow && expiryDate > now;
     }).length;
@@ -153,8 +116,6 @@
     const now = new Date();
     return branchInventory.value.filter((item) => {
       if (!item.expiry_date) return false;
-      // Exclude disposed items from expired stats
-      if (item.status === 'disposed') return false;
       const expiryDate = new Date(item.expiry_date);
       return expiryDate <= now;
     }).length;
@@ -456,12 +417,9 @@
   });
 
   // Transaction modal handler
-  const showBranchTransactions = ref(false);
   const openTransactionModal = () => {
-    showBranchTransactions.value = true;
-  };
-  const closeTransactionModal = () => {
-    showBranchTransactions.value = false;
+    // This would open a transaction modal - for now just log
+    console.log('Opening transaction modal');
   };
 
   // Helper function to calculate dynamic minimum stock
@@ -480,264 +438,10 @@
   const selectedDistribution = ref(null);
   const showAcceptanceModal = ref(false);
   const showReceiptModal = ref(false);
-  // Loading states for actions
-  const consumptionSubmitting = ref(false);
-  const adjustmentSubmitting = ref(false);
   const showRejectionModal = ref(false);
-  const showItemLevelModal = ref(false);
   const distributionCurrentPage = ref(1);
   const distributionItemsPerPage = ref(10);
   const distributionActionLoading = ref(false);
-  const itemLevelModal = ref(null);
-
-  // Local modals for consume/adjust (match MainInventory.vue)
-  const actionModal = ref({ type: null, show: false, item: null });
-
-  // Confirmation modal state (mirrors MainInventory)
-  const confirmModal = ref({
-    show: false,
-    title: '',
-    message: '',
-    onConfirm: null,
-  });
-
-  const confirmLoading = ref(false);
-
-  const openConfirmDialog = () => {
-    document.getElementById('branch_inventory_confirm_modal')?.showModal();
-  };
-
-  const closeConfirmModal = () => {
-    document.getElementById('branch_inventory_confirm_modal')?.close();
-    confirmModal.value = {
-      show: false,
-      title: '',
-      message: '',
-      onConfirm: null,
-    };
-  };
-
-  const handleConfirmAction = async () => {
-    if (confirmModal.value.onConfirm) {
-      try {
-        confirmLoading.value = true;
-        await confirmModal.value.onConfirm();
-      } finally {
-        confirmLoading.value = false;
-        closeConfirmModal();
-      }
-    }
-  };
-
-  const openConsumeModal = (item) => {
-    actionModal.value = { type: 'consumption', show: true, item };
-  };
-
-  const openAdjustModal = (item) => {
-    actionModal.value = { type: 'adjustment', show: true, item };
-  };
-
-  const closeActionModal = () => {
-    actionModal.value = { type: null, show: false, item: null };
-  };
-
-  // Build lightweight category and itemType lists for the modals from branch data
-  const modalCategories = computed(() => {
-    const nameToId = new Map();
-    const result = [];
-    let nextId = 1;
-    branchInventory.value.forEach((x) => {
-      const name = x.category || 'Uncategorized';
-      if (!nameToId.has(name)) {
-        nameToId.set(name, nextId++);
-        result.push({ id: nameToId.get(name), name });
-      }
-    });
-    return result;
-  });
-
-  const modalItemTypes = computed(() => {
-    const out = new Map();
-    const catIndex = new Map(modalCategories.value.map((c) => [c.name, c.id]));
-    branchInventory.value.forEach((x) => {
-      const key = x.item_type_id || `${x.item_name}`;
-      if (!out.has(key)) {
-        out.set(key, {
-          id: x.item_type_id || key,
-          name: x.item_name || x.item_type_name || x.name || 'Item',
-          category_id: catIndex.get(x.category || 'Uncategorized') || 0,
-        });
-      }
-    });
-    return Array.from(out.values());
-  });
-
-  const modalCurrentInventory = computed(() => {
-    const mapStatus = (it) => {
-      if (it?.expiry_date) {
-        const d = getDaysUntilExpiry(it.expiry_date);
-        if (Number.isFinite(d) && d <= 0) return 'expired';
-      }
-      return 'available';
-    };
-    return branchInventory.value.map((it) => ({
-      id: it.id,
-      item_type_id: it.item_type_id || it.id,
-      item_name: it.item_name || it.name,
-      quantity: parseFloat(it.quantity || 0),
-      unit_of_measure: it.unit || it.unit_of_measure || '',
-      batch_number: it.batch_number || null,
-      expiry_date: it.expiry_date || null,
-      unit_cost: parseFloat(it.unit_price || it.unit_cost || 0),
-      total_value: parseFloat(it.total_value || 0),
-      status: mapStatus(it),
-    }));
-  });
-
-  const handleConsumptionSubmit = async (payload) => {
-    try {
-      const items = Array.isArray(payload?.items) ? payload.items : [];
-      const qtyLabel = items
-        .map((it) => `${parseFloat(it.quantity || 0)} ${it.unit || ''}`.trim())
-        .join(', ');
-      const itemLabel =
-        items.length === 1
-          ? items[0]?.item_name || items[0]?.name || 'this item'
-          : `${items.length} items`;
-
-      confirmModal.value = {
-        show: true,
-        title: 'Confirm Usage',
-        message: `Record usage of ${qtyLabel} for ${itemLabel}?`,
-        onConfirm: async () => {
-          consumptionSubmitting.value = true;
-          try {
-            for (const it of items) {
-              const current = branchInventory.value.find(
-                (s) => s.id == it.inventory_item_id
-              );
-              const currentQty = parseFloat(current?.quantity || 0);
-              const consumeQty = parseFloat(it.quantity || 0);
-              const newQty = Math.max(0, currentQty - consumeQty);
-              await branchInventoryStore.updateQuantity(
-                it.inventory_item_id,
-                newQty,
-                'consumption'
-              );
-            }
-            toast.success('Usage recorded.');
-          } catch (err) {
-            console.error('Failed to record consumption:', err);
-            toast.error('Failed to record usage.');
-          } finally {
-            consumptionSubmitting.value = false;
-            closeActionModal();
-            await loadBranchInventory();
-          }
-        },
-      };
-      openConfirmDialog();
-    } catch (err) {
-      console.error('Failed to prepare usage confirmation:', err);
-      toast.error('Failed to prepare confirmation.');
-    }
-  };
-
-  const handleAdjustmentSubmit = async (payload) => {
-    try {
-      if (!payload?.inventory_item_id) return;
-
-      const current = branchInventory.value.find(
-        (s) => s.id == payload.inventory_item_id
-      );
-      const currentQty = parseFloat(current?.quantity || 0);
-
-      let previewQty = currentQty;
-      switch (payload.adjustment_type) {
-        case 'set_quantity':
-          previewQty = parseFloat(payload.new_quantity);
-          break;
-        case 'add_quantity':
-          previewQty = currentQty + parseFloat(payload.new_quantity || 0);
-          break;
-        case 'reduce_quantity':
-          previewQty = Math.max(
-            0,
-            currentQty - parseFloat(payload.new_quantity || 0)
-          );
-          break;
-        case 'mark_expired':
-        case 'mark_damaged':
-        case 'disposal':
-          previewQty = 0;
-          break;
-        case 'set_expiry_date':
-          previewQty = currentQty;
-          break;
-      }
-
-      const actionLabel =
-        payload.adjustment_type === 'set_quantity'
-          ? `set quantity to ${previewQty}`
-          : payload.adjustment_type === 'add_quantity'
-            ? `increase to ${previewQty}`
-            : payload.adjustment_type === 'reduce_quantity'
-              ? `decrease to ${previewQty}`
-              : payload.adjustment_type === 'set_expiry_date'
-                ? 'set expiry date'
-                : 'dispose item';
-
-      const itemLabel = current?.item_name || current?.name || 'this item';
-
-      confirmModal.value = {
-        show: true,
-        title: 'Confirm Adjustment',
-        message: `Apply adjustment: ${actionLabel} for ${itemLabel}?`,
-        onConfirm: async () => {
-          adjustmentSubmitting.value = true;
-          try {
-            if (payload.adjustment_type === 'set_expiry_date') {
-              await branchInventoryStore.updateExpiryDate(
-                payload.inventory_item_id,
-                payload.new_expiry_date,
-                {
-                  reference_number: payload.reference_number || null,
-                  notes: payload.notes || 'Set expiry date',
-                }
-              );
-            } else {
-              await branchInventoryStore.updateQuantity(
-                payload.inventory_item_id,
-                previewQty,
-                payload.adjustment_type === 'disposal'
-                  ? 'disposal'
-                  : 'adjustment'
-              );
-
-              if (payload.adjustment_type === 'disposal') {
-                await branchInventoryStore.updateStatus(
-                  payload.inventory_item_id,
-                  'disposed'
-                );
-              }
-            }
-            toast.success('Adjustment applied.');
-          } catch (err) {
-            console.error('Failed to apply adjustment:', err);
-            toast.error('Failed to apply adjustment.');
-          } finally {
-            adjustmentSubmitting.value = false;
-            closeActionModal();
-            await loadBranchInventory();
-          }
-        },
-      };
-      openConfirmDialog();
-    } catch (err) {
-      console.error('Failed to prepare adjustment confirmation:', err);
-      toast.error('Failed to prepare confirmation.');
-    }
-  };
 
   // Rejection form state
   const rejectionForm = ref({
@@ -783,9 +487,7 @@
 
     // Filter by category
     if (categoryFilter.value) {
-      items = items.filter(
-        (item) => getItemCategoryName(item) === categoryFilter.value
-      );
+      items = items.filter((item) => item.category === categoryFilter.value);
     }
 
     // Filter by status
@@ -796,9 +498,6 @@
     } else if (statusFilter.value === 'out_of_stock') {
       items = items.filter((item) => parseFloat(item.quantity) === 0);
     }
-
-    // Hide disposed items from list view
-    items = items.filter((it) => it.status !== 'disposed');
 
     return items;
   });
@@ -838,61 +537,11 @@
 
   // Methods
   const getStockStatus = (item) => {
-    const quantity = parseFloat(item.quantity);
-    const minimum = parseFloat(item.minimum_stock);
-
-    // Disposed items should be labeled accordingly
-    if (item?.status === 'disposed') {
-      return {
-        status: 'disposed',
-        class: 'bg-error/20 text-error',
-        text: 'Disposed',
-      };
-    }
-
-    // Expiry-aware status (mirror MainInventory behavior)
-    if (item?.expiry_date) {
-      const daysUntilExpiry = getDaysUntilExpiry(item.expiry_date);
-      if (Number.isFinite(daysUntilExpiry)) {
-        if (daysUntilExpiry <= 0) {
-          return {
-            status: 'expired',
-            class: 'bg-error/20 text-error',
-            text: 'Expired',
-          };
-        }
-        if (daysUntilExpiry <= 7) {
-          // Mark as expiring soon if not already out of stock
-          if (quantity > 0) {
-            return {
-              status: 'expiring',
-              class: 'bg-warning/20 text-warning',
-              text: 'Expiring Soon',
-            };
-          }
-        }
-      }
-    }
-
-    // Stock-based status
-    if (quantity === 0)
-      return {
-        status: 'out',
-        class: 'bg-error/20 text-error',
-        text: 'Out of Stock',
-      };
-    if (quantity <= minimum)
-      return {
-        status: 'low',
-        class: 'bg-warning/20 text-warning',
-        text: 'Low Stock',
-      };
-
-    return {
-      status: 'good',
-      class: 'bg-success/20 text-success',
-      text: 'In Stock',
-    };
+    if (parseFloat(item.quantity) === 0)
+      return { status: 'out', class: 'badge-error', text: 'Out of Stock' };
+    if (parseFloat(item.quantity) <= parseFloat(item.minimum_stock))
+      return { status: 'low', class: 'badge-warning', text: 'Low Stock' };
+    return { status: 'good', class: 'badge-success', text: 'In Stock' };
   };
 
   // Consistent item display name across different data shapes
@@ -918,82 +567,144 @@
       // Load real data from branch inventory store
       await branchInventoryStore.loadAllData(currentBranch.value.id);
 
-      // Calculate SCM stats (exclude disposed items from counts)
+      // Calculate SCM stats
       const scmItems = branchInventory.value.filter(
         (item) => item.item_type === 'scm'
       );
-      const scmActiveItems = scmItems.filter(
-        (item) => item.status !== 'disposed'
-      );
       inventoryStats.value = {
-        totalItems: scmActiveItems.length,
-        lowStockItems: scmActiveItems.filter(
+        totalItems: scmItems.length,
+        lowStockItems: scmItems.filter(
           (item) =>
             parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
             parseFloat(item.quantity) > 0
         ).length,
-        outOfStockItems: scmActiveItems.filter(
+        outOfStockItems: scmItems.filter(
           (item) => parseFloat(item.quantity) === 0
         ).length,
-        totalValue: scmActiveItems.reduce(
+        totalValue: scmItems.reduce(
           (total, item) => total + parseFloat(item.total_value || 0),
           0
         ),
       };
 
-      // Calculate Production stats (exclude disposed items from counts)
+      // Calculate Production stats
       const productionItems = branchInventory.value.filter(
         (item) => item.item_type === 'production'
       );
-      const productionActiveItems = productionItems.filter(
-        (item) => item.status !== 'disposed'
-      );
       productionStats.value = {
-        totalItems: productionActiveItems.length,
-        lowStockItems: productionActiveItems.filter(
+        totalItems: productionItems.length,
+        lowStockItems: productionItems.filter(
           (item) =>
             parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
             parseFloat(item.quantity) > 0
         ).length,
-        outOfStockItems: productionActiveItems.filter(
+        outOfStockItems: productionItems.filter(
           (item) => parseFloat(item.quantity) === 0
         ).length,
-        totalValue: productionActiveItems.reduce(
+        totalValue: productionItems.reduce(
           (total, item) => total + parseFloat(item.total_value || 0),
           0
         ),
       };
 
-      // Replace mocked recent activity with live branch transactions
-      try {
-        const tx = await branchInventoryStore.fetchAllTransactions(
-          currentBranch.value.id,
-          { limit: 10, page: 1 }
-        );
-        recentActivity.value = (tx?.data || []).map((t) => ({
-          id: t.id,
-          transaction_type: t.transaction_type,
-          item_name: t.item_name,
-          unit_of_measure: t.unit_of_measure,
-          quantity: parseFloat(t.quantity || 0),
-          total_value: 0,
-          value: 0,
-          transaction_date: t.created_at,
-          performed_by: t.performed_by_name || t.performed_by,
-          notes: t.notes,
-        }));
-      } catch (e) {
-        console.warn('Failed to load recent transactions for activity:', e);
-      }
+      // Generate real recent activity from branch inventory data
+      const realRecentActivity = [];
+
+      // Create activity entries for each inventory item based on their distribution
+      branchInventory.value.forEach((item, index) => {
+        // Add distribution activity
+        realRecentActivity.push({
+          id: `dist_${item.id}`,
+          transaction_type: 'receipt',
+          action: 'Stock Received',
+          item_name: item.item_name,
+          item_type_name: item.item_name,
+          item: item.item_name,
+          quantity: parseFloat(item.quantity),
+          total_value: parseFloat(item.total_value || 0),
+          value: parseFloat(item.total_value || 0),
+          time: formatTimeAgo(new Date(item.created_at || new Date())),
+          transaction_date: item.created_at || new Date(),
+          type: 'distribution',
+          category_name: item.category,
+          category: item.category,
+          unit_of_measure: item.unit,
+          unit: item.unit,
+          performed_by: 'Branch Manager',
+          reason: 'Branch Distribution',
+          batch_number: item.batch_number || null,
+        });
+
+        // Add low stock warning if applicable
+        if (
+          parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
+          parseFloat(item.quantity) > 0
+        ) {
+          realRecentActivity.push({
+            id: `low_stock_${item.id}`,
+            transaction_type: 'alert',
+            action: 'Low Stock Alert',
+            item_name: item.item_name,
+            item_type_name: item.item_name,
+            item: item.item_name,
+            quantity: parseFloat(item.quantity),
+            total_value: parseFloat(item.total_value || 0),
+            value: parseFloat(item.total_value || 0),
+            time: 'Just now',
+            transaction_date: new Date(),
+            type: 'alert',
+            category_name: item.category,
+            category: item.category,
+            unit_of_measure: item.unit,
+            unit: item.unit,
+            performed_by: 'System',
+            notes: `Item is running low on stock (${item.quantity} ${item.unit} remaining)`,
+            batch_number: item.batch_number || null,
+          });
+        }
+
+        // Add out of stock warning if applicable
+        if (parseFloat(item.quantity) === 0) {
+          realRecentActivity.push({
+            id: `out_stock_${item.id}`,
+            transaction_type: 'alert',
+            action: 'Out of Stock',
+            item_name: item.item_name,
+            item_type_name: item.item_name,
+            item: item.item_name,
+            quantity: 0,
+            total_value: 0,
+            value: 0,
+            time: 'Just now',
+            transaction_date: new Date(),
+            type: 'alert',
+            category_name: item.category,
+            category: item.category,
+            unit_of_measure: item.unit,
+            unit: item.unit,
+            performed_by: 'System',
+            notes: 'Item is out of stock',
+            batch_number: item.batch_number || null,
+          });
+        }
+      });
+
+      // Sort by most recent first
+      realRecentActivity.sort((a, b) => {
+        if (a.time === 'Just now') return -1;
+        if (b.time === 'Just now') return 1;
+        return new Date(b.time) - new Date(a.time);
+      });
+
+      recentActivity.value = realRecentActivity.slice(0, 10); // Limit to 10 most recent
 
       // Generate real alerts from branch inventory data
       const realAlerts = [];
       console.log('Branch inventory data for alerts:', branchInventory.value);
 
-      // Low stock alerts (exclude disposed items)
+      // Low stock alerts
       const lowStockItems = branchInventory.value.filter(
         (item) =>
-          item.status !== 'disposed' &&
           parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
           parseFloat(item.quantity) > 0
       );
@@ -1022,9 +733,9 @@
         });
       });
 
-      // Out of stock alerts (exclude disposed items)
+      // Out of stock alerts
       const outOfStockItems = branchInventory.value.filter(
-        (item) => item.status !== 'disposed' && parseFloat(item.quantity) === 0
+        (item) => parseFloat(item.quantity) === 0
       );
       outOfStockItems.forEach((item, index) => {
         realAlerts.push({
@@ -1038,10 +749,9 @@
         });
       });
 
-      // Expiring items alerts (exclude disposed)
+      // Expiring items alerts (if we had expiry dates)
       const expiringItems = branchInventory.value.filter(
         (item) =>
-          item.status !== 'disposed' &&
           item.expiry_date &&
           new Date(item.expiry_date) <=
             new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
@@ -1316,21 +1026,6 @@
     document.getElementById('distribution_rejection_modal')?.close();
   };
 
-  const openItemLevelModal = (distribution) => {
-    console.log('Opening item-level modal for distribution:', distribution);
-    selectedDistribution.value = distribution;
-    showItemLevelModal.value = true;
-    // Open the modal using the component's exposed method
-    itemLevelModal.value?.openModal();
-  };
-
-  const closeItemLevelModal = () => {
-    selectedDistribution.value = null;
-    showItemLevelModal.value = false;
-    // Close the modal using the component's exposed method
-    itemLevelModal.value?.closeModal();
-  };
-
   const acceptDistribution = async (distribution) => {
     try {
       console.log('Starting accept distribution process for:', distribution);
@@ -1488,54 +1183,6 @@
     } catch (error) {
       console.error('Error rejecting distribution:', error);
       toast.error('Error rejecting distribution: ' + error.message);
-    } finally {
-      distributionActionLoading.value = false;
-    }
-  };
-
-  const handleItemLevelProcessing = async (actionData) => {
-    try {
-      console.log(
-        'Starting item-level processing for distribution:',
-        selectedDistribution.value
-      );
-      console.log('Action data:', actionData);
-      distributionActionLoading.value = true;
-
-      // Call the new partial accept/reject method
-      const result = await branchDistributionStore.partialAcceptReject(
-        selectedDistribution.value.id,
-        {
-          action_by: authStore.user?.name || 'Branch Manager',
-          ...actionData,
-        }
-      );
-
-      console.log('Item-level processing result:', result);
-
-      // Close the modal
-      closeItemLevelModal();
-
-      // Refresh data
-      await loadPendingDistributions();
-      await loadBranchInventory();
-
-      // Show success message with details
-      const acceptedCount = actionData.accepted_items?.length || 0;
-      const rejectedCount = actionData.rejected_items?.length || 0;
-
-      let message = `Distribution processed successfully! `;
-      if (acceptedCount > 0) {
-        message += `${acceptedCount} item(s) accepted and added to inventory. `;
-      }
-      if (rejectedCount > 0) {
-        message += `${rejectedCount} item(s) rejected and returned to main inventory.`;
-      }
-
-      toast.success(message);
-    } catch (error) {
-      console.error('Error processing items:', error);
-      toast.error('Error processing items: ' + error.message);
     } finally {
       distributionActionLoading.value = false;
     }
@@ -2252,7 +1899,11 @@
                           <div
                             :class="[
                               'badge badge-sm border-none font-medium',
-                              getStockStatus(item).class,
+                              getStockStatus(item).status === 'out'
+                                ? 'bg-error/20 text-error'
+                                : getStockStatus(item).status === 'low'
+                                  ? 'bg-warning/20 text-warning'
+                                  : 'bg-info/20 text-info',
                             ]"
                           >
                             {{ getStockStatus(item).text }}
@@ -2267,20 +1918,11 @@
                         </td>
                         <td v-if="canEdit">
                           <div class="flex items-center space-x-1">
-                            <button
-                              class="btn btn-ghost btn-xs"
-                              @click="openConsumeModal(item)"
-                              :disabled="
-                                getStockStatus(item).status === 'expired'
-                              "
-                            >
-                              <Minus class="w-4 h-4" />
+                            <button class="btn btn-ghost btn-xs">
+                              <Eye class="w-4 h-4" />
                             </button>
-                            <button
-                              class="btn btn-ghost btn-xs"
-                              @click="openAdjustModal(item)"
-                            >
-                              <RefreshCcw class="w-4 h-4" />
+                            <button class="btn btn-ghost btn-xs">
+                              <Edit class="w-4 h-4" />
                             </button>
                           </div>
                         </td>
@@ -2361,9 +2003,7 @@
           <!-- Expiring Items -->
           <div v-if="alertTab === 'expiring'" class="space-y-3">
             <div
-              v-for="item in branchInventory.filter(
-                (i) => i.status !== 'disposed' && i.expiry_date
-              )"
+              v-for="item in branchInventory.filter((i) => i.expiry_date)"
               :key="item.id"
               class="border border-gray-200 rounded-lg bg-base-100 p-3 flex items-start gap-3"
             >
@@ -2376,7 +2016,7 @@
                   v-else-if="getExpirySeverityLevel(item) === 'warning'"
                   class="w-5 h-5 text-warning"
                 />
-                <Calendar v-else class="w-5 h-5 text-primaryColor" />
+                <Calendar v-else class="w-5 h-5 text-info" />
               </div>
 
               <div class="flex-1">
@@ -2460,11 +2100,7 @@
             </div>
 
             <div
-              v-if="
-                branchInventory.filter(
-                  (i) => i.status !== 'disposed' && i.expiry_date
-                ).length === 0
-              "
+              v-if="branchInventory.filter((i) => i.expiry_date).length === 0"
               class="text-center py-8"
             >
               <CheckCircle class="w-12 h-12 mx-auto text-success mb-2" />
@@ -2476,9 +2112,7 @@
           <div v-if="alertTab === 'lowstock'" class="space-y-3">
             <div
               v-for="item in branchInventory.filter(
-                (i) =>
-                  i.status !== 'disposed' &&
-                  parseFloat(i.quantity) <= parseFloat(i.minimum_stock)
+                (i) => parseFloat(i.quantity) <= parseFloat(i.minimum_stock)
               )"
               :key="item.id"
               class="border border-gray-200 rounded-lg bg-base-100 p-3 flex items-start gap-3"
@@ -2575,9 +2209,7 @@
             <div
               v-if="
                 branchInventory.filter(
-                  (i) =>
-                    i.status !== 'disposed' &&
-                    parseFloat(i.quantity) <= parseFloat(i.minimum_stock)
+                  (i) => parseFloat(i.quantity) <= parseFloat(i.minimum_stock)
                 ).length === 0
               "
               class="text-center py-8"
@@ -2762,20 +2394,11 @@
                   class="flex flex-col sm:flex-row justify-end sm:space-x-2 space-y-2 sm:space-y-0 w-full sm:w-auto"
                 >
                   <button
-                    @click="
-                      () => {
-                        console.log(
-                          'Item-level processing button clicked for distribution:',
-                          distribution
-                        );
-                        openItemLevelModal(distribution);
-                      }
-                    "
-                    class="btn btn-sm text-white bg-primaryColor font-thin border border-none hover:bg-primaryColor/80 w-full sm:w-auto"
-                    :disabled="distributionActionLoading"
+                    @click="viewDistributionReceipt(distribution)"
+                    class="btn btn-sm text-black/50 bg-gray-200 font-thin border border-none hover:bg-gray-300 w-full sm:w-auto"
                   >
-                    <Package class="w-4 h-4 mr-1" />
-                    Select Items
+                    <Eye class="w-4 h-4 mr-1" />
+                    View Receipt
                   </button>
                   <button
                     @click="
@@ -2791,16 +2414,8 @@
                     :disabled="distributionActionLoading"
                   >
                     <CheckCircle class="w-4 h-4 mr-1" />
-                    Accept All
+                    Accept Distribution
                   </button>
-                  <button
-                    @click="viewDistributionReceipt(distribution)"
-                    class="btn btn-sm text-black/50 bg-gray-200 font-thin border border-none hover:bg-gray-300 w-full sm:w-auto"
-                  >
-                    <Eye class="w-4 h-4 mr-1" />
-                    View Receipt
-                  </button>
-
                   <button
                     @click="
                       () => {
@@ -2815,7 +2430,7 @@
                     :disabled="distributionActionLoading"
                   >
                     <X class="w-4 h-4 mr-1" />
-                    Reject All
+                    Reject
                   </button>
                 </div>
               </div>
@@ -3175,67 +2790,9 @@
       :show="showReceiptModal"
       :onClose="closeReceiptModal"
     />
-
-    <!-- Item-Level Accept/Reject Modal -->
-    <ItemLevelAcceptRejectModal
-      ref="itemLevelModal"
-      :distribution="selectedDistribution"
-      :loading="distributionActionLoading"
-      @close="closeItemLevelModal"
-      @process="handleItemLevelProcessing"
-    />
-
-    <!-- Branch Inventory action modals -->
-    <BranchInventoryConsumptionModal
-      :show="actionModal.show && actionModal.type === 'consumption'"
-      :categories="modalCategories"
-      :item-types="modalItemTypes"
-      :current-inventory="modalCurrentInventory"
-      :preselected-item="actionModal.item"
-      @close="closeActionModal"
-      @submit="handleConsumptionSubmit"
-    />
-
-    <BranchInventoryAdjustmentModal
-      :show="actionModal.show && actionModal.type === 'adjustment'"
-      :categories="modalCategories"
-      :item-types="modalItemTypes"
-      :current-inventory="modalCurrentInventory"
-      :preselected-item="actionModal.item"
-      @close="closeActionModal"
-      @submit="handleAdjustmentSubmit"
-    />
-
-    <!-- Confirmation Modal -->
-    <dialog id="branch_inventory_confirm_modal" class="modal">
-      <div class="modal-box max-w-xl">
-        <h3 class="font-bold text-lg mb-2">{{ confirmModal.title }}</h3>
-        <p class="text-sm text-gray-600">{{ confirmModal.message }}</p>
-        <div class="modal-action">
-          <button
-            type="button"
-            class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none btn-sm"
-            @click="closeConfirmModal"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            class="btn bg-primaryColor text-white btn-sm font-thin border-none hover:bg-primaryColor/80 disabled:opacity-60 disabled:cursor-not-allowed"
-            @click="handleConfirmAction"
-            :disabled="confirmLoading"
-          >
-            <span v-if="confirmLoading">Confirming...</span>
-            <span v-else>Confirm</span>
-          </button>
-        </div>
-      </div>
-    </dialog>
-
-    <!-- Branch Transactions Modal -->
-    <BranchInventoryTransactionModal
-      :show="showBranchTransactions"
-      @close="closeTransactionModal"
-    />
   </div>
 </template>
+
+<style scoped>
+  /* Following MainInventory.vue patterns */
+</style>

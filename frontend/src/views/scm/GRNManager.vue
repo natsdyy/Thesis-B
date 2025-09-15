@@ -348,6 +348,18 @@
                       View Returns
                     </button>
                     <button
+                      v-if="grn.status === 'draft'"
+                      class="btn btn-xs btn-success text-white font-thin shadow-none"
+                      @click="updateStatus(grn.id, 'pending_inspection')"
+                      :disabled="updatingStatus === grn.id"
+                    >
+                      <span
+                        v-if="updatingStatus === grn.id"
+                        class="loading loading-spinner loading-xs mr-1"
+                      ></span>
+                      Start Inspection
+                    </button>
+                    <button
                       v-if="grn.status === 'passed'"
                       class="btn btn-xs btn-success text-white font-thin shadow-none"
                       @click="updateStatus(grn.id, 'completed')"
@@ -1399,15 +1411,26 @@
           );
 
           if (supplyResponse.ok) {
-            // Then update GRN items with inventory data using store method
-            await grnStore.updateGRNInventoryData(id);
-
-            // Refresh the GRN details with updated data
-            selectedGRN.value = await fetchGRNById(id, false);
-            showToast(
-              'success',
-              'Inventory data auto-mapped from supply request'
+            // Then update GRN items with inventory data
+            const grnResponse = await fetch(
+              getApiUrl(`grn/${id}/update-inventory-data`),
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+              }
             );
+
+            if (grnResponse.ok) {
+              // Clear cache and refresh the GRN details with updated data
+              grnStore.clearGRNCache(id);
+              selectedGRN.value = await fetchGRNById(id, false);
+              showToast(
+                'success',
+                'Inventory data auto-mapped from supply request'
+              );
+            }
           }
         } catch (updateError) {
           console.warn(
@@ -1427,6 +1450,8 @@
           itemTypeSelections.value[it.id] = '';
         }
       });
+
+      selectedGRN.value = grn;
     } catch (err) {
       console.error('Error viewing GRN details:', err);
       showToast('error', 'Failed to load GRN details');
@@ -1542,63 +1567,84 @@
     try {
       inspectingItem.value = item.id;
 
-      const notes =
-        result === 'failed'
-          ? 'Item failed quality inspection'
-          : 'Item passed quality inspection';
+      // Get auth store for inspector ID
+      const { useAuthStore } = await import('../../stores/authStore.js');
+      const authStore = useAuthStore();
 
-      // Use store method instead of direct fetch
-      const updatedGRN = await grnStore.performQualityInspection(
-        selectedGRN.value.id,
-        item.id,
-        result,
-        notes
+      // Call the individual item inspection endpoint
+      const response = await fetch(
+        getApiUrl(`grn/${selectedGRN.value.id}/items/${item.id}/inspect`),
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            result: result,
+            notes:
+              result === 'failed'
+                ? 'Item failed quality inspection'
+                : 'Item passed quality inspection',
+            inspector_id: authStore.user.id,
+          }),
+        }
       );
 
-      // Update the selected GRN with the new data
-      selectedGRN.value = updatedGRN;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to inspect item');
+      }
 
-      // Show success toast
-      const statusText = result === 'passed' ? 'passed' : 'failed';
-      showToast('success', `Item marked as ${statusText}`);
+      const data = await response.json();
 
-      // Check if all items are now inspected
-      const allInspected = selectedGRN.value.items.every(
-        (item) => item.quality_status !== 'pending'
-      );
+      if (data.success) {
+        // Update the selected GRN with the new data
+        selectedGRN.value = data.data;
 
-      if (allInspected) {
-        const hasFailed = selectedGRN.value.items.some(
-          (item) => item.quality_status === 'failed'
+        // Show success toast
+        const statusText = result === 'passed' ? 'passed' : 'failed';
+        showToast('success', `Item marked as ${statusText}`);
+
+        // Check if all items are now inspected
+        const allInspected = selectedGRN.value.items.every(
+          (item) => item.quality_status !== 'pending'
         );
-        const hasPassed = selectedGRN.value.items.some(
-          (item) => item.quality_status === 'passed'
-        );
 
-        if (hasFailed && hasPassed) {
-          showToast(
-            'info',
-            'Mixed inspection results - some items passed, some failed'
+        if (allInspected) {
+          const hasFailed = selectedGRN.value.items.some(
+            (item) => item.quality_status === 'failed'
           );
-        } else if (hasPassed) {
-          showToast('success', 'All items passed inspection!');
-        } else if (hasFailed) {
-          showToast(
-            'warning',
-            'All items failed inspection - returns will be created'
+          const hasPassed = selectedGRN.value.items.some(
+            (item) => item.quality_status === 'passed'
           );
-        }
 
-        // Refresh PO data when all items are inspected (returns may be created)
-        try {
-          const { usePurchaseOrderStore } = await import(
-            '../../stores/purchaseOrderStore.js'
-          );
-          const poStore = usePurchaseOrderStore();
-          await poStore.fetchPurchaseOrders(); // Refresh PO data to update return status
-        } catch (poError) {
-          console.warn('Failed to refresh PO data:', poError);
+          if (hasFailed && hasPassed) {
+            showToast(
+              'info',
+              'Mixed inspection results - some items passed, some failed'
+            );
+          } else if (hasPassed) {
+            showToast('success', 'All items passed inspection!');
+          } else if (hasFailed) {
+            showToast(
+              'warning',
+              'All items failed inspection - returns will be created'
+            );
+          }
+
+          // Refresh PO data when all items are inspected (returns may be created)
+          try {
+            const { usePurchaseOrderStore } = await import(
+              '../../stores/purchaseOrderStore.js'
+            );
+            const poStore = usePurchaseOrderStore();
+            await poStore.fetchPurchaseOrders(); // Refresh PO data to update return status
+          } catch (poError) {
+            console.warn('Failed to refresh PO data:', poError);
+          }
         }
+      } else {
+        throw new Error(data.message || 'Failed to inspect item');
       }
     } catch (error) {
       console.error('Error inspecting individual item:', error);
@@ -1615,14 +1661,29 @@
       console.log('GRN ID:', selectedGRN.value.id);
       console.log('Current GRN items:', selectedGRN.value.items);
 
-      // Call the store method to update GRN items with inventory data
-      const responseData = await grnStore.updateGRNInventoryData(
-        selectedGRN.value.id
+      // Call the backend method to update GRN items with inventory data
+      const response = await fetch(
+        getApiUrl(`grn/${selectedGRN.value.id}/update-inventory-data`),
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
       );
 
+      console.log('Response status:', response.status);
+      const responseData = await response.json();
       console.log('Response data:', responseData);
 
-      // Refresh the GRN details
+      if (!response.ok) {
+        throw new Error(
+          responseData.message || 'Failed to update inventory data'
+        );
+      }
+
+      // Clear cache and refresh the GRN details
+      grnStore.clearGRNCache(selectedGRN.value.id);
       selectedGRN.value = await fetchGRNById(selectedGRN.value.id, false);
       console.log('Updated GRN items:', selectedGRN.value.items);
       console.log('=== END AUTO-MAP DEBUG ===');

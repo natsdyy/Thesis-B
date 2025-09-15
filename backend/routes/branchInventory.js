@@ -1,7 +1,6 @@
 const express = require("express");
 const router = express.Router();
 const BranchInventory = require("../models/BranchInventory");
-const BranchInventoryTransaction = require("../models/BranchInventoryTransaction");
 const { authenticateToken, requirePermission } = require("../middleware/rbac");
 
 // Get branch inventory
@@ -37,70 +36,6 @@ router.get(
       res.status(500).json({
         success: false,
         message: error.message || "Failed to fetch branch inventory",
-      });
-    }
-  }
-);
-
-// Update item expiry date
-router.put(
-  "/items/:itemId/expiry",
-  authenticateToken,
-  requirePermission("Manage Inventory"),
-  async (req, res) => {
-    try {
-      const { itemId } = req.params;
-      const { expiry_date, reference_number, notes } = req.body;
-
-      // Get current item for logging context
-      const current = await require("../config/database")
-        .db("branch_inventory")
-        .where("id", itemId)
-        .whereNull("deleted_at")
-        .first();
-
-      if (!current) {
-        return res.status(404).json({
-          success: false,
-          message: "Item not found",
-        });
-      }
-
-      const updatedItem = await BranchInventory.updateExpiryDate(
-        itemId,
-        expiry_date
-      );
-
-      // Log as adjustment transaction
-      try {
-        await BranchInventoryTransaction.create({
-          branch_id: current.branch_id,
-          inventory_item_id: Number(itemId),
-          item_name: updatedItem?.item_name || current.item_name,
-          item_type: updatedItem?.item_type || current.item_type,
-          transaction_type: "adjustment",
-          quantity: 0,
-          unit_of_measure: updatedItem?.unit || current?.unit,
-          reference_number: reference_number || null,
-          notes: notes || "Updated expiry date",
-          adjustment_type: "set_expiry_date",
-          new_expiry_date: expiry_date || null,
-          performed_by: req.user?.id || null,
-        });
-      } catch (e) {
-        console.warn("Failed to log branch expiry update:", e?.message || e);
-      }
-
-      res.json({
-        success: true,
-        data: updatedItem,
-        message: "Item expiry date updated successfully",
-      });
-    } catch (error) {
-      console.error("Error updating item expiry date:", error);
-      res.status(500).json({
-        success: false,
-        message: error.message || "Failed to update item expiry date",
       });
     }
   }
@@ -204,40 +139,6 @@ router.get(
   }
 );
 
-// List branch inventory transactions (distribution, consumption, adjustment)
-router.get(
-  "/:branchId/transactions",
-  authenticateToken,
-  requirePermission("Manage Inventory"),
-  async (req, res) => {
-    try {
-      const { branchId } = req.params;
-      const {
-        page = 1,
-        limit = 10,
-        search = "",
-        transaction_type = "",
-        date_from = "",
-        date_to = "",
-      } = req.query;
-
-      const result = await BranchInventoryTransaction.list(
-        branchId,
-        { search, transaction_type, date_from, date_to },
-        { page, limit }
-      );
-
-      res.json({ success: true, ...result });
-    } catch (error) {
-      console.error("Error fetching branch inventory transactions:", error);
-      res.status(500).json({
-        success: false,
-        message: error.message || "Failed to fetch transactions",
-      });
-    }
-  }
-);
-
 // Add item to branch inventory (from distribution)
 router.post(
   "/:branchId/items",
@@ -249,27 +150,6 @@ router.post(
       const itemData = req.body;
 
       const item = await BranchInventory.addItem(branchId, itemData);
-
-      // Record transaction for distribution/receipt into branch inventory
-      try {
-        await BranchInventoryTransaction.create({
-          branch_id: Number(branchId),
-          inventory_item_id: item?.id || null,
-          item_name: item?.item_name || itemData?.name,
-          item_type: item?.item_type || itemData?.type,
-          transaction_type: "distribution",
-          quantity: parseFloat(item?.quantity || itemData?.quantity || 0),
-          unit_of_measure: item?.unit || itemData?.unit,
-          reference_number: itemData?.distribution_reference || null,
-          notes: itemData?.notes || "Distributed to branch",
-          performed_by: req.user?.id || null,
-        });
-      } catch (e) {
-        console.warn(
-          "Failed to log branch distribution transaction:",
-          e?.message || e
-        );
-      }
 
       res.json({
         success: true,
@@ -296,50 +176,11 @@ router.put(
       const { itemId } = req.params;
       const { quantity, reason } = req.body;
 
-      // Fetch current to compute delta and determine tx type
-      const current = await require("../config/database")
-        .db("branch_inventory")
-        .where("id", itemId)
-        .whereNull("deleted_at")
-        .first();
-
       const updatedItem = await BranchInventory.updateQuantity(
         itemId,
         quantity,
         reason
       );
-
-      // Record transaction
-      try {
-        const beforeQty = parseFloat(current?.quantity || 0);
-        const afterQty = parseFloat(updatedItem?.quantity || quantity || 0);
-        const delta = afterQty - beforeQty;
-        const txType =
-          reason === "disposal"
-            ? "disposal"
-            : delta < 0
-              ? "consumption"
-              : "adjustment";
-
-        await BranchInventoryTransaction.create({
-          branch_id: current?.branch_id || updatedItem?.branch_id,
-          inventory_item_id: Number(itemId),
-          item_name: updatedItem?.item_name || current?.item_name,
-          item_type: updatedItem?.item_type || current?.item_type,
-          transaction_type: txType,
-          quantity: Math.abs(delta),
-          unit_of_measure:
-            updatedItem?.unit ||
-            current?.unit ||
-            updatedItem?.unit_of_measure ||
-            current?.unit_of_measure,
-          reference_number: req.body?.reference_number || null,
-          notes: req.body?.notes || reason || null,
-          performed_by: req.user?.id || null,
-        });
-      } catch (e) {
-        console.warn("Failed to log branch quantity change:", e?.message || e);
-      }
 
       res.json({
         success: true,

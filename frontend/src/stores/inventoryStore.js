@@ -132,40 +132,10 @@ export const useInventoryStore = defineStore('inventory', () => {
       throw new Error('Selected branch differs from current cart branch');
     }
     distributionCart.value.branch_id = effectiveBranch;
-
     const key = `${source}:${item_id}`;
     const existing = distributionCart.value.items.find((it) => it.key === key);
-    const newQuantity = Number(quantity || 0);
-    const currentQuantity = existing ? Number(existing.quantity) : 0;
-    const totalQuantity = currentQuantity + newQuantity;
-
-    // Get available stock from the item
-    const availableStock =
-      source === 'production'
-        ? item.available_quantity || 0
-        : item.quantity || 0;
-
-    // Debug logging for production items
-    if (source === 'production') {
-      console.log('Production item validation:', {
-        item_name: item.item_name || item.menu_item_name,
-        available_quantity: item.available_quantity,
-        currentQuantity,
-        newQuantity,
-        totalQuantity,
-        availableStock,
-      });
-    }
-
-    // Validate that total quantity doesn't exceed available stock
-    if (totalQuantity > availableStock) {
-      throw new Error(
-        `Cannot add ${newQuantity} pieces. Total quantity (${totalQuantity}) exceeds available stock (${availableStock} pieces)`
-      );
-    }
-
     if (existing) {
-      existing.quantity = totalQuantity;
+      existing.quantity = Number(existing.quantity) + Number(quantity || 0);
       existing.unit_price = Number(unit_price || existing.unit_price || 0);
     } else {
       distributionCart.value.items.push({
@@ -176,7 +146,7 @@ export const useInventoryStore = defineStore('inventory', () => {
         name,
         unit,
         unit_price: Number(unit_price || 0),
-        quantity: newQuantity,
+        quantity: Number(quantity || 0),
       });
     }
   };
@@ -184,37 +154,8 @@ export const useInventoryStore = defineStore('inventory', () => {
   const updateCartItem = (key, { quantity, unit_price }) => {
     const idx = distributionCart.value.items.findIndex((it) => it.key === key);
     if (idx === -1) return;
-
-    if (quantity !== undefined) {
-      const newQuantity = Number(quantity);
-      const item = distributionCart.value.items[idx];
-
-      // Get available stock from the item
-      const availableStock =
-        item.source === 'production'
-          ? item.item.available_quantity || 0
-          : item.item.quantity || 0;
-
-      // Debug logging for production items
-      if (item.source === 'production') {
-        console.log('Production item update validation:', {
-          item_name: item.item.item_name || item.item.menu_item_name,
-          available_quantity: item.item.available_quantity,
-          newQuantity,
-          availableStock,
-        });
-      }
-
-      // Validate that quantity doesn't exceed available stock
-      if (newQuantity > availableStock) {
-        throw new Error(
-          `Cannot set quantity to ${newQuantity}. Exceeds available stock (${availableStock} pieces)`
-        );
-      }
-
-      distributionCart.value.items[idx].quantity = newQuantity;
-    }
-
+    if (quantity !== undefined)
+      distributionCart.value.items[idx].quantity = Number(quantity);
     if (unit_price !== undefined)
       distributionCart.value.items[idx].unit_price = Number(unit_price);
   };
@@ -890,77 +831,6 @@ export const useInventoryStore = defineStore('inventory', () => {
     }
   };
 
-  // Bulk distribute to branch (optimized for performance)
-  const bulkDistributeToBranch = async (items, performed_by = null) => {
-    loading.value = true;
-    error.value = null;
-
-    try {
-      // Resolve performed_by from auth store if not provided
-      let actorName = performed_by;
-      try {
-        if (!actorName) {
-          const { useAuthStore } = await import('./authStore.js');
-          const authStore = useAuthStore();
-          const u = authStore?.user;
-          if (u) {
-            actorName =
-              [u.first_name, u.last_name].filter(Boolean).join(' ') ||
-              u.full_name ||
-              u.email ||
-              'System';
-          }
-        }
-      } catch (_) {
-        actorName = performed_by || 'System';
-      }
-
-      // Prepare bulk adjustment data
-      const adjustmentItems = items.map((item) => ({
-        inventory_item_id: item.inventory_item_id,
-        current_quantity: item.current_quantity,
-        new_quantity: item.new_quantity,
-        reason: 'Branch Distribution',
-        notes:
-          item.notes ||
-          `Distributed to branch ${item.branch_id} @ ${item.transfer_price}`,
-      }));
-
-      const response = await axios.post(
-        `${API_BASE_URL}/inventory/adjustment/bulk-distribution`,
-        {
-          items: adjustmentItems,
-          performed_by: actorName || 'System',
-          reference_number: null,
-          notes: 'Bulk branch distribution',
-        }
-      );
-
-      if (response.data.success) {
-        // Refresh data only once after all distributions
-        await Promise.all([
-          fetchCurrentInventory(),
-          fetchStats(),
-          fetchRecentActivity(),
-        ]);
-        return response.data;
-      } else {
-        throw new Error(
-          response.data.message || 'Failed to bulk distribute to branch'
-        );
-      }
-    } catch (err) {
-      error.value =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to bulk distribute to branch';
-      console.error('Error bulk distributing to branch:', err);
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
   // DEV: Seed backdated consumption transactions for testing forecasting
   const seedTestConsumption = async (inventoryItemId, entries = []) => {
     // entries: [{ date: Date|string, quantity: number }]
@@ -1118,7 +988,6 @@ export const useInventoryStore = defineStore('inventory', () => {
     singleConsumption,
     stockAdjustment,
     distributeToBranch,
-    bulkDistributeToBranch,
     setCartBranch,
     clearDistributionCart,
     addToDistributionCart,

@@ -111,6 +111,129 @@ const { authenticateToken } = require("../middleware/rbac");
 
 /**
  * @swagger
+ * /api/branch-distributions/bulk-distribute:
+ *   post:
+ *     summary: Create multiple branch distributions in bulk (optimized for performance)
+ *     tags: [Branch Distributions]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - distributions
+ *             properties:
+ *               distributions:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/CreateBranchDistribution'
+ *     responses:
+ *       201:
+ *         description: Distributions created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/BranchDistribution'
+ *       400:
+ *         description: Invalid input
+ *       500:
+ *         description: Server error
+ */
+router.post("/bulk-distribute", authenticateToken, async (req, res) => {
+  try {
+    const { distributions } = req.body;
+
+    // Validation
+    if (
+      !distributions ||
+      !Array.isArray(distributions) ||
+      distributions.length === 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Distributions array is required and must not be empty",
+      });
+    }
+
+    // Validate each distribution
+    for (const distributionData of distributions) {
+      const { branch_id, prepared_by, total_amount, items } = distributionData;
+
+      if (
+        !branch_id ||
+        !prepared_by ||
+        !total_amount ||
+        !items ||
+        !Array.isArray(items) ||
+        items.length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Each distribution must have: branch_id, prepared_by, total_amount, and items array",
+        });
+      }
+
+      // Validate items
+      for (const item of items) {
+        if (
+          !item.source ||
+          !item.item_ref_id ||
+          !item.name ||
+          !item.unit ||
+          item.qty === undefined ||
+          item.unit_price === undefined ||
+          item.amount === undefined
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Each item must have: source, item_ref_id, name, unit, qty, unit_price, amount",
+          });
+        }
+
+        if (!["scm", "production"].includes(item.source)) {
+          return res.status(400).json({
+            success: false,
+            message: 'Item source must be either "scm" or "production"',
+          });
+        }
+      }
+    }
+
+    // Process all distributions in a single transaction
+    const results =
+      await BranchDistribution.createBulkDistributions(distributions);
+
+    res.status(201).json({
+      success: true,
+      message: `${results.length} branch distributions created successfully`,
+      data: results,
+    });
+  } catch (error) {
+    console.error("Error creating bulk branch distributions:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create bulk branch distributions",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
  * /api/branch-distributions:
  *   post:
  *     summary: Create a new branch distribution
@@ -767,6 +890,95 @@ router.post("/:id/complete", authenticateToken, async (req, res) => {
     });
   }
 });
+
+/**
+ * @swagger
+ * /api/branch-distributions/{id}/acknowledge-rejection:
+ *   post:
+ *     summary: Acknowledge a rejected distribution
+ *     tags: [Branch Distributions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Distribution ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - acknowledged_by
+ *             properties:
+ *               acknowledged_by:
+ *                 type: string
+ *                 description: User who acknowledged the rejection
+ *               acknowledgment_notes:
+ *                 type: string
+ *                 description: Optional notes about the acknowledgment
+ *     responses:
+ *       200:
+ *         description: Rejection acknowledged successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   $ref: '#/components/schemas/BranchDistribution'
+ *       400:
+ *         description: Invalid input or distribution cannot be acknowledged
+ *       404:
+ *         description: Distribution not found
+ */
+router.post(
+  "/:id/acknowledge-rejection",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { acknowledged_by, acknowledgment_notes } = req.body;
+
+      // Validation
+      if (!acknowledged_by) {
+        return res.status(400).json({
+          success: false,
+          message: "acknowledged_by is required",
+        });
+      }
+
+      const updated = await BranchDistribution.acknowledgeRejection(
+        parseInt(id),
+        {
+          acknowledged_by,
+          acknowledgment_notes: acknowledgment_notes || null,
+        }
+      );
+
+      res.json({
+        success: true,
+        message: "Rejection acknowledged successfully",
+        data: updated,
+      });
+    } catch (error) {
+      console.error("Error acknowledging rejection:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to acknowledge rejection",
+        error: error.message,
+      });
+    }
+  }
+);
 
 /**
  * @swagger

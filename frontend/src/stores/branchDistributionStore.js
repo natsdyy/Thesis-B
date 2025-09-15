@@ -390,10 +390,94 @@ export const useBranchDistributionStore = defineStore(
     };
 
     /**
+     * Acknowledge a rejected distribution
+     * @param {number} id - Distribution ID
+     * @param {Object} acknowledgmentData - Acknowledgment details
+     * @param {string} acknowledgmentData.acknowledged_by - User who acknowledged
+     * @param {string} acknowledgmentData.acknowledgment_notes - Optional notes
+     * @returns {Promise<Object>} Updated distribution
+     */
+    const acknowledgeRejection = async (id, acknowledgmentData) => {
+      loading.value = true;
+      error.value = null;
+      try {
+        const response = await axios.post(
+          `${API_BASE_URL}/branch-distributions/${id}/acknowledge-rejection`,
+          acknowledgmentData
+        );
+        if (response.data.success) {
+          const updatedDistribution = response.data.data;
+          distributions.value = distributions.value.map((d) =>
+            d.id === id ? updatedDistribution : d
+          );
+          if (
+            currentDistribution.value &&
+            currentDistribution.value.id === id
+          ) {
+            currentDistribution.value = updatedDistribution;
+          }
+          return updatedDistribution;
+        } else {
+          throw new Error(
+            response.data.message || 'Failed to acknowledge rejection'
+          );
+        }
+      } catch (err) {
+        const errorMessage =
+          err.response?.data?.message ||
+          err.message ||
+          'Failed to acknowledge rejection';
+        error.value = errorMessage;
+        throw err;
+      } finally {
+        loading.value = false;
+      }
+    };
+
+    /**
      * Clear current distribution
      */
     const clearCurrentDistribution = () => {
       currentDistribution.value = null;
+    };
+
+    /**
+     * Create multiple branch distributions in bulk (optimized for performance)
+     * @param {Array} distributionsData - Array of distribution data
+     * @returns {Promise<Array>} Created distributions
+     */
+    const createBulkDistributions = async (distributionsData) => {
+      loading.value = true;
+      error.value = null;
+
+      try {
+        const response = await axios.post(
+          `${API_BASE_URL}/branch-distributions/bulk-distribute`,
+          { distributions: distributionsData }
+        );
+
+        if (response.data.success) {
+          const createdDistributions = response.data.data;
+          // Add to local state
+          distributions.value.unshift(...createdDistributions);
+
+          return createdDistributions;
+        } else {
+          throw new Error(
+            response.data.message || 'Failed to create bulk distributions'
+          );
+        }
+      } catch (err) {
+        const errorMessage =
+          err.response?.data?.message ||
+          err.message ||
+          'Failed to create bulk distributions';
+        error.value = errorMessage;
+
+        throw err;
+      } finally {
+        loading.value = false;
+      }
     };
 
     /**
@@ -454,6 +538,7 @@ export const useBranchDistributionStore = defineStore(
       // Actions
       clearError,
       createDistribution,
+      createBulkDistributions,
       fetchDistributions,
       fetchDistributionsByBranch,
       fetchDistributionById,
@@ -462,6 +547,7 @@ export const useBranchDistributionStore = defineStore(
       updateDistributionStatus,
       rejectDistribution,
       completeDistribution,
+      acknowledgeRejection,
       clearCurrentDistribution,
       clearDistributions,
       updatePagination,

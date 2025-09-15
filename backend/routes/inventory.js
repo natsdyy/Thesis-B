@@ -795,6 +795,99 @@ router.post("/adjustment/bulk", async (req, res) => {
   }
 });
 
+// Bulk distribution adjustment (optimized for branch distributions)
+router.post("/adjustment/bulk-distribution", async (req, res) => {
+  try {
+    const { items, performed_by, reference_number, notes } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Items array is required",
+      });
+    }
+
+    // Validate all items first
+    for (const item of items) {
+      if (
+        !item.inventory_item_id ||
+        item.current_quantity === undefined ||
+        item.current_quantity === null ||
+        item.new_quantity === undefined ||
+        item.new_quantity === null
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Each item must have inventory_item_id, current_quantity, and new_quantity",
+        });
+      }
+    }
+
+    const results = [];
+    const errors = [];
+
+    // Process all items in a single transaction
+    const trx = await db.transaction();
+
+    try {
+      for (const item of items) {
+        try {
+          const transactionData = {
+            transaction_type: "adjustment",
+            quantity: parseFloat(item.new_quantity || 0),
+            reference_number: reference_number || null,
+            reason: item.reason || "Branch Distribution",
+            notes: notes || item.notes || null,
+            performed_by: performed_by || "System",
+            transaction_date: new Date(),
+            adjustment_type: "reduce_quantity",
+            audit_action: "transfer_out",
+          };
+
+          const updatedItem = await Inventory.updateInventoryQuantity(
+            item.inventory_item_id,
+            transactionData,
+            trx
+          );
+          results.push(updatedItem);
+        } catch (error) {
+          errors.push({
+            inventory_item_id: item.inventory_item_id,
+            error: error.message,
+          });
+        }
+      }
+
+      if (errors.length === 0) {
+        await trx.commit();
+      } else {
+        await trx.rollback();
+      }
+
+      res.json({
+        success: errors.length === 0,
+        data: results,
+        errors: errors.length > 0 ? errors : undefined,
+        message:
+          errors.length === 0
+            ? "Bulk distribution adjustment recorded successfully"
+            : `${results.length} items processed, ${errors.length} errors occurred`,
+      });
+    } catch (error) {
+      await trx.rollback();
+      throw error;
+    }
+  } catch (error) {
+    console.error("Error processing bulk distribution adjustment:", error);
+    res.status(500).json({
+      success: false,
+      message:
+        error.message || "Failed to process bulk distribution adjustment",
+    });
+  }
+});
+
 // Configure alerts for item types
 router.post("/alerts/configure", async (req, res) => {
   try {

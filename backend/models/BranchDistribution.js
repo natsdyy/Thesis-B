@@ -99,6 +99,94 @@ class BranchDistribution {
   }
 
   /**
+   * Create multiple branch distributions in bulk (optimized for performance)
+   * @param {Array} distributionsData - Array of distribution data
+   * @returns {Promise<Array>} Created distributions with items
+   */
+  static async createBulkDistributions(distributionsData) {
+    const trx = await db.transaction();
+
+    try {
+      const results = [];
+
+      // Process all distributions in a single transaction
+      for (const distributionData of distributionsData) {
+        // Generate unique reference number
+        const reference = await this.generateReference(trx);
+
+        // Create the distribution header
+        const insertResult = await trx("branch_distributions").insert({
+          reference,
+          branch_id: distributionData.branch_id,
+          prepared_by: distributionData.prepared_by,
+          total_amount: distributionData.total_amount,
+          notes: distributionData.notes,
+          status: "delivered",
+        });
+
+        // Handle different driver return shapes
+        let distributionId;
+        if (Array.isArray(insertResult)) {
+          distributionId = insertResult[0];
+        } else if (
+          insertResult &&
+          typeof insertResult === "object" &&
+          "id" in insertResult
+        ) {
+          distributionId = insertResult.id;
+        } else {
+          // Fallback: query last inserted id
+          const latest = await trx("branch_distributions")
+            .select("id")
+            .where({ reference })
+            .orderBy("id", "desc")
+            .first();
+          distributionId = latest?.id;
+        }
+
+        // Create the distribution items
+        const itemsWithDistributionId = distributionData.items.map((item) => ({
+          distribution_id: distributionId,
+          source: item.source,
+          item_ref_id: item.item_ref_id,
+          name: item.name,
+          unit: item.unit,
+          qty: item.qty,
+          unit_price: item.unit_price,
+          amount: item.amount,
+          category: item.category || "Uncategorized",
+          expiry_date: item.expiry_date || null,
+          notes: item.notes || null,
+        }));
+
+        await trx("branch_distribution_items").insert(itemsWithDistributionId);
+
+        // Get the created distribution with items for return
+        const distribution = await trx("branch_distributions")
+          .leftJoin("branches", "branch_distributions.branch_id", "branches.id")
+          .select("branch_distributions.*", "branches.name as branch_name")
+          .where("branch_distributions.id", distributionId)
+          .first();
+
+        const items = await trx("branch_distribution_items")
+          .where("distribution_id", distributionId)
+          .orderBy("id");
+
+        results.push({
+          ...distribution,
+          items,
+        });
+      }
+
+      await trx.commit();
+      return results;
+    } catch (error) {
+      await trx.rollback();
+      throw error;
+    }
+  }
+
+  /**
    * Find distribution by ID with items
    * @param {number} id - Distribution ID
    * @returns {Promise<Object|null>} Distribution with items
@@ -462,6 +550,34 @@ class BranchDistribution {
       await trx.rollback();
       throw error;
     }
+  }
+
+  /**
+   * Acknowledge a rejected distribution
+   * @param {number} id - Distribution ID
+   * @param {Object} acknowledgmentData - Acknowledgment details
+   * @param {string} acknowledgmentData.acknowledged_by - User who acknowledged
+   * @param {string} acknowledgmentData.acknowledgment_notes - Optional notes
+   * @returns {Promise<Object>} Updated distribution
+   */
+  static async acknowledgeRejection(id, acknowledgmentData) {
+    const updateData = {
+      acknowledged_by: acknowledgmentData.acknowledged_by,
+      acknowledged_at: db.fn.now(),
+      acknowledgment_notes: acknowledgmentData.acknowledgment_notes,
+      updated_at: db.fn.now(),
+    };
+
+    const result = await db("branch_distributions")
+      .where("id", id)
+      .where("status", "rejected")
+      .update(updateData);
+
+    if (result > 0) {
+      return await this.findByIdWithItems(id);
+    }
+
+    throw new Error("Distribution not found or not in rejected status");
   }
 
   /**

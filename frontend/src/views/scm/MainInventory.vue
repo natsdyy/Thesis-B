@@ -1880,19 +1880,31 @@
                 }
               );
             } else {
-              await inventoryStore.distributeToBranch({
-                inventory_item_id: distributionData.item.id,
-                current_quantity: distributionData.item.quantity,
-                branch_id: distributionData.branch_id,
-                quantity: distributionData.quantity,
-                transfer_price: distributionData.transfer_price,
-                notes: distributionData.notes,
-                performed_by:
-                  `${authStore?.user?.first_name || ''} ${authStore?.user?.last_name || ''}`.trim() ||
-                  authStore?.user?.full_name ||
-                  authStore?.user?.email ||
-                  'System',
-              });
+              // Use bulk method even for single items for consistency
+              const preparedName =
+                `${authStore?.user?.first_name || ''} ${authStore?.user?.last_name || ''}`.trim() ||
+                authStore?.user?.full_name ||
+                authStore?.user?.email ||
+                'System';
+
+              const currentQty =
+                parseFloat(distributionData.item.quantity) || 0;
+              const distributeQty = parseFloat(distributionData.quantity) || 0;
+              const newQty = currentQty - distributeQty;
+
+              await inventoryStore.bulkDistributeToBranch(
+                [
+                  {
+                    inventory_item_id: distributionData.item.id,
+                    current_quantity: currentQty,
+                    new_quantity: newQty,
+                    branch_id: distributionData.branch_id,
+                    transfer_price: distributionData.transfer_price,
+                    notes: distributionData.notes,
+                  },
+                ],
+                preparedName
+              );
             }
 
             showToast(
@@ -1932,16 +1944,21 @@
       const unit = distributionData.item.unit_of_measure || 'units';
       const unitPrice = Number(distributionData.transfer_price || 0);
 
-      inventoryStore.addToDistributionCart({
-        source: isProduction ? 'production' : 'scm',
-        item: distributionData.item,
-        item_id: distributionData.item.id,
-        name,
-        unit,
-        unit_price: unitPrice,
-        quantity: Number(distributionData.quantity || 0),
-        branch_id: distributionData.branch_id,
-      });
+      try {
+        inventoryStore.addToDistributionCart({
+          source: isProduction ? 'production' : 'scm',
+          item: distributionData.item,
+          item_id: distributionData.item.id,
+          name,
+          unit,
+          unit_price: unitPrice,
+          quantity: Number(distributionData.quantity || 0),
+          branch_id: distributionData.branch_id,
+        });
+      } catch (error) {
+        showToast('error', error.message);
+        return;
+      }
 
       showToast('success', `${name} added to draft`);
       closeModal();
@@ -2036,34 +2053,55 @@
             const createdReceipt =
               await branchDistributionStore.createDistribution(receiptData);
 
-            // Step 2: Execute stock movements using existing endpoints
+            // Step 2: Execute stock movements using bulk operations (optimized)
+            const scmItems = [];
+            const productionItems = [];
+
+            // Separate items by source
             for (const it of cart.items) {
               if (it.source === 'production') {
-                await productionStore.recordDistribution(
-                  it.item?.menu_item_id || it.item_id,
-                  {
-                    branch_id: cart.branch_id,
-                    quantity: it.quantity,
-                    transfer_price: it.unit_price,
-                    notes: `Receipt: ${createdReceipt.reference}`,
-                  }
-                );
-              } else {
-                await inventoryStore.distributeToBranch({
-                  inventory_item_id: it.item_id,
-                  current_quantity: it.item.quantity,
+                productionItems.push({
+                  menu_item_id: it.item?.menu_item_id || it.item_id,
                   branch_id: cart.branch_id,
                   quantity: it.quantity,
                   transfer_price: it.unit_price,
                   notes: `Receipt: ${createdReceipt.reference}`,
-                  performed_by:
-                    `${authStore?.user?.first_name || ''} ${authStore?.user?.last_name || ''}`.trim() ||
-                    authStore?.user?.full_name ||
-                    authStore?.user?.email ||
-                    'System',
                 });
+              } else {
+                const currentQty = parseFloat(it.item.quantity) || 0;
+                const distributeQty = parseFloat(it.quantity) || 0;
+                const newQty = currentQty - distributeQty;
+
+                const scmItem = {
+                  inventory_item_id: it.item_id,
+                  current_quantity: currentQty,
+                  new_quantity: newQty,
+                  branch_id: cart.branch_id,
+                  transfer_price: it.unit_price,
+                  notes: `Receipt: ${createdReceipt.reference}`,
+                };
+                scmItems.push(scmItem);
               }
             }
+
+            // Execute bulk operations in parallel
+            const promises = [];
+
+            if (scmItems.length > 0) {
+              promises.push(
+                inventoryStore.bulkDistributeToBranch(scmItems, preparedName)
+              );
+            }
+
+            if (productionItems.length > 0) {
+              // Use bulk distribution for production items (optimized)
+              promises.push(
+                productionStore.recordBulkDistributions(productionItems)
+              );
+            }
+
+            // Wait for all operations to complete
+            await Promise.all(promises);
 
             // Step 3: Clear cart and show receipt
             inventoryStore.clearDistributionCart();
@@ -2215,27 +2253,34 @@
     rejectionNotification.value.acknowledging = true;
 
     try {
-      // The quantities are already returned to inventory when the distribution was rejected
-      // We just need to close the notification
+      // Use the store to acknowledge the rejection
+      await branchDistributionStore.acknowledgeRejection(
+        rejectionNotification.value.distribution.id,
+        {
+          acknowledged_by:
+            authStore.user?.name ||
+            `${authStore.user?.first_name || ''} ${authStore.user?.last_name || ''}`.trim() ||
+            authStore.user?.email ||
+            'System',
+          acknowledgment_notes:
+            'Rejection acknowledged via Main Inventory interface',
+        }
+      );
+
+      // Close the notification
       closeRejectionNotification();
 
-      // Show success message
-      toast.value = {
-        show: true,
-        type: 'success',
-        message:
-          'Rejection acknowledged. Quantities have been returned to inventory.',
-      };
+      // Show success message using the helper function (auto-closes after 3 seconds)
+      showToast(
+        'success',
+        'Rejection acknowledged. Quantities have been returned to inventory.'
+      );
 
       // Refresh the distribution history
       await fetchDistributionHistory(historyPagination.value.page || 1);
     } catch (error) {
       console.error('Error acknowledging rejection:', error);
-      toast.value = {
-        show: true,
-        type: 'error',
-        message: 'Failed to acknowledge rejection. Please try again.',
-      };
+      showToast('error', 'Failed to acknowledge rejection. Please try again.');
     } finally {
       rejectionNotification.value.acknowledging = false;
     }
@@ -5337,6 +5382,22 @@
                   {{ rejectionNotification.distribution.rejection_notes }}
                 </p>
               </div>
+              <div v-if="rejectionNotification.distribution.acknowledged_by">
+                <span class="font-medium">Acknowledged by:</span>
+                <span class="ml-2 text-green-700 font-medium">{{
+                  rejectionNotification.distribution.acknowledged_by
+                }}</span>
+              </div>
+              <div v-if="rejectionNotification.distribution.acknowledged_at">
+                <span class="font-medium">Acknowledged at:</span>
+                <span class="ml-2 text-green-700">
+                  {{
+                    new Date(
+                      rejectionNotification.distribution.acknowledged_at
+                    ).toLocaleString('en-PH')
+                  }}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -5356,7 +5417,9 @@
                   >
                 </div>
                 <div class="text-right">
-                  <div class="font-medium">{{ item.qty }} {{ item.unit }}</div>
+                  <div class="font-medium">
+                    {{ Number(item.qty).toFixed(2) }} {{ item.unit }}
+                  </div>
                   <div class="text-sm text-gray-500">
                     ₱{{ Number(item.amount).toFixed(2) }}
                   </div>
@@ -5378,7 +5441,10 @@
           </div>
 
           <!-- Action Notice -->
-          <div class="bg-warning/10 border border-warning/30 rounded-lg p-4">
+          <div
+            v-if="!rejectionNotification.distribution?.acknowledged_by"
+            class="bg-warning/10 border border-warning/30 rounded-lg p-4"
+          >
             <div class="flex items-start gap-3">
               <svg
                 class="w-5 h-5 text-warning mt-0.5 flex-shrink-0"
@@ -5403,6 +5469,34 @@
               </div>
             </div>
           </div>
+          <!-- Acknowledgment Confirmation -->
+          <div
+            v-else
+            class="bg-green-50 border border-green-200 rounded-lg p-4"
+          >
+            <div class="flex items-start gap-3">
+              <svg
+                class="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+              <div>
+                <h4 class="font-semibold text-green-800 mb-1">Acknowledged</h4>
+                <p class="text-sm text-gray-700">
+                  This rejection has been acknowledged and the inventory
+                  adjustment has been confirmed.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Modal Actions -->
@@ -5415,6 +5509,7 @@
             Close
           </button>
           <button
+            v-if="!rejectionNotification.distribution?.acknowledged_by"
             class="btn btn-sm bg-primaryColor font-thin text-white border border-none hover:bg-primaryColor/80"
             @click="acknowledgeRejection"
             :disabled="rejectionNotification.acknowledging"
@@ -5440,6 +5535,26 @@
                 : 'Acknowledge & Return to Inventory'
             }}
           </button>
+          <div
+            v-else
+            class="btn btn-sm bg-green-100 font-thin text-green-800 border border-green-300 cursor-default"
+          >
+            <svg
+              class="w-4 h-4 mr-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+            Acknowledged by
+            {{ rejectionNotification.distribution.acknowledged_by }}
+          </div>
         </div>
       </div>
     </dialog>

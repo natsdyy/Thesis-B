@@ -16,6 +16,7 @@
     Calendar,
     Link,
     ReceiptText,
+    Filter,
   } from 'lucide-vue-next';
   import { usePurchaseOrderStore } from '../../stores/purchaseOrderStore.js';
   import { useSupplierStore } from '../../stores/supplierStore.js';
@@ -161,6 +162,17 @@
   const historyOrdersPerPage = ref(3);
   const historyFilterType = ref('today');
   const showCustomMonthPicker = ref(false);
+
+  // Date filter state
+  const dateFilterType = ref('today');
+  const showDateDropdown = ref(false);
+
+  // Status filter dropdown state
+  const showStatusDropdown = ref(false);
+  const showHistoryStatusDropdown = ref(false);
+
+  // History date filter dropdown state
+  const showHistoryDateDropdown = ref(false);
   const customMonthPicker = ref({
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
@@ -236,13 +248,7 @@
     'Completed',
     'Cancelled',
   ];
-  const activeOrderStatuses = [
-    'Draft',
-    'Sent',
-    'Confirmed',
-    'In Progress',
-    'Completed',
-  ];
+  const activeOrderStatuses = ['Draft', 'Sent', 'Confirmed', 'In Progress'];
   const historyOrderStatuses = ['Completed', 'Cancelled'];
   const months = [
     { value: 1, label: 'Jan' },
@@ -262,35 +268,55 @@
   // Date filtering computed properties
   const quickDateOptions = computed(() => {
     const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
     const toYMD = (date) =>
       date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 
+    // Calculate start of week (Monday)
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - today.getDay() + 1);
+
+    // Calculate start of month
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
     const options = [
-      { label: 'Yesterday', date: toYMD(yesterday), count: 0 },
-      { label: 'Today', date: toYMD(today), count: 0 },
-      { label: 'Tomorrow', date: toYMD(tomorrow), count: 0 },
+      { label: 'This Week', type: 'week', count: 0 },
+      { label: 'Today', type: 'today', date: toYMD(today), count: 0 },
+      { label: 'This Month', type: 'month', count: 0 },
     ];
 
-    // Calculate counts based on actual purchase order data
+    // Calculate counts based on actual purchase order data (only active orders)
     options.forEach((option) => {
       option.count = purchaseOrderStore.purchaseOrders.filter((order) => {
-        // Filter out cancelled orders
-        if (order.status === 'Cancelled') return false;
+        // Filter out cancelled and completed orders for active tab counts
+        if (order.status === 'Cancelled' || order.status === 'Completed')
+          return false;
 
-        // Convert UTC to Asia/Manila and get YYYY-MM-DD
-        const manilaDate = new Date(
-          new Date(order.order_date).toLocaleString('en-US', {
-            timeZone: 'Asia/Manila',
-          })
-        );
-        const normalized = manilaDate.toLocaleDateString('en-CA', {
-          timeZone: 'Asia/Manila',
-        });
-        return normalized === option.date;
+        const orderDate = new Date(order.order_date + 'T00:00:00');
+        orderDate.setHours(0, 0, 0, 0);
+
+        switch (option.type) {
+          case 'today':
+            const todayDate = new Date(today);
+            todayDate.setHours(0, 0, 0, 0);
+            return orderDate.getTime() === todayDate.getTime();
+
+          case 'week':
+            const weekStart = new Date(startOfWeek);
+            weekStart.setHours(0, 0, 0, 0);
+            const weekEnd = new Date(today);
+            weekEnd.setHours(23, 59, 59, 999);
+            return orderDate >= weekStart && orderDate <= weekEnd;
+
+          case 'month':
+            const monthStart = new Date(startOfMonth);
+            monthStart.setHours(0, 0, 0, 0);
+            const monthEnd = new Date(today);
+            monthEnd.setHours(23, 59, 59, 999);
+            return orderDate >= monthStart && orderDate <= monthEnd;
+
+          default:
+            return false;
+        }
       }).length;
     });
 
@@ -307,22 +333,82 @@
     // Early return for better performance
     if (!purchaseOrderStore.purchaseOrders.length) return [];
 
-    let filtered = purchaseOrderStore.purchaseOrders.filter(
-      (order) => order.status !== 'Cancelled'
-    );
+    // Filter for active orders (not cancelled, and not completed for active tab)
+    let filtered = purchaseOrderStore.purchaseOrders.filter((order) => {
+      if (order.status === 'Cancelled') return false;
+      // For active tab, exclude completed orders (they go to history)
+      if (activeTab.value === 'active' && order.status === 'Completed')
+        return false;
+      return true;
+    });
 
-    if (selectedDate.value) {
-      filtered = filtered.filter((order) => {
-        const orderDate = new Date(
-          new Date(order.order_date).toLocaleString('en-US', {
-            timeZone: 'Asia/Manila',
-          })
-        );
-        const normalized = orderDate.toLocaleDateString('en-CA', {
-          timeZone: 'Asia/Manila',
-        });
-        return normalized === selectedDate.value;
-      });
+    // Only apply date filtering for active orders tab
+    if (activeTab.value === 'active' && dateFilterType.value) {
+      const today = new Date();
+
+      switch (dateFilterType.value) {
+        case 'today':
+          const todayDate = new Date(today);
+          todayDate.setHours(0, 0, 0, 0);
+          filtered = filtered.filter((order) => {
+            const orderDate = new Date(order.order_date + 'T00:00:00');
+            orderDate.setHours(0, 0, 0, 0);
+            return orderDate.getTime() === todayDate.getTime();
+          });
+          break;
+
+        case 'week':
+          const startOfWeek = new Date(today);
+          startOfWeek.setDate(today.getDate() - today.getDay() + 1);
+          startOfWeek.setHours(0, 0, 0, 0);
+          const weekEnd = new Date(today);
+          weekEnd.setHours(23, 59, 59, 999);
+          filtered = filtered.filter((order) => {
+            const orderDate = new Date(order.order_date + 'T00:00:00');
+            orderDate.setHours(0, 0, 0, 0);
+            return orderDate >= startOfWeek && orderDate <= weekEnd;
+          });
+          break;
+
+        case 'month':
+          const startOfMonth = new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            1
+          );
+          startOfMonth.setHours(0, 0, 0, 0);
+          const monthEnd = new Date(today);
+          monthEnd.setHours(23, 59, 59, 999);
+          filtered = filtered.filter((order) => {
+            const orderDate = new Date(order.order_date + 'T00:00:00');
+            orderDate.setHours(0, 0, 0, 0);
+            return orderDate >= startOfMonth && orderDate <= monthEnd;
+          });
+          break;
+
+        case 'custom':
+          // Custom month filter - filter by selected month and year
+          const customStartOfMonth = new Date(
+            customMonthPicker.value.year,
+            customMonthPicker.value.month - 1,
+            1
+          );
+          customStartOfMonth.setHours(0, 0, 0, 0);
+          const customEndOfMonth = new Date(
+            customMonthPicker.value.year,
+            customMonthPicker.value.month,
+            0
+          );
+          customEndOfMonth.setHours(23, 59, 59, 999);
+          filtered = filtered.filter((order) => {
+            const orderDate = new Date(order.order_date + 'T00:00:00');
+            orderDate.setHours(0, 0, 0, 0);
+            return (
+              orderDate >= customStartOfMonth && orderDate <= customEndOfMonth
+            );
+          });
+          break;
+      }
     }
     return filtered;
   });
@@ -555,11 +641,69 @@
   });
 
   // Filter options
-  const historyFilterOptions = ref([
-    { type: 'today', label: 'Today', count: 0 },
-    { type: 'week', label: 'This Week', count: 0 },
-    { type: 'month', label: 'This Month', count: 0 },
-  ]);
+  const historyFilterOptions = computed(() => {
+    // Use Philippine timezone for consistent date handling
+    const today = new Date();
+    const philippineToday = new Date(
+      today.toLocaleString('en-US', { timeZone: 'Asia/Manila' })
+    );
+    const options = [
+      { type: 'today', label: 'Today', count: 0 },
+      { type: 'week', label: 'This Week', count: 0 },
+      { type: 'month', label: 'This Month', count: 0 },
+    ];
+
+    // Calculate counts based on actual history orders data
+    options.forEach((option) => {
+      option.count = historyOrders.value.filter((order) => {
+        // Convert order date to Philippine timezone
+        const orderDate = new Date(order.order_date);
+        const philippineOrderDate = new Date(
+          orderDate.toLocaleString('en-US', { timeZone: 'Asia/Manila' })
+        );
+        philippineOrderDate.setHours(0, 0, 0, 0);
+
+        switch (option.type) {
+          case 'today':
+            const todayDate = new Date(philippineToday);
+            todayDate.setHours(0, 0, 0, 0);
+            return philippineOrderDate.getTime() === todayDate.getTime();
+
+          case 'week':
+            const startOfWeek = new Date(philippineToday);
+            startOfWeek.setDate(
+              philippineToday.getDate() - philippineToday.getDay() + 1
+            );
+            startOfWeek.setHours(0, 0, 0, 0);
+            const weekEnd = new Date(philippineToday);
+            weekEnd.setHours(23, 59, 59, 999);
+            return (
+              philippineOrderDate >= startOfWeek &&
+              philippineOrderDate <= weekEnd
+            );
+
+          case 'month':
+            const startOfMonth = new Date(
+              philippineToday.getFullYear(),
+              philippineToday.getMonth(),
+              1
+            );
+            startOfMonth.setHours(0, 0, 0, 0);
+            const monthEnd = new Date(philippineToday);
+            monthEnd.setHours(23, 59, 59, 999);
+            return (
+              philippineOrderDate >= startOfMonth &&
+              philippineOrderDate <= monthEnd
+            );
+
+          default:
+            return false;
+        }
+      }).length;
+    });
+
+    return options;
+  });
 
   const supplyRequestFilterOptions = ref([
     { type: 'today', label: 'Today', count: 0 },
@@ -645,9 +789,9 @@
       );
 
       if (hasPassedOrCompleted) {
-        // Allow creation if there are failed items that can be retried
-        // This matches the backend logic we updated
-        return true;
+        // Don't allow new GRN creation if there's already a completed GRN
+        // Failed items should be handled through returns, not new GRNs
+        return false;
       }
 
       // If we reach here, check if all GRNs are failed
@@ -681,7 +825,7 @@
         (status) => status === 'passed' || status === 'completed'
       );
       if (hasPassedOrCompleted) {
-        return 'Can create new GRN: Failed items from completed GRN can be retried';
+        return 'Cannot create GRN: Order already has a completed GRN';
       }
 
       // Check if all GRNs are failed
@@ -730,9 +874,107 @@
 
   // Date navigation methods
   const selectQuickDate = (dateOption) => {
-    selectedDate.value = dateOption.date;
+    dateFilterType.value = dateOption.type;
     currentPage.value = 1;
     showDatePicker.value = false;
+    showDateDropdown.value = false; // Close dropdown after selection
+  };
+
+  // Date dropdown functions
+  const toggleDateDropdown = () => {
+    showDateDropdown.value = !showDateDropdown.value;
+  };
+
+  const closeDateDropdown = () => {
+    showDateDropdown.value = false;
+  };
+
+  // Display text for current date filter
+  const getDateFilterDisplayText = () => {
+    switch (dateFilterType.value) {
+      case 'today':
+        return `Today (${formatDate(new Date())})`;
+      case 'week': {
+        const startOfWeek = new Date();
+        startOfWeek.setDate(new Date().getDate() - new Date().getDay() + 1);
+        return `This Week (${formatDate(startOfWeek)} - ${formatDate(new Date())})`;
+      }
+      case 'month': {
+        const startOfMonth = new Date(
+          new Date().getFullYear(),
+          new Date().getMonth(),
+          1
+        );
+        return `This Month (${formatDate(startOfMonth)} - ${formatDate(new Date())})`;
+      }
+      case 'custom': {
+        const monthName = months.find(
+          (m) => m.value === customMonthPicker.value.month
+        )?.label;
+        return `${monthName} ${customMonthPicker.value.year}`;
+      }
+      default:
+        return 'All Orders';
+    }
+  };
+
+  // Watch for tab changes and reset date filter
+  watch(activeTab, (newTab) => {
+    if (newTab === 'active') {
+      // Reset to today filter for active orders
+      dateFilterType.value = 'today';
+      // Clear status filter if it's set to Completed (not valid for active orders)
+      if (statusFilter.value === 'Completed') {
+        statusFilter.value = '';
+      }
+    }
+    // For history tab, keep the existing history filter logic
+  });
+
+  // Status dropdown functions
+  const toggleStatusDropdown = () => {
+    showStatusDropdown.value = !showStatusDropdown.value;
+  };
+
+  const closeStatusDropdown = () => {
+    showStatusDropdown.value = false;
+  };
+
+  const selectStatusFilter = (status) => {
+    statusFilter.value = statusFilter.value === status ? '' : status;
+    currentPage.value = 1;
+    showStatusDropdown.value = false; // Close dropdown after selection
+  };
+
+  // History status dropdown functions
+  const toggleHistoryStatusDropdown = () => {
+    showHistoryStatusDropdown.value = !showHistoryStatusDropdown.value;
+  };
+
+  const closeHistoryStatusDropdown = () => {
+    showHistoryStatusDropdown.value = false;
+  };
+
+  const selectHistoryStatusFilter = (status) => {
+    historyStatusFilter.value =
+      historyStatusFilter.value === status ? '' : status;
+    historyCurrentPage.value = 1;
+    showHistoryStatusDropdown.value = false; // Close dropdown after selection
+  };
+
+  // History date dropdown functions
+  const toggleHistoryDateDropdown = () => {
+    showHistoryDateDropdown.value = !showHistoryDateDropdown.value;
+  };
+
+  const closeHistoryDateDropdown = () => {
+    showHistoryDateDropdown.value = false;
+  };
+
+  const selectHistoryDateFilter = (option) => {
+    historyFilterType.value = option.type;
+    historyCurrentPage.value = 1;
+    showHistoryDateDropdown.value = false; // Close dropdown after selection
   };
 
   const selectCustomDate = (event) => {
@@ -814,6 +1056,40 @@
     historyFilterType.value = 'custom';
     historyCurrentPage.value = 1;
     showCustomMonthPicker.value = false;
+  };
+
+  // Active Orders custom month picker functions
+  const toggleActiveCustomMonthPicker = () => {
+    showCustomMonthPicker.value = !showCustomMonthPicker.value;
+    if (showCustomMonthPicker.value) dateFilterType.value = 'custom';
+  };
+
+  const applyActiveCustomMonthFilter = () => {
+    // Set the selected date to the first day of the selected month in Philippine timezone
+    const selectedDate = new Date(
+      customMonthPicker.value.year,
+      customMonthPicker.value.month - 1,
+      1
+    );
+
+    // Convert to Philippine timezone and format as YYYY-MM-DD
+    const philippineDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(selectedDate);
+
+    // Set the date filter to custom and update the display
+    dateFilterType.value = 'custom';
+    currentPage.value = 1;
+    showCustomMonthPicker.value = false;
+
+    console.log('Applied custom month filter for Active Orders:', {
+      selectedMonth: customMonthPicker.value.month,
+      selectedYear: customMonthPicker.value.year,
+      selectedDate: philippineDate,
+    });
   };
 
   const clearHistoryFilters = () => {
@@ -1697,7 +1973,7 @@
       };
 
       await grnStore.createGRNFromPO(order.id, grnData);
-      
+
       showToast('success', 'GRN created successfully!');
 
       // Immediately close the modal and reset state
@@ -1922,6 +2198,14 @@
 
       // Add keyboard event listener for Escape key
       document.addEventListener('keydown', handleEscape);
+      // Add click outside listener for date dropdown
+      document.addEventListener('click', closeDateDropdown);
+      // Add click outside listener for status dropdown
+      document.addEventListener('click', closeStatusDropdown);
+      // Add click outside listener for history status dropdown
+      document.addEventListener('click', closeHistoryStatusDropdown);
+      // Add click outside listener for history date dropdown
+      document.addEventListener('click', closeHistoryDateDropdown);
 
       // Handle route query
       try {
@@ -1944,6 +2228,14 @@
     cleanupModals();
     // Remove keyboard event listener
     document.removeEventListener('keydown', handleEscape);
+    // Remove click outside listener for date dropdown
+    document.removeEventListener('click', closeDateDropdown);
+    // Remove click outside listener for status dropdown
+    document.removeEventListener('click', closeStatusDropdown);
+    // Remove click outside listener for history status dropdown
+    document.removeEventListener('click', closeHistoryStatusDropdown);
+    // Remove click outside listener for history date dropdown
+    document.removeEventListener('click', closeHistoryDateDropdown);
   });
 
   // Add keyboard event listener for Escape key
@@ -2117,7 +2409,7 @@
                   :class="{ 'animate-spin': loading }"
                 />
                 <span class="hidden sm:inline">{{
-                  loading ? 'Refreshing...' : 'Refresh Data'
+                  loading ? 'Refreshing...' : 'Refresh'
                 }}</span>
                 <span class="sm:hidden">{{
                   loading ? 'Refreshing...' : 'Refresh'
@@ -2205,7 +2497,7 @@
                   <Calendar class="w-5 h-5 text-primaryColor" />
                   <div>
                     <h3 class="font-semibold text-primaryColor">
-                      {{ formatPhilippineDate(selectedDate) }}
+                      {{ getDateFilterDisplayText() }}
                     </h3>
                     <p class="text-sm text-black/60">
                       Showing {{ filteredOrdersByDate.length }} order{{
@@ -2217,83 +2509,126 @@
 
                 <!-- Date Navigation and Filter Controls -->
                 <div class="flex flex-col sm:flex-row gap-3">
-                  <!-- Quick Date Buttons -->
-                  <div class="flex gap-2 md:flex-row flex-col">
-                    <button
-                      v-for="option in quickDateOptions"
-                      :key="option.date"
-                      class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
-                      :class="{
-                        'bg-primaryColor text-white':
-                          selectedDate === option.date,
-                        'bg-white text-primaryColor hover:bg-primaryColor/10':
-                          selectedDate !== option.date,
-                      }"
-                      @click="selectQuickDate(option)"
-                    >
-                      {{ option.label }}
-                      <span
-                        class="badge badge-xs ml-1 bg-secondaryColor border-none"
-                        :class="
-                          selectedDate === option.date
-                            ? 'badge-ghost'
-                            : 'badge-primaryColor/10 text-primaryColor'
-                        "
-                      >
-                        {{ option.count }}
-                      </span>
-                    </button>
-                  </div>
-
-                  <!-- Date Navigation -->
-                  <div class="flex items-center gap-1">
-                    <button
-                      class="btn btn-sm btn-ghost text-primaryColor hover:bg-primaryColor/10"
-                      @click="goToPreviousDay"
-                      title="Previous Day"
-                    >
-                      ‹
-                    </button>
-
-                    <!-- Custom Date Picker -->
-                    <div class="relative">
-                      <button
-                        class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                        @click="toggleDatePicker"
-                      >
-                        <Calendar class="w-4 h-4 mr-1" />
-                        Pick Date
-                      </button>
-
-                      <input
-                        v-if="showDatePicker"
-                        type="date"
-                        :value="selectedDate"
-                        @change="selectCustomDate"
-                        @blur="showDatePicker = false"
-                        class="absolute top-full left-0 mt-1 input input-sm input-bordered bg-white border-primaryColor/30 text-black/70 z-10"
-                        style="min-width: 150px"
-                      />
-                    </div>
-
-                    <button
-                      class="btn btn-sm btn-ghost text-primaryColor hover:bg-primaryColor/10"
-                      @click="goToNextDay"
-                      title="Next Day"
-                    >
-                      ›
-                    </button>
-
+                  <!-- Quick Date Dropdown -->
+                  <div class="relative" @click.stop>
                     <button
                       class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                      @click="goToToday"
-                      :class="{
-                        'btn-disabled':
-                          selectedDate === getPhilippineDateString(),
-                      }"
+                      @click="toggleDateDropdown"
                     >
-                      Today
+                      <Filter class="w-4 h-4" />
                     </button>
+
+                    <!-- Dropdown Menu -->
+                    <div
+                      v-if="showDateDropdown"
+                      class="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50"
+                    >
+                      <div class="py-1">
+                        <button
+                          v-for="option in quickDateOptions"
+                          :key="option.type"
+                          class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
+                          :class="{
+                            'bg-primaryColor/10 text-primaryColor font-medium':
+                              dateFilterType === option.type,
+                            'text-gray-700': dateFilterType !== option.type,
+                          }"
+                          @click="selectQuickDate(option)"
+                        >
+                          <span>{{ option.label }}</span>
+                          <span
+                            class="badge badge-xs bg-secondaryColor border-none"
+                            :class="
+                              dateFilterType === option.type
+                                ? 'badge-ghost'
+                                : 'badge-primaryColor/10 text-primaryColor'
+                            "
+                          >
+                            {{ option.count }}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Custom Month Picker -->
+                  <div class="relative">
+                    <button
+                      class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                      @click="toggleActiveCustomMonthPicker"
+                    >
+                      <Calendar class="w-4 h-4 mr-1" />
+                      Custom Month
+                    </button>
+
+                    <!-- Custom Month Picker -->
+                    <div
+                      v-if="showCustomMonthPicker"
+                      class="absolute top-full left-0 mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10 p-3 min-w-64"
+                    >
+                      <div class="flex items-center justify-between mb-3">
+                        <h4 class="font-medium text-sm text-black">
+                          Select Month
+                        </h4>
+                        <button
+                          @click="showCustomMonthPicker = false"
+                          class="btn btn-ghost btn-xs"
+                        >
+                          <X class="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      <!-- Month Selection -->
+                      <div class="grid grid-cols-3 gap-2 mb-3">
+                        <button
+                          v-for="month in months"
+                          :key="month.value"
+                          class="btn btn-xs font-thin"
+                          :class="{
+                            'bg-primaryColor text-white':
+                              customMonthPicker.month === month.value,
+                            'btn-ghost':
+                              customMonthPicker.month !== month.value,
+                          }"
+                          @click="customMonthPicker.month = month.value"
+                        >
+                          {{ month.label }}
+                        </button>
+                      </div>
+
+                      <!-- Year Selection -->
+                      <div class="flex items-center gap-2 mb-3">
+                        <span class="text-sm text-black/70">Year:</span>
+                        <select
+                          v-model="customMonthPicker.year"
+                          class="select select-xs select-bordered bg-white border-primaryColor/30 text-black/70"
+                        >
+                          <option
+                            v-for="year in availableYears"
+                            :key="year"
+                            :value="year"
+                          >
+                            {{ year }}
+                          </option>
+                        </select>
+                      </div>
+
+                      <!-- Apply Button -->
+                      <div class="flex gap-2">
+                        <button
+                          @click="applyActiveCustomMonthFilter"
+                          class="btn btn-xs bg-primaryColor text-white font-thin"
+                        >
+                          Apply
+                        </button>
+                        <button
+                          @click="showCustomMonthPicker = false"
+                          class="btn btn-xs btn-ghost font-thin"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2303,58 +2638,74 @@
             <div
               class="space-y-3 sm:space-y-0 sm:flex sm:flex-wrap sm:gap-2 mb-4"
             >
-              <!-- Status Filters -->
+              <!-- Status Filter Dropdown -->
               <div class="flex flex-col sm:flex-row gap-2">
-                <span
-                  class="text-xs sm:text-sm text-black/70 font-medium self-start sm:self-center"
-                  >Status:</span
-                >
-                <div class="flex flex-wrap gap-1 sm:gap-2">
+                <div class="relative" @click.stop>
                   <button
-                    v-for="status in activeOrderStatuses"
-                    :key="status"
-                    class="btn btn-xs font-thin border border-primaryColor/30 text-xs"
-                    :class="{
-                      'bg-primaryColor text-white': statusFilter === status,
-                      'bg-white text-primaryColor hover:bg-primaryColor/10':
-                        statusFilter !== status,
-                    }"
-                    @click="
-                      statusFilter = statusFilter === status ? '' : status
-                    "
+                    class="btn btn-xs btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                    @click="toggleStatusDropdown"
                   >
-                    {{ status }}
-                    <span
-                      class="badge badge-xs ml-1 bg-secondaryColor border-none"
-                    >
-                      {{
-                        filteredOrdersByDate.filter((o) => o.status === status)
-                          .length
-                      }}
-                    </span>
+                    <Filter class="w-3 h-3 mr-1" />
+                    {{ statusFilter || 'All Status' }}
                   </button>
-                </div>
-              </div>
 
-              <!-- Supplier Filters -->
-              <div class="flex flex-col sm:flex-row gap-2">
-                <span
-                  class="text-xs sm:text-sm text-black/70 font-medium self-start sm:self-center"
-                  >Supplier:</span
-                >
-                <select
-                  v-model="supplierFilter"
-                  class="select select-xs sm:select-sm select-bordered bg-white !border-primaryColor/30 text-black/70 text-xs sm:text-sm"
-                >
-                  <option value="">All Suppliers</option>
-                  <option
-                    v-for="supplier in uniqueSuppliersByDate"
-                    :key="supplier"
-                    :value="supplier"
+                  <!-- Dropdown Menu -->
+                  <div
+                    v-if="showStatusDropdown"
+                    class="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50"
                   >
-                    {{ supplier }}
-                  </option>
-                </select>
+                    <div class="py-1">
+                      <button
+                        class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
+                        :class="{
+                          'bg-primaryColor/10 text-primaryColor font-medium':
+                            statusFilter === '',
+                          'text-gray-700': statusFilter !== '',
+                        }"
+                        @click="selectStatusFilter('')"
+                      >
+                        <span>All Status</span>
+                        <span
+                          class="badge badge-xs bg-secondaryColor border-none"
+                          :class="
+                            statusFilter === ''
+                              ? 'badge-ghost'
+                              : 'badge-primaryColor/10 text-primaryColor'
+                          "
+                        >
+                          {{ filteredOrdersByDate.length }}
+                        </span>
+                      </button>
+                      <button
+                        v-for="status in activeOrderStatuses"
+                        :key="status"
+                        class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
+                        :class="{
+                          'bg-primaryColor/10 text-primaryColor font-medium':
+                            statusFilter === status,
+                          'text-gray-700': statusFilter !== status,
+                        }"
+                        @click="selectStatusFilter(status)"
+                      >
+                        <span>{{ status }}</span>
+                        <span
+                          class="badge badge-xs bg-secondaryColor border-none"
+                          :class="
+                            statusFilter === status
+                              ? 'badge-ghost'
+                              : 'badge-primaryColor/10 text-primaryColor'
+                          "
+                        >
+                          {{
+                            filteredOrdersByDate.filter(
+                              (o) => o.status === status
+                            ).length
+                          }}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -2461,39 +2812,6 @@
                           class="text-success text-xs sm:text-sm"
                           >Complete Order</a
                         >
-                      </li>
-                      <!-- Only show Create GRN for completed orders without pending returns -->
-                      <li
-                        v-if="
-                          order.status === 'Completed' && canCreateNewGRN(order)
-                        "
-                        class="hover:bg-black/10"
-                      >
-                        <a
-                          @click="createGRNFromPO(order)"
-                          class="text-success text-xs sm:text-sm"
-                        >
-                          Create GRN
-                        </a>
-                      </li>
-                      <!-- Show disabled Create GRN for completed orders with pending returns -->
-                      <li
-                        v-if="
-                          order.status === 'Completed' &&
-                          !canCreateNewGRN(order)
-                        "
-                        class="hover:bg-black/10 opacity-50 cursor-not-allowed"
-                      >
-                        <a
-                          class="text-black/50 text-xs sm:text-sm cursor-not-allowed"
-                          :title="getGRNCreationReason(order)"
-                        >
-                          <span v-if="hasPendingReturns(order)">
-                            Create GRN ({{ order.pending_returns_count }}
-                            Returns Pending)
-                          </span>
-                          <span v-else> Create GRN (Already Processed) </span>
-                        </a>
                       </li>
                       <!-- Only show Cancel Order for non-cancelled and non-completed orders -->
                       <li
@@ -2697,32 +3015,46 @@
 
                 <!-- Filter Controls -->
                 <div class="flex flex-col sm:flex-row gap-3">
-                  <!-- Quick Filter Buttons -->
-                  <div class="flex gap-2 md:flex-row flex-col">
+                  <!-- Quick Date Dropdown -->
+                  <div class="relative" @click.stop>
                     <button
-                      v-for="option in historyFilterOptions"
-                      :key="option.type"
-                      class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
-                      :class="{
-                        'bg-primaryColor text-white':
-                          historyFilterType === option.type,
-                        'bg-white text-primaryColor hover:bg-primaryColor/10':
-                          historyFilterType !== option.type,
-                      }"
-                      @click="selectHistoryFilter(option)"
+                      class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                      @click="toggleHistoryDateDropdown"
                     >
-                      {{ option.label }}
-                      <span
-                        class="badge badge-xs ml-1 bg-secondaryColor border-none"
-                        :class="
-                          historyFilterType === option.type
-                            ? 'badge-ghost'
-                            : 'badge-primaryColor/10 text-primaryColor'
-                        "
-                      >
-                        {{ option.count }}
-                      </span>
+                      <Filter class="w-4 h-4" />
                     </button>
+
+                    <!-- Dropdown Menu -->
+                    <div
+                      v-if="showHistoryDateDropdown"
+                      class="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50"
+                    >
+                      <div class="py-1">
+                        <button
+                          v-for="option in historyFilterOptions"
+                          :key="option.type"
+                          class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
+                          :class="{
+                            'bg-primaryColor/10 text-primaryColor font-medium':
+                              historyFilterType === option.type,
+                            'text-gray-700': historyFilterType !== option.type,
+                          }"
+                          @click="selectHistoryDateFilter(option)"
+                        >
+                          <span>{{ option.label }}</span>
+                          <span
+                            class="badge badge-xs bg-secondaryColor border-none"
+                            :class="
+                              historyFilterType === option.type
+                                ? 'badge-ghost'
+                                : 'badge-primaryColor/10 text-primaryColor'
+                            "
+                          >
+                            {{ option.count }}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   <!-- Custom Month Selection -->
@@ -2823,38 +3155,73 @@
             <div
               class="space-y-3 sm:space-y-0 sm:flex sm:flex-wrap sm:gap-2 mb-4"
             >
-              <!-- Status Filters -->
+              <!-- Status Filter Dropdown -->
               <div class="flex flex-col sm:flex-row gap-2">
-                <span
-                  class="text-xs sm:text-sm text-black/70 font-medium self-start sm:self-center"
-                  >Status:</span
-                >
-                <div class="flex flex-wrap gap-1 sm:gap-2">
+                <div class="relative" @click.stop>
                   <button
-                    v-for="status in historyOrderStatuses"
-                    :key="status"
-                    class="btn btn-xs font-thin border border-primaryColor/30 text-xs"
-                    :class="{
-                      'bg-primaryColor text-white':
-                        historyStatusFilter === status,
-                      'bg-white text-primaryColor hover:bg-primaryColor/10':
-                        historyStatusFilter !== status,
-                    }"
-                    @click="
-                      historyStatusFilter =
-                        historyStatusFilter === status ? '' : status
-                    "
+                    class="btn btn-xs btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                    @click="toggleHistoryStatusDropdown"
                   >
-                    {{ status }}
-                    <span
-                      class="badge badge-xs ml-1 bg-secondaryColor border-none"
-                    >
-                      {{
-                        filteredHistoryByDate.filter((o) => o.status === status)
-                          .length
-                      }}
-                    </span>
+                    <Filter class="w-3 h-3 mr-1" />
+                    {{ historyStatusFilter || 'All Status' }}
                   </button>
+
+                  <!-- Dropdown Menu -->
+                  <div
+                    v-if="showHistoryStatusDropdown"
+                    class="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50"
+                  >
+                    <div class="py-1">
+                      <button
+                        class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
+                        :class="{
+                          'bg-primaryColor/10 text-primaryColor font-medium':
+                            historyStatusFilter === '',
+                          'text-gray-700': historyStatusFilter !== '',
+                        }"
+                        @click="selectHistoryStatusFilter('')"
+                      >
+                        <span>All Status</span>
+                        <span
+                          class="badge badge-xs bg-secondaryColor border-none"
+                          :class="
+                            historyStatusFilter === ''
+                              ? 'badge-ghost'
+                              : 'badge-primaryColor/10 text-primaryColor'
+                          "
+                        >
+                          {{ filteredHistoryByDate.length }}
+                        </span>
+                      </button>
+                      <button
+                        v-for="status in historyOrderStatuses"
+                        :key="status"
+                        class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
+                        :class="{
+                          'bg-primaryColor/10 text-primaryColor font-medium':
+                            historyStatusFilter === status,
+                          'text-gray-700': historyStatusFilter !== status,
+                        }"
+                        @click="selectHistoryStatusFilter(status)"
+                      >
+                        <span>{{ status }}</span>
+                        <span
+                          class="badge badge-xs bg-secondaryColor border-none"
+                          :class="
+                            historyStatusFilter === status
+                              ? 'badge-ghost'
+                              : 'badge-primaryColor/10 text-primaryColor'
+                          "
+                        >
+                          {{
+                            filteredHistoryByDate.filter(
+                              (o) => o.status === status
+                            ).length
+                          }}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -2966,7 +3333,50 @@
                           >Complete Order</a
                         >
                       </li>
-                      <!-- Return Item action moved to GRN workflow -->
+                      <!-- Only show Create GRN for completed orders without pending returns -->
+                      <li
+                        v-if="
+                          order.status === 'Completed' && canCreateNewGRN(order)
+                        "
+                        class="hover:bg-black/10"
+                      >
+                        <a
+                          @click="createGRNFromPO(order)"
+                          class="text-success text-xs sm:text-sm"
+                        >
+                          Create GRN
+                        </a>
+                      </li>
+                      <!-- Show disabled Create GRN for completed orders with pending returns -->
+                      <li
+                        v-if="
+                          order.status === 'Completed' &&
+                          !canCreateNewGRN(order)
+                        "
+                        class="hover:bg-black/10 opacity-50 cursor-not-allowed"
+                      >
+                        <a
+                          class="text-black/50 text-xs sm:text-sm cursor-not-allowed"
+                          :title="getGRNCreationReason(order)"
+                        >
+                          <span v-if="hasPendingReturns(order)">
+                            Create GRN ({{ order.pending_returns_count }}
+                            Returns Pending)
+                          </span>
+                          <span v-else> Create GRN (Already Processed) </span>
+                        </a>
+                      </li>
+                      <!-- Return Items action for completed orders -->
+                      <li
+                        v-if="order.status === 'Completed'"
+                        class="hover:bg-black/10"
+                      >
+                        <a
+                          @click="openReturnModal(order)"
+                          class="text-warning text-xs sm:text-sm"
+                          >Return Items</a
+                        >
+                      </li>
                     </ul>
                   </div>
                 </div>

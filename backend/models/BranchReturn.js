@@ -404,26 +404,61 @@ class BranchReturn {
   }
 
   static async reject(id, rejected_by, rejection_reason = null) {
-    const [updated] = await db("branch_returns")
-      .where("id", id)
-      .where("status", "Pending")
-      .update({
-        status: "Rejected",
-        rejected_by,
-        rejected_at: new Date(),
-        rejection_reason,
-        updated_at: new Date(),
-      })
-      .returning("*");
-    return updated || null;
+    return await db.transaction(async (trx) => {
+      const [updated] = await trx("branch_returns")
+        .where("id", id)
+        .where("status", "Pending")
+        .update({
+          status: "Rejected",
+          rejected_by,
+          rejected_at: new Date(),
+          rejection_reason,
+          updated_at: new Date(),
+        })
+        .returning("*");
+      if (!updated) return null;
+
+      // Log zero-quantity branch transactions so Recent Activity and Transactions modal reflect the rejection
+      const items = await trx("branch_return_items")
+        .where("branch_return_id", id)
+        .whereNull("deleted_at");
+
+      for (const it of items) {
+        const current = await trx("branch_inventory")
+          .where("id", it.branch_inventory_item_id)
+          .whereNull("deleted_at")
+          .first();
+        if (!current) continue;
+        await trx("branch_inventory_transactions").insert({
+          branch_id: current.branch_id,
+          inventory_item_id: current.id,
+          item_name: current.item_name,
+          item_type: current.item_type,
+          transaction_type: "adjustment",
+          quantity: 0,
+          unit_of_measure: current.unit,
+          reference_number: `BR-RET-${id}`,
+          notes: rejection_reason
+            ? `Return rejected: ${rejection_reason}`
+            : "Return rejected",
+          adjustment_type: "no_change",
+          performed_by: rejected_by || null,
+          created_at: new Date(),
+        });
+      }
+
+      return updated;
+    });
   }
 
   static async acknowledge(id, acknowledged_by, notes = null) {
     return await db.transaction(async (trx) => {
       const rec = await trx("branch_returns").where("id", id).first();
       if (!rec) throw new Error("Return not found");
-      if (rec.status !== "Approved")
-        throw new Error("Only approved returns can be acknowledged");
+      if (rec.status !== "Approved" && rec.status !== "Rejected")
+        throw new Error(
+          "Only approved or rejected returns can be acknowledged"
+        );
       if (rec.branch_acknowledged_by) return await this.getById(id, trx);
 
       const [updated] = await trx("branch_returns")

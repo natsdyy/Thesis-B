@@ -15,8 +15,29 @@
     }
   };
 
+  const refreshTimer = ref(null);
   onMounted(async () => {
     await loadPendingReturns();
+    // Lightweight polling to surface new returns without full reload
+    refreshTimer.value = setInterval(loadPendingReturns, 15000);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadPendingReturns();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    // Store cleanup fn on the ref for removal in unmounted
+    refreshTimer._onVisibility = onVisibility;
+  });
+
+  onUnmounted(() => {
+    if (refreshTimer.value) clearInterval(refreshTimer.value);
+    if (refreshTimer._onVisibility) {
+      document.removeEventListener(
+        'visibilitychange',
+        refreshTimer._onVisibility
+      );
+    }
   });
   import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
   import {

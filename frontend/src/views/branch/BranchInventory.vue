@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, computed, onMounted, watch } from 'vue';
+  import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
   import { useToast } from 'vue-toastification';
   import {
     Calendar,
@@ -745,6 +745,9 @@
   const approvedLoading = ref(false);
   const showApprovedReturnsPanel = ref(false);
   const branchAckLoadingId = ref(null);
+  const rejectedReturns = ref([]);
+  const rejectedLoading = ref(false);
+  const returnsTab = ref('approved');
 
   const loadApprovedReturns = async () => {
     try {
@@ -763,6 +766,32 @@
     }
   };
 
+  const loadRejectedReturns = async () => {
+    try {
+      rejectedLoading.value = true;
+      const mod = await import('../../stores/branchReturnStore');
+      const store = mod.useBranchReturnStore();
+      const res = await store.fetchReturns({ status: 'Rejected' });
+      const rows = res?.data || res?.data?.data || store.returns || [];
+      rejectedReturns.value = (rows || []).filter(
+        (r) => !r.branch_acknowledged_at && !r.branch_acknowledged_by
+      );
+    } catch (e) {
+      console.warn('Failed to load rejected returns', e);
+    } finally {
+      rejectedLoading.value = false;
+    }
+  };
+
+  const loadReturnsAwaitingAck = async () => {
+    await Promise.all([loadApprovedReturns(), loadRejectedReturns()]);
+  };
+
+  onMounted(async () => {
+    // Preload any awaiting acknowledgment so the floating badge appears
+    await loadReturnsAwaitingAck();
+  });
+
   const acknowledgeReturnComplete = async (id) => {
     try {
       branchAckLoadingId.value = id;
@@ -777,6 +806,29 @@
       branchAckLoadingId.value = null;
     }
   };
+
+  // Auto-refresh returns awaiting acknowledgment to avoid manual page reloads
+  const returnsRefreshTimer = ref(null);
+  onMounted(async () => {
+    await loadReturnsAwaitingAck();
+    returnsRefreshTimer.value = setInterval(loadReturnsAwaitingAck, 15000);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') loadReturnsAwaitingAck();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    // attach for cleanup
+    returnsRefreshTimer._onVisibility = onVisibility;
+  });
+
+  onUnmounted(() => {
+    if (returnsRefreshTimer.value) clearInterval(returnsRefreshTimer.value);
+    if (returnsRefreshTimer._onVisibility) {
+      document.removeEventListener(
+        'visibilitychange',
+        returnsRefreshTimer._onVisibility
+      );
+    }
+  });
 
   const openConsumeModal = (item) => {
     actionModal.value = { type: 'consumption', show: true, item };
@@ -3730,12 +3782,15 @@
     />
 
     <!-- Floating: Approved Returns Awaiting Acknowledgment -->
-    <div class="fixed bottom-24 right-4 z-30" v-if="approvedReturns.length > 0">
+    <div
+      class="fixed bottom-24 right-4 z-30"
+      v-if="approvedReturns.length > 0 || rejectedReturns.length > 0"
+    >
       <div
         class="card shadow-lg bg-base-100 border border-base-200 cursor-pointer"
         @click="
           showApprovedReturnsPanel = true;
-          loadApprovedReturns();
+          loadReturnsAwaitingAck();
         "
       >
         <div class="card-body p-3">
@@ -3743,7 +3798,7 @@
             <div class="badge bg-success/20 text-success">Returns</div>
             <div class="text-xs text-gray-500">Awaiting acknowledgment</div>
             <div class="ml-auto badge bg-success/20 text-success font-thin">
-              {{ approvedReturns.length }}
+              {{ approvedReturns.length + rejectedReturns.length }}
             </div>
           </div>
         </div>
@@ -3756,11 +3811,25 @@
       :open="showApprovedReturnsPanel"
     >
       <div class="modal-box max-w-3xl">
-        <h3 class="font-bold text-lg mb-2">Approved Branch Returns</h3>
-        <p class="text-sm text-gray-600 mb-3">
-          These returns were approved by Main Inventory. Click Complete to
-          acknowledge.
-        </p>
+        <h3 class="font-bold text-lg mb-2">
+          Branch Returns Awaiting Acknowledgment
+        </h3>
+        <div class="flex gap-2 mb-3">
+          <button
+            class="btn btn-xs"
+            :class="returnsTab === 'approved' ? 'btn-primary' : ''"
+            @click="returnsTab = 'approved'"
+          >
+            Approved
+          </button>
+          <button
+            class="btn btn-xs"
+            :class="returnsTab === 'rejected' ? 'btn-error' : ''"
+            @click="returnsTab = 'rejected'"
+          >
+            Rejected
+          </button>
+        </div>
         <div class="overflow-x-auto max-h-[60vh]">
           <table class="table table-zebra table-xs w-full">
             <thead>
@@ -3772,12 +3841,17 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-if="approvedLoading">
+              <tr v-if="approvedLoading || rejectedLoading">
                 <td colspan="4" class="text-center py-6">
                   <span class="loading loading-spinner loading-sm"></span>
                 </td>
               </tr>
-              <tr v-for="ret in approvedReturns" :key="ret.id">
+              <tr
+                v-for="ret in returnsTab === 'approved'
+                  ? approvedReturns
+                  : rejectedReturns"
+                :key="ret.id"
+              >
                 <td class="font-medium">#{{ ret.id }}</td>
                 <td class="uppercase">{{ ret.return_type }}</td>
                 <td>
@@ -3805,7 +3879,14 @@
                   </button>
                 </td>
               </tr>
-              <tr v-if="!approvedLoading && approvedReturns.length === 0">
+              <tr
+                v-if="
+                  !(approvedLoading || rejectedLoading) &&
+                  (returnsTab === 'approved'
+                    ? approvedReturns.length === 0
+                    : rejectedReturns.length === 0)
+                "
+              >
                 <td colspan="4" class="text-center text-sm text-gray-500 py-6">
                   No approved returns.
                 </td>

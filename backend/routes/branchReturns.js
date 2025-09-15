@@ -33,30 +33,44 @@ router.post(
   }
 );
 
-// List branch returns
-router.get(
-  "/",
-  authenticateToken,
-  requirePermission("Manage Inventory"),
-  async (req, res) => {
-    try {
-      const { branch_id, status, return_type, page, limit } = req.query;
-      const result = await BranchReturn.list({
-        branch_id,
-        status,
-        return_type,
-        page,
-        limit,
-      });
-      res.json({ success: true, ...result });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: error.message || "Failed to fetch returns",
-      });
+// List branch returns (Main Inventory can query any; branches can only query their own)
+router.get("/", authenticateToken, async (req, res) => {
+  try {
+    const {
+      branch_id: qBranchId,
+      status,
+      return_type,
+      page,
+      limit,
+    } = req.query;
+
+    // Super Admin always allowed by middleware shortcut; otherwise check permission
+    let branchFilter = qBranchId;
+    const user = req.user || {};
+    const hasManage = await require("../models/Roles").hasPermission(
+      user.role_id,
+      "Manage Inventory"
+    );
+    if (!hasManage) {
+      // Force to user's branch only
+      branchFilter = user.branch_id || null;
     }
+
+    const result = await BranchReturn.list({
+      branch_id: branchFilter,
+      status,
+      return_type,
+      page,
+      limit,
+    });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch returns",
+    });
   }
-);
+});
 
 // Get single branch return
 router.get(

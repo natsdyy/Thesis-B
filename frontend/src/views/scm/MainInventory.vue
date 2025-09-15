@@ -1,4 +1,23 @@
 <script setup>
+  import { useBranchReturnStore } from '../../stores/branchReturnStore';
+  // Branch Returns Approval UI state
+  const branchReturnStore = useBranchReturnStore();
+  const showReturnsPanel = ref(false);
+  const pendingReturns = computed(() =>
+    (branchReturnStore.returns || []).filter((r) => r.status === 'Pending')
+  );
+
+  const loadPendingReturns = async () => {
+    try {
+      await branchReturnStore.fetchReturns({ status: 'Pending' });
+    } catch (e) {
+      console.error('Failed to load branch returns:', e);
+    }
+  };
+
+  onMounted(async () => {
+    await loadPendingReturns();
+  });
   import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
   import {
     Package,
@@ -5251,12 +5270,36 @@
       </div>
     </dialog>
 
-    <!-- Draft Checkout Controls (floating action) -->
-    <div
-      class="fixed bottom-6 right-6 z-40"
-      v-if="inventoryStore.cartItemCount > 0"
-    >
-      <div class="card shadow-xl bg-base-100">
+    <!-- Floating actions container (bottom-left corner) -->
+    <div class="fixed bottom-6 right-6 z-40 flex flex-col gap-3">
+      <!-- Branch Returns Approval (first, appears on top) -->
+      <div v-if="pendingReturns.length > 0" class="card shadow-xl bg-base-100">
+        <div class="card-body p-4">
+          <div class="flex items-center justify-between gap-6">
+            <div>
+              <div class="text-sm font-medium">Branch Returns</div>
+              <div class="text-xs text-gray-500">
+                {{ pendingReturns.length }} pending
+              </div>
+            </div>
+            <button
+              class="btn btn-xs"
+              @click="
+                showReturnsPanel = true;
+                loadPendingReturns();
+              "
+            >
+              Review
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Draft Checkout Controls (below) -->
+      <div
+        v-if="inventoryStore.cartItemCount > 0"
+        class="card shadow-xl bg-base-100"
+      >
         <div class="card-body p-4">
           <div class="text-sm font-medium">Draft Distribution</div>
           <div class="text-xs text-gray-500">
@@ -5278,6 +5321,90 @@
         </div>
       </div>
     </div>
+
+    <!-- Returns Review Modal -->
+    <dialog id="returns_review_modal" class="modal" :open="showReturnsPanel">
+      <div class="modal-box max-w-4xl">
+        <h3 class="font-bold text-lg mb-3">Pending Branch Returns</h3>
+        <div class="overflow-x-auto max-h-[60vh]">
+          <table class="table table-zebra table-xs w-full">
+            <thead>
+              <tr class="bg-base-200">
+                <th>ID</th>
+                <th>Branch</th>
+                <th>Type</th>
+                <th>Items</th>
+                <th>Notes</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="ret in pendingReturns" :key="ret.id">
+                <td class="font-medium">#{{ ret.id }}</td>
+                <td>{{ ret.branch_name || ret.branch_id }}</td>
+                <td class="uppercase">{{ ret.return_type }}</td>
+                <td>
+                  <div class="text-xs">
+                    <div v-for="it in ret.items" :key="it.id">
+                      {{ it.item_name }} - {{ it.quantity }} {{ it.unit }}
+                    </div>
+                  </div>
+                </td>
+                <td class="text-xs text-gray-500">{{ ret.notes || '—' }}</td>
+                <td>
+                  <div class="flex gap-1">
+                    <button
+                      class="btn btn-xs btn-success"
+                      :disabled="branchReturnStore.loading"
+                      @click="
+                        branchReturnStore
+                          .approveReturn(ret.id)
+                          .then(loadPendingReturns)
+                      "
+                    >
+                      <span
+                        v-if="branchReturnStore.loading"
+                        class="loading loading-spinner loading-xs mr-1"
+                      ></span>
+                      {{
+                        branchReturnStore.loading ? 'Approving...' : 'Approve'
+                      }}
+                    </button>
+                    <button
+                      class="btn btn-xs btn-ghost"
+                      :disabled="branchReturnStore.loading"
+                      @click="
+                        branchReturnStore
+                          .rejectReturn(ret.id)
+                          .then(loadPendingReturns)
+                      "
+                    >
+                      <span
+                        v-if="branchReturnStore.loading"
+                        class="loading loading-spinner loading-xs mr-1"
+                      ></span>
+                      {{
+                        branchReturnStore.loading ? 'Rejecting...' : 'Reject'
+                      }}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="pendingReturns.length === 0">
+                <td colspan="6" class="text-center text-sm text-gray-500 py-6">
+                  No pending returns.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="modal-action">
+          <button class="btn btn-sm" @click="showReturnsPanel = false">
+            Close
+          </button>
+        </div>
+      </div>
+    </dialog>
 
     <BranchDistributionReceiptModal
       :show="distributionReceipt.show"

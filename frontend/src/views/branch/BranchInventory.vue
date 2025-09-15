@@ -493,6 +493,217 @@
   // Local modals for consume/adjust (match MainInventory.vue)
   const actionModal = ref({ type: null, show: false, item: null });
 
+  // Return Items state
+  const returnType = ref('scm'); // 'scm' | 'production'
+  const returnCart = ref([]); // [{ id, item_name, available, unit, quantity, notes }]
+  const returnNotes = ref('');
+  const returnSubmitting = ref(false);
+
+  const resetReturn = () => {
+    returnType.value = 'scm';
+    returnCart.value = [];
+    returnNotes.value = '';
+  };
+
+  const currentReturnSource = computed(() =>
+    (formattedBranchInventory.value || []).filter(
+      (i) => i.item_type === returnType.value && i.status !== 'disposed'
+    )
+  );
+
+  // Mapping options for main (SCM) and production menu items
+  const scmInventoryOptions = ref([]); // { id, label }
+  const productionMenuOptions = ref([]); // { id, label }
+  const scmNameToId = ref({});
+  const productionNameToId = ref({});
+  let invStoreSingleton = null;
+  let prodStoreSingleton = null;
+
+  const loadMappingOptions = async () => {
+    try {
+      // SCM options - cache store and results
+      if (!invStoreSingleton) {
+        const invMod = await import('../../stores/inventoryStore');
+        invStoreSingleton = invMod.useInventoryStore();
+      }
+      if (
+        !invStoreSingleton.currentInventory ||
+        invStoreSingleton.currentInventory.length === 0
+      ) {
+        await invStoreSingleton.fetchCurrentInventory();
+      }
+      if (scmInventoryOptions.value.length === 0) {
+        scmInventoryOptions.value = (
+          invStoreSingleton.currentInventory || []
+        ).map((x) => ({
+          id: x.id,
+          label: `${x.item_name} (${x.quantity} ${x.unit_of_measure || x.unit || ''})`,
+        }));
+        const map = {};
+        (invStoreSingleton.currentInventory || []).forEach((x) => {
+          map[(x.item_name || '').toLowerCase()] = x.id;
+        });
+        scmNameToId.value = map;
+      }
+
+      // Production options - cache store and results
+      if (!prodStoreSingleton) {
+        const prodMod = await import('../../stores/productionStore');
+        prodStoreSingleton = prodMod.useProductionStore();
+      }
+      if (
+        !prodStoreSingleton.menuItems ||
+        prodStoreSingleton.menuItems.length === 0
+      ) {
+        await prodStoreSingleton.fetchMenuItems();
+      }
+      if (productionMenuOptions.value.length === 0) {
+        productionMenuOptions.value = (prodStoreSingleton.menuItems || []).map(
+          (m) => ({
+            id: m.id,
+            label: `${m.menu_item_name}`,
+          })
+        );
+        const map2 = {};
+        (prodStoreSingleton.menuItems || []).forEach((m) => {
+          map2[(m.menu_item_name || '').toLowerCase()] = m.id;
+        });
+        productionNameToId.value = map2;
+      }
+    } catch (e) {
+      console.warn('Failed loading mapping options', e);
+    }
+  };
+
+  const addToReturnCart = (item) => {
+    if (!item?.id) return;
+    const exists = returnCart.value.find((r) => r.id === item.id);
+    if (exists) return;
+    const newRow = {
+      id: item.id,
+      item_name: item.item_name || item.name,
+      available: parseFloat(item.quantity || 0),
+      unit: item.unit || item.unit_of_measure,
+      quantity: 0,
+      notes: '',
+      source: returnType.value,
+      main_inventory_item_id: null,
+      menu_item_id: null,
+    };
+
+    // Attempt auto-mapping to main/production item ids by name
+    const tryAutoMap = async () => {
+      try {
+        if (newRow.source === 'scm') {
+          await loadMappingOptions();
+          const id = scmNameToId.value[(newRow.item_name || '').toLowerCase()];
+          if (id) newRow.main_inventory_item_id = id;
+        } else if (newRow.source === 'production') {
+          await loadMappingOptions();
+          const mid =
+            productionNameToId.value[(newRow.item_name || '').toLowerCase()];
+          if (mid) newRow.menu_item_id = mid;
+        }
+      } catch (e) {
+        console.warn('Auto-map failed', e);
+      }
+    };
+
+    // Fire and forget auto-map; no need to block UI
+    tryAutoMap();
+
+    returnCart.value.push(newRow);
+  };
+
+  const removeFromReturnCart = (id) => {
+    returnCart.value = returnCart.value.filter((r) => r.id !== id);
+  };
+
+  const validateReturnCart = () => {
+    if (returnCart.value.length === 0)
+      return 'Please select at least one item.';
+    for (const row of returnCart.value) {
+      const qty = parseFloat(row.quantity || 0);
+      if (!qty || qty <= 0) return `Set a valid quantity for ${row.item_name}.`;
+      if (qty > parseFloat(row.available || 0))
+        return `Return qty exceeds available for ${row.item_name}.`;
+    }
+    return null;
+  };
+
+  const submitReturnItems = async () => {
+    const errorMsg = validateReturnCart();
+    if (errorMsg) {
+      toast.error(errorMsg);
+      return;
+    }
+
+    const totalLines = returnCart.value.length;
+    const totalQty = returnCart.value.reduce(
+      (s, r) => s + parseFloat(r.quantity || 0),
+      0
+    );
+
+    confirmModal.value = {
+      show: true,
+      title: 'Confirm Return to Main',
+      message: `Return ${totalQty} ${totalQty === 1 ? 'unit' : 'units'} across ${totalLines} ${
+        totalLines === 1 ? 'item' : 'items'
+      } from ${currentBranch.value?.name} → Main (${returnType.value.toUpperCase()})?`,
+      onConfirm: async () => {
+        returnSubmitting.value = true;
+        try {
+          // Create a branch return request instead of immediate decrement
+          const itemsPayload = returnCart.value.map((row) => ({
+            branch_inventory_item_id: row.id,
+            item_name: row.item_name,
+            unit: row.unit,
+            quantity: row.quantity,
+            item_type: row.source,
+            main_inventory_item_id: row.main_inventory_item_id || null,
+            menu_item_id: row.menu_item_id || null,
+            notes: row.notes || null,
+          }));
+
+          const scmItems = itemsPayload.filter((it) => it.item_type === 'scm');
+          const prodItems = itemsPayload.filter(
+            (it) => it.item_type === 'production'
+          );
+
+          const mod = await import('../../stores/branchReturnStore');
+          const branchReturnStore = mod.useBranchReturnStore();
+          // Submit separate requests per type to satisfy backend enum
+          if (scmItems.length > 0) {
+            await branchReturnStore.createReturn({
+              branch_id: currentBranch.value?.id,
+              return_type: 'scm',
+              items: scmItems,
+              notes: returnNotes.value || null,
+            });
+          }
+          if (prodItems.length > 0) {
+            await branchReturnStore.createReturn({
+              branch_id: currentBranch.value?.id,
+              return_type: 'production',
+              items: prodItems,
+              notes: returnNotes.value || null,
+            });
+          }
+
+          toast.success('Return request submitted for approval.');
+          resetReturn();
+        } catch (e) {
+          console.error('Return failed:', e);
+          toast.error('Failed to process return.');
+        } finally {
+          returnSubmitting.value = false;
+        }
+      },
+      onCancel: () => {},
+    };
+    openConfirmDialog();
+  };
+
   // Confirmation modal state (mirrors MainInventory)
   const confirmModal = ref({
     show: false,
@@ -526,6 +737,44 @@
         confirmLoading.value = false;
         closeConfirmModal();
       }
+    }
+  };
+
+  // Approved returns floating panel logic
+  const approvedReturns = ref([]);
+  const approvedLoading = ref(false);
+  const showApprovedReturnsPanel = ref(false);
+  const branchAckLoadingId = ref(null);
+
+  const loadApprovedReturns = async () => {
+    try {
+      approvedLoading.value = true;
+      const mod = await import('../../stores/branchReturnStore');
+      const store = mod.useBranchReturnStore();
+      const res = await store.fetchReturns({ status: 'Approved' });
+      const rows = res?.data || res?.data?.data || store.returns || [];
+      approvedReturns.value = (rows || []).filter(
+        (r) => !r.branch_acknowledged_at && !r.branch_acknowledged_by
+      );
+    } catch (e) {
+      console.warn('Failed to load approved returns', e);
+    } finally {
+      approvedLoading.value = false;
+    }
+  };
+
+  const acknowledgeReturnComplete = async (id) => {
+    try {
+      branchAckLoadingId.value = id;
+      const mod = await import('../../stores/branchReturnStore');
+      const store = mod.useBranchReturnStore();
+      await store.acknowledgeReturn(id);
+      await loadApprovedReturns();
+      toast.success('Return acknowledged.');
+    } catch (e) {
+      toast.error('Failed to acknowledge return.');
+    } finally {
+      branchAckLoadingId.value = null;
     }
   };
 
@@ -1680,7 +1929,15 @@
         :class="{ 'tab-active': activeTab === 'request_supply' }"
       >
         <Handshake class="w-4 h-4 mr-1" />
-        Request Supply
+        Supply Request
+      </button>
+      <button
+        @click="activeTab = 'return_items'"
+        class="tab"
+        :class="{ 'tab-active': activeTab === 'return_items' }"
+      >
+        <RefreshCcw class="w-4 h-4 mr-1" />
+        Return Items
       </button>
     </div>
 
@@ -2860,6 +3117,240 @@
           </div>
         </div>
 
+        <!-- Return Items Tab -->
+        <div v-if="activeTab === 'return_items'" class="space-y-6">
+          <div
+            class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
+          >
+            <h2
+              class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl"
+            >
+              <RefreshCcw class="w-5 h-5 sm:w-6 sm:h-6" />
+              Return Items to Main
+            </h2>
+            <div class="join gap-1">
+              <button
+                class="join-item btn btn-sm font-thin"
+                :class="
+                  returnType === 'scm'
+                    ? '!bg-primaryColor/10 text-primaryColor border border-none'
+                    : '!bg-gray-200 text-black/50 border border-none hover:bg-gray-300'
+                "
+                @click="returnType = 'scm'"
+              >
+                SCM
+              </button>
+              <button
+                class="join-item btn btn-sm font-thin"
+                :class="
+                  returnType === 'production'
+                    ? '!bg-primaryColor/10 text-primaryColor border border-none'
+                    : '!bg-gray-200 text-black/50 border border-none hover:bg-gray-300'
+                "
+                @click="returnType = 'production'"
+              >
+                Production
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="card bg-white shadow-lg">
+              <div class="card-body p-4">
+                <div class="flex items-center justify-between mb-2">
+                  <h3 class="font-semibold">
+                    Select Items ({{ returnType.toUpperCase() }})
+                  </h3>
+                  <span class="text-xs text-gray-500"
+                    >Available: {{ currentReturnSource.length }}</span
+                  >
+                </div>
+                <div class="overflow-x-auto">
+                  <table class="table table-zebra w-full table-xs">
+                    <thead>
+                      <tr class="bg-base-200">
+                        <th>Item</th>
+                        <th class="text-right">Available</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="it in currentReturnSource" :key="it.id">
+                        <td>
+                          <div class="flex items-center gap-2">
+                            <span class="font-medium">{{ it.item_name }}</span>
+                            <span class="badge badge-ghost badge-xs">{{
+                              it.unit
+                            }}</span>
+                          </div>
+                        </td>
+                        <td class="text-right">
+                          {{ Number(it.quantity).toLocaleString() }}
+                        </td>
+                        <td class="text-right">
+                          <button
+                            class="btn btn-xs"
+                            @click="addToReturnCart(it)"
+                            :disabled="returnCart.some((r) => r.id === it.id)"
+                          >
+                            Add
+                          </button>
+                        </td>
+                      </tr>
+                      <tr v-if="currentReturnSource.length === 0">
+                        <td
+                          colspan="3"
+                          class="text-center text-sm text-gray-500 py-6"
+                        >
+                          No items found.
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="card bg-white shadow-lg">
+              <div class="card-body p-4">
+                <div class="flex items-center justify-between mb-2">
+                  <h3 class="font-semibold">Return Cart</h3>
+                  <button
+                    class="btn btn-ghost btn-xs"
+                    @click="resetReturn"
+                    :disabled="returnCart.length === 0"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div class="overflow-x-auto overflow-y-auto">
+                  <table class="table w-full table-xs">
+                    <thead>
+                      <tr class="bg-base-200">
+                        <th>Item</th>
+                        <th class="text-right">Avail.</th>
+                        <th class="text-right">Return Qty</th>
+                        <th>Map: Main Item</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="row in returnCart" :key="row.id">
+                        <td>
+                          <div class="flex flex-col">
+                            <span class="font-medium">{{ row.item_name }}</span>
+                            <span class="text-xs text-gray-500"
+                              >Unit: {{ row.unit }}</span
+                            >
+                          </div>
+                        </td>
+                        <td class="text-right">
+                          {{ Number(row.available).toLocaleString() }}
+                        </td>
+                        <td class="text-right">
+                          <input
+                            type="number"
+                            class="input input-bordered input-xs w-28 text-right"
+                            v-model.number="row.quantity"
+                            :max="row.available"
+                            min="0"
+                            step="0.01"
+                          />
+                        </td>
+                        <td>
+                          <div
+                            v-if="row.source === 'scm'"
+                            class="min-w-[220px]"
+                          >
+                            <select
+                              class="select select-bordered select-xs w-full"
+                              v-model="row.main_inventory_item_id"
+                              @focus="loadMappingOptions"
+                            >
+                              <option :value="null">
+                                Select main inventory item (optional)
+                              </option>
+                              <option
+                                v-for="opt in scmInventoryOptions"
+                                :key="opt.id"
+                                :value="opt.id"
+                              >
+                                {{ opt.label }}
+                              </option>
+                            </select>
+                          </div>
+                          <div v-else class="min-w-[220px]">
+                            <select
+                              class="select select-bordered select-xs w-full"
+                              v-model="row.menu_item_id"
+                              @focus="loadMappingOptions"
+                            >
+                              <option :value="null">
+                                Select menu item (optional)
+                              </option>
+                              <option
+                                v-for="opt in productionMenuOptions"
+                                :key="opt.id"
+                                :value="opt.id"
+                              >
+                                {{ opt.label }}
+                              </option>
+                            </select>
+                          </div>
+                        </td>
+                        <td class="text-right">
+                          <button
+                            class="btn btn-ghost btn-xs"
+                            @click="removeFromReturnCart(row.id)"
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                      <tr v-if="returnCart.length === 0">
+                        <td
+                          colspan="4"
+                          class="text-center text-sm text-gray-500 py-6"
+                        >
+                          No items selected.
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div class="mt-3">
+                  <label class="label"
+                    ><span class="label-text text-xs"
+                      >Notes (optional)</span
+                    ></label
+                  >
+                  <textarea
+                    class="textarea textarea-bordered w-full"
+                    rows="2"
+                    v-model="returnNotes"
+                    placeholder="Reason or remarks..."
+                  ></textarea>
+                </div>
+
+                <div class="mt-4 flex justify-end">
+                  <button
+                    class="btn bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80 btn-sm"
+                    :disabled="returnSubmitting || returnCart.length === 0"
+                    @click="submitReturnItems"
+                  >
+                    <span
+                      v-if="returnSubmitting"
+                      class="loading loading-spinner loading-xs mr-2"
+                    ></span>
+                    Submit Return
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Request Supply Tab -->
         <div v-if="activeTab === 'request_supply'" class="space-y-6">
           <BranchRequestSupply
@@ -3237,5 +3728,97 @@
       :show="showBranchTransactions"
       @close="closeTransactionModal"
     />
+
+    <!-- Floating: Approved Returns Awaiting Acknowledgment -->
+    <div class="fixed bottom-24 right-4 z-30" v-if="approvedReturns.length > 0">
+      <div
+        class="card shadow-lg bg-base-100 border border-base-200 cursor-pointer"
+        @click="
+          showApprovedReturnsPanel = true;
+          loadApprovedReturns();
+        "
+      >
+        <div class="card-body p-3">
+          <div class="flex items-center gap-2">
+            <div class="badge bg-success/20 text-success">Returns</div>
+            <div class="text-xs text-gray-500">Awaiting acknowledgment</div>
+            <div class="ml-auto badge bg-success/20 text-success font-thin">
+              {{ approvedReturns.length }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <dialog
+      id="approved_returns_panel"
+      class="modal"
+      :open="showApprovedReturnsPanel"
+    >
+      <div class="modal-box max-w-3xl">
+        <h3 class="font-bold text-lg mb-2">Approved Branch Returns</h3>
+        <p class="text-sm text-gray-600 mb-3">
+          These returns were approved by Main Inventory. Click Complete to
+          acknowledge.
+        </p>
+        <div class="overflow-x-auto max-h-[60vh]">
+          <table class="table table-zebra table-xs w-full">
+            <thead>
+              <tr class="bg-base-200">
+                <th>ID</th>
+                <th>Type</th>
+                <th>Items</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="approvedLoading">
+                <td colspan="4" class="text-center py-6">
+                  <span class="loading loading-spinner loading-sm"></span>
+                </td>
+              </tr>
+              <tr v-for="ret in approvedReturns" :key="ret.id">
+                <td class="font-medium">#{{ ret.id }}</td>
+                <td class="uppercase">{{ ret.return_type }}</td>
+                <td>
+                  <div class="text-xs">
+                    <div v-for="it in ret.items" :key="it.id">
+                      {{ it.item_name }} - {{ it.quantity }} {{ it.unit }}
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <button
+                    class="btn btn-xs bg-success/20 text-success font-thin border-none hover:bg-success/30"
+                    :disabled="branchAckLoadingId === ret.id"
+                    @click="acknowledgeReturnComplete(ret.id)"
+                  >
+                    <span
+                      v-if="branchAckLoadingId === ret.id"
+                      class="loading loading-spinner loading-xs mr-1"
+                    ></span>
+                    {{
+                      branchAckLoadingId === ret.id
+                        ? 'Completing...'
+                        : 'Complete'
+                    }}
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="!approvedLoading && approvedReturns.length === 0">
+                <td colspan="4" class="text-center text-sm text-gray-500 py-6">
+                  No approved returns.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="modal-action">
+          <button class="btn btn-sm" @click="showApprovedReturnsPanel = false">
+            Close
+          </button>
+        </div>
+      </div>
+    </dialog>
   </div>
 </template>

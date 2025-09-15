@@ -191,14 +191,29 @@ class BranchInventory {
   // Get recent activity for a branch
   static async getRecentActivity(branchId, limit = 10) {
     try {
-      // This would typically come from an activity log table
-      // For now, we'll return a basic structure
-      return await db("branch_inventory")
-        .where("branch_id", branchId)
-        .whereNull("deleted_at")
-        .orderBy("last_updated", "desc")
+      // Pull from branch_inventory_transactions so we capture distributions,
+      // consumption, adjustments, and rejections
+      return await db("branch_inventory_transactions as t")
+        .leftJoin("employees as e", "t.performed_by", "e.id")
+        .leftJoin("branch_inventory as bi", "t.inventory_item_id", "bi.id")
+        .where("t.branch_id", branchId)
+        .whereNull("t.deleted_at")
+        .orderBy("t.created_at", "desc")
         .limit(limit)
-        .select("item_name", "quantity", "last_updated as timestamp");
+        .select(
+          "t.id",
+          "t.item_name",
+          "t.item_type",
+          "t.transaction_type",
+          "t.quantity",
+          "t.unit_of_measure",
+          "t.reference_number",
+          db.raw("bi.category as category_name"),
+          db.raw(
+            "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as performed_by_name"
+          ),
+          db.raw("t.created_at as timestamp")
+        );
     } catch (error) {
       console.error("Error fetching recent activity:", error);
       throw error;

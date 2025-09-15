@@ -595,7 +595,9 @@ class Inventory {
         .select(
           "ii.*",
           "it.name as item_type_name",
-          "it.unit_of_measure",
+          db.raw(
+            "COALESCE(ii.unit_of_measure, it.unit_of_measure) as unit_of_measure"
+          ),
           "it.requires_expiry",
           "it.requires_batch",
           "ic.name as category_name",

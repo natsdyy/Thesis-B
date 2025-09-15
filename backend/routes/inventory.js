@@ -205,6 +205,7 @@ router.post("/items", async (req, res) => {
       item_name: req.body.item_name || null, // Add this line
       supplier_id: req.body.supplier_id || null,
       purchase_order_id: req.body.purchase_order_id || null,
+      unit_of_measure: req.body.unit_of_measure || null,
       batch_number: req.body.batch_number || null,
       quantity: parseFloat(req.body.quantity),
       unit_cost: parseFloat(req.body.unit_cost),

@@ -793,6 +793,7 @@ router.post("/:id/reject", authenticateToken, async (req, res) => {
       rejected_by,
       rejection_reason,
       rejection_notes: rejection_notes || null,
+      performed_by_id: req.user?.id || null,
     });
 
     res.json({
@@ -872,6 +873,7 @@ router.post("/:id/complete", authenticateToken, async (req, res) => {
       parseInt(id),
       {
         completed_by,
+        performed_by_id: req.user?.id || null,
       }
     );
 

@@ -487,6 +487,23 @@ class BranchDistribution {
             });
           }
         }
+
+        // Log branch-level transaction to show the rejection in branch history
+        await trx("branch_inventory_transactions").insert({
+          branch_id: distribution.branch_id,
+          inventory_item_id: null,
+          item_name: item.name,
+          item_type: item.source,
+          transaction_type: "rejection",
+          quantity: parseFloat(item.qty),
+          unit_of_measure: item.unit,
+          reference_number: distribution.reference,
+          notes:
+            `Distribution rejected: ${rejectionData.rejection_reason || ""}`.trim(),
+          performed_by: rejectionData.performed_by_id || null,
+          created_at: db.fn.now(),
+          updated_at: db.fn.now(),
+        });
       }
 
       // Update distribution status to rejected
@@ -571,29 +588,67 @@ class BranchDistribution {
               total_value: db.raw(`total_value + ${item.amount}`),
               updated_at: db.fn.now(),
             });
+
+          // Log branch inventory transaction for distribution
+          await trx("branch_inventory_transactions").insert({
+            branch_id: distribution.branch_id,
+            inventory_item_id: existingItem.id,
+            item_name: existingItem.item_name || item.name,
+            item_type: item.source,
+            transaction_type: "distribution",
+            quantity: parseFloat(item.qty),
+            unit_of_measure: item.unit,
+            reference_number: distribution.reference,
+            notes: "Distribution completed",
+            performed_by: completionData.performed_by_id || null,
+            created_at: db.fn.now(),
+            updated_at: db.fn.now(),
+          });
         } else {
           // Create new branch inventory item
-          await trx("branch_inventory").insert({
-            item_name: item.name,
-            item_type: item.source,
-            category: item.category || "Distributed",
-            quantity: item.qty,
-            unit: item.unit,
-            unit_cost: item.unit_price,
-            // For production sourced items, preserve selling price and image when available
-            selling_price:
-              item.source === "production" && item.menu_selling_price
-                ? item.menu_selling_price
-                : null,
-            total_value: item.amount,
-            minimum_stock: Math.ceil(item.qty * 0.15), // 15% of quantity
-            expiry_date: item.expiry_date || null,
-            image_url:
-              item.source === "production" && item.image_url
-                ? item.image_url
-                : null,
+          const [created] = await trx("branch_inventory")
+            .insert({
+              item_name: item.name,
+              item_type: item.source,
+              category: item.category || "Distributed",
+              quantity: item.qty,
+              unit: item.unit,
+              unit_cost: item.unit_price,
+              // For production sourced items, preserve selling price and image when available
+              selling_price:
+                item.source === "production" && item.menu_selling_price
+                  ? item.menu_selling_price
+                  : null,
+              total_value: item.amount,
+              minimum_stock: Math.ceil(item.qty * 0.15), // 15% of quantity
+              expiry_date: item.expiry_date || null,
+              image_url:
+                item.source === "production" && item.image_url
+                  ? item.image_url
+                  : null,
+              branch_id: distribution.branch_id,
+              status: "active",
+              created_at: db.fn.now(),
+              updated_at: db.fn.now(),
+            })
+            .returning(["id", "item_name"]);
+
+          const createdId = Array.isArray(created)
+            ? created[0]?.id || created[0]
+            : created?.id || created;
+
+          // Log branch inventory transaction for distribution
+          await trx("branch_inventory_transactions").insert({
             branch_id: distribution.branch_id,
-            status: "active",
+            inventory_item_id: createdId || null,
+            item_name: (created && created.item_name) || item.name,
+            item_type: item.source,
+            transaction_type: "distribution",
+            quantity: parseFloat(item.qty),
+            unit_of_measure: item.unit,
+            reference_number: distribution.reference,
+            notes: "Distribution completed",
+            performed_by: completionData.performed_by_id || null,
             created_at: db.fn.now(),
             updated_at: db.fn.now(),
           });

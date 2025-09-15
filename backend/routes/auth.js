@@ -151,6 +151,7 @@ router.post("/login", async (req, res) => {
           role: employee.role,
           department: employee.department,
           branch_id: employee.branch_id,
+          photo_url: employee.photo_url || null,
         },
         token: token,
       },
@@ -293,6 +294,7 @@ router.post("/validate-session", async (req, res) => {
           role: employeeWithRole.role,
           department: employeeWithRole.department,
           branch_id: employeeWithRole.branch_id,
+          photo_url: employeeWithRole.photo_url || null,
         },
       },
     });

@@ -462,6 +462,42 @@
   // Local modals for consume/adjust (match MainInventory.vue)
   const actionModal = ref({ type: null, show: false, item: null });
 
+  // Confirmation modal state (mirrors MainInventory)
+  const confirmModal = ref({
+    show: false,
+    title: '',
+    message: '',
+    onConfirm: null,
+  });
+
+  const confirmLoading = ref(false);
+
+  const openConfirmDialog = () => {
+    document.getElementById('branch_inventory_confirm_modal')?.showModal();
+  };
+
+  const closeConfirmModal = () => {
+    document.getElementById('branch_inventory_confirm_modal')?.close();
+    confirmModal.value = {
+      show: false,
+      title: '',
+      message: '',
+      onConfirm: null,
+    };
+  };
+
+  const handleConfirmAction = async () => {
+    if (confirmModal.value.onConfirm) {
+      try {
+        confirmLoading.value = true;
+        await confirmModal.value.onConfirm();
+      } finally {
+        confirmLoading.value = false;
+        closeConfirmModal();
+      }
+    }
+  };
+
   const openConsumeModal = (item) => {
     actionModal.value = { type: 'consumption', show: true, item };
   };
@@ -529,37 +565,55 @@
 
   const handleConsumptionSubmit = async (payload) => {
     try {
-      consumptionSubmitting.value = true;
-      // Persist each consumption via backend quantity update
       const items = Array.isArray(payload?.items) ? payload.items : [];
-      for (const it of items) {
-        // Compute new quantity locally to send as target quantity
-        const current = branchInventory.value.find(
-          (s) => s.id == it.inventory_item_id
-        );
-        const currentQty = parseFloat(current?.quantity || 0);
-        const consumeQty = parseFloat(it.quantity || 0);
-        const newQty = Math.max(0, currentQty - consumeQty);
-        await branchInventoryStore.updateQuantity(
-          it.inventory_item_id,
-          newQty,
-          'consumption'
-        );
-      }
-      toast.success('Usage recorded.');
+      const qtyLabel = items
+        .map((it) => `${parseFloat(it.quantity || 0)} ${it.unit || ''}`.trim())
+        .join(', ');
+      const itemLabel =
+        items.length === 1
+          ? items[0]?.item_name || items[0]?.name || 'this item'
+          : `${items.length} items`;
+
+      confirmModal.value = {
+        show: true,
+        title: 'Confirm Usage',
+        message: `Record usage of ${qtyLabel} for ${itemLabel}?`,
+        onConfirm: async () => {
+          consumptionSubmitting.value = true;
+          try {
+            for (const it of items) {
+              const current = branchInventory.value.find(
+                (s) => s.id == it.inventory_item_id
+              );
+              const currentQty = parseFloat(current?.quantity || 0);
+              const consumeQty = parseFloat(it.quantity || 0);
+              const newQty = Math.max(0, currentQty - consumeQty);
+              await branchInventoryStore.updateQuantity(
+                it.inventory_item_id,
+                newQty,
+                'consumption'
+              );
+            }
+            toast.success('Usage recorded.');
+          } catch (err) {
+            console.error('Failed to record consumption:', err);
+            toast.error('Failed to record usage.');
+          } finally {
+            consumptionSubmitting.value = false;
+            closeActionModal();
+            await loadBranchInventory();
+          }
+        },
+      };
+      openConfirmDialog();
     } catch (err) {
-      console.error('Failed to record consumption:', err);
-      toast.error('Failed to record usage.');
-    } finally {
-      consumptionSubmitting.value = false;
-      closeActionModal();
-      await loadBranchInventory();
+      console.error('Failed to prepare usage confirmation:', err);
+      toast.error('Failed to prepare confirmation.');
     }
   };
 
   const handleAdjustmentSubmit = async (payload) => {
     try {
-      adjustmentSubmitting.value = true;
       if (!payload?.inventory_item_id) return;
 
       const current = branchInventory.value.find(
@@ -567,16 +621,16 @@
       );
       const currentQty = parseFloat(current?.quantity || 0);
 
-      let newQty = currentQty;
+      let previewQty = currentQty;
       switch (payload.adjustment_type) {
         case 'set_quantity':
-          newQty = parseFloat(payload.new_quantity);
+          previewQty = parseFloat(payload.new_quantity);
           break;
         case 'add_quantity':
-          newQty = currentQty + parseFloat(payload.new_quantity || 0);
+          previewQty = currentQty + parseFloat(payload.new_quantity || 0);
           break;
         case 'reduce_quantity':
-          newQty = Math.max(
+          previewQty = Math.max(
             0,
             currentQty - parseFloat(payload.new_quantity || 0)
           );
@@ -584,35 +638,60 @@
         case 'mark_expired':
         case 'mark_damaged':
         case 'disposal':
-          newQty = 0;
+          previewQty = 0;
           break;
         case 'set_expiry_date':
-          // quantity unchanged
-          newQty = currentQty;
+          previewQty = currentQty;
           break;
       }
 
-      await branchInventoryStore.updateQuantity(
-        payload.inventory_item_id,
-        newQty,
-        payload.adjustment_type === 'disposal' ? 'disposal' : 'adjustment'
-      );
+      const actionLabel =
+        payload.adjustment_type === 'set_quantity'
+          ? `set quantity to ${previewQty}`
+          : payload.adjustment_type === 'add_quantity'
+            ? `increase to ${previewQty}`
+            : payload.adjustment_type === 'reduce_quantity'
+              ? `decrease to ${previewQty}`
+              : payload.adjustment_type === 'set_expiry_date'
+                ? 'set expiry date'
+                : 'dispose item';
 
-      if (payload.adjustment_type === 'disposal') {
-        await branchInventoryStore.updateStatus(
-          payload.inventory_item_id,
-          'disposed'
-        );
-      }
+      const itemLabel = current?.item_name || current?.name || 'this item';
 
-      toast.success('Adjustment applied.');
+      confirmModal.value = {
+        show: true,
+        title: 'Confirm Adjustment',
+        message: `Apply adjustment: ${actionLabel} for ${itemLabel}?`,
+        onConfirm: async () => {
+          adjustmentSubmitting.value = true;
+          try {
+            await branchInventoryStore.updateQuantity(
+              payload.inventory_item_id,
+              previewQty,
+              payload.adjustment_type === 'disposal' ? 'disposal' : 'adjustment'
+            );
+
+            if (payload.adjustment_type === 'disposal') {
+              await branchInventoryStore.updateStatus(
+                payload.inventory_item_id,
+                'disposed'
+              );
+            }
+            toast.success('Adjustment applied.');
+          } catch (err) {
+            console.error('Failed to apply adjustment:', err);
+            toast.error('Failed to apply adjustment.');
+          } finally {
+            adjustmentSubmitting.value = false;
+            closeActionModal();
+            await loadBranchInventory();
+          }
+        },
+      };
+      openConfirmDialog();
     } catch (err) {
-      console.error('Failed to apply adjustment:', err);
-      toast.error('Failed to apply adjustment.');
-    } finally {
-      adjustmentSubmitting.value = false;
-      closeActionModal();
-      await loadBranchInventory();
+      console.error('Failed to prepare adjustment confirmation:', err);
+      toast.error('Failed to prepare confirmation.');
     }
   };
 
@@ -2450,7 +2529,9 @@
             <div
               v-if="
                 branchInventory.filter(
-                  (i) => parseFloat(i.quantity) <= parseFloat(i.minimum_stock)
+                  (i) =>
+                    i.status !== 'disposed' &&
+                    parseFloat(i.quantity) <= parseFloat(i.minimum_stock)
                 ).length === 0
               "
               class="text-center py-8"
@@ -3078,6 +3159,32 @@
       @close="closeActionModal"
       @submit="handleAdjustmentSubmit"
     />
+
+    <!-- Confirmation Modal -->
+    <dialog id="branch_inventory_confirm_modal" class="modal">
+      <div class="modal-box max-w-xl">
+        <h3 class="font-bold text-lg mb-2">{{ confirmModal.title }}</h3>
+        <p class="text-sm text-gray-600">{{ confirmModal.message }}</p>
+        <div class="modal-action">
+          <button
+            type="button"
+            class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none btn-sm"
+            @click="closeConfirmModal"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn bg-primaryColor text-white btn-sm font-thin border-none hover:bg-primaryColor/80 disabled:opacity-60 disabled:cursor-not-allowed"
+            @click="handleConfirmAction"
+            :disabled="confirmLoading"
+          >
+            <span v-if="confirmLoading">Confirming...</span>
+            <span v-else>Confirm</span>
+          </button>
+        </div>
+      </div>
+    </dialog>
 
     <!-- Branch Transactions Modal -->
     <BranchInventoryTransactionModal

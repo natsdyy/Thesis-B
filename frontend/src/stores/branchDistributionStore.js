@@ -481,6 +481,62 @@ export const useBranchDistributionStore = defineStore(
     };
 
     /**
+     * Partially accept/reject a distribution with item-level selection
+     * @param {number} id - Distribution ID
+     * @param {Object} actionData - Action details
+     * @param {string} actionData.action_by - User performing the action
+     * @param {Array} actionData.accepted_items - Array of item IDs to accept
+     * @param {Array} actionData.rejected_items - Array of objects with item IDs and rejection reasons
+     * @param {string} actionData.notes - Optional notes about the partial action
+     * @returns {Promise<Object>} Result with original and new distributions
+     */
+    const partialAcceptReject = async (id, actionData) => {
+      loading.value = true;
+      error.value = null;
+      try {
+        const response = await axios.post(
+          `${API_BASE_URL}/branch-distributions/${id}/partial-accept-reject`,
+          actionData
+        );
+        if (response.data.success) {
+          const result = response.data.data;
+
+          // Update local state
+          distributions.value = distributions.value.map((d) =>
+            d.id === id ? result.originalDistribution : d
+          );
+
+          // Add new distribution if created
+          if (result.newDistribution) {
+            distributions.value.unshift(result.newDistribution);
+          }
+
+          if (
+            currentDistribution.value &&
+            currentDistribution.value.id === id
+          ) {
+            currentDistribution.value = result.originalDistribution;
+          }
+
+          return result;
+        } else {
+          throw new Error(
+            response.data.message || 'Failed to partially process distribution'
+          );
+        }
+      } catch (err) {
+        const errorMessage =
+          err.response?.data?.message ||
+          err.message ||
+          'Failed to partially process distribution';
+        error.value = errorMessage;
+        throw err;
+      } finally {
+        loading.value = false;
+      }
+    };
+
+    /**
      * Clear all distributions
      */
     const clearDistributions = () => {
@@ -548,6 +604,7 @@ export const useBranchDistributionStore = defineStore(
       rejectDistribution,
       completeDistribution,
       acknowledgeRejection,
+      partialAcceptReject,
       clearCurrentDistribution,
       clearDistributions,
       updatePagination,

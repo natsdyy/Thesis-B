@@ -96,6 +96,7 @@
         completed_at: dist.created_at,
         reference: dist.reference,
         branch_name: dist.branch_name,
+        status: dist.status,
         prepared_by:
           dist.prepared_by ||
           `${authStore?.user?.first_name || ''} ${authStore?.user?.last_name || ''}`.trim() ||
@@ -113,6 +114,7 @@
           item_amount: it.amount,
         })),
         total_amount: dist.total_amount,
+        rejected_items: dist.rejected_items || [],
       };
       distributionReceipt.value = { show: true, receipt: receiptForModal };
     } catch (_) {}
@@ -2084,24 +2086,20 @@
               }
             }
 
-            // Execute bulk operations in parallel
-            const promises = [];
+            // Create distribution records without deducting from main inventory
+            // Items will only be deducted when accepted by the branch
+            const distributionData = {
+              branch_id: cart.branch_id,
+              prepared_by: preparedName,
+              total_amount: cart.total_amount,
+              notes: `Receipt: ${createdReceipt.reference}`,
+              items: [...scmItems, ...productionItems],
+            };
 
-            if (scmItems.length > 0) {
-              promises.push(
-                inventoryStore.bulkDistributeToBranch(scmItems, preparedName)
-              );
-            }
-
-            if (productionItems.length > 0) {
-              // Use bulk distribution for production items (optimized)
-              promises.push(
-                productionStore.recordBulkDistributions(productionItems)
-              );
-            }
-
-            // Wait for all operations to complete
-            await Promise.all(promises);
+            // Create the distribution record (no inventory deduction)
+            await branchDistributionStore.createBulkDistributions([
+              distributionData,
+            ]);
 
             // Step 3: Clear cart and show receipt
             inventoryStore.clearDistributionCart();

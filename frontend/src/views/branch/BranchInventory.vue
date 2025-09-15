@@ -43,6 +43,7 @@
   import { useBranchInventoryStore } from '../../stores/branchInventoryStore';
   import BranchDistributionReceiptModal from '../../components/scm/BranchDistributionReceiptModal.vue';
   import BranchRequestSupply from '../../components/branch/BranchRequestSupply.vue';
+  import ItemLevelAcceptRejectModal from '../../components/branch/ItemLevelAcceptRejectModal.vue';
   import { apiConfig } from '../../config/api';
 
   const branchContextStore = useBranchContextStore();
@@ -439,9 +440,11 @@
   const showAcceptanceModal = ref(false);
   const showReceiptModal = ref(false);
   const showRejectionModal = ref(false);
+  const showItemLevelModal = ref(false);
   const distributionCurrentPage = ref(1);
   const distributionItemsPerPage = ref(10);
   const distributionActionLoading = ref(false);
+  const itemLevelModal = ref(null);
 
   // Rejection form state
   const rejectionForm = ref({
@@ -1026,6 +1029,21 @@
     document.getElementById('distribution_rejection_modal')?.close();
   };
 
+  const openItemLevelModal = (distribution) => {
+    console.log('Opening item-level modal for distribution:', distribution);
+    selectedDistribution.value = distribution;
+    showItemLevelModal.value = true;
+    // Open the modal using the component's exposed method
+    itemLevelModal.value?.openModal();
+  };
+
+  const closeItemLevelModal = () => {
+    selectedDistribution.value = null;
+    showItemLevelModal.value = false;
+    // Close the modal using the component's exposed method
+    itemLevelModal.value?.closeModal();
+  };
+
   const acceptDistribution = async (distribution) => {
     try {
       console.log('Starting accept distribution process for:', distribution);
@@ -1183,6 +1201,54 @@
     } catch (error) {
       console.error('Error rejecting distribution:', error);
       toast.error('Error rejecting distribution: ' + error.message);
+    } finally {
+      distributionActionLoading.value = false;
+    }
+  };
+
+  const handleItemLevelProcessing = async (actionData) => {
+    try {
+      console.log(
+        'Starting item-level processing for distribution:',
+        selectedDistribution.value
+      );
+      console.log('Action data:', actionData);
+      distributionActionLoading.value = true;
+
+      // Call the new partial accept/reject method
+      const result = await branchDistributionStore.partialAcceptReject(
+        selectedDistribution.value.id,
+        {
+          action_by: authStore.user?.name || 'Branch Manager',
+          ...actionData,
+        }
+      );
+
+      console.log('Item-level processing result:', result);
+
+      // Close the modal
+      closeItemLevelModal();
+
+      // Refresh data
+      await loadPendingDistributions();
+      await loadBranchInventory();
+
+      // Show success message with details
+      const acceptedCount = actionData.accepted_items?.length || 0;
+      const rejectedCount = actionData.rejected_items?.length || 0;
+
+      let message = `Distribution processed successfully! `;
+      if (acceptedCount > 0) {
+        message += `${acceptedCount} item(s) accepted and added to inventory. `;
+      }
+      if (rejectedCount > 0) {
+        message += `${rejectedCount} item(s) rejected and returned to main inventory.`;
+      }
+
+      toast.success(message);
+    } catch (error) {
+      console.error('Error processing items:', error);
+      toast.error('Error processing items: ' + error.message);
     } finally {
       distributionActionLoading.value = false;
     }
@@ -2394,11 +2460,20 @@
                   class="flex flex-col sm:flex-row justify-end sm:space-x-2 space-y-2 sm:space-y-0 w-full sm:w-auto"
                 >
                   <button
-                    @click="viewDistributionReceipt(distribution)"
-                    class="btn btn-sm text-black/50 bg-gray-200 font-thin border border-none hover:bg-gray-300 w-full sm:w-auto"
+                    @click="
+                      () => {
+                        console.log(
+                          'Item-level processing button clicked for distribution:',
+                          distribution
+                        );
+                        openItemLevelModal(distribution);
+                      }
+                    "
+                    class="btn btn-sm text-white bg-primaryColor font-thin border border-none hover:bg-primaryColor/80 w-full sm:w-auto"
+                    :disabled="distributionActionLoading"
                   >
-                    <Eye class="w-4 h-4 mr-1" />
-                    View Receipt
+                    <Package class="w-4 h-4 mr-1" />
+                    Select Items
                   </button>
                   <button
                     @click="
@@ -2414,8 +2489,16 @@
                     :disabled="distributionActionLoading"
                   >
                     <CheckCircle class="w-4 h-4 mr-1" />
-                    Accept Distribution
+                    Accept All
                   </button>
+                  <button
+                    @click="viewDistributionReceipt(distribution)"
+                    class="btn btn-sm text-black/50 bg-gray-200 font-thin border border-none hover:bg-gray-300 w-full sm:w-auto"
+                  >
+                    <Eye class="w-4 h-4 mr-1" />
+                    View Receipt
+                  </button>
+
                   <button
                     @click="
                       () => {
@@ -2430,7 +2513,7 @@
                     :disabled="distributionActionLoading"
                   >
                     <X class="w-4 h-4 mr-1" />
-                    Reject
+                    Reject All
                   </button>
                 </div>
               </div>
@@ -2789,6 +2872,15 @@
       :receipt="selectedDistribution"
       :show="showReceiptModal"
       :onClose="closeReceiptModal"
+    />
+
+    <!-- Item-Level Accept/Reject Modal -->
+    <ItemLevelAcceptRejectModal
+      ref="itemLevelModal"
+      :distribution="selectedDistribution"
+      :loading="distributionActionLoading"
+      @close="closeItemLevelModal"
+      @process="handleItemLevelProcessing"
     />
   </div>
 </template>

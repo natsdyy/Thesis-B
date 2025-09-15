@@ -15,6 +15,18 @@
   });
 
   const printReceipt = () => window.print();
+
+  const extractRejectionReason = (notes) => {
+    if (!notes) return 'No reason provided';
+
+    // Extract reason from notes format: "Item rejected by branch: {reason}. {notes}"
+    const match = notes.match(/Item rejected by branch: ([^.]+)/);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+
+    return 'Unknown reason';
+  };
 </script>
 
 <template>
@@ -47,6 +59,17 @@
           </div>
           <div v-if="receipt?.notes">
             Notes: <span>{{ receipt?.notes }}</span>
+          </div>
+          <div
+            v-if="receipt?.status === 'partially_processed'"
+            class="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded"
+          >
+            <div class="text-yellow-800 font-semibold text-sm mb-1">
+              ⚠️ Partial Processing
+            </div>
+            <div class="text-yellow-700 text-xs">
+              Some items were rejected by the branch. See rejected items below.
+            </div>
           </div>
         </div>
 
@@ -97,6 +120,59 @@
             </tr>
           </tbody>
         </table>
+
+        <!-- Rejected Items Section (for partially processed distributions) -->
+        <div
+          v-if="
+            receipt?.status === 'partially_processed' &&
+            receipt?.rejected_items?.length > 0
+          "
+          class="mt-6"
+        >
+          <h4 class="text-red-800 font-semibold text-sm mb-2">
+            ❌ Rejected Items
+          </h4>
+          <table class="table table-xs w-full border border-red-300">
+            <thead>
+              <tr class="border border-red-300 bg-red-50 text-red-800">
+                <th class="border border-red-300">#</th>
+                <th class="border border-red-300">Item</th>
+                <th class="border border-red-300">Qty</th>
+                <th class="border border-red-300">Unit</th>
+                <th class="border border-red-300">Unit Price</th>
+                <th class="border border-red-300">Amount</th>
+                <th class="border border-red-300">Rejection Reason</th>
+              </tr>
+            </thead>
+            <tbody class="bg-red-25 text-red-700">
+              <tr
+                v-for="(item, idx) in receipt.rejected_items"
+                :key="idx"
+                class="border border-red-300"
+              >
+                <td class="border border-red-300">{{ idx + 1 }}</td>
+                <td class="border border-red-300">
+                  {{ item.item_name || item.item_type_name }}
+                </td>
+                <td class="border border-red-300 text-right">
+                  {{ Number(item.quantity || 0).toLocaleString() }}
+                </td>
+                <td class="border border-red-300">
+                  {{ item.unit_of_measure || 'pieces' }}
+                </td>
+                <td class="border border-red-300 text-right">
+                  ₱{{ Number(item.unit_cost || 0).toFixed(2) }}
+                </td>
+                <td class="border border-red-300 text-right">
+                  ₱{{ Number(item.total_value || 0).toFixed(2) }}
+                </td>
+                <td class="border border-red-300 text-xs">
+                  {{ extractRejectionReason(item.notes) }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
         <!-- Signatories -->
         <div class="grid grid-cols-2 gap-12 mt-10 text-black">

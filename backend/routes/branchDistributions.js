@@ -982,6 +982,159 @@ router.post(
 
 /**
  * @swagger
+ * /api/branch-distributions/{id}/partial-accept-reject:
+ *   post:
+ *     summary: Partially accept/reject a distribution with item-level selection
+ *     tags: [Branch Distributions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Distribution ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - action_by
+ *             properties:
+ *               action_by:
+ *                 type: string
+ *                 description: User performing the action
+ *               accepted_items:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Array of distribution item IDs to accept
+ *               rejected_items:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - item_id
+ *                     - reason
+ *                   properties:
+ *                     item_id:
+ *                       type: integer
+ *                       description: Distribution item ID to reject
+ *                     reason:
+ *                       type: string
+ *                       description: Reason for rejection
+ *                     notes:
+ *                       type: string
+ *                       description: Optional additional notes
+ *               notes:
+ *                 type: string
+ *                 description: Optional notes about the partial action
+ *     responses:
+ *       200:
+ *         description: Distribution partially processed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     originalDistribution:
+ *                       $ref: '#/components/schemas/BranchDistribution'
+ *                     newDistribution:
+ *                       $ref: '#/components/schemas/BranchDistribution'
+ *                     rejectedItems:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *       400:
+ *         description: Invalid input or distribution cannot be partially processed
+ *       404:
+ *         description: Distribution not found
+ */
+router.post(
+  "/:id/partial-accept-reject",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { action_by, accepted_items, rejected_items, notes } = req.body;
+
+      // Validation
+      if (!action_by) {
+        return res.status(400).json({
+          success: false,
+          message: "action_by is required",
+        });
+      }
+
+      if (!accepted_items || !Array.isArray(accepted_items)) {
+        return res.status(400).json({
+          success: false,
+          message: "accepted_items must be an array",
+        });
+      }
+
+      if (!rejected_items || !Array.isArray(rejected_items)) {
+        return res.status(400).json({
+          success: false,
+          message: "rejected_items must be an array",
+        });
+      }
+
+      if (accepted_items.length === 0 && rejected_items.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "At least one item must be accepted or rejected",
+        });
+      }
+
+      // Validate rejected items structure
+      for (const item of rejected_items) {
+        if (!item.item_id || !item.reason) {
+          return res.status(400).json({
+            success: false,
+            message: "Each rejected item must have item_id and reason",
+          });
+        }
+      }
+
+      const result = await BranchDistribution.partialAcceptReject(
+        parseInt(id),
+        {
+          action_by,
+          accepted_items,
+          rejected_items,
+          notes: notes || null,
+        }
+      );
+
+      res.json({
+        success: true,
+        message: "Distribution partially processed successfully",
+        data: result,
+      });
+    } catch (error) {
+      console.error("Error partially processing distribution:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to partially process distribution",
+        error: error.message,
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
  * /api/branch-distributions/{id}:
  *   delete:
  *     summary: Delete (soft delete) a branch distribution

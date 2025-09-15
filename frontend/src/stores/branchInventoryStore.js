@@ -150,6 +150,50 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
     }
   };
 
+  // Fetch all transactions for a branch with filters and pagination
+  const fetchAllTransactions = async (branchId, params = {}) => {
+    try {
+      const queryParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          queryParams.append(key, value);
+        }
+      });
+
+      const response = await axios.get(
+        `${API_BASE_URL}/branch-inventory/${branchId}/transactions?${queryParams.toString()}`
+      );
+
+      if (response.data && response.data.data) {
+        return {
+          data: response.data.data,
+          total: response.data.total || response.data.data.length,
+          page: response.data.page || 1,
+          totalPages: response.data.totalPages || 1,
+        };
+      }
+
+      // Fallback shape if backend returns array directly
+      if (Array.isArray(response.data)) {
+        return {
+          data: response.data,
+          total: response.data.length,
+          page: 1,
+          totalPages: 1,
+        };
+      }
+
+      return { data: [], total: 0, page: 1, totalPages: 1 };
+    } catch (err) {
+      console.error('Error fetching branch transactions:', err);
+      throw (
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to fetch transactions'
+      );
+    }
+  };
+
   const addItem = async (branchId, itemData) => {
     try {
       const response = await axios.post(
@@ -234,6 +278,42 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
     }
   };
 
+  const updateExpiryDate = async (
+    itemId,
+    expiry_date,
+    { reference_number = null, notes = null } = {}
+  ) => {
+    try {
+      const response = await axios.put(
+        `${API_BASE_URL}/branch-inventory/items/${itemId}/expiry`,
+        {
+          expiry_date,
+          reference_number,
+          notes,
+        }
+      );
+
+      if (response.data.success) {
+        const itemIndex = inventory.value.findIndex(
+          (item) => item.id === itemId
+        );
+        if (itemIndex !== -1) {
+          inventory.value[itemIndex] = response.data.data;
+        }
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to update item expiry date'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message || err.message || 'Failed to update expiry';
+      console.error('Error updating expiry date:', err);
+      throw err;
+    }
+  };
+
   const deleteItem = async (itemId) => {
     try {
       const response = await axios.delete(
@@ -241,7 +321,6 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
       );
 
       if (response.data.success) {
-        // Remove from local inventory
         inventory.value = inventory.value.filter((item) => item.id !== itemId);
         return true;
       } else {
@@ -340,9 +419,11 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
     fetchLowStockItems,
     fetchExpiringItems,
     fetchRecentActivity,
+    fetchAllTransactions,
     addItem,
     updateQuantity,
     updateStatus,
+    updateExpiryDate,
     deleteItem,
     loadAllData,
 

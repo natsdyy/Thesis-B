@@ -390,10 +390,150 @@ export const useBranchDistributionStore = defineStore(
     };
 
     /**
+     * Acknowledge a rejected distribution
+     * @param {number} id - Distribution ID
+     * @param {Object} acknowledgmentData - Acknowledgment details
+     * @param {string} acknowledgmentData.acknowledged_by - User who acknowledged
+     * @param {string} acknowledgmentData.acknowledgment_notes - Optional notes
+     * @returns {Promise<Object>} Updated distribution
+     */
+    const acknowledgeRejection = async (id, acknowledgmentData) => {
+      loading.value = true;
+      error.value = null;
+      try {
+        const response = await axios.post(
+          `${API_BASE_URL}/branch-distributions/${id}/acknowledge-rejection`,
+          acknowledgmentData
+        );
+        if (response.data.success) {
+          const updatedDistribution = response.data.data;
+          distributions.value = distributions.value.map((d) =>
+            d.id === id ? updatedDistribution : d
+          );
+          if (
+            currentDistribution.value &&
+            currentDistribution.value.id === id
+          ) {
+            currentDistribution.value = updatedDistribution;
+          }
+          return updatedDistribution;
+        } else {
+          throw new Error(
+            response.data.message || 'Failed to acknowledge rejection'
+          );
+        }
+      } catch (err) {
+        const errorMessage =
+          err.response?.data?.message ||
+          err.message ||
+          'Failed to acknowledge rejection';
+        error.value = errorMessage;
+        throw err;
+      } finally {
+        loading.value = false;
+      }
+    };
+
+    /**
      * Clear current distribution
      */
     const clearCurrentDistribution = () => {
       currentDistribution.value = null;
+    };
+
+    /**
+     * Create multiple branch distributions in bulk (optimized for performance)
+     * @param {Array} distributionsData - Array of distribution data
+     * @returns {Promise<Array>} Created distributions
+     */
+    const createBulkDistributions = async (distributionsData) => {
+      loading.value = true;
+      error.value = null;
+
+      try {
+        const response = await axios.post(
+          `${API_BASE_URL}/branch-distributions/bulk-distribute`,
+          { distributions: distributionsData }
+        );
+
+        if (response.data.success) {
+          const createdDistributions = response.data.data;
+          // Add to local state
+          distributions.value.unshift(...createdDistributions);
+
+          return createdDistributions;
+        } else {
+          throw new Error(
+            response.data.message || 'Failed to create bulk distributions'
+          );
+        }
+      } catch (err) {
+        const errorMessage =
+          err.response?.data?.message ||
+          err.message ||
+          'Failed to create bulk distributions';
+        error.value = errorMessage;
+
+        throw err;
+      } finally {
+        loading.value = false;
+      }
+    };
+
+    /**
+     * Partially accept/reject a distribution with item-level selection
+     * @param {number} id - Distribution ID
+     * @param {Object} actionData - Action details
+     * @param {string} actionData.action_by - User performing the action
+     * @param {Array} actionData.accepted_items - Array of item IDs to accept
+     * @param {Array} actionData.rejected_items - Array of objects with item IDs and rejection reasons
+     * @param {string} actionData.notes - Optional notes about the partial action
+     * @returns {Promise<Object>} Result with original and new distributions
+     */
+    const partialAcceptReject = async (id, actionData) => {
+      loading.value = true;
+      error.value = null;
+      try {
+        const response = await axios.post(
+          `${API_BASE_URL}/branch-distributions/${id}/partial-accept-reject`,
+          actionData
+        );
+        if (response.data.success) {
+          const result = response.data.data;
+
+          // Update local state
+          distributions.value = distributions.value.map((d) =>
+            d.id === id ? result.originalDistribution : d
+          );
+
+          // Add new distribution if created
+          if (result.newDistribution) {
+            distributions.value.unshift(result.newDistribution);
+          }
+
+          if (
+            currentDistribution.value &&
+            currentDistribution.value.id === id
+          ) {
+            currentDistribution.value = result.originalDistribution;
+          }
+
+          return result;
+        } else {
+          throw new Error(
+            response.data.message || 'Failed to partially process distribution'
+          );
+        }
+      } catch (err) {
+        const errorMessage =
+          err.response?.data?.message ||
+          err.message ||
+          'Failed to partially process distribution';
+        error.value = errorMessage;
+        throw err;
+      } finally {
+        loading.value = false;
+      }
     };
 
     /**
@@ -454,6 +594,7 @@ export const useBranchDistributionStore = defineStore(
       // Actions
       clearError,
       createDistribution,
+      createBulkDistributions,
       fetchDistributions,
       fetchDistributionsByBranch,
       fetchDistributionById,
@@ -462,6 +603,8 @@ export const useBranchDistributionStore = defineStore(
       updateDistributionStatus,
       rejectDistribution,
       completeDistribution,
+      acknowledgeRejection,
+      partialAcceptReject,
       clearCurrentDistribution,
       clearDistributions,
       updatePagination,

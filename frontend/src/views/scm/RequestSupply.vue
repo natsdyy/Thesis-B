@@ -18,6 +18,7 @@
     Plus,
     EllipsisVertical,
     X,
+    History,
     Send,
     Calendar,
     Filter,
@@ -266,6 +267,12 @@
         // Fallback to default
         row.item_unit = 'pieces';
       }
+
+      // Update the request type to match the selected item type
+      requestForm.value.request_type = row.item_type;
+
+      // Force reactivity update
+      requestForm.value = { ...requestForm.value };
     }
   };
 
@@ -324,10 +331,34 @@
     });
   };
 
+  const formatMonthDisplay = (dateString) => {
+    const date = new Date(dateString + 'T00:00:00');
+    const isFirstDayOfMonth = date.getDate() === 1;
+
+    if (isFirstDayOfMonth) {
+      // Display as month and year
+      return date.toLocaleDateString('en-PH', {
+        year: 'numeric',
+        month: 'long',
+        timeZone: 'Asia/Manila',
+      });
+    } else {
+      // Display as full date
+      return formatPhilippineDate(dateString);
+    }
+  };
+
   // Request List Date Filter
   const requestListFilter = ref({
-    selectedDate: '', // Show all requests by default
+    selectedDate: getPhilippineDateString(), // Show today's requests by default
     showDatePicker: false,
+  });
+
+  // Month picker state
+  const showMonthPicker = ref(false);
+  const monthPicker = ref({
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
   });
 
   // Quick date filter buttons
@@ -412,19 +443,58 @@
     }
 
     return allRequests.value.filter((request) => {
-      // Simple approach: convert to Philippine time using Intl.DateTimeFormat
       const requestDate = new Date(request.request_date);
-      const philippineDate = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Manila',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).format(requestDate);
 
-      return (
-        philippineDate === selectedDate &&
-        request.request_status !== 'Cancelled'
-      );
+      // Check if we're filtering by month (when selectedDate is first day of month)
+      const selectedDateObj = new Date(selectedDate + 'T00:00:00');
+      const isFirstDayOfMonth = selectedDateObj.getDate() === 1;
+
+      if (isFirstDayOfMonth) {
+        // Filter by month and year using Philippine timezone
+        const requestYear = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Manila',
+          year: 'numeric',
+        }).format(requestDate);
+
+        const requestMonth = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Manila',
+          month: '2-digit',
+        }).format(requestDate);
+
+        const selectedYear = selectedDateObj.getFullYear().toString();
+        const selectedMonth = (selectedDateObj.getMonth() + 1)
+          .toString()
+          .padStart(2, '0');
+
+        console.log('Month Filter Debug:', {
+          requestYear,
+          requestMonth,
+          selectedYear,
+          selectedMonth,
+          requestDate: requestDate.toISOString(),
+          selectedDate: selectedDate,
+          selectedDateObj: selectedDateObj.toISOString(),
+        });
+
+        return (
+          requestYear === selectedYear &&
+          requestMonth === selectedMonth &&
+          request.request_status !== 'Cancelled'
+        );
+      } else {
+        // Filter by exact date (original behavior)
+        const philippineDate = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Manila',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(requestDate);
+
+        return (
+          philippineDate === selectedDate &&
+          request.request_status !== 'Cancelled'
+        );
+      }
     });
   });
 
@@ -457,6 +527,12 @@
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
   });
+
+  // History filter dropdown state
+  const showHistoryFilterDropdown = ref(false);
+
+  // Status filter dropdown state
+  const showStatusFilterDropdown = ref(false);
 
   // Updated history filter options
   const getHistoryFilterOptions = () => {
@@ -605,6 +681,32 @@
     historyFilterType.value = option.type;
     requestHistoryCurrentPage.value = 1;
     showCustomMonthPicker.value = false;
+    showHistoryFilterDropdown.value = false; // Close dropdown after selection
+  };
+
+  // History filter dropdown functions
+  const toggleHistoryFilterDropdown = () => {
+    showHistoryFilterDropdown.value = !showHistoryFilterDropdown.value;
+  };
+
+  const closeHistoryFilterDropdown = () => {
+    showHistoryFilterDropdown.value = false;
+  };
+
+  // Status filter dropdown functions
+  const toggleStatusFilterDropdown = () => {
+    showStatusFilterDropdown.value = !showStatusFilterDropdown.value;
+  };
+
+  const closeStatusFilterDropdown = () => {
+    showStatusFilterDropdown.value = false;
+  };
+
+  const selectStatusFilter = (status) => {
+    requestHistoryFilter.value.status =
+      requestHistoryFilter.value.status === status ? '' : status;
+    requestHistoryCurrentPage.value = 1;
+    showStatusFilterDropdown.value = false; // Close dropdown after selection
   };
 
   const toggleCustomMonthPicker = () => {
@@ -1154,6 +1256,10 @@
   };
 
   const closeConfirmModal = () => {
+    console.log(
+      'Closing confirmation modal, current state:',
+      confirmModal.value
+    );
     confirmModal.value = {
       show: false,
       type: '',
@@ -1164,6 +1270,13 @@
       data: null,
       onConfirm: null,
     };
+    console.log('Confirmation modal closed, new state:', confirmModal.value);
+
+    // Force remove any modal classes from body
+    document.body.classList.remove('modal-open');
+
+    // Don't close the main modal when closing confirmation modal
+    // to prevent conflicts
   };
 
   const handleConfirmAction = async () => {
@@ -1179,6 +1292,14 @@
 
   // Modal methods
   const openModal = async (type, request = null) => {
+    // Close any existing modals first to prevent conflicts
+    if (modal.value.show) {
+      closeModal();
+    }
+    if (confirmModal.value.show) {
+      closeConfirmModal();
+    }
+
     modal.value = {
       type,
       show: true,
@@ -1224,12 +1345,36 @@
   };
 
   const closeModal = () => {
+    // Force close all modal states
     modal.value = {
       type: null,
       show: false,
       request: null,
       data: { request_type: '', request_description: '', request_date: '' },
     };
+
+    // Also close confirmation modal if it's open to prevent conflicts
+    if (confirmModal.value.show) {
+      closeConfirmModal();
+    }
+
+    // Force close branch request modal if open
+    if (showBranchRequestModal.value) {
+      console.log('Also closing branch request modal');
+      showBranchRequestModal.value = false;
+    }
+
+    // Force remove any modal classes from body
+    document.body.classList.remove('modal-open');
+
+    // Add a small delay to ensure modal state is properly reset
+    setTimeout(() => {
+      if (modal.value.show) {
+        modal.value.show = false;
+      }
+      // Double check and force close all modals
+      document.body.classList.remove('modal-open');
+    }, 100);
   };
 
   // Initialize request form
@@ -1240,7 +1385,9 @@
         request_id: request.request_id,
         request_type: request.request_type || '',
         request_description: request.request_description || '',
-        request_date: request.request_date || getPhilippineDateString(),
+        request_date: request.request_date
+          ? new Date(request.request_date).toISOString().split('T')[0]
+          : getPhilippineDateString(),
         priority: request.priority || 'Normal',
         department: request.department || 'SCM',
         requested_by:
@@ -1257,14 +1404,29 @@
         rowRequest.value = request.items.map((item, index) => ({
           id: index + 1,
           item_name: item.item_name || '',
-          item_quantity: item.item_quantity || 0,
+          item_quantity: parseInt(item.item_quantity || 0),
           item_unit: item.item_unit || '',
           item_type: item.item_type || '',
-          item_unitPrice: item.item_unit_price || item.item_unitPrice || 0,
-          item_amount:
-            (item.item_quantity || 0) *
-            (item.item_unit_price || item.item_unitPrice || 0),
+          item_unitPrice: parseFloat(
+            item.item_unit_price || item.item_unitPrice || 0
+          ),
+          item_amount: parseFloat(
+            item.item_amount ||
+              (item.item_quantity || 0) *
+                (item.item_unit_price || item.item_unitPrice || 0)
+          ),
         }));
+
+        // Set the selected category based on the first item's type
+        if (request.items[0] && request.items[0].item_type) {
+          // Find the category that contains this item type
+          const category = requestCategories.value.find((cat) =>
+            cat.types.includes(request.items[0].item_type)
+          );
+          if (category) {
+            selectedCategory.value = category.category;
+          }
+        }
       } else {
         resetItemRows();
       }
@@ -1280,6 +1442,7 @@
         requested_by: authStore.user?.name || 'Current User',
         items: [],
       };
+      selectedCategory.value = ''; // Reset category selection
       resetItemRows();
     }
   };
@@ -1308,6 +1471,20 @@
     requestListFilter.value.selectedDate = dateOption.date;
     currentPage.value = 1;
     requestListFilter.value.showDatePicker = false;
+    showDateDropdown.value = false; // Close dropdown after selection
+  };
+
+  // Date dropdown state
+  const showDateDropdown = ref(false);
+
+  // Close dropdown when clicking outside
+  const closeDateDropdown = () => {
+    showDateDropdown.value = false;
+  };
+
+  // Close month picker when clicking outside
+  const closeMonthPicker = () => {
+    showMonthPicker.value = false;
   };
 
   const selectCustomDate = (event) => {
@@ -1319,6 +1496,42 @@
   const toggleDatePicker = () => {
     requestListFilter.value.showDatePicker =
       !requestListFilter.value.showDatePicker;
+  };
+
+  // Month picker functions
+  const toggleMonthPicker = () => {
+    showMonthPicker.value = !showMonthPicker.value;
+  };
+
+  const applyMonthFilter = () => {
+    // Set the selected date to the first day of the selected month in Philippine timezone
+    const selectedDate = new Date(
+      monthPicker.value.year,
+      monthPicker.value.month - 1,
+      1,
+      0,
+      0,
+      0,
+      0
+    );
+
+    // Convert to Philippine timezone format
+    const philippineDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(selectedDate);
+
+    requestListFilter.value.selectedDate = philippineDate;
+    currentPage.value = 1;
+    showMonthPicker.value = false;
+
+    console.log('Applied month filter:', {
+      selectedMonth: monthPicker.value.month,
+      selectedYear: monthPicker.value.year,
+      selectedDate: philippineDate,
+    });
   };
 
   const goToPreviousDay = () => {
@@ -1454,6 +1667,15 @@
 
     // Set up auto-refresh every 5 minutes
     refreshInterval = setInterval(refreshAllData, 5 * 60 * 1000);
+
+    // Add click outside listener for date dropdown
+    document.addEventListener('click', closeDateDropdown);
+    // Add click outside listener for month picker
+    document.addEventListener('click', closeMonthPicker);
+    // Add click outside listener for history filter dropdown
+    document.addEventListener('click', closeHistoryFilterDropdown);
+    // Add click outside listener for status filter dropdown
+    document.addEventListener('click', closeStatusFilterDropdown);
   });
 
   onBeforeUnmount(() => {
@@ -1461,6 +1683,11 @@
     if (refreshInterval) {
       clearInterval(refreshInterval);
     }
+    // Remove click outside listener
+    document.removeEventListener('click', closeDateDropdown);
+    document.removeEventListener('click', closeMonthPicker);
+    document.removeEventListener('click', closeHistoryFilterDropdown);
+    document.removeEventListener('click', closeStatusFilterDropdown);
   });
 
   // Update stats display to use store stats
@@ -1786,7 +2013,7 @@
     <!-- Header -->
     <div class="text-center mb-8">
       <h1 class="text-4xl font-bold text-primaryColor mb-2 text-shadow-xs">
-        Request Supply
+        Supply Request
       </h1>
       <p class="text-black/50">
         Manage and track supply requests for Countryside Steakhouse.
@@ -2073,7 +2300,8 @@
                         request.priority === 'Urgent',
                       'bg-warning/10 text-warning border-warning/20':
                         request.priority === 'Normal',
-                      'bg-info/10 text-info border-info/20': request.priority === 'Low',
+                      'bg-info/10 text-info border-info/20':
+                        request.priority === 'Low',
                     }"
                   >
                     {{ request.priority }}
@@ -2121,8 +2349,7 @@
           <button
             class="tab tab-lg font-medium"
             :class="{
-              'tab-active bg-primaryColor text-white':
-                activeTab === 'supply-requests',
+              'tab-active  text-black': activeTab === 'supply-requests',
               'text-black/70 hover:bg-white/10':
                 activeTab !== 'supply-requests',
             }"
@@ -2134,8 +2361,7 @@
           <button
             class="tab tab-lg font-medium"
             :class="{
-              'tab-active bg-primaryColor text-white':
-                activeTab === 'branch-requests',
+              'tab-active text-black': activeTab === 'branch-requests',
               'text-black/70 hover:bg-white/10':
                 activeTab !== 'branch-requests',
             }"
@@ -2148,6 +2374,18 @@
             >
               {{ allBranchRequests.length }}
             </span>
+          </button>
+          <button
+            class="tab tab-lg font-medium"
+            :class="{
+              'tab-active text-black': activeTab === 'request-history',
+              'text-black/70 hover:bg-white/10':
+                activeTab !== 'request-history',
+            }"
+            @click="activeTab = 'request-history'"
+          >
+            <History class="w-4 h-4 mr-2" />
+            Request History
           </button>
         </div>
 
@@ -2196,7 +2434,7 @@
                   <h3 class="font-semibold text-primaryColor">
                     {{
                       requestListFilter.selectedDate
-                        ? formatPhilippineDate(requestListFilter.selectedDate)
+                        ? formatMonthDisplay(requestListFilter.selectedDate)
                         : 'All Requests'
                     }}
                   </h3>
@@ -2210,85 +2448,129 @@
 
               <!-- Date Navigation and Filter Controls -->
               <div class="flex flex-col sm:flex-row gap-3">
-                <!-- Quick Date Buttons -->
-                <div class="flex gap-2 md:flex-row flex-col">
+                <!-- Quick Date Dropdown -->
+                <div class="relative" @click.stop>
                   <button
-                    v-for="option in quickDateOptions"
-                    :key="option.date"
-                    class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
-                    :class="{
-                      'bg-primaryColor text-white':
-                        requestListFilter.selectedDate === option.date,
-                      'bg-white text-primaryColor hover:bg-primaryColor/10':
-                        requestListFilter.selectedDate !== option.date,
-                    }"
-                    @click="selectQuickDate(option)"
+                    class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                    @click="showDateDropdown = !showDateDropdown"
                   >
-                    {{ option.label }}
-                    <span
-                      class="badge badge-xs ml-1 bg-secondaryColor border-none b"
-                      :class="
-                        requestListFilter.selectedDate === option.date
-                          ? 'badge-ghost'
-                          : 'badge-primaryColor/10 text-primaryColor'
-                      "
-                    >
-                      {{ option.count }}
-                    </span>
+                    <font-awesome-icon icon="fa-solid fa-filter" />
                   </button>
+
+                  <!-- Dropdown Menu -->
+                  <div
+                    v-if="showDateDropdown"
+                    class="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50"
+                  >
+                    <div class="py-1">
+                      <button
+                        v-for="option in quickDateOptions"
+                        :key="option.date"
+                        class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
+                        :class="{
+                          'bg-primaryColor/10 text-primaryColor font-medium':
+                            requestListFilter.selectedDate === option.date,
+                          'text-gray-700':
+                            requestListFilter.selectedDate !== option.date,
+                        }"
+                        @click="selectQuickDate(option)"
+                      >
+                        <span>{{ option.label }}</span>
+                        <span
+                          class="badge badge-xs bg-secondaryColor border-none"
+                          :class="
+                            requestListFilter.selectedDate === option.date
+                              ? 'badge-ghost'
+                              : 'badge-primaryColor/10 text-primaryColor'
+                          "
+                        >
+                          {{ option.count }}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <!-- Date Navigation -->
                 <div class="flex items-center gap-1">
-                  <button
-                    class="btn btn-sm btn-ghost text-primaryColor hover:bg-primaryColor/10"
-                    @click="goToPreviousDay"
-                    title="Previous Day"
-                  >
-                    ‹
-                  </button>
-
-                  <!-- Custom Date Picker -->
-                  <div class="relative">
+                  <!-- Custom Month Picker -->
+                  <div class="relative" @click.stop>
                     <button
                       class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                      @click="toggleDatePicker"
+                      @click="toggleMonthPicker"
                     >
                       <Calendar class="w-4 h-4 mr-1" />
-                      Pick Date
+                      Custom Month
                     </button>
 
-                    <input
-                      v-if="requestListFilter.showDatePicker"
-                      type="date"
-                      :value="requestListFilter.selectedDate"
-                      @change="selectCustomDate"
-                      @blur="requestListFilter.showDatePicker = false"
-                      class="absolute top-full left-0 mt-1 input input-sm input-bordered bg-white border-primaryColor/30 text-black/70 z-10"
-                      style="min-width: 150px"
-                      ref="datePickerInput"
-                    />
+                    <!-- Custom Month Picker -->
+                    <div
+                      v-if="showMonthPicker"
+                      class="absolute top-full left-0 mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10 p-3 min-w-64"
+                    >
+                      <div class="flex items-center justify-between mb-3">
+                        <h4 class="font-medium text-sm text-black">
+                          Select Month
+                        </h4>
+                        <button
+                          @click="showMonthPicker = false"
+                          class="btn btn-ghost btn-xs"
+                        >
+                          <X class="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      <!-- Month Selection -->
+                      <div class="grid grid-cols-3 gap-2 mb-3">
+                        <button
+                          v-for="month in months"
+                          :key="month.value"
+                          class="btn btn-xs font-thin"
+                          :class="{
+                            'bg-primaryColor text-white':
+                              monthPicker.month === month.value,
+                            'btn-ghost': monthPicker.month !== month.value,
+                          }"
+                          @click="monthPicker.month = month.value"
+                        >
+                          {{ month.label }}
+                        </button>
+                      </div>
+
+                      <!-- Year Selection -->
+                      <div class="flex items-center gap-2 mb-3">
+                        <span class="text-sm text-black/70">Year:</span>
+                        <select
+                          v-model="monthPicker.year"
+                          class="select select-xs select-bordered bg-white border-primaryColor/30 text-black/70"
+                        >
+                          <option
+                            v-for="year in availableYears"
+                            :key="year"
+                            :value="year"
+                          >
+                            {{ year }}
+                          </option>
+                        </select>
+                      </div>
+
+                      <!-- Apply Button -->
+                      <div class="flex gap-2">
+                        <button
+                          @click="applyMonthFilter"
+                          class="btn btn-xs bg-primaryColor text-white font-thin"
+                        >
+                          Apply
+                        </button>
+                        <button
+                          @click="showMonthPicker = false"
+                          class="btn btn-xs btn-ghost font-thin"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
                   </div>
-
-                  <button
-                    class="btn btn-sm btn-ghost text-primaryColor hover:bg-primaryColor/10"
-                    @click="goToNextDay"
-                    title="Next Day"
-                  >
-                    ›
-                  </button>
-
-                  <button
-                    class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                    @click="goToToday"
-                    :class="{
-                      'btn-disabled':
-                        requestListFilter.selectedDate ===
-                        getPhilippineDateString(),
-                    }"
-                  >
-                    Today
-                  </button>
                 </div>
               </div>
             </div>
@@ -2311,8 +2593,7 @@
               No requests found
               {{
                 requestListFilter.selectedDate
-                  ? 'for ' +
-                    formatPhilippineDate(requestListFilter.selectedDate)
+                  ? 'for ' + formatMonthDisplay(requestListFilter.selectedDate)
                   : ''
               }}
             </h3>
@@ -2365,17 +2646,12 @@
                   <td>
                     <div class="flex flex-col">
                       <span>{{ formatManilaDate(request.request_date) }}</span>
-                      <!-- Remove or comment out the time line -->
-                      <!-- <span class="text-xs text-black/50">{{ formatManilaTime(request.request_date) }}</span> -->
                     </div>
                   </td>
                   <td class="text-wrap">
                     <div>
                       <p class="font-medium">
                         {{ request.request_description }}
-                      </p>
-                      <p class="text-xs text-black/50">
-                        {{ request.request_type }}
                       </p>
                     </div>
                   </td>
@@ -2515,7 +2791,7 @@
                 )
               }}
               of {{ filteredRequestsByDate.length }} requests for
-              {{ formatPhilippineDate(requestListFilter.selectedDate) }}
+              {{ formatMonthDisplay(requestListFilter.selectedDate) }}
             </div>
 
             <div class="join space-x-1">
@@ -2580,7 +2856,7 @@
           </div>
 
           <!-- Search and Filters -->
-          <div class="flex flex-col md:flex-row gap-4 mb-6">
+          <div class="flex flex-col md:flex-row gap-4 mb-4">
             <!-- Search -->
             <div class="flex-1">
               <div class="relative">
@@ -2614,7 +2890,7 @@
           <!-- Branch Requests Table -->
           <div v-if="paginatedBranchRequests.length > 0" class="space-y-4">
             <div class="overflow-x-auto table-responsive">
-              <table class="table w-full table-xs">
+              <table class="table w-full table-xs table-zebra">
                 <thead>
                   <tr>
                     <th>Request ID</th>
@@ -2675,14 +2951,15 @@
                       </div>
                     </td>
                     <td>{{ request.requested_by }}</td>
-                    <td>
-                      <div class="text-sm">
+                    <td class="w-40 text-right whitespace-nowrap">
+                      <div class="text-sm font-medium text-gray-900">
                         {{ formatDate(request.request_date) }}
                       </div>
                       <div class="text-xs text-gray-500">
                         {{ formatTime(request.created_at) }}
                       </div>
                     </td>
+
                     <td>
                       <div class="dropdown dropdown-left">
                         <label
@@ -2879,468 +3156,543 @@
             </p>
           </div>
         </div>
+
+        <!-- Request History Tab Content -->
+        <div v-if="activeTab === 'request-history'" class="p-6">
+          <h2 class="card-title text-primaryColor">Request History</h2>
+          <div
+            class="card bg-accentColor shadow-xl mb-6 border border-black/10 mx-auto"
+          >
+            <div class="card-body">
+              <!-- Header with Simple Stats -->
+              <div
+                class="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-6"
+              >
+                <div>
+                  <h2 class="card-title text-primaryColor mb-2">
+                    Request History
+                  </h2>
+                </div>
+
+                <div class="flex gap-2 mt-4 lg:mt-0">
+                  <button
+                    class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                    @click="exportToCSV"
+                  >
+                    <Download class="w-4 h-4 mr-2" />
+                    Export CSV
+                  </button>
+                </div>
+              </div>
+
+              <!-- Search and Filters -->
+              <div class="mb-6">
+                <!-- Search Bar with Sort -->
+                <div class="flex flex-col md:flex-row gap-4 mb-4">
+                  <div class="flex-1 relative">
+                    <Search
+                      class="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 !text-black"
+                    />
+                    <input
+                      v-model="requestHistoryFilter.searchQuery"
+                      type="text"
+                      placeholder="Search by description or request ID..."
+                      class="input input-sm input-bordered bg-white border-primaryColor/30 text-black/70 pl-10 w-full shadow-none"
+                    />
+                  </div>
+
+                  <div class="flex gap-2">
+                    <button
+                      class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10"
+                      @click="toggleSortOrder"
+                      :title="`Sort ${requestHistoryFilter.sortOrder === 'asc' ? 'Descending' : 'Ascending'}`"
+                    >
+                      <TrendingUp
+                        v-if="requestHistoryFilter.sortOrder === 'asc'"
+                        class="w-4 h-4"
+                      />
+                      <TrendingDown v-else class="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <!-- History Date Filter Section -->
+                <div
+                  class="mb-6 p-4 bg-white/5 rounded-lg border border-primaryColor/20"
+                >
+                  <div
+                    class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
+                  >
+                    <!-- Current Filter Display -->
+                    <div class="flex items-center gap-3">
+                      <Calendar class="w-5 h-5 text-primaryColor" />
+                      <div>
+                        <h3 class="font-semibold text-primaryColor">
+                          {{ getHistoryFilterDisplayText() }}
+                        </h3>
+                        <p class="text-sm text-black/60">
+                          Showing {{ filteredRequestHistory.length }} request{{
+                            filteredRequestHistory.length !== 1 ? 's' : ''
+                          }}
+                        </p>
+                      </div>
+                    </div>
+
+                    <!-- Filter Controls -->
+                    <div class="flex flex-col sm:flex-row gap-3">
+                      <!-- History Filter Dropdown -->
+                      <div class="relative" @click.stop>
+                        <button
+                          class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                          @click="toggleHistoryFilterDropdown"
+                        >
+                          <font-awesome-icon icon="fa-solid fa-filter" />
+                        </button>
+
+                        <!-- Dropdown Menu -->
+                        <div
+                          v-if="showHistoryFilterDropdown"
+                          class="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50"
+                        >
+                          <div class="py-1">
+                            <button
+                              v-for="option in historyFilterOptions"
+                              :key="option.type"
+                              class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
+                              :class="{
+                                'bg-primaryColor/10 text-primaryColor font-medium':
+                                  historyFilterType === option.type,
+                                'text-gray-700':
+                                  historyFilterType !== option.type,
+                              }"
+                              @click="selectHistoryFilter(option)"
+                            >
+                              <span>{{ option.label }}</span>
+                              <span
+                                class="badge badge-xs bg-secondaryColor border-none"
+                                :class="
+                                  historyFilterType === option.type
+                                    ? 'badge-ghost'
+                                    : 'badge-primaryColor/10 text-primaryColor'
+                                "
+                              >
+                                {{ option.count }}
+                              </span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Custom Month Selection -->
+                      <div class="flex items-center gap-2">
+                        <div class="relative">
+                          <button
+                            class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                            @click="toggleCustomMonthPicker"
+                          >
+                            <Calendar class="w-4 h-4 mr-1" />
+                            Custom Month
+                          </button>
+
+                          <!-- Custom Month Picker -->
+                          <div
+                            v-if="showCustomMonthPicker"
+                            class="absolute top-full left-0 mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10 p-3 min-w-64"
+                          >
+                            <div class="flex items-center justify-between mb-3">
+                              <h4 class="font-medium text-sm text-black">
+                                Select Month
+                              </h4>
+                              <button
+                                @click="showCustomMonthPicker = false"
+                                class="btn btn-ghost btn-xs"
+                              >
+                                <X class="w-3 h-3" />
+                              </button>
+                            </div>
+
+                            <!-- Month Selection -->
+                            <div class="grid grid-cols-3 gap-2 mb-3">
+                              <button
+                                v-for="month in months"
+                                :key="month.value"
+                                class="btn btn-xs font-thin"
+                                :class="{
+                                  'bg-primaryColor text-white':
+                                    customMonthPicker.month === month.value,
+                                  'btn-ghost':
+                                    customMonthPicker.month !== month.value,
+                                }"
+                                @click="customMonthPicker.month = month.value"
+                              >
+                                {{ month.label }}
+                              </button>
+                            </div>
+
+                            <!-- Year Selection -->
+                            <div class="flex items-center gap-2 mb-3">
+                              <span class="text-sm text-black/70">Year:</span>
+                              <select
+                                v-model="customMonthPicker.year"
+                                class="select select-xs select-bordered bg-white border-primaryColor/30 text-black/70"
+                              >
+                                <option
+                                  v-for="year in availableYears"
+                                  :key="year"
+                                  :value="year"
+                                >
+                                  {{ year }}
+                                </option>
+                              </select>
+                            </div>
+
+                            <!-- Apply Button -->
+                            <div class="flex gap-2">
+                              <button
+                                @click="applyCustomMonthFilter"
+                                class="btn btn-xs bg-primaryColor text-white font-thin"
+                              >
+                                Apply
+                              </button>
+                              <button
+                                @click="showCustomMonthPicker = false"
+                                class="btn btn-xs btn-ghost font-thin"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <!-- Clear Filters Button -->
+                        <button
+                          class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                          @click="clearHistoryFilters"
+                        >
+                          <RefreshCcw class="w-4 h-4 mr-1" />
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Status Filter Dropdown -->
+                <div class="flex justify-start mb-4">
+                  <div class="relative" @click.stop>
+                    <button
+                      class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                      @click="toggleStatusFilterDropdown"
+                    >
+                      <font-awesome-icon icon="fa-solid fa-filter" />
+                      <span class="ml-2">
+                        {{ requestHistoryFilter.status || 'All Status' }}
+                      </span>
+                    </button>
+
+                    <!-- Dropdown Menu -->
+                    <div
+                      v-if="showStatusFilterDropdown"
+                      class="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50"
+                    >
+                      <div class="py-1">
+                        <!-- All Status Option -->
+                        <button
+                          class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
+                          :class="{
+                            'bg-primaryColor/10 text-primaryColor font-medium':
+                              !requestHistoryFilter.status,
+                            'text-gray-700': requestHistoryFilter.status,
+                          }"
+                          @click="selectStatusFilter('')"
+                        >
+                          <span>All Status</span>
+                          <span
+                            class="badge badge-xs bg-secondaryColor border-none"
+                          >
+                            {{ filteredRequestHistoryByDate.length }}
+                          </span>
+                        </button>
+
+                        <!-- Status Options -->
+                        <button
+                          v-for="status in historyStatusOptions"
+                          :key="status"
+                          class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
+                          :class="{
+                            'bg-primaryColor/10 text-primaryColor font-medium':
+                              requestHistoryFilter.status === status,
+                            'text-gray-700':
+                              requestHistoryFilter.status !== status,
+                          }"
+                          @click="selectStatusFilter(status)"
+                        >
+                          <span>{{ status }}</span>
+                          <span
+                            class="badge badge-xs bg-secondaryColor border-none"
+                          >
+                            {{
+                              filteredRequestHistoryByDate.filter(
+                                (r) => r.request_status === status
+                              ).length
+                            }}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Improved Table Layout -->
+              <div class="overflow-x-auto bg-accentColor">
+                <table
+                  class="table table-sm table-zebra text-black/50 border border-black/10 custom-zebra"
+                >
+                  <thead class="text-secondaryColor">
+                    <tr class="bg-primaryColor text-accentColor">
+                      <th class="w-16">No.</th>
+                      <th class="w-32">Request ID</th>
+                      <th class="min-w-64">Description</th>
+                      <th class="w-28">Date</th>
+                      <th class="w-24">Status</th>
+                      <th class="w-32">Amount</th>
+                      <th class="w-24">Receipt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <!-- Empty State -->
+                    <tr v-if="filteredRequestHistory.length === 0">
+                      <td colspan="7" class="text-center py-12">
+                        <div class="flex flex-col items-center gap-3">
+                          <div
+                            class="w-16 h-16 bg-black/5 rounded-full flex items-center justify-center"
+                          >
+                            <Search class="w-8 h-8 text-black/30" />
+                          </div>
+                          <div>
+                            <h3 class="font-semibold text-black/70 mb-1">
+                              No history found
+                            </h3>
+                            <p class="text-sm text-black/50 mb-3">
+                              No request history matches your current filters
+                            </p>
+                            <button
+                              class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                              @click="clearAllHistoryFilters"
+                            >
+                              Clear All Filters
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+
+                    <!-- Data Rows -->
+                    <tr
+                      v-for="(request, index) in paginatedRequestHistory"
+                      :key="request.request_id"
+                      class="hover:bg-primaryColor/5"
+                    >
+                      <td class="font-medium text-center">
+                        {{
+                          (requestHistoryCurrentPage - 1) *
+                            requestHistoryPerPage +
+                          index +
+                          1
+                        }}
+                      </td>
+
+                      <td>
+                        <div
+                          class="font-mono text-sm font-medium text-primaryColor"
+                        >
+                          {{ request.request_id }}
+                        </div>
+                      </td>
+
+                      <td class="max-w-xs">
+                        <div
+                          class="tooltip tooltip-top"
+                          :data-tip="request.request_description"
+                        >
+                          <p class="truncate font-medium">
+                            {{ request.request_description }}
+                          </p>
+                        </div>
+                      </td>
+
+                      <td class="text-sm">
+                        <div>
+                          <span>{{
+                            formatManilaDate(request.request_date)
+                          }}</span>
+                          <!-- Remove or comment out the time line -->
+                          <!-- <span class="text-xs text-black/50">{{ formatManilaTime(request.request_date) }}</span> -->
+                        </div>
+                      </td>
+
+                      <td>
+                        <div
+                          class="badge badge-sm border-none font-medium"
+                          :class="{
+                            'bg-success/20 text-success':
+                              request.request_status === 'Completed',
+                            'bg-error/20 text-error':
+                              request.request_status === 'Rejected',
+                          }"
+                        >
+                          {{ request.request_status }}
+                        </div>
+                      </td>
+
+                      <td class="font-semibold text-left">
+                        ₱{{
+                          request.total_amount
+                            ? request.total_amount.toLocaleString('en-PH', {
+                                minimumFractionDigits: 2,
+                              })
+                            : '0.00'
+                        }}
+                      </td>
+
+                      <td>
+                        <a
+                          v-if="request.request_status === 'Completed'"
+                          class="text-primaryColor cursor-pointer underline hover:text-primaryColor/80 text-sm font-medium"
+                          @click="showReceiptModal(request)"
+                        >
+                          View Receipt
+                        </a>
+                        <span v-else class="text-black/30 text-sm">N/A</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Smart Pagination -->
+              <div
+                class="flex flex-col lg:flex-row justify-between items-center mt-6 gap-4"
+                v-if="totalPagesRequestHistory > 1"
+              >
+                <!-- Summary -->
+                <div class="text-sm text-black/60 flex flex-wrap gap-4">
+                  <span>
+                    Showing
+                    {{
+                      (requestHistoryCurrentPage - 1) * requestHistoryPerPage +
+                      1
+                    }}
+                    to
+                    {{
+                      Math.min(
+                        requestHistoryCurrentPage * requestHistoryPerPage,
+                        filteredRequestHistory.length
+                      )
+                    }}
+                    of {{ filteredRequestHistory.length }} records for
+                    {{ getHistoryFilterDisplayText() }}
+                  </span>
+                </div>
+
+                <!-- Pagination with Ellipsis -->
+                <div class="join space-x-1">
+                  <button
+                    class="join-item btn font-thin !bg-gray-200 text-black/50 btn-sm border border-none hover:bg-gray-300"
+                    :disabled="requestHistoryCurrentPage <= 1"
+                    @click="requestHistoryCurrentPage--"
+                  >
+                    « Prev
+                  </button>
+
+                  <!-- First page -->
+                  <button
+                    v-if="totalPagesRequestHistory > 1"
+                    class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                    :class="{
+                      'btn-active': requestHistoryCurrentPage === 1,
+                      '!bg-primaryColor text-white':
+                        requestHistoryCurrentPage === 1,
+                    }"
+                    @click="requestHistoryCurrentPage = 1"
+                  >
+                    1
+                  </button>
+
+                  <!-- Ellipsis before current page group -->
+                  <button
+                    v-if="requestHistoryCurrentPage > 4"
+                    class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                    disabled
+                  >
+                    ...
+                  </button>
+
+                  <!-- Current page group -->
+                  <button
+                    v-for="page in getPageRange()"
+                    :key="page"
+                    class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                    :class="{
+                      'btn-active': requestHistoryCurrentPage === page,
+                      '!bg-primaryColor text-white':
+                        requestHistoryCurrentPage === page,
+                    }"
+                    @click="requestHistoryCurrentPage = page"
+                  >
+                    {{ page }}
+                  </button>
+
+                  <!-- Ellipsis after current page group -->
+                  <button
+                    v-if="
+                      requestHistoryCurrentPage < totalPagesRequestHistory - 3
+                    "
+                    class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                    disabled
+                  >
+                    ...
+                  </button>
+
+                  <!-- Last page -->
+                  <button
+                    v-if="
+                      totalPagesRequestHistory > 1 &&
+                      requestHistoryCurrentPage < totalPagesRequestHistory
+                    "
+                    class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                    :class="{
+                      'btn-active':
+                        requestHistoryCurrentPage === totalPagesRequestHistory,
+                      '!bg-primaryColor text-white':
+                        requestHistoryCurrentPage === totalPagesRequestHistory,
+                    }"
+                    @click="
+                      requestHistoryCurrentPage = totalPagesRequestHistory
+                    "
+                  >
+                    {{ totalPagesRequestHistory }}
+                  </button>
+
+                  <button
+                    class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                    :disabled="
+                      requestHistoryCurrentPage >= totalPagesRequestHistory
+                    "
+                    @click="requestHistoryCurrentPage++"
+                  >
+                    Next »
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
     <!-- Request History with Improved UI -->
-    <div
-      class="card bg-accentColor shadow-xl mb-6 border border-black/10 mx-auto"
-    >
-      <div class="card-body">
-        <!-- Header with Simple Stats -->
-        <div
-          class="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-6"
-        >
-          <div>
-            <h2 class="card-title text-primaryColor mb-2">Request History</h2>
-          </div>
-
-          <div class="flex gap-2 mt-4 lg:mt-0">
-            <button
-              class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-              @click="exportToCSV"
-            >
-              <Download class="w-4 h-4 mr-2" />
-              Export CSV
-            </button>
-          </div>
-        </div>
-
-        <!-- Search and Filters -->
-        <div class="mb-6">
-          <!-- Search Bar with Sort -->
-          <div class="flex flex-col md:flex-row gap-4 mb-4">
-            <div class="flex-1 relative">
-              <Search
-                class="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 !text-black"
-              />
-              <input
-                v-model="requestHistoryFilter.searchQuery"
-                type="text"
-                placeholder="Search by description or request ID..."
-                class="input input-sm input-bordered bg-white border-primaryColor/30 text-black/70 pl-10 w-full shadow-none"
-              />
-            </div>
-
-            <div class="flex gap-2">
-              <button
-                class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10"
-                @click="toggleSortOrder"
-                :title="`Sort ${requestHistoryFilter.sortOrder === 'asc' ? 'Descending' : 'Ascending'}`"
-              >
-                <TrendingUp
-                  v-if="requestHistoryFilter.sortOrder === 'asc'"
-                  class="w-4 h-4"
-                />
-                <TrendingDown v-else class="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          <!-- History Date Filter Section -->
-          <div
-            class="mb-6 p-4 bg-white/5 rounded-lg border border-primaryColor/20"
-          >
-            <div
-              class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
-            >
-              <!-- Current Filter Display -->
-              <div class="flex items-center gap-3">
-                <Calendar class="w-5 h-5 text-primaryColor" />
-                <div>
-                  <h3 class="font-semibold text-primaryColor">
-                    {{ getHistoryFilterDisplayText() }}
-                  </h3>
-                  <p class="text-sm text-black/60">
-                    Showing {{ filteredRequestHistory.length }} request{{
-                      filteredRequestHistory.length !== 1 ? 's' : ''
-                    }}
-                  </p>
-                </div>
-              </div>
-
-              <!-- Filter Controls -->
-              <div class="flex flex-col sm:flex-row gap-3">
-                <!-- Quick Filter Buttons -->
-                <div class="flex gap-2 md:flex-row flex-col">
-                  <button
-                    v-for="option in historyFilterOptions"
-                    :key="option.type"
-                    class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
-                    :class="{
-                      'bg-primaryColor text-white':
-                        historyFilterType === option.type,
-                      'bg-white text-primaryColor hover:bg-primaryColor/10':
-                        historyFilterType !== option.type,
-                    }"
-                    @click="selectHistoryFilter(option)"
-                  >
-                    {{ option.label }}
-                    <span
-                      class="badge badge-xs ml-1 bg-secondaryColor border-none"
-                      :class="
-                        historyFilterType === option.type
-                          ? 'badge-ghost'
-                          : 'badge-primaryColor/10 text-primaryColor'
-                      "
-                    >
-                      {{ option.count }}
-                    </span>
-                  </button>
-                </div>
-
-                <!-- Custom Month Selection -->
-                <div class="flex items-center gap-2">
-                  <div class="relative">
-                    <button
-                      class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                      @click="toggleCustomMonthPicker"
-                    >
-                      <Calendar class="w-4 h-4 mr-1" />
-                      Custom Month
-                    </button>
-
-                    <!-- Custom Month Picker -->
-                    <div
-                      v-if="showCustomMonthPicker"
-                      class="absolute top-full left-0 mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10 p-3 min-w-64"
-                    >
-                      <div class="flex items-center justify-between mb-3">
-                        <h4 class="font-medium text-sm text-black">
-                          Select Month
-                        </h4>
-                        <button
-                          @click="showCustomMonthPicker = false"
-                          class="btn btn-ghost btn-xs"
-                        >
-                          <X class="w-3 h-3" />
-                        </button>
-                      </div>
-
-                      <!-- Month Selection -->
-                      <div class="grid grid-cols-3 gap-2 mb-3">
-                        <button
-                          v-for="month in months"
-                          :key="month.value"
-                          class="btn btn-xs font-thin"
-                          :class="{
-                            'bg-primaryColor text-white':
-                              customMonthPicker.month === month.value,
-                            'btn-ghost':
-                              customMonthPicker.month !== month.value,
-                          }"
-                          @click="customMonthPicker.month = month.value"
-                        >
-                          {{ month.label }}
-                        </button>
-                      </div>
-
-                      <!-- Year Selection -->
-                      <div class="flex items-center gap-2 mb-3">
-                        <span class="text-sm text-black/70">Year:</span>
-                        <select
-                          v-model="customMonthPicker.year"
-                          class="select select-xs select-bordered bg-white border-primaryColor/30 text-black/70"
-                        >
-                          <option
-                            v-for="year in availableYears"
-                            :key="year"
-                            :value="year"
-                          >
-                            {{ year }}
-                          </option>
-                        </select>
-                      </div>
-
-                      <!-- Apply Button -->
-                      <div class="flex gap-2">
-                        <button
-                          @click="applyCustomMonthFilter"
-                          class="btn btn-xs bg-primaryColor text-white font-thin"
-                        >
-                          Apply
-                        </button>
-                        <button
-                          @click="showCustomMonthPicker = false"
-                          class="btn btn-xs btn-ghost font-thin"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- Clear Filters Button -->
-                  <button
-                    class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                    @click="clearHistoryFilters"
-                  >
-                    <RefreshCcw class="w-4 h-4 mr-1" />
-                    Clear
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Status Quick Filters -->
-          <div class="flex flex-wrap gap-2 mb-4 sm:flex-row w-full flex-col">
-            <button
-              v-for="status in historyStatusOptions"
-              :key="status"
-              class="btn btn-xs font-thin border border-primaryColor/30"
-              :class="{
-                'bg-primaryColor text-white':
-                  requestHistoryFilter.status === status,
-                'bg-white text-primaryColor hover:bg-primaryColor/10':
-                  requestHistoryFilter.status !== status,
-              }"
-              @click="
-                requestHistoryFilter.status =
-                  requestHistoryFilter.status === status ? '' : status
-              "
-            >
-              {{ status }}
-              <span class="badge badge-xs ml-1 bg-secondaryColor border-none">
-                {{
-                  filteredRequestHistoryByDate.filter(
-                    (r) => r.request_status === status
-                  ).length
-                }}
-              </span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Improved Table Layout -->
-        <div class="overflow-x-auto bg-accentColor">
-          <table
-            class="table table-sm table-zebra text-black/50 border border-black/10 custom-zebra"
-          >
-            <thead class="text-secondaryColor">
-              <tr class="bg-primaryColor text-accentColor">
-                <th class="w-16">No.</th>
-                <th class="w-32">Request ID</th>
-                <th class="min-w-64">Description</th>
-                <th class="w-28">Date</th>
-                <th class="w-24">Status</th>
-                <th class="w-32">Amount</th>
-                <th class="w-24">Receipt</th>
-              </tr>
-            </thead>
-            <tbody>
-              <!-- Empty State -->
-              <tr v-if="filteredRequestHistory.length === 0">
-                <td colspan="7" class="text-center py-12">
-                  <div class="flex flex-col items-center gap-3">
-                    <div
-                      class="w-16 h-16 bg-black/5 rounded-full flex items-center justify-center"
-                    >
-                      <Search class="w-8 h-8 text-black/30" />
-                    </div>
-                    <div>
-                      <h3 class="font-semibold text-black/70 mb-1">
-                        No history found
-                      </h3>
-                      <p class="text-sm text-black/50 mb-3">
-                        No request history matches your current filters
-                      </p>
-                      <button
-                        class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                        @click="clearAllHistoryFilters"
-                      >
-                        Clear All Filters
-                      </button>
-                    </div>
-                  </div>
-                </td>
-              </tr>
-
-              <!-- Data Rows -->
-              <tr
-                v-for="(request, index) in paginatedRequestHistory"
-                :key="request.request_id"
-                class="hover:bg-primaryColor/5"
-              >
-                <td class="font-medium text-center">
-                  {{
-                    (requestHistoryCurrentPage - 1) * requestHistoryPerPage +
-                    index +
-                    1
-                  }}
-                </td>
-
-                <td>
-                  <div class="font-mono text-sm font-medium text-primaryColor">
-                    {{ request.request_id }}
-                  </div>
-                </td>
-
-                <td class="max-w-xs">
-                  <div
-                    class="tooltip tooltip-top"
-                    :data-tip="request.request_description"
-                  >
-                    <p class="truncate font-medium">
-                      {{ request.request_description }}
-                    </p>
-                  </div>
-                </td>
-
-                <td class="text-sm">
-                  <div>
-                    <span>{{ formatManilaDate(request.request_date) }}</span>
-                    <!-- Remove or comment out the time line -->
-                    <!-- <span class="text-xs text-black/50">{{ formatManilaTime(request.request_date) }}</span> -->
-                  </div>
-                </td>
-
-                <td>
-                  <div
-                    class="badge badge-sm border-none font-medium"
-                    :class="{
-                      'bg-success/20 text-success':
-                        request.request_status === 'Completed',
-                      'bg-error/20 text-error':
-                        request.request_status === 'Rejected',
-                    }"
-                  >
-                    {{ request.request_status }}
-                  </div>
-                </td>
-
-                <td class="font-semibold text-left">
-                  ₱{{
-                    request.total_amount
-                      ? request.total_amount.toLocaleString('en-PH', {
-                          minimumFractionDigits: 2,
-                        })
-                      : '0.00'
-                  }}
-                </td>
-
-                <td>
-                  <a
-                    v-if="request.request_status === 'Completed'"
-                    class="text-primaryColor cursor-pointer underline hover:text-primaryColor/80 text-sm font-medium"
-                    @click="showReceiptModal(request)"
-                  >
-                    View Receipt
-                  </a>
-                  <span v-else class="text-black/30 text-sm">N/A</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Smart Pagination -->
-        <div
-          class="flex flex-col lg:flex-row justify-between items-center mt-6 gap-4"
-          v-if="totalPagesRequestHistory > 1"
-        >
-          <!-- Summary -->
-          <div class="text-sm text-black/60 flex flex-wrap gap-4">
-            <span>
-              Showing
-              {{ (requestHistoryCurrentPage - 1) * requestHistoryPerPage + 1 }}
-              to
-              {{
-                Math.min(
-                  requestHistoryCurrentPage * requestHistoryPerPage,
-                  filteredRequestHistory.length
-                )
-              }}
-              of {{ filteredRequestHistory.length }} records for
-              {{ getHistoryFilterDisplayText() }}
-            </span>
-          </div>
-
-          <!-- Pagination with Ellipsis -->
-          <div class="join space-x-1">
-            <button
-              class="join-item btn font-thin !bg-gray-200 text-black/50 btn-sm border border-none hover:bg-gray-300"
-              :disabled="requestHistoryCurrentPage <= 1"
-              @click="requestHistoryCurrentPage--"
-            >
-              « Prev
-            </button>
-
-            <!-- First page -->
-            <button
-              v-if="totalPagesRequestHistory > 1"
-              class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
-              :class="{
-                'btn-active': requestHistoryCurrentPage === 1,
-                '!bg-primaryColor text-white': requestHistoryCurrentPage === 1,
-              }"
-              @click="requestHistoryCurrentPage = 1"
-            >
-              1
-            </button>
-
-            <!-- Ellipsis before current page group -->
-            <button
-              v-if="requestHistoryCurrentPage > 4"
-              class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
-              disabled
-            >
-              ...
-            </button>
-
-            <!-- Current page group -->
-            <button
-              v-for="page in getPageRange()"
-              :key="page"
-              class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
-              :class="{
-                'btn-active': requestHistoryCurrentPage === page,
-                '!bg-primaryColor text-white':
-                  requestHistoryCurrentPage === page,
-              }"
-              @click="requestHistoryCurrentPage = page"
-            >
-              {{ page }}
-            </button>
-
-            <!-- Ellipsis after current page group -->
-            <button
-              v-if="requestHistoryCurrentPage < totalPagesRequestHistory - 3"
-              class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
-              disabled
-            >
-              ...
-            </button>
-
-            <!-- Last page -->
-            <button
-              v-if="
-                totalPagesRequestHistory > 1 &&
-                requestHistoryCurrentPage < totalPagesRequestHistory
-              "
-              class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
-              :class="{
-                'btn-active':
-                  requestHistoryCurrentPage === totalPagesRequestHistory,
-                '!bg-primaryColor text-white':
-                  requestHistoryCurrentPage === totalPagesRequestHistory,
-              }"
-              @click="requestHistoryCurrentPage = totalPagesRequestHistory"
-            >
-              {{ totalPagesRequestHistory }}
-            </button>
-
-            <button
-              class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
-              :disabled="requestHistoryCurrentPage >= totalPagesRequestHistory"
-              @click="requestHistoryCurrentPage++"
-            >
-              Next »
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 
   <cashRequestReceiptModal

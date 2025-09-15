@@ -1848,6 +1848,26 @@ export const useProductionStore = defineStore('production', () => {
     }
   };
 
+  // Bulk distribution (optimized for performance)
+  const recordBulkDistributions = async (distributions) => {
+    try {
+      loading.value = true;
+      const response = await axios.post(
+        `${API_BASE_URL}/menu/production-inventory/bulk-distribute`,
+        { distributions }
+      );
+      if (response.data.success) {
+        await fetchProductionInventory(); // Refresh inventory once
+        return response.data;
+      }
+    } catch (error) {
+      console.error('Error recording bulk distributions:', error);
+      throw error;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const fetchDistributionHistory = async (inventoryId, filters = {}) => {
     try {
       loading.value = true;
@@ -2435,6 +2455,7 @@ export const useProductionStore = defineStore('production', () => {
 
     // Distribution Actions
     recordDistribution,
+    recordBulkDistributions,
     fetchDistributionHistory,
     fetchAllDistributions,
     checkDistributionAvailability,

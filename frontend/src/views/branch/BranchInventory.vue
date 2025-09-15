@@ -46,6 +46,7 @@
   import ItemLevelAcceptRejectModal from '../../components/branch/ItemLevelAcceptRejectModal.vue';
   import BranchInventoryConsumptionModal from '../../components/branch/BranchInventoryConsumptionModal.vue';
   import BranchInventoryAdjustmentModal from '../../components/branch/BranchInventoryAdjustmentModal.vue';
+  import BranchInventoryTransactionModal from '../../components/branch/BranchInventoryTransactionModal.vue';
   import { apiConfig } from '../../config/api';
 
   const branchContextStore = useBranchContextStore();
@@ -424,9 +425,12 @@
   });
 
   // Transaction modal handler
+  const showBranchTransactions = ref(false);
   const openTransactionModal = () => {
-    // This would open a transaction modal - for now just log
-    console.log('Opening transaction modal');
+    showBranchTransactions.value = true;
+  };
+  const closeTransactionModal = () => {
+    showBranchTransactions.value = false;
   };
 
   // Helper function to calculate dynamic minimum stock
@@ -445,6 +449,9 @@
   const selectedDistribution = ref(null);
   const showAcceptanceModal = ref(false);
   const showReceiptModal = ref(false);
+  // Loading states for actions
+  const consumptionSubmitting = ref(false);
+  const adjustmentSubmitting = ref(false);
   const showRejectionModal = ref(false);
   const showItemLevelModal = ref(false);
   const distributionCurrentPage = ref(1);
@@ -521,131 +528,92 @@
   });
 
   const handleConsumptionSubmit = async (payload) => {
-    // For now, just acknowledge and refresh. Backend wiring can follow.
-    toast.success('Usage recorded. Branch inventory will refresh.');
-    closeActionModal();
-    // Locally append recent activity entries for each consumed item
     try {
+      consumptionSubmitting.value = true;
+      // Persist each consumption via backend quantity update
       const items = Array.isArray(payload?.items) ? payload.items : [];
-      const performedBy =
-        authStore.user?.first_name && authStore.user?.last_name
-          ? `${authStore.user.first_name} ${authStore.user.last_name}`
-          : authStore.user?.name || authStore.user?.email || 'Branch User';
-
-      items.forEach((consumed, index) => {
-        const stock =
-          modalCurrentInventory.value.find(
-            (s) => s.id == consumed.inventory_item_id
-          ) ||
-          branchInventory.value.find(
-            (s) => s.id == consumed.inventory_item_id
-          ) ||
-          {};
-
-        const entry = {
-          id: `cons_${Date.now()}_${index}`,
-          transaction_type: 'consumption',
-          action: 'Consumed',
-          item_name: stock.item_name || stock.item_type_name || 'Selected Item',
-          item_type_name:
-            stock.item_name || stock.item_type_name || 'Selected Item',
-          quantity: Number(consumed.quantity || 0),
-          total_value:
-            Number(stock.unit_cost || 0) * Number(consumed.quantity || 0),
-          value: Number(stock.unit_cost || 0) * Number(consumed.quantity || 0),
-          unit_of_measure: stock.unit_of_measure || '',
-          transaction_date: new Date(),
-          performed_by: performedBy,
-          reason: consumed.reason || payload?.reason || 'Usage',
-          batch_number: stock.batch_number || null,
-          category_name: stock.category || stock.category_name || null,
-        };
-        recentActivity.value = [entry, ...(recentActivity.value || [])].slice(
-          0,
-          10
+      for (const it of items) {
+        // Compute new quantity locally to send as target quantity
+        const current = branchInventory.value.find(
+          (s) => s.id == it.inventory_item_id
         );
-      });
-    } catch (e) {
-      console.warn('Failed to append consumption to recent activity:', e);
+        const currentQty = parseFloat(current?.quantity || 0);
+        const consumeQty = parseFloat(it.quantity || 0);
+        const newQty = Math.max(0, currentQty - consumeQty);
+        await branchInventoryStore.updateQuantity(
+          it.inventory_item_id,
+          newQty,
+          'consumption'
+        );
+      }
+      toast.success('Usage recorded.');
+    } catch (err) {
+      console.error('Failed to record consumption:', err);
+      toast.error('Failed to record usage.');
+    } finally {
+      consumptionSubmitting.value = false;
+      closeActionModal();
+      await loadBranchInventory();
     }
-
-    await loadBranchInventory();
   };
 
   const handleAdjustmentSubmit = async (payload) => {
-    toast.success('Adjustment applied. Branch inventory will refresh.');
-    closeActionModal();
     try {
-      // If this is a disposal, update branch inventory backend: set quantity to 0 and mark status disposed
-      if (
-        payload?.adjustment_type === 'disposal' &&
-        payload?.inventory_item_id
-      ) {
-        try {
-          await branchInventoryStore.updateQuantity(
-            payload.inventory_item_id,
+      adjustmentSubmitting.value = true;
+      if (!payload?.inventory_item_id) return;
+
+      const current = branchInventory.value.find(
+        (s) => s.id == payload.inventory_item_id
+      );
+      const currentQty = parseFloat(current?.quantity || 0);
+
+      let newQty = currentQty;
+      switch (payload.adjustment_type) {
+        case 'set_quantity':
+          newQty = parseFloat(payload.new_quantity);
+          break;
+        case 'add_quantity':
+          newQty = currentQty + parseFloat(payload.new_quantity || 0);
+          break;
+        case 'reduce_quantity':
+          newQty = Math.max(
             0,
-            'disposal'
+            currentQty - parseFloat(payload.new_quantity || 0)
           );
-          await branchInventoryStore.updateStatus(
-            payload.inventory_item_id,
-            'disposed'
-          );
-        } catch (err) {
-          console.warn('Branch disposal update failed:', err);
-        }
+          break;
+        case 'mark_expired':
+        case 'mark_damaged':
+        case 'disposal':
+          newQty = 0;
+          break;
+        case 'set_expiry_date':
+          // quantity unchanged
+          newQty = currentQty;
+          break;
       }
 
-      const stock =
-        modalCurrentInventory.value.find(
-          (s) => s.id == payload?.inventory_item_id
-        ) ||
-        branchInventory.value.find((s) => s.id == payload?.inventory_item_id) ||
-        {};
-
-      const performedBy =
-        authStore.user?.first_name && authStore.user?.last_name
-          ? `${authStore.user.first_name} ${authStore.user.last_name}`
-          : authStore.user?.name || authStore.user?.email || 'Branch User';
-
-      const entry = {
-        id: `adj_${Date.now()}`,
-        transaction_type: 'adjustment',
-        adjustment_type: payload?.adjustment_type || null,
-        action: 'Adjusted',
-        item_name: stock.item_name || stock.item_type_name || 'Selected Item',
-        item_type_name:
-          stock.item_name || stock.item_type_name || 'Selected Item',
-        quantity:
-          payload?.new_quantity != null
-            ? Number(payload.new_quantity)
-            : payload?.quantity != null
-              ? Number(payload.quantity)
-              : 0,
-        total_value:
-          Number(stock.unit_cost || 0) *
-          (payload?.new_quantity != null
-            ? Number(payload.new_quantity)
-            : payload?.quantity != null
-              ? Number(payload.quantity)
-              : 0),
-        value: Number(stock.unit_cost || 0),
-        unit_of_measure: stock.unit_of_measure || '',
-        transaction_date: new Date(),
-        performed_by: performedBy,
-        reason: payload?.reason || 'Adjustment',
-        batch_number: stock.batch_number || null,
-        category_name: stock.category || stock.category_name || null,
-      };
-      recentActivity.value = [entry, ...(recentActivity.value || [])].slice(
-        0,
-        10
+      await branchInventoryStore.updateQuantity(
+        payload.inventory_item_id,
+        newQty,
+        payload.adjustment_type === 'disposal' ? 'disposal' : 'adjustment'
       );
-    } catch (e) {
-      console.warn('Failed to append adjustment to recent activity:', e);
-    }
 
-    await loadBranchInventory();
+      if (payload.adjustment_type === 'disposal') {
+        await branchInventoryStore.updateStatus(
+          payload.inventory_item_id,
+          'disposed'
+        );
+      }
+
+      toast.success('Adjustment applied.');
+    } catch (err) {
+      console.error('Failed to apply adjustment:', err);
+      toast.error('Failed to apply adjustment.');
+    } finally {
+      adjustmentSubmitting.value = false;
+      closeActionModal();
+      await loadBranchInventory();
+    }
   };
 
   // Rejection form state
@@ -871,96 +839,27 @@
         ),
       };
 
-      // Generate real recent activity from branch inventory data
-      const realRecentActivity = [];
-
-      // Create activity entries for each inventory item based on their distribution
-      branchInventory.value.forEach((item, index) => {
-        // Add distribution activity
-        realRecentActivity.push({
-          id: `dist_${item.id}`,
-          transaction_type: 'receipt',
-          action: 'Stock Received',
-          item_name: item.item_name,
-          item_type_name: item.item_name,
-          item: item.item_name,
-          quantity: parseFloat(item.quantity),
-          total_value: parseFloat(item.total_value || 0),
-          value: parseFloat(item.total_value || 0),
-          time: formatTimeAgo(new Date(item.created_at || new Date())),
-          transaction_date: item.created_at || new Date(),
-          type: 'distribution',
-          category_name: item.category,
-          category: item.category,
-          unit_of_measure: item.unit,
-          unit: item.unit,
-          performed_by: 'Branch Manager',
-          reason: 'Branch Distribution',
-          batch_number: item.batch_number || null,
-        });
-
-        // Add low stock warning if applicable
-        if (
-          parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
-          parseFloat(item.quantity) > 0
-        ) {
-          realRecentActivity.push({
-            id: `low_stock_${item.id}`,
-            transaction_type: 'alert',
-            action: 'Low Stock Alert',
-            item_name: item.item_name,
-            item_type_name: item.item_name,
-            item: item.item_name,
-            quantity: parseFloat(item.quantity),
-            total_value: parseFloat(item.total_value || 0),
-            value: parseFloat(item.total_value || 0),
-            time: 'Just now',
-            transaction_date: new Date(),
-            type: 'alert',
-            category_name: item.category,
-            category: item.category,
-            unit_of_measure: item.unit,
-            unit: item.unit,
-            performed_by: 'System',
-            notes: `Item is running low on stock (${item.quantity} ${item.unit} remaining)`,
-            batch_number: item.batch_number || null,
-          });
-        }
-
-        // Add out of stock warning if applicable
-        if (parseFloat(item.quantity) === 0) {
-          realRecentActivity.push({
-            id: `out_stock_${item.id}`,
-            transaction_type: 'alert',
-            action: 'Out of Stock',
-            item_name: item.item_name,
-            item_type_name: item.item_name,
-            item: item.item_name,
-            quantity: 0,
-            total_value: 0,
-            value: 0,
-            time: 'Just now',
-            transaction_date: new Date(),
-            type: 'alert',
-            category_name: item.category,
-            category: item.category,
-            unit_of_measure: item.unit,
-            unit: item.unit,
-            performed_by: 'System',
-            notes: 'Item is out of stock',
-            batch_number: item.batch_number || null,
-          });
-        }
-      });
-
-      // Sort by most recent first
-      realRecentActivity.sort((a, b) => {
-        if (a.time === 'Just now') return -1;
-        if (b.time === 'Just now') return 1;
-        return new Date(b.time) - new Date(a.time);
-      });
-
-      recentActivity.value = realRecentActivity.slice(0, 10); // Limit to 10 most recent
+      // Replace mocked recent activity with live branch transactions
+      try {
+        const tx = await branchInventoryStore.fetchAllTransactions(
+          currentBranch.value.id,
+          { limit: 10, page: 1 }
+        );
+        recentActivity.value = (tx?.data || []).map((t) => ({
+          id: t.id,
+          transaction_type: t.transaction_type,
+          item_name: t.item_name,
+          unit_of_measure: t.unit_of_measure,
+          quantity: parseFloat(t.quantity || 0),
+          total_value: 0,
+          value: 0,
+          transaction_date: t.created_at,
+          performed_by: t.performed_by_name || t.performed_by,
+          notes: t.notes,
+        }));
+      } catch (e) {
+        console.warn('Failed to load recent transactions for activity:', e);
+      }
 
       // Generate real alerts from branch inventory data
       const realAlerts = [];
@@ -3179,9 +3078,11 @@
       @close="closeActionModal"
       @submit="handleAdjustmentSubmit"
     />
+
+    <!-- Branch Transactions Modal -->
+    <BranchInventoryTransactionModal
+      :show="showBranchTransactions"
+      @close="closeTransactionModal"
+    />
   </div>
 </template>
-
-<style scoped>
-  /* Following MainInventory.vue patterns */
-</style>

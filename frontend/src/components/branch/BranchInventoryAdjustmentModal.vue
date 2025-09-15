@@ -541,8 +541,18 @@
             type="submit"
             class="btn btn-sm font-thin bg-primaryColor text-white"
             :disabled="loading || !isFormValid"
+            @click="
+              (e) => {
+                if (!isFormValid) return;
+                const ok = confirm('Confirm apply inventory adjustment?');
+                if (!ok) {
+                  e.preventDefault();
+                  return;
+                }
+              }
+            "
           >
-            Apply Adjustment
+            {{ loading ? 'Applying adjustment...' : 'Apply Adjustment' }}
           </button>
         </div>
       </form>

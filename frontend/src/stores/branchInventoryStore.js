@@ -150,6 +150,50 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
     }
   };
 
+  // Fetch all transactions for a branch with filters and pagination
+  const fetchAllTransactions = async (branchId, params = {}) => {
+    try {
+      const queryParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          queryParams.append(key, value);
+        }
+      });
+
+      const response = await axios.get(
+        `${API_BASE_URL}/branch-inventory/${branchId}/transactions?${queryParams.toString()}`
+      );
+
+      if (response.data && response.data.data) {
+        return {
+          data: response.data.data,
+          total: response.data.total || response.data.data.length,
+          page: response.data.page || 1,
+          totalPages: response.data.totalPages || 1,
+        };
+      }
+
+      // Fallback shape if backend returns array directly
+      if (Array.isArray(response.data)) {
+        return {
+          data: response.data,
+          total: response.data.length,
+          page: 1,
+          totalPages: 1,
+        };
+      }
+
+      return { data: [], total: 0, page: 1, totalPages: 1 };
+    } catch (err) {
+      console.error('Error fetching branch transactions:', err);
+      throw (
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to fetch transactions'
+      );
+    }
+  };
+
   const addItem = async (branchId, itemData) => {
     try {
       const response = await axios.post(
@@ -340,6 +384,7 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
     fetchLowStockItems,
     fetchExpiringItems,
     fetchRecentActivity,
+    fetchAllTransactions,
     addItem,
     updateQuantity,
     updateStatus,

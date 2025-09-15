@@ -2096,10 +2096,8 @@
               items: [...scmItems, ...productionItems],
             };
 
-            // Create the distribution record (no inventory deduction)
-            await branchDistributionStore.createBulkDistributions([
-              distributionData,
-            ]);
+            // Distribution record already created above via createDistribution
+            // No need to call bulk-distribute here
 
             // Step 3: Clear cart and show receipt
             inventoryStore.clearDistributionCart();

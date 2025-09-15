@@ -93,7 +93,9 @@ class Inventory {
           "ii.*",
           "ii.item_name", // Make sure this line is included
           "it.name as item_type_name",
-          "it.unit_of_measure",
+          db.raw(
+            "COALESCE(ii.unit_of_measure, it.unit_of_measure) as unit_of_measure"
+          ),
           "it.requires_expiry",
           "it.requires_batch",
           "it.first_received_at",
@@ -344,6 +346,7 @@ class Inventory {
           item_name: itemData.item_name, // Include item_name
           supplier_id: itemData.supplier_id || null,
           purchase_order_id: itemData.purchase_order_id || null,
+          unit_of_measure: itemData.unit_of_measure || null,
           batch_number: batchNumber,
           quantity: itemData.quantity,
           unit_cost: itemData.unit_cost,

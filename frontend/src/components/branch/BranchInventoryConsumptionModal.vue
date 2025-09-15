@@ -37,11 +37,17 @@
 
   const availableStock = computed(() => {
     if (!singleItem.value.item_type_id) return [];
-    return props.currentInventory.filter(
-      (item) =>
-        item.item_type_id == singleItem.value.item_type_id &&
-        parseFloat(item.quantity) > 0
+    const selectedType = props.itemTypes.find(
+      (t) => t.id == singleItem.value.item_type_id
     );
+    const selectedName = (selectedType?.name || '').toLowerCase();
+    return props.currentInventory.filter((item) => {
+      const byId = item.item_type_id == singleItem.value.item_type_id;
+      const byName =
+        (item.item_name || item.item_type_name || '').toLowerCase() ===
+        selectedName;
+      return (byId || byName) && parseFloat(item.quantity) > 0;
+    });
   });
 
   const selectedStock = computed(() => {
@@ -50,6 +56,21 @@
       (i) => i.id == singleItem.value.inventory_item_id
     );
   });
+
+  // Auto-select the first available stock when an item type is chosen
+  watch(
+    () => singleItem.value.item_type_id,
+    (newVal) => {
+      if (!newVal) return;
+      // If nothing selected yet and there are available stocks, pick the first
+      if (
+        !singleItem.value.inventory_item_id &&
+        availableStock.value.length > 0
+      ) {
+        singleItem.value.inventory_item_id = availableStock.value[0].id;
+      }
+    }
+  );
 
   // Auto-select stock entry when there is only one available option
   watch(
@@ -231,7 +252,7 @@
     singleItem.value = {
       category_id: resolvedItemType?.category_id || categoryByName?.id || '',
       item_type_id: resolvedItemType?.id || item.item_type_id || '',
-      inventory_item_id: item.id || '',
+      inventory_item_id: item.id ? Number(item.id) : '',
       quantity: '',
       reason: '',
       reference_number: '',
@@ -338,7 +359,7 @@
                 <span class="label-text font-medium">Available Stock</span>
               </label>
               <select
-                v-model="singleItem.inventory_item_id"
+                v-model.number="singleItem.inventory_item_id"
                 class="select select-bordered w-full"
                 required
                 :disabled="!singleItem.item_type_id"
@@ -666,12 +687,22 @@
             type="submit"
             class="btn bg-primaryColor text-white btn-sm font-thin"
             :disabled="loading || !isFormValid"
+            @click="
+              (e) => {
+                if (!isFormValid) return;
+                const ok = confirm('Confirm recording branch usage?');
+                if (!ok) {
+                  e.preventDefault();
+                  return;
+                }
+              }
+            "
           >
             <span
               v-if="loading"
               class="loading loading-spinner loading-sm mr-2"
             ></span>
-            Record Usage
+            {{ loading ? 'Recording usage...' : 'Record Usage' }}
           </button>
         </div>
       </form>

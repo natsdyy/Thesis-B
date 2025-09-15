@@ -405,6 +405,8 @@ class GoodsReceiptNote {
               item_name: itemName, // Use only the item name from PO
               supplier_id: item.supplier_id,
               purchase_order_id: item.purchase_order_id,
+              // Prefer the PO unit; fallback to item type default via later backfill
+              unit_of_measure: item.po_unit || null,
               grn_id: grnId,
               grn_item_id: item.id,
               batch_number:

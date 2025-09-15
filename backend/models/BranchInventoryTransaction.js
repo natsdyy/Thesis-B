@@ -14,6 +14,8 @@ class BranchInventoryTransaction {
         reference_number: tx.reference_number || null,
         notes: tx.notes || null,
         performed_by: tx.performed_by || null,
+        adjustment_type: tx.adjustment_type || null,
+        new_expiry_date: tx.new_expiry_date || null,
         created_at: new Date(),
         updated_at: new Date(),
       })

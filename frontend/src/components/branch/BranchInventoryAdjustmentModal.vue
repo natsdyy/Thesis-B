@@ -114,6 +114,29 @@
     { immediate: true }
   );
 
+  // Auto-populate reason based on selected adjustment type
+  const defaultReasonByAdjustment = {
+    set_quantity: 'Physical Count Discrepancy',
+    add_quantity: 'Received Additional Stock',
+    reduce_quantity: 'Physical Count Discrepancy',
+    mark_expired: 'Expiry',
+    mark_damaged: 'Damage',
+    set_expiry_date: 'Expiry',
+    disposal: 'Expiry',
+  };
+
+  watch(
+    () => form.value.adjustment_type,
+    (type) => {
+      // If item is expired, keep reason forced to Expiry
+      if (isExpiredItem.value) {
+        form.value.reason = 'Expiry';
+        return;
+      }
+      form.value.reason = defaultReasonByAdjustment[type] || '';
+    }
+  );
+
   const requiresQuantityInput = computed(() => {
     return ['set_quantity', 'add_quantity', 'reduce_quantity'].includes(
       form.value.adjustment_type
@@ -541,16 +564,6 @@
             type="submit"
             class="btn btn-sm font-thin bg-primaryColor text-white"
             :disabled="loading || !isFormValid"
-            @click="
-              (e) => {
-                if (!isFormValid) return;
-                const ok = confirm('Confirm apply inventory adjustment?');
-                if (!ok) {
-                  e.preventDefault();
-                  return;
-                }
-              }
-            "
           >
             {{ loading ? 'Applying adjustment...' : 'Apply Adjustment' }}
           </button>

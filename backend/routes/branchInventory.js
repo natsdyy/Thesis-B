@@ -42,6 +42,70 @@ router.get(
   }
 );
 
+// Update item expiry date
+router.put(
+  "/items/:itemId/expiry",
+  authenticateToken,
+  requirePermission("Manage Inventory"),
+  async (req, res) => {
+    try {
+      const { itemId } = req.params;
+      const { expiry_date, reference_number, notes } = req.body;
+
+      // Get current item for logging context
+      const current = await require("../config/database")
+        .db("branch_inventory")
+        .where("id", itemId)
+        .whereNull("deleted_at")
+        .first();
+
+      if (!current) {
+        return res.status(404).json({
+          success: false,
+          message: "Item not found",
+        });
+      }
+
+      const updatedItem = await BranchInventory.updateExpiryDate(
+        itemId,
+        expiry_date
+      );
+
+      // Log as adjustment transaction
+      try {
+        await BranchInventoryTransaction.create({
+          branch_id: current.branch_id,
+          inventory_item_id: Number(itemId),
+          item_name: updatedItem?.item_name || current.item_name,
+          item_type: updatedItem?.item_type || current.item_type,
+          transaction_type: "adjustment",
+          quantity: 0,
+          unit_of_measure: updatedItem?.unit || current?.unit,
+          reference_number: reference_number || null,
+          notes: notes || "Updated expiry date",
+          adjustment_type: "set_expiry_date",
+          new_expiry_date: expiry_date || null,
+          performed_by: req.user?.id || null,
+        });
+      } catch (e) {
+        console.warn("Failed to log branch expiry update:", e?.message || e);
+      }
+
+      res.json({
+        success: true,
+        data: updatedItem,
+        message: "Item expiry date updated successfully",
+      });
+    } catch (error) {
+      console.error("Error updating item expiry date:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to update item expiry date",
+      });
+    }
+  }
+);
+
 // Get branch inventory stats
 router.get(
   "/:branchId/stats",

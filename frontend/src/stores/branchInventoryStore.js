@@ -278,6 +278,42 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
     }
   };
 
+  const updateExpiryDate = async (
+    itemId,
+    expiry_date,
+    { reference_number = null, notes = null } = {}
+  ) => {
+    try {
+      const response = await axios.put(
+        `${API_BASE_URL}/branch-inventory/items/${itemId}/expiry`,
+        {
+          expiry_date,
+          reference_number,
+          notes,
+        }
+      );
+
+      if (response.data.success) {
+        const itemIndex = inventory.value.findIndex(
+          (item) => item.id === itemId
+        );
+        if (itemIndex !== -1) {
+          inventory.value[itemIndex] = response.data.data;
+        }
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to update item expiry date'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message || err.message || 'Failed to update expiry';
+      console.error('Error updating expiry date:', err);
+      throw err;
+    }
+  };
+
   const deleteItem = async (itemId) => {
     try {
       const response = await axios.delete(
@@ -285,7 +321,6 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
       );
 
       if (response.data.success) {
-        // Remove from local inventory
         inventory.value = inventory.value.filter((item) => item.id !== itemId);
         return true;
       } else {
@@ -388,6 +423,7 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
     addItem,
     updateQuantity,
     updateStatus,
+    updateExpiryDate,
     deleteItem,
     loadAllData,
 

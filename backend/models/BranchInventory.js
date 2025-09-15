@@ -44,6 +44,47 @@ class BranchInventory {
     }
   }
 
+  // Update expiry date for an item
+  static async updateExpiryDate(itemId, newExpiryDate) {
+    try {
+      const currentItem = await db("branch_inventory")
+        .where("id", itemId)
+        .whereNull("deleted_at")
+        .first();
+
+      if (!currentItem) {
+        throw new Error("Item not found");
+      }
+
+      // If the new expiry date is today or earlier, mark as expired, else keep current status
+      let newStatus = currentItem.status;
+      if (newExpiryDate) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const expiry = new Date(newExpiryDate);
+        expiry.setHours(0, 0, 0, 0);
+        if (expiry.getTime() <= today.getTime()) {
+          newStatus = "expired";
+        }
+      }
+
+      const [updatedItem] = await db("branch_inventory")
+        .where("id", itemId)
+        .update({
+          expiry_date: newExpiryDate || null,
+          status: newStatus,
+          last_updated: new Date(),
+          updated_at: new Date(),
+        })
+        .returning("*");
+
+      return updatedItem;
+    } catch (error) {
+      console.error("Error updating expiry date:", error);
+      throw error;
+    }
+  }
+
   // Get branch inventory summary/stats
   static async getBranchStats(branchId) {
     try {
@@ -208,6 +249,8 @@ class BranchInventory {
           "t.quantity",
           "t.unit_of_measure",
           "t.reference_number",
+          "t.adjustment_type",
+          "t.new_expiry_date",
           db.raw("bi.category as category_name"),
           db.raw(
             "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as performed_by_name"

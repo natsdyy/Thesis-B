@@ -82,12 +82,43 @@
         (item) => item.item_type === 'scm'
       ) || []
   );
-  const categories = computed(() => {
-    const cats = [
-      ...new Set(branchInventoryStore.inventory.map((item) => item.category)),
-    ];
-    return cats.filter(Boolean).map((cat) => ({ name: cat }));
+  // Normalize category name from mixed shapes (string or { name })
+  const getItemCategoryName = (item) => {
+    const raw = item?.category ?? item?.category_name ?? null;
+    if (!raw) return null;
+    if (typeof raw === 'string') return raw;
+    if (typeof raw === 'object') return raw.name || null;
+    return null;
+  };
+
+  // Category lists per inventory type
+  const scmCategories = computed(() => {
+    const set = new Set(
+      (branchInventoryStore.inventory || [])
+        .filter((i) => i.item_type === 'scm')
+        .map((i) => getItemCategoryName(i))
+    );
+    set.delete(null);
+    set.delete('Uncategorized');
+    return Array.from(set).sort();
   });
+
+  const productionCategories = computed(() => {
+    const set = new Set(
+      (branchInventoryStore.inventory || [])
+        .filter((i) => i.item_type === 'production')
+        .map((i) => getItemCategoryName(i))
+    );
+    set.delete(null);
+    set.delete('Uncategorized');
+    return Array.from(set).sort();
+  });
+
+  const categories = computed(() =>
+    inventoryType.value === 'scm'
+      ? scmCategories.value
+      : productionCategories.value
+  );
 
   // Convert to reactive refs instead of computed properties
   const inventoryStats = ref({
@@ -665,17 +696,30 @@
         onConfirm: async () => {
           adjustmentSubmitting.value = true;
           try {
-            await branchInventoryStore.updateQuantity(
-              payload.inventory_item_id,
-              previewQty,
-              payload.adjustment_type === 'disposal' ? 'disposal' : 'adjustment'
-            );
-
-            if (payload.adjustment_type === 'disposal') {
-              await branchInventoryStore.updateStatus(
+            if (payload.adjustment_type === 'set_expiry_date') {
+              await branchInventoryStore.updateExpiryDate(
                 payload.inventory_item_id,
-                'disposed'
+                payload.new_expiry_date,
+                {
+                  reference_number: payload.reference_number || null,
+                  notes: payload.notes || 'Set expiry date',
+                }
               );
+            } else {
+              await branchInventoryStore.updateQuantity(
+                payload.inventory_item_id,
+                previewQty,
+                payload.adjustment_type === 'disposal'
+                  ? 'disposal'
+                  : 'adjustment'
+              );
+
+              if (payload.adjustment_type === 'disposal') {
+                await branchInventoryStore.updateStatus(
+                  payload.inventory_item_id,
+                  'disposed'
+                );
+              }
             }
             toast.success('Adjustment applied.');
           } catch (err) {
@@ -739,7 +783,9 @@
 
     // Filter by category
     if (categoryFilter.value) {
-      items = items.filter((item) => item.category === categoryFilter.value);
+      items = items.filter(
+        (item) => getItemCategoryName(item) === categoryFilter.value
+      );
     }
 
     // Filter by status
@@ -2330,7 +2376,7 @@
                   v-else-if="getExpirySeverityLevel(item) === 'warning'"
                   class="w-5 h-5 text-warning"
                 />
-                <Calendar v-else class="w-5 h-5 text-info" />
+                <Calendar v-else class="w-5 h-5 text-primaryColor" />
               </div>
 
               <div class="flex-1">

@@ -164,6 +164,18 @@
       };
     }
 
+    // Treat reduce_quantity adjustments as Distribution (transfer-out)
+    if (type === 'adjustment' && adjustmentType === 'reduce_quantity') {
+      return {
+        icon: ArrowRightLeft,
+        color: 'text-primary',
+        label: 'Distribution',
+        bgColor: 'bg-primary/10',
+        badgeColor: 'bg-primary/20 text-primary',
+        description: 'Item was distributed/transferred out to a branch',
+      };
+    }
+
     const typeInfo = {
       receipt: {
         icon: Handshake,

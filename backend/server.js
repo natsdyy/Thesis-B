@@ -84,6 +84,26 @@ app.use(cors(corsConfig));
 app.use(express.json());
 app.use("/uploads", express.static(require("path").join(__dirname, "uploads")));
 
+// Serve frontend static files in production
+if (process.env.NODE_ENV === "production") {
+  const path = require("path");
+  const frontendDistPath = path.join(__dirname, "..", "frontend", "dist");
+  
+  // Serve static files from frontend dist
+  app.use(express.static(frontendDistPath));
+  
+  // Handle client-side routing - serve index.html for all non-API routes
+  app.get("*", (req, res) => {
+    // Skip API routes
+    if (req.path.startsWith("/api/")) {
+      return res.status(404).json({ message: "API endpoint not found" });
+    }
+    
+    // Serve index.html for all other routes (client-side routing)
+    res.sendFile(path.join(frontendDistPath, "index.html"));
+  });
+}
+
 // API Routes
 app.use("/api/roles", roleRoutes);
 app.use("/api/permissions", permissionRoutes);

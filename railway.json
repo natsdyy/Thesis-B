@@ -17,8 +17,8 @@
     "numReplicas": 1,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10,
-    "startCommand": "node start-frontend.js",
-    "healthcheckPath": "/index.html",
+    "startCommand": "cd backend && npm start",
+    "healthcheckPath": "/",
     "healthcheckTimeout": 300
   },
   "environments": {

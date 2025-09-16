@@ -166,8 +166,9 @@
 
           <li>
             <a
+              @click="openAttendanceModal"
               :class="[
-                'flex items-center space-x-3 px-3 py-2 rounded-md transition-colors',
+                'flex items-center space-x-3 px-3 py-2 rounded-md transition-colors cursor-pointer',
                 themeStore.themeClasses.hoverBg,
               ]"
             >
@@ -196,6 +197,12 @@
       </div>
     </div>
   </header>
+
+  <!-- QR Attendance Modal -->
+  <QRAttendanceModal 
+    :isOpen="showAttendanceModal" 
+    @close="closeAttendanceModal" 
+  />
 
   <!-- Logout Confirmation Modal -->
   <div v-if="showLogoutModal" class="modal modal-open">
@@ -232,6 +239,7 @@
   import { useAuthStore } from '../stores/authStore';
   import { useThemeStore } from '../stores/themeStore';
   import { apiConfig } from '../config/api';
+  import QRAttendanceModal from './QRAttendanceModal.vue';
   import {
     Menu,
     ChevronRight,
@@ -288,6 +296,7 @@
 
   // Methods
   const showLogoutModal = ref(false);
+  const showAttendanceModal = ref(false);
 
   const toggleSidebar = () => {
     emit('toggle-sidebar');
@@ -309,6 +318,14 @@
     showLogoutModal.value = false;
     authStore.logout();
     router.push('/login');
+  };
+
+  const openAttendanceModal = () => {
+    showAttendanceModal.value = true;
+  };
+
+  const closeAttendanceModal = () => {
+    showAttendanceModal.value = false;
   };
 </script>
 

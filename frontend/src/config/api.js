@@ -1,7 +1,7 @@
 // API Configuration for different environments
 const config = {
   development: {
-    baseURL: 'http://192.168.56.1:5000/api' || 'http://localhost:5000/api',
+    baseURL: '/api', // Use relative URL for Vite proxy
     timeout: 10000,
   },
   production: {

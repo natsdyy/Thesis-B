@@ -17,6 +17,34 @@
 
   const refreshTimer = ref(null);
   onMounted(async () => {
+    // Handle preloaded distribution from SCM RequestSupply Process action
+    try {
+      const state = router.options?.history?.state || {};
+      const preload = state.preloadDistribution;
+      if (preload && preload.items && preload.items.length) {
+        if (preload.branch_id) inventoryStore.setCartBranch(preload.branch_id);
+        for (const it of preload.items) {
+          try {
+            inventoryStore.addToDistributionCart({
+              source: it.source || 'scm',
+              item: it,
+              item_id: it.menu_item_id || it.name,
+              name: it.name,
+              unit: it.unit,
+              unit_price: Number(it.unit_price || 0),
+              quantity: Number(it.quantity || 0),
+              branch_id: preload.branch_id,
+            });
+          } catch (e) {
+            // skip invalid items
+          }
+        }
+        // If we have a tab system, switch to distribution tab
+        if (typeof switchToDistributionTab === 'function') {
+          switchToDistributionTab();
+        }
+      }
+    } catch (_) {}
     await loadPendingReturns();
     // Lightweight polling to surface new returns without full reload
     refreshTimer.value = setInterval(loadPendingReturns, 15000);

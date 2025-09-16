@@ -142,8 +142,8 @@ export const useInventoryStore = defineStore('inventory', () => {
     // Get available stock from the item
     const availableStock =
       source === 'production'
-        ? item.available_quantity || 0
-        : item.quantity || 0;
+        ? (item?.available_quantity ?? Number.MAX_SAFE_INTEGER)
+        : (item?.quantity ?? Number.MAX_SAFE_INTEGER);
 
     // Debug logging for production items
     if (source === 'production') {
@@ -192,8 +192,8 @@ export const useInventoryStore = defineStore('inventory', () => {
       // Get available stock from the item
       const availableStock =
         item.source === 'production'
-          ? item.item.available_quantity || 0
-          : item.item.quantity || 0;
+          ? (item.item?.available_quantity ?? Number.MAX_SAFE_INTEGER)
+          : (item.item?.quantity ?? Number.MAX_SAFE_INTEGER);
 
       // Debug logging for production items
       if (item.source === 'production') {

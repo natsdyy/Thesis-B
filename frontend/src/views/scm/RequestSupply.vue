@@ -33,11 +33,13 @@
     TriangleAlert,
     PhilippinePeso,
   } from 'lucide-vue-next';
+  import { useRouter } from 'vue-router';
 
   // Stores
   const supplyRequestStore = useSupplyRequestStore();
   const budgetReleaseStore = useBudgetReleaseStore();
   const branchRequestStore = useBranchRequestStore();
+  const router = useRouter();
   const authStore = useAuthStore();
   const inventoryStore = useInventoryStore();
   const branchStore = useBranchStore();
@@ -905,7 +907,13 @@
           requestForm.value.department === 'Branch'
             ? requestForm.value.branch_id || null
             : null,
-        requested_by: authStore.user?.name || requestForm.value.requested_by,
+        requested_by:
+          [authStore.user?.first_name, authStore.user?.last_name]
+            .filter(Boolean)
+            .join(' ') ||
+          authStore.user?.full_name ||
+          authStore.user?.name ||
+          requestForm.value.requested_by,
       };
 
       await supplyRequestStore.createRequest(requestData, validItems);
@@ -1004,7 +1012,12 @@
 
       await supplyRequestStore.sendRequest(
         request.id,
-        authStore.user?.name || 'SCM User'
+        [authStore.user?.first_name, authStore.user?.last_name]
+          .filter(Boolean)
+          .join(' ') ||
+          authStore.user?.full_name ||
+          authStore.user?.name ||
+          'SCM'
       );
 
       closeModal();
@@ -1030,7 +1043,12 @@
 
       await supplyRequestStore.cancelRequest(
         request.id,
-        authStore.user?.name || 'SCM User'
+        [authStore.user?.first_name, authStore.user?.last_name]
+          .filter(Boolean)
+          .join(' ') ||
+          authStore.user?.full_name ||
+          authStore.user?.name ||
+          'SCM'
       );
 
       closeModal();
@@ -1082,7 +1100,12 @@
 
       await budgetReleaseStore.confirmReceipt(
         release.id,
-        authStore.user?.name || 'SCM User'
+        [authStore.user?.first_name, authStore.user?.last_name]
+          .filter(Boolean)
+          .join(' ') ||
+          authStore.user?.full_name ||
+          authStore.user?.name ||
+          'SCM'
       );
 
       showToast('success', `Receipt confirmed for request #${requestId}`);
@@ -1109,6 +1132,72 @@
     selectedBranchRequest.value = null;
   };
 
+  // Process: auto-map availability then route accordingly
+  const processBranchRequest = async (request) => {
+    try {
+      loading.value = true;
+      // Use store method instead of direct fetch
+      const data = await branchRequestStore.autoMapRequest(request.id);
+      if (data.is_fully_available && (data.to_distribute || []).length > 0) {
+        // Navigate to MainInventory distribution with preloaded cart via query/state
+        router.push({
+          name: 'MainInventory',
+          query: { tab: 'branch-distribution' },
+          state: {
+            preloadDistribution: {
+              branch_id: data.branch_id || request.branch_id || null,
+              items: data.to_distribute,
+            },
+          },
+        });
+      } else {
+        // Open RequestSupply modal prefilled with shortages
+        openCreateRequestModalWithDraft(
+          data.request_draft || [],
+          data.branch_id
+        );
+      }
+    } catch (err) {
+      showToast('error', err.message || 'Unable to process request');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const openCreateRequestModalWithDraft = (
+    draftItems = [],
+    branchId = null
+  ) => {
+    // Ensure modal is on supply-requests tab and reset form
+    activeTab.value = 'supply-requests';
+    // Use local modal manager
+    modal.value = {
+      type: 'create',
+      show: true,
+      request: null,
+      data: {
+        request_type: requestForm.value.request_type,
+        request_description: requestForm.value.request_description,
+        request_date: requestForm.value.request_date,
+      },
+    };
+    requestForm.value.department = 'SCM';
+    // Pre-fill rows
+    rowRequest.value = (draftItems.length ? draftItems : [{ id: 1 }]).map(
+      (it, idx) => ({
+        id: idx + 1,
+        item_name: it.item_name || '',
+        item_quantity: Number(it.item_quantity || 0),
+        item_unit: it.item_unit || 'pieces',
+        item_type: it.item_type || 'SCM',
+        item_unitPrice: Number(it.item_unit_price || 0),
+        item_amount:
+          Number(it.item_quantity || 0) * Number(it.item_unit_price || 0),
+        menu_item_id: it.menu_item_id || null,
+      })
+    );
+  };
+
   // Acknowledge branch request function
   const acknowledgeBranchRequest = async (requestId) => {
     loading.value = true;
@@ -1130,7 +1219,12 @@
 
       await branchRequestStore.acknowledgeRequest(
         request.id,
-        authStore.user?.name || 'SCM User',
+        [authStore.user?.first_name, authStore.user?.last_name]
+          .filter(Boolean)
+          .join(' ') ||
+          authStore.user?.full_name ||
+          authStore.user?.name ||
+          'SCM',
         'Request acknowledged by SCM department'
       );
 
@@ -1411,7 +1505,13 @@
         priority: request.priority || 'Normal',
         department: request.department || 'SCM',
         requested_by:
-          request.requested_by || authStore.user?.name || 'Current User',
+          request.requested_by ||
+          [authStore.user?.first_name, authStore.user?.last_name]
+            .filter(Boolean)
+            .join(' ') ||
+          authStore.user?.full_name ||
+          authStore.user?.name ||
+          'Current User',
         items: request.items || [],
       };
 
@@ -1464,7 +1564,13 @@
         request_date: getPhilippineDateString(),
         priority: 'Normal',
         department: 'SCM',
-        requested_by: authStore.user?.name || 'Current User',
+        requested_by:
+          [authStore.user?.first_name, authStore.user?.last_name]
+            .filter(Boolean)
+            .join(' ') ||
+          authStore.user?.full_name ||
+          authStore.user?.name ||
+          'Current User',
         items: [],
       };
       selectedCategory.value = ''; // Reset category selection
@@ -1980,7 +2086,12 @@
 
       await branchRequestStore.acknowledgeRequest(
         request.id,
-        authStore.user?.name || 'SCM User',
+        [authStore.user?.first_name, authStore.user?.last_name]
+          .filter(Boolean)
+          .join(' ') ||
+          authStore.user?.full_name ||
+          authStore.user?.name ||
+          'SCM',
         'Request acknowledged by SCM'
       );
 
@@ -2008,7 +2119,12 @@
       await branchRequestStore.updateRequestStatus(
         request.id,
         status,
-        authStore.user?.name || 'SCM User',
+        [authStore.user?.first_name, authStore.user?.last_name]
+          .filter(Boolean)
+          .join(' ') ||
+          authStore.user?.full_name ||
+          authStore.user?.name ||
+          'SCM',
         notes
       );
 
@@ -3019,13 +3135,19 @@
                             v-if="request.status === 'Sent'"
                           >
                             <a
-                              @click="
-                                acknowledgeBranchRequestFromTab(
-                                  request.request_id
-                                )
-                              "
+                              @click="processBranchRequest(request)"
                               class="text-success"
-                              >Acknowledge</a
+                              >Process</a
+                            >
+                          </li>
+                          <li
+                            class="hover:bg-black/10"
+                            v-if="request.status === 'Acknowledged'"
+                          >
+                            <a
+                              @click="processBranchRequest(request)"
+                              class="text-success"
+                              >Process</a
                             >
                           </li>
                           <li

@@ -2,6 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const BranchRequest = require("../models/BranchRequest");
+const { db } = require("../config/database");
 
 /**
  * @swagger
@@ -929,6 +930,163 @@ router.get("/branch/:branchId", async (req, res) => {
       message: "Failed to retrieve branch requests",
       error: error.message,
     });
+  }
+});
+
+// --- Auto-map availability for a branch request (SCM helper) ---
+// Returns proposed distribution cart and shortages to auto-fill a new SCM request
+router.get("/:id/auto-map", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const request = await BranchRequest.getById(id);
+    if (!request) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Branch request not found" });
+    }
+
+    const toDistribute = [];
+    const shortages = [];
+
+    for (const item of request.items || []) {
+      const name = item.item_name;
+      const requiredQty = Number(item.item_quantity || 0);
+
+      const sourceType = (
+        item.item_type ||
+        request.source_type ||
+        "scm"
+      ).toLowerCase();
+      if (sourceType === "production" || item.menu_item_id) {
+        let prodRow = await db("production_inventory as pi")
+          .leftJoin("menu_items as mi", "pi.menu_item_id", "mi.id")
+          .select(
+            "pi.available_quantity",
+            "pi.unit_of_measure",
+            "pi.unit_cost",
+            "pi.selling_price as pi_selling_price",
+            "mi.menu_item_name",
+            "mi.id as menu_item_id"
+          )
+          .modify((qb) => {
+            if (item.menu_item_id) qb.where("mi.id", item.menu_item_id);
+            else qb.whereILike("mi.menu_item_name", name);
+          })
+          .first();
+
+        // Fallback: if the linked ID has zero stock, try any other row with same name that has stock
+        if ((prodRow?.available_quantity ?? 0) <= 0) {
+          const altRow = await db("production_inventory as pi")
+            .leftJoin("menu_items as mi", "pi.menu_item_id", "mi.id")
+            .select(
+              "pi.available_quantity",
+              "pi.unit_of_measure",
+              "pi.unit_cost",
+              "pi.selling_price as pi_selling_price",
+              "mi.menu_item_name",
+              "mi.id as menu_item_id"
+            )
+            .whereILike("mi.menu_item_name", name)
+            .orderBy("pi.available_quantity", "desc")
+            .first();
+          if ((altRow?.available_quantity ?? 0) > 0) {
+            prodRow = altRow;
+          }
+        }
+
+        const available = Number(prodRow?.available_quantity || 0);
+        const distributeQty = Math.min(requiredQty, available);
+        const missing = Math.max(requiredQty - available, 0);
+
+        if (distributeQty > 0) {
+          const price = Number(
+            (item.unit_price && Number(item.unit_price) > 0
+              ? item.unit_price
+              : (prodRow?.pi_selling_price ?? prodRow?.unit_cost ?? 0)) || 0
+          );
+          toDistribute.push({
+            name: prodRow?.menu_item_name || name,
+            quantity: distributeQty,
+            unit: prodRow?.unit_of_measure || item.item_unit || "servings",
+            unit_price: price,
+            source: "production",
+            menu_item_id: prodRow?.menu_item_id || item.menu_item_id || null,
+          });
+        }
+
+        if (missing > 0) {
+          shortages.push({
+            name,
+            required: requiredQty,
+            missing,
+            unit: item.item_unit || prodRow?.unit_of_measure || "servings",
+            item_type: "Production",
+            menu_item_id: prodRow?.menu_item_id || item.menu_item_id || null,
+          });
+        }
+      } else {
+        const stockRow = await db("inventory_items as ii")
+          .whereNull("ii.deleted_at")
+          .where("ii.status", "available")
+          .whereILike("ii.item_name", name)
+          .sum({ total_available: "ii.quantity" })
+          .min({ unit_cost: "ii.unit_cost" })
+          .min({ unit_of_measure: "ii.unit_of_measure" })
+          .first();
+
+        const available = Number(stockRow?.total_available || 0);
+        const distributeQty = Math.min(requiredQty, available);
+        const missing = Math.max(requiredQty - available, 0);
+
+        if (distributeQty > 0) {
+          toDistribute.push({
+            name,
+            quantity: distributeQty,
+            unit: stockRow?.unit_of_measure || item.item_unit || "pieces",
+            unit_price: Number(stockRow?.unit_cost || 0),
+            source: "scm",
+          });
+        }
+
+        if (missing > 0) {
+          shortages.push({
+            name,
+            required: requiredQty,
+            missing,
+            unit: item.item_unit || stockRow?.unit_of_measure || "pieces",
+            item_type: "SCM",
+          });
+        }
+      }
+    }
+
+    const fullyAvailable = shortages.length === 0;
+
+    // Build a draft request for missing items
+    const requestDraft = shortages.map((s) => ({
+      item_name: s.name,
+      item_quantity: s.missing,
+      item_unit: s.unit,
+      item_type: s.item_type,
+      item_unit_price: 0,
+      menu_item_id: s.menu_item_id || null,
+    }));
+
+    return res.json({
+      success: true,
+      data: {
+        is_fully_available: fullyAvailable,
+        to_distribute: toDistribute,
+        shortages,
+        request_draft: requestDraft,
+        branch_id: request.branch_id || null,
+      },
+    });
+  } catch (error) {
+    console.error("Error auto-mapping branch request:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to evaluate availability" });
   }
 });
 

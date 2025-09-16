@@ -486,6 +486,20 @@ export const useBranchRequestStore = defineStore('branchRequest', () => {
     );
   };
 
+  // Auto-map availability for a branch request (SCM helper)
+  const autoMapRequest = async (id) => {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/branch-requests/${id}/auto-map`
+      );
+      if (response.data && response.data.success) return response.data.data;
+      throw new Error(response.data?.message || 'Auto-map failed');
+    } catch (err) {
+      console.error('Error auto-mapping branch request:', err);
+      throw err;
+    }
+  };
+
   return {
     // State
     requests,
@@ -520,5 +534,6 @@ export const useBranchRequestStore = defineStore('branchRequest', () => {
     markInProgress,
     completeRequest,
     cancelRequest,
+    autoMapRequest,
   };
 });

@@ -102,6 +102,19 @@ const BranchRequest = require("../models/BranchRequest");
  *         item_notes:
  *           type: string
  *           description: Additional notes for the item
+ *         inventory_item_id:
+ *           type: integer
+ *           description: Reference to branch inventory item if mapped
+ *         unit_price:
+ *           type: number
+ *           format: float
+ *           description: Unit price at time of request
+ *         category:
+ *           type: string
+ *           description: Category name at time of request
+ *         menu_item_id:
+ *           type: integer
+ *           description: Reference to menu_items for production items
  */
 
 /**

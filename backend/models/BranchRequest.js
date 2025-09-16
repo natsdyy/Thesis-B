@@ -186,6 +186,10 @@ class BranchRequest {
         item_unit: item.item_unit || "pieces",
         item_type: item.item_type || "General",
         item_notes: item.item_notes || null,
+        inventory_item_id: item.inventory_item_id || null,
+        unit_price: item.unit_price || null,
+        category: item.category || null,
+        menu_item_id: item.menu_item_id || null, // optional linkage for production items
       }));
 
       const createdItems = await trx("branch_request_items")
@@ -236,6 +240,10 @@ class BranchRequest {
           item_unit: item.item_unit || "pieces",
           item_type: item.item_type || "General",
           item_notes: item.item_notes || null,
+          inventory_item_id: item.inventory_item_id || null,
+          unit_price: item.unit_price || null,
+          category: item.category || null,
+          menu_item_id: item.menu_item_id || null,
         }));
 
         const createdItems = await trx("branch_request_items")

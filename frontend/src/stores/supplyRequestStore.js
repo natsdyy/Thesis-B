@@ -159,6 +159,11 @@ export const useSupplyRequestStore = defineStore('supplyRequest', () => {
           item_type: item.item_type,
           item_unit_price: item.item_unitPrice || item.item_unit_price,
           item_notes: item.item_notes || null,
+          // Optional linkage to branch inventory or production menu item
+          inventory_item_id: item.inventory_item_id || null,
+          menu_item_id: item.menu_item_id || null,
+          category: item.category || null,
+          source: item.source || null,
         })),
       };
 
@@ -201,6 +206,10 @@ export const useSupplyRequestStore = defineStore('supplyRequest', () => {
           item_type: item.item_type,
           item_unit_price: item.item_unitPrice || item.item_unit_price,
           item_notes: item.item_notes || null,
+          inventory_item_id: item.inventory_item_id || null,
+          menu_item_id: item.menu_item_id || null,
+          category: item.category || null,
+          source: item.source || null,
         }));
       }
 

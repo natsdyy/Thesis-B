@@ -1,0 +1,283 @@
+<template>
+  <div v-if="isOpen" class="modal modal-open">
+    <div class="modal-box max-w-md">
+      <div class="flex justify-between items-center mb-6">
+        <h3 class="font-bold text-xl">QR Code Attendance</h3>
+        <button @click="closeModal" class="btn btn-sm btn-circle btn-ghost">
+          <X class="w-4 h-4" />
+        </button>
+      </div>
+
+      <!-- Current Status -->
+      <div class="mb-6">
+        <div class="alert alert-info">
+          <Clock class="w-5 h-5" />
+          <div>
+            <div class="font-medium">Current Status</div>
+            <div class="text-sm opacity-80">
+              {{ currentStatus === 'checked-out' ? 'Ready to Time In' : 'Ready to Time Out' }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- QR Code Generation -->
+      <div class="text-center mb-6">
+        <div class="bg-white p-6 rounded-lg shadow-lg inline-block">
+          <div v-if="qrCodeLoading" class="flex flex-col items-center space-y-4">
+            <div class="loading loading-spinner loading-lg"></div>
+            <p class="text-sm text-gray-500">Generating QR Code...</p>
+          </div>
+          
+          <div v-else-if="qrCodeData" class="space-y-4">
+            <div class="flex justify-center min-h-[200px] items-center">
+              <img 
+                v-if="qrCodeData.imageUrl" 
+                :src="qrCodeData.imageUrl" 
+                alt="QR Code" 
+                class="mx-auto border rounded-lg max-w-[200px] h-auto"
+              />
+              <div v-else class="text-center p-4">
+                <div class="loading loading-spinner loading-lg mb-2"></div>
+                <p class="text-sm text-gray-500">Generating QR image...</p>
+              </div>
+            </div>
+            <div class="text-xs text-gray-500 max-w-48 mx-auto text-center">
+              <p class="font-medium">{{ qrCodeData.location_name }}</p>
+              <p>{{ qrCodeData.action === 'time-in' ? 'Time In' : 'Time Out' }} QR Code</p>
+              <p class="mt-2">Valid for: {{ formatValidUntil(qrCodeData.valid_until) }}</p>
+              <p class="mt-1 text-xs">{{ qrCodeData.employee_name || 'Employee' }}</p>
+            </div>
+          </div>
+          
+          <div v-else class="text-center py-8">
+            <AlertCircle class="w-12 h-12 text-gray-400 mx-auto mb-2" />
+            <p class="text-sm text-gray-500">Failed to generate QR code</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex gap-3">
+        <button 
+          @click="generateQRCode('time-in')" 
+          :disabled="qrCodeLoading"
+          :class="['btn flex-1', currentStatus === 'checked-out' ? 'btn-success' : 'btn-outline']"
+        >
+          <LogIn class="w-4 h-4 mr-2" />
+          {{ qrCodeLoading ? 'Generating...' : 'Generate Time In QR' }}
+        </button>
+        
+        <button 
+          @click="generateQRCode('time-out')" 
+          :disabled="qrCodeLoading"
+          :class="['btn flex-1', currentStatus === 'checked-in' ? 'btn-warning' : 'btn-outline']"
+        >
+          <LogOut class="w-4 h-4 mr-2" />
+          {{ qrCodeLoading ? 'Generating...' : 'Generate Time Out QR' }}
+        </button>
+      </div>
+      
+      <!-- Debug Info (remove in production) -->
+      <div v-if="qrCodeData" class="mt-4 p-2 bg-gray-100 rounded text-xs">
+        <details>
+          <summary class="cursor-pointer text-gray-600">Debug Info</summary>
+          <pre class="mt-2 text-xs overflow-x-auto">{{ JSON.stringify(qrCodeData, null, 2) }}</pre>
+        </details>
+      </div>
+
+      <!-- Instructions -->
+      <div class="mt-6">
+        <div class="alert alert-warning">
+          <AlertCircle class="w-5 h-5" />
+          <div class="text-sm">
+            <div class="font-medium mb-1">How to use:</div>
+            <ul class="list-disc list-inside space-y-1 text-xs">
+              <li>Generate the appropriate QR code (Time In or Time Out)</li>
+              <li>Use any QR scanner app to scan the code</li>
+              <li>Your attendance will be automatically recorded</li>
+              <li>QR codes expire after 5 minutes for security</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { useAuthStore } from '../stores/authStore'
+import { apiConfig } from '../config/api'
+import axios from 'axios'
+import QRCode from 'qrcode'
+import { 
+  X, 
+  Clock, 
+  LogIn, 
+  LogOut, 
+  AlertCircle,
+  Smartphone 
+} from 'lucide-vue-next'
+
+const props = defineProps({
+  isOpen: {
+    type: Boolean,
+    default: false
+  }
+})
+
+const emit = defineEmits(['close'])
+
+// Auth store
+const authStore = useAuthStore()
+
+// Reactive data
+const qrCodeLoading = ref(false)
+const qrCodeData = ref(null)
+const currentStatus = ref('checked-out') // 'checked-in' or 'checked-out'
+
+// API Configuration
+const API_BASE_URL = apiConfig.baseURL
+const authHeaders = () => {
+  const token = localStorage.getItem('token')
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+// Methods
+const closeModal = () => {
+  emit('close')
+}
+
+const generateQRCode = async (action) => {
+  try {
+    qrCodeLoading.value = true
+    
+    // Get employee information from auth store
+    const employee = authStore.user
+    console.log('Current user:', employee)
+    
+    // Create QR code data with employee and branch info
+    const qrData = {
+      action: action, // 'time-in' or 'time-out'
+      employee_id: employee?.employee_id || employee?.id,
+      employee_name: `${employee?.first_name || employee?.name || ''} ${employee?.last_name || ''}`.trim(),
+      branch_id: employee?.branch_id,
+      branch_name: employee?.branch_name || 'Main Office',
+      timestamp: new Date().toISOString(),
+      location: 'Mobile App QR Code',
+      valid_until: new Date(Date.now() + 5 * 60 * 1000).toISOString() // 5 minutes from now
+    }
+    
+    console.log('QR Data:', qrData)
+    
+    // Generate QR code URL that will be scanned
+    const qrCodeUrl = `${window.location.origin}/attendance/scan?data=${encodeURIComponent(JSON.stringify(qrData))}`
+    
+    // Store QR data for display (without imageUrl initially)
+    qrCodeData.value = {
+      ...qrData,
+      location_name: qrData.branch_name || 'Mobile Device',
+      url: qrCodeUrl,
+      imageUrl: null // Will be set after QR generation
+    }
+    
+    // Generate visual QR code
+    const imageUrl = await generateQRImage(qrCodeUrl)
+    if (qrCodeData.value) {
+      qrCodeData.value.imageUrl = imageUrl
+    }
+    
+  } catch (error) {
+    console.error('Error generating QR code:', error)
+    qrCodeData.value = null
+  } finally {
+    qrCodeLoading.value = false
+  }
+}
+
+const generateQRImage = async (url) => {
+  try {
+    console.log('Generating QR image for URL:', url)
+    
+    // Generate QR code as data URL
+    const qrDataURL = await QRCode.toDataURL(url, {
+      width: 200,
+      margin: 2,
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF'
+      },
+      errorCorrectionLevel: 'M'
+    })
+    
+    console.log('QR Code data URL generated successfully')
+    return qrDataURL
+    
+  } catch (error) {
+    console.error('Error generating QR image:', error)
+    return null
+  }
+}
+
+const formatValidUntil = (timestamp) => {
+  const date = new Date(timestamp)
+  return date.toLocaleTimeString('en-US', { 
+    hour: '2-digit', 
+    minute: '2-digit',
+    hour12: true 
+  })
+}
+
+const checkCurrentStatus = async () => {
+  try {
+    const today = new Date().toISOString().split('T')[0]
+    const response = await axios.get(`${API_BASE_URL}/attendance/my-attendance`, {
+      headers: authHeaders(),
+      params: { date: today }
+    })
+    
+    if (response.data.success && response.data.data.length > 0) {
+      const latestRecord = response.data.data[0]
+      currentStatus.value = latestRecord.time_out ? 'checked-out' : 'checked-in'
+    } else {
+      currentStatus.value = 'checked-out'
+    }
+  } catch (error) {
+    console.error('Error checking attendance status:', error)
+    currentStatus.value = 'checked-out'
+  }
+}
+
+// Test QR generation on mount
+onMounted(() => {
+  console.log('QRAttendanceModal mounted')
+  console.log('QRCode library:', QRCode)
+})
+
+// Watch for modal open/close
+watch(() => props.isOpen, (isOpen) => {
+  if (isOpen) {
+    console.log('Modal opened, checking status...')
+    checkCurrentStatus()
+  } else {
+    qrCodeData.value = null
+  }
+})
+
+// Cleanup when component unmounts
+onUnmounted(() => {
+  qrCodeData.value = null
+})
+</script>
+
+<style scoped>
+.modal-box {
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+#qr-code canvas {
+  border-radius: 8px;
+}
+</style>

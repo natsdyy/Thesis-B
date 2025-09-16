@@ -422,7 +422,7 @@ class BranchReturn {
       const items = await trx("branch_return_items")
         .where("branch_return_id", id)
         .whereNull("deleted_at");
-
+        
       for (const it of items) {
         const current = await trx("branch_inventory")
           .where("id", it.branch_inventory_item_id)

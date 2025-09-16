@@ -143,7 +143,9 @@
           authStore?.user?.full_name ||
           authStore?.user?.email ||
           'System',
-        received_by: '',
+        processed_by: dist.processed_by || null,
+        completed_by: dist.completed_by || null,
+        received_by: dist.processed_by || dist.completed_by || '',
         notes: dist.notes,
         items: (dist.items || []).map((it) => ({
           source: it.source,
@@ -2154,11 +2156,17 @@
               'SCM User';
 
             const receiptForModal = {
-              completed_at: createdReceipt.created_at,
+              completed_at:
+                createdReceipt.completed_at || createdReceipt.created_at,
               reference: createdReceipt.reference,
               branch_name: createdReceipt.branch_name,
               prepared_by: createdReceipt.prepared_by || fullName,
-              received_by: '',
+              processed_by: createdReceipt.processed_by || null,
+              completed_by: createdReceipt.completed_by || null,
+              received_by:
+                createdReceipt.processed_by ||
+                createdReceipt.completed_by ||
+                '',
               notes: createdReceipt.notes,
               items: createdReceipt.items.map((item) => ({
                 source: item.source,
@@ -4777,11 +4785,11 @@
             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6"
           >
             <div class="stat bg-base-100 border border-gray-200 rounded-lg">
-              <div class="stat-figure text-primary">
+              <div class="stat-figure text-primaryColor">
                 <Package class="w-8 h-8" />
               </div>
               <div class="stat-title">Total Items</div>
-              <div class="stat-value text-primary">
+              <div class="stat-value text-primaryColor">
                 {{ filteredDistributionInventory.length }}
               </div>
               <div class="stat-desc">
@@ -4815,11 +4823,11 @@
             </div>
 
             <div class="stat bg-base-100 border border-gray-200 rounded-lg">
-              <div class="stat-figure text-info">
+              <div class="stat-figure text-black/80">
                 <Building2 class="w-8 h-8" />
               </div>
               <div class="stat-title">Branches</div>
-              <div class="stat-value text-info">{{ branches.length }}</div>
+              <div class="stat-value text-black/80">{{ branches.length }}</div>
               <div class="stat-desc">Available branches</div>
             </div>
 

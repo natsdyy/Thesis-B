@@ -1843,12 +1843,21 @@
   };
 
   const viewDistributionReceipt = (distribution) => {
+    // Debug logging
+    alert('viewDistributionReceipt called!'); // Temporary alert to test if function is called
+    console.log('Debug - viewDistributionReceipt called with:', distribution);
+    console.log('Debug - Original distribution data:', distribution);
+
     // Format the distribution data to match the receipt modal expectations
     const receiptData = {
       ...distribution,
-      completed_at: distribution.created_at,
+      completed_at: distribution.completed_at || distribution.created_at,
+      // Map the correct fields for the receipt modal
+      processed_by: distribution.processed_by || null,
+      completed_by: distribution.completed_by || null,
       received_by:
-        distribution.received_by ||
+        distribution.processed_by || // Use processed_by from API response
+        distribution.completed_by || // Also check completed_by for completed distributions
         (() => {
           const user = authStore.user;
           if (user?.first_name && user?.last_name) {
@@ -3067,9 +3076,17 @@
                 </div>
 
                 <!-- Actions -->
+                <div class="mb-3">
+                  <p class="text-xs text-gray-600 mb-2">
+                    <strong>Processing Options:</strong> Use "Select Items" for
+                    partial acceptance/rejection, or "Accept All"/"Reject All"
+                    for complete processing.
+                  </p>
+                </div>
                 <div
                   class="flex flex-col sm:flex-row justify-end sm:space-x-2 space-y-2 sm:space-y-0 w-full sm:w-auto"
                 >
+                  <!-- Item-Level Processing Button - Allows selecting individual items to accept/reject -->
                   <button
                     @click="
                       () => {
@@ -3082,6 +3099,7 @@
                     "
                     class="btn btn-sm text-white bg-primaryColor font-thin border border-none hover:bg-primaryColor/80 w-full sm:w-auto"
                     :disabled="distributionActionLoading"
+                    title="Click to select individual items to accept or reject"
                   >
                     <Package class="w-4 h-4 mr-1" />
                     Select Items
@@ -3539,7 +3557,7 @@
           </div>
 
           <!-- Confirmation Message -->
-          <div class="alert alert-info">
+          <div class="alert bg-blue-50 text-blue-600">
             <AlertCircle class="w-4 h-4" />
             <span>
               By accepting this distribution, all items will be added to your
@@ -3557,14 +3575,7 @@
             >
               Cancel
             </button>
-            <button
-              @click="rejectDistribution(selectedDistribution)"
-              class="btn btn-outline btn-sm text-error hover:bg-error/10 w-full sm:w-auto"
-              :disabled="distributionActionLoading"
-            >
-              <X class="w-4 h-4 mr-1" />
-              Reject
-            </button>
+
             <button
               @click="acceptDistribution(selectedDistribution)"
               class="btn btn-primary btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80 shadow-none w-full sm:w-auto"
@@ -3678,7 +3689,7 @@
           </div>
 
           <!-- Warning Message -->
-          <div class="alert alert-warning">
+          <div class="alert bg-warning/20 text-warning shadow-none">
             <AlertTriangle class="w-4 h-4" />
             <span>
               By rejecting this distribution, the items will be returned to the

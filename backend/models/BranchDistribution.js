@@ -209,26 +209,42 @@ class BranchDistribution {
     // For partially processed distributions, get rejection information
     let rejectedItems = [];
     if (distribution.status === "partially_processed") {
-      // Get rejection information from inventory transactions with item details
-      rejectedItems = await db("inventory_transactions as it")
-        .leftJoin("inventory_items as ii", "it.inventory_item_id", "ii.id")
-        .leftJoin("inventory_item_types as iit", "ii.item_type_id", "iit.id")
-        .where("it.reference_number", distribution.reference)
-        .where("it.adjustment_type", "rejection")
-        .where("it.audit_action", "distribution_rejected")
-        .select(
-          "it.inventory_item_id",
-          "it.quantity",
-          "it.unit_cost",
-          "it.total_value",
-          "it.notes",
-          "it.performed_by",
-          "it.transaction_date",
-          "ii.item_name",
-          "iit.name as item_type_name",
-          "iit.unit_of_measure"
+      // Get rejection information from the dedicated rejections table
+      // For production items, we need to join with menu_items to get the proper name
+      rejectedItems = await db("branch_distribution_rejections as bdr")
+        .leftJoin(
+          "branch_distribution_items as bdi",
+          "bdr.distribution_item_id",
+          "bdi.id"
         )
-        .orderBy("it.transaction_date", "desc");
+        .leftJoin("production_inventory as pi", function () {
+          this.on("bdi.item_ref_id", "pi.id").andOn(
+            "bdi.source",
+            "=",
+            db.raw("'production'")
+          );
+        })
+        .leftJoin("menu_items as mi", "pi.menu_item_id", "mi.id")
+        .where("bdr.distribution_id", id)
+        .select(
+          "bdi.id",
+          db.raw(
+            "CASE WHEN bdi.source = 'production' THEN mi.menu_item_name ELSE bdi.name END as name"
+          ),
+          "bdi.source",
+          "bdi.qty as quantity",
+          "bdi.unit_price as unit_cost",
+          "bdi.amount as total_value",
+          db.raw(
+            "CASE WHEN bdi.source = 'production' THEN pi.unit_of_measure ELSE bdi.unit END as unit"
+          ),
+          "bdi.category",
+          "bdr.rejection_reason",
+          "bdr.rejection_notes",
+          "bdr.rejected_by",
+          "bdr.rejected_at as transaction_date"
+        )
+        .orderBy("bdr.rejected_at", "desc");
     }
 
     return {
@@ -1013,7 +1029,19 @@ class BranchDistribution {
             source: item.source,
           });
 
-          // Record rejection in inventory transaction history for tracking
+          // Record rejection in the dedicated rejections table
+          await trx("branch_distribution_rejections").insert({
+            distribution_id: id,
+            distribution_item_id: item.id,
+            rejected_by: actionData.action_by || "Branch Manager",
+            rejected_at: db.fn.now(),
+            rejection_reason: rejectionReason.reason,
+            rejection_notes: rejectionReason.notes || null,
+            created_at: db.fn.now(),
+            updated_at: db.fn.now(),
+          });
+
+          // Also record in inventory transaction history for tracking
           if (item.source === "scm") {
             console.log(
               "Debug - Recording SCM rejection notification, item_ref_id:",

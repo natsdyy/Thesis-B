@@ -132,6 +132,37 @@ router.post('/', authenticateToken, async (req, res) => {
       dayOfWeek = 'unspecified';
     }
 
+    // Check if a schedule already exists for this branch and day_of_week combination
+    const existingSchedule = await db('branch_schedules')
+      .where('branch_id', branch_id)
+      .where('day_of_week', dayOfWeek)
+      .first();
+
+    if (existingSchedule) {
+      // Update existing schedule instead of creating a new one
+      const update = {
+        start_time: shift_start,
+        end_time: shift_end,
+        is_active: (status || 'active') === 'active',
+        updated_at: db.fn.now(),
+      };
+
+      console.log('[branch-schedules:update] updating existing schedule =>', { id: existingSchedule.id, update });
+
+      const [updated] = await db('branch_schedules')
+        .where('id', existingSchedule.id)
+        .update(update)
+        .returning('*');
+
+      updated.selected_days = safeParseJson(updated.selected_days, updated.selected_days) || [];
+
+      return res.json({ 
+        success: true, 
+        data: updated, 
+        message: 'Branch schedule updated successfully (existing schedule found)' 
+      });
+    }
+
     const insert = {
       branch_id,
       day_of_week: dayOfWeek,
@@ -151,6 +182,16 @@ router.post('/', authenticateToken, async (req, res) => {
     res.status(201).json({ success: true, data: created, message: 'Branch schedule created successfully' });
   } catch (error) {
     console.error('[branch-schedules:create] Error:', error && (error.stack || error));
+    
+    // Handle unique constraint violation specifically
+    if (error.code === '23505' && error.constraint === 'branch_schedules_branch_id_day_of_week_unique') {
+      return res.status(409).json({
+        success: false,
+        message: 'A schedule already exists for this branch and day combination. Please update the existing schedule instead.',
+        code: 'DUPLICATE_SCHEDULE'
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Failed to create branch schedule',

@@ -177,8 +177,36 @@ class BranchRequest {
         })
         .returning("*");
 
+      // Normalize items: for production items missing menu_item_id, resolve by name
+      const normalizedItems = await Promise.all(
+        (items || []).map(async (item) => {
+          const isProduction =
+            (item.item_type || "").toLowerCase() === "production";
+          if (isProduction && !item.menu_item_id && item.item_name) {
+            // Prefer a menu id that exists in production_inventory
+            const piRow = await trx("production_inventory as pi")
+              .leftJoin("menu_items as mi", "pi.menu_item_id", "mi.id")
+              .select("mi.id as id", "pi.available_quantity")
+              .whereILike("mi.menu_item_name", item.item_name)
+              .orderBy("pi.available_quantity", "desc")
+              .orderBy("mi.id", "asc")
+              .first();
+            if (piRow?.id) return { ...item, menu_item_id: piRow.id };
+
+            // Fallback: any menu_items match by name
+            const menuRow = await trx("menu_items")
+              .select("id")
+              .whereILike("menu_item_name", item.item_name)
+              .orderBy("id", "asc")
+              .first();
+            if (menuRow) return { ...item, menu_item_id: menuRow.id };
+          }
+          return item;
+        })
+      );
+
       // Create branch request items
-      const itemsToInsert = items.map((item, index) => ({
+      const itemsToInsert = normalizedItems.map((item, index) => ({
         branch_request_id: branchRequest.id,
         item_number: index + 1,
         item_name: item.item_name,
@@ -186,6 +214,10 @@ class BranchRequest {
         item_unit: item.item_unit || "pieces",
         item_type: item.item_type || "General",
         item_notes: item.item_notes || null,
+        inventory_item_id: item.inventory_item_id || null,
+        unit_price: item.unit_price || null,
+        category: item.category || null,
+        menu_item_id: item.menu_item_id || null, // optional linkage for production items
       }));
 
       const createdItems = await trx("branch_request_items")
@@ -227,8 +259,36 @@ class BranchRequest {
         // Delete existing items
         await trx("branch_request_items").where("branch_request_id", id).del();
 
+        // Normalize incoming items: resolve missing menu_item_id for production by name
+        const normalizedItems = await Promise.all(
+          (items || []).map(async (item) => {
+            const isProduction =
+              (item.item_type || "").toLowerCase() === "production";
+            if (isProduction && !item.menu_item_id && item.item_name) {
+              // Prefer a menu id that exists in production_inventory
+              const piRow = await trx("production_inventory as pi")
+                .leftJoin("menu_items as mi", "pi.menu_item_id", "mi.id")
+                .select("mi.id as id", "pi.available_quantity")
+                .whereILike("mi.menu_item_name", item.item_name)
+                .orderBy("pi.available_quantity", "desc")
+                .orderBy("mi.id", "asc")
+                .first();
+              if (piRow?.id) return { ...item, menu_item_id: piRow.id };
+
+              // Fallback: any menu_items match by name
+              const menuRow = await trx("menu_items")
+                .select("id")
+                .whereILike("menu_item_name", item.item_name)
+                .orderBy("id", "asc")
+                .first();
+              if (menuRow) return { ...item, menu_item_id: menuRow.id };
+            }
+            return item;
+          })
+        );
+
         // Insert new items
-        const itemsToInsert = items.map((item, index) => ({
+        const itemsToInsert = normalizedItems.map((item, index) => ({
           branch_request_id: id,
           item_number: index + 1,
           item_name: item.item_name,
@@ -236,6 +296,10 @@ class BranchRequest {
           item_unit: item.item_unit || "pieces",
           item_type: item.item_type || "General",
           item_notes: item.item_notes || null,
+          inventory_item_id: item.inventory_item_id || null,
+          unit_price: item.unit_price || null,
+          category: item.category || null,
+          menu_item_id: item.menu_item_id || null,
         }));
 
         const createdItems = await trx("branch_request_items")

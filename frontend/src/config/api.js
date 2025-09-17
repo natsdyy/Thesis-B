@@ -1,33 +1,36 @@
-// API Configuration for different environments
-const config = {
-  development: {
-    baseURL: 'http://192.168.56.1:5000/api' || 'http://localhost:5000/api',
-    timeout: 10000,
-  },
-  production: {
-    baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
-    timeout: 15000,
-  },
+// API Configuration that supports both offline (local) and online modes
+
+function resolveBaseURL() {
+  // Highest priority: explicit Vite env override
+  const fromEnv = import.meta.env.VITE_API_BASE_URL;
+  if (fromEnv && typeof fromEnv === 'string' && fromEnv.trim().length > 0) {
+    return fromEnv.trim();
+  }
+
+  // If running behind the same origin (e.g., nginx proxy), use window origin
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin.replace(/\/$/, '')}/api`;
+  }
+
+  // Fallback for local development/offline
+  return 'http://localhost:5000/api';
+}
+
+const baseURL = resolveBaseURL();
+
+export const apiConfig = {
+  baseURL,
+  timeout: import.meta.env.MODE === 'production' ? 15000 : 10000,
 };
 
-// Get current environment
-const env = import.meta.env.MODE || 'development';
-
-// Export configuration for current environment
-export const apiConfig = config[env] || config.development;
-
-// Helper function to get full API URL
 export const getApiUrl = (endpoint) => {
-  const baseURL = apiConfig.baseURL.replace(/\/$/, ''); // Remove trailing slash
-  const cleanEndpoint = endpoint.replace(/^\//, ''); // Remove leading slash
-  return `${baseURL}/${cleanEndpoint}`;
+  const cleanBase = apiConfig.baseURL.replace(/\/$/, '');
+  const cleanEndpoint = endpoint.replace(/^\//, '');
+  return `${cleanBase}/${cleanEndpoint}`;
 };
 
-// Default axios configuration
 export const axiosConfig = {
   baseURL: apiConfig.baseURL,
   timeout: apiConfig.timeout,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
 };

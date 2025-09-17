@@ -1,4 +1,78 @@
 <script setup>
+  import { useBranchReturnStore } from '../../stores/branchReturnStore';
+  // Branch Returns Approval UI state
+  const branchReturnStore = useBranchReturnStore();
+  const showReturnsPanel = ref(false);
+  const pendingReturns = computed(() =>
+    (branchReturnStore.returns || []).filter((r) => r.status === 'Pending')
+  );
+
+  const loadPendingReturns = async () => {
+    try {
+      await branchReturnStore.fetchReturns({ status: 'Pending' });
+    } catch (e) {
+      console.error('Failed to load branch returns:', e);
+    }
+  };
+
+  const refreshTimer = ref(null);
+  onMounted(async () => {
+    // Handle preloaded distribution from SCM RequestSupply Process action
+    try {
+      const state = router.options?.history?.state || {};
+      const preload = state.preloadDistribution;
+      if (preload && preload.items && preload.items.length) {
+        if (preload.branch_id) inventoryStore.setCartBranch(preload.branch_id);
+        for (const it of preload.items) {
+          try {
+            inventoryStore.addToDistributionCart({
+              source: it.source || 'scm',
+              item: it,
+              item_id: it.menu_item_id || it.name,
+              name: it.name,
+              unit: it.unit,
+              unit_price: Number(it.unit_price || 0),
+              quantity: Number(it.quantity || 0),
+              branch_id: preload.branch_id,
+            });
+          } catch (e) {
+            // skip invalid items
+          }
+        }
+        // If we have a tab system, switch to distribution tab
+        if (typeof switchToDistributionTab === 'function') {
+          switchToDistributionTab();
+        }
+        // IMPORTANT: consume the preload so reloads don't re-add the draft
+        try {
+          const newState = { ...state };
+          delete newState.preloadDistribution;
+          window.history.replaceState(newState, document.title);
+        } catch (_) {}
+      }
+    } catch (_) {}
+    await loadPendingReturns();
+    // Lightweight polling to surface new returns without full reload
+    refreshTimer.value = setInterval(loadPendingReturns, 15000);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadPendingReturns();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    // Store cleanup fn on the ref for removal in unmounted
+    refreshTimer._onVisibility = onVisibility;
+  });
+
+  onUnmounted(() => {
+    if (refreshTimer.value) clearInterval(refreshTimer.value);
+    if (refreshTimer._onVisibility) {
+      document.removeEventListener(
+        'visibilitychange',
+        refreshTimer._onVisibility
+      );
+    }
+  });
   import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
   import {
     Package,
@@ -96,13 +170,16 @@
         completed_at: dist.created_at,
         reference: dist.reference,
         branch_name: dist.branch_name,
+        status: dist.status,
         prepared_by:
           dist.prepared_by ||
           `${authStore?.user?.first_name || ''} ${authStore?.user?.last_name || ''}`.trim() ||
           authStore?.user?.full_name ||
           authStore?.user?.email ||
           'System',
-        received_by: '',
+        processed_by: dist.processed_by || null,
+        completed_by: dist.completed_by || null,
+        received_by: dist.processed_by || dist.completed_by || '',
         notes: dist.notes,
         items: (dist.items || []).map((it) => ({
           source: it.source,
@@ -113,6 +190,7 @@
           item_amount: it.amount,
         })),
         total_amount: dist.total_amount,
+        rejected_items: dist.rejected_items || [],
       };
       distributionReceipt.value = { show: true, receipt: receiptForModal };
     } catch (_) {}
@@ -947,6 +1025,17 @@
         badgeColor: 'bg-error/20 text-error',
         description:
           'Item was disposed due to damage, expiry, or other reasons',
+      };
+    }
+
+    // Treat reduce_quantity adjustments as Distribution (transfer-out)
+    if (type === 'adjustment' && adjustmentType === 'reduce_quantity') {
+      return {
+        icon: ArrowRightLeft,
+        color: 'text-primary',
+        label: 'Distribution',
+        badgeColor: 'bg-primary/20 text-primary',
+        description: 'Item was distributed/transferred out to a branch',
       };
     }
 
@@ -1880,19 +1969,31 @@
                 }
               );
             } else {
-              await inventoryStore.distributeToBranch({
-                inventory_item_id: distributionData.item.id,
-                current_quantity: distributionData.item.quantity,
-                branch_id: distributionData.branch_id,
-                quantity: distributionData.quantity,
-                transfer_price: distributionData.transfer_price,
-                notes: distributionData.notes,
-                performed_by:
-                  `${authStore?.user?.first_name || ''} ${authStore?.user?.last_name || ''}`.trim() ||
-                  authStore?.user?.full_name ||
-                  authStore?.user?.email ||
-                  'System',
-              });
+              // Use bulk method even for single items for consistency
+              const preparedName =
+                `${authStore?.user?.first_name || ''} ${authStore?.user?.last_name || ''}`.trim() ||
+                authStore?.user?.full_name ||
+                authStore?.user?.email ||
+                'System';
+
+              const currentQty =
+                parseFloat(distributionData.item.quantity) || 0;
+              const distributeQty = parseFloat(distributionData.quantity) || 0;
+              const newQty = currentQty - distributeQty;
+
+              await inventoryStore.bulkDistributeToBranch(
+                [
+                  {
+                    inventory_item_id: distributionData.item.id,
+                    current_quantity: currentQty,
+                    new_quantity: newQty,
+                    branch_id: distributionData.branch_id,
+                    transfer_price: distributionData.transfer_price,
+                    notes: distributionData.notes,
+                  },
+                ],
+                preparedName
+              );
             }
 
             showToast(
@@ -1932,16 +2033,21 @@
       const unit = distributionData.item.unit_of_measure || 'units';
       const unitPrice = Number(distributionData.transfer_price || 0);
 
-      inventoryStore.addToDistributionCart({
-        source: isProduction ? 'production' : 'scm',
-        item: distributionData.item,
-        item_id: distributionData.item.id,
-        name,
-        unit,
-        unit_price: unitPrice,
-        quantity: Number(distributionData.quantity || 0),
-        branch_id: distributionData.branch_id,
-      });
+      try {
+        inventoryStore.addToDistributionCart({
+          source: isProduction ? 'production' : 'scm',
+          item: distributionData.item,
+          item_id: distributionData.item.id,
+          name,
+          unit,
+          unit_price: unitPrice,
+          quantity: Number(distributionData.quantity || 0),
+          branch_id: distributionData.branch_id,
+        });
+      } catch (error) {
+        showToast('error', error.message);
+        return;
+      }
 
       showToast('success', `${name} added to draft`);
       closeModal();
@@ -2002,6 +2108,7 @@
           notes: inventoryStore.distributionCart.notes || '',
         },
         onConfirm: async () => {
+          let createdReceipt = null;
           try {
             // Step 1: Create consolidated receipt first
             const preparedName =
@@ -2033,40 +2140,54 @@
               })),
             };
 
-            const createdReceipt =
+            createdReceipt =
               await branchDistributionStore.createDistribution(receiptData);
 
-            // Step 2: Execute stock movements using existing endpoints
+            // Step 2: Execute stock movements using bulk operations (optimized)
+            const scmItems = [];
+            const productionItems = [];
+
+            // Separate items by source
             for (const it of cart.items) {
               if (it.source === 'production') {
-                await productionStore.recordDistribution(
-                  it.item?.menu_item_id || it.item_id,
-                  {
-                    branch_id: cart.branch_id,
-                    quantity: it.quantity,
-                    transfer_price: it.unit_price,
-                    notes: `Receipt: ${createdReceipt.reference}`,
-                  }
-                );
-              } else {
-                await inventoryStore.distributeToBranch({
-                  inventory_item_id: it.item_id,
-                  current_quantity: it.item.quantity,
+                productionItems.push({
+                  menu_item_id: it.item?.menu_item_id || it.item_id,
                   branch_id: cart.branch_id,
                   quantity: it.quantity,
                   transfer_price: it.unit_price,
                   notes: `Receipt: ${createdReceipt.reference}`,
-                  performed_by:
-                    `${authStore?.user?.first_name || ''} ${authStore?.user?.last_name || ''}`.trim() ||
-                    authStore?.user?.full_name ||
-                    authStore?.user?.email ||
-                    'System',
                 });
+              } else {
+                const currentQty = parseFloat(it.item.quantity) || 0;
+                const distributeQty = parseFloat(it.quantity) || 0;
+                const newQty = currentQty - distributeQty;
+
+                const scmItem = {
+                  inventory_item_id: it.item_id,
+                  current_quantity: currentQty,
+                  new_quantity: newQty,
+                  branch_id: cart.branch_id,
+                  transfer_price: it.unit_price,
+                  notes: `Receipt: ${createdReceipt.reference}`,
+                };
+                scmItems.push(scmItem);
               }
             }
 
-            // Step 3: Clear cart and show receipt
-            inventoryStore.clearDistributionCart();
+            // Create distribution records without deducting from main inventory
+            // Items will only be deducted when accepted by the branch
+            const distributionData = {
+              branch_id: cart.branch_id,
+              prepared_by: preparedName,
+              total_amount: cart.total_amount,
+              notes: `Receipt: ${createdReceipt.reference}`,
+              items: [...scmItems, ...productionItems],
+            };
+
+            // Distribution record already created above via createDistribution
+            // No need to call bulk-distribute here
+
+            // Step 3: Show receipt toast (cart is cleared in finally)
             showToast(
               'success',
               `Distribution completed - Receipt ${createdReceipt.reference}`
@@ -2080,11 +2201,17 @@
               'SCM User';
 
             const receiptForModal = {
-              completed_at: createdReceipt.created_at,
+              completed_at:
+                createdReceipt.completed_at || createdReceipt.created_at,
               reference: createdReceipt.reference,
               branch_name: createdReceipt.branch_name,
               prepared_by: createdReceipt.prepared_by || fullName,
-              received_by: '',
+              processed_by: createdReceipt.processed_by || null,
+              completed_by: createdReceipt.completed_by || null,
+              received_by:
+                createdReceipt.processed_by ||
+                createdReceipt.completed_by ||
+                '',
               notes: createdReceipt.notes,
               items: createdReceipt.items.map((item) => ({
                 source: item.source,
@@ -2103,6 +2230,11 @@
             };
           } catch (err) {
             showToast('error', err.message || 'Checkout failed');
+          } finally {
+            // Ensure the draft is cleared after a successful creation
+            if (createdReceipt) {
+              inventoryStore.clearDistributionCart();
+            }
           }
         },
       };
@@ -2215,27 +2347,34 @@
     rejectionNotification.value.acknowledging = true;
 
     try {
-      // The quantities are already returned to inventory when the distribution was rejected
-      // We just need to close the notification
+      // Use the store to acknowledge the rejection
+      await branchDistributionStore.acknowledgeRejection(
+        rejectionNotification.value.distribution.id,
+        {
+          acknowledged_by:
+            authStore.user?.name ||
+            `${authStore.user?.first_name || ''} ${authStore.user?.last_name || ''}`.trim() ||
+            authStore.user?.email ||
+            'System',
+          acknowledgment_notes:
+            'Rejection acknowledged via Main Inventory interface',
+        }
+      );
+
+      // Close the notification
       closeRejectionNotification();
 
-      // Show success message
-      toast.value = {
-        show: true,
-        type: 'success',
-        message:
-          'Rejection acknowledged. Quantities have been returned to inventory.',
-      };
+      // Show success message using the helper function (auto-closes after 3 seconds)
+      showToast(
+        'success',
+        'Rejection acknowledged. Quantities have been returned to inventory.'
+      );
 
       // Refresh the distribution history
       await fetchDistributionHistory(historyPagination.value.page || 1);
     } catch (error) {
       console.error('Error acknowledging rejection:', error);
-      toast.value = {
-        show: true,
-        type: 'error',
-        message: 'Failed to acknowledge rejection. Please try again.',
-      };
+      showToast('error', 'Failed to acknowledge rejection. Please try again.');
     } finally {
       rejectionNotification.value.acknowledging = false;
     }
@@ -4696,11 +4835,11 @@
             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6"
           >
             <div class="stat bg-base-100 border border-gray-200 rounded-lg">
-              <div class="stat-figure text-primary">
+              <div class="stat-figure text-primaryColor">
                 <Package class="w-8 h-8" />
               </div>
               <div class="stat-title">Total Items</div>
-              <div class="stat-value text-primary">
+              <div class="stat-value text-primaryColor">
                 {{ filteredDistributionInventory.length }}
               </div>
               <div class="stat-desc">
@@ -4734,11 +4873,11 @@
             </div>
 
             <div class="stat bg-base-100 border border-gray-200 rounded-lg">
-              <div class="stat-figure text-info">
+              <div class="stat-figure text-black/80">
                 <Building2 class="w-8 h-8" />
               </div>
               <div class="stat-title">Branches</div>
-              <div class="stat-value text-info">{{ branches.length }}</div>
+              <div class="stat-value text-black/80">{{ branches.length }}</div>
               <div class="stat-desc">Available branches</div>
             </div>
 
@@ -5210,12 +5349,36 @@
       </div>
     </dialog>
 
-    <!-- Draft Checkout Controls (floating action) -->
-    <div
-      class="fixed bottom-6 right-6 z-40"
-      v-if="inventoryStore.cartItemCount > 0"
-    >
-      <div class="card shadow-xl bg-base-100">
+    <!-- Floating actions container (bottom-left corner) -->
+    <div class="fixed bottom-6 right-6 z-40 flex flex-col gap-3">
+      <!-- Branch Returns Approval (first, appears on top) -->
+      <div v-if="pendingReturns.length > 0" class="card shadow-xl bg-base-100">
+        <div class="card-body p-4">
+          <div class="flex items-center justify-between gap-6">
+            <div>
+              <div class="text-sm font-medium">Branch Returns</div>
+              <div class="text-xs text-gray-500">
+                {{ pendingReturns.length }} pending
+              </div>
+            </div>
+            <button
+              class="btn btn-xs"
+              @click="
+                showReturnsPanel = true;
+                loadPendingReturns();
+              "
+            >
+              Review
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Draft Checkout Controls (below) -->
+      <div
+        v-if="inventoryStore.cartItemCount > 0"
+        class="card shadow-xl bg-base-100"
+      >
         <div class="card-body p-4">
           <div class="text-sm font-medium">Draft Distribution</div>
           <div class="text-xs text-gray-500">
@@ -5237,6 +5400,90 @@
         </div>
       </div>
     </div>
+
+    <!-- Returns Review Modal -->
+    <dialog id="returns_review_modal" class="modal" :open="showReturnsPanel">
+      <div class="modal-box max-w-4xl">
+        <h3 class="font-bold text-lg mb-3">Pending Branch Returns</h3>
+        <div class="overflow-x-auto max-h-[60vh]">
+          <table class="table table-zebra table-xs w-full">
+            <thead>
+              <tr class="bg-base-200">
+                <th>ID</th>
+                <th>Branch</th>
+                <th>Type</th>
+                <th>Items</th>
+                <th>Notes</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="ret in pendingReturns" :key="ret.id">
+                <td class="font-medium">#{{ ret.id }}</td>
+                <td>{{ ret.branch_name || ret.branch_id }}</td>
+                <td class="uppercase">{{ ret.return_type }}</td>
+                <td>
+                  <div class="text-xs">
+                    <div v-for="it in ret.items" :key="it.id">
+                      {{ it.item_name }} - {{ it.quantity }} {{ it.unit }}
+                    </div>
+                  </div>
+                </td>
+                <td class="text-xs text-gray-500">{{ ret.notes || '—' }}</td>
+                <td>
+                  <div class="flex gap-1">
+                    <button
+                      class="btn btn-xs btn-success"
+                      :disabled="branchReturnStore.loading"
+                      @click="
+                        branchReturnStore
+                          .approveReturn(ret.id)
+                          .then(loadPendingReturns)
+                      "
+                    >
+                      <span
+                        v-if="branchReturnStore.loading"
+                        class="loading loading-spinner loading-xs mr-1"
+                      ></span>
+                      {{
+                        branchReturnStore.loading ? 'Approving...' : 'Approve'
+                      }}
+                    </button>
+                    <button
+                      class="btn btn-xs btn-ghost"
+                      :disabled="branchReturnStore.loading"
+                      @click="
+                        branchReturnStore
+                          .rejectReturn(ret.id)
+                          .then(loadPendingReturns)
+                      "
+                    >
+                      <span
+                        v-if="branchReturnStore.loading"
+                        class="loading loading-spinner loading-xs mr-1"
+                      ></span>
+                      {{
+                        branchReturnStore.loading ? 'Rejecting...' : 'Reject'
+                      }}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="pendingReturns.length === 0">
+                <td colspan="6" class="text-center text-sm text-gray-500 py-6">
+                  No pending returns.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="modal-action">
+          <button class="btn btn-sm" @click="showReturnsPanel = false">
+            Close
+          </button>
+        </div>
+      </div>
+    </dialog>
 
     <BranchDistributionReceiptModal
       :show="distributionReceipt.show"
@@ -5337,6 +5584,22 @@
                   {{ rejectionNotification.distribution.rejection_notes }}
                 </p>
               </div>
+              <div v-if="rejectionNotification.distribution.acknowledged_by">
+                <span class="font-medium">Acknowledged by:</span>
+                <span class="ml-2 text-green-700 font-medium">{{
+                  rejectionNotification.distribution.acknowledged_by
+                }}</span>
+              </div>
+              <div v-if="rejectionNotification.distribution.acknowledged_at">
+                <span class="font-medium">Acknowledged at:</span>
+                <span class="ml-2 text-green-700">
+                  {{
+                    new Date(
+                      rejectionNotification.distribution.acknowledged_at
+                    ).toLocaleString('en-PH')
+                  }}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -5356,7 +5619,9 @@
                   >
                 </div>
                 <div class="text-right">
-                  <div class="font-medium">{{ item.qty }} {{ item.unit }}</div>
+                  <div class="font-medium">
+                    {{ Number(item.qty).toFixed(2) }} {{ item.unit }}
+                  </div>
                   <div class="text-sm text-gray-500">
                     ₱{{ Number(item.amount).toFixed(2) }}
                   </div>
@@ -5378,7 +5643,10 @@
           </div>
 
           <!-- Action Notice -->
-          <div class="bg-warning/10 border border-warning/30 rounded-lg p-4">
+          <div
+            v-if="!rejectionNotification.distribution?.acknowledged_by"
+            class="bg-warning/10 border border-warning/30 rounded-lg p-4"
+          >
             <div class="flex items-start gap-3">
               <svg
                 class="w-5 h-5 text-warning mt-0.5 flex-shrink-0"
@@ -5403,6 +5671,34 @@
               </div>
             </div>
           </div>
+          <!-- Acknowledgment Confirmation -->
+          <div
+            v-else
+            class="bg-green-50 border border-green-200 rounded-lg p-4"
+          >
+            <div class="flex items-start gap-3">
+              <svg
+                class="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+              <div>
+                <h4 class="font-semibold text-green-800 mb-1">Acknowledged</h4>
+                <p class="text-sm text-gray-700">
+                  This rejection has been acknowledged and the inventory
+                  adjustment has been confirmed.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Modal Actions -->
@@ -5415,6 +5711,7 @@
             Close
           </button>
           <button
+            v-if="!rejectionNotification.distribution?.acknowledged_by"
             class="btn btn-sm bg-primaryColor font-thin text-white border border-none hover:bg-primaryColor/80"
             @click="acknowledgeRejection"
             :disabled="rejectionNotification.acknowledging"
@@ -5440,6 +5737,26 @@
                 : 'Acknowledge & Return to Inventory'
             }}
           </button>
+          <div
+            v-else
+            class="btn btn-sm bg-green-100 font-thin text-green-800 border border-green-300 cursor-default"
+          >
+            <svg
+              class="w-4 h-4 mr-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+            Acknowledged by
+            {{ rejectionNotification.distribution.acknowledged_by }}
+          </div>
         </div>
       </div>
     </dialog>

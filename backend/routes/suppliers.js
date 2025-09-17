@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const Supplier = require("../models/Supplier");
+const { db } = require("../config/database");
 
 // GET /api/suppliers - Get all suppliers
 router.get("/", async (req, res) => {
@@ -232,6 +233,182 @@ router.patch("/:id/restore", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error restoring supplier",
+      error: error.message,
+    });
+  }
+});
+
+// GET /api/suppliers/:id/transactions - Get supplier transaction history
+router.get("/:id/transactions", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      status = "all",
+      page = 1,
+      limit = 5,
+      month = null,
+      year = null,
+    } = req.query;
+
+    // Verify supplier exists
+    const supplier = await Supplier.getById(id);
+    if (!supplier) {
+      return res.status(404).json({
+        success: false,
+        message: "Supplier not found",
+      });
+    }
+
+    // Build the query for purchase orders
+    let query = db("purchase_orders as po")
+      .select(
+        "po.id",
+        "po.supplier_id",
+        "po.po_number as transaction_id",
+        db.raw("'Purchase Order' as type"),
+        "po.status",
+        "po.total_amount as amount",
+        "po.order_date as date",
+        "po.notes as description",
+        "po.created_at",
+        "po.updated_at"
+      )
+      .where("po.supplier_id", id)
+      .whereNull("po.deleted_at");
+
+    // Filter by status if provided
+    if (status && status !== "all") {
+      if (status === "completed") {
+        query = query.where("po.status", "Completed");
+      } else if (status === "returned") {
+        // For returned status, we need to check if there are any item returns
+        query = query.whereExists(function () {
+          this.select("*")
+            .from("item_returns as ir")
+            .whereRaw("ir.purchase_order_id = po.id")
+            .whereNull("ir.deleted_at");
+        });
+      } else if (status === "pending") {
+        query = query.whereIn("po.status", [
+          "Draft",
+          "Sent",
+          "Confirmed",
+          "In Progress",
+        ]);
+      }
+    }
+
+    // Filter by month and year if provided
+    if (month && year) {
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+      query = query.whereBetween("po.order_date", [startDate, endDate]);
+    }
+
+    // Get purchase orders
+    const purchaseOrders = await query.orderBy("po.order_date", "desc");
+
+    // Get item returns for this supplier
+    let itemReturnsQuery = db("item_returns as ir")
+      .join("purchase_orders as po", "ir.purchase_order_id", "po.id")
+      .select(
+        "ir.id",
+        "po.supplier_id",
+        "ir.id as transaction_id",
+        db.raw("'Item Return' as type"),
+        "ir.status",
+        db.raw("ir.return_quantity * poi.unit_price as amount"),
+        "ir.created_at as date",
+        "ir.return_reason as description",
+        "ir.created_at",
+        "ir.updated_at"
+      )
+      .join(
+        "purchase_order_items as poi",
+        "ir.purchase_order_item_id",
+        "poi.id"
+      )
+      .where("po.supplier_id", id)
+      .whereNull("ir.deleted_at")
+      .whereNull("po.deleted_at");
+
+    // Apply month filter to item returns if provided
+    if (month && year) {
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+      itemReturnsQuery = itemReturnsQuery.whereBetween("ir.created_at", [
+        startDate,
+        endDate,
+      ]);
+    }
+
+    const itemReturns = await itemReturnsQuery;
+
+    // Combine and sort all transactions
+    const allTransactions = [...purchaseOrders, ...itemReturns]
+      .sort((a, b) => {
+        const dateA = a.date ? new Date(a.date) : new Date(0);
+        const dateB = b.date ? new Date(b.date) : new Date(0);
+        return dateB - dateA;
+      })
+      .map((transaction, index) => {
+        let formattedDate = null;
+
+        try {
+          if (transaction.date) {
+            if (typeof transaction.date === "string") {
+              formattedDate = transaction.date.split("T")[0];
+            } else {
+              formattedDate = new Date(transaction.date)
+                .toISOString()
+                .split("T")[0];
+            }
+          }
+        } catch (dateError) {
+          console.error(
+            "Error formatting date for transaction:",
+            transaction.id,
+            dateError
+          );
+          formattedDate = null;
+        }
+
+        return {
+          ...transaction,
+          // Keep original ID for fetching details
+          // id: index + 1, // Sequential ID for frontend - REMOVED
+          display_order: index + 1, // Sequential display order for frontend
+          amount: parseFloat(transaction.amount || 0),
+          date: formattedDate,
+        };
+      });
+
+    // Calculate pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const totalCount = allTransactions.length;
+    const totalPages = Math.ceil(totalCount / limitNum);
+    const startIndex = (pageNum - 1) * limitNum;
+    const endIndex = startIndex + limitNum;
+    const paginatedTransactions = allTransactions.slice(startIndex, endIndex);
+
+    res.json({
+      success: true,
+      data: paginatedTransactions,
+      pagination: {
+        currentPage: pageNum,
+        totalPages,
+        totalCount,
+        limit: limitNum,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching supplier transactions:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching supplier transactions",
       error: error.message,
     });
   }

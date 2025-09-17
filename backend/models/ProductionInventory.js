@@ -509,11 +509,14 @@ class ProductionInventory {
     oldQuantity,
     newQuantity,
     userId,
-    notes
+    notes,
+    trx = null
   ) {
     try {
+      const dbInstance = trx || db;
+
       // Get the menu_item_id from the production_inventory record
-      const inventoryItem = await db("production_inventory")
+      const inventoryItem = await dbInstance("production_inventory")
         .select("menu_item_id")
         .where("id", inventoryId)
         .first();
@@ -523,7 +526,7 @@ class ProductionInventory {
         return;
       }
 
-      await db("menu_item_audit_log").insert({
+      await dbInstance("menu_item_audit_log").insert({
         menu_item_id: inventoryItem.menu_item_id,
         employee_id: userId,
         action_type: "INVENTORY_UPDATED",
@@ -682,6 +685,16 @@ class ProductionInventory {
           }
         }
 
+        // Detect branch distribution from notes/details and tag activity source
+        let inferredSource = activity.activity_source;
+        const notesText = (activity.notes || "").toString();
+        const looksLikeDistribution =
+          /\bDistributed\b/i.test(notesText) ||
+          /\bReceipt:\s*BD-/i.test(notesText);
+        if (looksLikeDistribution && activity.activity_source === "inventory") {
+          inferredSource = "distribution";
+        }
+
         return {
           id: activity.id,
           action_type: activity.action_type,
@@ -693,7 +706,7 @@ class ProductionInventory {
           created_at: activity.created_at,
           notes: activity.notes,
           action_details: activity.action_details,
-          activity_source: activity.activity_source,
+          activity_source: inferredSource,
           batch_size: activity.batch_size || 0,
           quantity_produced: activity.quantity_produced || 0,
           batch_number: details.batch_number || null,
@@ -863,13 +876,22 @@ class ProductionInventory {
           updated_at: db.fn.now(),
         });
 
+      // Resolve branch name for better audit notes
+      let branchName = null;
+      try {
+        const branchRow = await db("branches").where("id", branchId).first();
+        branchName = branchRow ? branchRow.name : null;
+      } catch (e) {
+        // ignore resolution failure
+      }
+
       // Log the distribution
       await this.logStockUpdate(
         inventoryItem.id,
         inventoryItem.available_quantity,
         newQuantity,
         userId,
-        `Distributed ${quantityDistributed} units to branch ${branchId}${notes ? ` - ${notes}` : ""}`
+        `Distributed ${quantityDistributed} units to branch ${branchName || branchId}${notes ? ` - ${notes}` : ""}`
       );
 
       // Create distribution record
@@ -888,6 +910,120 @@ class ProductionInventory {
     } catch (error) {
       console.error("Error recording distribution:", error);
       throw new Error("Failed to record distribution");
+    }
+  }
+
+  // Record multiple distributions to branches in bulk (optimized for performance)
+  static async recordBulkDistributions(distributions, userId) {
+    const trx = await db.transaction();
+
+    try {
+      const results = [];
+
+      // Get all menu item IDs to fetch inventory items in one query
+      const menuItemIds = [
+        ...new Set(distributions.map((d) => d.menu_item_id)),
+      ];
+      const inventoryItems = await trx("production_inventory as pi")
+        .leftJoin("menu_items as mi", "pi.menu_item_id", "mi.id")
+        .select("pi.*", "mi.menu_item_name", "mi.item_code")
+        .whereIn("pi.menu_item_id", menuItemIds)
+        .whereNull("mi.deleted_at");
+
+      // Create a map for quick lookup
+      const inventoryMap = new Map();
+      inventoryItems.forEach((item) => {
+        inventoryMap.set(item.menu_item_id, item);
+      });
+
+      // Validate all distributions first
+      for (const distribution of distributions) {
+        const inventoryItem = inventoryMap.get(distribution.menu_item_id);
+
+        if (!inventoryItem) {
+          throw new Error(
+            `Production inventory item not found for menu item ${distribution.menu_item_id}`
+          );
+        }
+
+        if (inventoryItem.available_quantity < distribution.quantity) {
+          throw new Error(
+            `Insufficient stock for distribution of ${inventoryItem.menu_item_name}. Available: ${inventoryItem.available_quantity}, Requested: ${distribution.quantity}`
+          );
+        }
+      }
+
+      // Preload branch names
+      const branchIds = [
+        ...new Set(
+          distributions
+            .map((d) => d.branch_id)
+            .filter((v) => v !== undefined && v !== null)
+        ),
+      ];
+      const branchRows = await trx("branches")
+        .select("id", "name")
+        .whereIn("id", branchIds);
+      const branchIdToName = new Map(branchRows.map((r) => [r.id, r.name]));
+
+      // Process all distributions
+      for (const distribution of distributions) {
+        const inventoryItem = inventoryMap.get(distribution.menu_item_id);
+        const newQuantity =
+          inventoryItem.available_quantity - distribution.quantity;
+
+        // Update production inventory
+        await trx("production_inventory")
+          .where("id", inventoryItem.id)
+          .update({
+            available_quantity: newQuantity,
+            total_distributed:
+              (inventoryItem.total_distributed || 0) + distribution.quantity,
+            updated_at: db.fn.now(),
+          });
+
+        // Log the distribution
+        await this.logStockUpdate(
+          inventoryItem.id,
+          inventoryItem.available_quantity,
+          newQuantity,
+          userId,
+          `Distributed ${distribution.quantity} units to branch ${branchIdToName.get(distribution.branch_id) || distribution.branch_id}${distribution.notes ? ` - ${distribution.notes}` : ""}`,
+          trx
+        );
+
+        // Create distribution record
+        await trx("production_inventory_distributions").insert({
+          production_inventory_id: inventoryItem.id,
+          menu_item_id: distribution.menu_item_id,
+          branch_id: distribution.branch_id,
+          quantity_distributed: distribution.quantity,
+          distribution_date: db.fn.now(),
+          distributed_by: userId,
+          notes: distribution.notes,
+          created_at: db.fn.now(),
+        });
+
+        // Update the inventory item in our map for subsequent distributions
+        inventoryItem.available_quantity = newQuantity;
+        inventoryItem.total_distributed =
+          (inventoryItem.total_distributed || 0) + distribution.quantity;
+
+        results.push({
+          menu_item_id: distribution.menu_item_id,
+          menu_item_name: inventoryItem.menu_item_name,
+          quantity_distributed: distribution.quantity,
+          branch_id: distribution.branch_id,
+          new_available_quantity: newQuantity,
+        });
+      }
+
+      await trx.commit();
+      return results;
+    } catch (error) {
+      await trx.rollback();
+      console.error("Error recording bulk distributions:", error);
+      throw new Error("Failed to record bulk distributions");
     }
   }
 

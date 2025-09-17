@@ -1,5 +1,7 @@
 <script setup>
-  defineProps({
+  import { watch } from 'vue';
+
+  const props = defineProps({
     receipt: {
       type: Object,
       default: null,
@@ -15,6 +17,28 @@
   });
 
   const printReceipt = () => window.print();
+
+  const extractRejectionReason = (notes) => {
+    if (!notes) return 'No reason provided';
+
+    // Extract reason from notes format: "Item rejected by branch: {reason}. {notes}"
+    const match = notes.match(/Item rejected by branch: ([^.]+)/);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+
+    return 'Unknown reason';
+  };
+
+  const formatRejectionReason = (reason) => {
+    if (!reason || reason === 'No reason provided') return 'No reason provided';
+
+    // Convert underscore-separated text to proper title case
+    return reason
+      .split('_')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  };
 </script>
 
 <template>
@@ -28,13 +52,13 @@
         <div class="flex flex-col items-end w-full">
           <p class="text-xs">
             {{
-              new Date(receipt?.completed_at || Date.now()).toLocaleString(
-                'en-PH'
-              )
+              new Date(
+                props.receipt?.completed_at || Date.now()
+              ).toLocaleString('en-PH')
             }}
           </p>
           <p class="text-xs">
-            Distribution Ref: {{ receipt?.reference || 'N/A' }}
+            Distribution Ref: {{ props.receipt?.reference || 'N/A' }}
           </p>
         </div>
       </div>
@@ -43,10 +67,21 @@
         <div class="mb-2 text-black text-sm">
           <div>
             Branch:
-            <span class="font-semibold">{{ receipt?.branch_name }}</span>
+            <span class="font-semibold">{{ props.receipt?.branch_name }}</span>
           </div>
-          <div v-if="receipt?.notes">
-            Notes: <span>{{ receipt?.notes }}</span>
+          <div v-if="props.receipt?.notes">
+            Notes: <span>{{ props.receipt?.notes }}</span>
+          </div>
+          <div
+            v-if="props.receipt?.status === 'partially_processed'"
+            class="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded"
+          >
+            <div class="text-yellow-800 font-semibold text-sm mb-1">
+              ⚠️ Partial Processing
+            </div>
+            <div class="text-yellow-700 text-xs">
+              Some items were rejected by the branch. See rejected items below.
+            </div>
           </div>
         </div>
 
@@ -64,7 +99,7 @@
           </thead>
           <tbody class="bg-white text-black">
             <tr
-              v-for="(it, idx) in receipt?.items || []"
+              v-for="(it, idx) in props.receipt?.items || []"
               :key="idx"
               class="border border-black"
             >
@@ -92,11 +127,75 @@
                 Total
               </td>
               <td class="font-semibold border border-black text-right">
-                ₱{{ Number(receipt?.total_amount || 0).toFixed(2) }}
+                ₱{{ Number(props.receipt?.total_amount || 0).toFixed(2) }}
               </td>
             </tr>
           </tbody>
         </table>
+
+        <!-- Rejected Items Section (for partially processed distributions) -->
+        <div
+          v-if="
+            props.receipt?.status === 'partially_processed' &&
+            props.receipt?.rejected_items?.length > 0
+          "
+          class="mt-6"
+        >
+          <h4 class="text-red-800 font-semibold text-sm mb-2">
+            ❌ Rejected Items
+          </h4>
+          <table class="table table-xs w-full border border-red-300">
+            <thead>
+              <tr class="border border-red-300 bg-red-50 text-red-800">
+                <th class="border border-red-300">#</th>
+                <th class="border border-red-300">Item</th>
+                <th class="border border-red-300">Qty</th>
+                <th class="border border-red-300">Unit</th>
+                <th class="border border-red-300">Unit Price</th>
+                <th class="border border-red-300">Amount</th>
+                <th class="border border-red-300">Rejection Reason</th>
+              </tr>
+            </thead>
+            <tbody class="bg-red-25 text-red-700">
+              <tr
+                v-for="(item, idx) in receipt.rejected_items"
+                :key="idx"
+                class="border border-red-300"
+              >
+                <td class="border border-red-300">{{ idx + 1 }}</td>
+                <td class="border border-red-300">
+                  {{
+                    item.name ||
+                    item.item_name ||
+                    item.item_type_name ||
+                    'Unknown Item'
+                  }}
+                </td>
+                <td class="border border-red-300 text-right">
+                  {{ Number(item.quantity || 0).toLocaleString() }}
+                </td>
+                <td class="border border-red-300">
+                  {{ item.unit || item.unit_of_measure || 'pieces' }}
+                </td>
+                <td class="border border-red-300 text-right">
+                  ₱{{ Number(item.unit_cost || 0).toFixed(2) }}
+                </td>
+                <td class="border border-red-300 text-right">
+                  ₱{{ Number(item.total_value || 0).toFixed(2) }}
+                </td>
+                <td class="border border-red-300 text-xs">
+                  {{
+                    formatRejectionReason(
+                      item.rejection_reason ||
+                        extractRejectionReason(item.notes) ||
+                        'No reason provided'
+                    )
+                  }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
         <!-- Signatories -->
         <div class="grid grid-cols-2 gap-12 mt-10 text-black">
@@ -105,7 +204,7 @@
             <div class="text-xs mt-1">
               Prepared by:
               <span class="font-semibold">{{
-                receipt?.prepared_by || ''
+                props.receipt?.prepared_by || ''
               }}</span>
             </div>
           </div>
@@ -114,7 +213,10 @@
             <div class="text-xs mt-1">
               Received by:
               <span class="font-semibold">{{
-                receipt?.received_by || ''
+                props.receipt?.processed_by ||
+                props.receipt?.completed_by ||
+                props.receipt?.received_by ||
+                'Not specified'
               }}</span>
             </div>
           </div>

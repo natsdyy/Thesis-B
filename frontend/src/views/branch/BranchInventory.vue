@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, computed, onMounted, watch } from 'vue';
+  import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
   import { useToast } from 'vue-toastification';
   import {
     Calendar,
@@ -43,6 +43,10 @@
   import { useBranchInventoryStore } from '../../stores/branchInventoryStore';
   import BranchDistributionReceiptModal from '../../components/scm/BranchDistributionReceiptModal.vue';
   import BranchRequestSupply from '../../components/branch/BranchRequestSupply.vue';
+  import ItemLevelAcceptRejectModal from '../../components/branch/ItemLevelAcceptRejectModal.vue';
+  import BranchInventoryConsumptionModal from '../../components/branch/BranchInventoryConsumptionModal.vue';
+  import BranchInventoryAdjustmentModal from '../../components/branch/BranchInventoryAdjustmentModal.vue';
+  import BranchInventoryTransactionModal from '../../components/branch/BranchInventoryTransactionModal.vue';
   import { apiConfig } from '../../config/api';
 
   const branchContextStore = useBranchContextStore();
@@ -78,12 +82,43 @@
         (item) => item.item_type === 'scm'
       ) || []
   );
-  const categories = computed(() => {
-    const cats = [
-      ...new Set(branchInventoryStore.inventory.map((item) => item.category)),
-    ];
-    return cats.filter(Boolean).map((cat) => ({ name: cat }));
+  // Normalize category name from mixed shapes (string or { name })
+  const getItemCategoryName = (item) => {
+    const raw = item?.category ?? item?.category_name ?? null;
+    if (!raw) return null;
+    if (typeof raw === 'string') return raw;
+    if (typeof raw === 'object') return raw.name || null;
+    return null;
+  };
+
+  // Category lists per inventory type
+  const scmCategories = computed(() => {
+    const set = new Set(
+      (branchInventoryStore.inventory || [])
+        .filter((i) => i.item_type === 'scm')
+        .map((i) => getItemCategoryName(i))
+    );
+    set.delete(null);
+    set.delete('Uncategorized');
+    return Array.from(set).sort();
   });
+
+  const productionCategories = computed(() => {
+    const set = new Set(
+      (branchInventoryStore.inventory || [])
+        .filter((i) => i.item_type === 'production')
+        .map((i) => getItemCategoryName(i))
+    );
+    set.delete(null);
+    set.delete('Uncategorized');
+    return Array.from(set).sort();
+  });
+
+  const categories = computed(() =>
+    inventoryType.value === 'scm'
+      ? scmCategories.value
+      : productionCategories.value
+  );
 
   // Convert to reactive refs instead of computed properties
   const inventoryStats = ref({
@@ -107,6 +142,8 @@
 
     return branchInventory.value.filter((item) => {
       if (!item.expiry_date) return false;
+      // Exclude disposed items from expiring soon stats
+      if (item.status === 'disposed') return false;
       const expiryDate = new Date(item.expiry_date);
       return expiryDate <= sevenDaysFromNow && expiryDate > now;
     }).length;
@@ -116,6 +153,8 @@
     const now = new Date();
     return branchInventory.value.filter((item) => {
       if (!item.expiry_date) return false;
+      // Exclude disposed items from expired stats
+      if (item.status === 'disposed') return false;
       const expiryDate = new Date(item.expiry_date);
       return expiryDate <= now;
     }).length;
@@ -345,6 +384,20 @@
     }
   };
 
+  // Time formatter used by Distribution History rows
+  const formatTime = (date) => {
+    try {
+      const d = new Date(date);
+      if (Number.isNaN(d.getTime())) return '';
+      return d.toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch (e) {
+      return '';
+    }
+  };
+
   const getDaysUntilExpiry = (date) => {
     if (!date) return Infinity;
     const now = new Date();
@@ -417,9 +470,12 @@
   });
 
   // Transaction modal handler
+  const showBranchTransactions = ref(false);
   const openTransactionModal = () => {
-    // This would open a transaction modal - for now just log
-    console.log('Opening transaction modal');
+    showBranchTransactions.value = true;
+  };
+  const closeTransactionModal = () => {
+    showBranchTransactions.value = false;
   };
 
   // Helper function to calculate dynamic minimum stock
@@ -434,14 +490,580 @@
 
   // Distribution-related state
   const pendingDistributions = ref([]);
+  const completedDistributions = ref([]);
   const distributionLoading = ref(false);
+  const historyLoading = ref(false);
+  // Distribution history pagination and date filter
+  const historyCurrentPage = ref(1);
+  const historyItemsPerPage = ref(10);
+  const historyDateFilter = ref({
+    type: 'today',
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+  });
   const selectedDistribution = ref(null);
   const showAcceptanceModal = ref(false);
   const showReceiptModal = ref(false);
+  const receiptLoading = ref(false);
+  // Loading states for actions
+  const consumptionSubmitting = ref(false);
+  const adjustmentSubmitting = ref(false);
   const showRejectionModal = ref(false);
+  const showItemLevelModal = ref(false);
   const distributionCurrentPage = ref(1);
   const distributionItemsPerPage = ref(10);
   const distributionActionLoading = ref(false);
+  const itemLevelModal = ref(null);
+
+  // Local modals for consume/adjust (match MainInventory.vue)
+  const actionModal = ref({ type: null, show: false, item: null });
+
+  // Return Items state
+  const returnType = ref('scm'); // 'scm' | 'production'
+  const returnCart = ref([]); // [{ id, item_name, available, unit, quantity, notes }]
+  const returnNotes = ref('');
+  const returnSubmitting = ref(false);
+
+  const resetReturn = () => {
+    returnType.value = 'scm';
+    returnCart.value = [];
+    returnNotes.value = '';
+  };
+
+  const currentReturnSource = computed(() =>
+    (formattedBranchInventory.value || []).filter(
+      (i) => i.item_type === returnType.value && i.status !== 'disposed'
+    )
+  );
+
+  // Mapping options for main (SCM) and production menu items
+  const scmInventoryOptions = ref([]); // { id, label }
+  const productionMenuOptions = ref([]); // { id, label }
+  const scmNameToId = ref({});
+  const productionNameToId = ref({});
+  let invStoreSingleton = null;
+  let prodStoreSingleton = null;
+
+  const loadMappingOptions = async () => {
+    try {
+      // SCM options - cache store and results
+      if (!invStoreSingleton) {
+        const invMod = await import('../../stores/inventoryStore');
+        invStoreSingleton = invMod.useInventoryStore();
+      }
+      if (
+        !invStoreSingleton.currentInventory ||
+        invStoreSingleton.currentInventory.length === 0
+      ) {
+        await invStoreSingleton.fetchCurrentInventory();
+      }
+      if (scmInventoryOptions.value.length === 0) {
+        scmInventoryOptions.value = (
+          invStoreSingleton.currentInventory || []
+        ).map((x) => ({
+          id: x.id,
+          label: `${x.item_name} (${x.quantity} ${x.unit_of_measure || x.unit || ''})`,
+        }));
+        const map = {};
+        (invStoreSingleton.currentInventory || []).forEach((x) => {
+          map[(x.item_name || '').toLowerCase()] = x.id;
+        });
+        scmNameToId.value = map;
+      }
+
+      // Production options - cache store and results
+      if (!prodStoreSingleton) {
+        const prodMod = await import('../../stores/productionStore');
+        prodStoreSingleton = prodMod.useProductionStore();
+      }
+      if (
+        !prodStoreSingleton.menuItems ||
+        prodStoreSingleton.menuItems.length === 0
+      ) {
+        await prodStoreSingleton.fetchMenuItems();
+      }
+      if (productionMenuOptions.value.length === 0) {
+        productionMenuOptions.value = (prodStoreSingleton.menuItems || []).map(
+          (m) => ({
+            id: m.id,
+            label: `${m.menu_item_name}`,
+          })
+        );
+        const map2 = {};
+        (prodStoreSingleton.menuItems || []).forEach((m) => {
+          map2[(m.menu_item_name || '').toLowerCase()] = m.id;
+        });
+        productionNameToId.value = map2;
+      }
+    } catch (e) {
+      console.warn('Failed loading mapping options', e);
+    }
+  };
+
+  const addToReturnCart = (item) => {
+    if (!item?.id) return;
+    const exists = returnCart.value.find((r) => r.id === item.id);
+    if (exists) return;
+    const newRow = {
+      id: item.id,
+      item_name: item.item_name || item.name,
+      available: parseFloat(item.quantity || 0),
+      unit: item.unit || item.unit_of_measure,
+      quantity: 0,
+      notes: '',
+      source: returnType.value,
+      main_inventory_item_id: null,
+      menu_item_id: null,
+    };
+
+    // Attempt auto-mapping to main/production item ids by name
+    const tryAutoMap = async () => {
+      try {
+        if (newRow.source === 'scm') {
+          await loadMappingOptions();
+          const id = scmNameToId.value[(newRow.item_name || '').toLowerCase()];
+          if (id) newRow.main_inventory_item_id = id;
+        } else if (newRow.source === 'production') {
+          await loadMappingOptions();
+          const mid =
+            productionNameToId.value[(newRow.item_name || '').toLowerCase()];
+          if (mid) newRow.menu_item_id = mid;
+        }
+      } catch (e) {
+        console.warn('Auto-map failed', e);
+      }
+    };
+
+    // Fire and forget auto-map; no need to block UI
+    tryAutoMap();
+
+    returnCart.value.push(newRow);
+  };
+
+  const removeFromReturnCart = (id) => {
+    returnCart.value = returnCart.value.filter((r) => r.id !== id);
+  };
+
+  const validateReturnCart = () => {
+    if (returnCart.value.length === 0)
+      return 'Please select at least one item.';
+    for (const row of returnCart.value) {
+      const qty = parseFloat(row.quantity || 0);
+      if (!qty || qty <= 0) return `Set a valid quantity for ${row.item_name}.`;
+      if (qty > parseFloat(row.available || 0))
+        return `Return qty exceeds available for ${row.item_name}.`;
+    }
+    return null;
+  };
+
+  const submitReturnItems = async () => {
+    const errorMsg = validateReturnCart();
+    if (errorMsg) {
+      toast.error(errorMsg);
+      return;
+    }
+
+    const totalLines = returnCart.value.length;
+    const totalQty = returnCart.value.reduce(
+      (s, r) => s + parseFloat(r.quantity || 0),
+      0
+    );
+
+    confirmModal.value = {
+      show: true,
+      title: 'Confirm Return to Main',
+      message: `Return ${totalQty} ${totalQty === 1 ? 'unit' : 'units'} across ${totalLines} ${
+        totalLines === 1 ? 'item' : 'items'
+      } from ${currentBranch.value?.name} → Main (${returnType.value.toUpperCase()})?`,
+      onConfirm: async () => {
+        returnSubmitting.value = true;
+        try {
+          // Create a branch return request instead of immediate decrement
+          const itemsPayload = returnCart.value.map((row) => ({
+            branch_inventory_item_id: row.id,
+            item_name: row.item_name,
+            unit: row.unit,
+            quantity: row.quantity,
+            item_type: row.source,
+            main_inventory_item_id: row.main_inventory_item_id || null,
+            menu_item_id: row.menu_item_id || null,
+            notes: row.notes || null,
+          }));
+
+          const scmItems = itemsPayload.filter((it) => it.item_type === 'scm');
+          const prodItems = itemsPayload.filter(
+            (it) => it.item_type === 'production'
+          );
+
+          const mod = await import('../../stores/branchReturnStore');
+          const branchReturnStore = mod.useBranchReturnStore();
+          // Submit separate requests per type to satisfy backend enum
+          if (scmItems.length > 0) {
+            await branchReturnStore.createReturn({
+              branch_id: currentBranch.value?.id,
+              return_type: 'scm',
+              items: scmItems,
+              notes: returnNotes.value || null,
+            });
+          }
+          if (prodItems.length > 0) {
+            await branchReturnStore.createReturn({
+              branch_id: currentBranch.value?.id,
+              return_type: 'production',
+              items: prodItems,
+              notes: returnNotes.value || null,
+            });
+          }
+
+          toast.success('Return request submitted for approval.');
+          resetReturn();
+        } catch (e) {
+          console.error('Return failed:', e);
+          toast.error('Failed to process return.');
+        } finally {
+          returnSubmitting.value = false;
+        }
+      },
+      onCancel: () => {},
+    };
+    openConfirmDialog();
+  };
+
+  // Confirmation modal state (mirrors MainInventory)
+  const confirmModal = ref({
+    show: false,
+    title: '',
+    message: '',
+    onConfirm: null,
+  });
+
+  const confirmLoading = ref(false);
+
+  const openConfirmDialog = () => {
+    document.getElementById('branch_inventory_confirm_modal')?.showModal();
+  };
+
+  const closeConfirmModal = () => {
+    document.getElementById('branch_inventory_confirm_modal')?.close();
+    confirmModal.value = {
+      show: false,
+      title: '',
+      message: '',
+      onConfirm: null,
+    };
+  };
+
+  const handleConfirmAction = async () => {
+    if (confirmModal.value.onConfirm) {
+      try {
+        confirmLoading.value = true;
+        await confirmModal.value.onConfirm();
+      } finally {
+        confirmLoading.value = false;
+        closeConfirmModal();
+      }
+    }
+  };
+
+  // Approved returns floating panel logic
+  const approvedReturns = ref([]);
+  const approvedLoading = ref(false);
+  const showApprovedReturnsPanel = ref(false);
+  const branchAckLoadingId = ref(null);
+  const rejectedReturns = ref([]);
+  const rejectedLoading = ref(false);
+  const returnsTab = ref('approved');
+
+  const loadApprovedReturns = async () => {
+    try {
+      approvedLoading.value = true;
+      const mod = await import('../../stores/branchReturnStore');
+      const store = mod.useBranchReturnStore();
+      const res = await store.fetchReturns({ status: 'Approved' });
+      const rows = res?.data || res?.data?.data || store.returns || [];
+      approvedReturns.value = (rows || []).filter(
+        (r) => !r.branch_acknowledged_at && !r.branch_acknowledged_by
+      );
+    } catch (e) {
+      console.warn('Failed to load approved returns', e);
+    } finally {
+      approvedLoading.value = false;
+    }
+  };
+
+  const loadRejectedReturns = async () => {
+    try {
+      rejectedLoading.value = true;
+      const mod = await import('../../stores/branchReturnStore');
+      const store = mod.useBranchReturnStore();
+      const res = await store.fetchReturns({ status: 'Rejected' });
+      const rows = res?.data || res?.data?.data || store.returns || [];
+      rejectedReturns.value = (rows || []).filter(
+        (r) => !r.branch_acknowledged_at && !r.branch_acknowledged_by
+      );
+    } catch (e) {
+      console.warn('Failed to load rejected returns', e);
+    } finally {
+      rejectedLoading.value = false;
+    }
+  };
+
+  const loadReturnsAwaitingAck = async () => {
+    await Promise.all([loadApprovedReturns(), loadRejectedReturns()]);
+  };
+
+  onMounted(async () => {
+    // Preload any awaiting acknowledgment so the floating badge appears
+    await loadReturnsAwaitingAck();
+  });
+
+  const acknowledgeReturnComplete = async (id) => {
+    try {
+      branchAckLoadingId.value = id;
+      const mod = await import('../../stores/branchReturnStore');
+      const store = mod.useBranchReturnStore();
+      await store.acknowledgeReturn(id);
+      await loadApprovedReturns();
+      toast.success('Return acknowledged.');
+    } catch (e) {
+      toast.error('Failed to acknowledge return.');
+    } finally {
+      branchAckLoadingId.value = null;
+    }
+  };
+
+  // Auto-refresh returns awaiting acknowledgment to avoid manual page reloads
+  const returnsRefreshTimer = ref(null);
+  onMounted(async () => {
+    await loadReturnsAwaitingAck();
+    returnsRefreshTimer.value = setInterval(loadReturnsAwaitingAck, 15000);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') loadReturnsAwaitingAck();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    // attach for cleanup
+    returnsRefreshTimer._onVisibility = onVisibility;
+  });
+
+  onUnmounted(() => {
+    if (returnsRefreshTimer.value) clearInterval(returnsRefreshTimer.value);
+    if (returnsRefreshTimer._onVisibility) {
+      document.removeEventListener(
+        'visibilitychange',
+        returnsRefreshTimer._onVisibility
+      );
+    }
+  });
+
+  const openConsumeModal = (item) => {
+    actionModal.value = { type: 'consumption', show: true, item };
+  };
+
+  const openAdjustModal = (item) => {
+    actionModal.value = { type: 'adjustment', show: true, item };
+  };
+
+  const closeActionModal = () => {
+    actionModal.value = { type: null, show: false, item: null };
+  };
+
+  // Build lightweight category and itemType lists for the modals from branch data
+  const modalCategories = computed(() => {
+    const nameToId = new Map();
+    const result = [];
+    let nextId = 1;
+    branchInventory.value.forEach((x) => {
+      const name = x.category || 'Uncategorized';
+      if (!nameToId.has(name)) {
+        nameToId.set(name, nextId++);
+        result.push({ id: nameToId.get(name), name });
+      }
+    });
+    return result;
+  });
+
+  const modalItemTypes = computed(() => {
+    const out = new Map();
+    const catIndex = new Map(modalCategories.value.map((c) => [c.name, c.id]));
+    branchInventory.value.forEach((x) => {
+      const key = x.item_type_id || `${x.item_name}`;
+      if (!out.has(key)) {
+        out.set(key, {
+          id: x.item_type_id || key,
+          name: x.item_name || x.item_type_name || x.name || 'Item',
+          category_id: catIndex.get(x.category || 'Uncategorized') || 0,
+        });
+      }
+    });
+    return Array.from(out.values());
+  });
+
+  const modalCurrentInventory = computed(() => {
+    const mapStatus = (it) => {
+      if (it?.expiry_date) {
+        const d = getDaysUntilExpiry(it.expiry_date);
+        if (Number.isFinite(d) && d <= 0) return 'expired';
+      }
+      return 'available';
+    };
+    return branchInventory.value.map((it) => ({
+      id: it.id,
+      item_type_id: it.item_type_id || it.id,
+      item_name: it.item_name || it.name,
+      quantity: parseFloat(it.quantity || 0),
+      unit_of_measure: it.unit || it.unit_of_measure || '',
+      batch_number: it.batch_number || null,
+      expiry_date: it.expiry_date || null,
+      unit_cost: parseFloat(it.unit_price || it.unit_cost || 0),
+      total_value: parseFloat(it.total_value || 0),
+      status: mapStatus(it),
+    }));
+  });
+
+  const handleConsumptionSubmit = async (payload) => {
+    try {
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      const qtyLabel = items
+        .map((it) => `${parseFloat(it.quantity || 0)} ${it.unit || ''}`.trim())
+        .join(', ');
+      const itemLabel =
+        items.length === 1
+          ? items[0]?.item_name || items[0]?.name || 'this item'
+          : `${items.length} items`;
+
+      confirmModal.value = {
+        show: true,
+        title: 'Confirm Usage',
+        message: `Record usage of ${qtyLabel} for ${itemLabel}?`,
+        onConfirm: async () => {
+          consumptionSubmitting.value = true;
+          try {
+            for (const it of items) {
+              const current = branchInventory.value.find(
+                (s) => s.id == it.inventory_item_id
+              );
+              const currentQty = parseFloat(current?.quantity || 0);
+              const consumeQty = parseFloat(it.quantity || 0);
+              const newQty = Math.max(0, currentQty - consumeQty);
+              await branchInventoryStore.updateQuantity(
+                it.inventory_item_id,
+                newQty,
+                'consumption'
+              );
+            }
+            toast.success('Usage recorded.');
+          } catch (err) {
+            console.error('Failed to record consumption:', err);
+            toast.error('Failed to record usage.');
+          } finally {
+            consumptionSubmitting.value = false;
+            closeActionModal();
+            await loadBranchInventory();
+          }
+        },
+      };
+      openConfirmDialog();
+    } catch (err) {
+      console.error('Failed to prepare usage confirmation:', err);
+      toast.error('Failed to prepare confirmation.');
+    }
+  };
+
+  const handleAdjustmentSubmit = async (payload) => {
+    try {
+      if (!payload?.inventory_item_id) return;
+
+      const current = branchInventory.value.find(
+        (s) => s.id == payload.inventory_item_id
+      );
+      const currentQty = parseFloat(current?.quantity || 0);
+
+      let previewQty = currentQty;
+      switch (payload.adjustment_type) {
+        case 'set_quantity':
+          previewQty = parseFloat(payload.new_quantity);
+          break;
+        case 'add_quantity':
+          previewQty = currentQty + parseFloat(payload.new_quantity || 0);
+          break;
+        case 'reduce_quantity':
+          previewQty = Math.max(
+            0,
+            currentQty - parseFloat(payload.new_quantity || 0)
+          );
+          break;
+        case 'mark_expired':
+        case 'mark_damaged':
+        case 'disposal':
+          previewQty = 0;
+          break;
+        case 'set_expiry_date':
+          previewQty = currentQty;
+          break;
+      }
+
+      const actionLabel =
+        payload.adjustment_type === 'set_quantity'
+          ? `set quantity to ${previewQty}`
+          : payload.adjustment_type === 'add_quantity'
+            ? `increase to ${previewQty}`
+            : payload.adjustment_type === 'reduce_quantity'
+              ? `decrease to ${previewQty}`
+              : payload.adjustment_type === 'set_expiry_date'
+                ? 'set expiry date'
+                : 'dispose item';
+
+      const itemLabel = current?.item_name || current?.name || 'this item';
+
+      confirmModal.value = {
+        show: true,
+        title: 'Confirm Adjustment',
+        message: `Apply adjustment: ${actionLabel} for ${itemLabel}?`,
+        onConfirm: async () => {
+          adjustmentSubmitting.value = true;
+          try {
+            if (payload.adjustment_type === 'set_expiry_date') {
+              await branchInventoryStore.updateExpiryDate(
+                payload.inventory_item_id,
+                payload.new_expiry_date,
+                {
+                  reference_number: payload.reference_number || null,
+                  notes: payload.notes || 'Set expiry date',
+                }
+              );
+            } else {
+              await branchInventoryStore.updateQuantity(
+                payload.inventory_item_id,
+                previewQty,
+                payload.adjustment_type === 'disposal'
+                  ? 'disposal'
+                  : 'adjustment'
+              );
+
+              if (payload.adjustment_type === 'disposal') {
+                await branchInventoryStore.updateStatus(
+                  payload.inventory_item_id,
+                  'disposed'
+                );
+              }
+            }
+            toast.success('Adjustment applied.');
+          } catch (err) {
+            console.error('Failed to apply adjustment:', err);
+            toast.error('Failed to apply adjustment.');
+          } finally {
+            adjustmentSubmitting.value = false;
+            closeActionModal();
+            await loadBranchInventory();
+          }
+        },
+      };
+      openConfirmDialog();
+    } catch (err) {
+      console.error('Failed to prepare adjustment confirmation:', err);
+      toast.error('Failed to prepare confirmation.');
+    }
+  };
 
   // Rejection form state
   const rejectionForm = ref({
@@ -487,7 +1109,9 @@
 
     // Filter by category
     if (categoryFilter.value) {
-      items = items.filter((item) => item.category === categoryFilter.value);
+      items = items.filter(
+        (item) => getItemCategoryName(item) === categoryFilter.value
+      );
     }
 
     // Filter by status
@@ -498,6 +1122,9 @@
     } else if (statusFilter.value === 'out_of_stock') {
       items = items.filter((item) => parseFloat(item.quantity) === 0);
     }
+
+    // Hide disposed items from list view
+    items = items.filter((it) => it.status !== 'disposed');
 
     return items;
   });
@@ -537,11 +1164,61 @@
 
   // Methods
   const getStockStatus = (item) => {
-    if (parseFloat(item.quantity) === 0)
-      return { status: 'out', class: 'badge-error', text: 'Out of Stock' };
-    if (parseFloat(item.quantity) <= parseFloat(item.minimum_stock))
-      return { status: 'low', class: 'badge-warning', text: 'Low Stock' };
-    return { status: 'good', class: 'badge-success', text: 'In Stock' };
+    const quantity = parseFloat(item.quantity);
+    const minimum = parseFloat(item.minimum_stock);
+
+    // Disposed items should be labeled accordingly
+    if (item?.status === 'disposed') {
+      return {
+        status: 'disposed',
+        class: 'bg-error/20 text-error',
+        text: 'Disposed',
+      };
+    }
+
+    // Expiry-aware status (mirror MainInventory behavior)
+    if (item?.expiry_date) {
+      const daysUntilExpiry = getDaysUntilExpiry(item.expiry_date);
+      if (Number.isFinite(daysUntilExpiry)) {
+        if (daysUntilExpiry <= 0) {
+          return {
+            status: 'expired',
+            class: 'bg-error/20 text-error',
+            text: 'Expired',
+          };
+        }
+        if (daysUntilExpiry <= 7) {
+          // Mark as expiring soon if not already out of stock
+          if (quantity > 0) {
+            return {
+              status: 'expiring',
+              class: 'bg-warning/20 text-warning',
+              text: 'Expiring Soon',
+            };
+          }
+        }
+      }
+    }
+
+    // Stock-based status
+    if (quantity === 0)
+      return {
+        status: 'out',
+        class: 'bg-error/20 text-error',
+        text: 'Out of Stock',
+      };
+    if (quantity <= minimum)
+      return {
+        status: 'low',
+        class: 'bg-warning/20 text-warning',
+        text: 'Low Stock',
+      };
+
+    return {
+      status: 'good',
+      class: 'bg-success/20 text-success',
+      text: 'In Stock',
+    };
   };
 
   // Consistent item display name across different data shapes
@@ -567,144 +1244,82 @@
       // Load real data from branch inventory store
       await branchInventoryStore.loadAllData(currentBranch.value.id);
 
-      // Calculate SCM stats
+      // Calculate SCM stats (exclude disposed items from counts)
       const scmItems = branchInventory.value.filter(
         (item) => item.item_type === 'scm'
       );
+      const scmActiveItems = scmItems.filter(
+        (item) => item.status !== 'disposed'
+      );
       inventoryStats.value = {
-        totalItems: scmItems.length,
-        lowStockItems: scmItems.filter(
+        totalItems: scmActiveItems.length,
+        lowStockItems: scmActiveItems.filter(
           (item) =>
             parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
             parseFloat(item.quantity) > 0
         ).length,
-        outOfStockItems: scmItems.filter(
+        outOfStockItems: scmActiveItems.filter(
           (item) => parseFloat(item.quantity) === 0
         ).length,
-        totalValue: scmItems.reduce(
+        totalValue: scmActiveItems.reduce(
           (total, item) => total + parseFloat(item.total_value || 0),
           0
         ),
       };
 
-      // Calculate Production stats
+      // Calculate Production stats (exclude disposed items from counts)
       const productionItems = branchInventory.value.filter(
         (item) => item.item_type === 'production'
       );
+      const productionActiveItems = productionItems.filter(
+        (item) => item.status !== 'disposed'
+      );
       productionStats.value = {
-        totalItems: productionItems.length,
-        lowStockItems: productionItems.filter(
+        totalItems: productionActiveItems.length,
+        lowStockItems: productionActiveItems.filter(
           (item) =>
             parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
             parseFloat(item.quantity) > 0
         ).length,
-        outOfStockItems: productionItems.filter(
+        outOfStockItems: productionActiveItems.filter(
           (item) => parseFloat(item.quantity) === 0
         ).length,
-        totalValue: productionItems.reduce(
+        totalValue: productionActiveItems.reduce(
           (total, item) => total + parseFloat(item.total_value || 0),
           0
         ),
       };
 
-      // Generate real recent activity from branch inventory data
-      const realRecentActivity = [];
-
-      // Create activity entries for each inventory item based on their distribution
-      branchInventory.value.forEach((item, index) => {
-        // Add distribution activity
-        realRecentActivity.push({
-          id: `dist_${item.id}`,
-          transaction_type: 'receipt',
-          action: 'Stock Received',
-          item_name: item.item_name,
-          item_type_name: item.item_name,
-          item: item.item_name,
-          quantity: parseFloat(item.quantity),
-          total_value: parseFloat(item.total_value || 0),
-          value: parseFloat(item.total_value || 0),
-          time: formatTimeAgo(new Date(item.created_at || new Date())),
-          transaction_date: item.created_at || new Date(),
-          type: 'distribution',
-          category_name: item.category,
-          category: item.category,
-          unit_of_measure: item.unit,
-          unit: item.unit,
-          performed_by: 'Branch Manager',
-          reason: 'Branch Distribution',
-          batch_number: item.batch_number || null,
-        });
-
-        // Add low stock warning if applicable
-        if (
-          parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
-          parseFloat(item.quantity) > 0
-        ) {
-          realRecentActivity.push({
-            id: `low_stock_${item.id}`,
-            transaction_type: 'alert',
-            action: 'Low Stock Alert',
-            item_name: item.item_name,
-            item_type_name: item.item_name,
-            item: item.item_name,
-            quantity: parseFloat(item.quantity),
-            total_value: parseFloat(item.total_value || 0),
-            value: parseFloat(item.total_value || 0),
-            time: 'Just now',
-            transaction_date: new Date(),
-            type: 'alert',
-            category_name: item.category,
-            category: item.category,
-            unit_of_measure: item.unit,
-            unit: item.unit,
-            performed_by: 'System',
-            notes: `Item is running low on stock (${item.quantity} ${item.unit} remaining)`,
-            batch_number: item.batch_number || null,
-          });
-        }
-
-        // Add out of stock warning if applicable
-        if (parseFloat(item.quantity) === 0) {
-          realRecentActivity.push({
-            id: `out_stock_${item.id}`,
-            transaction_type: 'alert',
-            action: 'Out of Stock',
-            item_name: item.item_name,
-            item_type_name: item.item_name,
-            item: item.item_name,
-            quantity: 0,
-            total_value: 0,
-            value: 0,
-            time: 'Just now',
-            transaction_date: new Date(),
-            type: 'alert',
-            category_name: item.category,
-            category: item.category,
-            unit_of_measure: item.unit,
-            unit: item.unit,
-            performed_by: 'System',
-            notes: 'Item is out of stock',
-            batch_number: item.batch_number || null,
-          });
-        }
-      });
-
-      // Sort by most recent first
-      realRecentActivity.sort((a, b) => {
-        if (a.time === 'Just now') return -1;
-        if (b.time === 'Just now') return 1;
-        return new Date(b.time) - new Date(a.time);
-      });
-
-      recentActivity.value = realRecentActivity.slice(0, 10); // Limit to 10 most recent
+      // Replace mocked recent activity with live branch transactions
+      try {
+        const tx = await branchInventoryStore.fetchAllTransactions(
+          currentBranch.value.id,
+          { limit: 10, page: 1 }
+        );
+        recentActivity.value = (tx?.data || []).map((t) => ({
+          id: t.id,
+          transaction_type: t.transaction_type,
+          item_name: t.item_name,
+          unit_of_measure: t.unit_of_measure,
+          quantity: parseFloat(t.quantity || 0),
+          total_value: 0,
+          value: 0,
+          transaction_date: t.created_at,
+          performed_by: t.performed_by_name || t.performed_by,
+          notes: t.notes,
+        }));
+      } catch (e) {
+        console.warn('Failed to load recent transactions for activity:', e);
+      }
 
       // Generate real alerts from branch inventory data
       const realAlerts = [];
       console.log('Branch inventory data for alerts:', branchInventory.value);
 
-      // Low stock alerts
+      // Low stock alerts (exclude disposed items)
       const lowStockItems = branchInventory.value.filter(
         (item) =>
+          item.status !== 'disposed' &&
           parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
           parseFloat(item.quantity) > 0
       );
@@ -733,9 +1348,9 @@
         });
       });
 
-      // Out of stock alerts
+      // Out of stock alerts (exclude disposed items)
       const outOfStockItems = branchInventory.value.filter(
-        (item) => parseFloat(item.quantity) === 0
+        (item) => item.status !== 'disposed' && parseFloat(item.quantity) === 0
       );
       outOfStockItems.forEach((item, index) => {
         realAlerts.push({
@@ -749,9 +1364,10 @@
         });
       });
 
-      // Expiring items alerts (if we had expiry dates)
+      // Expiring items alerts (exclude disposed)
       const expiringItems = branchInventory.value.filter(
         (item) =>
+          item.status !== 'disposed' &&
           item.expiry_date &&
           new Date(item.expiry_date) <=
             new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
@@ -986,6 +1602,126 @@
     }
   };
 
+  // Load completed distributions (history) for current branch
+  const loadCompletedDistributions = async () => {
+    if (!currentBranch.value?.id) return;
+
+    historyLoading.value = true;
+    try {
+      // Fetch a larger page once to avoid N+1 and reduce refetching
+      await branchDistributionStore.fetchDistributions({ page: 1, limit: 500 });
+      const all = branchDistributionStore.distributions || [];
+      const branchCompleted = all.filter(
+        (d) =>
+          d.branch_id === currentBranch.value.id && d.status === 'completed'
+      );
+      // Assume base list already contains needed fields for history. We fetch
+      // full details only when viewing a receipt.
+      completedDistributions.value = branchCompleted.map((dist) => ({
+        ...dist,
+        items:
+          dist.items?.map((it) => ({
+            ...it,
+            qty: parseFloat(it.qty) || 0,
+            unit_price: parseFloat(it.unit_price) || 0,
+            amount: parseFloat(it.amount) || 0,
+          })) || [],
+      }));
+    } catch (err) {
+      console.error('Error loading completed distributions:', err);
+      completedDistributions.value = [];
+    } finally {
+      historyLoading.value = false;
+    }
+  };
+
+  // Helpers for date ranges (mirrors RequestSupply.vue semantics)
+  const getStartOfWeek = (date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday as first day
+    return new Date(d.getFullYear(), d.getMonth(), diff);
+  };
+
+  const getStartOfMonth = (date) =>
+    new Date(date.getFullYear(), date.getMonth(), 1);
+  const getEndOfMonth = (date) =>
+    new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  const isDateInRange = (date, start, end) => {
+    const d = new Date(date);
+    return d >= start && d <= end;
+  };
+
+  const filteredCompletedDistributions = computed(() => {
+    const type = historyDateFilter.value.type;
+    if (!type) return completedDistributions.value;
+    const today = new Date();
+    if (type === 'today') {
+      const start = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+      );
+      const end = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        23,
+        59,
+        59,
+        999
+      );
+      return completedDistributions.value.filter((r) =>
+        isDateInRange(r.created_at, start, end)
+      );
+    }
+    if (type === 'week') {
+      const start = getStartOfWeek(today);
+      const end = new Date();
+      return completedDistributions.value.filter((r) =>
+        isDateInRange(r.created_at, start, end)
+      );
+    }
+    if (type === 'month') {
+      const start = getStartOfMonth(today);
+      const end = new Date();
+      return completedDistributions.value.filter((r) =>
+        isDateInRange(r.created_at, start, end)
+      );
+    }
+    if (type === 'custom_month') {
+      const year = historyDateFilter.value.year;
+      const month = historyDateFilter.value.month - 1; // 0-based
+      const start = new Date(year, month, 1);
+      const end = getEndOfMonth(start);
+      return completedDistributions.value.filter((r) =>
+        isDateInRange(r.created_at, start, end)
+      );
+    }
+    return completedDistributions.value;
+  });
+
+  const paginatedCompletedDistributions = computed(() => {
+    const start = (historyCurrentPage.value - 1) * historyItemsPerPage.value;
+    const end = start + historyItemsPerPage.value;
+    return filteredCompletedDistributions.value
+      .slice()
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(start, end);
+  });
+
+  const totalHistoryPages = computed(() => {
+    return Math.ceil(
+      (filteredCompletedDistributions.value.length || 0) /
+        historyItemsPerPage.value
+    );
+  });
+
+  const setHistoryFilter = (type) => {
+    historyDateFilter.value.type = type;
+    historyCurrentPage.value = 1;
+  };
+
   const openAcceptanceModal = (distribution) => {
     console.log('Opening acceptance modal for distribution:', distribution);
     selectedDistribution.value = distribution;
@@ -1024,6 +1760,21 @@
     };
     // Close the modal using DaisyUI's modal system
     document.getElementById('distribution_rejection_modal')?.close();
+  };
+
+  const openItemLevelModal = (distribution) => {
+    console.log('Opening item-level modal for distribution:', distribution);
+    selectedDistribution.value = distribution;
+    showItemLevelModal.value = true;
+    // Open the modal using the component's exposed method
+    itemLevelModal.value?.openModal();
+  };
+
+  const closeItemLevelModal = () => {
+    selectedDistribution.value = null;
+    showItemLevelModal.value = false;
+    // Close the modal using the component's exposed method
+    itemLevelModal.value?.closeModal();
   };
 
   const acceptDistribution = async (distribution) => {
@@ -1188,33 +1939,103 @@
     }
   };
 
-  const viewDistributionReceipt = (distribution) => {
-    // Format the distribution data to match the receipt modal expectations
-    const receiptData = {
-      ...distribution,
-      completed_at: distribution.created_at,
-      received_by:
-        distribution.received_by ||
-        (() => {
-          const user = authStore.user;
-          if (user?.first_name && user?.last_name) {
-            return `${user.first_name} ${user.last_name}`;
-          }
-          return user?.name || 'Branch Manager';
-        })(),
-      items:
-        distribution.items?.map((item) => ({
-          item_name: item.name,
-          source: item.source,
-          item_quantity: parseFloat(item.qty) || 0,
-          item_unit: item.unit,
-          item_unitPrice: parseFloat(item.unit_price) || 0,
-          item_amount: parseFloat(item.amount) || 0,
-        })) || [],
-    };
+  const handleItemLevelProcessing = async (actionData) => {
+    try {
+      console.log(
+        'Starting item-level processing for distribution:',
+        selectedDistribution.value
+      );
+      console.log('Action data:', actionData);
+      distributionActionLoading.value = true;
 
-    selectedDistribution.value = receiptData;
-    showReceiptModal.value = true;
+      // Call the new partial accept/reject method
+      const result = await branchDistributionStore.partialAcceptReject(
+        selectedDistribution.value.id,
+        {
+          action_by: authStore.user?.name || 'Branch Manager',
+          ...actionData,
+        }
+      );
+
+      console.log('Item-level processing result:', result);
+
+      // Close the modal
+      closeItemLevelModal();
+
+      // Refresh data
+      await loadPendingDistributions();
+      await loadBranchInventory();
+
+      // Show success message with details
+      const acceptedCount = actionData.accepted_items?.length || 0;
+      const rejectedCount = actionData.rejected_items?.length || 0;
+
+      let message = `Distribution processed successfully! `;
+      if (acceptedCount > 0) {
+        message += `${acceptedCount} item(s) accepted and added to inventory. `;
+      }
+      if (rejectedCount > 0) {
+        message += `${rejectedCount} item(s) rejected and returned to main inventory.`;
+      }
+
+      toast.success(message);
+    } catch (error) {
+      console.error('Error processing items:', error);
+      toast.error('Error processing items: ' + error.message);
+    } finally {
+      distributionActionLoading.value = false;
+    }
+  };
+
+  const viewDistributionReceipt = async (distribution) => {
+    try {
+      receiptLoading.value = true;
+      console.log('Debug - viewDistributionReceipt called with:', distribution);
+      console.log('Debug - Original distribution data:', distribution);
+
+      // Ensure we have full details for the selected distribution (fetch on demand)
+      let full = null;
+      try {
+        full = await branchDistributionStore.fetchDistributionById(
+          distribution.id
+        );
+      } catch (e) {
+        full = distribution;
+      }
+
+      // Format the distribution data to match the receipt modal expectations
+      const receiptData = {
+        ...full,
+        completed_at: distribution.completed_at || distribution.created_at,
+        // Map the correct fields for the receipt modal
+        processed_by: full.processed_by || null,
+        completed_by: full.completed_by || null,
+        received_by:
+          full.processed_by ||
+          full.completed_by ||
+          (() => {
+            const user = authStore.user;
+            if (user?.first_name && user?.last_name) {
+              return `${user.first_name} ${user.last_name}`;
+            }
+            return user?.name || 'Branch Manager';
+          })(),
+        items:
+          (full.items || distribution.items || [])?.map((item) => ({
+            item_name: item.name,
+            source: item.source,
+            item_quantity: parseFloat(item.qty) || 0,
+            item_unit: item.unit,
+            item_unitPrice: parseFloat(item.unit_price) || 0,
+            item_amount: parseFloat(item.amount) || 0,
+          })) || [],
+      };
+
+      selectedDistribution.value = receiptData;
+      showReceiptModal.value = true;
+    } finally {
+      receiptLoading.value = false;
+    }
   };
 
   const closeReceiptModal = () => {
@@ -1233,6 +2054,7 @@
         );
         loadBranchInventory();
         loadPendingDistributions();
+        loadCompletedDistributions();
       }
     },
     { immediate: true }
@@ -1322,12 +2144,28 @@
         </span>
       </button>
       <button
+        @click="activeTab = 'distribution_history'"
+        class="tab"
+        :class="{ 'tab-active': activeTab === 'distribution_history' }"
+      >
+        <Eye class="w-4 h-4 mr-1" />
+        Distribution History
+      </button>
+      <button
         @click="activeTab = 'request_supply'"
         class="tab"
         :class="{ 'tab-active': activeTab === 'request_supply' }"
       >
         <Handshake class="w-4 h-4 mr-1" />
-        Request Supply
+        Supply Request
+      </button>
+      <button
+        @click="activeTab = 'return_items'"
+        class="tab"
+        :class="{ 'tab-active': activeTab === 'return_items' }"
+      >
+        <RefreshCcw class="w-4 h-4 mr-1" />
+        Return Items
       </button>
     </div>
 
@@ -1818,7 +2656,7 @@
               <!-- Items Grid -->
               <div v-else-if="paginatedInventory.length > 0" class="space-y-4">
                 <div class="overflow-x-auto">
-                  <table class="table table-zebra w-full table-xs">
+                  <table class="table table-zebra w-full table-xs custom-zebra">
                     <thead>
                       <tr class="bg-base-200">
                         <th>Item</th>
@@ -1899,11 +2737,7 @@
                           <div
                             :class="[
                               'badge badge-sm border-none font-medium',
-                              getStockStatus(item).status === 'out'
-                                ? 'bg-error/20 text-error'
-                                : getStockStatus(item).status === 'low'
-                                  ? 'bg-warning/20 text-warning'
-                                  : 'bg-info/20 text-info',
+                              getStockStatus(item).class,
                             ]"
                           >
                             {{ getStockStatus(item).text }}
@@ -1918,11 +2752,20 @@
                         </td>
                         <td v-if="canEdit">
                           <div class="flex items-center space-x-1">
-                            <button class="btn btn-ghost btn-xs">
-                              <Eye class="w-4 h-4" />
+                            <button
+                              class="btn btn-ghost btn-xs"
+                              @click="openConsumeModal(item)"
+                              :disabled="
+                                getStockStatus(item).status === 'expired'
+                              "
+                            >
+                              <Minus class="w-4 h-4" />
                             </button>
-                            <button class="btn btn-ghost btn-xs">
-                              <Edit class="w-4 h-4" />
+                            <button
+                              class="btn btn-ghost btn-xs"
+                              @click="openAdjustModal(item)"
+                            >
+                              <RefreshCcw class="w-4 h-4" />
                             </button>
                           </div>
                         </td>
@@ -2003,7 +2846,9 @@
           <!-- Expiring Items -->
           <div v-if="alertTab === 'expiring'" class="space-y-3">
             <div
-              v-for="item in branchInventory.filter((i) => i.expiry_date)"
+              v-for="item in branchInventory.filter(
+                (i) => i.status !== 'disposed' && i.expiry_date
+              )"
               :key="item.id"
               class="border border-gray-200 rounded-lg bg-base-100 p-3 flex items-start gap-3"
             >
@@ -2016,7 +2861,7 @@
                   v-else-if="getExpirySeverityLevel(item) === 'warning'"
                   class="w-5 h-5 text-warning"
                 />
-                <Calendar v-else class="w-5 h-5 text-info" />
+                <Calendar v-else class="w-5 h-5 text-primaryColor" />
               </div>
 
               <div class="flex-1">
@@ -2100,7 +2945,11 @@
             </div>
 
             <div
-              v-if="branchInventory.filter((i) => i.expiry_date).length === 0"
+              v-if="
+                branchInventory.filter(
+                  (i) => i.status !== 'disposed' && i.expiry_date
+                ).length === 0
+              "
               class="text-center py-8"
             >
               <CheckCircle class="w-12 h-12 mx-auto text-success mb-2" />
@@ -2112,7 +2961,9 @@
           <div v-if="alertTab === 'lowstock'" class="space-y-3">
             <div
               v-for="item in branchInventory.filter(
-                (i) => parseFloat(i.quantity) <= parseFloat(i.minimum_stock)
+                (i) =>
+                  i.status !== 'disposed' &&
+                  parseFloat(i.quantity) <= parseFloat(i.minimum_stock)
               )"
               :key="item.id"
               class="border border-gray-200 rounded-lg bg-base-100 p-3 flex items-start gap-3"
@@ -2209,7 +3060,9 @@
             <div
               v-if="
                 branchInventory.filter(
-                  (i) => parseFloat(i.quantity) <= parseFloat(i.minimum_stock)
+                  (i) =>
+                    i.status !== 'disposed' &&
+                    parseFloat(i.quantity) <= parseFloat(i.minimum_stock)
                 ).length === 0
               "
               class="text-center py-8"
@@ -2351,7 +3204,7 @@
 
                 <!-- Distribution Items -->
                 <div class="overflow-x-auto mb-4">
-                  <table class="table table-zebra w-full table-xs">
+                  <table class="table table-zebra w-full table-xs custom-zebra">
                     <thead>
                       <tr class="bg-base-200">
                         <th>Item</th>
@@ -2390,15 +3243,33 @@
                 </div>
 
                 <!-- Actions -->
+                <div class="mb-3">
+                  <p class="text-xs text-gray-600 mb-2">
+                    <strong>Processing Options:</strong> Use "Select Items" for
+                    partial acceptance/rejection, or "Accept All"/"Reject All"
+                    for complete processing.
+                  </p>
+                </div>
                 <div
                   class="flex flex-col sm:flex-row justify-end sm:space-x-2 space-y-2 sm:space-y-0 w-full sm:w-auto"
                 >
+                  <!-- Item-Level Processing Button - Allows selecting individual items to accept/reject -->
                   <button
-                    @click="viewDistributionReceipt(distribution)"
-                    class="btn btn-sm text-black/50 bg-gray-200 font-thin border border-none hover:bg-gray-300 w-full sm:w-auto"
+                    @click="
+                      () => {
+                        console.log(
+                          'Item-level processing button clicked for distribution:',
+                          distribution
+                        );
+                        openItemLevelModal(distribution);
+                      }
+                    "
+                    class="btn btn-sm text-white bg-primaryColor font-thin border border-none hover:bg-primaryColor/80 w-full sm:w-auto"
+                    :disabled="distributionActionLoading"
+                    title="Click to select individual items to accept or reject"
                   >
-                    <Eye class="w-4 h-4 mr-1" />
-                    View Receipt
+                    <Package class="w-4 h-4 mr-1" />
+                    Select Items
                   </button>
                   <button
                     @click="
@@ -2414,8 +3285,16 @@
                     :disabled="distributionActionLoading"
                   >
                     <CheckCircle class="w-4 h-4 mr-1" />
-                    Accept Distribution
+                    Accept All
                   </button>
+                  <button
+                    @click="viewDistributionReceipt(distribution)"
+                    class="btn btn-sm text-black/50 bg-gray-200 font-thin border border-none hover:bg-gray-300 w-full sm:w-auto"
+                  >
+                    <Eye class="w-4 h-4 mr-1" />
+                    View Receipt
+                  </button>
+
                   <button
                     @click="
                       () => {
@@ -2430,7 +3309,7 @@
                     :disabled="distributionActionLoading"
                   >
                     <X class="w-4 h-4 mr-1" />
-                    Reject
+                    Reject All
                   </button>
                 </div>
               </div>
@@ -2472,6 +3351,422 @@
             <p class="text-gray-600">
               All distributions have been processed or none are available
             </p>
+          </div>
+        </div>
+
+        <!-- Distribution History -->
+        <div v-if="activeTab === 'distribution_history'" class="space-y-6">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xl font-semibold text-primaryColor">
+              Completed Distributions
+            </h3>
+            <button
+              @click="loadCompletedDistributions"
+              :disabled="historyLoading"
+              class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
+            >
+              <RefreshCcw
+                :class="['w-4 h-4 mr-2', { 'animate-spin': historyLoading }]"
+              />
+              Refresh
+            </button>
+          </div>
+
+          <!-- Date Filters (match RequestSupply style) -->
+          <div class="flex flex-wrap items-center gap-2">
+            <div class="join">
+              <button
+                class="join-item btn btn-xs font-thin"
+                :class="
+                  historyDateFilter.type === 'today'
+                    ? '!bg-primaryColor/10 text-primaryColor border border-none'
+                    : '!bg-gray-200 text-black/50 border border-none hover:bg-gray-300'
+                "
+                @click="setHistoryFilter('today')"
+              >
+                Today
+              </button>
+              <button
+                class="join-item btn btn-xs font-thin"
+                :class="
+                  historyDateFilter.type === 'week'
+                    ? '!bg-primaryColor/10 text-primaryColor border border-none'
+                    : '!bg-gray-200 text-black/50 border border-none hover:bg-gray-300'
+                "
+                @click="setHistoryFilter('week')"
+              >
+                This Week
+              </button>
+              <button
+                class="join-item btn btn-xs font-thin"
+                :class="
+                  historyDateFilter.type === 'month'
+                    ? '!bg-primaryColor/10 text-primaryColor border border-none'
+                    : '!bg-gray-200 text-black/50 border border-none hover:bg-gray-300'
+                "
+                @click="setHistoryFilter('month')"
+              >
+                This Month
+              </button>
+              <button
+                class="join-item btn btn-xs font-thin"
+                :class="
+                  historyDateFilter.type === 'custom_month'
+                    ? '!bg-primaryColor/10 text-primaryColor border border-none'
+                    : '!bg-gray-200 text-black/50 border border-none hover:bg-gray-300'
+                "
+                @click="setHistoryFilter('custom_month')"
+              >
+                Custom Month
+              </button>
+            </div>
+
+            <div
+              v-if="historyDateFilter.type === 'custom_month'"
+              class="flex items-center gap-2"
+            >
+              <select
+                class="select select-bordered select-xs"
+                v-model.number="historyDateFilter.month"
+                @change="historyCurrentPage = 1"
+              >
+                <option v-for="m in 12" :key="m" :value="m">{{ m }}</option>
+              </select>
+              <input
+                type="number"
+                class="input input-bordered input-xs w-20"
+                v-model.number="historyDateFilter.year"
+                @change="historyCurrentPage = 1"
+              />
+            </div>
+          </div>
+
+          <div v-if="historyLoading" class="flex justify-center py-8">
+            <span class="loading loading-spinner loading-xs"></span>
+          </div>
+
+          <template v-else-if="paginatedCompletedDistributions.length > 0">
+            <div class="overflow-x-auto">
+              <table class="table w-full table-xs table-zebra custom-zebra">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Reference</th>
+                    <th>Branch</th>
+                    <th>Prepared By</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="distribution in paginatedCompletedDistributions"
+                    :key="distribution.id"
+                  >
+                    <td class="w-40 whitespace-nowrap">
+                      <div class="text-sm font-medium text-gray-900">
+                        {{ formatDate(distribution.created_at) }}
+                      </div>
+                      <div class="text-xs text-gray-500">
+                        {{ formatTime(distribution.created_at) }}
+                      </div>
+                    </td>
+                    <td class="font-semibold">{{ distribution.reference }}</td>
+                    <td>
+                      {{ distribution.branch_name || currentBranch?.name }}
+                    </td>
+                    <td>{{ distribution.prepared_by }}</td>
+                    <td>
+                      ₱{{ Number(distribution.total_amount || 0).toFixed(2) }}
+                    </td>
+                    <td>
+                      <div class="badge bg-success/10 text-success badge-sm">
+                        Completed
+                      </div>
+                    </td>
+                    <td>
+                      <button
+                        @click="viewDistributionReceipt(distribution)"
+                        class="btn btn-xs text-black/50 bg-gray-200 font-thin border border-none hover:bg-gray-300"
+                        :disabled="receiptLoading"
+                      >
+                        <span
+                          v-if="receiptLoading"
+                          class="loading loading-spinner loading-xs mr-1"
+                        ></span>
+                        <template v-else>
+                          <Eye class="w-4 h-4 mr-1" />
+                        </template>
+                        View Receipt
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <!-- Pagination for history -->
+            <div class="flex justify-center mt-4" v-if="totalHistoryPages > 1">
+              <div class="join space-x-1">
+                <button
+                  :disabled="historyCurrentPage === 1"
+                  @click="historyCurrentPage--"
+                  class="join-item btn font-thin !bg-gray-200 text-black/50 btn-xs border border-none hover:bg-gray-300 shadow-none"
+                >
+                  «
+                </button>
+                <button
+                  class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-xs shadow-none hover:bg-gray-300"
+                >
+                  Page {{ historyCurrentPage }} of {{ totalHistoryPages }}
+                </button>
+                <button
+                  :disabled="historyCurrentPage === totalHistoryPages"
+                  @click="historyCurrentPage++"
+                  class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-xs shadow-none hover:bg-gray-300"
+                >
+                  »
+                </button>
+              </div>
+            </div>
+          </template>
+
+          <div v-else class="text-center text-black/50 py-8">
+            No completed distributions found for this branch
+          </div>
+        </div>
+
+        <!-- Return Items Tab -->
+        <div v-if="activeTab === 'return_items'" class="space-y-6">
+          <div
+            class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
+          >
+            <h2
+              class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl"
+            >
+              <RefreshCcw class="w-5 h-5 sm:w-6 sm:h-6" />
+              Return Items to Main
+            </h2>
+            <div class="join gap-1">
+              <button
+                class="join-item btn btn-sm font-thin"
+                :class="
+                  returnType === 'scm'
+                    ? '!bg-primaryColor/10 text-primaryColor border border-none'
+                    : '!bg-gray-200 text-black/50 border border-none hover:bg-gray-300'
+                "
+                @click="returnType = 'scm'"
+              >
+                SCM
+              </button>
+              <button
+                class="join-item btn btn-sm font-thin"
+                :class="
+                  returnType === 'production'
+                    ? '!bg-primaryColor/10 text-primaryColor border border-none'
+                    : '!bg-gray-200 text-black/50 border border-none hover:bg-gray-300'
+                "
+                @click="returnType = 'production'"
+              >
+                Production
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="card bg-white shadow-lg">
+              <div class="card-body p-4">
+                <div class="flex items-center justify-between mb-2">
+                  <h3 class="font-semibold">
+                    Select Items ({{ returnType.toUpperCase() }})
+                  </h3>
+                  <span class="text-xs text-gray-500"
+                    >Available: {{ currentReturnSource.length }}</span
+                  >
+                </div>
+                <div class="overflow-x-auto">
+                  <table class="table table-zebra w-full table-xs custom-zebra">
+                    <thead>
+                      <tr class="bg-base-200">
+                        <th>Item</th>
+                        <th class="text-right">Available</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="it in currentReturnSource" :key="it.id">
+                        <td>
+                          <div class="flex items-center gap-2">
+                            <span class="font-medium">{{ it.item_name }}</span>
+                            <span class="badge badge-ghost badge-xs">{{
+                              it.unit
+                            }}</span>
+                          </div>
+                        </td>
+                        <td class="text-right">
+                          {{ Number(it.quantity).toLocaleString() }}
+                        </td>
+                        <td class="text-right">
+                          <button
+                            class="btn btn-xs"
+                            @click="addToReturnCart(it)"
+                            :disabled="returnCart.some((r) => r.id === it.id)"
+                          >
+                            Add
+                          </button>
+                        </td>
+                      </tr>
+                      <tr v-if="currentReturnSource.length === 0">
+                        <td
+                          colspan="3"
+                          class="text-center text-sm text-gray-500 py-6"
+                        >
+                          No items found.
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="card bg-white shadow-lg">
+              <div class="card-body p-4">
+                <div class="flex items-center justify-between mb-2">
+                  <h3 class="font-semibold">Return Cart</h3>
+                  <button
+                    class="btn btn-ghost btn-xs"
+                    @click="resetReturn"
+                    :disabled="returnCart.length === 0"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div class="overflow-x-auto overflow-y-auto">
+                  <table class="table w-full table-xs">
+                    <thead>
+                      <tr class="bg-base-200">
+                        <th>Item</th>
+                        <th class="text-right">Avail.</th>
+                        <th class="text-right">Return Qty</th>
+                        <th>Map: Main Item</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="row in returnCart" :key="row.id">
+                        <td>
+                          <div class="flex flex-col">
+                            <span class="font-medium">{{ row.item_name }}</span>
+                            <span class="text-xs text-gray-500"
+                              >Unit: {{ row.unit }}</span
+                            >
+                          </div>
+                        </td>
+                        <td class="text-right">
+                          {{ Number(row.available).toLocaleString() }}
+                        </td>
+                        <td class="text-right">
+                          <input
+                            type="number"
+                            class="input input-bordered input-xs w-28 text-right"
+                            v-model.number="row.quantity"
+                            :max="row.available"
+                            min="0"
+                            step="0.01"
+                          />
+                        </td>
+                        <td>
+                          <div
+                            v-if="row.source === 'scm'"
+                            class="min-w-[220px]"
+                          >
+                            <select
+                              class="select select-bordered select-xs w-full"
+                              v-model="row.main_inventory_item_id"
+                              @focus="loadMappingOptions"
+                            >
+                              <option :value="null">
+                                Select main inventory item (optional)
+                              </option>
+                              <option
+                                v-for="opt in scmInventoryOptions"
+                                :key="opt.id"
+                                :value="opt.id"
+                              >
+                                {{ opt.label }}
+                              </option>
+                            </select>
+                          </div>
+                          <div v-else class="min-w-[220px]">
+                            <select
+                              class="select select-bordered select-xs w-full"
+                              v-model="row.menu_item_id"
+                              @focus="loadMappingOptions"
+                            >
+                              <option :value="null">
+                                Select menu item (optional)
+                              </option>
+                              <option
+                                v-for="opt in productionMenuOptions"
+                                :key="opt.id"
+                                :value="opt.id"
+                              >
+                                {{ opt.label }}
+                              </option>
+                            </select>
+                          </div>
+                        </td>
+                        <td class="text-right">
+                          <button
+                            class="btn btn-ghost btn-xs"
+                            @click="removeFromReturnCart(row.id)"
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                      <tr v-if="returnCart.length === 0">
+                        <td
+                          colspan="4"
+                          class="text-center text-sm text-gray-500 py-6"
+                        >
+                          No items selected.
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div class="mt-3">
+                  <label class="label"
+                    ><span class="label-text text-xs"
+                      >Notes (optional)</span
+                    ></label
+                  >
+                  <textarea
+                    class="textarea textarea-bordered w-full"
+                    rows="2"
+                    v-model="returnNotes"
+                    placeholder="Reason or remarks..."
+                  ></textarea>
+                </div>
+
+                <div class="mt-4 flex justify-end">
+                  <button
+                    class="btn bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80 btn-sm"
+                    :disabled="returnSubmitting || returnCart.length === 0"
+                    @click="submitReturnItems"
+                  >
+                    <span
+                      v-if="returnSubmitting"
+                      class="loading loading-spinner loading-xs mr-2"
+                    ></span>
+                    Submit Return
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2552,7 +3847,7 @@
               Items to be Added to Inventory
             </h4>
             <div class="overflow-x-auto">
-              <table class="table table-zebra w-full table-xs">
+              <table class="table table-zebra w-full table-xs custom-zebra">
                 <thead>
                   <tr class="bg-base-200">
                     <th>Item</th>
@@ -2611,7 +3906,7 @@
           </div>
 
           <!-- Confirmation Message -->
-          <div class="alert alert-info">
+          <div class="alert bg-blue-50 text-blue-600">
             <AlertCircle class="w-4 h-4" />
             <span>
               By accepting this distribution, all items will be added to your
@@ -2629,14 +3924,7 @@
             >
               Cancel
             </button>
-            <button
-              @click="rejectDistribution(selectedDistribution)"
-              class="btn btn-outline btn-sm text-error hover:bg-error/10 w-full sm:w-auto"
-              :disabled="distributionActionLoading"
-            >
-              <X class="w-4 h-4 mr-1" />
-              Reject
-            </button>
+
             <button
               @click="acceptDistribution(selectedDistribution)"
               class="btn btn-primary btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80 shadow-none w-full sm:w-auto"
@@ -2750,7 +4038,7 @@
           </div>
 
           <!-- Warning Message -->
-          <div class="alert alert-warning">
+          <div class="alert bg-warning/20 text-warning shadow-none">
             <AlertTriangle class="w-4 h-4" />
             <span>
               By rejecting this distribution, the items will be returned to the
@@ -2790,9 +4078,197 @@
       :show="showReceiptModal"
       :onClose="closeReceiptModal"
     />
+
+    <!-- Item-Level Accept/Reject Modal -->
+    <ItemLevelAcceptRejectModal
+      ref="itemLevelModal"
+      :distribution="selectedDistribution"
+      :loading="distributionActionLoading"
+      @close="closeItemLevelModal"
+      @process="handleItemLevelProcessing"
+    />
+
+    <!-- Branch Inventory action modals -->
+    <BranchInventoryConsumptionModal
+      :show="actionModal.show && actionModal.type === 'consumption'"
+      :categories="modalCategories"
+      :item-types="modalItemTypes"
+      :current-inventory="modalCurrentInventory"
+      :preselected-item="actionModal.item"
+      @close="closeActionModal"
+      @submit="handleConsumptionSubmit"
+    />
+
+    <BranchInventoryAdjustmentModal
+      :show="actionModal.show && actionModal.type === 'adjustment'"
+      :categories="modalCategories"
+      :item-types="modalItemTypes"
+      :current-inventory="modalCurrentInventory"
+      :preselected-item="actionModal.item"
+      @close="closeActionModal"
+      @submit="handleAdjustmentSubmit"
+    />
+
+    <!-- Confirmation Modal -->
+    <dialog id="branch_inventory_confirm_modal" class="modal">
+      <div class="modal-box max-w-xl">
+        <h3 class="font-bold text-lg mb-2">{{ confirmModal.title }}</h3>
+        <p class="text-sm text-gray-600">{{ confirmModal.message }}</p>
+        <div class="modal-action">
+          <button
+            type="button"
+            class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none btn-sm"
+            @click="closeConfirmModal"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn bg-primaryColor text-white btn-sm font-thin border-none hover:bg-primaryColor/80 disabled:opacity-60 disabled:cursor-not-allowed"
+            @click="handleConfirmAction"
+            :disabled="confirmLoading"
+          >
+            <span v-if="confirmLoading">Confirming...</span>
+            <span v-else>Confirm</span>
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Branch Transactions Modal -->
+    <BranchInventoryTransactionModal
+      :show="showBranchTransactions"
+      @close="closeTransactionModal"
+    />
+
+    <!-- Floating: Approved Returns Awaiting Acknowledgment -->
+    <div
+      class="fixed bottom-24 right-4 z-30"
+      v-if="approvedReturns.length > 0 || rejectedReturns.length > 0"
+    >
+      <div
+        class="card shadow-lg bg-base-100 border border-base-200 cursor-pointer"
+        @click="
+          showApprovedReturnsPanel = true;
+          loadReturnsAwaitingAck();
+        "
+      >
+        <div class="card-body p-3">
+          <div class="flex items-center gap-2">
+            <div class="badge bg-success/20 text-success">Returns</div>
+            <div class="text-xs text-gray-500">Awaiting acknowledgment</div>
+            <div class="ml-auto badge bg-success/20 text-success font-thin">
+              {{ approvedReturns.length + rejectedReturns.length }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <dialog
+      id="approved_returns_panel"
+      class="modal"
+      :open="showApprovedReturnsPanel"
+    >
+      <div class="modal-box max-w-3xl">
+        <h3 class="font-bold text-lg mb-2">
+          Branch Returns Awaiting Acknowledgment
+        </h3>
+        <div class="flex gap-2 mb-3">
+          <button
+            class="btn btn-xs"
+            :class="returnsTab === 'approved' ? 'btn-primary' : ''"
+            @click="returnsTab = 'approved'"
+          >
+            Approved
+          </button>
+          <button
+            class="btn btn-xs"
+            :class="returnsTab === 'rejected' ? 'btn-error' : ''"
+            @click="returnsTab = 'rejected'"
+          >
+            Rejected
+          </button>
+        </div>
+        <div class="overflow-x-auto max-h-[60vh]">
+          <table class="table table-zebra table-xs w-full custom-zebra">
+            <thead>
+              <tr class="bg-base-200">
+                <th>ID</th>
+                <th>Type</th>
+                <th>Items</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="approvedLoading || rejectedLoading">
+                <td colspan="4" class="text-center py-6">
+                  <span class="loading loading-spinner loading-sm"></span>
+                </td>
+              </tr>
+              <tr
+                v-for="ret in returnsTab === 'approved'
+                  ? approvedReturns
+                  : rejectedReturns"
+                :key="ret.id"
+              >
+                <td class="font-medium">#{{ ret.id }}</td>
+                <td class="uppercase">{{ ret.return_type }}</td>
+                <td>
+                  <div class="text-xs">
+                    <div v-for="it in ret.items" :key="it.id">
+                      {{ it.item_name }} - {{ it.quantity }} {{ it.unit }}
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <button
+                    class="btn btn-xs bg-success/20 text-success font-thin border-none hover:bg-success/30"
+                    :disabled="branchAckLoadingId === ret.id"
+                    @click="acknowledgeReturnComplete(ret.id)"
+                  >
+                    <span
+                      v-if="branchAckLoadingId === ret.id"
+                      class="loading loading-spinner loading-xs mr-1"
+                    ></span>
+                    {{
+                      branchAckLoadingId === ret.id
+                        ? 'Completing...'
+                        : 'Complete'
+                    }}
+                  </button>
+                </td>
+              </tr>
+              <tr
+                v-if="
+                  !(approvedLoading || rejectedLoading) &&
+                  (returnsTab === 'approved'
+                    ? approvedReturns.length === 0
+                    : rejectedReturns.length === 0)
+                "
+              >
+                <td colspan="4" class="text-center text-sm text-gray-500 py-6">
+                  No approved returns.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="modal-action">
+          <button class="btn btn-sm" @click="showApprovedReturnsPanel = false">
+            Close
+          </button>
+        </div>
+      </div>
+    </dialog>
   </div>
 </template>
 
 <style scoped>
-  /* Following MainInventory.vue patterns */
+  .custom-zebra tbody tr:nth-child(even) {
+    background-color: var(--accentColor);
+  }
+  .custom-zebra tbody tr:nth-child(odd) {
+    background-color: rgba(0, 0, 0, 0.03);
+  }
 </style>

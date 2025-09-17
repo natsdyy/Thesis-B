@@ -171,6 +171,31 @@ export const useGRNStore = defineStore('grn', () => {
     }
   };
 
+  const checkGRNCreationEligibility = async (poId) => {
+    error.value = null;
+
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/purchase-orders/${poId}/can-create-grn`
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to check GRN eligibility'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to check GRN eligibility';
+      console.error('Error checking GRN eligibility:', err);
+      throw err;
+    }
+  };
+
   const createGRNFromPO = async (poId, grnData) => {
     loading.value = true;
     error.value = null;
@@ -340,6 +365,32 @@ export const useGRNStore = defineStore('grn', () => {
     return updatedGRN;
   };
 
+  const updateGRNInventoryData = async (grnId) => {
+    error.value = null;
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/grn/${grnId}/update-inventory-data`
+      );
+
+      if (response.data.success) {
+        // Clear cache and refresh the GRN
+        grnCache.value.delete(grnId);
+        return response.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to update inventory data'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to update inventory data';
+      console.error('Error updating GRN inventory data:', err);
+      throw err;
+    }
+  };
+
   // Clear all caches
   const clearCaches = () => {
     lastFetchTime.value = null;
@@ -374,12 +425,14 @@ export const useGRNStore = defineStore('grn', () => {
     fetchGRNsWithStats,
     fetchStats,
     fetchGRNById,
+    checkGRNCreationEligibility,
     createGRNFromPO,
     updateGRNStatus,
     performQualityInspection,
     performBulkQualityInspection,
     fetchActiveItemTypes,
     mapGrnItemType,
+    updateGRNInventoryData,
     clearError,
     clearCaches,
     clearGRNCache,

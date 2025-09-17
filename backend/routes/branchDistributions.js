@@ -111,6 +111,129 @@ const { authenticateToken } = require("../middleware/rbac");
 
 /**
  * @swagger
+ * /api/branch-distributions/bulk-distribute:
+ *   post:
+ *     summary: Create multiple branch distributions in bulk (optimized for performance)
+ *     tags: [Branch Distributions]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - distributions
+ *             properties:
+ *               distributions:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/CreateBranchDistribution'
+ *     responses:
+ *       201:
+ *         description: Distributions created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/BranchDistribution'
+ *       400:
+ *         description: Invalid input
+ *       500:
+ *         description: Server error
+ */
+router.post("/bulk-distribute", authenticateToken, async (req, res) => {
+  try {
+    const { distributions } = req.body;
+
+    // Validation
+    if (
+      !distributions ||
+      !Array.isArray(distributions) ||
+      distributions.length === 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Distributions array is required and must not be empty",
+      });
+    }
+
+    // Validate each distribution
+    for (const distributionData of distributions) {
+      const { branch_id, prepared_by, total_amount, items } = distributionData;
+
+      if (
+        !branch_id ||
+        !prepared_by ||
+        !total_amount ||
+        !items ||
+        !Array.isArray(items) ||
+        items.length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Each distribution must have: branch_id, prepared_by, total_amount, and items array",
+        });
+      }
+
+      // Validate items
+      for (const item of items) {
+        if (
+          !item.source ||
+          !item.item_ref_id ||
+          !item.name ||
+          !item.unit ||
+          item.qty === undefined ||
+          item.unit_price === undefined ||
+          item.amount === undefined
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Each item must have: source, item_ref_id, name, unit, qty, unit_price, amount",
+          });
+        }
+
+        if (!["scm", "production"].includes(item.source)) {
+          return res.status(400).json({
+            success: false,
+            message: 'Item source must be either "scm" or "production"',
+          });
+        }
+      }
+    }
+
+    // Process all distributions in a single transaction
+    const results =
+      await BranchDistribution.createBulkDistributions(distributions);
+
+    res.status(201).json({
+      success: true,
+      message: `${results.length} branch distributions created successfully`,
+      data: results,
+    });
+  } catch (error) {
+    console.error("Error creating bulk branch distributions:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create bulk branch distributions",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
  * /api/branch-distributions:
  *   post:
  *     summary: Create a new branch distribution
@@ -162,28 +285,33 @@ router.post("/", authenticateToken, async (req, res) => {
       });
     }
 
-    // Validate items
+    // Validate items (relaxed to support auto-map payloads)
     for (const item of items) {
-      if (
-        !item.source ||
-        !item.item_ref_id ||
-        !item.name ||
-        !item.unit ||
-        item.qty === undefined ||
-        item.unit_price === undefined ||
-        item.amount === undefined
-      ) {
+      const src = (item.source || "scm").toString().toLowerCase();
+      const qty = item.qty !== undefined ? item.qty : item.quantity;
+      const unitPrice =
+        item.unit_price !== undefined ? item.unit_price : item.price;
+      const amount = item.amount !== undefined ? item.amount : undefined;
+
+      if (!item.name || !item.unit || qty === undefined) {
         return res.status(400).json({
           success: false,
-          message:
-            "Each item must have: source, item_ref_id, name, unit, qty, unit_price, amount",
+          message: "Each item must have: name, unit, and qty/quantity",
         });
       }
 
-      if (!["scm", "production"].includes(item.source)) {
+      if (!["scm", "production"].includes(src)) {
         return res.status(400).json({
           success: false,
           message: 'Item source must be either "scm" or "production"',
+        });
+      }
+
+      // unit_price and amount can be derived if missing
+      if (unitPrice === undefined && amount === undefined) {
+        return res.status(400).json({
+          success: false,
+          message: "Provide unit_price/price or amount to derive totals",
         });
       }
     }
@@ -670,6 +798,7 @@ router.post("/:id/reject", authenticateToken, async (req, res) => {
       rejected_by,
       rejection_reason,
       rejection_notes: rejection_notes || null,
+      performed_by_id: req.user?.id || null,
     });
 
     res.json({
@@ -749,6 +878,7 @@ router.post("/:id/complete", authenticateToken, async (req, res) => {
       parseInt(id),
       {
         completed_by,
+        performed_by_id: req.user?.id || null,
       }
     );
 
@@ -767,6 +897,248 @@ router.post("/:id/complete", authenticateToken, async (req, res) => {
     });
   }
 });
+
+/**
+ * @swagger
+ * /api/branch-distributions/{id}/acknowledge-rejection:
+ *   post:
+ *     summary: Acknowledge a rejected distribution
+ *     tags: [Branch Distributions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Distribution ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - acknowledged_by
+ *             properties:
+ *               acknowledged_by:
+ *                 type: string
+ *                 description: User who acknowledged the rejection
+ *               acknowledgment_notes:
+ *                 type: string
+ *                 description: Optional notes about the acknowledgment
+ *     responses:
+ *       200:
+ *         description: Rejection acknowledged successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   $ref: '#/components/schemas/BranchDistribution'
+ *       400:
+ *         description: Invalid input or distribution cannot be acknowledged
+ *       404:
+ *         description: Distribution not found
+ */
+router.post(
+  "/:id/acknowledge-rejection",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { acknowledged_by, acknowledgment_notes } = req.body;
+
+      // Validation
+      if (!acknowledged_by) {
+        return res.status(400).json({
+          success: false,
+          message: "acknowledged_by is required",
+        });
+      }
+
+      const updated = await BranchDistribution.acknowledgeRejection(
+        parseInt(id),
+        {
+          acknowledged_by,
+          acknowledgment_notes: acknowledgment_notes || null,
+        }
+      );
+
+      res.json({
+        success: true,
+        message: "Rejection acknowledged successfully",
+        data: updated,
+      });
+    } catch (error) {
+      console.error("Error acknowledging rejection:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to acknowledge rejection",
+        error: error.message,
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/branch-distributions/{id}/partial-accept-reject:
+ *   post:
+ *     summary: Partially accept/reject a distribution with item-level selection
+ *     tags: [Branch Distributions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Distribution ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - action_by
+ *             properties:
+ *               action_by:
+ *                 type: string
+ *                 description: User performing the action
+ *               accepted_items:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Array of distribution item IDs to accept
+ *               rejected_items:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - item_id
+ *                     - reason
+ *                   properties:
+ *                     item_id:
+ *                       type: integer
+ *                       description: Distribution item ID to reject
+ *                     reason:
+ *                       type: string
+ *                       description: Reason for rejection
+ *                     notes:
+ *                       type: string
+ *                       description: Optional additional notes
+ *               notes:
+ *                 type: string
+ *                 description: Optional notes about the partial action
+ *     responses:
+ *       200:
+ *         description: Distribution partially processed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     originalDistribution:
+ *                       $ref: '#/components/schemas/BranchDistribution'
+ *                     newDistribution:
+ *                       $ref: '#/components/schemas/BranchDistribution'
+ *                     rejectedItems:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *       400:
+ *         description: Invalid input or distribution cannot be partially processed
+ *       404:
+ *         description: Distribution not found
+ */
+router.post(
+  "/:id/partial-accept-reject",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { action_by, accepted_items, rejected_items, notes } = req.body;
+
+      // Validation
+      if (!action_by) {
+        return res.status(400).json({
+          success: false,
+          message: "action_by is required",
+        });
+      }
+
+      if (!accepted_items || !Array.isArray(accepted_items)) {
+        return res.status(400).json({
+          success: false,
+          message: "accepted_items must be an array",
+        });
+      }
+
+      if (!rejected_items || !Array.isArray(rejected_items)) {
+        return res.status(400).json({
+          success: false,
+          message: "rejected_items must be an array",
+        });
+      }
+
+      if (accepted_items.length === 0 && rejected_items.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "At least one item must be accepted or rejected",
+        });
+      }
+
+      // Validate rejected items structure
+      for (const item of rejected_items) {
+        if (!item.item_id || !item.reason) {
+          return res.status(400).json({
+            success: false,
+            message: "Each rejected item must have item_id and reason",
+          });
+        }
+      }
+
+      const result = await BranchDistribution.partialAcceptReject(
+        parseInt(id),
+        {
+          action_by,
+          accepted_items,
+          rejected_items,
+          notes: notes || null,
+        }
+      );
+
+      res.json({
+        success: true,
+        message: "Distribution partially processed successfully",
+        data: result,
+      });
+    } catch (error) {
+      console.error("Error partially processing distribution:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to partially process distribution",
+        error: error.message,
+      });
+    }
+  }
+);
 
 /**
  * @swagger

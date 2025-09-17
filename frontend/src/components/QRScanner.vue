@@ -75,6 +75,32 @@
         </div>
       </div>
     </div>
+
+    <!-- Manual QR Code Input (Fallback) -->
+    <div class="manual-input mt-6">
+      <div class="divider">OR</div>
+      <div class="form-control">
+        <label class="label">
+          <span class="label-text">Enter QR Code Manually</span>
+        </label>
+        <div class="input-group">
+          <input 
+            v-model="manualQRInput" 
+            type="text" 
+            placeholder="Paste QR code here..."
+            class="input input-bordered flex-1"
+            @keyup.enter="submitManualQR"
+          />
+          <button 
+            @click="submitManualQR" 
+            class="btn btn-primary"
+            :disabled="!manualQRInput.trim()"
+          >
+            Submit
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -113,6 +139,11 @@ const startCamera = async () => {
       throw new Error('Video element not found');
     }
 
+    // Check if camera is supported
+    if (!QrScanner.hasCamera()) {
+      throw new Error('No camera found on this device');
+    }
+
     // Create QR scanner instance
     qrScanner.value = new QrScanner(
       videoElement.value,
@@ -121,13 +152,17 @@ const startCamera = async () => {
         highlightScanRegion: true,
         highlightCodeOutline: true,
         preferredCamera: 'environment', // Use back camera on mobile
+        maxScansPerSecond: 5, // Limit scan rate
+        returnDetailedScanResult: true
       }
     );
 
     // Start scanning
     await qrScanner.value.start();
     cameraActive.value = true;
+    console.log('QR Scanner started successfully');
   } catch (err) {
+    console.error('QR Scanner error:', err);
     error.value = err.message;
     emit('error', err.message);
   } finally {
@@ -150,14 +185,26 @@ const stopCamera = () => {
 
 const handleQRScan = async (qrCode) => {
   try {
+    console.log('QR Code scanned:', qrCode);
+    
     const result = await attendanceStore.validateQRCode(qrCode);
+    console.log('QR Code validation result:', result);
+    
     scannedData.value = result;
-    emit('scan', result);
-    props.onScan(result);
+    
+    // Pass the QR code data with the qr_code property for time-in
+    const qrData = {
+      ...result,
+      qr_code: qrCode
+    };
+    
+    emit('scan', qrData);
+    props.onScan(qrData);
     
     // Stop the scanner after successful scan
     stopCamera();
   } catch (err) {
+    console.error('QR Code validation error:', err);
     error.value = err.message;
     emit('error', err.message);
   }

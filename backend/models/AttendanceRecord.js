@@ -8,9 +8,9 @@ class AttendanceRecord {
     return record;
   }
 
-  static async findByUserId(userId, date = null) {
+  static async findByUserId(employeeId, date = null) {
     let query = knex("attendance_records")
-      .where("user_id", userId)
+      .where("employee_id", employeeId)
       .orderBy("created_at", "desc");
 
     if (date) {
@@ -42,28 +42,28 @@ class AttendanceRecord {
     return await query;
   }
 
-  static async getTodayAttendance(userId) {
+  static async getTodayAttendance(employeeId) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const endOfDay = new Date();
     endOfDay.setHours(23, 59, 59, 999);
 
     return await knex("attendance_records")
-      .where("user_id", userId)
+      .where("employee_id", employeeId)
       .whereBetween("created_at", [today, endOfDay])
       .first();
   }
 
-  static async timeIn(userId, qrCodeId) {
-    // Check if user already has attendance for today
-    const existingRecord = await this.getTodayAttendance(userId);
+  static async timeIn(employeeId, qrCodeId) {
+    // Check if employee already has attendance for today
+    const existingRecord = await this.getTodayAttendance(employeeId);
 
     if (existingRecord && existingRecord.time_in) {
       throw new Error("You have already timed in today");
     }
 
     const data = {
-      user_id: userId,
+      employee_id: employeeId,
       qr_code_id: qrCodeId,
       time_in: knex.fn.now(),
       status: "present",
@@ -86,8 +86,8 @@ class AttendanceRecord {
     }
   }
 
-  static async timeOut(userId) {
-    const todayRecord = await this.getTodayAttendance(userId);
+  static async timeOut(employeeId) {
+    const todayRecord = await this.getTodayAttendance(employeeId);
 
     if (!todayRecord) {
       throw new Error("No time-in record found for today");
@@ -117,7 +117,7 @@ class AttendanceRecord {
     return updated;
   }
 
-  static async getAttendanceReport(userId, startDate, endDate) {
+  static async getAttendanceReport(employeeId, startDate, endDate) {
     return await knex("attendance_records")
       .select(
         "attendance_records.*",
@@ -130,8 +130,8 @@ class AttendanceRecord {
         "attendance_records.qr_code_id",
         "attendance_qr_codes.id"
       )
-      .leftJoin("employees", "attendance_records.user_id", "employees.id")
-      .where("attendance_records.user_id", userId)
+      .leftJoin("employees", "attendance_records.employee_id", "employees.id")
+      .where("attendance_records.employee_id", employeeId)
       .whereBetween("attendance_records.created_at", [startDate, endDate])
       .orderBy("attendance_records.created_at", "desc");
   }
@@ -150,7 +150,7 @@ class AttendanceRecord {
         "attendance_records.qr_code_id",
         "attendance_qr_codes.id"
       )
-      .leftJoin("employees", "attendance_records.user_id", "employees.id")
+      .leftJoin("employees", "attendance_records.employee_id", "employees.id")
       .whereBetween("attendance_records.created_at", [startDate, endDate])
       .orderBy("attendance_records.created_at", "desc");
   }

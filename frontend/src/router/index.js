@@ -160,6 +160,16 @@ const routes = [
       requiresDepartmentAccess: true,
     },
   },
+  // Attendance scan route (public, no auth required for QR scanning)
+  {
+    path: '/attendance/scan',
+    name: 'AttendanceScan',
+    component: () => import('../views/attendance/AttendanceScan.vue'),
+    meta: {
+      title: 'QR Attendance Scanner',
+      requiresAuth: false, // Public route for QR scanning
+    },
+  },
   // 404 Not Found
   {
     path: '/:pathMatch(.*)*',

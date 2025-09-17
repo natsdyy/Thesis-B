@@ -103,7 +103,7 @@ router.delete('/qr-codes/:id', authenticateToken, async (req, res) => {
 router.post('/time-in', authenticateToken, async (req, res) => {
   try {
     const { qr_code } = req.body;
-    const userId = req.user.id;
+    const employeeId = req.user.id; // This is the employee ID from JWT
     
     if (!qr_code) {
       return res.status(400).json({
@@ -121,8 +121,8 @@ router.post('/time-in', authenticateToken, async (req, res) => {
       });
     }
     
-    // Time in
-    const attendanceRecord = await AttendanceRecord.timeIn(userId, qrCodeRecord.id);
+    // Time in - use employee ID as user_id for now (until we migrate the schema)
+    const attendanceRecord = await AttendanceRecord.timeIn(employeeId, qrCodeRecord.id);
     
     res.json({
       success: true,
@@ -139,9 +139,9 @@ router.post('/time-in', authenticateToken, async (req, res) => {
 
 router.post('/time-out', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const employeeId = req.user.id; // This is the employee ID from JWT
     
-    const attendanceRecord = await AttendanceRecord.timeOut(userId);
+    const attendanceRecord = await AttendanceRecord.timeOut(employeeId);
     
     res.json({
       success: true,
@@ -158,10 +158,10 @@ router.post('/time-out', authenticateToken, async (req, res) => {
 
 router.get('/my-attendance', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const employeeId = req.user.id; // This is the employee ID from JWT
     const { date } = req.query;
     
-    const attendance = await AttendanceRecord.findByUserId(userId, date);
+    const attendance = await AttendanceRecord.findByUserId(employeeId, date);
     
     res.json({
       success: true,
@@ -178,9 +178,9 @@ router.get('/my-attendance', authenticateToken, async (req, res) => {
 
 router.get('/today', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const employeeId = req.user.id; // This is the employee ID from JWT
     
-    const todayAttendance = await AttendanceRecord.getTodayAttendance(userId);
+    const todayAttendance = await AttendanceRecord.getTodayAttendance(employeeId);
     
     res.json({
       success: true,
@@ -261,6 +261,104 @@ router.post('/validate-qr', async (req, res) => {
       success: false,
       message: 'Failed to validate QR code',
       error: error.message
+    });
+  }
+});
+
+// Public route for QR code scanning (for AttendanceScan.vue)
+router.post('/scan-qr', async (req, res) => {
+  try {
+    const { qrData } = req.body;
+    
+    if (!qrData) {
+      return res.status(400).json({
+        success: false,
+        message: 'QR data is required'
+      });
+    }
+    
+    const qrCodeRecord = await AttendanceQRCode.findByQRCode(qrData);
+    
+    if (!qrCodeRecord) {
+      return res.status(404).json({
+        success: false,
+        message: 'Invalid QR code'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        id: qrCodeRecord.id,
+        location_name: qrCodeRecord.location_name,
+        description: qrCodeRecord.description,
+        qr_code: qrCodeRecord.qr_code
+      },
+      message: 'QR code scanned successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to scan QR code',
+      error: error.message
+    });
+  }
+});
+
+// Public route for mobile app QR code processing (no authentication required)
+router.post('/mobile-scan', async (req, res) => {
+  try {
+    const { action, employee_id, location } = req.body;
+    
+    if (!action || !employee_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Action and employee_id are required'
+      });
+    }
+    
+    // Find employee by employee_id
+    const Employee = require('../models/Employee');
+    const employee = await Employee.getByEmployeeId(employee_id);
+    
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found'
+      });
+    }
+    
+    // Create a temporary QR code for this mobile scan
+    const tempQRCode = `MOBILE_QR_${employee_id}_${Date.now()}`;
+    const qrCodeRecord = await AttendanceQRCode.create({
+      qr_code: tempQRCode,
+      location_name: location || 'Mobile App QR Code',
+      description: 'Mobile app generated QR code',
+      is_active: true
+    });
+    
+    // Process attendance using the employee's ID (not employee_id)
+    let attendanceRecord;
+    if (action === 'time-in') {
+      attendanceRecord = await AttendanceRecord.timeIn(employee.id, qrCodeRecord.id);
+    } else if (action === 'time-out') {
+      attendanceRecord = await AttendanceRecord.timeOut(employee.id);
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid action. Must be time-in or time-out'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: attendanceRecord,
+      message: `Successfully ${action.replace('-', ' ')} for ${employee.first_name} ${employee.last_name}`
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message
     });
   }
 });

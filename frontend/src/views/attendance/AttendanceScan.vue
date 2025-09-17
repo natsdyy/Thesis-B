@@ -133,11 +133,30 @@ const processQRCode = async (data) => {
   try {
     processing.value = true
     
-    const response = await axios.post(`${API_BASE_URL}/attendance/scan-qr`, {
-      qrData: data
-    })
-    
-    result.value = response.data
+    // Handle mobile app QR code format
+    if (data.action && data.employee_id) {
+      // This is a mobile app QR code, process it directly
+      const attendanceData = {
+        action: data.action,
+        employee_id: data.employee_id,
+        employee_name: data.employee_name,
+        branch_id: data.branch_id,
+        branch_name: data.branch_name,
+        location: data.location,
+        timestamp: data.timestamp,
+        valid_until: data.valid_until
+      }
+      
+      // Process the attendance directly
+      await processAttendance(attendanceData)
+    } else {
+      // This is a regular QR code, use the API
+      const response = await axios.post(`${API_BASE_URL}/attendance/scan-qr`, {
+        qrData: data
+      })
+      
+      result.value = response.data
+    }
   } catch (error) {
     console.error('QR processing error:', error)
     result.value = {
@@ -146,6 +165,48 @@ const processQRCode = async (data) => {
     }
   } finally {
     processing.value = false
+  }
+}
+
+const processAttendance = async (attendanceData) => {
+  try {
+    // Check if QR code is still valid
+    if (attendanceData.valid_until) {
+      const validUntil = new Date(attendanceData.valid_until)
+      const now = new Date()
+      
+      if (now > validUntil) {
+        throw new Error('QR code has expired')
+      }
+    }
+    
+    // Use the mobile-scan endpoint for mobile app QR codes
+    const response = await axios.post(`${API_BASE_URL}/attendance/mobile-scan`, {
+      action: attendanceData.action,
+      employee_id: attendanceData.employee_id,
+      location: attendanceData.location
+    })
+    
+    result.value = {
+      success: true,
+      message: response.data.message || `Successfully ${attendanceData.action.replace('-', ' ')}`,
+      data: {
+        action: attendanceData.action,
+        employee: {
+          name: attendanceData.employee_name,
+          employee_id: attendanceData.employee_id
+        },
+        branch: {
+          name: attendanceData.branch_name
+        },
+        location: attendanceData.location,
+        time: new Date().toISOString(),
+        ...response.data.data
+      }
+    }
+  } catch (error) {
+    console.error('Attendance processing error:', error)
+    throw error
   }
 }
 

@@ -23,15 +23,8 @@ exports.up = async function (knex) {
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-<<<<<<< HEAD
-exports.down = function (knex) {
-  return knex.schema.alterTable('branch_request_items', (table) => {
-    table.dropForeign('menu_item_id');
-    table.dropColumn('menu_item_id');
-=======
 exports.down = async function (knex) {
   await knex.schema.alterTable("branch_request_items", (table) => {
     table.dropColumn("menu_item_id");
->>>>>>> origin/main
   });
 };

@@ -43,17 +43,10 @@ exports.up = async function (knex) {
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-<<<<<<< HEAD
-exports.down = function (knex) {
-  return knex.schema.alterTable('branch_request_items', (table) => {
-    table.dropColumn('mapping_field_1');
-    table.dropColumn('mapping_field_2');
-=======
 exports.down = async function (knex) {
   await knex.schema.alterTable("branch_request_items", (table) => {
     table.dropColumn("inventory_item_id");
     table.dropColumn("unit_price");
     table.dropColumn("category");
->>>>>>> origin/main
   });
 };

@@ -25,13 +25,6 @@ exports.up = async function (knex) {
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-<<<<<<< HEAD
-exports.down = function (knex) {
-  return knex.schema.alterTable('supply_requests', (table) => {
-    table.dropForeign('branch_id');
-    table.dropColumn('branch_id');
-  });
-=======
 exports.down = async function (knex) {
   const hasColumn = await knex.schema.hasColumn("supply_requests", "branch_id");
   if (hasColumn) {
@@ -40,5 +33,4 @@ exports.down = async function (knex) {
       table.dropColumn("branch_id");
     });
   }
->>>>>>> origin/main
 };

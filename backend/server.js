@@ -53,9 +53,9 @@ const defaultAllowedOrigins = [
   "http://localhost:8080", // Localhost frontend
   "http://192.168.18.5:8080", // Legacy network frontend
   "http://192.168.56.1:5000", // Ethernet 3 backend
-  "http://localhost:8080", // Localhost frontend
   "https://countrysides.up.railway.app", // Railway deployment
-  "https://*.up.railway.app", // Railway wildcard
+  "https://thesis-b-frontend-production.up.railway.app", // Railway frontend
+  "https://thesis-b-backend-production.up.railway.app", // Railway backend
 ];
 
 const allowList = [...defaultAllowedOrigins, ...envOrigins];
@@ -68,10 +68,15 @@ const corsConfig = {
     const isLanDevOrigin = /^http:\/\/192\.168\.\d+\.\d+:(8080|80)$/.test(
       origin
     );
+    
+    // Allow Railway domains
+    const isRailwayOrigin = /^https:\/\/.*\.up\.railway\.app$/.test(origin);
 
-    if (allowList.includes(origin) || isLanDevOrigin) {
+    if (allowList.includes(origin) || isLanDevOrigin || isRailwayOrigin) {
       return callback(null, true);
     }
+    
+    console.log(`CORS blocked origin: ${origin}`);
     return callback(new Error("Not allowed by CORS"));
   },
   credentials: true,
@@ -84,25 +89,14 @@ app.use(cors(corsConfig));
 app.use(express.json());
 app.use("/uploads", express.static(require("path").join(__dirname, "uploads")));
 
-// Serve frontend static files in production
-if (process.env.NODE_ENV === "production") {
-  const path = require("path");
-  const frontendDistPath = path.join(__dirname, "..", "frontend", "dist");
-  
-  // Serve static files from frontend dist
-  app.use(express.static(frontendDistPath));
-  
-  // Handle client-side routing - serve index.html for all non-API routes
-  app.get("*", (req, res) => {
-    // Skip API routes
-    if (req.path.startsWith("/api/")) {
-      return res.status(404).json({ message: "API endpoint not found" });
-    }
-    
-    // Serve index.html for all other routes (client-side routing)
-    res.sendFile(path.join(frontendDistPath, "index.html"));
+// Health check endpoint for Railway
+app.get("/api/health", (req, res) => {
+  res.status(200).json({ 
+    status: "healthy", 
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || "development"
   });
-}
+});
 
 // API Routes
 app.use("/api/roles", roleRoutes);

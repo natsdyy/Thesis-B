@@ -5,7 +5,7 @@ const config = {
     timeout: 10000,
   },
   production: {
-    baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+    baseURL: import.meta.env.VITE_API_BASE_URL || 'https://thesis-b-backend-production.up.railway.app/api',
     timeout: 15000,
   },
 };

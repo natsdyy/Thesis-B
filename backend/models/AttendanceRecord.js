@@ -1,4 +1,4 @@
-const knex = require("../config/database");
+const { db: knex } = require("../config/database");
 
 class AttendanceRecord {
   static async create(data) {

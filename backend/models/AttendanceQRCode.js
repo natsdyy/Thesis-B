@@ -1,4 +1,4 @@
-const knex = require('../config/database');
+const { db: knex } = require('../config/database');
 
 class AttendanceQRCode {
   static async create(data) {

@@ -32,6 +32,7 @@ const branchRequestRoutes = require("./routes/branchRequests");
 const branchDistributionRoutes = require("./routes/branchDistributions");
 const branchInventoryRoutes = require("./routes/branchInventory");
 const branchReturnRoutes = require("./routes/branchReturns");
+const branchScheduleRoutes = require("./routes/branchSchedules");
 const { serve, setup } = require("./config/swagger");
 
 const app = express();
@@ -127,6 +128,7 @@ app.use("/api/branch-requests", branchRequestRoutes);
 app.use("/api/branch-distributions", branchDistributionRoutes);
 app.use("/api/branch-inventory", branchInventoryRoutes);
 app.use("/api/branch-returns", branchReturnRoutes);
+app.use("/api/branch-schedules", branchScheduleRoutes);
 
 // Auto-expire job
 async function autoExpireJob() {

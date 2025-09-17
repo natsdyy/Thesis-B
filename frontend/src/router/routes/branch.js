@@ -7,10 +7,10 @@ const BranchProfile = () => import('../../views/branch/BranchProfile.vue');
 
 // Role-based access control
 const rolePermissions = {
-  Manager: ['dashboard', 'sales', 'inventory', 'employees', 'profile'],
-  Cashier: ['dashboard', 'profile'],
-  Cook: ['dashboard', 'inventory', 'profile'],
-  Waiter: ['dashboard', 'profile'],
+  Manager: ['dashboard', 'sales', 'inventory', 'employees', 'profile', 'attendance'],
+  Cashier: ['dashboard', 'profile', 'attendance'],
+  Cook: ['dashboard', 'inventory', 'profile', 'attendance'],
+  Waiter: ['dashboard', 'profile', 'attendance'],
 };
 
 // Route guard for role-based access
@@ -103,6 +103,17 @@ export default [
       title: 'Employee Profile',
       requiresAuth: true,
       operation: 'profile',
+    },
+  },
+  {
+    path: 'attendance',
+    name: 'BranchAttendance',
+    component: () => import('../../views/branch/BranchAttendance.vue'),
+    beforeEnter: checkBranchAccess,
+    meta: {
+      title: 'My Attendance',
+      requiresAuth: true,
+      operation: 'attendance',
     },
   },
 ];

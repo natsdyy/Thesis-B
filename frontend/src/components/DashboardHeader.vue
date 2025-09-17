@@ -331,7 +331,16 @@
 
   const viewAttendanceRecords = () => {
     closeAttendanceModal();
-    router.push('/hr/attendance-records');
+    // Redirect based on user department
+    const userDepartment = authStore.user?.department;
+    if (userDepartment === 'Human Resource') {
+      router.push('/hr/attendance-records');
+    } else if (userDepartment === 'Branch') {
+      router.push('/branch/attendance');
+    } else {
+      // Default to branch attendance for other departments
+      router.push('/branch/attendance');
+    }
   };
 </script>
 

@@ -201,7 +201,8 @@
   <!-- QR Attendance Modal -->
   <QRAttendanceModal 
     :isOpen="showAttendanceModal" 
-    @close="closeAttendanceModal" 
+    @close="closeAttendanceModal"
+    @viewRecords="viewAttendanceRecords"
   />
 
   <!-- Logout Confirmation Modal -->
@@ -326,6 +327,11 @@
 
   const closeAttendanceModal = () => {
     showAttendanceModal.value = false;
+  };
+
+  const viewAttendanceRecords = () => {
+    closeAttendanceModal();
+    router.push('/hr/attendance-records');
   };
 </script>
 

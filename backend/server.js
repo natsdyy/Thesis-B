@@ -90,6 +90,10 @@ app.use(cors(corsConfig));
 app.use(express.json());
 app.use("/uploads", express.static(require("path").join(__dirname, "uploads")));
 
+// Serve frontend static files
+const frontendPath = require("path").join(__dirname, "..", "frontend", "dist");
+app.use(express.static(frontendPath));
+
 // Health check endpoint for Railway
 app.get("/api/health", (req, res) => {
   res.status(200).json({ 
@@ -164,6 +168,11 @@ app.get("/api/health", (req, res) => {
     message: "Server is running",
     timestamp: new Date().toISOString(),
   });
+});
+
+// Catch-all handler: send back React's index.html file for any non-API routes
+app.get("*", (req, res) => {
+  res.sendFile(require("path").join(frontendPath, "index.html"));
 });
 
 // Database health check

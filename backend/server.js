@@ -34,7 +34,7 @@ const branchInventoryRoutes = require("./routes/branchInventory");
 const { serve, setup } = require("./config/swagger");
 
 const app = express();
-const PORT = process.env.BACKEND_PORT || 5000;
+const PORT = process.env.PORT || process.env.BACKEND_PORT || 5000;
 
 // Middleware
 // Enhanced CORS to allow localhost, LAN dev origins, and Railway deployment
@@ -184,19 +184,46 @@ app.get("/api/health/db", async (req, res) => {
 });
 
 // Start server
-app.listen(PORT, async () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(
-    `API Documentation available at http://localhost:${PORT}/api-docs`
-  );
+const server = app.listen(PORT, "0.0.0.0", async () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`📚 API Documentation available at http://localhost:${PORT}/api-docs`);
+  console.log(`🏥 Health check available at http://localhost:${PORT}/api/health`);
 
   try {
     await testConnection();
     console.log("✅ Database connected successfully");
-
+    console.log("🔄 Running database migrations...");
     await runMigrations();
     console.log("✅ Database migrations completed");
+    console.log("🎉 Server is ready to accept requests!");
   } catch (error) {
     console.error("❌ Database connection failed:", error.message);
+    console.error("⚠️ Server started but database is not available");
   }
+});
+
+// Handle server errors
+server.on('error', (error) => {
+  console.error('❌ Server error:', error);
+  if (error.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use`);
+  }
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM received, shutting down gracefully');
+  server.close(() => {
+    console.log('✅ Server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('🛑 SIGINT received, shutting down gracefully');
+  server.close(() => {
+    console.log('✅ Server closed');
+    process.exit(0);
+  });
 });

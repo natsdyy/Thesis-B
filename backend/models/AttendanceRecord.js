@@ -154,6 +154,76 @@ class AttendanceRecord {
       .whereBetween("attendance_records.created_at", [startDate, endDate])
       .orderBy("attendance_records.created_at", "desc");
   }
+
+  // Get detailed attendance history (individual time-in/time-out events)
+  static async getAttendanceHistory({ start_date, end_date, employee_id }) {
+    const startDate = new Date(start_date).toISOString();
+    const endDate = new Date(end_date + 'T23:59:59.999Z').toISOString();
+
+    let query = knex("attendance_records")
+      .select(
+        "attendance_records.*",
+        "employees.first_name",
+        "employees.last_name",
+        "employees.employee_id",
+        "attendance_qr_codes.location_name"
+      )
+      .leftJoin("attendance_qr_codes", "attendance_records.qr_code_id", "attendance_qr_codes.id")
+      .leftJoin("employees", "attendance_records.employee_id", "employees.id")
+      .whereBetween("attendance_records.created_at", [startDate, endDate]);
+
+    if (employee_id) {
+      query = query.where("employees.employee_id", employee_id);
+    }
+
+    const records = await query.orderBy("attendance_records.created_at", "desc");
+
+    // Transform records to show individual time-in/time-out events
+    const history = [];
+    
+    records.forEach(record => {
+      // Add time-in event if it exists
+      if (record.time_in) {
+        history.push({
+          id: `${record.id}_time_in`,
+          employee_id: record.employee_id,
+          employee_name: `${record.first_name || ''} ${record.last_name || ''}`.trim(),
+          event_type: 'time-in',
+          created_at: record.time_in,
+          location_name: record.location_name,
+          status: 'present',
+          duration: record.time_out ? this.calculateDuration(record.time_in, record.time_out) : null
+        });
+      }
+      
+      // Add time-out event if it exists
+      if (record.time_out) {
+        history.push({
+          id: `${record.id}_time_out`,
+          employee_id: record.employee_id,
+          employee_name: `${record.first_name || ''} ${record.last_name || ''}`.trim(),
+          event_type: 'time-out',
+          created_at: record.time_out,
+          location_name: record.location_name,
+          status: 'present',
+          duration: record.time_in ? this.calculateDuration(record.time_in, record.time_out) : null
+        });
+      }
+    });
+
+    // Sort by date and time (newest first)
+    return history.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  }
+
+  // Helper method to calculate duration between two timestamps
+  static calculateDuration(timeIn, timeOut) {
+    const start = new Date(timeIn);
+    const end = new Date(timeOut);
+    const diffMs = end - start;
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    return `${diffHours}h ${diffMinutes}m`;
+  }
 }
 
 module.exports = AttendanceRecord;

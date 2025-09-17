@@ -2,7 +2,7 @@
   <div class="space-y-6">
     <!-- Header -->
     <div class="flex justify-between items-center">
-      <h1 class="text-3xl font-bold">Attendance Records</h1>
+      <h1 class="text-3xl font-bold">Employee Attendance History</h1>
       <div class="flex gap-2">
         <input 
           v-model="searchQuery" 
@@ -10,66 +10,24 @@
           placeholder="Search employees..." 
           class="input input-bordered input-sm w-64"
         />
-        <select v-model="selectedDate" class="select select-bordered select-sm">
-          <option value="">All Dates</option>
-          <option v-for="date in availableDates" :key="date" :value="date">
-            {{ formatDate(date) }}
+        <select v-model="selectedEmployee" class="select select-bordered select-sm">
+          <option value="">All Employees</option>
+          <option v-for="employee in employees" :key="employee.id" :value="employee.id">
+            {{ employee.name }}
           </option>
         </select>
+        <input 
+          v-model="selectedDate" 
+          type="date" 
+          class="input input-bordered input-sm"
+        />
         <button @click="refreshRecords" class="btn btn-success btn-sm">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
           </svg>
           Refresh
         </button>
-      </div>
-    </div>
-
-    <!-- Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-      <div class="stat bg-base-100 shadow-lg rounded-lg">
-        <div class="stat-figure text-primary">
-          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
-          </svg>
-        </div>
-        <div class="stat-title">Total Records</div>
-        <div class="stat-value text-primary">{{ totalRecords }}</div>
-        <div class="stat-desc">All time</div>
-      </div>
-
-      <div class="stat bg-base-100 shadow-lg rounded-lg">
-        <div class="stat-figure text-success">
-          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-          </svg>
-        </div>
-        <div class="stat-title">Present Today</div>
-        <div class="stat-value text-success">{{ presentToday }}</div>
-        <div class="stat-desc">{{ attendancePercentage }}% attendance rate</div>
-      </div>
-
-      <div class="stat bg-base-100 shadow-lg rounded-lg">
-        <div class="stat-figure text-warning">
-          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-          </svg>
-        </div>
-        <div class="stat-title">Late Arrivals</div>
-        <div class="stat-value text-warning">{{ lateArrivals }}</div>
-        <div class="stat-desc">This week</div>
-      </div>
-
-      <div class="stat bg-base-100 shadow-lg rounded-lg">
-        <div class="stat-figure text-error">
-          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-          </svg>
-        </div>
-        <div class="stat-title">Absent Today</div>
-        <div class="stat-value text-error">{{ absentToday }}</div>
-        <div class="stat-desc">No time-in recorded</div>
-      </div>
+      </div>                                                                                                                        
     </div>
 
     <!-- Attendance Records Table -->
@@ -81,10 +39,10 @@
               <tr>
                 <th>Employee</th>
                 <th>Date</th>
-                <th>Time In</th>
-                <th>Time Out</th>
-                <th>Hours Worked</th>
+                <th>Event Type</th>
+                <th>Time</th>
                 <th>Location</th>
+                <th>Duration</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -109,19 +67,27 @@
                 </td>
                 <td>{{ formatDate(record.created_at) }}</td>
                 <td>
-                  <span v-if="record.time_in" class="font-mono">{{ formatTime(record.time_in) }}</span>
-                  <span v-else class="text-gray-400">-</span>
+                  <div class="flex items-center gap-2">
+                    <div class="badge" :class="getEventTypeBadgeClass(record.event_type)">
+                      <svg v-if="record.event_type === 'time-in'" class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                      </svg>
+                      <svg v-else class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path>
+                      </svg>
+                      {{ record.event_type === 'time-in' ? 'Time In' : 'Time Out' }}
+                    </div>
+                  </div>
                 </td>
                 <td>
-                  <span v-if="record.time_out" class="font-mono">{{ formatTime(record.time_out) }}</span>
-                  <span v-else class="text-gray-400">-</span>
-                </td>
-                <td>
-                  <span v-if="record.hours_worked" class="font-mono">{{ record.hours_worked }}h</span>
-                  <span v-else class="text-gray-400">-</span>
+                  <span class="font-mono text-sm">{{ formatTime(record.created_at) }}</span>
                 </td>
                 <td>
                   <span class="text-sm">{{ record.location_name || 'N/A' }}</span>
+                </td>
+                <td>
+                  <span v-if="record.duration" class="font-mono text-sm">{{ record.duration }}</span>
+                  <span v-else class="text-gray-400">-</span>
                 </td>
                 <td>
                   <div class="badge" :class="getStatusBadgeClass(record.status)">
@@ -203,11 +169,13 @@ const authStore = useAuthStore()
 const isLoading = ref(false)
 const searchQuery = ref('')
 const selectedDate = ref('')
+const selectedEmployee = ref('')
 const currentPage = ref(1)
 const recordsPerPage = 20
 
 // Attendance data
 const attendanceRecords = ref([])
+const employees = ref([])
 const totalRecords = ref(0)
 const presentToday = ref(0)
 const lateArrivals = ref(0)
@@ -232,11 +200,20 @@ const filteredRecords = computed(() => {
     )
   }
 
+  if (selectedEmployee.value) {
+    filtered = filtered.filter(record => 
+      record.employee_id === selectedEmployee.value
+    )
+  }
+
   if (selectedDate.value) {
     filtered = filtered.filter(record => 
       record.created_at?.startsWith(selectedDate.value)
     )
   }
+
+  // Sort by date and time (newest first)
+  filtered = filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
 
   // Pagination
   const start = (currentPage.value - 1) * recordsPerPage
@@ -275,11 +252,11 @@ const attendancePercentage = computed(() => {
 const fetchAttendanceRecords = async () => {
   try {
     isLoading.value = true
-    const response = await axios.get(`${API_BASE_URL}/attendance/report`, {
+    const response = await axios.get(`${API_BASE_URL}/attendance/history`, {
       headers: authHeaders(),
       params: {
-        start_date: new Date().toISOString().split('T')[0],
-        end_date: new Date().toISOString().split('T')[0]
+        start_date: selectedDate.value || new Date().toISOString().split('T')[0],
+        end_date: selectedDate.value || new Date().toISOString().split('T')[0]
       }
     })
     
@@ -293,9 +270,67 @@ const fetchAttendanceRecords = async () => {
     }
   } catch (error) {
     console.error('Error fetching attendance records:', error)
-    attendanceRecords.value = []
+    // Fallback to regular report if history endpoint doesn't exist
+    await fetchAttendanceReport()
   } finally {
     isLoading.value = false
+  }
+}
+
+const fetchAttendanceReport = async () => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/attendance/report`, {
+      headers: authHeaders(),
+      params: {
+        start_date: selectedDate.value || new Date().toISOString().split('T')[0],
+        end_date: selectedDate.value || new Date().toISOString().split('T')[0]
+      }
+    })
+    
+    if (response.data.success) {
+      // Transform the data to show individual time-in/time-out events
+      const transformedRecords = []
+      response.data.data.forEach(record => {
+        if (record.time_in) {
+          transformedRecords.push({
+            ...record,
+            event_type: 'time-in',
+            created_at: record.time_in
+          })
+        }
+        if (record.time_out) {
+          transformedRecords.push({
+            ...record,
+            event_type: 'time-out',
+            created_at: record.time_out
+          })
+        }
+      })
+      attendanceRecords.value = transformedRecords
+      totalRecords.value = transformedRecords.length
+      calculateStats()
+    }
+  } catch (error) {
+    console.error('Error fetching attendance report:', error)
+    attendanceRecords.value = []
+  }
+}
+
+const fetchEmployees = async () => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/employees`, {
+      headers: authHeaders()
+    })
+    
+    if (response.data.success) {
+      employees.value = response.data.data.map(emp => ({
+        id: emp.employee_id,
+        name: `${emp.first_name} ${emp.last_name}`.trim()
+      }))
+    }
+  } catch (error) {
+    console.error('Error fetching employees:', error)
+    employees.value = []
   }
 }
 
@@ -348,6 +383,17 @@ const getStatusBadgeClass = (status) => {
   }
 }
 
+const getEventTypeBadgeClass = (eventType) => {
+  switch (eventType) {
+    case 'time-in':
+      return 'badge-success'
+    case 'time-out':
+      return 'badge-warning'
+    default:
+      return 'badge-ghost'
+  }
+}
+
 const formatDate = (dateString) => {
   if (!dateString) return 'N/A'
   return new Date(dateString).toLocaleDateString('en-US', {
@@ -368,16 +414,19 @@ const formatTime = (timeString) => {
 
 // Watchers
 watch(selectedDate, (newDate) => {
-  if (newDate) {
-    fetchAttendanceByDateRange(newDate, newDate)
-  } else {
-    fetchAttendanceRecords()
-  }
+  fetchAttendanceRecords()
+})
+
+watch(selectedEmployee, () => {
+  fetchAttendanceRecords()
 })
 
 // Lifecycle
 onMounted(() => {
-  fetchAttendanceRecords()
+  Promise.all([
+    fetchAttendanceRecords(),
+    fetchEmployees()
+  ])
 })
 </script>
 

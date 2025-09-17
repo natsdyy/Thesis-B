@@ -226,6 +226,37 @@ router.get('/report', authenticateToken, async (req, res) => {
   }
 });
 
+// Get detailed attendance history (individual time-in/time-out events)
+router.get('/history', authenticateToken, async (req, res) => {
+  try {
+    const { start_date, end_date, employee_id } = req.query;
+    
+    if (!start_date || !end_date) {
+      return res.status(400).json({
+        success: false,
+        message: 'Start date and end date are required'
+      });
+    }
+    
+    const history = await AttendanceRecord.getAttendanceHistory({
+      start_date,
+      end_date,
+      employee_id
+    });
+    
+    res.json({
+      success: true,
+      data: history
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch attendance history',
+      error: error.message
+    });
+  }
+});
+
 // Public route for QR code validation (for mobile scanning)
 router.post('/validate-qr', async (req, res) => {
   try {

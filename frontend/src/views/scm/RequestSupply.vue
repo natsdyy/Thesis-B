@@ -1136,6 +1136,22 @@
   const processBranchRequest = async (request) => {
     try {
       loading.value = true;
+      // Immediately mark as In Progress so it no longer shows as processable under Acknowledged
+      try {
+        await branchRequestStore.markInProgress(
+          request.id,
+          [authStore.user?.first_name, authStore.user?.last_name]
+            .filter(Boolean)
+            .join(' ') ||
+            authStore.user?.full_name ||
+            authStore.user?.name ||
+            'SCM',
+          'Request is being processed'
+        );
+      } catch (e) {
+        // Non-blocking: continue to auto-map even if status update fails
+        console.warn('Failed to mark request in progress before processing', e);
+      }
       // Use store method instead of direct fetch
       const data = await branchRequestStore.autoMapRequest(request.id);
       if (data.is_fully_available && (data.to_distribute || []).length > 0) {
@@ -1161,6 +1177,10 @@
       showToast('error', err.message || 'Unable to process request');
     } finally {
       loading.value = false;
+      // Refresh list to reflect potential status change
+      try {
+        await fetchAllData();
+      } catch {}
     }
   };
 

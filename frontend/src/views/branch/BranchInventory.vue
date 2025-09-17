@@ -384,6 +384,20 @@
     }
   };
 
+  // Time formatter used by Distribution History rows
+  const formatTime = (date) => {
+    try {
+      const d = new Date(date);
+      if (Number.isNaN(d.getTime())) return '';
+      return d.toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch (e) {
+      return '';
+    }
+  };
+
   const getDaysUntilExpiry = (date) => {
     if (!date) return Infinity;
     const now = new Date();
@@ -476,10 +490,21 @@
 
   // Distribution-related state
   const pendingDistributions = ref([]);
+  const completedDistributions = ref([]);
   const distributionLoading = ref(false);
+  const historyLoading = ref(false);
+  // Distribution history pagination and date filter
+  const historyCurrentPage = ref(1);
+  const historyItemsPerPage = ref(10);
+  const historyDateFilter = ref({
+    type: 'today',
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+  });
   const selectedDistribution = ref(null);
   const showAcceptanceModal = ref(false);
   const showReceiptModal = ref(false);
+  const receiptLoading = ref(false);
   // Loading states for actions
   const consumptionSubmitting = ref(false);
   const adjustmentSubmitting = ref(false);
@@ -1577,6 +1602,126 @@
     }
   };
 
+  // Load completed distributions (history) for current branch
+  const loadCompletedDistributions = async () => {
+    if (!currentBranch.value?.id) return;
+
+    historyLoading.value = true;
+    try {
+      // Fetch a larger page once to avoid N+1 and reduce refetching
+      await branchDistributionStore.fetchDistributions({ page: 1, limit: 500 });
+      const all = branchDistributionStore.distributions || [];
+      const branchCompleted = all.filter(
+        (d) =>
+          d.branch_id === currentBranch.value.id && d.status === 'completed'
+      );
+      // Assume base list already contains needed fields for history. We fetch
+      // full details only when viewing a receipt.
+      completedDistributions.value = branchCompleted.map((dist) => ({
+        ...dist,
+        items:
+          dist.items?.map((it) => ({
+            ...it,
+            qty: parseFloat(it.qty) || 0,
+            unit_price: parseFloat(it.unit_price) || 0,
+            amount: parseFloat(it.amount) || 0,
+          })) || [],
+      }));
+    } catch (err) {
+      console.error('Error loading completed distributions:', err);
+      completedDistributions.value = [];
+    } finally {
+      historyLoading.value = false;
+    }
+  };
+
+  // Helpers for date ranges (mirrors RequestSupply.vue semantics)
+  const getStartOfWeek = (date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday as first day
+    return new Date(d.getFullYear(), d.getMonth(), diff);
+  };
+
+  const getStartOfMonth = (date) =>
+    new Date(date.getFullYear(), date.getMonth(), 1);
+  const getEndOfMonth = (date) =>
+    new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  const isDateInRange = (date, start, end) => {
+    const d = new Date(date);
+    return d >= start && d <= end;
+  };
+
+  const filteredCompletedDistributions = computed(() => {
+    const type = historyDateFilter.value.type;
+    if (!type) return completedDistributions.value;
+    const today = new Date();
+    if (type === 'today') {
+      const start = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+      );
+      const end = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        23,
+        59,
+        59,
+        999
+      );
+      return completedDistributions.value.filter((r) =>
+        isDateInRange(r.created_at, start, end)
+      );
+    }
+    if (type === 'week') {
+      const start = getStartOfWeek(today);
+      const end = new Date();
+      return completedDistributions.value.filter((r) =>
+        isDateInRange(r.created_at, start, end)
+      );
+    }
+    if (type === 'month') {
+      const start = getStartOfMonth(today);
+      const end = new Date();
+      return completedDistributions.value.filter((r) =>
+        isDateInRange(r.created_at, start, end)
+      );
+    }
+    if (type === 'custom_month') {
+      const year = historyDateFilter.value.year;
+      const month = historyDateFilter.value.month - 1; // 0-based
+      const start = new Date(year, month, 1);
+      const end = getEndOfMonth(start);
+      return completedDistributions.value.filter((r) =>
+        isDateInRange(r.created_at, start, end)
+      );
+    }
+    return completedDistributions.value;
+  });
+
+  const paginatedCompletedDistributions = computed(() => {
+    const start = (historyCurrentPage.value - 1) * historyItemsPerPage.value;
+    const end = start + historyItemsPerPage.value;
+    return filteredCompletedDistributions.value
+      .slice()
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(start, end);
+  });
+
+  const totalHistoryPages = computed(() => {
+    return Math.ceil(
+      (filteredCompletedDistributions.value.length || 0) /
+        historyItemsPerPage.value
+    );
+  });
+
+  const setHistoryFilter = (type) => {
+    historyDateFilter.value.type = type;
+    historyCurrentPage.value = 1;
+  };
+
   const openAcceptanceModal = (distribution) => {
     console.log('Opening acceptance modal for distribution:', distribution);
     selectedDistribution.value = distribution;
@@ -1842,42 +1987,55 @@
     }
   };
 
-  const viewDistributionReceipt = (distribution) => {
-    // Debug logging
-    alert('viewDistributionReceipt called!'); // Temporary alert to test if function is called
-    console.log('Debug - viewDistributionReceipt called with:', distribution);
-    console.log('Debug - Original distribution data:', distribution);
+  const viewDistributionReceipt = async (distribution) => {
+    try {
+      receiptLoading.value = true;
+      console.log('Debug - viewDistributionReceipt called with:', distribution);
+      console.log('Debug - Original distribution data:', distribution);
 
-    // Format the distribution data to match the receipt modal expectations
-    const receiptData = {
-      ...distribution,
-      completed_at: distribution.completed_at || distribution.created_at,
-      // Map the correct fields for the receipt modal
-      processed_by: distribution.processed_by || null,
-      completed_by: distribution.completed_by || null,
-      received_by:
-        distribution.processed_by || // Use processed_by from API response
-        distribution.completed_by || // Also check completed_by for completed distributions
-        (() => {
-          const user = authStore.user;
-          if (user?.first_name && user?.last_name) {
-            return `${user.first_name} ${user.last_name}`;
-          }
-          return user?.name || 'Branch Manager';
-        })(),
-      items:
-        distribution.items?.map((item) => ({
-          item_name: item.name,
-          source: item.source,
-          item_quantity: parseFloat(item.qty) || 0,
-          item_unit: item.unit,
-          item_unitPrice: parseFloat(item.unit_price) || 0,
-          item_amount: parseFloat(item.amount) || 0,
-        })) || [],
-    };
+      // Ensure we have full details for the selected distribution (fetch on demand)
+      let full = null;
+      try {
+        full = await branchDistributionStore.fetchDistributionById(
+          distribution.id
+        );
+      } catch (e) {
+        full = distribution;
+      }
 
-    selectedDistribution.value = receiptData;
-    showReceiptModal.value = true;
+      // Format the distribution data to match the receipt modal expectations
+      const receiptData = {
+        ...full,
+        completed_at: distribution.completed_at || distribution.created_at,
+        // Map the correct fields for the receipt modal
+        processed_by: full.processed_by || null,
+        completed_by: full.completed_by || null,
+        received_by:
+          full.processed_by ||
+          full.completed_by ||
+          (() => {
+            const user = authStore.user;
+            if (user?.first_name && user?.last_name) {
+              return `${user.first_name} ${user.last_name}`;
+            }
+            return user?.name || 'Branch Manager';
+          })(),
+        items:
+          (full.items || distribution.items || [])?.map((item) => ({
+            item_name: item.name,
+            source: item.source,
+            item_quantity: parseFloat(item.qty) || 0,
+            item_unit: item.unit,
+            item_unitPrice: parseFloat(item.unit_price) || 0,
+            item_amount: parseFloat(item.amount) || 0,
+          })) || [],
+      };
+
+      selectedDistribution.value = receiptData;
+      showReceiptModal.value = true;
+    } finally {
+      receiptLoading.value = false;
+    }
   };
 
   const closeReceiptModal = () => {
@@ -1896,6 +2054,7 @@
         );
         loadBranchInventory();
         loadPendingDistributions();
+        loadCompletedDistributions();
       }
     },
     { immediate: true }
@@ -1983,6 +2142,14 @@
         >
           {{ pendingDistributionsCount }}
         </span>
+      </button>
+      <button
+        @click="activeTab = 'distribution_history'"
+        class="tab"
+        :class="{ 'tab-active': activeTab === 'distribution_history' }"
+      >
+        <Eye class="w-4 h-4 mr-1" />
+        Distribution History
       </button>
       <button
         @click="activeTab = 'request_supply'"
@@ -2489,7 +2656,7 @@
               <!-- Items Grid -->
               <div v-else-if="paginatedInventory.length > 0" class="space-y-4">
                 <div class="overflow-x-auto">
-                  <table class="table table-zebra w-full table-xs">
+                  <table class="table table-zebra w-full table-xs custom-zebra">
                     <thead>
                       <tr class="bg-base-200">
                         <th>Item</th>
@@ -3037,7 +3204,7 @@
 
                 <!-- Distribution Items -->
                 <div class="overflow-x-auto mb-4">
-                  <table class="table table-zebra w-full table-xs">
+                  <table class="table table-zebra w-full table-xs custom-zebra">
                     <thead>
                       <tr class="bg-base-200">
                         <th>Item</th>
@@ -3187,6 +3354,188 @@
           </div>
         </div>
 
+        <!-- Distribution History -->
+        <div v-if="activeTab === 'distribution_history'" class="space-y-6">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xl font-semibold text-primaryColor">
+              Completed Distributions
+            </h3>
+            <button
+              @click="loadCompletedDistributions"
+              :disabled="historyLoading"
+              class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
+            >
+              <RefreshCcw
+                :class="['w-4 h-4 mr-2', { 'animate-spin': historyLoading }]"
+              />
+              Refresh
+            </button>
+          </div>
+
+          <!-- Date Filters (match RequestSupply style) -->
+          <div class="flex flex-wrap items-center gap-2">
+            <div class="join">
+              <button
+                class="join-item btn btn-xs font-thin"
+                :class="
+                  historyDateFilter.type === 'today'
+                    ? '!bg-primaryColor/10 text-primaryColor border border-none'
+                    : '!bg-gray-200 text-black/50 border border-none hover:bg-gray-300'
+                "
+                @click="setHistoryFilter('today')"
+              >
+                Today
+              </button>
+              <button
+                class="join-item btn btn-xs font-thin"
+                :class="
+                  historyDateFilter.type === 'week'
+                    ? '!bg-primaryColor/10 text-primaryColor border border-none'
+                    : '!bg-gray-200 text-black/50 border border-none hover:bg-gray-300'
+                "
+                @click="setHistoryFilter('week')"
+              >
+                This Week
+              </button>
+              <button
+                class="join-item btn btn-xs font-thin"
+                :class="
+                  historyDateFilter.type === 'month'
+                    ? '!bg-primaryColor/10 text-primaryColor border border-none'
+                    : '!bg-gray-200 text-black/50 border border-none hover:bg-gray-300'
+                "
+                @click="setHistoryFilter('month')"
+              >
+                This Month
+              </button>
+              <button
+                class="join-item btn btn-xs font-thin"
+                :class="
+                  historyDateFilter.type === 'custom_month'
+                    ? '!bg-primaryColor/10 text-primaryColor border border-none'
+                    : '!bg-gray-200 text-black/50 border border-none hover:bg-gray-300'
+                "
+                @click="setHistoryFilter('custom_month')"
+              >
+                Custom Month
+              </button>
+            </div>
+
+            <div
+              v-if="historyDateFilter.type === 'custom_month'"
+              class="flex items-center gap-2"
+            >
+              <select
+                class="select select-bordered select-xs"
+                v-model.number="historyDateFilter.month"
+                @change="historyCurrentPage = 1"
+              >
+                <option v-for="m in 12" :key="m" :value="m">{{ m }}</option>
+              </select>
+              <input
+                type="number"
+                class="input input-bordered input-xs w-20"
+                v-model.number="historyDateFilter.year"
+                @change="historyCurrentPage = 1"
+              />
+            </div>
+          </div>
+
+          <div v-if="historyLoading" class="flex justify-center py-8">
+            <span class="loading loading-spinner loading-xs"></span>
+          </div>
+
+          <template v-else-if="paginatedCompletedDistributions.length > 0">
+            <div class="overflow-x-auto">
+              <table class="table w-full table-xs table-zebra custom-zebra">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Reference</th>
+                    <th>Branch</th>
+                    <th>Prepared By</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="distribution in paginatedCompletedDistributions"
+                    :key="distribution.id"
+                  >
+                    <td class="w-40 whitespace-nowrap">
+                      <div class="text-sm font-medium text-gray-900">
+                        {{ formatDate(distribution.created_at) }}
+                      </div>
+                      <div class="text-xs text-gray-500">
+                        {{ formatTime(distribution.created_at) }}
+                      </div>
+                    </td>
+                    <td class="font-semibold">{{ distribution.reference }}</td>
+                    <td>
+                      {{ distribution.branch_name || currentBranch?.name }}
+                    </td>
+                    <td>{{ distribution.prepared_by }}</td>
+                    <td>
+                      ₱{{ Number(distribution.total_amount || 0).toFixed(2) }}
+                    </td>
+                    <td>
+                      <div class="badge bg-success/10 text-success badge-sm">
+                        Completed
+                      </div>
+                    </td>
+                    <td>
+                      <button
+                        @click="viewDistributionReceipt(distribution)"
+                        class="btn btn-xs text-black/50 bg-gray-200 font-thin border border-none hover:bg-gray-300"
+                        :disabled="receiptLoading"
+                      >
+                        <span
+                          v-if="receiptLoading"
+                          class="loading loading-spinner loading-xs mr-1"
+                        ></span>
+                        <template v-else>
+                          <Eye class="w-4 h-4 mr-1" />
+                        </template>
+                        View Receipt
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <!-- Pagination for history -->
+            <div class="flex justify-center mt-4" v-if="totalHistoryPages > 1">
+              <div class="join space-x-1">
+                <button
+                  :disabled="historyCurrentPage === 1"
+                  @click="historyCurrentPage--"
+                  class="join-item btn font-thin !bg-gray-200 text-black/50 btn-xs border border-none hover:bg-gray-300 shadow-none"
+                >
+                  «
+                </button>
+                <button
+                  class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-xs shadow-none hover:bg-gray-300"
+                >
+                  Page {{ historyCurrentPage }} of {{ totalHistoryPages }}
+                </button>
+                <button
+                  :disabled="historyCurrentPage === totalHistoryPages"
+                  @click="historyCurrentPage++"
+                  class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-xs shadow-none hover:bg-gray-300"
+                >
+                  »
+                </button>
+              </div>
+            </div>
+          </template>
+
+          <div v-else class="text-center text-black/50 py-8">
+            No completed distributions found for this branch
+          </div>
+        </div>
+
         <!-- Return Items Tab -->
         <div v-if="activeTab === 'return_items'" class="space-y-6">
           <div
@@ -3236,7 +3585,7 @@
                   >
                 </div>
                 <div class="overflow-x-auto">
-                  <table class="table table-zebra w-full table-xs">
+                  <table class="table table-zebra w-full table-xs custom-zebra">
                     <thead>
                       <tr class="bg-base-200">
                         <th>Item</th>
@@ -3498,7 +3847,7 @@
               Items to be Added to Inventory
             </h4>
             <div class="overflow-x-auto">
-              <table class="table table-zebra w-full table-xs">
+              <table class="table table-zebra w-full table-xs custom-zebra">
                 <thead>
                   <tr class="bg-base-200">
                     <th>Item</th>
@@ -3842,7 +4191,7 @@
           </button>
         </div>
         <div class="overflow-x-auto max-h-[60vh]">
-          <table class="table table-zebra table-xs w-full">
+          <table class="table table-zebra table-xs w-full custom-zebra">
             <thead>
               <tr class="bg-base-200">
                 <th>ID</th>
@@ -3914,3 +4263,12 @@
     </dialog>
   </div>
 </template>
+
+<style scoped>
+  .custom-zebra tbody tr:nth-child(even) {
+    background-color: var(--accentColor);
+  }
+  .custom-zebra tbody tr:nth-child(odd) {
+    background-color: rgba(0, 0, 0, 0.03);
+  }
+</style>

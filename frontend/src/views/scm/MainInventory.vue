@@ -43,6 +43,12 @@
         if (typeof switchToDistributionTab === 'function') {
           switchToDistributionTab();
         }
+        // IMPORTANT: consume the preload so reloads don't re-add the draft
+        try {
+          const newState = { ...state };
+          delete newState.preloadDistribution;
+          window.history.replaceState(newState, document.title);
+        } catch (_) {}
       }
     } catch (_) {}
     await loadPendingReturns();
@@ -2102,6 +2108,7 @@
           notes: inventoryStore.distributionCart.notes || '',
         },
         onConfirm: async () => {
+          let createdReceipt = null;
           try {
             // Step 1: Create consolidated receipt first
             const preparedName =
@@ -2133,7 +2140,7 @@
               })),
             };
 
-            const createdReceipt =
+            createdReceipt =
               await branchDistributionStore.createDistribution(receiptData);
 
             // Step 2: Execute stock movements using bulk operations (optimized)
@@ -2180,8 +2187,7 @@
             // Distribution record already created above via createDistribution
             // No need to call bulk-distribute here
 
-            // Step 3: Clear cart and show receipt
-            inventoryStore.clearDistributionCart();
+            // Step 3: Show receipt toast (cart is cleared in finally)
             showToast(
               'success',
               `Distribution completed - Receipt ${createdReceipt.reference}`
@@ -2224,6 +2230,11 @@
             };
           } catch (err) {
             showToast('error', err.message || 'Checkout failed');
+          } finally {
+            // Ensure the draft is cleared after a successful creation
+            if (createdReceipt) {
+              inventoryStore.clearDistributionCart();
+            }
           }
         },
       };

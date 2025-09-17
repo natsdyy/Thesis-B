@@ -1,4 +1,7 @@
 const { db } = require("../config/database");
+const Inventory = require("./Inventory");
+const BranchRequest = require("./BranchRequest");
+const ProductionInventory = require("./ProductionInventory");
 
 class BranchDistribution {
   /**
@@ -48,19 +51,88 @@ class BranchDistribution {
       }
 
       // Create the distribution items
-      const itemsWithDistributionId = distributionData.items.map((item) => ({
-        distribution_id: distributionId,
-        source: item.source,
-        item_ref_id: item.item_ref_id,
-        name: item.name,
-        unit: item.unit,
-        qty: item.qty,
-        unit_price: item.unit_price,
-        amount: item.amount,
-        category: item.category || "Uncategorized",
-        expiry_date: item.expiry_date || null,
-        notes: item.notes || null,
-      }));
+      const itemsWithDistributionId = [];
+
+      for (const rawItem of distributionData.items) {
+        // Normalize incoming fields (support auto-map payloads)
+        const normalizedSource = (rawItem.source || "scm")
+          .toString()
+          .toLowerCase();
+        const normalizedQty = Number(
+          rawItem.qty !== undefined
+            ? rawItem.qty
+            : rawItem.quantity !== undefined
+              ? rawItem.quantity
+              : 0
+        );
+        const normalizedUnitPrice = Number(
+          rawItem.unit_price !== undefined
+            ? rawItem.unit_price
+            : rawItem.price !== undefined
+              ? rawItem.price
+              : 0
+        );
+        const normalizedAmount = Number(
+          rawItem.amount !== undefined
+            ? rawItem.amount
+            : (normalizedQty || 0) * (normalizedUnitPrice || 0)
+        );
+
+        let itemRefId = rawItem.item_ref_id;
+        // Normalize reference IDs: ensure production uses production_inventory.id
+        if (normalizedSource === "production") {
+          let prodRowById = null;
+          if (Number.isFinite(Number(itemRefId))) {
+            prodRowById = await trx("production_inventory")
+              .where("id", Number(itemRefId))
+              .first("id");
+          }
+
+          if (prodRowById && prodRowById.id) {
+            itemRefId = prodRowById.id;
+          } else {
+            // Treat provided ref as possible menu_item_id or resolve by name
+            const prodRow = await trx("production_inventory as pi")
+              .leftJoin("menu_items as mi", "pi.menu_item_id", "mi.id")
+              .modify((qb) => {
+                if (Number.isFinite(Number(itemRefId)))
+                  qb.where("mi.id", Number(itemRefId));
+                else if (rawItem.menu_item_id)
+                  qb.where("mi.id", rawItem.menu_item_id);
+                else qb.whereILike("mi.menu_item_name", rawItem.name || "");
+              })
+              .orderBy("pi.id", "asc")
+              .first("pi.id");
+            if (prodRow && prodRow.id) itemRefId = prodRow.id;
+          }
+        } else {
+          // SCM source: choose a current inventory item row if missing/invalid
+          if (!Number.isFinite(Number(itemRefId))) {
+            const invRow = await trx("inventory_items")
+              .whereNull("deleted_at")
+              .where({ status: "available" })
+              .where("quantity", ">", 0)
+              .whereILike("item_name", rawItem.name || "")
+              .orderBy("received_date", "desc")
+              .first("id");
+            if (invRow && invRow.id) itemRefId = invRow.id;
+          }
+        }
+
+        itemsWithDistributionId.push({
+          distribution_id: distributionId,
+          source: normalizedSource,
+          item_ref_id: Number(itemRefId) || 0, // validate later via DB constraints
+          name: rawItem.name,
+          unit: rawItem.unit,
+          qty: normalizedQty,
+          unit_price: normalizedUnitPrice,
+          amount: normalizedAmount,
+          category: rawItem.category || "Uncategorized",
+          expiry_date: rawItem.expiry_date || null,
+          notes: rawItem.notes || null,
+        });
+      }
 
       await trx("branch_distribution_items").insert(itemsWithDistributionId);
 
@@ -145,19 +217,82 @@ class BranchDistribution {
         }
 
         // Create the distribution items
-        const itemsWithDistributionId = distributionData.items.map((item) => ({
-          distribution_id: distributionId,
-          source: item.source,
-          item_ref_id: item.item_ref_id,
-          name: item.name,
-          unit: item.unit,
-          qty: item.qty,
-          unit_price: item.unit_price,
-          amount: item.amount,
-          category: item.category || "Uncategorized",
-          expiry_date: item.expiry_date || null,
-          notes: item.notes || null,
-        }));
+        const itemsWithDistributionId = [];
+        for (const rawItem of distributionData.items) {
+          const normalizedSource = (rawItem.source || "scm")
+            .toString()
+            .toLowerCase();
+          const normalizedQty = Number(
+            rawItem.qty !== undefined
+              ? rawItem.qty
+              : rawItem.quantity !== undefined
+                ? rawItem.quantity
+                : 0
+          );
+          const normalizedUnitPrice = Number(
+            rawItem.unit_price !== undefined
+              ? rawItem.unit_price
+              : rawItem.price !== undefined
+                ? rawItem.price
+                : 0
+          );
+          const normalizedAmount = Number(
+            rawItem.amount !== undefined
+              ? rawItem.amount
+              : (normalizedQty || 0) * (normalizedUnitPrice || 0)
+          );
+
+          let itemRefId = rawItem.item_ref_id;
+          if (normalizedSource === "production") {
+            let prodRowById = null;
+            if (Number.isFinite(Number(itemRefId))) {
+              prodRowById = await trx("production_inventory")
+                .where("id", Number(itemRefId))
+                .first("id");
+            }
+            if (prodRowById && prodRowById.id) {
+              itemRefId = prodRowById.id;
+            } else {
+              const prodRow = await trx("production_inventory as pi")
+                .leftJoin("menu_items as mi", "pi.menu_item_id", "mi.id")
+                .modify((qb) => {
+                  if (Number.isFinite(Number(itemRefId)))
+                    qb.where("mi.id", Number(itemRefId));
+                  else if (rawItem.menu_item_id)
+                    qb.where("mi.id", rawItem.menu_item_id);
+                  else qb.whereILike("mi.menu_item_name", rawItem.name || "");
+                })
+                .orderBy("pi.id", "asc")
+                .first("pi.id");
+              if (prodRow && prodRow.id) itemRefId = prodRow.id;
+            }
+          } else {
+            if (!Number.isFinite(Number(itemRefId))) {
+              const invRow = await trx("inventory_items")
+                .whereNull("deleted_at")
+                .where({ status: "available" })
+                .where("quantity", ">", 0)
+                .whereILike("item_name", rawItem.name || "")
+                .orderBy("received_date", "desc")
+                .first("id");
+              if (invRow && invRow.id) itemRefId = invRow.id;
+            }
+          }
+
+          itemsWithDistributionId.push({
+            distribution_id: distributionId,
+            source: normalizedSource,
+            item_ref_id: Number(itemRefId) || 0,
+            name: rawItem.name,
+            unit: rawItem.unit,
+            qty: normalizedQty,
+            unit_price: normalizedUnitPrice,
+            amount: normalizedAmount,
+            category: rawItem.category || "Uncategorized",
+            expiry_date: rawItem.expiry_date || null,
+            notes: rawItem.notes || null,
+          });
+        }
 
         await trx("branch_distribution_items").insert(itemsWithDistributionId);
 
@@ -578,13 +713,79 @@ class BranchDistribution {
       for (const item of items) {
         // Deduct from main inventory first
         if (item.source === "scm") {
-          await trx("inventory_items")
-            .where("id", item.item_ref_id)
-            .decrement("quantity", item.qty);
+          // Use centralized inventory update so quantity and logs stay in sync
+          await Inventory.updateInventoryQuantity(
+            item.item_ref_id,
+            {
+              transaction_type: "adjustment",
+              adjustment_type: "reduce_quantity",
+              quantity: parseFloat(item.qty),
+              reference_number: distribution.reference,
+              reason: "Branch Distribution",
+              notes: `Transferred to branch ${distribution.branch_name || distribution.branch_id}`,
+              performed_by: completionData.completed_by || "Branch Manager",
+              transaction_date: new Date(),
+              audit_action: "transfer_out",
+            },
+            trx
+          );
         } else if (item.source === "production") {
-          await trx("production_inventory")
+          // Get current production inventory to compute old/new quantities for audit
+          const prodInv = await trx("production_inventory")
             .where("id", item.item_ref_id)
-            .decrement("available_quantity", item.qty);
+            .first();
+
+          if (prodInv) {
+            const oldQty = Number(prodInv.available_quantity) || 0;
+            const distributeQty = Number(item.qty) || 0;
+            const newQty = oldQty - distributeQty;
+
+            // Update explicitly so we can pass old/new to audit
+            await trx("production_inventory")
+              .where("id", item.item_ref_id)
+              .update({
+                available_quantity: newQty,
+                updated_at: db.fn.now(),
+              });
+
+            // Write menu_item_audit_log so this appears in Recent Activity/Audit Logs
+            const note = `Distributed ${distributeQty} units to branch ${distribution.branch_name || distribution.branch_id} - Receipt: ${distribution.reference}`;
+            await ProductionInventory.logStockUpdate(
+              item.item_ref_id,
+              oldQty,
+              newQty,
+              completionData.performed_by_id || null,
+              note,
+              trx
+            );
+
+            // If production inventory links to an SCM inventory item, log that transaction, too
+            try {
+              if (prodInv.inventory_item_id) {
+                await Inventory.updateInventoryQuantity(
+                  prodInv.inventory_item_id,
+                  {
+                    transaction_type: "adjustment",
+                    adjustment_type: "reduce_quantity",
+                    quantity: distributeQty,
+                    reference_number: distribution.reference,
+                    reason: "Branch Distribution",
+                    notes: `Transferred to branch ${distribution.branch_name || distribution.branch_id}`,
+                    performed_by:
+                      completionData.completed_by || "Branch Manager",
+                    transaction_date: new Date(),
+                    audit_action: "transfer_out",
+                  },
+                  trx
+                );
+              }
+            } catch (txErr) {
+              console.error(
+                "Failed to log Production transfer transaction:",
+                txErr
+              );
+            }
+          }
         }
         // Check if item already exists in branch inventory by name and type
         const existingItem = await trx("branch_inventory")
@@ -682,7 +883,33 @@ class BranchDistribution {
       await trx.commit();
 
       // Return updated distribution
-      return await this.findByIdWithItems(id);
+      const updatedDistribution = await this.findByIdWithItems(id);
+
+      // Auto-complete the latest related branch request for this branch
+      try {
+        const latestPendingRequest = await db("branch_requests")
+          .where("branch_id", distribution.branch_id)
+          .whereIn("status", ["In Progress", "Acknowledged"])
+          .whereNull("deleted_at")
+          .orderBy("created_at", "desc")
+          .first();
+
+        if (latestPendingRequest) {
+          await BranchRequest.updateStatus(
+            latestPendingRequest.id,
+            "Completed",
+            completionData.completed_by || "System",
+            `Auto-completed via distribution ${distribution.reference}`
+          );
+        }
+      } catch (autoErr) {
+        console.warn(
+          "Auto-complete of related branch request failed:",
+          autoErr
+        );
+      }
+
+      return updatedDistribution;
     } catch (error) {
       await trx.rollback();
       throw error;

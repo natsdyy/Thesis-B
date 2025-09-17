@@ -2,19 +2,13 @@
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-exports.up = function(knex) {
-  return knex.schema
-    .alterTable('branch_schedules', table => {
-      // Add new columns for multiple day support
-      table.string('schedule_type', 20).defaultTo('specific'); // specific, weekdays, weekends, custom
-      table.json('selected_days').nullable(); // For multiple day schedules
-    });
-};
+exports.up = function (knex) {};
 
 /**
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
+<<<<<<< HEAD
 exports.down = function(knex) {
   return knex.schema
     .alterTable('branch_schedules', table => {
@@ -23,3 +17,6 @@ exports.down = function(knex) {
       table.dropColumn('selected_days');
     });
 };
+=======
+exports.down = function (knex) {};
+>>>>>>> origin/main

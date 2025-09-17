@@ -3,6 +3,7 @@
   import { useBranchRequestStore } from '../../stores/branchRequestStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
+  import { useBranchInventoryStore } from '../../stores/branchInventoryStore.js';
   import { useBranchContextStore } from '../../stores/branchContextStore.js';
   import {
     Plus,
@@ -46,6 +47,7 @@
   const branchRequestStore = useBranchRequestStore();
   const authStore = useAuthStore();
   const inventoryStore = useInventoryStore();
+  const branchInventoryStore = useBranchInventoryStore();
   const branchContextStore = useBranchContextStore();
 
   // Local state
@@ -74,10 +76,47 @@
   const requestItems = ref([
     {
       id: 1,
+      inventory_item_id: null,
+      menu_item_id: null,
       item_name: '',
       item_quantity: 0,
+      item_unit: '',
+      unit_price: 0,
+      category: '',
+      source: '', // 'scm' | 'production'
     },
   ]);
+
+  // Branch inventory for mapping (SCM + Production)
+  const branchInventoryItems = computed(() => {
+    const items = branchInventoryStore.inventory || [];
+    const statusPriority = { low_stock: 0, available: 1, out_of_stock: 2 };
+    const toLabel = (it) => {
+      const status = it.status;
+      if (status === 'low_stock') return `${it.item_name} (LOW STOCK)`;
+      if (status === 'out_of_stock') return `${it.item_name} (OUT OF STOCK)`;
+      return it.item_name;
+    };
+    return [...items]
+      .sort((a, b) => {
+        const pa = statusPriority[a.status] ?? 3;
+        const pb = statusPriority[b.status] ?? 3;
+        if (pa !== pb) return pa - pb;
+        return a.item_name.localeCompare(b.item_name);
+      })
+      .map((it) => ({ ...it, __label: toLabel(it) }));
+  });
+
+  const scmInventoryItems = computed(() =>
+    branchInventoryItems.value.filter(
+      (i) => (i.item_type || '').toLowerCase() === 'scm'
+    )
+  );
+  const productionInventoryItems = computed(() =>
+    branchInventoryItems.value.filter(
+      (i) => (i.item_type || '').toLowerCase() === 'production'
+    )
+  );
 
   // Methods
   const getCurrentDate = () => {
@@ -233,9 +272,14 @@
   const addRequestItem = () => {
     requestItems.value.push({
       id: requestItems.value.length + 1,
+      inventory_item_id: null,
+      menu_item_id: null,
       item_name: '',
       item_quantity: 0,
-      item_unit: 'pieces',
+      item_unit: '',
+      unit_price: 0,
+      category: '',
+      source: '',
     });
   };
 
@@ -297,8 +341,14 @@
     requestItems.value = [
       {
         id: 1,
+        inventory_item_id: null,
+        menu_item_id: null,
         item_name: '',
         item_quantity: 0,
+        item_unit: '',
+        unit_price: 0,
+        category: '',
+        source: '',
       },
     ];
   };
@@ -340,8 +390,12 @@
       const itemsData = validItems.map((item) => ({
         item_name: item.item_name,
         item_quantity: item.item_quantity,
-        item_unit: 'pieces', // Default unit
-        item_type: 'General', // Default type
+        item_unit: item.item_unit || 'pieces',
+        item_type: item.source === 'production' ? 'Production' : 'SCM',
+        unit_price: item.unit_price || null,
+        category: item.category || null,
+        inventory_item_id: item.inventory_item_id || null,
+        menu_item_id: item.menu_item_id || null,
       }));
 
       // Call the API
@@ -391,6 +445,11 @@
         item_name: item.item_name.trim(),
         item_quantity: item.item_quantity,
         item_unit: item.item_unit,
+        item_type: item.source === 'production' ? 'Production' : 'SCM',
+        unit_price: item.unit_price || null,
+        category: item.category || null,
+        inventory_item_id: item.inventory_item_id || null,
+        menu_item_id: item.menu_item_id || null,
       }));
 
       // Update the request
@@ -534,30 +593,50 @@
       requestToEdit.value = fullRequest;
 
       // Populate the form with existing data
+      const normalizedDate =
+        typeof fullRequest.request_date === 'string'
+          ? fullRequest.request_date.slice(0, 10)
+          : getCurrentDate();
+
       requestForm.value = {
         request_type: fullRequest.request_type,
         request_description: fullRequest.request_description,
-        request_date: fullRequest.request_date,
+        request_date: normalizedDate,
         priority: fullRequest.priority,
         requested_by: fullRequest.requested_by,
+        source_type: fullRequest.source_type || props.inventoryType,
+        branch_id: fullRequest.branch_id || currentBranch.value?.id || null,
+        department: currentBranch.value?.name || 'Branch',
       };
 
       // Populate the items array
       if (fullRequest.items && fullRequest.items.length > 0) {
         requestItems.value = fullRequest.items.map((item, index) => ({
           id: index + 1,
+          inventory_item_id: item.inventory_item_id || null,
+          menu_item_id: item.menu_item_id || null,
           item_name: item.item_name,
           item_quantity: item.item_quantity,
           item_unit: item.item_unit || 'pieces',
+          unit_price: item.unit_price ?? 0,
+          category: item.category || '',
+          source: item.item_type
+            ? String(item.item_type).toLowerCase()
+            : fullRequest.source_type || '',
         }));
       } else {
         // Reset to default if no items
         requestItems.value = [
           {
             id: 1,
+            inventory_item_id: null,
+            menu_item_id: null,
             item_name: '',
             item_quantity: 0,
             item_unit: 'pieces',
+            unit_price: 0,
+            category: '',
+            source: '',
           },
         ];
       }
@@ -687,9 +766,38 @@
   });
 
   // Initialize
-  onMounted(() => {
+  onMounted(async () => {
+    // Load requests and branch inventory for item mapping
     loadRequests();
+    if (currentBranch.value?.id) {
+      await branchInventoryStore.fetchInventory(currentBranch.value.id);
+    }
   });
+
+  // When branch changes, refresh available branch inventory
+  watch(
+    () => currentBranch.value?.id,
+    async (branchId) => {
+      if (branchId) {
+        await branchInventoryStore.fetchInventory(branchId);
+      }
+    }
+  );
+
+  const handleSelectInventoryItem = (row, inventoryItemId) => {
+    const inv = branchInventoryItems.value.find(
+      (i) => i.id === inventoryItemId
+    );
+    if (!inv) return;
+    row.inventory_item_id = inv.id;
+    row.item_name = inv.item_name;
+    row.item_unit = inv.unit || 'pieces';
+    row.unit_price = Number(inv.unit_cost || 0);
+    row.category = inv.category || '';
+    row.source = inv.item_type || '';
+    // If production item, capture linked menu item id if available
+    row.menu_item_id = inv.menu_item_id || null;
+  };
 </script>
 
 <template>
@@ -1160,7 +1268,7 @@
 
         <!-- Items Section with Centralized Categories -->
         <div class="mb-6">
-          <div class="flex justify-between items-center mb-4">
+          <div class="flex justify-between items-center mb-2">
             <h4 class="text-lg font-semibold text-primaryColor">
               Request Items
             </h4>
@@ -1175,6 +1283,17 @@
             </div>
           </div>
 
+          <div
+            class="alert alert-info bg-primaryColor/10 text-primaryColor border border-primaryColor/30 mb-4 py-2 px-3"
+          >
+            <Info class="w-4 h-4 mr-2" />
+            <span class="text-xs sm:text-sm">
+              Items in the dropdown are sorted to show
+              <strong>LOW STOCK</strong> first to help you prioritize what to
+              request. Out-of-stock items are marked too.
+            </span>
+          </div>
+
           <div class="overflow-x-auto">
             <table
               class="table table-sm table-zebra text-black/50 border border-black/10 custom-zebra"
@@ -1182,9 +1301,12 @@
               <thead class="text-primaryColor">
                 <tr class="bg-primaryColor text-accentColor">
                   <th class="w-12">#</th>
-                  <th class="w-40">Item Name</th>
+                  <th class="w-40">Item</th>
                   <th class="w-20">Qty</th>
                   <th class="w-24">Unit</th>
+                  <th class="w-28">Unit Price</th>
+                  <th class="w-36">Category</th>
+                  <th class="w-28">Source</th>
                   <th class="w-16">Action</th>
                 </tr>
               </thead>
@@ -1197,12 +1319,33 @@
                   <td class="text-center font-medium">{{ item.id }}</td>
 
                   <td>
-                    <input
-                      type="text"
-                      v-model="item.item_name"
-                      placeholder="Enter item name..."
-                      class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
-                    />
+                    <select
+                      v-model.number="item.inventory_item_id"
+                      @change="
+                        handleSelectInventoryItem(item, item.inventory_item_id)
+                      "
+                      class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
+                    >
+                      <option :value="null">Select inventory item...</option>
+                      <optgroup label="SCM">
+                        <option
+                          v-for="inv in scmInventoryItems"
+                          :key="`scm-${inv.id}`"
+                          :value="inv.id"
+                        >
+                          {{ inv.__label }}
+                        </option>
+                      </optgroup>
+                      <optgroup label="Production">
+                        <option
+                          v-for="inv in productionInventoryItems"
+                          :key="`prod-${inv.id}`"
+                          :value="inv.id"
+                        >
+                          {{ inv.__label }}
+                        </option>
+                      </optgroup>
+                    </select>
                   </td>
 
                   <td>
@@ -1217,22 +1360,44 @@
                   </td>
 
                   <td>
-                    <select
+                    <input
+                      type="text"
                       v-model="item.item_unit"
-                      class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
-                    >
-                      <option value="pieces">pieces</option>
-                      <option value="kg">kg</option>
-                      <option value="g">g</option>
-                      <option value="liters">liters</option>
-                      <option value="ml">ml</option>
-                      <option value="boxes">boxes</option>
-                      <option value="packs">packs</option>
-                      <option value="bottles">bottles</option>
-                      <option value="cans">cans</option>
-                      <option value="bags">bags</option>
-                      <option value="units">units</option>
-                    </select>
+                      class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
+                      placeholder="unit"
+                      readonly
+                    />
+                  </td>
+
+                  <td>
+                    <input
+                      type="number"
+                      v-model.number="item.unit_price"
+                      class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
+                      placeholder="0.00"
+                      step="0.01"
+                      readonly
+                    />
+                  </td>
+
+                  <td>
+                    <input
+                      type="text"
+                      v-model="item.category"
+                      class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
+                      placeholder="category"
+                      readonly
+                    />
+                  </td>
+
+                  <td>
+                    <input
+                      type="text"
+                      v-model="item.source"
+                      class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
+                      placeholder="source"
+                      readonly
+                    />
                   </td>
 
                   <td class="text-center">
@@ -1286,29 +1451,31 @@
         </h3>
 
         <!-- Request Form -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
           <!-- Request Type -->
           <div class="form-control">
             <label class="label">
               <span class="label-text text-black/70 font-medium"
-                >Request Type <span class="text-red-500">*</span></span
+                >Inventory Category <span class="text-red-500">*</span></span
               >
             </label>
             <select
               v-model="requestForm.request_type"
               class="select select-bordered bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
             >
-              <option value="">Select request type</option>
+              <option value="">Select Inventory Category</option>
               <option value="Regular">Regular</option>
               <option value="Emergency">Emergency</option>
-              <option value="Urgent">Urgent</option>
+              <option value="Rush">Rush</option>
             </select>
           </div>
 
           <!-- Priority -->
           <div class="form-control">
             <label class="label">
-              <span class="label-text text-black/70 font-medium">Priority</span>
+              <span class="label-text text-black/70 font-medium"
+                >Select Priority</span
+              >
             </label>
             <select
               v-model="requestForm.priority"
@@ -1388,9 +1555,12 @@
               <thead class="text-primaryColor">
                 <tr class="bg-primaryColor text-accentColor">
                   <th class="w-12">#</th>
-                  <th class="w-40">Item Name</th>
+                  <th class="w-40">Item</th>
                   <th class="w-20">Qty</th>
                   <th class="w-24">Unit</th>
+                  <th class="w-28">Unit Price</th>
+                  <th class="w-36">Category</th>
+                  <th class="w-28">Source</th>
                   <th class="w-16">Action</th>
                 </tr>
               </thead>
@@ -1403,12 +1573,33 @@
                   <td class="text-center font-medium">{{ item.id }}</td>
 
                   <td>
-                    <input
-                      type="text"
-                      v-model="item.item_name"
-                      placeholder="Enter item name..."
-                      class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
-                    />
+                    <select
+                      v-model.number="item.inventory_item_id"
+                      @change="
+                        handleSelectInventoryItem(item, item.inventory_item_id)
+                      "
+                      class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
+                    >
+                      <option :value="null">Select inventory item...</option>
+                      <optgroup label="SCM">
+                        <option
+                          v-for="inv in scmInventoryItems"
+                          :key="`scm-${inv.id}`"
+                          :value="inv.id"
+                        >
+                          {{ inv.__label }}
+                        </option>
+                      </optgroup>
+                      <optgroup label="Production">
+                        <option
+                          v-for="inv in productionInventoryItems"
+                          :key="`prod-${inv.id}`"
+                          :value="inv.id"
+                        >
+                          {{ inv.__label }}
+                        </option>
+                      </optgroup>
+                    </select>
                   </td>
 
                   <td>
@@ -1423,22 +1614,44 @@
                   </td>
 
                   <td>
-                    <select
+                    <input
+                      type="text"
                       v-model="item.item_unit"
-                      class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
-                    >
-                      <option value="pieces">pieces</option>
-                      <option value="kg">kg</option>
-                      <option value="g">g</option>
-                      <option value="liters">liters</option>
-                      <option value="ml">ml</option>
-                      <option value="boxes">boxes</option>
-                      <option value="packs">packs</option>
-                      <option value="bottles">bottles</option>
-                      <option value="cans">cans</option>
-                      <option value="bags">bags</option>
-                      <option value="units">units</option>
-                    </select>
+                      class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
+                      placeholder="unit"
+                      readonly
+                    />
+                  </td>
+
+                  <td>
+                    <input
+                      type="number"
+                      v-model.number="item.unit_price"
+                      class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
+                      placeholder="0.00"
+                      step="0.01"
+                      readonly
+                    />
+                  </td>
+
+                  <td>
+                    <input
+                      type="text"
+                      v-model="item.category"
+                      class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
+                      placeholder="category"
+                      readonly
+                    />
+                  </td>
+
+                  <td>
+                    <input
+                      type="text"
+                      v-model="item.source"
+                      class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
+                      placeholder="source"
+                      readonly
+                    />
                   </td>
 
                   <td class="text-center">
@@ -1552,18 +1765,63 @@
               <thead>
                 <tr>
                   <th>Item Name</th>
-                  <th>Quantity</th>
+                  <th class="text-right">Quantity</th>
                   <th>Unit</th>
+                  <th class="text-right">Unit Price</th>
+                  <th>Category</th>
+                  <th>Source</th>
+                  <th class="text-right">Amount</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="(item, index) in selectedRequest.items" :key="index">
                   <td>{{ item.item_name }}</td>
-                  <td>{{ item.item_quantity }}</td>
+                  <td class="text-right">{{ item.item_quantity }}</td>
                   <td>{{ item.item_unit || 'pieces' }}</td>
+                  <td class="text-right">
+                    {{
+                      item.unit_price != null
+                        ? Number(item.unit_price).toFixed(2)
+                        : '-'
+                    }}
+                  </td>
+                  <td>{{ item.category || '-' }}</td>
+                  <td>
+                    {{ item.item_type || selectedRequest.source_type || '-' }}
+                  </td>
+                  <td class="text-right">
+                    {{
+                      item.unit_price != null
+                        ? (
+                            Number(item.unit_price) *
+                            Number(item.item_quantity || 0)
+                          ).toFixed(2)
+                        : '-'
+                    }}
+                  </td>
                 </tr>
               </tbody>
             </table>
+          </div>
+          <div
+            class="mt-3 text-right text-sm text-gray-700"
+            v-if="selectedRequest && selectedRequest.items"
+          >
+            <span class="font-medium mr-2">Total Amount:</span>
+            <span>
+              {{
+                selectedRequest.items
+                  .reduce(
+                    (s, it) =>
+                      s +
+                      (it.unit_price
+                        ? Number(it.unit_price) * Number(it.item_quantity || 0)
+                        : 0),
+                    0
+                  )
+                  .toFixed(2)
+              }}
+            </span>
           </div>
         </div>
 

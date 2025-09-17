@@ -47,6 +47,11 @@ function requirePermission(permissionName) {
         });
       }
 
+      // Always allow Super Admin
+      if (user.role === "Super Admin" || user.role_id === 1) {
+        return next();
+      }
+
       if (!user.role_id) {
         return res.status(403).json({
           success: false,
@@ -95,6 +100,11 @@ function requireAnyPermission(permissionNames) {
           message: "Authentication required",
           code: "AUTHENTICATION_REQUIRED",
         });
+      }
+
+      // Always allow Super Admin
+      if (user.role === "Super Admin" || user.role_id === 1) {
+        return next();
       }
 
       if (!user.role_id) {

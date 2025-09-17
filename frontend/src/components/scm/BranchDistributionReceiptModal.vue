@@ -1,5 +1,7 @@
 <script setup>
-  defineProps({
+  import { watch } from 'vue';
+
+  const props = defineProps({
     receipt: {
       type: Object,
       default: null,
@@ -27,6 +29,16 @@
 
     return 'Unknown reason';
   };
+
+  const formatRejectionReason = (reason) => {
+    if (!reason || reason === 'No reason provided') return 'No reason provided';
+
+    // Convert underscore-separated text to proper title case
+    return reason
+      .split('_')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  };
 </script>
 
 <template>
@@ -40,13 +52,13 @@
         <div class="flex flex-col items-end w-full">
           <p class="text-xs">
             {{
-              new Date(receipt?.completed_at || Date.now()).toLocaleString(
-                'en-PH'
-              )
+              new Date(
+                props.receipt?.completed_at || Date.now()
+              ).toLocaleString('en-PH')
             }}
           </p>
           <p class="text-xs">
-            Distribution Ref: {{ receipt?.reference || 'N/A' }}
+            Distribution Ref: {{ props.receipt?.reference || 'N/A' }}
           </p>
         </div>
       </div>
@@ -55,13 +67,13 @@
         <div class="mb-2 text-black text-sm">
           <div>
             Branch:
-            <span class="font-semibold">{{ receipt?.branch_name }}</span>
+            <span class="font-semibold">{{ props.receipt?.branch_name }}</span>
           </div>
-          <div v-if="receipt?.notes">
-            Notes: <span>{{ receipt?.notes }}</span>
+          <div v-if="props.receipt?.notes">
+            Notes: <span>{{ props.receipt?.notes }}</span>
           </div>
           <div
-            v-if="receipt?.status === 'partially_processed'"
+            v-if="props.receipt?.status === 'partially_processed'"
             class="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded"
           >
             <div class="text-yellow-800 font-semibold text-sm mb-1">
@@ -87,7 +99,7 @@
           </thead>
           <tbody class="bg-white text-black">
             <tr
-              v-for="(it, idx) in receipt?.items || []"
+              v-for="(it, idx) in props.receipt?.items || []"
               :key="idx"
               class="border border-black"
             >
@@ -115,7 +127,7 @@
                 Total
               </td>
               <td class="font-semibold border border-black text-right">
-                ₱{{ Number(receipt?.total_amount || 0).toFixed(2) }}
+                ₱{{ Number(props.receipt?.total_amount || 0).toFixed(2) }}
               </td>
             </tr>
           </tbody>
@@ -124,8 +136,8 @@
         <!-- Rejected Items Section (for partially processed distributions) -->
         <div
           v-if="
-            receipt?.status === 'partially_processed' &&
-            receipt?.rejected_items?.length > 0
+            props.receipt?.status === 'partially_processed' &&
+            props.receipt?.rejected_items?.length > 0
           "
           class="mt-6"
         >
@@ -152,13 +164,18 @@
               >
                 <td class="border border-red-300">{{ idx + 1 }}</td>
                 <td class="border border-red-300">
-                  {{ item.item_name || item.item_type_name }}
+                  {{
+                    item.name ||
+                    item.item_name ||
+                    item.item_type_name ||
+                    'Unknown Item'
+                  }}
                 </td>
                 <td class="border border-red-300 text-right">
                   {{ Number(item.quantity || 0).toLocaleString() }}
                 </td>
                 <td class="border border-red-300">
-                  {{ item.unit_of_measure || 'pieces' }}
+                  {{ item.unit || item.unit_of_measure || 'pieces' }}
                 </td>
                 <td class="border border-red-300 text-right">
                   ₱{{ Number(item.unit_cost || 0).toFixed(2) }}
@@ -167,7 +184,13 @@
                   ₱{{ Number(item.total_value || 0).toFixed(2) }}
                 </td>
                 <td class="border border-red-300 text-xs">
-                  {{ extractRejectionReason(item.notes) }}
+                  {{
+                    formatRejectionReason(
+                      item.rejection_reason ||
+                        extractRejectionReason(item.notes) ||
+                        'No reason provided'
+                    )
+                  }}
                 </td>
               </tr>
             </tbody>
@@ -181,7 +204,7 @@
             <div class="text-xs mt-1">
               Prepared by:
               <span class="font-semibold">{{
-                receipt?.prepared_by || ''
+                props.receipt?.prepared_by || ''
               }}</span>
             </div>
           </div>
@@ -190,7 +213,10 @@
             <div class="text-xs mt-1">
               Received by:
               <span class="font-semibold">{{
-                receipt?.received_by || ''
+                props.receipt?.processed_by ||
+                props.receipt?.completed_by ||
+                props.receipt?.received_by ||
+                'Not specified'
               }}</span>
             </div>
           </div>

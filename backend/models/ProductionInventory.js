@@ -685,6 +685,16 @@ class ProductionInventory {
           }
         }
 
+        // Detect branch distribution from notes/details and tag activity source
+        let inferredSource = activity.activity_source;
+        const notesText = (activity.notes || "").toString();
+        const looksLikeDistribution =
+          /\bDistributed\b/i.test(notesText) ||
+          /\bReceipt:\s*BD-/i.test(notesText);
+        if (looksLikeDistribution && activity.activity_source === "inventory") {
+          inferredSource = "distribution";
+        }
+
         return {
           id: activity.id,
           action_type: activity.action_type,
@@ -696,7 +706,7 @@ class ProductionInventory {
           created_at: activity.created_at,
           notes: activity.notes,
           action_details: activity.action_details,
-          activity_source: activity.activity_source,
+          activity_source: inferredSource,
           batch_size: activity.batch_size || 0,
           quantity_produced: activity.quantity_produced || 0,
           batch_number: details.batch_number || null,
@@ -866,13 +876,22 @@ class ProductionInventory {
           updated_at: db.fn.now(),
         });
 
+      // Resolve branch name for better audit notes
+      let branchName = null;
+      try {
+        const branchRow = await db("branches").where("id", branchId).first();
+        branchName = branchRow ? branchRow.name : null;
+      } catch (e) {
+        // ignore resolution failure
+      }
+
       // Log the distribution
       await this.logStockUpdate(
         inventoryItem.id,
         inventoryItem.available_quantity,
         newQuantity,
         userId,
-        `Distributed ${quantityDistributed} units to branch ${branchId}${notes ? ` - ${notes}` : ""}`
+        `Distributed ${quantityDistributed} units to branch ${branchName || branchId}${notes ? ` - ${notes}` : ""}`
       );
 
       // Create distribution record
@@ -934,6 +953,19 @@ class ProductionInventory {
         }
       }
 
+      // Preload branch names
+      const branchIds = [
+        ...new Set(
+          distributions
+            .map((d) => d.branch_id)
+            .filter((v) => v !== undefined && v !== null)
+        ),
+      ];
+      const branchRows = await trx("branches")
+        .select("id", "name")
+        .whereIn("id", branchIds);
+      const branchIdToName = new Map(branchRows.map((r) => [r.id, r.name]));
+
       // Process all distributions
       for (const distribution of distributions) {
         const inventoryItem = inventoryMap.get(distribution.menu_item_id);
@@ -956,7 +988,7 @@ class ProductionInventory {
           inventoryItem.available_quantity,
           newQuantity,
           userId,
-          `Distributed ${distribution.quantity} units to branch ${distribution.branch_id}${distribution.notes ? ` - ${distribution.notes}` : ""}`,
+          `Distributed ${distribution.quantity} units to branch ${branchIdToName.get(distribution.branch_id) || distribution.branch_id}${distribution.notes ? ` - ${distribution.notes}` : ""}`,
           trx
         );
 

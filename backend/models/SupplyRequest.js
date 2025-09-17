@@ -7,6 +7,7 @@ class SupplyRequest {
   static async getAll(filters = {}) {
     try {
       let query = db("supply_requests as sr")
+        .leftJoin("branches as b", "sr.branch_id", "b.id")
         .leftJoin(
           "supply_request_items as sri",
           "sr.id",
@@ -14,6 +15,8 @@ class SupplyRequest {
         )
         .select(
           "sr.*",
+          "b.name as branch_name",
+          "b.code as branch_code",
           db.raw("COUNT(sri.id) as item_count"),
           db.raw("COALESCE(SUM(sri.item_amount), 0) as calculated_total")
         )
@@ -46,9 +49,11 @@ class SupplyRequest {
           "sr.receipt_confirmed_at",
           "sr.revision_count",
           "sr.created_at",
-          "sr.updated_at"
+          "sr.updated_at",
+          "b.name",
+          "b.code"
         )
-        .whereNull("deleted_at");
+        .whereNull("sr.deleted_at");
 
       // Apply filters
       if (filters.status) {
@@ -143,9 +148,11 @@ class SupplyRequest {
         throw new Error("Invalid supply request ID provided");
       }
 
-      const request = await db("supply_requests")
-        .where("id", id)
-        .whereNull("supply_requests.deleted_at")
+      const request = await db("supply_requests as sr")
+        .leftJoin("branches as b", "sr.branch_id", "b.id")
+        .select("sr.*", "b.name as branch_name", "b.code as branch_code")
+        .where("sr.id", id)
+        .whereNull("sr.deleted_at")
         .first();
 
       if (!request) {
@@ -174,9 +181,11 @@ class SupplyRequest {
         throw new Error("Invalid request ID provided");
       }
 
-      const request = await db("supply_requests")
-        .where("request_id", requestId)
-        .whereNull("supply_requests.deleted_at")
+      const request = await db("supply_requests as sr")
+        .leftJoin("branches as b", "sr.branch_id", "b.id")
+        .select("sr.*", "b.name as branch_name", "b.code as branch_code")
+        .where("sr.request_id", requestId)
+        .whereNull("sr.deleted_at")
         .first();
 
       if (!request) {
@@ -222,6 +231,10 @@ class SupplyRequest {
           request_date: requestData.request_date,
           priority: requestData.priority || "Normal",
           department: requestData.department,
+          branch_id:
+            requestData.department === "Branch"
+              ? requestData.branch_id || null
+              : null,
           requested_by: requestData.requested_by,
           total_amount: totalAmount,
           item_count: itemCount,
@@ -285,6 +298,10 @@ class SupplyRequest {
           request_date: requestData.request_date,
           priority: requestData.priority,
           department: requestData.department,
+          branch_id:
+            requestData.department === "Branch"
+              ? requestData.branch_id || null
+              : null,
           requested_by: requestData.requested_by,
           request_status: "To Request",
           total_amount: 0,

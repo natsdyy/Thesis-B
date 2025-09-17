@@ -1,4 +1,78 @@
 <script setup>
+  import { useBranchReturnStore } from '../../stores/branchReturnStore';
+  // Branch Returns Approval UI state
+  const branchReturnStore = useBranchReturnStore();
+  const showReturnsPanel = ref(false);
+  const pendingReturns = computed(() =>
+    (branchReturnStore.returns || []).filter((r) => r.status === 'Pending')
+  );
+
+  const loadPendingReturns = async () => {
+    try {
+      await branchReturnStore.fetchReturns({ status: 'Pending' });
+    } catch (e) {
+      console.error('Failed to load branch returns:', e);
+    }
+  };
+
+  const refreshTimer = ref(null);
+  onMounted(async () => {
+    // Handle preloaded distribution from SCM RequestSupply Process action
+    try {
+      const state = router.options?.history?.state || {};
+      const preload = state.preloadDistribution;
+      if (preload && preload.items && preload.items.length) {
+        if (preload.branch_id) inventoryStore.setCartBranch(preload.branch_id);
+        for (const it of preload.items) {
+          try {
+            inventoryStore.addToDistributionCart({
+              source: it.source || 'scm',
+              item: it,
+              item_id: it.menu_item_id || it.name,
+              name: it.name,
+              unit: it.unit,
+              unit_price: Number(it.unit_price || 0),
+              quantity: Number(it.quantity || 0),
+              branch_id: preload.branch_id,
+            });
+          } catch (e) {
+            // skip invalid items
+          }
+        }
+        // If we have a tab system, switch to distribution tab
+        if (typeof switchToDistributionTab === 'function') {
+          switchToDistributionTab();
+        }
+        // IMPORTANT: consume the preload so reloads don't re-add the draft
+        try {
+          const newState = { ...state };
+          delete newState.preloadDistribution;
+          window.history.replaceState(newState, document.title);
+        } catch (_) {}
+      }
+    } catch (_) {}
+    await loadPendingReturns();
+    // Lightweight polling to surface new returns without full reload
+    refreshTimer.value = setInterval(loadPendingReturns, 15000);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadPendingReturns();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    // Store cleanup fn on the ref for removal in unmounted
+    refreshTimer._onVisibility = onVisibility;
+  });
+
+  onUnmounted(() => {
+    if (refreshTimer.value) clearInterval(refreshTimer.value);
+    if (refreshTimer._onVisibility) {
+      document.removeEventListener(
+        'visibilitychange',
+        refreshTimer._onVisibility
+      );
+    }
+  });
   import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
   import {
     Package,
@@ -103,7 +177,9 @@
           authStore?.user?.full_name ||
           authStore?.user?.email ||
           'System',
-        received_by: '',
+        processed_by: dist.processed_by || null,
+        completed_by: dist.completed_by || null,
+        received_by: dist.processed_by || dist.completed_by || '',
         notes: dist.notes,
         items: (dist.items || []).map((it) => ({
           source: it.source,
@@ -949,6 +1025,17 @@
         badgeColor: 'bg-error/20 text-error',
         description:
           'Item was disposed due to damage, expiry, or other reasons',
+      };
+    }
+
+    // Treat reduce_quantity adjustments as Distribution (transfer-out)
+    if (type === 'adjustment' && adjustmentType === 'reduce_quantity') {
+      return {
+        icon: ArrowRightLeft,
+        color: 'text-primary',
+        label: 'Distribution',
+        badgeColor: 'bg-primary/20 text-primary',
+        description: 'Item was distributed/transferred out to a branch',
       };
     }
 
@@ -2021,6 +2108,7 @@
           notes: inventoryStore.distributionCart.notes || '',
         },
         onConfirm: async () => {
+          let createdReceipt = null;
           try {
             // Step 1: Create consolidated receipt first
             const preparedName =
@@ -2052,7 +2140,7 @@
               })),
             };
 
-            const createdReceipt =
+            createdReceipt =
               await branchDistributionStore.createDistribution(receiptData);
 
             // Step 2: Execute stock movements using bulk operations (optimized)
@@ -2099,8 +2187,7 @@
             // Distribution record already created above via createDistribution
             // No need to call bulk-distribute here
 
-            // Step 3: Clear cart and show receipt
-            inventoryStore.clearDistributionCart();
+            // Step 3: Show receipt toast (cart is cleared in finally)
             showToast(
               'success',
               `Distribution completed - Receipt ${createdReceipt.reference}`
@@ -2114,11 +2201,17 @@
               'SCM User';
 
             const receiptForModal = {
-              completed_at: createdReceipt.created_at,
+              completed_at:
+                createdReceipt.completed_at || createdReceipt.created_at,
               reference: createdReceipt.reference,
               branch_name: createdReceipt.branch_name,
               prepared_by: createdReceipt.prepared_by || fullName,
-              received_by: '',
+              processed_by: createdReceipt.processed_by || null,
+              completed_by: createdReceipt.completed_by || null,
+              received_by:
+                createdReceipt.processed_by ||
+                createdReceipt.completed_by ||
+                '',
               notes: createdReceipt.notes,
               items: createdReceipt.items.map((item) => ({
                 source: item.source,
@@ -2137,6 +2230,11 @@
             };
           } catch (err) {
             showToast('error', err.message || 'Checkout failed');
+          } finally {
+            // Ensure the draft is cleared after a successful creation
+            if (createdReceipt) {
+              inventoryStore.clearDistributionCart();
+            }
           }
         },
       };
@@ -4737,11 +4835,11 @@
             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6"
           >
             <div class="stat bg-base-100 border border-gray-200 rounded-lg">
-              <div class="stat-figure text-primary">
+              <div class="stat-figure text-primaryColor">
                 <Package class="w-8 h-8" />
               </div>
               <div class="stat-title">Total Items</div>
-              <div class="stat-value text-primary">
+              <div class="stat-value text-primaryColor">
                 {{ filteredDistributionInventory.length }}
               </div>
               <div class="stat-desc">
@@ -4775,11 +4873,11 @@
             </div>
 
             <div class="stat bg-base-100 border border-gray-200 rounded-lg">
-              <div class="stat-figure text-info">
+              <div class="stat-figure text-black/80">
                 <Building2 class="w-8 h-8" />
               </div>
               <div class="stat-title">Branches</div>
-              <div class="stat-value text-info">{{ branches.length }}</div>
+              <div class="stat-value text-black/80">{{ branches.length }}</div>
               <div class="stat-desc">Available branches</div>
             </div>
 
@@ -5251,12 +5349,36 @@
       </div>
     </dialog>
 
-    <!-- Draft Checkout Controls (floating action) -->
-    <div
-      class="fixed bottom-6 right-6 z-40"
-      v-if="inventoryStore.cartItemCount > 0"
-    >
-      <div class="card shadow-xl bg-base-100">
+    <!-- Floating actions container (bottom-left corner) -->
+    <div class="fixed bottom-6 right-6 z-40 flex flex-col gap-3">
+      <!-- Branch Returns Approval (first, appears on top) -->
+      <div v-if="pendingReturns.length > 0" class="card shadow-xl bg-base-100">
+        <div class="card-body p-4">
+          <div class="flex items-center justify-between gap-6">
+            <div>
+              <div class="text-sm font-medium">Branch Returns</div>
+              <div class="text-xs text-gray-500">
+                {{ pendingReturns.length }} pending
+              </div>
+            </div>
+            <button
+              class="btn btn-xs"
+              @click="
+                showReturnsPanel = true;
+                loadPendingReturns();
+              "
+            >
+              Review
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Draft Checkout Controls (below) -->
+      <div
+        v-if="inventoryStore.cartItemCount > 0"
+        class="card shadow-xl bg-base-100"
+      >
         <div class="card-body p-4">
           <div class="text-sm font-medium">Draft Distribution</div>
           <div class="text-xs text-gray-500">
@@ -5278,6 +5400,90 @@
         </div>
       </div>
     </div>
+
+    <!-- Returns Review Modal -->
+    <dialog id="returns_review_modal" class="modal" :open="showReturnsPanel">
+      <div class="modal-box max-w-4xl">
+        <h3 class="font-bold text-lg mb-3">Pending Branch Returns</h3>
+        <div class="overflow-x-auto max-h-[60vh]">
+          <table class="table table-zebra table-xs w-full">
+            <thead>
+              <tr class="bg-base-200">
+                <th>ID</th>
+                <th>Branch</th>
+                <th>Type</th>
+                <th>Items</th>
+                <th>Notes</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="ret in pendingReturns" :key="ret.id">
+                <td class="font-medium">#{{ ret.id }}</td>
+                <td>{{ ret.branch_name || ret.branch_id }}</td>
+                <td class="uppercase">{{ ret.return_type }}</td>
+                <td>
+                  <div class="text-xs">
+                    <div v-for="it in ret.items" :key="it.id">
+                      {{ it.item_name }} - {{ it.quantity }} {{ it.unit }}
+                    </div>
+                  </div>
+                </td>
+                <td class="text-xs text-gray-500">{{ ret.notes || '—' }}</td>
+                <td>
+                  <div class="flex gap-1">
+                    <button
+                      class="btn btn-xs btn-success"
+                      :disabled="branchReturnStore.loading"
+                      @click="
+                        branchReturnStore
+                          .approveReturn(ret.id)
+                          .then(loadPendingReturns)
+                      "
+                    >
+                      <span
+                        v-if="branchReturnStore.loading"
+                        class="loading loading-spinner loading-xs mr-1"
+                      ></span>
+                      {{
+                        branchReturnStore.loading ? 'Approving...' : 'Approve'
+                      }}
+                    </button>
+                    <button
+                      class="btn btn-xs btn-ghost"
+                      :disabled="branchReturnStore.loading"
+                      @click="
+                        branchReturnStore
+                          .rejectReturn(ret.id)
+                          .then(loadPendingReturns)
+                      "
+                    >
+                      <span
+                        v-if="branchReturnStore.loading"
+                        class="loading loading-spinner loading-xs mr-1"
+                      ></span>
+                      {{
+                        branchReturnStore.loading ? 'Rejecting...' : 'Reject'
+                      }}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="pendingReturns.length === 0">
+                <td colspan="6" class="text-center text-sm text-gray-500 py-6">
+                  No pending returns.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="modal-action">
+          <button class="btn btn-sm" @click="showReturnsPanel = false">
+            Close
+          </button>
+        </div>
+      </div>
+    </dialog>
 
     <BranchDistributionReceiptModal
       :show="distributionReceipt.show"

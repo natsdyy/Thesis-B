@@ -5,6 +5,7 @@
   import { useBranchRequestStore } from '../../stores/branchRequestStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
+  import { useBranchStore } from '../../stores/branchStore.js';
   import cashRequestReceiptModal from '../../components/scm/cashRequestReceiptModal.vue';
   import PikaDay from 'pikaday';
   import 'pikaday/css/pikaday.css';
@@ -32,13 +33,16 @@
     TriangleAlert,
     PhilippinePeso,
   } from 'lucide-vue-next';
+  import { useRouter } from 'vue-router';
 
   // Stores
   const supplyRequestStore = useSupplyRequestStore();
   const budgetReleaseStore = useBudgetReleaseStore();
   const branchRequestStore = useBranchRequestStore();
+  const router = useRouter();
   const authStore = useAuthStore();
   const inventoryStore = useInventoryStore();
+  const branchStore = useBranchStore();
 
   // Local state
   const loading = ref(false);
@@ -136,6 +140,11 @@
       item_type: '',
       item_unitPrice: 0,
       item_amount: 0,
+      // Optional linkage to branch inventory (SCM or Production)
+      inventory_item_id: null,
+      menu_item_id: null,
+      category: '',
+      source: '',
     },
   ]);
 
@@ -148,6 +157,10 @@
       item_type: '',
       item_unitPrice: 0,
       item_amount: 0,
+      inventory_item_id: null,
+      menu_item_id: null,
+      category: '',
+      source: '',
     });
   };
 
@@ -177,6 +190,7 @@
     request_date: getPhilippineDateString(),
     priority: 'Normal',
     department: 'SCM',
+    branch_id: '',
     requested_by: 'Current User',
     items: [],
   });
@@ -889,7 +903,17 @@
         request_date: requestForm.value.request_date,
         priority: requestForm.value.priority,
         department: requestForm.value.department,
-        requested_by: authStore.user?.name || requestForm.value.requested_by,
+        branch_id:
+          requestForm.value.department === 'Branch'
+            ? requestForm.value.branch_id || null
+            : null,
+        requested_by:
+          [authStore.user?.first_name, authStore.user?.last_name]
+            .filter(Boolean)
+            .join(' ') ||
+          authStore.user?.full_name ||
+          authStore.user?.name ||
+          requestForm.value.requested_by,
       };
 
       await supplyRequestStore.createRequest(requestData, validItems);
@@ -953,6 +977,10 @@
         request_date: requestForm.value.request_date,
         priority: requestForm.value.priority,
         department: requestForm.value.department,
+        branch_id:
+          requestForm.value.department === 'Branch'
+            ? requestForm.value.branch_id || null
+            : null,
       };
 
       await supplyRequestStore.updateRequest(
@@ -984,7 +1012,12 @@
 
       await supplyRequestStore.sendRequest(
         request.id,
-        authStore.user?.name || 'SCM User'
+        [authStore.user?.first_name, authStore.user?.last_name]
+          .filter(Boolean)
+          .join(' ') ||
+          authStore.user?.full_name ||
+          authStore.user?.name ||
+          'SCM'
       );
 
       closeModal();
@@ -1010,7 +1043,12 @@
 
       await supplyRequestStore.cancelRequest(
         request.id,
-        authStore.user?.name || 'SCM User'
+        [authStore.user?.first_name, authStore.user?.last_name]
+          .filter(Boolean)
+          .join(' ') ||
+          authStore.user?.full_name ||
+          authStore.user?.name ||
+          'SCM'
       );
 
       closeModal();
@@ -1062,7 +1100,12 @@
 
       await budgetReleaseStore.confirmReceipt(
         release.id,
-        authStore.user?.name || 'SCM User'
+        [authStore.user?.first_name, authStore.user?.last_name]
+          .filter(Boolean)
+          .join(' ') ||
+          authStore.user?.full_name ||
+          authStore.user?.name ||
+          'SCM'
       );
 
       showToast('success', `Receipt confirmed for request #${requestId}`);
@@ -1089,6 +1132,92 @@
     selectedBranchRequest.value = null;
   };
 
+  // Process: auto-map availability then route accordingly
+  const processBranchRequest = async (request) => {
+    try {
+      loading.value = true;
+      // Immediately mark as In Progress so it no longer shows as processable under Acknowledged
+      try {
+        await branchRequestStore.markInProgress(
+          request.id,
+          [authStore.user?.first_name, authStore.user?.last_name]
+            .filter(Boolean)
+            .join(' ') ||
+            authStore.user?.full_name ||
+            authStore.user?.name ||
+            'SCM',
+          'Request is being processed'
+        );
+      } catch (e) {
+        // Non-blocking: continue to auto-map even if status update fails
+        console.warn('Failed to mark request in progress before processing', e);
+      }
+      // Use store method instead of direct fetch
+      const data = await branchRequestStore.autoMapRequest(request.id);
+      if (data.is_fully_available && (data.to_distribute || []).length > 0) {
+        // Navigate to MainInventory distribution with preloaded cart via query/state
+        router.push({
+          name: 'MainInventory',
+          query: { tab: 'branch-distribution' },
+          state: {
+            preloadDistribution: {
+              branch_id: data.branch_id || request.branch_id || null,
+              items: data.to_distribute,
+            },
+          },
+        });
+      } else {
+        // Open RequestSupply modal prefilled with shortages
+        openCreateRequestModalWithDraft(
+          data.request_draft || [],
+          data.branch_id
+        );
+      }
+    } catch (err) {
+      showToast('error', err.message || 'Unable to process request');
+    } finally {
+      loading.value = false;
+      // Refresh list to reflect potential status change
+      try {
+        await fetchAllData();
+      } catch {}
+    }
+  };
+
+  const openCreateRequestModalWithDraft = (
+    draftItems = [],
+    branchId = null
+  ) => {
+    // Ensure modal is on supply-requests tab and reset form
+    activeTab.value = 'supply-requests';
+    // Use local modal manager
+    modal.value = {
+      type: 'create',
+      show: true,
+      request: null,
+      data: {
+        request_type: requestForm.value.request_type,
+        request_description: requestForm.value.request_description,
+        request_date: requestForm.value.request_date,
+      },
+    };
+    requestForm.value.department = 'SCM';
+    // Pre-fill rows
+    rowRequest.value = (draftItems.length ? draftItems : [{ id: 1 }]).map(
+      (it, idx) => ({
+        id: idx + 1,
+        item_name: it.item_name || '',
+        item_quantity: Number(it.item_quantity || 0),
+        item_unit: it.item_unit || 'pieces',
+        item_type: it.item_type || 'SCM',
+        item_unitPrice: Number(it.item_unit_price || 0),
+        item_amount:
+          Number(it.item_quantity || 0) * Number(it.item_unit_price || 0),
+        menu_item_id: it.menu_item_id || null,
+      })
+    );
+  };
+
   // Acknowledge branch request function
   const acknowledgeBranchRequest = async (requestId) => {
     loading.value = true;
@@ -1110,7 +1239,12 @@
 
       await branchRequestStore.acknowledgeRequest(
         request.id,
-        authStore.user?.name || 'SCM User',
+        [authStore.user?.first_name, authStore.user?.last_name]
+          .filter(Boolean)
+          .join(' ') ||
+          authStore.user?.full_name ||
+          authStore.user?.name ||
+          'SCM',
         'Request acknowledged by SCM department'
       );
 
@@ -1391,7 +1525,13 @@
         priority: request.priority || 'Normal',
         department: request.department || 'SCM',
         requested_by:
-          request.requested_by || authStore.user?.name || 'Current User',
+          request.requested_by ||
+          [authStore.user?.first_name, authStore.user?.last_name]
+            .filter(Boolean)
+            .join(' ') ||
+          authStore.user?.full_name ||
+          authStore.user?.name ||
+          'Current User',
         items: request.items || [],
       };
 
@@ -1415,6 +1555,11 @@
               (item.item_quantity || 0) *
                 (item.item_unit_price || item.item_unitPrice || 0)
           ),
+          // Carry over linkage if present
+          inventory_item_id: item.inventory_item_id || null,
+          menu_item_id: item.menu_item_id || null,
+          category: item.category || '',
+          source: item.source || item.item_type || '',
         }));
 
         // Set the selected category based on the first item's type
@@ -1439,7 +1584,13 @@
         request_date: getPhilippineDateString(),
         priority: 'Normal',
         department: 'SCM',
-        requested_by: authStore.user?.name || 'Current User',
+        requested_by:
+          [authStore.user?.first_name, authStore.user?.last_name]
+            .filter(Boolean)
+            .join(' ') ||
+          authStore.user?.full_name ||
+          authStore.user?.name ||
+          'Current User',
         items: [],
       };
       selectedCategory.value = ''; // Reset category selection
@@ -1457,6 +1608,10 @@
         item_type: '',
         item_unitPrice: 0,
         item_amount: 0,
+        inventory_item_id: null,
+        menu_item_id: null,
+        category: '',
+        source: '',
       },
     ];
   };
@@ -1655,6 +1810,12 @@
   onMounted(async () => {
     // Initialize data
     await fetchAllData();
+    // Ensure branches list is loaded for branch selector
+    try {
+      await branchStore.fetchActiveBranches();
+    } catch (e) {
+      console.error('Failed to load branches:', e);
+    }
 
     // Setup date picker
     requestDatePicker = new PikaDay({
@@ -1945,7 +2106,12 @@
 
       await branchRequestStore.acknowledgeRequest(
         request.id,
-        authStore.user?.name || 'SCM User',
+        [authStore.user?.first_name, authStore.user?.last_name]
+          .filter(Boolean)
+          .join(' ') ||
+          authStore.user?.full_name ||
+          authStore.user?.name ||
+          'SCM',
         'Request acknowledged by SCM'
       );
 
@@ -1973,7 +2139,12 @@
       await branchRequestStore.updateRequestStatus(
         request.id,
         status,
-        authStore.user?.name || 'SCM User',
+        [authStore.user?.first_name, authStore.user?.last_name]
+          .filter(Boolean)
+          .join(' ') ||
+          authStore.user?.full_name ||
+          authStore.user?.name ||
+          'SCM',
         notes
       );
 
@@ -2984,13 +3155,19 @@
                             v-if="request.status === 'Sent'"
                           >
                             <a
-                              @click="
-                                acknowledgeBranchRequestFromTab(
-                                  request.request_id
-                                )
-                              "
+                              @click="processBranchRequest(request)"
                               class="text-success"
-                              >Acknowledge</a
+                              >Process</a
+                            >
+                          </li>
+                          <li
+                            class="hover:bg-black/10"
+                            v-if="request.status === 'Acknowledged'"
+                          >
+                            <a
+                              @click="processBranchRequest(request)"
+                              class="text-success"
+                              >Process</a
                             >
                           </li>
                           <li
@@ -4156,7 +4333,7 @@
 
       <!-- Request Information Form with Centralized Categories -->
       <div
-        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6 p-4 bg-white/5 rounded-lg"
+        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start mb-6 p-4 bg-white/5 rounded-lg"
       >
         <!-- Inventory Category Selection -->
         <div class="form-control">
@@ -4227,6 +4404,31 @@
           >
             <option v-for="dept in departments" :key="dept" :value="dept">
               {{ dept }}
+            </option>
+          </select>
+        </div>
+
+        <!-- Branch Selection (shows when Department is Branch) -->
+        <div
+          class="form-control flex flex-col"
+          v-if="requestForm.department === 'Branch'"
+        >
+          <label class="label">
+            <span class="label-text text-black/70 font-medium">
+              Branch <span class="text-red-500">*</span>
+            </span>
+          </label>
+          <select
+            v-model="requestForm.branch_id"
+            class="select select-bordered bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+          >
+            <option disabled value="">Select Branch</option>
+            <option
+              v-for="b in branchStore.activeBranches"
+              :key="b.id"
+              :value="b.id"
+            >
+              {{ b.name }} ({{ b.code }})
             </option>
           </select>
         </div>
@@ -4584,18 +4786,67 @@
             <thead>
               <tr class="bg-primaryColor text-accentColor">
                 <th class="!font-thin">Item Name</th>
-                <th class="!font-thin">Quantity</th>
+                <th class="!font-thin text-right">Quantity</th>
                 <th class="!font-thin">Unit</th>
+                <th class="!font-thin text-right">Unit Price</th>
+                <th class="!font-thin">Category</th>
+                <th class="!font-thin">Source</th>
+                <th class="!font-thin text-right">Amount</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="item in selectedBranchRequest.items" :key="item.id">
                 <td class="font-medium">{{ item.item_name }}</td>
-                <td class="font-semibold">{{ item.item_quantity }}</td>
-                <td>{{ item.item_unit }}</td>
+                <td class="font-semibold text-right">
+                  {{ item.item_quantity }}
+                </td>
+                <td>{{ item.item_unit || 'pieces' }}</td>
+                <td class="text-right">
+                  {{
+                    item.unit_price != null
+                      ? Number(item.unit_price).toFixed(2)
+                      : '-'
+                  }}
+                </td>
+                <td>{{ item.category || '-' }}</td>
+                <td>
+                  {{
+                    item.item_type || selectedBranchRequest.source_type || '-'
+                  }}
+                </td>
+                <td class="text-right">
+                  {{
+                    item.unit_price != null
+                      ? (
+                          Number(item.unit_price) *
+                          Number(item.item_quantity || 0)
+                        ).toFixed(2)
+                      : '-'
+                  }}
+                </td>
               </tr>
             </tbody>
           </table>
+          <div
+            class="mt-3 text-right text-sm text-gray-700"
+            v-if="selectedBranchRequest && selectedBranchRequest.items"
+          >
+            <span class="font-medium mr-2">Total Amount:</span>
+            <span>
+              {{
+                selectedBranchRequest.items
+                  .reduce(
+                    (s, it) =>
+                      s +
+                      (it.unit_price
+                        ? Number(it.unit_price) * Number(it.item_quantity || 0)
+                        : 0),
+                    0
+                  )
+                  .toFixed(2)
+              }}
+            </span>
+          </div>
         </div>
       </div>
 

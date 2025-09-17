@@ -285,28 +285,33 @@ router.post("/", authenticateToken, async (req, res) => {
       });
     }
 
-    // Validate items
+    // Validate items (relaxed to support auto-map payloads)
     for (const item of items) {
-      if (
-        !item.source ||
-        !item.item_ref_id ||
-        !item.name ||
-        !item.unit ||
-        item.qty === undefined ||
-        item.unit_price === undefined ||
-        item.amount === undefined
-      ) {
+      const src = (item.source || "scm").toString().toLowerCase();
+      const qty = item.qty !== undefined ? item.qty : item.quantity;
+      const unitPrice =
+        item.unit_price !== undefined ? item.unit_price : item.price;
+      const amount = item.amount !== undefined ? item.amount : undefined;
+
+      if (!item.name || !item.unit || qty === undefined) {
         return res.status(400).json({
           success: false,
-          message:
-            "Each item must have: source, item_ref_id, name, unit, qty, unit_price, amount",
+          message: "Each item must have: name, unit, and qty/quantity",
         });
       }
 
-      if (!["scm", "production"].includes(item.source)) {
+      if (!["scm", "production"].includes(src)) {
         return res.status(400).json({
           success: false,
           message: 'Item source must be either "scm" or "production"',
+        });
+      }
+
+      // unit_price and amount can be derived if missing
+      if (unitPrice === undefined && amount === undefined) {
+        return res.status(400).json({
+          success: false,
+          message: "Provide unit_price/price or amount to derive totals",
         });
       }
     }

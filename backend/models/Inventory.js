@@ -1642,16 +1642,16 @@ class Inventory {
           "iit.name as item_type",
           "ic.name as category",
           db.raw(
-            "SUM(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') THEN it.quantity ELSE 0 END) as total_consumed"
+            "SUM(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') OR (it.transaction_type = 'adjustment' AND it.audit_action = 'transfer_out') THEN it.quantity ELSE 0 END) as total_consumed"
           ),
           db.raw(
             "SUM(CASE WHEN it.transaction_type = 'receipt' THEN it.quantity ELSE 0 END) as total_received"
           ),
           db.raw(
-            "COUNT(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') THEN 1 END) as consumption_frequency"
+            "COUNT(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') OR (it.transaction_type = 'adjustment' AND it.audit_action = 'transfer_out') THEN 1 END) as consumption_frequency"
           ),
           db.raw(
-            "AVG(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') THEN it.quantity ELSE NULL END) as avg_consumption_per_transaction"
+            "AVG(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') OR (it.transaction_type = 'adjustment' AND it.audit_action = 'transfer_out') THEN it.quantity ELSE NULL END) as avg_consumption_per_transaction"
           ),
           db.raw("MAX(it.transaction_date) as last_consumption_date")
         )
@@ -1735,13 +1735,15 @@ class Inventory {
         .select(
           db.raw("DATE_TRUNC('month', it.transaction_date) as month"),
           db.raw(
-            "SUM(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') THEN it.quantity ELSE 0 END) as monthly_consumption"
+            "SUM(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') OR (it.transaction_type = 'adjustment' AND it.audit_action = 'transfer_out') THEN it.quantity ELSE 0 END) as monthly_consumption"
           )
         )
         .where("ii.item_name", itemName)
         .whereIn("it.transaction_type", [
           "consumption",
           "production_consumption",
+          // also allow adjustments; filter via CASE audit_action
+          "adjustment",
         ])
         .groupBy(db.raw("DATE_TRUNC('month', it.transaction_date)"))
         .orderBy("month", "desc")
@@ -1973,16 +1975,13 @@ class Inventory {
         .select(
           "ic.name as category",
           db.raw(
-            "SUM(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') THEN it.quantity ELSE 0 END) as total_consumed"
+            "SUM(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') OR (it.transaction_type = 'adjustment' AND it.audit_action = 'transfer_out') THEN it.quantity ELSE 0 END) as total_consumed"
           ),
           db.raw(
-            "COUNT(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') THEN 1 END) as transaction_count"
+            "COUNT(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') OR (it.transaction_type = 'adjustment' AND it.audit_action = 'transfer_out') THEN 1 END) as transaction_count"
           )
         )
-        .whereIn("it.transaction_type", [
-          "consumption",
-          "production_consumption",
-        ])
+        // include consumption-like outflows: consumption, production_consumption, and transfer_out adjustments
         .where("it.transaction_date", ">=", dateFilter)
         .groupBy("ic.name")
         .orderBy("total_consumed", "desc");
@@ -2055,10 +2054,10 @@ class Inventory {
             "SUM(CASE WHEN it.transaction_type = 'receipt' THEN it.quantity ELSE 0 END) as total_received"
           ),
           db.raw(
-            "SUM(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') THEN it.quantity ELSE 0 END) as total_consumed"
+            "SUM(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') OR (it.transaction_type = 'adjustment' AND it.audit_action = 'transfer_out') THEN it.quantity ELSE 0 END) as total_consumed"
           ),
           db.raw(
-            "AVG(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') THEN it.quantity ELSE NULL END) as avg_consumption"
+            "AVG(CASE WHEN it.transaction_type IN ('consumption', 'production_consumption') OR (it.transaction_type = 'adjustment' AND it.audit_action = 'transfer_out') THEN it.quantity ELSE NULL END) as avg_consumption"
           )
         )
         .where("it.transaction_date", ">=", dateFilter)

@@ -1431,22 +1431,6 @@
         return;
       }
 
-      // Debug logging
-      console.log('Order Status:', fullOrderDetails.status);
-      console.log('First Item:', fullOrderDetails.items[0]);
-      console.log(
-        'Received Quantity:',
-        fullOrderDetails.items[0]?.received_quantity
-      );
-      console.log(
-        'Received Unit Price:',
-        fullOrderDetails.items[0]?.received_unit_price
-      );
-      console.log(
-        'Received Total Price:',
-        fullOrderDetails.items[0]?.received_total_price
-      );
-
       receiptModal.value = { show: true, order: fullOrderDetails };
     } catch (error) {
       showToast('error', 'Failed to load order details for receipt');
@@ -4289,7 +4273,13 @@
   </div>
 
   <!-- Receipt Modal -->
-  <div v-if="receiptModal.show" class="modal modal-open" style="z-index: 9999">
+  <dialog
+    id="purchase_order_receipt_modal"
+    class="modal"
+    v-if="receiptModal.show"
+    open
+    style="z-index: 9999"
+  >
     <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-6xl">
       <div class="flex justify-between items-center mb-2 text-black">
         <div class="flex items-center gap-2 mb-2 w-full">
@@ -4379,12 +4369,6 @@
                       ? item.received_quantity
                       : item.quantity || 0
                   }}
-                  <!-- Debug info -->
-                  <div class="text-xs text-gray-400">
-                    Debug: Status={{ receiptModal.order.status }}, Received={{
-                      item.received_quantity
-                    }}, Ordered={{ item.quantity }}
-                  </div>
                 </td>
                 <td class="border border-black">{{ item.unit || 'pcs' }}</td>
                 <td class="border border-black">
@@ -4401,7 +4385,7 @@
                     item.received_total_price
                       ? Number(item.received_total_price).toFixed(2)
                       : Number(
-                          item.amount ||
+                          item.total_price ||
                             (item.quantity || 0) * (item.unit_price || 0)
                         ).toFixed(2)
                   }}
@@ -4435,22 +4419,35 @@
         <!-- Order vs Received Summary (for completed orders) -->
         <div
           v-if="receiptModal.order.status === 'Completed'"
-          class="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg"
+          class="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg"
         >
-          <h6 class="text-sm font-semibold text-yellow-800 mb-2">
+          <h6 class="text-sm font-semibold text-gray-800 mb-2">
             Order Summary:
           </h6>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-            <div>
-              <span class="font-medium text-yellow-700">Ordered Amount:</span>
-              <span class="ml-2"
-                >₱{{
-                  Number(receiptModal.order.total_amount || 0).toLocaleString()
-                }}</span
-              >
+            <div class="flex flex-col gap-2">
+              <div class="">
+                <span class="font-medium text-gray-700">Ordered Qty:</span>
+                <span class="ml-2">{{
+                  receiptModal.order.items?.reduce(
+                    (sum, item) => sum + Number(item.quantity || 0),
+                    0
+                  ) || 0
+                }}</span>
+              </div>
+              <div class="">
+                <span class="font-medium text-gray-700">Ordered Amount:</span>
+                <span class="ml-2"
+                  >₱{{
+                    Number(
+                      receiptModal.order.total_amount || 0
+                    ).toLocaleString()
+                  }}</span
+                >
+              </div>
             </div>
             <div>
-              <span class="font-medium text-yellow-700">Received Amount:</span>
+              <span class="font-medium text-gray-700">Received Amount:</span>
               <span class="ml-2"
                 >₱{{
                   Number(
@@ -4464,7 +4461,7 @@
               >
             </div>
           </div>
-          <div class="mt-2 text-xs text-yellow-600">
+          <div class="mt-2 text-xs text-gray-600">
             <em
               >Note: This receipt shows actual received quantities and
               amounts.</em
@@ -4566,7 +4563,7 @@
       </div>
     </div>
     <div class="modal-backdrop" @click="closeReceiptModal"></div>
-  </div>
+  </dialog>
 
   <!-- Return Modal -->
   <div v-if="returnModal.show" class="modal modal-open">
@@ -4784,7 +4781,6 @@
     @complete="handleCompleteOrder"
   />
 </template>
-
 <style scoped>
   /* Enhanced table styling */
   .table th {

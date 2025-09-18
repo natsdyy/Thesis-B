@@ -59,11 +59,13 @@
                 <div 
                   :class="[
                     'w-3 h-3 rounded-full',
-                    locationStatus.withinRadius ? 'bg-green-500' : 'bg-red-500'
+                    locationStatus.withinRadius ? 'bg-green-500' : 
+                    locationStatus.error ? 'bg-yellow-500' : 'bg-red-500'
                   ]"
                 ></div>
                 <span class="text-sm font-medium">
-                  {{ locationStatus.withinRadius ? 'Within Range' : 'Too Far Away' }}
+                  {{ locationStatus.withinRadius ? 'Within Range' : 
+                     locationStatus.error ? 'Location Error' : 'Too Far Away' }}
                 </span>
               </div>
               
@@ -73,11 +75,23 @@
                 <div v-if="locationStatus.accuracy" class="text-gray-500">
                   GPS Accuracy: ±{{ locationStatus.accuracy }}m
                 </div>
+                <div v-if="locationStatus.error" class="text-yellow-600 mt-2 p-2 bg-yellow-50 rounded text-xs">
+                  <strong>Error:</strong> {{ locationStatus.error }}
+                </div>
               </div>
             </div>
             
             <div v-else class="text-sm text-gray-500">
-              Click "Check Location" to verify your position
+              <div class="mb-2">Click "Check Location" to verify your position</div>
+              <div class="text-xs text-gray-400">
+                <strong>Note:</strong> Location access is required for attendance validation. 
+                If you're having issues, please:
+                <ul class="list-disc list-inside mt-1 space-y-1">
+                  <li>Allow location access in your browser</li>
+                  <li>Ensure GPS is enabled on your device</li>
+                  <li>Try refreshing the page</li>
+                </ul>
+              </div>
             </div>
           </div>
         </div>
@@ -220,7 +234,10 @@ const viewAttendanceRecords = () => {
 
 // Location checking functions
 const checkLocation = async () => {
+  console.log('Starting location check...')
+  
   if (!navigator.geolocation) {
+    console.log('Geolocation not supported')
     locationStatus.value = {
       withinRadius: false,
       distance: 'GPS not supported',
@@ -231,6 +248,7 @@ const checkLocation = async () => {
   }
 
   locationChecking.value = true
+  console.log('Requesting location with high accuracy...')
   
   try {
     const position = await new Promise((resolve, reject) => {
@@ -268,11 +286,35 @@ const checkLocation = async () => {
 
   } catch (error) {
     console.error('Location error:', error)
+    
+    let errorMessage = 'Unknown error'
+    let distanceDisplay = 'Error'
+    
+    // Handle specific geolocation errors
+    switch (error.code) {
+      case 1: // PERMISSION_DENIED
+        errorMessage = 'Location access denied. Please allow location access and try again.'
+        distanceDisplay = 'Permission denied'
+        break
+      case 2: // POSITION_UNAVAILABLE
+        errorMessage = 'Location unavailable. Please check your GPS settings and try again.'
+        distanceDisplay = 'GPS unavailable'
+        break
+      case 3: // TIMEOUT
+        errorMessage = 'Location request timed out. Please try again.'
+        distanceDisplay = 'Timeout'
+        break
+      default:
+        errorMessage = error.message || 'Failed to get location'
+        distanceDisplay = 'Error'
+    }
+    
     locationStatus.value = {
       withinRadius: false,
-      distance: 'Error',
+      distance: distanceDisplay,
       requiredRadius: '2m',
-      error: error.message
+      error: errorMessage,
+      errorCode: error.code
     }
   } finally {
     locationChecking.value = false
@@ -439,6 +481,10 @@ watch(() => props.isOpen, (isOpen) => {
     console.log('Modal opened, checking status...')
     checkCurrentStatus()
     startLocationWatching()
+    // Automatically check location when modal opens
+    setTimeout(() => {
+      checkLocation()
+    }, 500) // Small delay to ensure modal is fully rendered
   } else {
     qrCodeData.value = null
     stopLocationWatching()

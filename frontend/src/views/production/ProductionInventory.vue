@@ -3604,7 +3604,7 @@
                 </div>
               </div>
               <div class="text-center">
-                <div class="text-2xl font-bold text-info">
+                <div class="text-2xl font-bold text-primaryColor">
                   {{ selectedItem?.last_batch_size || 0 }}
                 </div>
                 <div class="text-xs text-primaryColor">Last Batch Size</div>
@@ -3613,7 +3613,7 @@
                 </div>
               </div>
               <div class="text-center">
-                <div class="text-2xl font-bold text-success">
+                <div class="text-2xl font-bold text-primaryColor">
                   {{
                     selectedItem?.last_produced_date
                       ? formatDate(selectedItem.last_produced_date)

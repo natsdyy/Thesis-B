@@ -298,8 +298,18 @@
     // Set up session timeout monitoring
     sessionTimeoutInterval = setInterval(checkSessionTimeout, 60000); // Check every minute
 
-    // Initialize POS store
-    await posStore.initialize();
+    // Initialize POS store using menuId/itemCodes if provided via route, and branch context for stock basis
+    const q = router.currentRoute.value.query || {};
+    const menuId = q.menuId ? Number(q.menuId) : undefined;
+    const itemCodes = q.codes
+      ? String(q.codes)
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    const branchId = currentBranch.value?.id || user.value?.branch_id;
+
+    await posStore.initialize({ menuId, itemCodes, branchId });
 
     // TODO: Fetch real POS data
     stats.value = {

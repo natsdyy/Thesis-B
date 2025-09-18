@@ -353,22 +353,13 @@
                 placeholder="Enter transfer price"
                 class="input input-sm sm:input-md input-bordered w-full bg-white"
                 :class="{ 'input-error': formErrors.transfer_price }"
+                readonly
               />
             </div>
             <label v-if="formErrors.transfer_price" class="label">
               <span class="label-text-alt text-error">{{
                 formErrors.transfer_price
               }}</span>
-            </label>
-            <label v-if="suggestedPrice > 0" class="label">
-              <span class="label-text-alt text-info text-xs">
-                Suggested: ₱{{ suggestedPrice.toLocaleString() }}
-                {{
-                  inventoryType === 'production'
-                    ? '(selling price)'
-                    : '(unit cost)'
-                }}
-              </span>
             </label>
           </div>
 

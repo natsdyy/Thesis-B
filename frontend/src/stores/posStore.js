@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import axios from 'axios';
-import { apiConfig } from '../config/api.js';
+import { apiConfig, getApiUrl, formatImageUrl } from '../config/api.js';
 
 export const usePOSStore = defineStore('pos', () => {
   // State
@@ -50,7 +50,7 @@ export const usePOSStore = defineStore('pos', () => {
   });
 
   const orderTax = computed(() => {
-    return orderSubtotal.value * 0.12; // 12% VAT
+    return 0; // VAT not included in POS total  
   });
 
   const orderTotal = computed(() => {
@@ -68,140 +68,63 @@ export const usePOSStore = defineStore('pos', () => {
     );
   });
 
-  // Mock data for UI development
-  const mockMenuItems = [
-    {
-      id: 1,
-      name: 'Tapsilog',
-      price: 150.0,
-      category: 'Silog Meal',
-      stock_quantity: 20,
-      image_url: '/images/menu/Silog Food.png',
-      description: 'Cured beef with garlic rice and fried egg',
-    },
-    {
-      id: 2,
-      name: 'Porksilog',
-      price: 150.0,
-      category: 'Silog Meal',
-      stock_quantity: 20,
-      image_url: '/images/menu/Silog Food.png',
-      description: 'Pork chop with garlic rice and fried egg',
-    },
-    {
-      id: 3,
-      name: 'Tocilog',
-      price: 150.0,
-      category: 'Silog Meal',
-      stock_quantity: 20,
-      image_url: '/images/menu/Silog Food.png',
-      description: 'Cured pork with garlic rice and fried egg',
-    },
-    {
-      id: 4,
-      name: 'Pork Sisig',
-      price: 150.0,
-      category: 'Sizzling',
-      stock_quantity: 20,
-      image_url: '/images/menu/Sizzling Picture.png',
-      description: 'Sizzling pork sisig on hot plate',
-    },
-    {
-      id: 5,
-      name: 'Sizzling Pusit',
-      price: 150.0,
-      category: 'Sizzling',
-      stock_quantity: 20,
-      image_url: '/images/menu/Sizzling Picture.png',
-      description: 'Sizzling squid on hot plate',
-    },
-    {
-      id: 6,
-      name: 'Tenderloin Steak',
-      price: 150.0,
-      category: 'Sizzling',
-      stock_quantity: 20,
-      image_url: '/images/menu/Sizzling Tenderloin Steak.png',
-      description: 'Tenderloin steak on hot plate',
-    },
-    {
-      id: 7,
-      name: 'Sizzling T-Bone Steak',
-      price: 150.0,
-      category: 'Sizzling',
-      stock_quantity: 20,
-      image_url: '/images/menu/Sizzling T-Bone Steak.png',
-      description: 'Sizzling T-bone steak on hot plate',
-    },
-    {
-      id: 8,
-      name: 'Sizzling Chicken Leg',
-      price: 150.0,
-      category: 'Sizzling',
-      stock_quantity: 20,
-      image_url: '/images/menu/Sizzling Picture.png',
-      description: 'Sizzling chicken leg on hot plate',
-    },
-    {
-      id: 9,
-      name: 'Burger Steak',
-      price: 150.0,
-      category: 'Chicken Meal',
-      stock_quantity: 0,
-      image_url: '/images/menu/Menu 1.png',
-      description: 'Burger steak with rice',
-    },
-    {
-      id: 10,
-      name: 'Pork Steak',
-      price: 150.0,
-      category: 'Sizzling',
-      stock_quantity: 20,
-      image_url: '/images/menu/Sizzling Picture.png',
-      description: 'Pork steak on hot plate',
-    },
-    {
-      id: 11,
-      name: 'Sizzling Beef Mushroom',
-      price: 150.0,
-      category: 'Sizzling',
-      stock_quantity: 20,
-      image_url: '/images/menu/Sizzling Picture.png',
-      description: 'Sizzling beef mushroom with rice',
-    },
-    {
-      id: 12,
-      name: 'Sizzling Chicken Wings',
-      price: 150.0,
-      category: 'Sizzling',
-      stock_quantity: 0,
-      image_url: '/images/menu/Menu 1.png',
-      description: 'Sizzling chicken wings on hot plate',
-    },
-  ];
-
-  const mockCategories = [
-    'All',
-    'All Time Favorites',
-    'Drinks',
-    'Sizzling',
-    'Silog Meal',
-    'Chicken Meal',
-    'Gulay',
-  ];
+  // Helper to get auth header
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
 
   // Actions
-  const fetchMenuItems = async () => {
+  // Fetch POS menu items from unified POS API (branch-aware)
+  const fetchMenuItems = async (options = {}) => {
     loading.value = true;
     error.value = null;
 
     try {
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      menuItems.value = mockMenuItems;
+      const { menuId, itemCodes = [], branchId } = options;
+
+      const params = new URLSearchParams();
+      if (branchId) params.append('branch_id', String(branchId));
+      if (menuId) params.append('menu_id', String(menuId));
+      if (itemCodes.length) params.append('item_codes', itemCodes.join(','));
+      params.append('is_available', 'true');
+
+      const url = `${getApiUrl('/pos/menu-items')}?${params.toString()}`;
+      const { data: resp } = await axios.get(url, {
+        baseURL: apiConfig.baseURL,
+        headers: { ...getAuthHeaders() },
+      });
+
+      const apiItems = Array.isArray(resp?.data) ? resp.data : [];
+
+      // Map API rows to POS-friendly structure
+      const mapped = apiItems.map((it) => ({
+        id: it.id,
+        name: it.menu_item_name || it.item_name,
+        price: parseFloat(it.selling_price || 0),
+        category: it.category,
+        stock_quantity: Number(it.branch_stock ?? 0) || 0,
+        image_url: formatImageUrl(it.image_url),
+        description: it.description || '',
+        item_code: it.item_code,
+        menu_id: it.menu_id,
+      }));
+
+      // Only display items that are available (already filtered) and have non-negative stock
+      menuItems.value = mapped.filter((m) => m.stock_quantity >= 0);
+
+      // Derive categories from items
+      const uniqueCats = Array.from(
+        new Set(menuItems.value.map((i) => i.category).filter(Boolean))
+      ).sort();
+      categories.value = ['All', ...uniqueCats];
     } catch (err) {
-      error.value = err.message || 'Failed to fetch menu items';
+      error.value =
+        err?.response?.data?.message ||
+        err.message ||
+        'Failed to fetch menu items';
       console.error('Error fetching menu items:', err);
+      menuItems.value = [];
     } finally {
       loading.value = false;
     }
@@ -209,11 +132,26 @@ export const usePOSStore = defineStore('pos', () => {
 
   const fetchCategories = async () => {
     try {
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      categories.value = mockCategories;
+      // Prefer categories derived from fetched items
+      if (menuItems.value.length > 0) {
+        const uniqueCats = Array.from(
+          new Set(menuItems.value.map((i) => i.category).filter(Boolean))
+        ).sort();
+        categories.value = ['All', ...uniqueCats];
+        return;
+      }
+
+      // Fallback to menu categories endpoint
+      const url = getApiUrl('/menu/menus/categories');
+      const { data } = await axios.get(url, {
+        baseURL: apiConfig.baseURL,
+        headers: { ...getAuthHeaders() },
+      });
+      const cats = Array.isArray(data?.data) ? data.data : [];
+      categories.value = ['All', ...cats];
     } catch (err) {
       console.error('Error fetching categories:', err);
+      categories.value = ['All'];
     }
   };
 
@@ -401,8 +339,9 @@ export const usePOSStore = defineStore('pos', () => {
   };
 
   // Initialize
-  const initialize = async () => {
-    await Promise.all([fetchMenuItems(), fetchCategories()]);
+  const initialize = async (options = {}) => {
+    await fetchMenuItems(options);
+    await fetchCategories();
   };
 
   return {

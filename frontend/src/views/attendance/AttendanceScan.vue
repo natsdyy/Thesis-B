@@ -487,16 +487,6 @@ const formatDate = (timestamp) => {
   })
 }
 
-const formatTime = (timestamp) => {
-  if (!timestamp) return 'N/A'
-  const date = new Date(timestamp)
-  return date.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true
-  })
-}
-
 const playSuccessSound = () => {
   try {
     // Create a simple success sound using Web Audio API

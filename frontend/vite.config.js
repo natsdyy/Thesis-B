@@ -4,10 +4,6 @@ import VueDevTools from 'vite-plugin-vue-devtools';
 import tailwindcss from '@tailwindcss/postcss';
 import autoprefixer from 'autoprefixer';
 
-// Prefer opening files in Cursor when using open-in-editor links
-process.env.VITE_EDITOR =
-  'C:\\Users\\Kyle\\AppData\\Local\\Programs\\cursor\\Cursor.exe';
-
 export default defineConfig({
   plugins: [vue(), VueDevTools()],
   css: {

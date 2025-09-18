@@ -1174,6 +1174,15 @@ class Inventory {
     const trx = await db.transaction();
 
     try {
+      // Normalize batch id to a scalar value for references
+      const batchIdScalar =
+        typeof productionBatchId === "object" && productionBatchId !== null
+          ? productionBatchId.id ||
+            productionBatchId.batch_id ||
+            productionBatchId.batchId ||
+            null
+          : productionBatchId;
+      const batchIdText = batchIdScalar != null ? String(batchIdScalar) : "";
       const consumptionRecords = [];
 
       for (const consumption of ingredientConsumption) {
@@ -1200,9 +1209,9 @@ class Inventory {
             quantity: -quantityConsumed,
             unit_cost: unitCost,
             total_value: totalValue,
-            reference_number: `BATCH-${productionBatchId}`,
+            reference_number: `BATCH-${batchIdText}`,
             reason: "Production ingredient consumption",
-            notes: `Consumed for production batch ${productionBatchId}`,
+            notes: `Consumed for production batch ${batchIdText}`,
             performed_by: consumption.performed_by || "Production System",
             transaction_date: new Date(),
           })
@@ -1234,7 +1243,7 @@ class Inventory {
 
       await trx.commit();
       return {
-        production_batch_id: productionBatchId,
+        production_batch_id: batchIdScalar,
         consumption_records: consumptionRecords,
       };
     } catch (error) {
@@ -1316,13 +1325,23 @@ class Inventory {
         batch.actual_cost / (batch.quantity_produced || 1);
       const totalValue = finishedGoodsData.total_value || batch.actual_cost;
 
+      // Normalize batch id to a scalar value for references
+      const batchIdScalar =
+        typeof productionBatchId === "object" && productionBatchId !== null
+          ? productionBatchId.id ||
+            productionBatchId.batch_id ||
+            productionBatchId.batchId ||
+            null
+          : productionBatchId;
+      const batchIdText = batchIdScalar != null ? String(batchIdScalar) : "";
+
       await trx("inventory_transactions").insert({
         inventory_item_id: inventoryItem.id,
         transaction_type: "production_output",
         quantity: quantityProduced,
         unit_cost: unitCost,
         total_value: totalValue,
-        reference_number: `BATCH-${productionBatchId}`,
+        reference_number: `BATCH-${batchIdText}`,
         reason: "Production output",
         notes: `Finished goods from production batch ${batch.batch_number}`,
         performed_by: finishedGoodsData.received_by || "Production System",
@@ -1331,7 +1350,7 @@ class Inventory {
 
       await trx.commit();
       return {
-        production_batch_id: productionBatchId,
+        production_batch_id: batchIdScalar,
         inventory_item: inventoryItem,
         item_type: itemType,
       };

@@ -8,6 +8,7 @@
     currentInventory: { type: Array, default: () => [] },
     loading: { type: Boolean, default: false },
     preselectedItem: { type: Object, default: null },
+    prefill: { type: Object, default: null }, // { adjustment_type, reason }
   });
 
   const emit = defineEmits(['close', 'submit']);
@@ -77,7 +78,7 @@
     if (isExpiredItem.value) {
       return [{ value: 'disposal', label: 'Dispose Item' }];
     }
-    return [
+    const base = [
       { value: 'set_quantity', label: 'Set Exact Quantity' },
       { value: 'add_quantity', label: 'Add Quantity' },
       { value: 'reduce_quantity', label: 'Reduce Quantity' },
@@ -85,6 +86,11 @@
       { value: 'mark_damaged', label: 'Mark as Damaged' },
       { value: 'set_expiry_date', label: 'Set Expiry Date' },
     ];
+    // When prefilled for disposal, expose the disposal option even if not expired
+    if (props.prefill?.adjustment_type === 'disposal') {
+      base.push({ value: 'disposal', label: 'Disposal' });
+    }
+    return base;
   });
 
   // Adjustment reasons list (restrict to Expiry when item is expired)
@@ -278,6 +284,15 @@
           form.value.item_type_id =
             resolvedItemType?.id || item.item_type_id || '';
           form.value.inventory_item_id = item.id || '';
+        }
+        // Apply prefill for adjustment type and reason if provided
+        if (props.prefill) {
+          if (props.prefill.adjustment_type) {
+            form.value.adjustment_type = props.prefill.adjustment_type;
+          }
+          if (props.prefill.reason) {
+            form.value.reason = props.prefill.reason;
+          }
         }
         if (dlg?.showModal) dlg.showModal();
       } else {

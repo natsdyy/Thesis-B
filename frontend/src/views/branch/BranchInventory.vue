@@ -1,5 +1,6 @@
 <script setup>
   import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+  import BranchInventoryDetailsModal from '../../components/branch/BranchInventoryDetailsModal.vue';
   import { useToast } from 'vue-toastification';
   import {
     Calendar,
@@ -48,12 +49,14 @@
   import BranchInventoryAdjustmentModal from '../../components/branch/BranchInventoryAdjustmentModal.vue';
   import BranchInventoryTransactionModal from '../../components/branch/BranchInventoryTransactionModal.vue';
   import { apiConfig, formatImageUrl } from '../../config/api';
+  import { useRouter } from 'vue-router';
 
   const branchContextStore = useBranchContextStore();
   const branchDistributionStore = useBranchDistributionStore();
   const authStore = useAuthStore();
   const branchInventoryStore = useBranchInventoryStore();
   const toast = useToast();
+  const router = useRouter();
 
   // Local state following MainInventory pattern
   const activeTab = ref('overview');
@@ -442,8 +445,116 @@
     return Math.max(0, Math.floor(current / dailyUsage));
   };
 
-  const viewBatchDetails = (/* item */) => {
-    // Placeholder action hook for future modal
+  // Inventory details modal state
+  const showInventoryDetails = ref(false);
+  const selectedBranchItem = ref(null);
+  const selectedBranchItemType = ref('scm');
+
+  const resolveInventoryItemId = async (item) => {
+    // Prefer explicit identifiers present on the item
+    const explicitId = item?.id || item?.inventory_item_id;
+    if (explicitId) return explicitId;
+
+    // Fallback: try mapping by item name to the latest/current inventory id
+    const nameKey = (item?.item_name || item?.name || '').toLowerCase();
+    if (!nameKey) return null;
+
+    try {
+      // Ensure inventory store is loaded
+      if (!invStoreSingleton) {
+        const invMod = await import('../../stores/inventoryStore');
+        invStoreSingleton = invMod.useInventoryStore();
+      }
+      if (
+        !invStoreSingleton.currentInventory ||
+        invStoreSingleton.currentInventory.length === 0
+      ) {
+        await invStoreSingleton.fetchCurrentInventory();
+      }
+
+      const candidates = (invStoreSingleton.currentInventory || []).filter(
+        (x) => (x.item_name || '').toLowerCase() === nameKey
+      );
+      if (candidates.length === 0) return null;
+
+      // Choose the most recent by received_date if available, else first
+      candidates.sort((a, b) => {
+        const da = a.received_date ? new Date(a.received_date).getTime() : 0;
+        const db = b.received_date ? new Date(b.received_date).getTime() : 0;
+        return db - da;
+      });
+      return candidates[0].id;
+    } catch (_) {
+      return null;
+    }
+  };
+
+  // Open the same inventory details modal used in SCM by pushing to modal route/state
+  const viewBatchDetails = async (item) => {
+    try {
+      let id = item?.id || item?.inventory_item_id;
+      if (!id) {
+        id = await resolveInventoryItemId(item);
+      }
+      if (!id) {
+        try {
+          toast.warning('Unable to locate item details.');
+        } catch (_) {}
+        return;
+      }
+      selectedBranchItem.value = item;
+      selectedBranchItemType.value =
+        inventoryType.value === 'production' ? 'production' : 'scm';
+      showInventoryDetails.value = true;
+    } catch (_) {}
+  };
+
+  // Create Supply Request from alert → switch to in-page BranchRequestSupply tab with prefilled row
+  const createSupplyRequestFromAlert = (item) => {
+    try {
+      // Determine source (scm | production) from the alert item
+      const srcType =
+        (item?.item_type || '').toLowerCase() === 'production'
+          ? 'production'
+          : 'scm';
+      // Ensure the Request Supply tab reflects the correct source
+      inventoryType.value = srcType;
+      activeTab.value = 'request_supply';
+      // Broadcast a custom event for BranchRequestSupply to pick up and prefill
+      const payload = {
+        items: [
+          {
+            name: item.item_name || item.name,
+            quantity:
+              Math.max(
+                0,
+                (parseFloat(item.minimum_stock) || 0) -
+                  (parseFloat(item.quantity) || 0)
+              ) || 1,
+            unit: item.unit || item.unit_of_measure || '',
+            unit_price:
+              parseFloat(
+                item.unit_cost != null
+                  ? item.unit_cost
+                  : item.selling_price || 0
+              ) || 0,
+            source: srcType,
+          },
+        ],
+        category: item.category || item.category_name || '',
+        source: srcType,
+        item_type_id: null,
+        item_type_name: srcType === 'production' ? 'Production' : 'SCM',
+      };
+      // Stash payload so the component can consume it on mount
+      window.__branchPrefillSupplyRequest = payload;
+      // Defer event until after tab renders and component mounts
+      setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent('branch-prefill-supply-request', { detail: payload })
+        );
+      }, 50);
+    } catch (_) {}
   };
 
   // Use the centralized formatImageUrl function from api.js
@@ -853,6 +964,23 @@
 
   const openAdjustModal = (item) => {
     actionModal.value = { type: 'adjustment', show: true, item };
+  };
+
+  // Pre-populate adjustment modal for disposal
+  const markForDisposal = (item) => {
+    actionModal.value = {
+      type: 'adjustment',
+      show: true,
+      item,
+      prefill: { adjustment_type: 'disposal', reason: 'Expiry' },
+    };
+    // Slight delay to allow modal to mount before user interaction
+    setTimeout(() => {
+      try {
+        // No direct refs to set inner form; the modal auto-locks to disposal when expired
+        // and shows disposal cost field. Passing the item is enough for preselection.
+      } catch (_) {}
+    }, 0);
   };
 
   const closeActionModal = () => {
@@ -1315,18 +1443,7 @@
           parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
           parseFloat(item.quantity) > 0
       );
-      console.log('Low stock items for alerts:', lowStockItems);
-      console.log(
-        'Debug - Item details:',
-        branchInventory.value.map((item) => ({
-          name: item.item_name,
-          quantity: item.quantity,
-          minimum_stock: item.minimum_stock,
-          isLowStock:
-            parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
-            parseFloat(item.quantity) > 0,
-        }))
-      );
+
       lowStockItems.forEach((item, index) => {
         realAlerts.push({
           id: `low_stock_${item.id}`,
@@ -1380,7 +1497,6 @@
         });
       });
 
-      console.log('Generated alerts:', realAlerts);
       alerts.value = realAlerts;
 
       // Low stock items
@@ -2918,19 +3034,11 @@
                   >
                     View Item
                   </button>
-                  <button class="btn btn-ghost btn-xs" disabled>
-                    Mark for Disposal
-                  </button>
                   <button
-                    class="btn btn-outline btn-xs"
-                    :class="{
-                      'btn-disabled': acknowledgedExpiring.has(
-                        item.id || `${item.id}-${item.expiry_date}`
-                      ),
-                    }"
-                    @click="acknowledgeExpiring(item)"
+                    class="btn btn-ghost btn-xs"
+                    @click="markForDisposal(item)"
                   >
-                    Acknowledge
+                    Mark for Disposal
                   </button>
                 </div>
               </div>
@@ -3032,18 +3140,17 @@
                 </div>
 
                 <div class="mt-2 flex flex-wrap gap-2">
-                  <button class="btn btn-ghost btn-xs">View Item</button>
-                  <button class="btn btn-ghost btn-xs" disabled>
-                    Create Supply Request
+                  <button
+                    class="btn btn-ghost btn-xs"
+                    @click="viewBatchDetails(item)"
+                  >
+                    View Item
                   </button>
                   <button
-                    class="btn btn-outline btn-xs"
-                    :class="{
-                      'btn-disabled': acknowledgedLowStock.has(item.id),
-                    }"
-                    @click="acknowledgeLowStock(item)"
+                    class="btn btn-ghost btn-xs"
+                    @click="createSupplyRequestFromAlert(item)"
                   >
-                    Acknowledge
+                    Create Supply Request
                   </button>
                 </div>
               </div>
@@ -4097,6 +4204,7 @@
       :item-types="modalItemTypes"
       :current-inventory="modalCurrentInventory"
       :preselected-item="actionModal.item"
+      :prefill="actionModal.prefill"
       @close="closeActionModal"
       @submit="handleAdjustmentSubmit"
     />
@@ -4254,6 +4362,15 @@
       </div>
     </dialog>
   </div>
+
+  <!-- Inventory Details Modal -->
+  <BranchInventoryDetailsModal
+    v-if="showInventoryDetails"
+    :show="showInventoryDetails"
+    :item="selectedBranchItem"
+    :type="selectedBranchItemType"
+    @close="showInventoryDetails = false"
+  />
 </template>
 
 <style scoped>

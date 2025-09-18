@@ -341,7 +341,7 @@
                 </select>
               </div>
             </div>
-            <div class="form-control">
+            <div class="form-control">w
               <label class="label mb-2"><span class="label-text">Shift End</span></label>
               <div class="flex gap-3">
                 <input v-model="endHour" @input="onHourInput('end')" inputmode="numeric" pattern="[0-9]*" maxlength="2" placeholder="HH" class="input input-bordered w-1/3 focus:border-success focus:ring-success focus:ring-2" />

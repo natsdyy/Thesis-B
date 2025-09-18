@@ -74,6 +74,15 @@
                 <div>Required: Within {{ locationStatus.requiredRadius || '2m' }}</div>
                 <div v-if="locationStatus.accuracy" class="text-gray-500">
                   GPS Accuracy: ±{{ locationStatus.accuracy }}m
+                  <span v-if="locationStatus.accuracy > 100" class="text-orange-600 font-medium">
+                    (Poor signal - try moving to an open area)
+                  </span>
+                  <span v-else-if="locationStatus.accuracy > 50" class="text-yellow-600 font-medium">
+                    (Fair signal)
+                  </span>
+                  <span v-else class="text-green-600 font-medium">
+                    (Good signal)
+                  </span>
                 </div>
                 <div v-if="locationStatus.error" class="text-yellow-600 mt-2 p-2 bg-yellow-50 rounded text-xs">
                   <strong>Error:</strong> {{ locationStatus.error }}
@@ -274,8 +283,8 @@ const checkLocation = async () => {
     const position = await new Promise((resolve, reject) => {
       navigator.geolocation.getCurrentPosition(resolve, reject, {
         enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 30000
+        timeout: 15000, // Increased timeout for better accuracy
+        maximumAge: 0 // Don't use cached location
       })
     })
 
@@ -283,14 +292,14 @@ const checkLocation = async () => {
     const userLon = position.coords.longitude
     const accuracy = position.coords.accuracy
 
-    // For now, we'll simulate distance calculation since we don't have QR code location yet
-    // In a real implementation, you would get the QR code's GPS coordinates
-    const mockQRCodeLat = 14.5995 // Example: Manila coordinates
-    const mockQRCodeLon = 120.9842
+    // Use actual Dasmariñas coordinates based on your GPS data
+    // This should be the actual branch location coordinates
+    const branchLat = 14.3064 // Dasmariñas coordinates (from your GPS)
+    const branchLon = 120.9671
     const requiredRadius = 2.0
 
     // Calculate distance using Haversine formula
-    const distance = calculateDistance(userLat, userLon, mockQRCodeLat, mockQRCodeLon)
+    const distance = calculateDistance(userLat, userLon, branchLat, branchLon)
     const withinRadius = distance <= requiredRadius
 
     locationStatus.value = {
@@ -300,8 +309,8 @@ const checkLocation = async () => {
       accuracy: Math.round(accuracy),
       userLat,
       userLon,
-      qrCodeLat: mockQRCodeLat,
-      qrCodeLon: mockQRCodeLon
+      qrCodeLat: branchLat,
+      qrCodeLon: branchLon
     }
 
   } catch (error) {

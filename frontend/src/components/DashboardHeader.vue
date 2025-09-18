@@ -333,7 +333,12 @@
     closeAttendanceModal();
     // Redirect based on user department
     const userDepartment = authStore.user?.department;
-    if (userDepartment === 'Human Resource') {
+    const userRole = authStore.user?.role;
+    
+    if (userRole === 'Super Admin') {
+      // Super Admin can access HR attendance records
+      router.push('/hr/attendance-records');
+    } else if (userDepartment === 'Human Resource') {
       router.push('/hr/attendance-records');
     } else if (userDepartment === 'Branch') {
       router.push('/branch/attendance');

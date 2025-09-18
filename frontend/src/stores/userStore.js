@@ -5,8 +5,10 @@ import { apiConfig } from '../config/api.js';
 
 const API_BASE_URL = apiConfig.baseURL;
 
+// NOTE: This store is named 'user' for historical reasons but actually manages employees
+// It calls the correct /api/employees endpoints and should be used for employee operations
 export const useUserStore = defineStore('user', () => {
-  // State
+  // State - Note: This store manages employees but uses 'user' terminology for compatibility
   const users = ref([]);
   const loading = ref(false);
   const error = ref(null);
@@ -31,12 +33,12 @@ export const useUserStore = defineStore('user', () => {
       if (response.data.success) {
         users.value = response.data.data;
       } else {
-        throw new Error(response.data.message || 'Failed to fetch users');
+        throw new Error(response.data.message || 'Failed to fetch employees');
       }
     } catch (err) {
       error.value =
-        err.response?.data?.message || err.message || 'Failed to fetch users';
-      console.error('Error fetching users:', err);
+        err.response?.data?.message || err.message || 'Failed to fetch employees';
+      console.error('Error fetching employees:', err);
     } finally {
       loading.value = false;
     }
@@ -56,12 +58,12 @@ export const useUserStore = defineStore('user', () => {
         );
         return response.data.data;
       } else {
-        throw new Error(response.data.message || 'Failed to create user');
+        throw new Error(response.data.message || 'Failed to create employee');
       }
     } catch (err) {
       error.value =
-        err.response?.data?.message || err.message || 'Failed to create user';
-      console.error('Error creating user:', err);
+        err.response?.data?.message || err.message || 'Failed to create employee';
+      console.error('Error creating employee:', err);
       throw err;
     } finally {
       loading.value = false;
@@ -85,12 +87,12 @@ export const useUserStore = defineStore('user', () => {
         }
         return response.data.data;
       } else {
-        throw new Error(response.data.message || 'Failed to update user');
+        throw new Error(response.data.message || 'Failed to update employee');
       }
     } catch (err) {
       error.value =
-        err.response?.data?.message || err.message || 'Failed to update user';
-      console.error('Error updating user:', err);
+        err.response?.data?.message || err.message || 'Failed to update employee';
+      console.error('Error updating employee:', err);
       throw err;
     } finally {
       loading.value = false;
@@ -108,12 +110,12 @@ export const useUserStore = defineStore('user', () => {
         users.value = users.value.filter((user) => user.id !== id);
         return response.data.data;
       } else {
-        throw new Error(response.data.message || 'Failed to delete user');
+        throw new Error(response.data.message || 'Failed to delete employee');
       }
     } catch (err) {
       error.value =
-        err.response?.data?.message || err.message || 'Failed to delete user';
-      console.error('Error deleting user:', err);
+        err.response?.data?.message || err.message || 'Failed to delete employee';
+      console.error('Error deleting employee:', err);
       throw err;
     } finally {
       loading.value = false;
@@ -141,12 +143,12 @@ export const useUserStore = defineStore('user', () => {
         );
         return response.data.data;
       } else {
-        throw new Error(response.data.message || 'Failed to restore user');
+        throw new Error(response.data.message || 'Failed to restore employee');
       }
     } catch (err) {
       error.value =
-        err.response?.data?.message || err.message || 'Failed to restore user';
-      console.error('Error restoring user:', err);
+        err.response?.data?.message || err.message || 'Failed to restore employee';
+      console.error('Error restoring employee:', err);
       throw err;
     } finally {
       loading.value = false;
@@ -166,15 +168,15 @@ export const useUserStore = defineStore('user', () => {
         return response.data.data;
       } else {
         throw new Error(
-          response.data.message || 'Failed to fetch user permissions'
+          response.data.message || 'Failed to fetch employee permissions'
         );
       }
     } catch (err) {
       error.value =
         err.response?.data?.message ||
         err.message ||
-        'Failed to fetch user permissions';
-      console.error('Error fetching user permissions:', err);
+        'Failed to fetch employee permissions';
+      console.error('Error fetching employee permissions:', err);
       throw err;
     } finally {
       loading.value = false;

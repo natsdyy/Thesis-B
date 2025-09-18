@@ -2,7 +2,10 @@
   <div class="space-y-6">
     <!-- Header -->
     <div class="flex justify-between items-center">
-      <h1 class="text-3xl font-bold">Employee Attendance History</h1>
+      <div>
+        <h1 class="text-3xl font-bold">Employee Attendance History</h1>
+        <p class="text-sm text-gray-500 mt-1">Showing time-in and time-out events only</p>
+      </div>
       <div class="flex gap-2">
         <input 
           v-model="searchQuery" 
@@ -116,7 +119,8 @@
                     <svg class="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                     </svg>
-                    <p>No attendance records found</p>
+                    <p>No time-in or time-out records found</p>
+                    <p class="text-sm">Try adjusting your search criteria or date range</p>
                   </div>
                 </td>
               </tr>
@@ -190,7 +194,10 @@ const authHeaders = () => {
 
 // Computed
 const filteredRecords = computed(() => {
-  let filtered = attendanceRecords.value
+  // First filter to only show time-in and time-out events
+  let filtered = attendanceRecords.value.filter(record => 
+    record.event_type === 'time-in' || record.event_type === 'time-out'
+  )
 
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
@@ -261,8 +268,14 @@ const fetchAttendanceRecords = async () => {
     })
     
     if (response.data.success) {
-      attendanceRecords.value = response.data.data || []
-      totalRecords.value = attendanceRecords.value.length
+      // Filter to only show time-in and time-out events
+      const allRecords = response.data.data || []
+      const timeInOutRecords = allRecords.filter(record => 
+        record.event_type === 'time-in' || record.event_type === 'time-out'
+      )
+      
+      attendanceRecords.value = timeInOutRecords
+      totalRecords.value = timeInOutRecords.length
       calculateStats()
     } else {
       console.error('API returned error:', response.data.message)
@@ -288,24 +301,40 @@ const fetchAttendanceReport = async () => {
     })
     
     if (response.data.success) {
-      // Transform the data to show individual time-in/time-out events
+      // Transform the data to show individual time-in/time-out events only
       const transformedRecords = []
       response.data.data.forEach(record => {
+        // Only add time-in event if it exists
         if (record.time_in) {
           transformedRecords.push({
-            ...record,
+            id: `${record.employee_id}_time_in_${record.time_in}`,
+            employee_id: record.employee_id,
+            employee_name: record.employee_name || `${record.first_name || ''} ${record.last_name || ''}`.trim(),
             event_type: 'time-in',
-            created_at: record.time_in
+            created_at: record.time_in,
+            location_name: record.location_name || 'N/A',
+            photo_url: record.photo_url,
+            status: 'Present'
           })
         }
+        // Only add time-out event if it exists
         if (record.time_out) {
           transformedRecords.push({
-            ...record,
+            id: `${record.employee_id}_time_out_${record.time_out}`,
+            employee_id: record.employee_id,
+            employee_name: record.employee_name || `${record.first_name || ''} ${record.last_name || ''}`.trim(),
             event_type: 'time-out',
-            created_at: record.time_out
+            created_at: record.time_out,
+            location_name: record.location_name || 'N/A',
+            photo_url: record.photo_url,
+            status: 'Present'
           })
         }
       })
+      
+      // Sort by date and time (newest first)
+      transformedRecords.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      
       attendanceRecords.value = transformedRecords
       totalRecords.value = transformedRecords.length
       calculateStats()
@@ -337,18 +366,26 @@ const fetchEmployees = async () => {
 const calculateStats = () => {
   const today = new Date().toISOString().split('T')[0]
   const todayRecords = attendanceRecords.value.filter(record => 
-    record.created_at?.startsWith(today)
+    record.created_at?.startsWith(today) && 
+    (record.event_type === 'time-in' || record.event_type === 'time-out')
   )
   
-  presentToday.value = todayRecords.filter(record => record.time_in).length
-  lateArrivals.value = todayRecords.filter(record => {
-    if (!record.time_in) return false
-    const timeIn = new Date(record.time_in)
+  // Count unique employees who have time-in events today
+  const timeInRecords = todayRecords.filter(record => record.event_type === 'time-in')
+  const uniqueEmployees = new Set(timeInRecords.map(record => record.employee_id))
+  presentToday.value = uniqueEmployees.size
+  
+  // Count late arrivals (time-in after 9:00 AM)
+  lateArrivals.value = timeInRecords.filter(record => {
+    const timeIn = new Date(record.created_at)
     const expectedTime = new Date()
     expectedTime.setHours(9, 0, 0, 0) // 9:00 AM
     return timeIn > expectedTime
   }).length
-  absentToday.value = totalRecords.value - presentToday.value
+  
+  // Calculate absent employees (this would need total employee count from another source)
+  // For now, we'll use the present count as a reference
+  absentToday.value = Math.max(0, totalRecords.value - presentToday.value)
 }
 
 const refreshRecords = () => {

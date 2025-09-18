@@ -243,9 +243,9 @@ class MenuItem {
         throw new Error("Invalid created_by user ID");
       }
 
-      const userExists = await trx("users").where("id", createdBy).first();
+      const userExists = await trx("employees").where("id", createdBy).first();
       if (!userExists) {
-        throw new Error("User not found");
+        throw new Error("Employee not found");
       }
 
       // Get recipe details to calculate costs

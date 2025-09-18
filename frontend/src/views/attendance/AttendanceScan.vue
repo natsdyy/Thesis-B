@@ -12,6 +12,20 @@
 
       <!-- Status Card -->
       <div class="bg-white rounded-lg shadow-lg p-6">
+        <!-- Location Status -->
+        <div v-if="locationStatus" class="mb-4 p-3 rounded-lg border" :class="locationStatus.withinRadius ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'">
+          <div class="flex items-center space-x-2">
+            <div :class="['w-3 h-3 rounded-full', locationStatus.withinRadius ? 'bg-green-500' : 'bg-red-500']"></div>
+            <span class="text-sm font-medium" :class="locationStatus.withinRadius ? 'text-green-800' : 'text-red-800'">
+              {{ locationStatus.withinRadius ? 'Within Range' : 'Too Far Away' }}
+            </span>
+          </div>
+          <div class="text-xs mt-1" :class="locationStatus.withinRadius ? 'text-green-600' : 'text-red-600'">
+            Distance: {{ locationStatus.distance || 'Unknown' }} | Required: {{ locationStatus.requiredRadius || '2m' }}
+            <span v-if="locationStatus.accuracy" class="ml-2">(GPS: ±{{ locationStatus.accuracy }}m)</span>
+          </div>
+        </div>
+
         <!-- Loading State -->
         <div v-if="processing" class="text-center">
           <div class="loading loading-spinner loading-lg text-green-600 mb-4"></div>
@@ -124,6 +138,7 @@ const router = useRouter()
 const processing = ref(true)
 const result = ref(null)
 const qrData = ref(null)
+const locationStatus = ref(null)
 
 // API Configuration
 const API_BASE_URL = apiConfig.baseURL
@@ -159,9 +174,34 @@ const processQRCode = async (data) => {
     }
   } catch (error) {
     console.error('QR processing error:', error)
+    
+    // Check if it's a location/distance error
+    const errorMessage = error.response?.data?.message || error.message || 'Failed to process QR code'
+    const isLocationError = errorMessage.includes('too far') || errorMessage.includes('distance') || errorMessage.includes('radius')
+    
+    if (isLocationError && locationStatus.value) {
+      // Extract distance from error message if available
+      const distanceMatch = errorMessage.match(/(\d+(?:\.\d+)?)m/)
+      if (distanceMatch) {
+        locationStatus.value = {
+          withinRadius: false,
+          distance: `${distanceMatch[1]}m`,
+          requiredRadius: '2m',
+          accuracy: locationStatus.value?.accuracy
+        }
+      } else {
+        locationStatus.value = {
+          withinRadius: false,
+          distance: 'Too far',
+          requiredRadius: '2m',
+          accuracy: locationStatus.value?.accuracy
+        }
+      }
+    }
+    
     result.value = {
       success: false,
-      message: error.response?.data?.message || 'Failed to process QR code'
+      message: errorMessage
     }
   } finally {
     processing.value = false
@@ -183,6 +223,7 @@ const processAttendance = async (attendanceData) => {
     // Get current GPS location
     let latitude = null
     let longitude = null
+    let accuracy = null
     
     try {
       if (navigator.geolocation) {
@@ -196,13 +237,34 @@ const processAttendance = async (attendanceData) => {
         
         latitude = position.coords.latitude
         longitude = position.coords.longitude
+        accuracy = position.coords.accuracy
         
-        console.log('GPS coordinates:', { latitude, longitude })
+        console.log('GPS coordinates:', { latitude, longitude, accuracy })
+        
+        // Set location status for UI display
+        locationStatus.value = {
+          withinRadius: null, // Will be determined by backend response
+          distance: 'Checking...',
+          requiredRadius: '2m',
+          accuracy: Math.round(accuracy)
+        }
       } else {
         console.warn('Geolocation is not supported by this browser')
+        locationStatus.value = {
+          withinRadius: false,
+          distance: 'GPS not supported',
+          requiredRadius: '2m',
+          error: 'Geolocation not supported'
+        }
       }
     } catch (geoError) {
       console.warn('Could not get GPS location:', geoError.message)
+      locationStatus.value = {
+        withinRadius: false,
+        distance: 'GPS Error',
+        requiredRadius: '2m',
+        error: geoError.message
+      }
       // Continue without GPS coordinates - the backend will handle this gracefully
     }
     
@@ -215,6 +277,16 @@ const processAttendance = async (attendanceData) => {
       longitude: longitude
     })
     
+    // Update location status based on response
+    if (response.data.success) {
+      locationStatus.value = {
+        withinRadius: true,
+        distance: 'Within range',
+        requiredRadius: '2m',
+        accuracy: locationStatus.value?.accuracy
+      }
+    }
+
     result.value = {
       success: true,
       message: response.data.message || `Successfully ${attendanceData.action.replace('-', ' ')}`,

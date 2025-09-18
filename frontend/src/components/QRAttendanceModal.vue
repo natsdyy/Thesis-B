@@ -34,6 +34,55 @@
         </div>
       </div>
 
+      <!-- Location Status -->
+      <div class="mb-6">
+        <div class="card bg-base-100 shadow-sm border">
+          <div class="card-body p-4">
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="font-semibold text-sm">Location Status</h4>
+              <button 
+                @click="checkLocation" 
+                :disabled="locationChecking"
+                class="btn btn-xs btn-outline"
+              >
+                <svg v-if="!locationChecking" class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                <span v-if="locationChecking" class="loading loading-spinner loading-xs"></span>
+                {{ locationChecking ? 'Checking...' : 'Check Location' }}
+              </button>
+            </div>
+            
+            <!-- Location Status Display -->
+            <div v-if="locationStatus">
+              <div class="flex items-center space-x-2 mb-2">
+                <div 
+                  :class="[
+                    'w-3 h-3 rounded-full',
+                    locationStatus.withinRadius ? 'bg-green-500' : 'bg-red-500'
+                  ]"
+                ></div>
+                <span class="text-sm font-medium">
+                  {{ locationStatus.withinRadius ? 'Within Range' : 'Too Far Away' }}
+                </span>
+              </div>
+              
+              <div class="text-xs text-gray-600 space-y-1">
+                <div>Distance: {{ locationStatus.distance || 'Unknown' }}</div>
+                <div>Required: Within {{ locationStatus.requiredRadius || '2m' }}</div>
+                <div v-if="locationStatus.accuracy" class="text-gray-500">
+                  GPS Accuracy: ±{{ locationStatus.accuracy }}m
+                </div>
+              </div>
+            </div>
+            
+            <div v-else class="text-sm text-gray-500">
+              Click "Check Location" to verify your position
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- QR Code Generation -->
       <div class="text-center mb-6">
         <div class="bg-white p-6 rounded-lg shadow-lg inline-block">
@@ -149,6 +198,9 @@ const authStore = useAuthStore()
 const qrCodeLoading = ref(false)
 const qrCodeData = ref(null)
 const currentStatus = ref('checked-out') // 'checked-in' or 'checked-out'
+const locationChecking = ref(false)
+const locationStatus = ref(null)
+const watchId = ref(null)
 
 // API Configuration
 const API_BASE_URL = apiConfig.baseURL
@@ -164,6 +216,115 @@ const closeModal = () => {
 
 const viewAttendanceRecords = () => {
   emit('viewRecords')
+}
+
+// Location checking functions
+const checkLocation = async () => {
+  if (!navigator.geolocation) {
+    locationStatus.value = {
+      withinRadius: false,
+      distance: 'GPS not supported',
+      requiredRadius: '2m',
+      error: 'Geolocation is not supported by this browser'
+    }
+    return
+  }
+
+  locationChecking.value = true
+  
+  try {
+    const position = await new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 30000
+      })
+    })
+
+    const userLat = position.coords.latitude
+    const userLon = position.coords.longitude
+    const accuracy = position.coords.accuracy
+
+    // For now, we'll simulate distance calculation since we don't have QR code location yet
+    // In a real implementation, you would get the QR code's GPS coordinates
+    const mockQRCodeLat = 14.5995 // Example: Manila coordinates
+    const mockQRCodeLon = 120.9842
+    const requiredRadius = 2.0
+
+    // Calculate distance using Haversine formula
+    const distance = calculateDistance(userLat, userLon, mockQRCodeLat, mockQRCodeLon)
+    const withinRadius = distance <= requiredRadius
+
+    locationStatus.value = {
+      withinRadius,
+      distance: `${Math.round(distance)}m`,
+      requiredRadius: `${requiredRadius}m`,
+      accuracy: Math.round(accuracy),
+      userLat,
+      userLon,
+      qrCodeLat: mockQRCodeLat,
+      qrCodeLon: mockQRCodeLon
+    }
+
+  } catch (error) {
+    console.error('Location error:', error)
+    locationStatus.value = {
+      withinRadius: false,
+      distance: 'Error',
+      requiredRadius: '2m',
+      error: error.message
+    }
+  } finally {
+    locationChecking.value = false
+  }
+}
+
+// Haversine formula to calculate distance between two GPS coordinates
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371000 // Earth's radius in meters
+  const dLat = toRadians(lat2 - lat1)
+  const dLon = toRadians(lon2 - lon1)
+  
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2)
+  
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c // Distance in meters
+}
+
+const toRadians = (degrees) => {
+  return degrees * (Math.PI / 180)
+}
+
+// Start watching location when modal opens
+const startLocationWatching = () => {
+  if (navigator.geolocation && !watchId.value) {
+    watchId.value = navigator.geolocation.watchPosition(
+      (position) => {
+        // Auto-update location status when position changes
+        if (locationStatus.value) {
+          checkLocation()
+        }
+      },
+      (error) => {
+        console.warn('Location watch error:', error)
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 30000
+      }
+    )
+  }
+}
+
+// Stop watching location when modal closes
+const stopLocationWatching = () => {
+  if (watchId.value) {
+    navigator.geolocation.clearWatch(watchId.value)
+    watchId.value = null
+  }
 }
 
 const generateQRCode = async (action) => {
@@ -277,14 +438,17 @@ watch(() => props.isOpen, (isOpen) => {
   if (isOpen) {
     console.log('Modal opened, checking status...')
     checkCurrentStatus()
+    startLocationWatching()
   } else {
     qrCodeData.value = null
+    stopLocationWatching()
   }
 })
 
 // Cleanup when component unmounts
 onUnmounted(() => {
   qrCodeData.value = null
+  stopLocationWatching()
 })
 </script>
 

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import axios from 'axios';
-import { apiConfig } from '../config/api.js';
+import { apiConfig, formatImageUrl } from '../config/api.js';
 
 export const useProductionStore = defineStore('production', () => {
   // State
@@ -941,13 +941,10 @@ export const useProductionStore = defineStore('production', () => {
           };
 
           // Ensure image_url is properly formatted if it exists
-          if (
-            menuItems.value[index].image_url &&
-            menuItems.value[index].image_url.startsWith('/uploads/')
-          ) {
-            const baseUrl = apiConfig.baseURL.replace('/api', '');
-            menuItems.value[index].image_url =
-              `${baseUrl}${menuItems.value[index].image_url}`;
+          if (menuItems.value[index].image_url) {
+            menuItems.value[index].image_url = formatImageUrl(
+              menuItems.value[index].image_url
+            );
           }
 
           console.log('After update - store item:', menuItems.value[index]);
@@ -986,15 +983,11 @@ export const useProductionStore = defineStore('production', () => {
           };
 
           // Format image URL for production inventory if needed
-          if (
-            productionInventory.value[inventoryIndex].image_url &&
-            productionInventory.value[inventoryIndex].image_url.startsWith(
-              '/uploads/'
-            )
-          ) {
-            const baseUrl = apiConfig.baseURL.replace('/api', '');
+          if (productionInventory.value[inventoryIndex].image_url) {
             productionInventory.value[inventoryIndex].image_url =
-              `${baseUrl}${productionInventory.value[inventoryIndex].image_url}`;
+              formatImageUrl(
+                productionInventory.value[inventoryIndex].image_url
+              );
           }
 
           console.log(
@@ -1774,6 +1767,20 @@ export const useProductionStore = defineStore('production', () => {
     }
   };
 
+  const fetchRecipeCategories = async () => {
+    try {
+      const response = await axios.get(
+        `${apiConfig.baseURL}/production/recipes/categories`
+      );
+      if (response.data.success) {
+        return response.data.data;
+      }
+    } catch (err) {
+      console.error('Error fetching recipe categories:', err);
+      return [];
+    }
+  };
+
   // Get menus by category for hybrid approach
   const fetchMenusByCategory = async (category) => {
     try {
@@ -2468,6 +2475,7 @@ export const useProductionStore = defineStore('production', () => {
     fetchQualityInspectionStats,
     fetchProductionInventoryStats,
     fetchAvailableRecipes,
+    fetchRecipeCategories,
     fetchMenusByCategory,
     createMenu,
     fetchLowStockItems,

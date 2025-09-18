@@ -37,7 +37,7 @@
   import ProductionMetricsChart from '../../components/production/ProductionMetricsChart.vue';
   import InventoryTrendsChart from '../../components/production/InventoryTrendsChart.vue';
   import ProductionTransactionModal from '../../components/production/ProductionTransactionModal.vue';
-  import { apiConfig } from '../../config/api.js';
+  import { apiConfig, formatImageUrl } from '../../config/api.js';
 
   const productionStore = useProductionStore();
   const authStore = useAuthStore();
@@ -576,11 +576,10 @@
   // Format image URLs to full URLs
   const formattedInventory = computed(() => {
     return productionInventory.value.map((item) => {
-      if (item.image_url && item.image_url.startsWith('/uploads/')) {
-        const baseUrl = apiConfig.baseURL.replace('/api', '');
+      if (item.image_url) {
         return {
           ...item,
-          image_url: `${baseUrl}${item.image_url}`,
+          image_url: formatImageUrl(item.image_url),
         };
       }
       return item;

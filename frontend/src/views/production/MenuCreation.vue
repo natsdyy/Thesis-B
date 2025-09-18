@@ -28,7 +28,7 @@
   import { recipeCategories } from '../../config/productionCategories.js';
   import { useAuthStore } from '../../stores/authStore.js';
   import { useUserStore } from '../../stores/userStore.js';
-  import { apiConfig } from '../../config/api.js';
+  import { apiConfig, formatImageUrl } from '../../config/api.js';
 
   const productionStore = useProductionStore();
   const authStore = useAuthStore();
@@ -84,16 +84,13 @@
   const error = computed(() => productionStore.error);
   const menus = computed(() => productionStore.menus);
   const menuItems = computed(() => productionStore.menuItems);
-  const availableRecipesList = ref([]);
   const recipeCostInfo = ref({ totalCost: null, costPerServing: null });
   const imageFile = ref(null);
   const imagePreviewUrl = ref(null);
   const imageInput = ref(null);
   // categories imported from config
   const availableRecipes = computed(() => {
-    if (availableRecipesList.value && availableRecipesList.value.length > 0) {
-      return availableRecipesList.value;
-    }
+    // Use recipes from the store, filtered by active status
     return productionStore.recipes.filter((recipe) => recipe.is_active);
   });
 
@@ -111,12 +108,12 @@
     return menuItems.value;
   });
 
-  // Dynamic categories from menus
+  // Dynamic categories from available recipes
   const availableCategories = computed(() => {
     const categories = new Set();
-    menus.value.forEach((menu) => {
-      if (menu.category && menu.category.trim()) {
-        categories.add(menu.category.trim());
+    availableRecipes.value.forEach((recipe) => {
+      if (recipe.category && recipe.category.trim()) {
+        categories.add(recipe.category.trim());
       }
     });
     return Array.from(categories).sort();
@@ -250,7 +247,7 @@
       await Promise.all([
         productionStore.fetchMenus(),
         fetchMenuItems(),
-        productionStore.fetchAvailableRecipes(),
+        productionStore.fetchRecipes(), // This will populate recipes.value in the store
         productionStore.fetchMenuStats(),
         productionStore.fetchMenuItemStats(),
       ]);
@@ -266,12 +263,9 @@
     }
     // Ensure recipes are loaded so the Select Recipe is populated
     try {
-      const list = await productionStore.fetchAvailableRecipes();
-      if (Array.isArray(list)) {
-        availableRecipesList.value = list;
-      }
+      await productionStore.fetchRecipes();
     } catch (e) {
-      // non-blocking
+      console.warn('Failed to fetch recipes:', e);
     }
     showCreateModal.value = true;
     // Wait for dialog to mount before calling showModal to avoid double-click
@@ -311,10 +305,8 @@
     // Populate form with item data
     let imageUrl = item.image_url || '';
     // Convert relative image path to full URL if needed
-    if (imageUrl && imageUrl.startsWith('/uploads/')) {
-      // Construct full URL for images (remove /api from base URL)
-      const baseUrl = apiConfig.baseURL.replace('/api', '');
-      imageUrl = `${baseUrl}${imageUrl}`;
+    if (imageUrl) {
+      imageUrl = formatImageUrl(imageUrl);
       console.log('Constructed image URL:', imageUrl); // Debug log
     }
 
@@ -881,7 +873,6 @@
         category: menuItemForm.value.category,
         description: `Menu for ${menuItemForm.value.category} items`,
         is_active: true,
-        created_by: userStore.user?.id || 1,
       };
 
       const newMenu = await productionStore.createMenu(menuData);
@@ -1926,29 +1917,33 @@
 
           <!-- Production Planning Helper -->
           <div
-            class="bg-blue-50 border border-blue-200 p-4 rounded-xl"
+            class="bg-primaryColor/5 border border-primaryColor/30 p-4 rounded-xl"
             v-if="selectedRecipe"
           >
-            <h4 class="font-semibold text-blue-800 mb-3">
+            <h4 class="font-semibold text-primaryColor mb-3">
               <font-awesome-icon icon="fa-solid fa-gears" />
               Production Planning Helper
             </h4>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div class="bg-white p-3 rounded-lg border border-blue-200">
-                <div class="font-medium text-blue-800">Batch Size</div>
-                <div class="text-lg font-bold text-blue-600">
+              <div
+                class="bg-white p-3 rounded-lg border border-primaryColor/30"
+              >
+                <div class="font-medium text-primaryColor">Batch Size</div>
+                <div class="text-lg font-bold text-primaryColor">
                   {{ selectedRecipe.batch_size }}
                   {{ selectedRecipe.batch_unit }}
                 </div>
               </div>
-              <div class="bg-white p-3 rounded-lg border border-blue-200">
-                <div class="font-medium text-blue-800">Cost per Batch</div>
-                <div class="text-lg font-bold text-blue-600">
+              <div
+                class="bg-white p-3 rounded-lg border border-primaryColor/30"
+              >
+                <div class="font-medium text-primaryColor">Cost per Batch</div>
+                <div class="text-lg font-bold text-primaryColor">
                   {{ formatCurrency(selectedRecipe.cost_per_batch || 0) }}
                 </div>
               </div>
             </div>
-            <div class="mt-3 text-xs text-blue-700">
+            <div class="mt-3 text-xs text-primaryColor">
               <font-awesome-icon icon="fa-solid fa-lightbulb" />
               <strong>Production Tip:</strong> To produce 100 servings, you'll
               need

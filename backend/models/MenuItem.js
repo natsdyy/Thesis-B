@@ -242,15 +242,17 @@ class MenuItem {
         throw new Error("Invalid recipe_id - must be a positive number");
       }
 
-      // Validate created_by user exists
+      // Validate created_by employee exists
       const createdBy = Number(menuItemData.created_by);
       if (!Number.isFinite(createdBy) || createdBy <= 0) {
-        throw new Error("Invalid created_by user ID");
+        throw new Error("Invalid created_by employee ID");
       }
 
-      const userExists = await trx("users").where("id", createdBy).first();
-      if (!userExists) {
-        throw new Error("User not found");
+      const employeeExists = await trx("employees")
+        .where("id", createdBy)
+        .first();
+      if (!employeeExists) {
+        throw new Error("Employee not found");
       }
 
       // Get recipe details to calculate costs

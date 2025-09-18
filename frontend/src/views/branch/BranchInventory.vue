@@ -47,7 +47,7 @@
   import BranchInventoryConsumptionModal from '../../components/branch/BranchInventoryConsumptionModal.vue';
   import BranchInventoryAdjustmentModal from '../../components/branch/BranchInventoryAdjustmentModal.vue';
   import BranchInventoryTransactionModal from '../../components/branch/BranchInventoryTransactionModal.vue';
-  import { apiConfig } from '../../config/api';
+  import { apiConfig, formatImageUrl } from '../../config/api';
 
   const branchContextStore = useBranchContextStore();
   const branchDistributionStore = useBranchDistributionStore();
@@ -446,15 +446,7 @@
     // Placeholder action hook for future modal
   };
 
-  // Mirror ProductionInventory behavior: compute formatted inventory with full image URLs
-  const formatImageUrl = (url) => {
-    if (!url) return url;
-    if (url.startsWith('/uploads/')) {
-      const baseUrl = (apiConfig?.baseURL || '').replace('/api', '');
-      return `${baseUrl}${url}`;
-    }
-    return url;
-  };
+  // Use the centralized formatImageUrl function from api.js
 
   const formattedBranchInventory = computed(() => {
     return branchInventory.value.map((item) => {

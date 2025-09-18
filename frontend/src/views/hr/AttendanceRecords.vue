@@ -3,22 +3,16 @@
     <!-- Header -->
     <div class="flex justify-between items-center">
       <div>
-        <h1 class="text-3xl font-bold">Employee Attendance History</h1>
-        <p class="text-sm text-gray-500 mt-1">Showing time-in and time-out events only</p>
+        <h1 class="text-3xl font-bold">My Attendance History</h1>
+        <p class="text-sm text-gray-500 mt-1">Showing your time-in and time-out events only</p>
       </div>
       <div class="flex gap-2">
         <input 
           v-model="searchQuery" 
           type="text" 
-          placeholder="Search employees..." 
+          placeholder="Search your records..." 
           class="input input-bordered input-sm w-64"
         />
-        <select v-model="selectedEmployee" class="select select-bordered select-sm">
-          <option value="">All Employees</option>
-          <option v-for="employee in employees" :key="employee.id" :value="employee.id">
-            {{ employee.name }}
-          </option>
-        </select>
         <input 
           v-model="selectedDate" 
           type="date" 
@@ -119,7 +113,7 @@
                     <svg class="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                     </svg>
-                    <p>No time-in or time-out records found</p>
+                    <p>No time-in or time-out records found for you</p>
                     <p class="text-sm">Try adjusting your search criteria or date range</p>
                   </div>
                 </td>
@@ -173,13 +167,11 @@ const authStore = useAuthStore()
 const isLoading = ref(false)
 const searchQuery = ref('')
 const selectedDate = ref('')
-const selectedEmployee = ref('')
 const currentPage = ref(1)
 const recordsPerPage = 20
 
 // Attendance data
 const attendanceRecords = ref([])
-const employees = ref([])
 const totalRecords = ref(0)
 const presentToday = ref(0)
 const lateArrivals = ref(0)
@@ -194,9 +186,10 @@ const authHeaders = () => {
 
 // Computed
 const filteredRecords = computed(() => {
-  // First filter to only show time-in and time-out events
+  // First filter to only show time-in and time-out events for current user only
   let filtered = attendanceRecords.value.filter(record => 
-    record.event_type === 'time-in' || record.event_type === 'time-out'
+    (record.event_type === 'time-in' || record.event_type === 'time-out') &&
+    record.employee_id === authStore.user?.employee_id
   )
 
   if (searchQuery.value) {
@@ -207,11 +200,6 @@ const filteredRecords = computed(() => {
     )
   }
 
-  if (selectedEmployee.value) {
-    filtered = filtered.filter(record => 
-      record.employee_id === selectedEmployee.value
-    )
-  }
 
   if (selectedDate.value) {
     filtered = filtered.filter(record => 
@@ -268,10 +256,11 @@ const fetchAttendanceRecords = async () => {
     })
     
     if (response.data.success) {
-      // Filter to only show time-in and time-out events
+      // Filter to only show time-in and time-out events for current user only
       const allRecords = response.data.data || []
       const timeInOutRecords = allRecords.filter(record => 
-        record.event_type === 'time-in' || record.event_type === 'time-out'
+        (record.event_type === 'time-in' || record.event_type === 'time-out') &&
+        record.employee_id === authStore.user?.employee_id
       )
       
       attendanceRecords.value = timeInOutRecords
@@ -301,34 +290,37 @@ const fetchAttendanceReport = async () => {
     })
     
     if (response.data.success) {
-      // Transform the data to show individual time-in/time-out events only
+      // Transform the data to show individual time-in/time-out events only for current user
       const transformedRecords = []
       response.data.data.forEach(record => {
-        // Only add time-in event if it exists
-        if (record.time_in) {
-          transformedRecords.push({
-            id: `${record.employee_id}_time_in_${record.time_in}`,
-            employee_id: record.employee_id,
-            employee_name: record.employee_name || `${record.first_name || ''} ${record.last_name || ''}`.trim(),
-            event_type: 'time-in',
-            created_at: record.time_in,
-            location_name: record.location_name || 'N/A',
-            photo_url: record.photo_url,
-            status: 'Present'
-          })
-        }
-        // Only add time-out event if it exists
-        if (record.time_out) {
-          transformedRecords.push({
-            id: `${record.employee_id}_time_out_${record.time_out}`,
-            employee_id: record.employee_id,
-            employee_name: record.employee_name || `${record.first_name || ''} ${record.last_name || ''}`.trim(),
-            event_type: 'time-out',
-            created_at: record.time_out,
-            location_name: record.location_name || 'N/A',
-            photo_url: record.photo_url,
-            status: 'Present'
-          })
+        // Only process records for the current user
+        if (record.employee_id === authStore.user?.employee_id) {
+          // Only add time-in event if it exists
+          if (record.time_in) {
+            transformedRecords.push({
+              id: `${record.employee_id}_time_in_${record.time_in}`,
+              employee_id: record.employee_id,
+              employee_name: record.employee_name || `${record.first_name || ''} ${record.last_name || ''}`.trim(),
+              event_type: 'time-in',
+              created_at: record.time_in,
+              location_name: record.location_name || 'N/A',
+              photo_url: record.photo_url,
+              status: 'Present'
+            })
+          }
+          // Only add time-out event if it exists
+          if (record.time_out) {
+            transformedRecords.push({
+              id: `${record.employee_id}_time_out_${record.time_out}`,
+              employee_id: record.employee_id,
+              employee_name: record.employee_name || `${record.first_name || ''} ${record.last_name || ''}`.trim(),
+              event_type: 'time-out',
+              created_at: record.time_out,
+              location_name: record.location_name || 'N/A',
+              photo_url: record.photo_url,
+              status: 'Present'
+            })
+          }
         }
       })
       
@@ -345,23 +337,6 @@ const fetchAttendanceReport = async () => {
   }
 }
 
-const fetchEmployees = async () => {
-  try {
-    const response = await axios.get(`${API_BASE_URL}/employees`, {
-      headers: authHeaders()
-    })
-    
-    if (response.data.success) {
-      employees.value = response.data.data.map(emp => ({
-        id: emp.employee_id,
-        name: `${emp.first_name} ${emp.last_name}`.trim()
-      }))
-    }
-  } catch (error) {
-    console.error('Error fetching employees:', error)
-    employees.value = []
-  }
-}
 
 const calculateStats = () => {
   const today = new Date().toISOString().split('T')[0]
@@ -454,16 +429,10 @@ watch(selectedDate, (newDate) => {
   fetchAttendanceRecords()
 })
 
-watch(selectedEmployee, () => {
-  fetchAttendanceRecords()
-})
 
 // Lifecycle
 onMounted(() => {
-  Promise.all([
-    fetchAttendanceRecords(),
-    fetchEmployees()
-  ])
+  fetchAttendanceRecords()
 })
 </script>
 

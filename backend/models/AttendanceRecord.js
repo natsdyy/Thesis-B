@@ -54,12 +54,58 @@ class AttendanceRecord {
       .first();
   }
 
-  static async timeIn(employeeId, qrCodeId) {
+  static async timeIn(employeeId, qrCodeId, userLatitude = null, userLongitude = null) {
     // Check if employee already has attendance for today
     const existingRecord = await this.getTodayAttendance(employeeId);
 
     if (existingRecord && existingRecord.time_in) {
       throw new Error("You have already timed in today");
+    }
+
+    // Get QR code details for location validation
+    const qrCode = await knex('attendance_qr_codes')
+      .where('id', qrCodeId)
+      .andWhere('is_active', true)
+      .first();
+
+    if (!qrCode) {
+      throw new Error("Invalid QR code");
+    }
+
+    // Validate location if GPS coordinates are provided
+    if (userLatitude && userLongitude && qrCode.latitude && qrCode.longitude) {
+      const { isWithinRadius, isValidCoordinates } = require('../utils/locationUtils');
+      
+      // Validate coordinates
+      if (!isValidCoordinates(userLatitude, userLongitude)) {
+        throw new Error("Invalid GPS coordinates provided");
+      }
+      
+      if (!isValidCoordinates(parseFloat(qrCode.latitude), parseFloat(qrCode.longitude))) {
+        throw new Error("QR code location coordinates are invalid");
+      }
+
+      // Check if user is within allowed radius
+      const allowedRadius = qrCode.radius_meters || 2.0;
+      const isWithinRange = isWithinRadius(
+        userLatitude, 
+        userLongitude, 
+        parseFloat(qrCode.latitude), 
+        parseFloat(qrCode.longitude), 
+        allowedRadius
+      );
+
+      if (!isWithinRange) {
+        const { getDistanceInfo } = require('../utils/locationUtils');
+        const distanceInfo = getDistanceInfo(
+          userLatitude, 
+          userLongitude, 
+          parseFloat(qrCode.latitude), 
+          parseFloat(qrCode.longitude)
+        );
+        
+        throw new Error(`You are too far from the attendance location. Distance: ${distanceInfo.humanReadable}, Required: within ${allowedRadius}m`);
+      }
     }
 
     const data = {

@@ -73,7 +73,7 @@ const routes = [
       title: 'Human Resource',
       department: 'Human Resource',
       requiresAuth: true,
-      requiresDepartmentAccess: true,
+      requiresDepartmentAccess: false, // Allow all users to access HR routes for attendance records
     },
   },
   // Supply Chain routes

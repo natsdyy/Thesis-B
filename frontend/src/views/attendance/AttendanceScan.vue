@@ -180,11 +180,39 @@ const processAttendance = async (attendanceData) => {
       }
     }
     
+    // Get current GPS location
+    let latitude = null
+    let longitude = null
+    
+    try {
+      if (navigator.geolocation) {
+        const position = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 60000
+          })
+        })
+        
+        latitude = position.coords.latitude
+        longitude = position.coords.longitude
+        
+        console.log('GPS coordinates:', { latitude, longitude })
+      } else {
+        console.warn('Geolocation is not supported by this browser')
+      }
+    } catch (geoError) {
+      console.warn('Could not get GPS location:', geoError.message)
+      // Continue without GPS coordinates - the backend will handle this gracefully
+    }
+    
     // Use the mobile-scan endpoint for mobile app QR codes
     const response = await axios.post(`${API_BASE_URL}/attendance/mobile-scan`, {
       action: attendanceData.action,
       employee_id: attendanceData.employee_id,
-      location: attendanceData.location
+      location: attendanceData.location,
+      latitude: latitude,
+      longitude: longitude
     })
     
     result.value = {

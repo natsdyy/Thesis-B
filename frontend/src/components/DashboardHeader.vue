@@ -331,21 +331,8 @@
 
   const viewAttendanceRecords = () => {
     closeAttendanceModal();
-    // Redirect based on user department
-    const userDepartment = authStore.user?.department;
-    const userRole = authStore.user?.role;
-    
-    if (userRole === 'Super Admin') {
-      // Super Admin can access HR attendance records
-      router.push('/hr/attendance-records');
-    } else if (userDepartment === 'Human Resource') {
-      router.push('/hr/attendance-records');
-    } else if (userDepartment === 'Branch') {
-      router.push('/branch/attendance');
-    } else {
-      // Default to branch attendance for other departments
-      router.push('/branch/attendance');
-    }
+    // All users should access HR attendance records (which shows their own records)
+    router.push('/hr/attendance-records');
   };
 </script>
 

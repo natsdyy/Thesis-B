@@ -23,7 +23,7 @@ router.get('/qr-codes', authenticateToken, async (req, res) => {
 
 router.post('/qr-codes', authenticateToken, async (req, res) => {
   try {
-    const { location_name, description } = req.body;
+    const { location_name, description, latitude, longitude, branch_id, radius_meters } = req.body;
     
     if (!location_name) {
       return res.status(400).json({
@@ -32,7 +32,25 @@ router.post('/qr-codes', authenticateToken, async (req, res) => {
       });
     }
 
-    const qrCode = await AttendanceQRCode.generateQRCode(location_name, description);
+    // Validate GPS coordinates if provided
+    if (latitude && longitude) {
+      const { isValidCoordinates } = require('../utils/locationUtils');
+      if (!isValidCoordinates(latitude, longitude)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid GPS coordinates provided'
+        });
+      }
+    }
+
+    const qrCode = await AttendanceQRCode.generateQRCode(
+      location_name, 
+      description, 
+      latitude, 
+      longitude, 
+      branch_id, 
+      radius_meters || 2.0
+    );
     
     res.status(201).json({
       success: true,
@@ -102,7 +120,7 @@ router.delete('/qr-codes/:id', authenticateToken, async (req, res) => {
 // Attendance Routes
 router.post('/time-in', authenticateToken, async (req, res) => {
   try {
-    const { qr_code } = req.body;
+    const { qr_code, latitude, longitude } = req.body;
     const employeeId = req.user.id; // This is the employee ID from JWT
     
     if (!qr_code) {
@@ -121,8 +139,8 @@ router.post('/time-in', authenticateToken, async (req, res) => {
       });
     }
     
-    // Time in - use employee ID as user_id for now (until we migrate the schema)
-    const attendanceRecord = await AttendanceRecord.timeIn(employeeId, qrCodeRecord.id);
+    // Time in with location validation
+    const attendanceRecord = await AttendanceRecord.timeIn(employeeId, qrCodeRecord.id, latitude, longitude);
     
     res.json({
       success: true,
@@ -339,7 +357,7 @@ router.post('/scan-qr', async (req, res) => {
 // Public route for mobile app QR code processing (no authentication required)
 router.post('/mobile-scan', async (req, res) => {
   try {
-    const { action, employee_id, location } = req.body;
+    const { action, employee_id, location, latitude, longitude } = req.body;
     
     if (!action || !employee_id) {
       return res.status(400).json({
@@ -359,19 +377,22 @@ router.post('/mobile-scan', async (req, res) => {
       });
     }
     
-    // Create a temporary QR code for this mobile scan
+    // Create a temporary QR code for this mobile scan with GPS coordinates
     const tempQRCode = `MOBILE_QR_${employee_id}_${Date.now()}`;
     const qrCodeRecord = await AttendanceQRCode.create({
       qr_code: tempQRCode,
       location_name: location || 'Mobile App QR Code',
       description: 'Mobile app generated QR code',
+      latitude: latitude || null,
+      longitude: longitude || null,
+      radius_meters: 2.0, // Default 2-meter radius
       is_active: true
     });
     
-    // Process attendance using the employee's ID (not employee_id)
+    // Process attendance using the employee's ID (not employee_id) with location validation
     let attendanceRecord;
     if (action === 'time-in') {
-      attendanceRecord = await AttendanceRecord.timeIn(employee.id, qrCodeRecord.id);
+      attendanceRecord = await AttendanceRecord.timeIn(employee.id, qrCodeRecord.id, latitude, longitude);
     } else if (action === 'time-out') {
       attendanceRecord = await AttendanceRecord.timeOut(employee.id);
     } else {

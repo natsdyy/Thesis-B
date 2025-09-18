@@ -242,11 +242,13 @@
     } else if (value === 'clear') {
       paymentInput.value = '';
     } else if (value === 'ok') {
-      // Process the payment input
-      posStore.setAmountPaid(paymentInput.value);
+      // Deprecated - keypad ok no longer used
     } else {
       paymentInput.value += value;
     }
+
+    // Keep store in sync so isOrderValid updates immediately
+    posStore.setAmountPaid(paymentInput.value);
   };
 
   const processOrder = async () => {
@@ -701,6 +703,7 @@
                   step="0.01"
                   placeholder="0.00"
                   class="w-full px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primaryColor focus:border-transparent text-sm sm:text-base"
+                  @input="handlePaymentInput($event.target.value)"
                 />
               </div>
 
@@ -812,10 +815,21 @@
                 3
               </button>
               <button
-                @click="handleKeypadInput('ok')"
-                class="btn bg-primaryColor text-white font-thin btn-xs sm:btn-sm touch-manipulation"
+                @click="processOrder"
+                :disabled="!posStore.isOrderValid || isProcessingOrder"
+                class="btn btn-success btn-xs sm:btn-sm touch-manipulation border-none shadow-none"
+                :class="
+                  posStore.isOrderValid
+                    ? 'bg-primaryColor hover:bg-primaryColor/80 active:bg-primaryColor/90 text-white font-thin'
+                    : 'bg-gray-400'
+                "
               >
-                Ok
+                <span class="hidden sm:inline">{{
+                  isProcessingOrder ? 'Processing...' : 'Process Order'
+                }}</span>
+                <span class="sm:hidden">{{
+                  isProcessingOrder ? '...' : 'Process'
+                }}</span>
               </button>
 
               <!-- Row 4 -->
@@ -836,23 +850,6 @@
                 class="btn btn-warning btn-xs sm:btn-sm touch-manipulation"
               >
                 Reset
-              </button>
-              <button
-                @click="processOrder"
-                :disabled="!posStore.isOrderValid || isProcessingOrder"
-                class="btn btn-success btn-xs sm:btn-sm touch-manipulation border-none shadow-none"
-                :class="
-                  posStore.isOrderValid
-                    ? 'bg-primaryColor hover:bg-primaryColor/80 active:bg-primaryColor/90 text-white font-thin'
-                    : 'bg-gray-400'
-                "
-              >
-                <span class="hidden sm:inline">{{
-                  isProcessingOrder ? 'Processing...' : 'Process Order'
-                }}</span>
-                <span class="sm:hidden">{{
-                  isProcessingOrder ? '...' : 'Process'
-                }}</span>
               </button>
             </div>
           </div>

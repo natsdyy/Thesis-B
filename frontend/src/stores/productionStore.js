@@ -3,8 +3,6 @@ import { ref, computed } from 'vue';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = apiConfig.baseURL;
-
 export const useProductionStore = defineStore('production', () => {
   // State
   const productionOrders = ref([]);
@@ -158,7 +156,7 @@ export const useProductionStore = defineStore('production', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/production/orders?${params}`
+        `${apiConfig.baseURL}/production/orders?${params}`
       );
       if (response.data.success) {
         productionOrders.value = response.data.data;
@@ -184,7 +182,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/production/orders/${id}`
+        `${apiConfig.baseURL}/production/orders/${id}`
       );
       if (response.data.success) {
         return response.data.data;
@@ -211,7 +209,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/production/orders`,
+        `${apiConfig.baseURL}/production/orders`,
         orderData
       );
       if (response.data.success) {
@@ -240,7 +238,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.put(
-        `${API_BASE_URL}/production/orders/${id}`,
+        `${apiConfig.baseURL}/production/orders/${id}`,
         updateData
       );
       if (response.data.success) {
@@ -269,7 +267,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.patch(
-        `${API_BASE_URL}/production/orders/${id}/status`,
+        `${apiConfig.baseURL}/production/orders/${id}/status`,
         {
           status,
           notes,
@@ -307,7 +305,7 @@ export const useProductionStore = defineStore('production', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/production/recipes?${params}`
+        `${apiConfig.baseURL}/production/recipes?${params}`
       );
       if (response.data.success) {
         recipes.value = response.data.data;
@@ -326,7 +324,7 @@ export const useProductionStore = defineStore('production', () => {
   const fetchRecipeStats = async () => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/production/recipes/stats`
+        `${apiConfig.baseURL}/production/recipes/stats`
       );
       if (response.data.success) {
         recipeStats.value = response.data.data;
@@ -352,7 +350,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/production/recipes/deleted`
+        `${apiConfig.baseURL}/production/recipes/deleted`
       );
       if (response.data.success) {
         deletedRecipes.value = response.data.data;
@@ -380,7 +378,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/production/recipes/${id}`
+        `${apiConfig.baseURL}/production/recipes/${id}`
       );
       if (response.data.success) {
         return response.data.data;
@@ -402,10 +400,13 @@ export const useProductionStore = defineStore('production', () => {
     error.value = null;
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/production/recipes`, {
-        ...recipeData,
-        ingredients,
-      });
+      const response = await axios.post(
+        `${apiConfig.baseURL}/production/recipes`,
+        {
+          ...recipeData,
+          ingredients,
+        }
+      );
       if (response.data.success) {
         await fetchRecipes();
         return response.data.data;
@@ -428,7 +429,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.put(
-        `${API_BASE_URL}/production/recipes/${id}`,
+        `${apiConfig.baseURL}/production/recipes/${id}`,
         {
           ...recipeData,
           ingredients,
@@ -456,7 +457,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.delete(
-        `${API_BASE_URL}/production/recipes/${id}`
+        `${apiConfig.baseURL}/production/recipes/${id}`
       );
       if (response.data.success) {
         // Remove from list without refetch
@@ -482,7 +483,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.patch(
-        `${API_BASE_URL}/production/recipes/${id}/restore`
+        `${apiConfig.baseURL}/production/recipes/${id}/restore`
       );
       if (response.data.success) {
         // Add back to list then sort by name
@@ -514,7 +515,7 @@ export const useProductionStore = defineStore('production', () => {
     try {
       const params = batchSize ? `?batch_size=${batchSize}` : '';
       const response = await axios.get(
-        `${API_BASE_URL}/production/recipes/${recipeId}/availability${params}`
+        `${apiConfig.baseURL}/production/recipes/${recipeId}/availability${params}`
       );
       if (response.data.success) {
         return response.data.data;
@@ -547,7 +548,7 @@ export const useProductionStore = defineStore('production', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/production/work-orders?${params}`
+        `${apiConfig.baseURL}/production/work-orders?${params}`
       );
       if (response.data.success) {
         workOrders.value = response.data.data;
@@ -571,7 +572,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.patch(
-        `${API_BASE_URL}/production/work-orders/${id}/status`,
+        `${apiConfig.baseURL}/production/work-orders/${id}/status`,
         {
           status,
           notes,
@@ -604,7 +605,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/production/dashboard/stats`
+        `${apiConfig.baseURL}/production/dashboard/stats`
       );
       if (response.data.success) {
         dashboardStats.value = response.data.data;
@@ -630,7 +631,9 @@ export const useProductionStore = defineStore('production', () => {
     error.value = null;
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/production/equipment`);
+      const response = await axios.get(
+        `${apiConfig.baseURL}/production/equipment`
+      );
       if (response.data.success) {
         equipment.value = response.data.data;
       } else {
@@ -653,7 +656,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/production/maintenance/schedules`
+        `${apiConfig.baseURL}/production/maintenance/schedules`
       );
       if (response.data.success) {
         maintenanceSchedules.value = response.data.data;
@@ -685,7 +688,7 @@ export const useProductionStore = defineStore('production', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/production/waste?${params}`
+        `${apiConfig.baseURL}/production/waste?${params}`
       );
       if (response.data.success) {
         productionWaste.value = response.data.data;
@@ -711,7 +714,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/production/waste`,
+        `${apiConfig.baseURL}/production/waste`,
         wasteData
       );
       if (response.data.success) {
@@ -742,7 +745,7 @@ export const useProductionStore = defineStore('production', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/production/analytics/metrics?${params}`
+        `${apiConfig.baseURL}/production/analytics/metrics?${params}`
       );
       if (response.data.success) {
         productionMetrics.value = response.data.data;
@@ -813,7 +816,9 @@ export const useProductionStore = defineStore('production', () => {
         if (filters[key]) params.append(key, filters[key]);
       });
 
-      const response = await axios.get(`${API_BASE_URL}/menu/menus?${params}`);
+      const response = await axios.get(
+        `${apiConfig.baseURL}/menu/menus?${params}`
+      );
       if (response.data.success) {
         menus.value = response.data.data;
       } else {
@@ -830,7 +835,7 @@ export const useProductionStore = defineStore('production', () => {
 
   const fetchMenuStats = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/menu/menus/stats`);
+      const response = await axios.get(`${apiConfig.baseURL}/menu/menus/stats`);
       if (response.data.success) {
         menuStats.value = response.data.data;
       }
@@ -850,7 +855,7 @@ export const useProductionStore = defineStore('production', () => {
         if (filters[key]) params.append(key, filters[key]);
       });
 
-      const url = `${API_BASE_URL}/menu/items?${params}`;
+      const url = `${apiConfig.baseURL}/menu/items?${params}`;
       console.log('Fetching menu items from URL:', url);
       console.log('Filters applied:', filters);
 
@@ -882,8 +887,8 @@ export const useProductionStore = defineStore('production', () => {
       const isFormData =
         typeof FormData !== 'undefined' && menuItemData instanceof FormData;
       const url = isFormData
-        ? `${API_BASE_URL}/menu/items/upload`
-        : `${API_BASE_URL}/menu/items`;
+        ? `${apiConfig.baseURL}/menu/items/upload`
+        : `${apiConfig.baseURL}/menu/items`;
       const headers = isFormData
         ? { 'Content-Type': 'multipart/form-data' }
         : undefined;
@@ -916,8 +921,8 @@ export const useProductionStore = defineStore('production', () => {
       // Check if updateData is FormData (contains image)
       const isFormData = updateData instanceof FormData;
       const endpoint = isFormData
-        ? `${API_BASE_URL}/menu/items/${id}/upload`
-        : `${API_BASE_URL}/menu/items/${id}`;
+        ? `${apiConfig.baseURL}/menu/items/${id}/upload`
+        : `${apiConfig.baseURL}/menu/items/${id}`;
 
       console.log('Using endpoint:', endpoint, 'FormData:', isFormData);
 
@@ -1019,7 +1024,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/menu/items/${id}/approve`
+        `${apiConfig.baseURL}/menu/items/${id}/approve`
       );
       if (response.data.success) {
         // Update the specific item in the store instead of refetching all items
@@ -1050,9 +1055,12 @@ export const useProductionStore = defineStore('production', () => {
     error.value = null;
 
     try {
-      const response = await axios.delete(`${API_BASE_URL}/menu/items/${id}`, {
-        data: { userId }, // Pass userId for audit logging
-      });
+      const response = await axios.delete(
+        `${apiConfig.baseURL}/menu/items/${id}`,
+        {
+          data: { userId }, // Pass userId for audit logging
+        }
+      );
       if (response.data.success) {
         await fetchMenuItems();
         return response.data.data;
@@ -1077,7 +1085,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/menu/items/${id}/restore`
+        `${apiConfig.baseURL}/menu/items/${id}/restore`
       );
       if (response.data.success) {
         await fetchMenuItems();
@@ -1109,7 +1117,7 @@ export const useProductionStore = defineStore('production', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/menu/sample-production?${params}`
+        `${apiConfig.baseURL}/menu/sample-production?${params}`
       );
       if (response.data.success) {
         sampleProductions.value = response.data.data;
@@ -1132,7 +1140,7 @@ export const useProductionStore = defineStore('production', () => {
   const getSampleProductionById = async (id) => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/menu/sample-production/${id}`,
+        `${apiConfig.baseURL}/menu/sample-production/${id}`,
         { timeout: 10000 } // 10 second timeout for complex operations
       );
       if (response.data.success) {
@@ -1154,7 +1162,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/menu/sample-production`,
+        `${apiConfig.baseURL}/menu/sample-production`,
         sampleData,
         { timeout: 10000 } // 10 second timeout for complex operations
       );
@@ -1184,7 +1192,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/menu/sample-production/${id}/start`,
+        `${apiConfig.baseURL}/menu/sample-production/${id}/start`,
         {},
         { timeout: 10000 } // 10 second timeout for complex operations
       );
@@ -1219,7 +1227,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/menu/sample-production/${id}/complete`,
+        `${apiConfig.baseURL}/menu/sample-production/${id}/complete`,
         {
           quantity_produced: quantityProduced,
           production_cost: productionCost,
@@ -1254,7 +1262,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.put(
-        `${API_BASE_URL}/menu/sample-production/${id}`,
+        `${apiConfig.baseURL}/menu/sample-production/${id}`,
         updateData,
         { timeout: 10000 } // 10 second timeout for complex operations
       );
@@ -1286,7 +1294,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/menu/sample-production/${id}/cancel`,
+        `${apiConfig.baseURL}/menu/sample-production/${id}/cancel`,
         {},
         { timeout: 10000 } // 10 second timeout for complex operations
       );
@@ -1322,7 +1330,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/menu/sample-production/${id}/fail`,
+        `${apiConfig.baseURL}/menu/sample-production/${id}/fail`,
         {
           failure_reason: failureReason,
           quantity_lost: quantityLost,
@@ -1357,7 +1365,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.delete(
-        `${API_BASE_URL}/menu/sample-production/${id}`,
+        `${apiConfig.baseURL}/menu/sample-production/${id}`,
         { timeout: 10000 } // 10 second timeout for complex operations
       );
       if (response.data.success) {
@@ -1392,7 +1400,7 @@ export const useProductionStore = defineStore('production', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/menu/quality-inspection?${params}`
+        `${apiConfig.baseURL}/menu/quality-inspection?${params}`
       );
       if (response.data.success) {
         qualityInspections.value = response.data.data;
@@ -1418,7 +1426,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/menu/sample-production/${id}/archive`,
+        `${apiConfig.baseURL}/menu/sample-production/${id}/archive`,
         { notes },
         { timeout: 10000 } // 10 second timeout for complex operations
       );
@@ -1459,7 +1467,7 @@ export const useProductionStore = defineStore('production', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/menu/sample-production/audit-logs?${queryParams.toString()}`,
+        `${apiConfig.baseURL}/menu/sample-production/audit-logs?${queryParams.toString()}`,
         { timeout: 10000 }
       );
 
@@ -1486,7 +1494,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/menu/quality-inspection`,
+        `${apiConfig.baseURL}/menu/quality-inspection`,
         inspectionData
       );
       if (response.data.success) {
@@ -1515,7 +1523,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.put(
-        `${API_BASE_URL}/menu/quality-inspection/${id}`,
+        `${apiConfig.baseURL}/menu/quality-inspection/${id}`,
         updateData
       );
       if (response.data.success) {
@@ -1544,7 +1552,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/menu/quality-inspection/${id}/approve`
+        `${apiConfig.baseURL}/menu/quality-inspection/${id}/approve`
       );
       if (response.data.success) {
         await fetchQualityInspections();
@@ -1580,7 +1588,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/menu/quality-inspection/${id}/fail`,
+        `${apiConfig.baseURL}/menu/quality-inspection/${id}/fail`,
         {
           findings,
           corrective_actions: correctiveActions,
@@ -1618,7 +1626,7 @@ export const useProductionStore = defineStore('production', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/menu/production-inventory?${params}`
+        `${apiConfig.baseURL}/menu/production-inventory?${params}`
       );
       if (response.data.success) {
         // Map backend field names to frontend expected field names
@@ -1649,7 +1657,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.put(
-        `${API_BASE_URL}/menu/production-inventory/${id}/stock`,
+        `${apiConfig.baseURL}/menu/production-inventory/${id}/stock`,
         {
           quantity,
           notes,
@@ -1677,7 +1685,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.put(
-        `${API_BASE_URL}/menu/production-inventory/${id}/pricing`,
+        `${apiConfig.baseURL}/menu/production-inventory/${id}/pricing`,
         {
           selling_price: sellingPrice,
         }
@@ -1703,7 +1711,7 @@ export const useProductionStore = defineStore('production', () => {
   // Statistics Actions
   const fetchMenuItemStats = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/menu/items/stats`);
+      const response = await axios.get(`${apiConfig.baseURL}/menu/items/stats`);
       if (response.data.success) {
         menuItemStats.value = response.data.data;
       }
@@ -1715,7 +1723,7 @@ export const useProductionStore = defineStore('production', () => {
   const fetchSampleProductionStats = async () => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/menu/sample-production/stats`
+        `${apiConfig.baseURL}/menu/sample-production/stats`
       );
       if (response.data.success) {
         sampleProductionStats.value = response.data.data;
@@ -1728,7 +1736,7 @@ export const useProductionStore = defineStore('production', () => {
   const fetchQualityInspectionStats = async () => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/menu/quality-inspection/stats`
+        `${apiConfig.baseURL}/menu/quality-inspection/stats`
       );
       if (response.data.success) {
         qualityInspectionStats.value = response.data.data;
@@ -1741,7 +1749,7 @@ export const useProductionStore = defineStore('production', () => {
   const fetchProductionInventoryStats = async () => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/menu/production-inventory/stats`
+        `${apiConfig.baseURL}/menu/production-inventory/stats`
       );
       if (response.data.success) {
         productionInventoryStats.value = response.data.data;
@@ -1755,7 +1763,7 @@ export const useProductionStore = defineStore('production', () => {
   const fetchAvailableRecipes = async () => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/menu/items/available-recipes`
+        `${apiConfig.baseURL}/menu/items/available-recipes`
       );
       if (response.data.success) {
         return response.data.data;
@@ -1770,7 +1778,7 @@ export const useProductionStore = defineStore('production', () => {
   const fetchMenusByCategory = async (category) => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/menu/menus/by-category/${encodeURIComponent(category)}`
+        `${apiConfig.baseURL}/menu/menus/by-category/${encodeURIComponent(category)}`
       );
       if (response.data.success) {
         return response.data.data;
@@ -1784,7 +1792,10 @@ export const useProductionStore = defineStore('production', () => {
   // Create new menu for hybrid approach
   const createMenu = async (menuData) => {
     try {
-      const response = await axios.post(`${API_BASE_URL}/menu/menus`, menuData);
+      const response = await axios.post(
+        `${apiConfig.baseURL}/menu/menus`,
+        menuData
+      );
       if (response.data.success) {
         return response.data.data;
       }
@@ -1798,7 +1809,7 @@ export const useProductionStore = defineStore('production', () => {
   const fetchLowStockItems = async () => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/menu/production-inventory/low-stock`
+        `${apiConfig.baseURL}/menu/production-inventory/low-stock`
       );
       if (response.data.success) {
         return response.data.data;
@@ -1814,7 +1825,7 @@ export const useProductionStore = defineStore('production', () => {
     try {
       loading.value = true;
       const response = await axios.get(
-        `${API_BASE_URL}/menu/production-inventory/branches`
+        `${apiConfig.baseURL}/menu/production-inventory/branches`
       );
       if (response.data) {
         return response.data;
@@ -1833,7 +1844,7 @@ export const useProductionStore = defineStore('production', () => {
     try {
       loading.value = true;
       const response = await axios.post(
-        `${API_BASE_URL}/menu/production-inventory/${inventoryId}/distribute`,
+        `${apiConfig.baseURL}/menu/production-inventory/${inventoryId}/distribute`,
         distributionData
       );
       if (response.data.success) {
@@ -1853,7 +1864,7 @@ export const useProductionStore = defineStore('production', () => {
     try {
       loading.value = true;
       const response = await axios.post(
-        `${API_BASE_URL}/menu/production-inventory/bulk-distribute`,
+        `${apiConfig.baseURL}/menu/production-inventory/bulk-distribute`,
         { distributions }
       );
       if (response.data.success) {
@@ -1873,7 +1884,7 @@ export const useProductionStore = defineStore('production', () => {
       loading.value = true;
       const params = new URLSearchParams(filters).toString();
       const response = await axios.get(
-        `${API_BASE_URL}/menu/production-inventory/${inventoryId}/distribution-history?${params}`
+        `${apiConfig.baseURL}/menu/production-inventory/${inventoryId}/distribution-history?${params}`
       );
       if (response.data.success) {
         return response.data.data;
@@ -1891,7 +1902,7 @@ export const useProductionStore = defineStore('production', () => {
       loading.value = true;
       const params = new URLSearchParams(filters).toString();
       const response = await axios.get(
-        `${API_BASE_URL}/menu/production-inventory/distributions?${params}`
+        `${apiConfig.baseURL}/menu/production-inventory/distributions?${params}`
       );
       if (response.data.success) {
         return response.data.data;
@@ -1908,7 +1919,7 @@ export const useProductionStore = defineStore('production', () => {
     try {
       loading.value = true;
       const response = await axios.post(
-        `${API_BASE_URL}/menu/production-inventory/${inventoryId}/check-availability`,
+        `${apiConfig.baseURL}/menu/production-inventory/${inventoryId}/check-availability`,
         { quantity }
       );
       if (response.data.success) {
@@ -1928,7 +1939,7 @@ export const useProductionStore = defineStore('production', () => {
     try {
       loading.value = true;
       const response = await axios.post(
-        `${API_BASE_URL}/menu/production-inventory/${inventoryId}/update-initial-stock`
+        `${apiConfig.baseURL}/menu/production-inventory/${inventoryId}/update-initial-stock`
       );
       if (response.data.success) {
         await fetchProductionInventory(); // Refresh inventory
@@ -1959,7 +1970,7 @@ export const useProductionStore = defineStore('production', () => {
     try {
       loading.value = true;
       const response = await axios.get(
-        `${API_BASE_URL}/menu/production-inventory`
+        `${apiConfig.baseURL}/menu/production-inventory`
       );
       if (response.data.success) {
         // Map backend field names to frontend expected field names
@@ -1985,7 +1996,7 @@ export const useProductionStore = defineStore('production', () => {
   const fetchRecentActivity = async (limit = 10) => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/menu/production-inventory/recent-activity?limit=${limit}`
+        `${apiConfig.baseURL}/menu/production-inventory/recent-activity?limit=${limit}`
       );
 
       if (response.data.success) {
@@ -2024,10 +2035,10 @@ export const useProductionStore = defineStore('production', () => {
       // Fetch both audit logs and production batch transactions
       const [auditLogsResponse, productionBatchesResponse] = await Promise.all([
         axios.get(
-          `${API_BASE_URL}/menu/production-inventory/audit-logs?${queryParams.toString()}`
+          `${apiConfig.baseURL}/menu/production-inventory/audit-logs?${queryParams.toString()}`
         ),
         axios.get(
-          `${API_BASE_URL}/production/batches?${queryParams.toString()}`
+          `${apiConfig.baseURL}/production/batches?${queryParams.toString()}`
         ),
       ]);
 
@@ -2100,7 +2111,7 @@ export const useProductionStore = defineStore('production', () => {
     try {
       loading.value = true;
       const response = await axios.get(
-        `${API_BASE_URL}/menu/inventory/check-recipe-availability`,
+        `${apiConfig.baseURL}/menu/inventory/check-recipe-availability`,
         {
           params: { recipe_id: recipeId, batch_size: batchSize },
         }
@@ -2120,7 +2131,7 @@ export const useProductionStore = defineStore('production', () => {
     try {
       loading.value = true;
       const response = await axios.get(
-        `${API_BASE_URL}/menu/inventory/check-sample-availability/${sampleId}`
+        `${apiConfig.baseURL}/menu/inventory/check-sample-availability/${sampleId}`
       );
       if (response.data.success) {
         return response.data.data;
@@ -2136,7 +2147,9 @@ export const useProductionStore = defineStore('production', () => {
   const fetchInventoryStats = async () => {
     try {
       loading.value = true;
-      const response = await axios.get(`${API_BASE_URL}/menu/inventory/stats`);
+      const response = await axios.get(
+        `${apiConfig.baseURL}/menu/inventory/stats`
+      );
       if (response.data.success) {
         inventoryStats.value = response.data.data;
         return response.data.data;
@@ -2153,7 +2166,7 @@ export const useProductionStore = defineStore('production', () => {
     try {
       loading.value = true;
       const response = await axios.get(
-        `${API_BASE_URL}/menu/inventory/low-stock-alerts`
+        `${apiConfig.baseURL}/menu/inventory/low-stock-alerts`
       );
       if (response.data.success) {
         lowStockAlerts.value = response.data.data;
@@ -2171,7 +2184,7 @@ export const useProductionStore = defineStore('production', () => {
     try {
       loading.value = true;
       const response = await axios.get(
-        `${API_BASE_URL}/menu/inventory/expiring-soon`,
+        `${apiConfig.baseURL}/menu/inventory/expiring-soon`,
         {
           params: { days_ahead: daysAhead },
         }
@@ -2193,10 +2206,13 @@ export const useProductionStore = defineStore('production', () => {
   // Get production inventory (ready for production)
   const getProductionInventory = async (filters = {}) => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/production/inventory`, {
-        params: filters,
-        timeout: 10000,
-      });
+      const response = await axios.get(
+        `${apiConfig.baseURL}/production/inventory`,
+        {
+          params: filters,
+          timeout: 10000,
+        }
+      );
 
       if (response.data.success) {
         return response.data.data;
@@ -2218,7 +2234,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/production/execute`,
+        `${apiConfig.baseURL}/production/execute`,
         executionData,
         { timeout: 15000 }
       );
@@ -2247,10 +2263,13 @@ export const useProductionStore = defineStore('production', () => {
   // Get active production batches
   const getActiveBatches = async (filters = {}) => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/production/batches`, {
-        params: filters,
-        timeout: 10000,
-      });
+      const response = await axios.get(
+        `${apiConfig.baseURL}/production/batches`,
+        {
+          params: filters,
+          timeout: 10000,
+        }
+      );
 
       if (response.data.success) {
         return response.data.data;
@@ -2277,7 +2296,7 @@ export const useProductionStore = defineStore('production', () => {
 
     try {
       const response = await axios.patch(
-        `${API_BASE_URL}/production/batches/${batchId}/status`,
+        `${apiConfig.baseURL}/production/batches/${batchId}/status`,
         {
           status,
           notes,
@@ -2312,7 +2331,7 @@ export const useProductionStore = defineStore('production', () => {
       if (batchSize) params.batch_size = batchSize;
 
       const response = await axios.get(
-        `${API_BASE_URL}/production/ingredient-requirements/${menuItemId}`,
+        `${apiConfig.baseURL}/production/ingredient-requirements/${menuItemId}`,
         { params, timeout: 10000 }
       );
 
@@ -2333,10 +2352,13 @@ export const useProductionStore = defineStore('production', () => {
   const getProductionHistory = async (filters = {}) => {
     try {
       // This would typically be a separate endpoint, but for now we can use existing data
-      const response = await axios.get(`${API_BASE_URL}/production/batches`, {
-        params: { ...filters, status: 'Completed' },
-        timeout: 10000,
-      });
+      const response = await axios.get(
+        `${apiConfig.baseURL}/production/batches`,
+        {
+          params: { ...filters, status: 'Completed' },
+          timeout: 10000,
+        }
+      );
 
       if (response.data.success) {
         return response.data.data;

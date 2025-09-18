@@ -3,8 +3,6 @@ import { ref, computed } from 'vue';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = apiConfig.baseURL;
-
 export const usePOSStore = defineStore('pos', () => {
   // State
   const menuItems = ref([]);

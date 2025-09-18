@@ -3,8 +3,6 @@ import { ref, computed } from 'vue';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = apiConfig.baseURL;
-
 // Set up axios interceptors for authentication
 const setupAxiosInterceptors = () => {
   // Request interceptor to add auth token
@@ -87,7 +85,7 @@ export const useAuthStore = defineStore('auth', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/auth/login`,
+        `${apiConfig.baseURL}/auth/login`,
         credentials
       );
 
@@ -141,7 +139,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       console.log('Validating session for user ID:', user.value.id);
       const response = await axios.post(
-        `${API_BASE_URL}/auth/validate-session`,
+        `${apiConfig.baseURL}/auth/validate-session`,
         {
           user_id: user.value.id,
         }

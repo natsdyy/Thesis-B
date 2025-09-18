@@ -4,8 +4,6 @@ import { ref, computed } from 'vue';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = apiConfig.baseURL;
-
 export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
   // State
   const purchaseOrders = ref([]);
@@ -109,7 +107,7 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/purchase-orders?${params.toString()}`
+        `${apiConfig.baseURL}/purchase-orders?${params.toString()}`
       );
 
       if (response.data.success) {
@@ -143,7 +141,9 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     error.value = null;
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/purchase-orders/${id}`);
+      const response = await axios.get(
+        `${apiConfig.baseURL}/purchase-orders/${id}`
+      );
 
       if (response.data.success) {
         const poData = response.data.data;
@@ -191,7 +191,7 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
       };
 
       const response = await axios.post(
-        `${API_BASE_URL}/purchase-orders/from-supply-request`,
+        `${apiConfig.baseURL}/purchase-orders/from-supply-request`,
         payload
       );
 
@@ -245,7 +245,7 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
       };
 
       const response = await axios.post(
-        `${API_BASE_URL}/purchase-orders/from-supply-request-with-items`,
+        `${apiConfig.baseURL}/purchase-orders/from-supply-request-with-items`,
         payload
       );
 
@@ -287,7 +287,7 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
       };
 
       const response = await axios.post(
-        `${API_BASE_URL}/purchase-orders`,
+        `${apiConfig.baseURL}/purchase-orders`,
         payload
       );
 
@@ -320,7 +320,7 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
       const payload = { poData, items };
 
       const response = await axios.put(
-        `${API_BASE_URL}/purchase-orders/${id}`,
+        `${apiConfig.baseURL}/purchase-orders/${id}`,
         payload
       );
 
@@ -354,7 +354,7 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
 
     try {
       const response = await axios.delete(
-        `${API_BASE_URL}/purchase-orders/${id}`
+        `${apiConfig.baseURL}/purchase-orders/${id}`
       );
 
       if (response.data.success) {
@@ -391,7 +391,7 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
       };
 
       const response = await axios.post(
-        `${API_BASE_URL}/purchase-orders/${purchaseOrderId}/returns`,
+        `${apiConfig.baseURL}/purchase-orders/${purchaseOrderId}/returns`,
         payload
       );
 
@@ -416,7 +416,7 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/purchase-orders/approved-supply-requests`
+        `${apiConfig.baseURL}/purchase-orders/approved-supply-requests`
       );
 
       if (response.data.success) {
@@ -444,7 +444,7 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/purchase-orders/supply-request/${supplyRequestId}/items`
+        `${apiConfig.baseURL}/purchase-orders/supply-request/${supplyRequestId}/items`
       );
 
       if (response.data.success) {
@@ -472,7 +472,7 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/purchase-orders/supply-request/${supplyRequestId}/available-items`
+        `${apiConfig.baseURL}/purchase-orders/supply-request/${supplyRequestId}/available-items`
       );
 
       if (response.data.success) {
@@ -501,7 +501,9 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     }
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/purchase-orders/stats`);
+      const response = await axios.get(
+        `${apiConfig.baseURL}/purchase-orders/stats`
+      );
 
       if (response.data.success) {
         stats.value = response.data.data || {};
@@ -520,7 +522,7 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     try {
       loading.value = true;
       const response = await axios.put(
-        `${API_BASE_URL}/purchase-orders/${id}/cancel`
+        `${apiConfig.baseURL}/purchase-orders/${id}/cancel`
       );
 
       if (response.data.success) {
@@ -545,7 +547,7 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     error.value = null;
 
     try {
-      let url = `${API_BASE_URL}/item-returns`;
+      let url = `${apiConfig.baseURL}/item-returns`;
       if (purchaseOrderId) {
         url += `?purchase_order_id=${purchaseOrderId}`;
       }
@@ -591,7 +593,7 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     try {
       loading.value = true;
       const response = await axios.put(
-        `${API_BASE_URL}/item-returns/${returnId}/process`
+        `${apiConfig.baseURL}/item-returns/${returnId}/process`
       );
 
       if (response.data.success) {
@@ -614,7 +616,7 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     try {
       loading.value = true;
       const response = await axios.put(
-        `${API_BASE_URL}/item-returns/${returnId}/complete`
+        `${apiConfig.baseURL}/item-returns/${returnId}/complete`
       );
 
       if (response.data.success) {
@@ -637,7 +639,7 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     try {
       loading.value = true;
       const response = await axios.put(
-        `${API_BASE_URL}/item-returns/${returnId}/cancel`
+        `${apiConfig.baseURL}/item-returns/${returnId}/cancel`
       );
 
       if (response.data.success) {
@@ -660,7 +662,7 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
   const checkPurchaseOrderRating = async (purchaseOrderId) => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/supplier-ratings/purchase-order/${purchaseOrderId}`
+        `${apiConfig.baseURL}/supplier-ratings/purchase-order/${purchaseOrderId}`
       );
 
       // If we get here, a rating exists
@@ -679,7 +681,7 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
   const submitSupplierRating = async (ratingData) => {
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/supplier-ratings`,
+        `${apiConfig.baseURL}/supplier-ratings`,
         ratingData
       );
       return response.data;
@@ -692,7 +694,7 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
   const updateSupplierRating = async (purchaseOrderId, ratingData) => {
     try {
       const response = await axios.put(
-        `${API_BASE_URL}/supplier-ratings/purchase-order/${purchaseOrderId}`,
+        `${apiConfig.baseURL}/supplier-ratings/purchase-order/${purchaseOrderId}`,
         ratingData
       );
       return response.data;

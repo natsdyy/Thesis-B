@@ -4,8 +4,6 @@ import { ref, computed } from 'vue';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = apiConfig.baseURL;
-
 export const useBudgetReleaseStore = defineStore('budgetRelease', () => {
   // State
   const releases = ref([]);
@@ -58,7 +56,7 @@ export const useBudgetReleaseStore = defineStore('budgetRelease', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/budget-releases?${params.toString()}`
+        `${apiConfig.baseURL}/budget-releases?${params.toString()}`
       );
 
       if (response.data.success) {
@@ -86,7 +84,9 @@ export const useBudgetReleaseStore = defineStore('budgetRelease', () => {
     error.value = null;
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/budget-releases/${id}`);
+      const response = await axios.get(
+        `${apiConfig.baseURL}/budget-releases/${id}`
+      );
 
       if (response.data.success) {
         currentRelease.value = response.data.data;
@@ -114,7 +114,7 @@ export const useBudgetReleaseStore = defineStore('budgetRelease', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/budget-releases`,
+        `${apiConfig.baseURL}/budget-releases`,
         releaseData
       );
 
@@ -146,7 +146,7 @@ export const useBudgetReleaseStore = defineStore('budgetRelease', () => {
 
     try {
       const response = await axios.patch(
-        `${API_BASE_URL}/budget-releases/${id}/confirm-receipt`,
+        `${apiConfig.baseURL}/budget-releases/${id}/confirm-receipt`,
         { confirmed_by: confirmedBy }
       );
 
@@ -189,7 +189,7 @@ export const useBudgetReleaseStore = defineStore('budgetRelease', () => {
     try {
       const params = department ? `?department=${department}` : '';
       const response = await axios.get(
-        `${API_BASE_URL}/budget-releases/pending-receipts${params}`
+        `${apiConfig.baseURL}/budget-releases/pending-receipts${params}`
       );
 
       if (response.data.success) {
@@ -227,7 +227,7 @@ export const useBudgetReleaseStore = defineStore('budgetRelease', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/budget-releases/stats?${params.toString()}`
+        `${apiConfig.baseURL}/budget-releases/stats?${params.toString()}`
       );
 
       if (response.data.success) {
@@ -248,7 +248,7 @@ export const useBudgetReleaseStore = defineStore('budgetRelease', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/budget-releases`,
+        `${apiConfig.baseURL}/budget-releases`,
         releaseData
       );
 

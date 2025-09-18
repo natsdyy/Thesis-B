@@ -2,8 +2,6 @@ import { defineStore } from 'pinia';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = apiConfig.baseURL;
-
 export const useRoleStore = defineStore('role', {
   state: () => ({
     roles: [],
@@ -31,7 +29,7 @@ export const useRoleStore = defineStore('role', {
       this.loading = true;
       this.error = null;
       try {
-        const response = await axios.get(`${API_BASE_URL}/roles`, {
+        const response = await axios.get(`${apiConfig.baseURL}/roles`, {
           params: { includeDeleted },
         });
         this.roles = response.data.data;
@@ -41,7 +39,7 @@ export const useRoleStore = defineStore('role', {
         } else {
           // Fetch deleted roles separately if needed
           const deletedResponse = await axios.get(
-            `${API_BASE_URL}/roles/deleted/list`
+            `${apiConfig.baseURL}/roles/deleted/list`
           );
           this.deletedRoles = deletedResponse.data.data;
         }
@@ -58,7 +56,7 @@ export const useRoleStore = defineStore('role', {
       this.error = null;
       try {
         const response = await axios.get(
-          `${API_BASE_URL}/roles/with-permissions/all`,
+          `${apiConfig.baseURL}/roles/with-permissions/all`,
           {
             params: { includeDeleted },
           }
@@ -79,7 +77,7 @@ export const useRoleStore = defineStore('role', {
       this.error = null;
       try {
         const response = await axios.get(
-          `${API_BASE_URL}/roles/${roleId}/permissions`
+          `${apiConfig.baseURL}/roles/${roleId}/permissions`
         );
         return response.data.data;
       } catch (error) {
@@ -97,7 +95,10 @@ export const useRoleStore = defineStore('role', {
       this.loading = true;
       this.error = null;
       try {
-        const response = await axios.post(`${API_BASE_URL}/roles`, roleData);
+        const response = await axios.post(
+          `${apiConfig.baseURL}/roles`,
+          roleData
+        );
         this.roles.push(response.data.data);
         return response.data.data;
       } catch (error) {
@@ -114,7 +115,7 @@ export const useRoleStore = defineStore('role', {
       this.error = null;
       try {
         const response = await axios.post(
-          `${API_BASE_URL}/roles/with-permissions`,
+          `${apiConfig.baseURL}/roles/with-permissions`,
           roleData
         );
         this.roles.push(response.data.data);
@@ -135,7 +136,7 @@ export const useRoleStore = defineStore('role', {
       this.error = null;
       try {
         const response = await axios.put(
-          `${API_BASE_URL}/roles/${roleId}`,
+          `${apiConfig.baseURL}/roles/${roleId}`,
           roleData
         );
         const index = this.roles.findIndex((role) => role.role_id === roleId);
@@ -157,7 +158,7 @@ export const useRoleStore = defineStore('role', {
       this.error = null;
       try {
         const response = await axios.put(
-          `${API_BASE_URL}/roles/${roleId}/permissions`,
+          `${apiConfig.baseURL}/roles/${roleId}/permissions`,
           roleData
         );
         const index = this.roles.findIndex((role) => role.role_id === roleId);
@@ -180,7 +181,9 @@ export const useRoleStore = defineStore('role', {
       this.loading = true;
       this.error = null;
       try {
-        const response = await axios.delete(`${API_BASE_URL}/roles/${roleId}`);
+        const response = await axios.delete(
+          `${apiConfig.baseURL}/roles/${roleId}`
+        );
         const index = this.roles.findIndex((role) => role.role_id === roleId);
         if (index !== -1) {
           this.roles[index] = response.data.data;
@@ -200,7 +203,7 @@ export const useRoleStore = defineStore('role', {
       this.error = null;
       try {
         const response = await axios.patch(
-          `${API_BASE_URL}/roles/${roleId}/restore`
+          `${apiConfig.baseURL}/roles/${roleId}/restore`
         );
         const index = this.roles.findIndex((role) => role.role_id === roleId);
         if (index !== -1) {
@@ -221,7 +224,7 @@ export const useRoleStore = defineStore('role', {
       this.error = null;
       try {
         const response = await axios.get(
-          `${API_BASE_URL}/roles/department/${encodeURIComponent(department)}`,
+          `${apiConfig.baseURL}/roles/department/${encodeURIComponent(department)}`,
           {
             params: { includeDeleted },
           }
@@ -242,9 +245,12 @@ export const useRoleStore = defineStore('role', {
       this.loading = true;
       this.error = null;
       try {
-        const response = await axios.get(`${API_BASE_URL}/roles/count/all`, {
-          params: { includeDeleted },
-        });
+        const response = await axios.get(
+          `${apiConfig.baseURL}/roles/count/all`,
+          {
+            params: { includeDeleted },
+          }
+        );
         return response.data.count;
       } catch (error) {
         this.error =
@@ -261,7 +267,7 @@ export const useRoleStore = defineStore('role', {
       this.error = null;
       try {
         const response = await axios.get(
-          `${API_BASE_URL}/roles/${roleId}/has-permission/${encodeURIComponent(
+          `${apiConfig.baseURL}/roles/${roleId}/has-permission/${encodeURIComponent(
             permissionName
           )}`
         );
@@ -280,7 +286,9 @@ export const useRoleStore = defineStore('role', {
       this.loading = true;
       this.error = null;
       try {
-        const response = await axios.get(`${API_BASE_URL}/roles/deleted/list`);
+        const response = await axios.get(
+          `${apiConfig.baseURL}/roles/deleted/list`
+        );
         this.deletedRoles = response.data.data;
         return response.data.data;
       } catch (error) {

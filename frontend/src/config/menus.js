@@ -68,37 +68,37 @@ export const menuItems = [
     name: 'Dashboard',
     icon: LayoutDashboard,
     route: '/scm/dashboard',
-    department: 'Supply Chain',
+    department: 'SCM',
   },
   {
     name: 'Inventory',
     icon: Package,
     route: '/scm/main-inventory',
-    department: 'Supply Chain',
+    department: 'SCM',
   },
   {
     name: 'Supply Request',
     icon: ReceiptText,
     route: '/scm/request-supply',
-    department: 'Supply Chain',
+    department: 'SCM',
   },
   {
     name: 'Purchase Order',
     icon: ShoppingBag,
     route: '/scm/purchase-order',
-    department: 'Supply Chain',
+    department: 'SCM',
   },
   {
     name: 'Suppliers',
     icon: Truck,
     route: '/scm/suppliers',
-    department: 'Supply Chain',
+    department: 'SCM',
   },
   {
     name: 'Goods Receipt Notes',
     icon: ReceiptText,
     route: '/scm/grn',
-    department: 'Supply Chain',
+    department: 'SCM',
   },
 
   // Finance Department
@@ -167,19 +167,19 @@ export const menuItems = [
     name: 'Dashboard',
     icon: LayoutDashboard,
     route: '/crm/dashboard',
-    department: 'Customer Relationship',
+    department: 'CRM',
   },
   {
     name: 'Customers',
     icon: Users,
     route: '/crm/customers',
-    department: 'Customer Relationship',
+    department: 'CRM',
   },
   {
     name: 'Sales',
     icon: BarChart3,
     route: '/crm/sales',
-    department: 'Customer Relationship',
+    department: 'CRM',
   },
 
   // Admin Department (Super Admin only)
@@ -232,9 +232,9 @@ export const menusByDepartment = menuItems.reduce((acc, item) => {
 // Department icons for dropdowns
 export const departmentIcons = {
   'Human Resource': UserCog,
-  'Supply Chain': Truck,
+  SCM: Truck,
   Finance: PhilippinePeso,
   Production: Factory,
-  'Customer Relationship': Users,
+  CRM: Users,
   Administration: Settings, // Add admin department icon
 };

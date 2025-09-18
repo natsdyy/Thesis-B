@@ -6,6 +6,8 @@ import { apiConfig, getApiUrl, formatImageUrl } from '../config/api.js';
 export const usePOSStore = defineStore('pos', () => {
   // State
   const menuItems = ref([]);
+  const pagination = ref({ total: 0, limit: 24, offset: 0 });
+  const hasMore = ref(true);
   const categories = ref([]);
   const currentOrder = ref({
     orderNumber: '',
@@ -50,7 +52,7 @@ export const usePOSStore = defineStore('pos', () => {
   });
 
   const orderTax = computed(() => {
-    return 0; // VAT not included in POS total  
+    return 0; // VAT not included in POS total
   });
 
   const orderTotal = computed(() => {
@@ -81,13 +83,25 @@ export const usePOSStore = defineStore('pos', () => {
     error.value = null;
 
     try {
-      const { menuId, itemCodes = [], branchId } = options;
+      const {
+        menuId,
+        itemCodes = [],
+        branchId,
+        category,
+        search,
+        reset = false,
+        limit = pagination.value.limit || 24,
+      } = options;
 
       const params = new URLSearchParams();
       if (branchId) params.append('branch_id', String(branchId));
       if (menuId) params.append('menu_id', String(menuId));
       if (itemCodes.length) params.append('item_codes', itemCodes.join(','));
       params.append('is_available', 'true');
+      if (category) params.append('category', String(category));
+      if (search) params.append('search', String(search));
+      params.append('limit', String(limit));
+      params.append('offset', String(reset ? 0 : pagination.value.offset || 0));
 
       const url = `${getApiUrl('/pos/menu-items')}?${params.toString()}`;
       const { data: resp } = await axios.get(url, {
@@ -110,8 +124,22 @@ export const usePOSStore = defineStore('pos', () => {
         menu_id: it.menu_id,
       }));
 
-      // Only display items that are available (already filtered) and have non-negative stock
-      menuItems.value = mapped.filter((m) => m.stock_quantity >= 0);
+      // Merge or reset list based on options.reset
+      const cleaned = mapped.filter((m) => m.stock_quantity >= 0);
+      if (reset) {
+        menuItems.value = cleaned;
+      } else {
+        menuItems.value = [...menuItems.value, ...cleaned];
+      }
+
+      // Update pagination
+      const p = resp?.pagination || {};
+      const total = Number(p.total || 0);
+      const newOffset =
+        (reset ? 0 : pagination.value.offset || 0) + cleaned.length;
+      const lim = Number(p.limit || limit);
+      pagination.value = { total, limit: lim, offset: newOffset };
+      hasMore.value = newOffset < total;
 
       // Derive categories from items
       const uniqueCats = Array.from(
@@ -124,7 +152,11 @@ export const usePOSStore = defineStore('pos', () => {
         err.message ||
         'Failed to fetch menu items';
       console.error('Error fetching menu items:', err);
-      menuItems.value = [];
+      if (options.reset) {
+        menuItems.value = [];
+        pagination.value = { total: 0, limit: 24, offset: 0 };
+        hasMore.value = false;
+      }
     } finally {
       loading.value = false;
     }
@@ -340,8 +372,13 @@ export const usePOSStore = defineStore('pos', () => {
 
   // Initialize
   const initialize = async (options = {}) => {
-    await fetchMenuItems(options);
+    await fetchMenuItems({ ...options, reset: true });
     await fetchCategories();
+  };
+
+  const loadMore = async (options = {}) => {
+    if (!hasMore.value || loading.value) return;
+    await fetchMenuItems({ ...options, reset: false });
   };
 
   return {
@@ -353,6 +390,8 @@ export const usePOSStore = defineStore('pos', () => {
     loading,
     error,
     orderHistory,
+    pagination,
+    hasMore,
 
     // Getters
     filteredMenuItems,
@@ -367,6 +406,7 @@ export const usePOSStore = defineStore('pos', () => {
     // Actions
     fetchMenuItems,
     fetchCategories,
+    loadMore,
     addItemToOrder,
     removeItemFromOrder,
     updateItemQuantity,

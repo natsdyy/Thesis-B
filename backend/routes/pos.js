@@ -20,11 +20,22 @@ router.get("/menu-items", authenticateToken, async (req, res) => {
           ? true
           : req.query.is_available === "true",
       search: req.query.search || null,
+      category: req.query.category || null,
+      limit: req.query.limit ? parseInt(req.query.limit) : 24,
+      offset: req.query.offset ? parseInt(req.query.offset) : 0,
     };
 
-    const items = await POSModel.getMenuItemsForPOS(filters);
+    const { rows, total } = await POSModel.getMenuItemsForPOS(filters);
 
-    res.json({ success: true, data: items });
+    res.json({
+      success: true,
+      data: rows,
+      pagination: {
+        total,
+        limit: filters.limit,
+        offset: filters.offset,
+      },
+    });
   } catch (error) {
     console.error("Error in POS menu-items:", error);
     res.status(500).json({

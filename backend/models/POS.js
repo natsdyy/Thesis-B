@@ -9,11 +9,14 @@ class POSModel {
       item_codes = [],
       is_available = true,
       search = null,
+      category = null,
+      limit = 24,
+      offset = 0,
     } = filters;
 
     try {
       // Base query: menu items with optional production inventory join
-      let query = db("menu_items as mi")
+      let baseQuery = db("menu_items as mi")
         .leftJoin("production_inventory as pi", "mi.id", "pi.menu_item_id")
         .select(
           "mi.id",
@@ -39,19 +42,19 @@ class POSModel {
         .whereNull("mi.deleted_at");
 
       if (is_available !== undefined && is_available !== null) {
-        query = query.where("mi.is_available", !!is_available);
+        baseQuery = baseQuery.where("mi.is_available", !!is_available);
       }
 
       if (menu_id) {
-        query = query.where("mi.menu_id", menu_id);
+        baseQuery = baseQuery.where("mi.menu_id", menu_id);
       }
 
       if (Array.isArray(item_codes) && item_codes.length > 0) {
-        query = query.whereIn("mi.item_code", item_codes);
+        baseQuery = baseQuery.whereIn("mi.item_code", item_codes);
       }
 
       if (search) {
-        query = query.where(function () {
+        baseQuery = baseQuery.where(function () {
           this.where("mi.menu_item_name", "ilike", `%${search}%`).orWhere(
             "mi.item_code",
             "ilike",
@@ -60,26 +63,47 @@ class POSModel {
         });
       }
 
+      if (category) {
+        baseQuery = baseQuery.where("mi.category", category);
+      }
+
       // Join branch inventory for branch-specific quantity (by item_name, production type)
       if (branch_id) {
-        query = query.leftJoin({ bi: "branch_inventory" }, function () {
+        baseQuery = baseQuery.leftJoin({ bi: "branch_inventory" }, function () {
           this.on("bi.item_name", "=", "mi.menu_item_name")
             .andOn("bi.item_type", "=", db.raw("?", ["production"]))
             .andOn("bi.branch_id", "=", db.raw("?", [branch_id]))
             .andOnNull("bi.deleted_at");
         });
 
-        query = query.select(
+        baseQuery = baseQuery.select(
           db.raw("COALESCE(bi.quantity, 0) as branch_stock")
         );
       } else {
-        query = query.select(db.raw("CAST(0 as integer) as branch_stock"));
+        baseQuery = baseQuery.select(
+          db.raw("CAST(0 as integer) as branch_stock")
+        );
       }
 
-      const rows = await query
+      // Clone for count
+      const countQuery = baseQuery
+        .clone()
+        .clearSelect()
+        .count({ total: "mi.id" });
+
+      // Apply ordering and pagination
+      const dataQuery = baseQuery
+        .clone()
         .orderBy("mi.sequence_order", "asc")
-        .orderBy("mi.menu_item_name", "asc");
-      return rows;
+        .orderBy("mi.menu_item_name", "asc")
+        .limit(Math.max(1, Number(limit)))
+        .offset(Math.max(0, Number(offset)));
+
+      const [countRow] = await countQuery;
+      const rows = await dataQuery;
+
+      const total = parseInt(countRow?.total || 0, 10);
+      return { rows, total };
     } catch (error) {
       console.error("Error fetching POS menu items:", error);
       throw new Error("Failed to fetch POS menu items");

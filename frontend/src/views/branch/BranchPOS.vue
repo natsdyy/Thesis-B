@@ -311,6 +311,29 @@
 
     await posStore.initialize({ menuId, itemCodes, branchId });
 
+    // Setup infinite scroll on the left menu panel
+    const scrollContainer = document.querySelector(
+      '.flex-1.p-6.overflow-y-auto'
+    );
+    const onScroll = async () => {
+      if (!scrollContainer) return;
+      const nearBottom =
+        scrollContainer.scrollTop + scrollContainer.clientHeight >=
+        scrollContainer.scrollHeight - 100;
+      if (nearBottom && posStore.hasMore && !posStore.loading) {
+        await posStore.loadMore({ menuId, itemCodes, branchId });
+      }
+    };
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', onScroll, { passive: true });
+    }
+    // Clean up listener on unmount
+    onUnmounted(() => {
+      if (scrollContainer) {
+        scrollContainer.removeEventListener('scroll', onScroll);
+      }
+    });
+
     // TODO: Fetch real POS data
     stats.value = {
       todaySales: 15420.5,
@@ -588,28 +611,31 @@
 
                 <!-- Item Details -->
                 <div class="p-3">
-                  <h3 class="font-semibold text-gray-900 text-sm mb-1">
-                    {{ item.name }}
-                  </h3>
-
-                  <!-- Stock Status -->
-                  <div class="flex items-center mb-2">
-                    <span
-                      class="badge badge-sm border-none"
-                      :class="
-                        item.stock_quantity > 0
-                          ? 'bg-success/20 text-success'
-                          : 'bg-error/20 text-error'
-                      "
-                    >
-                      Stock: {{ item.stock_quantity }}
-                    </span>
+                  <div class="grid grid-cols-2 gap-2 mb-5">
+                    <!-- Stock Status -->
+                    <div class="flex mb-1 flex-col">
+                      <h2 class="font-semibold text-gray-900 text-md">
+                        {{ item.name }}
+                      </h2>
+                      <span
+                        class="badge badge-sm border-none"
+                        :class="
+                          item.stock_quantity > 0
+                            ? 'bg-success/20 text-success'
+                            : 'bg-error/20 text-error'
+                        "
+                      >
+                        Stock: {{ item.stock_quantity }}
+                      </span>
+                    </div>
+                    <div class="flex justify-end">
+                      <!-- Price -->
+                      <p class="text-md font-bold text-gray-900 mb-3">
+                        <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                        {{ parseFloat(item.price).toFixed(2) }}
+                      </p>
+                    </div>
                   </div>
-
-                  <!-- Price -->
-                  <p class="text-lg font-bold text-gray-900 mb-3">
-                    ₱{{ parseFloat(item.price).toFixed(2) }}
-                  </p>
 
                   <!-- Order Button -->
                   <button
@@ -668,7 +694,8 @@
                     {{ item.name }}
                   </h4>
                   <p class="text-sm text-gray-600">
-                    ₱{{ item.price.toFixed(2) }}
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{ item.price.toFixed(2) }}
                   </p>
                 </div>
 
@@ -699,7 +726,7 @@
             <div class="space-y-3">
               <div class="flex justify-between text-lg font-semibold">
                 <span>Total Cost:</span>
-                <span>₱{{ posStore.orderTotal.toFixed(2) }}</span>
+                <span><font-awesome-icon icon="fa-solid fa-peso-sign" />{{ posStore.orderTotal.toFixed(2) }}</span>
               </div>
 
               <!-- Payment Input -->
@@ -890,13 +917,13 @@
               <div class="flex justify-between text-xs sm:text-sm">
                 <span>Total:</span>
                 <span class="font-semibold"
-                  >₱{{ orderCompleteData?.total?.toFixed(2) }}</span
+                  ><font-awesome-icon icon="fa-solid fa-peso-sign" />{{ orderCompleteData?.total?.toFixed(2) }}</span
                 >
               </div>
               <div class="flex justify-between text-xs sm:text-sm">
                 <span>Amount Paid:</span>
                 <span class="font-semibold"
-                  >₱{{ orderCompleteData?.amount_paid?.toFixed(2) }}</span
+                  ><font-awesome-icon icon="fa-solid fa-peso-sign" />{{ orderCompleteData?.amount_paid?.toFixed(2) }}</span
                 >
               </div>
               <div

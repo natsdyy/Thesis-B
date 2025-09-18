@@ -28,58 +28,78 @@
 
         <!-- Loading State -->
         <div v-if="processing" class="text-center">
-          <div class="loading loading-spinner loading-lg text-green-600 mb-4"></div>
-          <p class="text-gray-600">Processing QR code...</p>
+          <div class="relative mb-6">
+            <div class="loading loading-spinner loading-lg text-green-600 mb-4"></div>
+            <!-- Processing rings -->
+            <div class="absolute inset-0 w-16 h-16 mx-auto">
+              <div class="w-full h-full border-4 border-green-200 rounded-full animate-spin"></div>
+            </div>
+          </div>
+          <h3 class="text-lg font-semibold text-gray-700 mb-2">Processing QR Code...</h3>
+          <p class="text-gray-600">Please wait while we verify your attendance</p>
         </div>
 
         <!-- Success State -->
-        <div v-else-if="result && result.success" class="text-center">
-          <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle class="w-8 h-8 text-green-600" />
+        <div v-else-if="result && result.success" class="text-center animate-fade-in">
+          <!-- Success Animation -->
+          <div class="relative mb-6">
+            <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
+              <CheckCircle class="w-10 h-10 text-green-600" />
+            </div>
+            <!-- Success rings animation -->
+            <div class="absolute inset-0 w-20 h-20 mx-auto">
+              <div class="w-full h-full border-4 border-green-200 rounded-full animate-ping"></div>
+            </div>
           </div>
-          <h3 class="text-xl font-semibold text-gray-800 mb-2">Success!</h3>
-          <p class="text-gray-600 mb-4">{{ result.message }}</p>
           
-          <div class="bg-gray-50 rounded-lg p-4 mb-4">
-            <div class="text-sm space-y-2">
-              <div class="flex justify-between">
-                <span class="text-gray-500">Employee:</span>
-                <span class="font-medium">{{ result.data?.employee?.name }}</span>
+          <h3 class="text-2xl font-bold text-green-600 mb-2 animate-pulse">Success!</h3>
+          <p class="text-lg text-gray-700 mb-6 font-medium">{{ result.message }}</p>
+          
+          <!-- Enhanced Success Card -->
+          <div class="bg-gradient-to-r from-green-50 to-blue-50 rounded-xl p-6 mb-6 shadow-lg border border-green-200">
+            <div class="text-sm space-y-3">
+              <div class="flex justify-between items-center py-2 border-b border-green-200">
+                <span class="text-gray-600 font-medium">Employee:</span>
+                <span class="font-bold text-gray-800">{{ result.data?.employee?.name }}</span>
               </div>
-              <div class="flex justify-between">
-                <span class="text-gray-500">ID:</span>
-                <span class="font-medium">{{ result.data?.employee?.employee_id }}</span>
+              <div class="flex justify-between items-center py-2 border-b border-green-200">
+                <span class="text-gray-600 font-medium">Employee ID:</span>
+                <span class="font-bold text-gray-800">{{ result.data?.employee?.employee_id }}</span>
               </div>
-              <div class="flex justify-between">
-                <span class="text-gray-500">Action:</span>
-                <span class="font-medium capitalize">{{ result.data?.action?.replace('-', ' ') }}</span>
+              <div class="flex justify-between items-center py-2 border-b border-green-200">
+                <span class="text-gray-600 font-medium">Action:</span>
+                <span class="font-bold text-green-600 capitalize">{{ result.data?.action?.replace('-', ' ') }}</span>
               </div>
-              <div class="flex justify-between">
-                <span class="text-gray-500">Branch:</span>
-                <span class="font-medium">{{ result.data?.branch?.name || 'N/A' }}</span>
+              <div class="flex justify-between items-center py-2 border-b border-green-200">
+                <span class="text-gray-600 font-medium">Branch:</span>
+                <span class="font-bold text-gray-800">{{ result.data?.branch?.name || 'N/A' }}</span>
               </div>
-              <div class="flex justify-between">
-                <span class="text-gray-500">Location:</span>
-                <span class="font-medium">{{ result.data?.location || 'N/A' }}</span>
+              <div class="flex justify-between items-center py-2 border-b border-green-200">
+                <span class="text-gray-600 font-medium">Location:</span>
+                <span class="font-bold text-gray-800">{{ result.data?.location || 'N/A' }}</span>
               </div>
-              <div class="flex justify-between">
-                <span class="text-gray-500">Time:</span>
-                <span class="font-medium">{{ formatTime(result.data?.time) }}</span>
+              <div class="flex justify-between items-center py-2 border-b border-green-200">
+                <span class="text-gray-600 font-medium">Time:</span>
+                <span class="font-bold text-blue-600">{{ formatTime(result.data?.time) }}</span>
               </div>
-              <div v-if="result.data?.time_in && result.data?.action === 'time-out'" class="flex justify-between">
-                <span class="text-gray-500">Time In:</span>
-                <span class="font-medium">{{ formatTime(result.data.time_in) }}</span>
+              <div v-if="result.data?.time_in && result.data?.action === 'time-out'" class="flex justify-between items-center py-2 border-b border-green-200">
+                <span class="text-gray-600 font-medium">Time In:</span>
+                <span class="font-bold text-gray-800">{{ formatTime(result.data.time_in) }}</span>
               </div>
-              <div v-if="result.data?.hours_worked" class="flex justify-between">
-                <span class="text-gray-500">Hours Worked:</span>
-                <span class="font-medium">{{ result.data.hours_worked }}h</span>
+              <div v-if="result.data?.hours_worked" class="flex justify-between items-center py-2">
+                <span class="text-gray-600 font-medium">Hours Worked:</span>
+                <span class="font-bold text-blue-600">{{ result.data.hours_worked }}h</span>
               </div>
             </div>
           </div>
 
-          <button @click="scanAnother" class="btn btn-success w-full">
-            Scan Another QR Code
-          </button>
+          <!-- Success Message -->
+          <div class="bg-green-100 border border-green-300 rounded-lg p-4 mb-6">
+            <div class="flex items-center justify-center">
+              <CheckCircle class="w-5 h-5 text-green-600 mr-2" />
+              <span class="text-green-800 font-medium">Attendance recorded successfully!</span>
+            </div>
+          </div>
         </div>
 
         <!-- Error State -->
@@ -369,6 +389,9 @@ const processAttendance = async (attendanceData) => {
         requiredRadius: '2m',
         accuracy: locationStatus.value?.accuracy
       }
+      
+      // Play success sound
+      playSuccessSound()
     }
 
     result.value = {
@@ -474,6 +497,31 @@ const formatTime = (timestamp) => {
   })
 }
 
+const playSuccessSound = () => {
+  try {
+    // Create a simple success sound using Web Audio API
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)()
+    const oscillator = audioContext.createOscillator()
+    const gainNode = audioContext.createGain()
+    
+    oscillator.connect(gainNode)
+    gainNode.connect(audioContext.destination)
+    
+    // Success sound: ascending notes
+    oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime) // C5
+    oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1) // E5
+    oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.2) // G5
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5)
+    
+    oscillator.start(audioContext.currentTime)
+    oscillator.stop(audioContext.currentTime + 0.5)
+  } catch (error) {
+    console.log('Could not play success sound:', error)
+  }
+}
+
 // Process QR code on mount
 onMounted(() => {
   const data = route.query.data
@@ -501,6 +549,52 @@ onMounted(() => {
 </script>
 
 <style scoped>
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes successBounce {
+  0%, 20%, 50%, 80%, 100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-10px);
+  }
+  60% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes successPulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.6s ease-out;
+}
+
+.animate-bounce {
+  animation: successBounce 1s ease-in-out;
+}
+
+.animate-pulse {
+  animation: successPulse 2s ease-in-out infinite;
+}
 .loading {
   border-top-color: transparent;
 }

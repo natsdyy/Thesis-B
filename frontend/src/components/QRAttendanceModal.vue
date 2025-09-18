@@ -123,21 +123,7 @@
         </div>
       </div>
 
-      <!-- Location Warning for QR Generation -->
-      <div v-if="locationStatus && !locationStatus.withinRadius && locationStatus.distance !== 'Unknown'" class="mb-4">
-        <div class="alert alert-warning">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
-          </svg>
-          <div>
-            <div class="font-medium">Location Warning</div>
-            <div class="text-sm">
-              You're {{ locationStatus.distance }} from the attendance location. 
-              QR codes can still be generated, but attendance scanning will require being within 2m.
-            </div>
-          </div>
-        </div>
-      </div>
+     
 
       <!-- QR Code Generation -->
       <div class="text-center mb-6">
@@ -206,22 +192,6 @@
           <summary class="cursor-pointer text-gray-600">Debug Info</summary>
           <pre class="mt-2 text-xs overflow-x-auto">{{ JSON.stringify(qrCodeData, null, 2) }}</pre>
         </details>
-      </div>
-
-      <!-- Instructions -->
-      <div class="mt-6">
-        <div class="alert alert-warning">
-          <AlertCircle class="w-5 h-5" />
-          <div class="text-sm">
-            <div class="font-medium mb-1">How to use:</div>
-            <ul class="list-disc list-inside space-y-1 text-xs">
-              <li>Generate QR codes from any location (no distance restriction)</li>
-              <li>Use any QR scanner app to scan the code</li>
-              <li>Attendance scanning requires being within 2m of the location</li>
-              <li>QR codes expire after 5 minutes for security</li>
-            </ul>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -428,9 +398,9 @@ const checkLocation = async () => {
     const userLon = position.coords.longitude
     const accuracy = position.coords.accuracy
 
-    // Use actual Dasmariñas coordinates based on your GPS data
-    // This should be the actual branch location coordinates
-    const branchLat = 14.3064 // Dasmariñas coordinates (from your GPS)
+    // Get branch coordinates from the user's branch
+    // For now, using Dasmariñas coordinates - in production, fetch from user's branch
+    const branchLat = 14.3064 // Dasmariñas coordinates (BRN003)
     const branchLon = 120.9671
     const requiredRadius = 2.0
 

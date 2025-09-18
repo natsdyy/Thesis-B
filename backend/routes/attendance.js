@@ -3,6 +3,7 @@ const router = express.Router();
 const AttendanceQRCode = require('../models/AttendanceQRCode');
 const AttendanceRecord = require('../models/AttendanceRecord');
 const { authenticateToken } = require('../middleware/rbac');
+const { db } = require('../config/database');
 
 // QR Code Management Routes
 router.get('/qr-codes', authenticateToken, async (req, res) => {
@@ -377,15 +378,30 @@ router.post('/mobile-scan', async (req, res) => {
       });
     }
     
-    // Create a temporary QR code for this mobile scan with GPS coordinates
+    // Get branch coordinates for the employee's branch
+    let branchLat = null;
+    let branchLon = null;
+    let branchRadius = 2.0;
+    
+    if (employee.branch_id) {
+      const branch = await db('branches').where('id', employee.branch_id).first();
+      if (branch && branch.latitude && branch.longitude) {
+        branchLat = parseFloat(branch.latitude);
+        branchLon = parseFloat(branch.longitude);
+        branchRadius = parseFloat(branch.radius_meters) || 2.0;
+      }
+    }
+    
+    // Create a temporary QR code for this mobile scan with branch GPS coordinates
     const tempQRCode = `MOBILE_QR_${employee_id}_${Date.now()}`;
     const qrCodeRecord = await AttendanceQRCode.create({
       qr_code: tempQRCode,
       location_name: location || 'Mobile App QR Code',
       description: 'Mobile app generated QR code',
-      latitude: latitude || null,
-      longitude: longitude || null,
-      radius_meters: 2.0, // Default 2-meter radius
+      latitude: branchLat,
+      longitude: branchLon,
+      radius_meters: branchRadius,
+      branch_id: employee.branch_id,
       is_active: true
     });
     

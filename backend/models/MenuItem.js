@@ -528,9 +528,7 @@ class MenuItem {
   // Update menu item
   static async update(id, updateData, userId) {
     try {
-      console.log("MenuItem.update called with:", { id, updateData, userId });
-
-      // Get current item data before update for audit logging (lightweight query)
+        // Get current item data before update for audit logging (lightweight query)
       const currentItem = await db("menu_items")
         .select("id", "menu_item_name", "image_url", "menu_id")
         .where("id", id)

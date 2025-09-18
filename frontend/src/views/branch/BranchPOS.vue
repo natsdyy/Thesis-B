@@ -36,9 +36,8 @@
   const accessDenied = ref(false);
   const needsManagerLogin = ref(false);
   const managerLoginForm = ref({
-    email: '',
-    password: '',
-    confirmPassword: '',
+    employeeId: '',
+    pin: '',
   });
   const managerLoginError = ref('');
   const stats = ref({
@@ -74,86 +73,89 @@
     () => posSessionStore.sessionTimeRemainingMinutes
   );
 
-  // Manager login functions
+  // Helper: derive acceptable PINs from birthday
+  const deriveBirthdayPins = (birthdayStr) => {
+    // Expect formats like 'YYYY-MM-DD' or ISO date; return ['YYYYMMDD','YYYYMD']
+    if (!birthdayStr) return [];
+    try {
+      const date = new Date(
+        birthdayStr + (birthdayStr.length === 10 ? 'T00:00:00' : '')
+      );
+      if (isNaN(date.getTime())) return [];
+      const year = date.getFullYear().toString();
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const day = date.getDate().toString().padStart(2, '0');
+      const compact = `${year}${month}${day}`; // YYYYMMDD
+      const noLeadingZeros = `${year}${parseInt(month, 10)}${parseInt(day, 10)}`; // YYYYMD
+      return [compact, noLeadingZeros];
+    } catch (e) {
+      return [];
+    }
+  };
+
+  // Manager login via Employee ID + PIN (birthday-derived)
   const handleManagerLogin = async () => {
     managerLoginError.value = '';
 
-    if (!managerLoginForm.value.email) {
-      managerLoginError.value = 'Manager email is required';
+    const employeeId = managerLoginForm.value.employeeId?.trim();
+    const pinInput = (managerLoginForm.value.pin || '').trim();
+
+    if (!employeeId) {
+      managerLoginError.value = 'Employee ID is required';
       return;
     }
 
-    // Basic email format check
-    const emailRegex = /[^@\s]+@[^@\s]+\.[^@\s]+/;
-    if (!emailRegex.test(managerLoginForm.value.email)) {
-      managerLoginError.value = 'Enter a valid manager email';
-      return;
-    }
-
-    if (!managerLoginForm.value.password) {
-      managerLoginError.value = 'Password is required';
-      return;
-    }
-
-    if (
-      managerLoginForm.value.password !== managerLoginForm.value.confirmPassword
-    ) {
-      managerLoginError.value = 'Passwords do not match';
+    if (!pinInput) {
+      managerLoginError.value = 'PIN is required';
       return;
     }
 
     try {
-      // Authenticate manager using the same backend login endpoint
-      const response = await axios.post(`${API_BASE_URL}/auth/login`, {
-        email: managerLoginForm.value.email.trim(),
-        password: managerLoginForm.value.password,
-      });
+      // Fetch employee by employee_id
+      const res = await axios.get(
+        `${API_BASE_URL}/employees/employee-id/${encodeURIComponent(employeeId)}`
+      );
+      const employee = res.data?.data;
 
-      if (!response.data?.success) {
-        managerLoginError.value = response.data?.message || 'Login failed';
+      if (!employee) {
+        managerLoginError.value = 'Employee not found';
         return;
       }
 
-      const managerUser = response.data.data?.user;
-      if (!managerUser) {
-        managerLoginError.value = 'Invalid response from server';
-        return;
-      }
-
-      // Validate role and branch
-      const isManager = managerUser.role === 'Manager';
-      const sameBranch =
-        !!managerUser.branch_id &&
-        managerUser.branch_id === user.value.branch_id;
-
-      if (!isManager) {
+      // Role and status checks
+      if (employee.role !== 'Manager') {
         managerLoginError.value = 'Only a Manager can start a POS session';
         return;
       }
 
-      if (!sameBranch) {
+      if (!employee.branch_id || employee.branch_id !== user.value.branch_id) {
         managerLoginError.value = 'Manager must belong to this branch';
         return;
       }
 
-      // Start manager session without changing the current app auth session
+      // PIN validation based on birthday
+      const validPins = deriveBirthdayPins(employee.birthday);
+      if (!validPins.includes(pinInput)) {
+        managerLoginError.value = 'Invalid PIN';
+        return;
+      }
+
+      // Start manager session (local only)
       posSessionStore.startManagerSession({
-        id: managerUser.id,
-        name:
-          `${managerUser.first_name || ''} ${managerUser.last_name || ''}`.trim() ||
-          managerUser.name,
-        role: managerUser.role,
-        branch_id: managerUser.branch_id,
-        email: managerUser.email,
+        id: employee.id,
+        name: `${employee.first_name || ''} ${employee.last_name || ''}`.trim(),
+        role: employee.role,
+        branch_id: employee.branch_id,
+        email: employee.email,
         loginTime: new Date().toISOString(),
       });
 
       needsManagerLogin.value = false;
-      managerLoginForm.value = { email: '', password: '', confirmPassword: '' };
+      managerLoginForm.value = { employeeId: '', pin: '' };
     } catch (err) {
-      console.error('POS manager login failed:', err);
+      console.error('POS manager PIN login failed:', err);
       managerLoginError.value =
-        err.response?.data?.message || 'Invalid manager email or password';
+        err.response?.data?.message || 'Unable to verify manager';
     }
   };
 
@@ -345,13 +347,13 @@
             <div class="form-control">
               <label class="label">
                 <span class="label-text text-sm sm:text-base"
-                  >Manager Email</span
+                  >Manager Employee ID</span
                 >
               </label>
               <input
-                v-model="managerLoginForm.email"
-                type="email"
-                placeholder="Enter manager email"
+                v-model="managerLoginForm.employeeId"
+                type="text"
+                placeholder="Enter manager employee ID"
                 class="input input-bordered w-full input-sm sm:input-md"
                 @keyup.enter="handleManagerLogin"
               />
@@ -359,28 +361,13 @@
             <div class="form-control">
               <label class="label">
                 <span class="label-text text-sm sm:text-base"
-                  >Manager Password</span
+                  >PIN (default: YYYYMMDD)</span
                 >
               </label>
               <input
-                v-model="managerLoginForm.password"
+                v-model="managerLoginForm.pin"
                 type="password"
-                placeholder="Enter manager password"
-                class="input input-bordered w-full input-sm sm:input-md"
-                @keyup.enter="handleManagerLogin"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text text-sm sm:text-base"
-                  >Confirm Password</span
-                >
-              </label>
-              <input
-                v-model="managerLoginForm.confirmPassword"
-                type="password"
-                placeholder="Confirm manager password"
+                placeholder="Enter PIN"
                 class="input input-bordered w-full input-sm sm:input-md"
                 @keyup.enter="handleManagerLogin"
               />
@@ -394,11 +381,7 @@
             <button
               @click="handleManagerLogin"
               class="btn bg-primaryColor text-white w-full font-thin border-none hover:bg-primaryColor/80 btn-sm sm:btn-md"
-              :disabled="
-                !managerLoginForm.email ||
-                !managerLoginForm.password ||
-                !managerLoginForm.confirmPassword
-              "
+              :disabled="!managerLoginForm.employeeId || !managerLoginForm.pin"
             >
               <Shield class="w-4 h-4 mr-2" />
               <span class="text-sm sm:text-base">Start POS Session</span>
@@ -421,13 +404,13 @@
             <div class="form-control">
               <label class="label">
                 <span class="label-text text-sm sm:text-base"
-                  >Manager Email</span
+                  >Manager Employee ID</span
                 >
               </label>
               <input
-                v-model="managerLoginForm.email"
-                type="email"
-                placeholder="Enter manager email"
+                v-model="managerLoginForm.employeeId"
+                type="text"
+                placeholder="Enter manager employee ID"
                 class="input input-bordered w-full input-sm sm:input-md"
                 @keyup.enter="handleManagerLogin"
               />
@@ -435,29 +418,12 @@
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text text-sm sm:text-base"
-                  >Manager Password</span
-                >
+                <span class="label-text text-sm sm:text-base">PIN</span>
               </label>
               <input
-                v-model="managerLoginForm.password"
+                v-model="managerLoginForm.pin"
                 type="password"
-                placeholder="Enter manager password"
-                class="input input-bordered w-full input-sm sm:input-md"
-                @keyup.enter="handleManagerLogin"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text text-sm sm:text-base"
-                  >Confirm Password</span
-                >
-              </label>
-              <input
-                v-model="managerLoginForm.confirmPassword"
-                type="password"
-                placeholder="Confirm manager password"
+                placeholder="Enter PIN"
                 class="input input-bordered w-full input-sm sm:input-md"
                 @keyup.enter="handleManagerLogin"
               />
@@ -471,11 +437,7 @@
             <button
               @click="handleManagerLogin"
               class="btn bg-primaryColor text-white w-full font-thin border-none hover:bg-primaryColor/80 btn-sm sm:btn-md"
-              :disabled="
-                !managerLoginForm.email ||
-                !managerLoginForm.password ||
-                !managerLoginForm.confirmPassword
-              "
+              :disabled="!managerLoginForm.employeeId || !managerLoginForm.pin"
             >
               <Shield class="w-4 h-4 mr-2" />
               <span class="text-sm sm:text-base">Start POS Session</span>
@@ -589,11 +551,12 @@
 
           <!-- Menu Items Grid -->
           <div class="flex-1 p-6 overflow-y-auto max-h-[90vh]">
-            <div class="grid grid-cols-4 md:grid-cols-4 gap-4">
+            <div class="grid grid-cols-3 md:grid-cols-4 gap-4">
               <div
                 v-for="item in posStore.filteredMenuItems"
                 :key="item.id"
-                class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow"
+                class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+                @click="item.stock_quantity > 0 && handleAddToOrder(item)"
               >
                 <!-- Item Image -->
                 <div class="aspect-square bg-gray-100">
@@ -638,7 +601,7 @@
 
                   <!-- Order Button -->
                   <button
-                    @click="handleAddToOrder(item)"
+                    @click.stop="handleAddToOrder(item)"
                     :disabled="item.stock_quantity <= 0"
                     class="btn btn-sm w-full font-medium"
                     :class="

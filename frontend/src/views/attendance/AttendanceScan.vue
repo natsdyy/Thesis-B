@@ -109,11 +109,92 @@
         </div>
       </div>
 
+      <!-- Action Buttons -->
+      <div v-if="result && result.success" class="mt-6 flex gap-3">
+        <button @click="viewAttendanceRecords" class="btn btn-outline flex-1">
+          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+          </svg>
+          View My Records
+        </button>
+        <button @click="scanAnother" class="btn btn-primary flex-1">
+          Scan Another QR Code
+        </button>
+      </div>
+
       <!-- Footer -->
       <div class="text-center mt-6">
         <p class="text-sm text-gray-500">
           Powered by Countryside QR Attendance System
         </p>
+      </div>
+    </div>
+
+    <!-- Attendance Records Modal -->
+    <div v-if="showAttendanceRecords" class="modal modal-open">
+      <div class="modal-box max-w-4xl">
+        <div class="flex justify-between items-center mb-6">
+          <h3 class="font-bold text-xl">My Attendance Records</h3>
+          <button @click="closeAttendanceRecords" class="btn btn-sm btn-circle btn-ghost">
+            <XCircle class="w-4 h-4" />
+          </button>
+        </div>
+
+        <!-- Loading State -->
+        <div v-if="recordsLoading" class="text-center py-8">
+          <div class="loading loading-spinner loading-lg"></div>
+          <p class="text-gray-500 mt-2">Loading attendance records...</p>
+        </div>
+
+        <!-- Records Table -->
+        <div v-else-if="attendanceRecords.length > 0" class="overflow-x-auto">
+          <table class="table table-zebra w-full">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Time In</th>
+                <th>Time Out</th>
+                <th>Status</th>
+                <th>Location</th>
+                <th>Hours Worked</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="record in attendanceRecords" :key="record.id">
+                <td>{{ formatDate(record.created_at) }}</td>
+                <td>{{ formatTime(record.time_in) }}</td>
+                <td>{{ formatTime(record.time_out) }}</td>
+                <td>
+                  <span :class="[
+                    'badge',
+                    record.status === 'present' ? 'badge-success' : 
+                    record.status === 'late' ? 'badge-warning' : 'badge-error'
+                  ]">
+                    {{ record.status || 'Present' }}
+                  </span>
+                </td>
+                <td>{{ record.location_name || 'N/A' }}</td>
+                <td>{{ record.hours_worked ? `${record.hours_worked}h` : 'N/A' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Empty State -->
+        <div v-else class="text-center py-8">
+          <div class="text-gray-400 mb-4">
+            <svg class="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+          </div>
+          <h3 class="text-lg font-medium text-gray-600 mb-2">No Attendance Records</h3>
+          <p class="text-gray-500">You haven't recorded any attendance yet.</p>
+        </div>
+
+        <!-- Close Button -->
+        <div class="modal-action">
+          <button @click="closeAttendanceRecords" class="btn btn-primary">Close</button>
+        </div>
       </div>
     </div>
   </div>
@@ -139,6 +220,9 @@ const processing = ref(true)
 const result = ref(null)
 const qrData = ref(null)
 const locationStatus = ref(null)
+const showAttendanceRecords = ref(false)
+const attendanceRecords = ref([])
+const recordsLoading = ref(false)
 
 // API Configuration
 const API_BASE_URL = apiConfig.baseURL
@@ -332,6 +416,62 @@ const scanAnother = () => {
 
 const goHome = () => {
   router.push('/dashboard')
+}
+
+const viewAttendanceRecords = () => {
+  showAttendanceRecords.value = true
+  fetchAttendanceRecords()
+}
+
+const fetchAttendanceRecords = async () => {
+  try {
+    recordsLoading.value = true
+    const token = localStorage.getItem('token')
+    const response = await axios.get(`${API_BASE_URL}/attendance/my-attendance`, {
+      headers: { Authorization: `Bearer ${token}` },
+      params: { 
+        limit: 10,
+        offset: 0
+      }
+    })
+    
+    if (response.data.success) {
+      attendanceRecords.value = response.data.data || []
+    } else {
+      console.error('Failed to fetch attendance records:', response.data.message)
+      attendanceRecords.value = []
+    }
+  } catch (error) {
+    console.error('Error fetching attendance records:', error)
+    attendanceRecords.value = []
+  } finally {
+    recordsLoading.value = false
+  }
+}
+
+const closeAttendanceRecords = () => {
+  showAttendanceRecords.value = false
+  attendanceRecords.value = []
+}
+
+const formatDate = (timestamp) => {
+  if (!timestamp) return 'N/A'
+  const date = new Date(timestamp)
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })
+}
+
+const formatTime = (timestamp) => {
+  if (!timestamp) return 'N/A'
+  const date = new Date(timestamp)
+  return date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  })
 }
 
 // Process QR code on mount

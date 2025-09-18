@@ -85,20 +85,37 @@
                   </span>
                 </div>
                 <div v-if="locationStatus.error" class="text-yellow-600 mt-2 p-2 bg-yellow-50 rounded text-xs">
-                  <strong>Error:</strong> {{ locationStatus.error }}
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <strong>Error:</strong> {{ locationStatus.error }}
+                      <div v-if="locationStatus.error.includes('timeout')" class="text-xs mt-1">
+                        GPS is taking too long. Try moving to an open area or retry.
+                      </div>
+                    </div>
+                    <button 
+                      v-if="locationStatus.error.includes('timeout')"
+                      @click="checkLocation" 
+                      :disabled="locationChecking"
+                      class="btn btn-xs btn-outline ml-2"
+                    >
+                      Retry
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
             
-            <div v-else class="text-sm text-gray-500">
-              <div class="mb-2">Click "Check Location" to verify your position</div>
-              <div class="text-xs text-gray-400">
-                <strong>Note:</strong> Location access is required for attendance validation. 
-                If you're having issues, please:
-                <ul class="list-disc list-inside mt-1 space-y-1">
+            <div v-else class="text-sm text-gray-700">
+              <div class="mb-2 font-medium">Click "Check Location" to verify your position</div>
+              <div class="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+                <strong class="text-gray-800">Note:</strong> Location access is required for attendance validation. 
+                If you're having timeout issues, try:
+                <ul class="list-disc list-inside mt-2 space-y-1 text-gray-700">
+                  <li>Move to an open area with better GPS signal</li>
+                  <li>Wait 30-60 seconds for GPS to lock</li>
                   <li>Allow location access in your browser</li>
                   <li>Ensure GPS is enabled on your device</li>
-                  <li>Try refreshing the page</li>
+                  <li>Try refreshing the page if timeout persists</li>
                 </ul>
               </div>
             </div>
@@ -207,6 +224,74 @@
         </div>
       </div>
     </div>
+
+    <!-- Attendance Records Modal -->
+    <div v-if="showAttendanceRecords" class="modal modal-open">
+      <div class="modal-box max-w-4xl">
+        <div class="flex justify-between items-center mb-6">
+          <h3 class="font-bold text-xl">My Attendance Records</h3>
+          <button @click="closeAttendanceRecords" class="btn btn-sm btn-circle btn-ghost">
+            <X class="w-4 h-4" />
+          </button>
+        </div>
+
+        <!-- Loading State -->
+        <div v-if="recordsLoading" class="text-center py-8">
+          <div class="loading loading-spinner loading-lg"></div>
+          <p class="text-gray-500 mt-2">Loading attendance records...</p>
+        </div>
+
+        <!-- Records Table -->
+        <div v-else-if="attendanceRecords.length > 0" class="overflow-x-auto">
+          <table class="table table-zebra w-full">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Time In</th>
+                <th>Time Out</th>
+                <th>Status</th>
+                <th>Location</th>
+                <th>Hours Worked</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="record in attendanceRecords" :key="record.id">
+                <td>{{ formatDate(record.created_at) }}</td>
+                <td>{{ formatTime(record.time_in) }}</td>
+                <td>{{ formatTime(record.time_out) }}</td>
+                <td>
+                  <span :class="[
+                    'badge',
+                    record.status === 'present' ? 'badge-success' : 
+                    record.status === 'late' ? 'badge-warning' : 'badge-error'
+                  ]">
+                    {{ record.status || 'Present' }}
+                  </span>
+                </td>
+                <td>{{ record.location_name || 'N/A' }}</td>
+                <td>{{ record.hours_worked ? `${record.hours_worked}h` : 'N/A' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Empty State -->
+        <div v-else class="text-center py-8">
+          <div class="text-gray-400 mb-4">
+            <svg class="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+          </div>
+          <h3 class="text-lg font-medium text-gray-600 mb-2">No Attendance Records</h3>
+          <p class="text-gray-500">You haven't recorded any attendance yet.</p>
+        </div>
+
+        <!-- Close Button -->
+        <div class="modal-action">
+          <button @click="closeAttendanceRecords" class="btn btn-primary">Close</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -244,6 +329,9 @@ const currentStatus = ref('checked-out') // 'checked-in' or 'checked-out'
 const locationChecking = ref(false)
 const locationStatus = ref(null)
 const watchId = ref(null)
+const showAttendanceRecords = ref(false)
+const attendanceRecords = ref([])
+const recordsLoading = ref(false)
 
 // API Configuration
 const API_BASE_URL = apiConfig.baseURL
@@ -258,7 +346,38 @@ const closeModal = () => {
 }
 
 const viewAttendanceRecords = () => {
-  emit('viewRecords')
+  showAttendanceRecords.value = true
+  fetchAttendanceRecords()
+}
+
+const fetchAttendanceRecords = async () => {
+  try {
+    recordsLoading.value = true
+    const response = await axios.get(`${API_BASE_URL}/attendance/my-attendance`, {
+      headers: authHeaders(),
+      params: { 
+        limit: 10,
+        offset: 0
+      }
+    })
+    
+    if (response.data.success) {
+      attendanceRecords.value = response.data.data || []
+    } else {
+      console.error('Failed to fetch attendance records:', response.data.message)
+      attendanceRecords.value = []
+    }
+  } catch (error) {
+    console.error('Error fetching attendance records:', error)
+    attendanceRecords.value = []
+  } finally {
+    recordsLoading.value = false
+  }
+}
+
+const closeAttendanceRecords = () => {
+  showAttendanceRecords.value = false
+  attendanceRecords.value = []
 }
 
 // Location checking functions
@@ -280,13 +399,30 @@ const checkLocation = async () => {
   console.log('Requesting location with high accuracy...')
   
   try {
-    const position = await new Promise((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: true,
-        timeout: 15000, // Increased timeout for better accuracy
-        maximumAge: 0 // Don't use cached location
+    // First try with high accuracy
+    let position;
+    try {
+      position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 20000, // 20 seconds for high accuracy
+          maximumAge: 0 // Don't use cached for high accuracy
+        })
       })
-    })
+      console.log('High accuracy GPS obtained')
+    } catch (highAccuracyError) {
+      console.log('High accuracy failed, trying low accuracy...', highAccuracyError.message)
+      
+      // Fallback to low accuracy if high accuracy times out
+      position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: false, // Use network-based location
+          timeout: 10000, // 10 seconds for low accuracy
+          maximumAge: 300000 // Allow 5 minutes old location
+        })
+      })
+      console.log('Low accuracy GPS obtained')
+    }
 
     const userLat = position.coords.latitude
     const userLon = position.coords.longitude
@@ -475,6 +611,26 @@ const formatValidUntil = (timestamp) => {
     hour: '2-digit', 
     minute: '2-digit',
     hour12: true 
+  })
+}
+
+const formatDate = (timestamp) => {
+  if (!timestamp) return 'N/A'
+  const date = new Date(timestamp)
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })
+}
+
+const formatTime = (timestamp) => {
+  if (!timestamp) return 'N/A'
+  const date = new Date(timestamp)
+  return date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
   })
 }
 

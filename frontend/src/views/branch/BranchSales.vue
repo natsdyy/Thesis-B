@@ -590,7 +590,7 @@
                           v-if="transaction.status === 'processing'"
                           @click="completeOrder(transaction)"
                           class="btn btn-sm btn-success text-success font-thin bg-success/20 shadow-none border-none"
-                          tooltip="Complete Order"
+                          title="Complete Order"
                         >
                           <font-awesome-icon icon="fa-solid fa-check" />
                         </button>
@@ -598,7 +598,7 @@
                           v-if="transaction.canVoid"
                           @click="showVoidOrder(transaction)"
                           class="btn btn-sm btn-error text-error font-thin bg-error/20 shadow-none border-none"
-                          tooltip="Void Order"
+                          title="Void Order"
                         >
                           <font-awesome-icon icon="fa-solid fa-trash" />
                         </button>

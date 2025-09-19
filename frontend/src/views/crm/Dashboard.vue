@@ -90,8 +90,8 @@
           >
             <font-awesome-icon icon="fa-solid fa-chart-bar" class="w-5 h-5 text-purple-600 mr-3" />
             <div>
-              <p class="font-medium text-gray-900">Analytics</p>
-              <p class="text-sm text-gray-600">Customer insights and reports</p>
+              <p class="font-medium text-gray-900">Analytics Dashboard</p>
+              <p class="text-sm text-gray-600">Charts, trends, and detailed insights</p>
             </div>
           </router-link>
         </div>

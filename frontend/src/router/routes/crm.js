@@ -11,4 +11,10 @@ export default [
     component: () => import('../../views/crm/CustomerManagement.vue'),
     meta: { title: 'Customer Management' },
   },
+  {
+    path: 'analytics',
+    name: 'CRMAnalytics',
+    component: () => import('../../views/crm/Analytics.vue'),
+    meta: { title: 'Analytics Dashboard' },
+  },
 ];

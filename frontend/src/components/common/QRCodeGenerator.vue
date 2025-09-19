@@ -45,7 +45,8 @@
         width: props.size,
         margin: props.margin,
         color: props.color,
-        errorCorrectionLevel: 'M',
+        errorCorrectionLevel: 'H',
+        scale: 8,
       });
     } catch (error) {
       console.error('Error generating QR code:', error);
@@ -70,10 +71,16 @@
     display: flex;
     justify-content: center;
     align-items: center;
+    max-width: 120px;
+    max-height: 1200px;
+    overflow: hidden;
   }
 
   .qr-canvas {
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    max-width: 120px;
+    max-height: 120px;
+    object-fit: contain;
   }
 </style>

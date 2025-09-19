@@ -1686,14 +1686,6 @@
 
                 <div class="flex gap-2">
                   <button
-                    @click.stop="openDistributionModal(item)"
-                    class="btn btn-ghost btn-xs text-info hover:bg-info/10 flex-1"
-                    :disabled="item.available_quantity <= 0"
-                  >
-                    <Truck class="w-4 h-4 mr-1" />
-                    Distribute
-                  </button>
-                  <button
                     v-if="item.available_quantity === 0"
                     @click.stop="configureInventory(item)"
                     class="btn btn-ghost btn-xs text-warning hover:bg-warning/10 flex-1"

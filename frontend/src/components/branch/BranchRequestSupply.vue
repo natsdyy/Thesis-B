@@ -165,14 +165,12 @@
     'ml',
   ]);
 
-  // Mock categories for branch requests
-  const branchCategories = ref([
-    { name: 'Meat', items: ['Beef Steak', 'Chicken Breast', 'Pork Chops'] },
-    { name: 'Vegetables', items: ['French Fries', 'Onions', 'Tomatoes'] },
-    { name: 'Beverages', items: ['Coca Cola', 'Sprite', 'Water'] },
-    { name: 'Condiments', items: ['Ketchup', 'Mustard', 'Mayo'] },
-    { name: 'Dairy', items: ['Cheese', 'Milk', 'Butter'] },
-  ]);
+  // Beverage-specific unit options
+  const beverageUnitOptions = ref(['liters', 'bottles', 'pieces', 'cans']);
+
+  // Helper to detect if a row is a beverage item (by category name)
+  const isBeverageRow = (row) =>
+    String(row?.category || '').toLowerCase() === 'beverages';
 
   // Mock requests data
   const requests = ref([]);
@@ -366,9 +364,14 @@
         throw new Error('Please enter a request description');
       }
 
-      const validItems = requestItems.value.filter(
-        (item) => item.item_name.trim() && item.item_quantity > 0
-      );
+      const validItems = requestItems.value.filter((item) => {
+        if (!item.item_name.trim() || item.item_quantity <= 0) return false;
+        // If beverages, ensure unit is selected
+        if (isBeverageRow(item) && !String(item.item_unit || '').trim()) {
+          return false;
+        }
+        return true;
+      });
 
       if (validItems.length === 0) {
         throw new Error('Please add at least one valid item');
@@ -432,9 +435,13 @@
         throw new Error('Please enter a request description');
       }
 
-      const validItems = requestItems.value.filter(
-        (item) => item.item_name.trim() && item.item_quantity > 0
-      );
+      const validItems = requestItems.value.filter((item) => {
+        if (!item.item_name.trim() || item.item_quantity <= 0) return false;
+        if (isBeverageRow(item) && !String(item.item_unit || '').trim()) {
+          return false;
+        }
+        return true;
+      });
 
       if (validItems.length === 0) {
         throw new Error('Please add at least one valid item');
@@ -1491,13 +1498,30 @@
                   </td>
 
                   <td>
-                    <input
-                      type="text"
-                      v-model="item.item_unit"
-                      class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
-                      placeholder="unit"
-                      readonly
-                    />
+                    <template v-if="isBeverageRow(item)">
+                      <select
+                        v-model="item.item_unit"
+                        class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
+                      >
+                        <option value="" disabled>Select Unit</option>
+                        <option
+                          v-for="unit in beverageUnitOptions"
+                          :key="unit"
+                          :value="unit"
+                        >
+                          {{ unit }}
+                        </option>
+                      </select>
+                    </template>
+                    <template v-else>
+                      <input
+                        type="text"
+                        v-model="item.item_unit"
+                        class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
+                        placeholder="unit"
+                        readonly
+                      />
+                    </template>
                   </td>
 
                   <td>

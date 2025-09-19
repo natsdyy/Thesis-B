@@ -328,6 +328,27 @@
     return Array.from({ length: 6 }, (_, i) => currentYear - i);
   });
 
+  // Helpers for consistent Philippine timezone date comparisons
+  const toPhilippineMidnight = (dateInput) => {
+    let parsed = new Date(dateInput);
+    if (isNaN(parsed.getTime())) {
+      parsed = new Date(`${dateInput}T00:00:00`);
+    }
+    const ph = new Date(
+      parsed.toLocaleString('en-US', { timeZone: 'Asia/Manila' })
+    );
+    ph.setHours(0, 0, 0, 0);
+    return ph;
+  };
+
+  const todayPhilippineMidnight = () => {
+    const nowPh = new Date(
+      new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' })
+    );
+    nowPh.setHours(0, 0, 0, 0);
+    return nowPh;
+  };
+
   // Filtered data computed properties
   const filteredOrdersByDate = computed(() => {
     // Early return for better performance
@@ -344,28 +365,27 @@
 
     // Only apply date filtering for active orders tab
     if (activeTab.value === 'active' && dateFilterType.value) {
-      const today = new Date();
+      const today = todayPhilippineMidnight();
 
       switch (dateFilterType.value) {
         case 'today':
           const todayDate = new Date(today);
-          todayDate.setHours(0, 0, 0, 0);
           filtered = filtered.filter((order) => {
-            const orderDate = new Date(order.order_date + 'T00:00:00');
-            orderDate.setHours(0, 0, 0, 0);
+            const orderDate = toPhilippineMidnight(order.order_date);
             return orderDate.getTime() === todayDate.getTime();
           });
           break;
 
         case 'week':
           const startOfWeek = new Date(today);
-          startOfWeek.setDate(today.getDate() - today.getDay() + 1);
+          // Monday as start of week
+          startOfWeek.setDate(today.getDate() - ((today.getDay() + 6) % 7));
           startOfWeek.setHours(0, 0, 0, 0);
-          const weekEnd = new Date(today);
+          const weekEnd = new Date(startOfWeek);
+          weekEnd.setDate(startOfWeek.getDate() + 6);
           weekEnd.setHours(23, 59, 59, 999);
           filtered = filtered.filter((order) => {
-            const orderDate = new Date(order.order_date + 'T00:00:00');
-            orderDate.setHours(0, 0, 0, 0);
+            const orderDate = toPhilippineMidnight(order.order_date);
             return orderDate >= startOfWeek && orderDate <= weekEnd;
           });
           break;
@@ -377,11 +397,14 @@
             1
           );
           startOfMonth.setHours(0, 0, 0, 0);
-          const monthEnd = new Date(today);
+          const monthEnd = new Date(
+            today.getFullYear(),
+            today.getMonth() + 1,
+            0
+          );
           monthEnd.setHours(23, 59, 59, 999);
           filtered = filtered.filter((order) => {
-            const orderDate = new Date(order.order_date + 'T00:00:00');
-            orderDate.setHours(0, 0, 0, 0);
+            const orderDate = toPhilippineMidnight(order.order_date);
             return orderDate >= startOfMonth && orderDate <= monthEnd;
           });
           break;
@@ -401,8 +424,7 @@
           );
           customEndOfMonth.setHours(23, 59, 59, 999);
           filtered = filtered.filter((order) => {
-            const orderDate = new Date(order.order_date + 'T00:00:00');
-            orderDate.setHours(0, 0, 0, 0);
+            const orderDate = toPhilippineMidnight(order.order_date);
             return (
               orderDate >= customStartOfMonth && orderDate <= customEndOfMonth
             );

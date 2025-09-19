@@ -32,6 +32,20 @@
   const router = useRouter();
   const API_BASE_URL = apiConfig.baseURL;
 
+  // Function to get the correct base URL for QR codes
+  const getQRBaseUrl = () => {
+    // In development, use the network IP so phones can access it
+    if (
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1'
+    ) {
+      // For local development, use the network IP so phones can access it
+      return `http://192.168.254.110:8080`;
+    }
+    // In production, use the current origin
+    return window.location.origin;
+  };
+
   // Local state
   const loading = ref(false);
   const accessDenied = ref(false);
@@ -47,11 +61,13 @@
     averageTransaction: 0,
     activeOrders: 0,
   });
+  const statsLoading = ref(false);
 
   // POS UI state
   const showOrderCompleteModal = ref(false);
   const showOrderConfirmationModal = ref(false);
   const showReceiptModal = ref(false);
+  const showVoidOrderModal = ref(false);
   const hasPrintedReceipt = ref(false);
   const orderCompleteData = ref(null);
   const orderConfirmationData = ref(null);
@@ -59,6 +75,8 @@
   const paymentInput = ref('');
   const isProcessingOrder = ref(false);
   const receiptData = ref(null);
+  const voidOrderData = ref(null);
+  const voidReason = ref('');
 
   // Computed
   const currentBranch = computed(() => branchContextStore.currentBranch);
@@ -235,7 +253,7 @@
 
     // Show confirmation modal first
     orderConfirmationData.value = {
-      orderNumber: posStore.currentOrder.orderNumber || '#01',
+      orderNumber: posStore.getNextOrderNumber(),
       orderType: posStore.currentOrder.orderType,
       items: posStore.currentOrder.items,
       subtotal: posStore.orderTotal,
@@ -263,9 +281,16 @@
       showOrderConfirmationModal.value = false;
       showOrderCompleteModal.value = true;
       paymentInput.value = '';
+
+      // Update stats after successful order
+      await fetchTodayStats();
     } catch (error) {
       console.error('Error processing order:', error);
-      alert('Failed to process order. Please try again.');
+      const errorMessage =
+        error?.response?.data?.message ||
+        error.message ||
+        'Failed to process order. Please try again.';
+      alert(errorMessage);
     } finally {
       isProcessingOrder.value = false;
     }
@@ -292,14 +317,7 @@
           currentBranch.value?.location || currentBranch.value?.address,
         orderType: confirmationOrderType.value,
         timestamp: new Date().toLocaleString(),
-        qrData: JSON.stringify({
-          purpose: 'order_rating',
-          orderNumber: orderCompleteData.value.order_number,
-          total: orderCompleteData.value.total,
-          timestamp: new Date().toISOString(),
-          branch: currentBranch.value?.name,
-          cashier: user.value?.name,
-        }),
+        qrData: `${getQRBaseUrl()}/rate-order?order=${encodeURIComponent(orderCompleteData.value.order_number)}`,
       };
       showReceiptModal.value = true;
     }
@@ -335,12 +353,115 @@
     paymentInput.value = '';
   };
 
+  // Fetch today's sales statistics
+  const fetchTodayStats = async () => {
+    try {
+      statsLoading.value = true;
+      const today = new Date().toISOString().split('T')[0];
+      const branchId = currentBranch.value?.id || user.value?.branch_id;
+
+      if (!branchId) return;
+
+      // Use the store method instead of direct API call
+      const data = await posStore.fetchDailySummary(branchId, today);
+
+      if (data) {
+        stats.value = {
+          todaySales: data.total_sales || 0,
+          todayTransactions: data.completed_orders || 0,
+          averageTransaction: data.average_order_value || 0,
+          activeOrders:
+            data.total_orders - data.completed_orders - data.voided_orders || 0,
+        };
+      }
+    } catch (error) {
+      console.error('Error fetching today stats:', error);
+      // Keep existing stats if fetch fails
+    } finally {
+      statsLoading.value = false;
+    }
+  };
+
+  // Void order functionality
+  const showVoidOrder = (orderData) => {
+    voidOrderData.value = orderData;
+    voidReason.value = '';
+    showVoidOrderModal.value = true;
+  };
+
+  const confirmVoidOrder = async () => {
+    if (!voidReason.value.trim()) {
+      alert('Please provide a reason for voiding the order');
+      return;
+    }
+
+    try {
+      await posStore.voidOrder(voidOrderData.value.id, voidReason.value);
+      showVoidOrderModal.value = false;
+      voidOrderData.value = null;
+      voidReason.value = '';
+
+      // Update stats after voiding order
+      await fetchTodayStats();
+
+      alert('Order voided successfully');
+    } catch (error) {
+      console.error('Error voiding order:', error);
+      alert('Failed to void order. Please try again.');
+    }
+  };
+
+  const closeVoidOrderModal = () => {
+    showVoidOrderModal.value = false;
+    voidOrderData.value = null;
+    voidReason.value = '';
+  };
+
+  // Complete order functionality
+  const completeOrder = async (orderData) => {
+    try {
+      await posStore.completeOrder(orderData.id);
+
+      // Update stats after completing order
+      await fetchTodayStats();
+
+      alert('Order completed successfully');
+    } catch (error) {
+      console.error('Error completing order:', error);
+      alert('Failed to complete order. Please try again.');
+    }
+  };
+
   // Placeholder data
   onMounted(async () => {
     // Validate access first
     if (!validatePOSAccess()) {
       return;
     }
+
+    // Setup infinite scroll on the left menu panel
+    const scrollContainer = document.querySelector(
+      '.flex-1.p-6.overflow-y-auto'
+    );
+    const onScroll = async () => {
+      if (!scrollContainer) return;
+      const nearBottom =
+        scrollContainer.scrollTop + scrollContainer.clientHeight >=
+        scrollContainer.scrollHeight - 100;
+      if (nearBottom && posStore.hasMore && !posStore.loading) {
+        await posStore.loadMore({ menuId, itemCodes, branchId });
+      }
+    };
+
+    // Register cleanup hooks BEFORE any await statements
+    onUnmounted(() => {
+      if (scrollContainer) {
+        scrollContainer.removeEventListener('scroll', onScroll);
+      }
+      if (sessionTimeoutInterval) {
+        clearInterval(sessionTimeoutInterval);
+      }
+    });
 
     // Initialize branch context if not already set
     if (!branchContextStore.currentBranch) {
@@ -363,43 +484,12 @@
 
     await posStore.initialize({ menuId, itemCodes, branchId });
 
-    // Setup infinite scroll on the left menu panel
-    const scrollContainer = document.querySelector(
-      '.flex-1.p-6.overflow-y-auto'
-    );
-    const onScroll = async () => {
-      if (!scrollContainer) return;
-      const nearBottom =
-        scrollContainer.scrollTop + scrollContainer.clientHeight >=
-        scrollContainer.scrollHeight - 100;
-      if (nearBottom && posStore.hasMore && !posStore.loading) {
-        await posStore.loadMore({ menuId, itemCodes, branchId });
-      }
-    };
     if (scrollContainer) {
       scrollContainer.addEventListener('scroll', onScroll, { passive: true });
     }
-    // Clean up listener on unmount
-    onUnmounted(() => {
-      if (scrollContainer) {
-        scrollContainer.removeEventListener('scroll', onScroll);
-      }
-    });
 
-    // TODO: Fetch real POS data
-    stats.value = {
-      todaySales: 15420.5,
-      todayTransactions: 87,
-      averageTransaction: 177.25,
-      activeOrders: 5,
-    };
-  });
-
-  // Cleanup on unmount
-  onUnmounted(() => {
-    if (sessionTimeoutInterval) {
-      clearInterval(sessionTimeoutInterval);
-    }
+    // Fetch real POS data
+    await fetchTodayStats();
   });
 </script>
 
@@ -718,7 +808,7 @@
           <!-- Order Header -->
           <div class="bg-primaryColor text-white px-4 py-4">
             <h2 class="text-md font-semibold">
-              Order Number {{ posStore.currentOrder.orderNumber || '#01' }}
+              Order Number {{ posStore.getNextOrderNumber() }}
             </h2>
           </div>
 
@@ -750,7 +840,7 @@
                   </h4>
                   <p class="text-sm text-gray-600">
                     <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                    {{ item.price.toFixed(2) }}
+                    {{ parseFloat(item.price || 0).toFixed(2) }}
                   </p>
                 </div>
 
@@ -1009,13 +1099,16 @@
                     <p class="font-medium text-gray-900">{{ item.name }}</p>
                     <p class="text-sm text-gray-600">
                       <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                      {{ item.price.toFixed(2) }} × {{ item.quantity }}
+                      {{ parseFloat(item.price || 0).toFixed(2) }} ×
+                      {{ item.quantity }}
                     </p>
                   </div>
                   <div class="text-right">
                     <p class="font-semibold text-gray-900">
                       <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                      {{ (item.price * item.quantity).toFixed(2) }}
+                      {{
+                        (parseFloat(item.price || 0) * item.quantity).toFixed(2)
+                      }}
                     </p>
                   </div>
                 </div>
@@ -1029,14 +1122,22 @@
                   <span class="text-gray-600">Subtotal:</span>
                   <span class="font-semibold">
                     <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                    {{ orderConfirmationData?.subtotal?.toFixed(2) }}
+                    {{
+                      parseFloat(orderConfirmationData?.subtotal || 0).toFixed(
+                        2
+                      )
+                    }}
                   </span>
                 </div>
                 <div class="flex justify-between text-sm">
                   <span class="text-gray-600">Amount Paid:</span>
                   <span class="font-semibold">
                     <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                    {{ orderConfirmationData?.amountPaid?.toFixed(2) }}
+                    {{
+                      parseFloat(
+                        orderConfirmationData?.amountPaid || 0
+                      ).toFixed(2)
+                    }}
                   </span>
                 </div>
                 <div
@@ -1045,7 +1146,9 @@
                   <span>Change:</span>
                   <span>
                     <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                    {{ orderConfirmationData?.change?.toFixed(2) }}
+                    {{
+                      parseFloat(orderConfirmationData?.change || 0).toFixed(2)
+                    }}
                   </span>
                 </div>
               </div>
@@ -1099,7 +1202,7 @@
                 <span>Total:</span>
                 <span class="font-semibold"
                   ><font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                    orderCompleteData?.total?.toFixed(2)
+                    parseFloat(orderCompleteData?.total_amount || 0).toFixed(2)
                   }}</span
                 >
               </div>
@@ -1107,7 +1210,7 @@
                 <span>Amount Paid:</span>
                 <span class="font-semibold"
                   ><font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                    orderCompleteData?.amount_paid?.toFixed(2)
+                    parseFloat(orderCompleteData?.amount_paid || 0).toFixed(2)
                   }}</span
                 >
               </div>
@@ -1117,7 +1220,7 @@
                 <span>Change:</span>
                 <span>
                   <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                    orderCompleteData?.change?.toFixed(2)
+                    parseFloat(orderCompleteData?.change_amount || 0).toFixed(2)
                   }}</span
                 >
               </div>
@@ -1132,6 +1235,7 @@
               >
                 Print Receipt
               </button>
+
               <button
                 @click="closeOrderCompleteModal"
                 :disabled="!hasPrintedReceipt"
@@ -1197,17 +1301,20 @@
                   :key="item.id"
                   class="flex justify-between text-sm"
                 >
-                  <div class="flex-1">
-                    <p class="font-medium">{{ item.name }}</p>
+                  <div class="flex flex- row gap-3">
+                    <p class="font-medium">{{ item.item_name }}</p>
                     <p class="text-gray-600">
-                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                      {{ item.price.toFixed(2) }} × {{ item.quantity }}
+                      {{ item.quantity }}
+                      <font-awesome-icon
+                        icon="fa-solid fa-xmark"
+                        class="!w-3 !h-3"
+                      />
                     </p>
                   </div>
                   <div class="text-right">
                     <p class="font-semibold">
                       <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                      {{ (item.price * item.quantity).toFixed(2) }}
+                      {{ parseFloat(item.total_price || 0).toFixed(2) }}
                     </p>
                   </div>
                 </div>
@@ -1221,14 +1328,14 @@
                   <span>Subtotal:</span>
                   <span>
                     <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                    {{ receiptData?.total?.toFixed(2) }}
+                    {{ parseFloat(receiptData?.total_amount || 0).toFixed(2) }}
                   </span>
                 </div>
                 <div class="flex justify-between">
                   <span>Amount Paid:</span>
                   <span>
                     <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                    {{ receiptData?.amount_paid?.toFixed(2) }}
+                    {{ parseFloat(receiptData?.amount_paid || 0).toFixed(2) }}
                   </span>
                 </div>
                 <div
@@ -1237,22 +1344,24 @@
                   <span>Change:</span>
                   <span>
                     <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                    {{ receiptData?.change?.toFixed(2) }}
+                    {{ parseFloat(receiptData?.change_amount || 0).toFixed(2) }}
                   </span>
                 </div>
               </div>
             </div>
 
             <!-- QR Code -->
-            <div class="border-t border-gray-300 pt-4 text-center">
-              <div class="mb-2">
-                <QRCodeGenerator
-                  :data="receiptData?.qrData"
-                  :size="120"
-                  class="mx-auto"
-                />
+            <div class="border-t border-gray-300 pt-3 text-center">
+              <div class="mb-2 flex justify-center">
+                <div class="w-32 h-32 flex items-center justify-center">
+                  <QRCodeGenerator
+                    :data="receiptData?.qrData"
+                    :size="120"
+                    class="max-w-full max-h-full"
+                  />
+                </div>
               </div>
-              <p class="text-xs text-gray-500">Order ratings code</p>
+              <p class="text-xs text-gray-500">Rate your order</p>
             </div>
           </div>
 
@@ -1271,6 +1380,82 @@
               class="flex-1 btn bg-primaryColor text-white btn-sm sm:btn-md touch-manipulation font-thin hover:bg-primaryColor/80"
             >
               Print Receipt
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Void Order Modal -->
+      <div
+        v-if="showVoidOrderModal"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
+      >
+        <div
+          class="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
+        >
+          <div class="text-center mb-6">
+            <AlertCircle
+              class="w-12 h-12 sm:w-16 sm:h-16 text-red-500 mx-auto mb-3 sm:mb-4"
+            />
+            <h3 class="text-lg sm:text-xl font-semibold text-gray-900 mb-2">
+              Void Order
+            </h3>
+            <p class="text-sm sm:text-base text-gray-600">
+              Are you sure you want to void this order? This action cannot be
+              undone.
+            </p>
+          </div>
+
+          <!-- Order Details -->
+          <div class="space-y-4 mb-6">
+            <div class="bg-gray-50 rounded-lg p-4">
+              <div class="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span class="font-medium text-gray-600">Order Number:</span>
+                  <p class="font-semibold">{{ voidOrderData?.order_number }}</p>
+                </div>
+                <div>
+                  <span class="font-medium text-gray-600">Total Amount:</span>
+                  <p class="font-semibold">
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{
+                      parseFloat(voidOrderData?.total_amount || 0).toFixed(2)
+                    }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Void Reason -->
+            <div class="space-y-2">
+              <label class="text-sm font-medium text-gray-700">
+                Reason for voiding:
+              </label>
+              <textarea
+                v-model="voidReason"
+                placeholder="Enter reason for voiding this order..."
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm"
+                rows="3"
+                required
+              ></textarea>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div
+            class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3"
+          >
+            <button
+              @click="closeVoidOrderModal"
+              class="flex-1 btn btn-outline btn-sm sm:btn-md touch-manipulation font-thin"
+            >
+              Cancel
+            </button>
+            <button
+              @click="confirmVoidOrder"
+              class="flex-1 btn bg-red-600 text-white btn-sm sm:btn-md touch-manipulation font-thin hover:bg-red-700"
+            >
+              Void Order
             </button>
           </div>
         </div>

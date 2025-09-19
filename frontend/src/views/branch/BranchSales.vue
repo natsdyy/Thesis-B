@@ -20,6 +20,7 @@
   import { usePOSStore } from '../../stores/posStore';
   import { useCustomToast } from '../../composables/useCustomToast';
   import BranchSalesTransactionsModal from '../../components/branch/BranchSalesTransactionsModal.vue';
+  import BranchRemitSalesModal from '../../components/branch/BranchRemitSalesModal.vue';
 
   const branchContextStore = useBranchContextStore();
   const posStore = usePOSStore();
@@ -45,6 +46,7 @@
   const showVoidModal = ref(false);
   const showCompleteModal = ref(false);
   const showTransactionsModal = ref(false);
+  const showRemitModal = ref(false);
   const selectedOrder = ref(null);
   const voidReason = ref('');
   const selectedVoidReason = ref('');
@@ -53,6 +55,7 @@
   const showLeastSelling = ref(false);
   const voidLoading = ref(false);
   const completeLoading = ref(false);
+  const remitLoading = ref(false);
 
   // Predefined void reasons
   const voidReasons = ref([
@@ -238,39 +241,78 @@
 
     switch (period) {
       case 'today':
-        dateFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        dateTo = new Date(
+        // Create date range in UTC to match database timestamps
+        const todayUTC = new Date(
           now.getFullYear(),
           now.getMonth(),
-          now.getDate(),
-          23,
-          59,
-          59
+          now.getDate()
         );
+        dateFrom = new Date(todayUTC);
+        dateFrom.setUTCHours(0, 0, 0, 0);
+
+        dateTo = new Date(todayUTC);
+        dateTo.setUTCHours(23, 59, 59, 999);
         break;
       case 'week':
+        // Start of week (Sunday = 0, Monday = 1, etc.) in UTC
         const startOfWeek = new Date(now);
         startOfWeek.setDate(now.getDate() - now.getDay());
-        startOfWeek.setHours(0, 0, 0, 0);
+        startOfWeek.setUTCHours(0, 0, 0, 0);
         dateFrom = startOfWeek;
-        dateTo = now;
+
+        // End of current day in UTC
+        const endOfToday = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate()
+        );
+        dateTo = new Date(endOfToday);
+        dateTo.setUTCHours(23, 59, 59, 999);
         break;
       case 'month':
+        // Start of current month in UTC
         dateFrom = new Date(now.getFullYear(), now.getMonth(), 1);
-        dateTo = now;
+        dateFrom.setUTCHours(0, 0, 0, 0);
+
+        // End of current day in UTC
+        const endOfTodayMonth = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate()
+        );
+        dateTo = new Date(endOfTodayMonth);
+        dateTo.setUTCHours(23, 59, 59, 999);
         break;
       case 'year':
+        // Start of current year in UTC
         dateFrom = new Date(now.getFullYear(), 0, 1);
-        dateTo = now;
+        dateFrom.setUTCHours(0, 0, 0, 0);
+
+        // End of current day in UTC
+        const endOfTodayYear = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate()
+        );
+        dateTo = new Date(endOfTodayYear);
+        dateTo.setUTCHours(23, 59, 59, 999);
         break;
       default:
-        dateFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        dateTo = now;
+        const todayDefault = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate()
+        );
+        dateFrom = new Date(todayDefault);
+        dateFrom.setUTCHours(0, 0, 0, 0);
+
+        dateTo = new Date(todayDefault);
+        dateTo.setUTCHours(23, 59, 59, 999);
     }
 
     return {
-      dateFrom: dateFrom.toISOString().split('T')[0],
-      dateTo: dateTo.toISOString().split('T')[0],
+      dateFrom: dateFrom.toISOString(),
+      dateTo: dateTo.toISOString(),
     };
   };
 
@@ -293,8 +335,8 @@
       // Fetch previous period stats
       const previousStats = await posStore.fetchSalesStats(
         branchId,
-        previousDateFrom.toISOString().split('T')[0],
-        previousDateTo.toISOString().split('T')[0]
+        previousDateFrom.toISOString(),
+        previousDateTo.toISOString()
       );
 
       if (!previousStats || previousStats.total_sales === 0) {
@@ -443,6 +485,24 @@
 
   const closeTransactionsModal = () => {
     showTransactionsModal.value = false;
+  };
+
+  const showRemitSales = async () => {
+    remitLoading.value = true;
+    try {
+      // Add a small delay to show loading state
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      showRemitModal.value = true;
+    } catch (error) {
+      console.error('Error opening remit sales modal:', error);
+      showError('Failed to open remit sales report');
+    } finally {
+      remitLoading.value = false;
+    }
+  };
+
+  const closeRemitModal = () => {
+    showRemitModal.value = false;
   };
 
   // Void order functionality
@@ -625,17 +685,23 @@
         <button
           @click="refreshData"
           :disabled="loading"
-          class="btn btn-outline btn-sm text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
+          class="btn btn-sm font-thin text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
         >
           <RefreshCcw :class="['w-4 h-4 mr-2', { 'animate-spin': loading }]" />
           Refresh
         </button>
         <button
-          @click="exportReport"
-          class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/80"
+          @click="showRemitSales"
+          :disabled="remitLoading"
+          class="btn btn-sm font-thin bg-primaryColor text-white hover:bg-primaryColor/80"
+          :class="{ 'btn-disabled': remitLoading }"
         >
-          <Download class="w-4 h-4 mr-2" />
-          Export
+          <div
+            v-if="remitLoading"
+            class="loading loading-spinner loading-sm mr-2"
+          ></div>
+          <font-awesome-icon icon="fa-solid fa-receipt" />
+          {{ remitLoading ? 'Loading...' : 'Remit Sales' }}
         </button>
       </div>
     </div>
@@ -849,7 +915,9 @@
                   <div class="card-body">
                     <div class="flex items-center justify-between mb-4">
                       <h2 class="card-title text-primaryColor">
-                        <TrendingUp class="w-5 h-5" />
+                        <TrendingDown class="w-5 h-5" v-if="showLeastSelling" />
+                        <TrendingUp class="w-5 h-5" v-else />
+
                         {{
                           showLeastSelling
                             ? 'Least Selling Items'
@@ -858,7 +926,7 @@
                       </h2>
                       <button
                         @click="toggleSellingItems"
-                        class="btn btn-sm btn-outline text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
+                        class="btn btn-sm font-thin text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
                         :class="{
                           'bg-primaryColor text-white': showLeastSelling,
                         }"
@@ -880,6 +948,9 @@
                       >
                         <div class="flex items-center">
                           <div
+                            :class="{
+                              'bg-warning/80 text-white': showLeastSelling,
+                            }"
                             class="w-8 h-8 bg-primaryColor text-white rounded-full flex items-center justify-center text-sm font-bold mr-3"
                           >
                             {{ index + 1 }}
@@ -894,7 +965,12 @@
                           </div>
                         </div>
                         <div class="text-right">
-                          <p class="font-semibold text-primaryColor">
+                          <p
+                            class="font-thin text-primaryColor"
+                            :class="{
+                              'text-warning': showLeastSelling,
+                            }"
+                          >
                             <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
                               parseFloat(item.revenue).toFixed(2)
                             }}
@@ -1039,10 +1115,10 @@
                     <div v-if="transaction.status === 'void'">
                       <div
                         :class="[
-                          'badge badge-sm mb-1 flex items-center gap-1',
+                          'badge badge-sm mb-1 flex items-center gap-1 font-thin',
                           transaction.isRefunded
-                            ? 'bg-green-100 text-green-800 border border-green-200'
-                            : 'bg-red-100 text-red-800 border border-red-200',
+                            ? 'bg-success/10 text-success border border-success/20'
+                            : 'bg-error/10 text-error border border-error/20',
                         ]"
                       >
                         <font-awesome-icon
@@ -1062,7 +1138,7 @@
                     <div v-else>
                       <div
                         :class="[
-                          'badge badge-sm ',
+                          'badge badge-sm font-thin',
                           getStatusBadgeClass(transaction.status),
                         ]"
                       >
@@ -1478,6 +1554,9 @@
       :show="showTransactionsModal"
       @close="closeTransactionsModal"
     />
+
+    <!-- Remit Sales Modal -->
+    <BranchRemitSalesModal :show="showRemitModal" @close="closeRemitModal" />
   </div>
 </template>
 

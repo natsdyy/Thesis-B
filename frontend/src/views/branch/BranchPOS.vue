@@ -24,6 +24,7 @@
   import axios from 'axios';
   import { apiConfig } from '../../config/api.js';
   import QRCodeGenerator from '../../components/common/QRCodeGenerator.vue';
+  import POSTransactionModal from '../../components/branch/POSTransactionModal.vue';
 
   const branchContextStore = useBranchContextStore();
   const authStore = useAuthStore();
@@ -77,6 +78,7 @@
   const receiptData = ref(null);
   const voidOrderData = ref(null);
   const voidReason = ref('');
+  const showTransactionModal = ref(false);
 
   // Computed
   const currentBranch = computed(() => branchContextStore.currentBranch);
@@ -417,6 +419,24 @@
     voidReason.value = '';
   };
 
+  // Transaction modal functions
+  const showTransactions = () => {
+    showTransactionModal.value = true;
+  };
+
+  const closeTransactionModal = () => {
+    showTransactionModal.value = false;
+  };
+
+  const reopenTransactionModal = () => {
+    showTransactionModal.value = true;
+  };
+
+  // Refresh POS data after transaction operations
+  const refreshPOSData = async () => {
+    await fetchTodayStats();
+  };
+
   // Complete order functionality
   const completeOrder = async (orderData) => {
     try {
@@ -690,10 +710,17 @@
             class="flex items-center justify-between sm:justify-end space-x-2 sm:space-x-4"
           >
             <div class="text-left sm:text-right">
-              <p class="text-xs sm:text-sm text-gray-600">Logged in as</p>
               <p class="text-sm sm:text-base font-medium">
                 {{ user?.name }} ({{ userRole }})
               </p>
+              <button
+                @click="showTransactions"
+                class="btn btn-xs mt-1"
+                title="View Recent Transactions"
+              >
+                <Receipt class="w-3 h-3 mr-1" />
+                Transactions
+              </button>
             </div>
             <button
               v-if="userRole === 'Manager' && isManagerSessionActive"
@@ -735,8 +762,18 @@
               <div
                 v-for="item in posStore.filteredMenuItems"
                 :key="item.id"
-                class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer flex p-5"
-                @click="item.stock_quantity > 0 && handleAddToOrder(item)"
+                class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer flex p-5 relative"
+                :class="{
+                  'opacity-60 border-red-300 bg-red-50': item.is_expired,
+                  'border-orange-300 bg-orange-50':
+                    item.is_expiring_soon && !item.is_expired,
+                  'cursor-not-allowed': item.is_expired,
+                }"
+                @click="
+                  item.stock_quantity > 0 &&
+                  !item.is_expired &&
+                  handleAddToOrder(item)
+                "
               >
                 <!-- Item Image -->
                 <div class="w-2/5 bg-gray-100 aspect-square">
@@ -754,6 +791,30 @@
                   </div>
                 </div>
 
+                <!-- Expired Overlay -->
+                <div
+                  v-if="item.is_expired"
+                  class="absolute inset-0 bg-red-500/20 flex items-center justify-center z-10"
+                >
+                  <div
+                    class="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold"
+                  >
+                    EXPIRED
+                  </div>
+                </div>
+
+                <!-- Expiring Soon Warning -->
+                <div
+                  v-if="item.is_expiring_soon && !item.is_expired"
+                  class="absolute top-2 right-2 z-10"
+                >
+                  <div
+                    class="bg-orange-500 text-white px-2 py-1 rounded-full text-xs font-bold"
+                  >
+                    EXPIRES SOON
+                  </div>
+                </div>
+
                 <!-- Item Details -->
                 <div class="w-3/5 p-3 flex flex-col justify-between">
                   <div>
@@ -761,12 +822,20 @@
                     <span
                       class="badge badge-sm border-none mb-1"
                       :class="
-                        item.stock_quantity > 0
-                          ? 'bg-success/20 text-success'
-                          : 'bg-error/20 text-error'
+                        item.is_expired
+                          ? 'bg-red-500/20 text-red-600'
+                          : item.stock_quantity > 0
+                            ? 'bg-success/20 text-success'
+                            : 'bg-error/20 text-error'
                       "
                     >
-                      Stock: {{ item.stock_quantity }}
+                      {{
+                        item.is_expired
+                          ? 'EXPIRED'
+                          : item.is_expiring_soon
+                            ? 'EXPIRES SOON'
+                            : `Stock: ${item.stock_quantity}`
+                      }}
                     </span>
                   </div>
                   <div class="my-5">
@@ -787,15 +856,23 @@
                   <!-- Order Button -->
                   <button
                     @click.stop="handleAddToOrder(item)"
-                    :disabled="item.stock_quantity <= 0"
+                    :disabled="item.stock_quantity <= 0 || item.is_expired"
                     class="btn btn-sm w-full font-medium mt-3"
                     :class="
-                      item.stock_quantity > 0
-                        ? 'bg-primaryColor text-white'
-                        : 'btn-disabled'
+                      item.is_expired
+                        ? 'btn-disabled bg-red-100 text-red-500'
+                        : item.stock_quantity > 0
+                          ? 'bg-primaryColor text-white'
+                          : 'btn-disabled'
                     "
                   >
-                    {{ item.stock_quantity > 0 ? 'Order' : 'Out of Stock' }}
+                    {{
+                      item.is_expired
+                        ? 'EXPIRED'
+                        : item.stock_quantity > 0
+                          ? 'Order'
+                          : 'Out of Stock'
+                    }}
                   </button>
                 </div>
               </div>
@@ -1465,6 +1542,14 @@
       </div>
     </div>
     <!-- Close POS Interface div -->
+
+    <!-- POS Transaction Modal -->
+    <POSTransactionModal
+      :show="showTransactionModal"
+      @close="closeTransactionModal"
+      @reopen="reopenTransactionModal"
+      @refresh="refreshPOSData"
+    />
   </div>
 </template>
 

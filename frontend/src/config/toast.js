@@ -10,12 +10,7 @@ export const toastConfig = {
   showCloseButtonOnHover: false,
   hideProgressBar: false,
   closeButton: 'button',
-  icon: {
-    success: 'fas fa-check',
-    error: 'fas fa-times',
-    warning: 'fas fa-exclamation-triangle',
-    info: 'fas fa-info',
-  },
+  icon: true,
   rtl: false,
   transition: 'Vue-Toastification__bounce',
   maxToasts: 5,

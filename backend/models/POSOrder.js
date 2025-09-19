@@ -77,21 +77,33 @@ class POSOrder {
         .limit(limit)
         .offset(offset);
 
-      // Fetch items for each order
-      const ordersWithItems = await Promise.all(
-        orders.map(async (order) => {
-          const items = await db("pos_order_items as poi")
-            .leftJoin("menu_items as mi", "poi.menu_item_id", "mi.id")
-            .select("poi.*", "mi.menu_item_name", "mi.image_url", "mi.category")
-            .where("poi.order_id", order.id)
-            .orderBy("poi.id");
+      // Fetch all items for all orders in a single query to avoid N+1
+      const orderIds = orders.map((order) => order.id);
+      let items = [];
 
-          return {
-            ...order,
-            items,
-          };
-        })
-      );
+      if (orderIds.length > 0) {
+        items = await db("pos_order_items as poi")
+          .leftJoin("menu_items as mi", "poi.menu_item_id", "mi.id")
+          .select("poi.*", "mi.menu_item_name", "mi.image_url", "mi.category")
+          .whereIn("poi.order_id", orderIds)
+          .orderBy("poi.order_id")
+          .orderBy("poi.id");
+      }
+
+      // Group items by order_id
+      const itemsByOrderId = items.reduce((acc, item) => {
+        if (!acc[item.order_id]) {
+          acc[item.order_id] = [];
+        }
+        acc[item.order_id].push(item);
+        return acc;
+      }, {});
+
+      // Combine orders with their items
+      const ordersWithItems = orders.map((order) => ({
+        ...order,
+        items: itemsByOrderId[order.id] || [],
+      }));
 
       return { orders: ordersWithItems, total };
     } catch (error) {
@@ -195,6 +207,32 @@ class POSOrder {
     const trx = await db.transaction();
 
     try {
+      // Validate that no expired items are being sold
+      if (orderData.items && orderData.items.length > 0) {
+        const today = new Date().toISOString().split("T")[0];
+
+        for (const item of orderData.items) {
+          // Check if the menu item has branch inventory with expiry date
+          const branchInventory = await trx("branch_inventory")
+            .where("item_name", item.item_name)
+            .where("item_type", "production")
+            .where("branch_id", orderData.branch_id)
+            .whereNull("deleted_at")
+            .first();
+
+          if (branchInventory && branchInventory.expiry_date) {
+            const expiryDate = new Date(branchInventory.expiry_date)
+              .toISOString()
+              .split("T")[0];
+            if (expiryDate <= today) {
+              throw new Error(
+                `Cannot sell expired item: ${item.item_name} (expired on ${expiryDate})`
+              );
+            }
+          }
+        }
+      }
+
       // Generate order number
       const orderNumber = this.generateOrderNumber();
 
@@ -618,7 +656,9 @@ class POSOrder {
         const disposalResult = await disposalQuery
           .select(
             db.raw("COUNT(DISTINCT pos_sales_orders.id) as total_voided"),
-            db.raw("SUM(loss_profit_records.loss_amount) as total_loss")
+            db.raw(
+              "COALESCE(SUM(loss_profit_records.loss_amount), 0) as total_loss"
+            )
           )
           .first();
 

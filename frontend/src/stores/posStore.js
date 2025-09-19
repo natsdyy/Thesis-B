@@ -29,6 +29,10 @@ export const usePOSStore = defineStore('pos', () => {
   const orderHistory = ref([]);
   const currentBranchId = ref(null);
 
+  // Selected transaction for void/refund operations
+  const selectedTransaction = ref(null);
+  const pendingAction = ref(null);
+
   // Getters
   const filteredMenuItems = computed(() => {
     if (selectedCategory.value === 'All') {
@@ -40,11 +44,17 @@ export const usePOSStore = defineStore('pos', () => {
   });
 
   const availableItems = computed(() => {
-    return filteredMenuItems.value.filter((item) => item.stock_quantity > 0);
+    return filteredMenuItems.value.filter(
+      (item) => item.stock_quantity > 0 && !item.is_expired
+    );
   });
 
   const outOfStockItems = computed(() => {
     return filteredMenuItems.value.filter((item) => item.stock_quantity <= 0);
+  });
+
+  const expiredItems = computed(() => {
+    return filteredMenuItems.value.filter((item) => item.is_expired);
   });
 
   const orderSubtotal = computed(() => {
@@ -114,17 +124,36 @@ export const usePOSStore = defineStore('pos', () => {
       const apiItems = Array.isArray(resp?.data) ? resp.data : [];
 
       // Map API rows to POS-friendly structure
-      const mapped = apiItems.map((it) => ({
-        id: it.id,
-        name: it.menu_item_name || it.item_name,
-        price: parseFloat(it.selling_price || 0),
-        category: it.category,
-        stock_quantity: Number(it.branch_stock ?? 0) || 0,
-        image_url: formatImageUrl(it.image_url),
-        description: it.description || '',
-        item_code: it.item_code,
-        menu_id: it.menu_id,
-      }));
+      const mapped = apiItems.map((it) => {
+        const today = new Date().toISOString().split('T')[0];
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+        const isExpired =
+          it.branch_expiry_date &&
+          new Date(it.branch_expiry_date).toISOString().split('T')[0] <= today;
+        const isExpiringSoon =
+          it.branch_expiry_date &&
+          new Date(it.branch_expiry_date).toISOString().split('T')[0] <=
+            tomorrowStr &&
+          !isExpired;
+
+        return {
+          id: it.id,
+          name: it.menu_item_name || it.item_name,
+          price: parseFloat(it.selling_price || 0),
+          category: it.category,
+          stock_quantity: Number(it.branch_stock ?? 0) || 0,
+          image_url: formatImageUrl(it.image_url),
+          description: it.description || '',
+          item_code: it.item_code,
+          menu_id: it.menu_id,
+          expiry_date: it.branch_expiry_date,
+          is_expired: isExpired,
+          is_expiring_soon: isExpiringSoon,
+        };
+      });
 
       // Merge or reset list based on options.reset
       const cleaned = mapped.filter((m) => m.stock_quantity >= 0);
@@ -698,6 +727,17 @@ export const usePOSStore = defineStore('pos', () => {
     await fetchMenuItems({ ...options, reset: false });
   };
 
+  // Selected transaction management
+  const setSelectedTransaction = (transaction, action) => {
+    selectedTransaction.value = transaction;
+    pendingAction.value = action;
+  };
+
+  const clearSelectedTransaction = () => {
+    selectedTransaction.value = null;
+    pendingAction.value = null;
+  };
+
   return {
     // State
     menuItems,
@@ -714,6 +754,7 @@ export const usePOSStore = defineStore('pos', () => {
     filteredMenuItems,
     availableItems,
     outOfStockItems,
+    expiredItems,
     orderSubtotal,
     orderTax,
     orderTotal,
@@ -742,5 +783,11 @@ export const usePOSStore = defineStore('pos', () => {
     setSelectedCategory,
     initialize,
     getNextOrderNumber,
+
+    // Selected transaction
+    selectedTransaction,
+    pendingAction,
+    setSelectedTransaction,
+    clearSelectedTransaction,
   };
 });

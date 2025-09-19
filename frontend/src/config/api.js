@@ -9,6 +9,18 @@ function resolveBaseURL() {
 
   // If running behind the same origin (e.g., nginx proxy), use window origin
   if (typeof window !== 'undefined' && window.location?.origin) {
+<<<<<<< HEAD
+=======
+    // Check if we're in development mode (localhost:8080 or network IP:8080)
+    if (
+      window.location.origin.includes('localhost:8080') ||
+      window.location.origin.includes('192.168.254.110:8080')
+    ) {
+      // Use network IP for backend API so it's accessible from phones
+      return 'http://192.168.254.110:5000/api';
+    }
+    // For production or other environments, use window origin
+>>>>>>> a2002e1 (Implement Order Rating and POS Order Management Features)
     return `${window.location.origin.replace(/\/$/, '')}/api`;
   }
 

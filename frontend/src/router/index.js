@@ -160,6 +160,7 @@ const routes = [
       requiresDepartmentAccess: true,
     },
   },
+<<<<<<< HEAD
   // Attendance scan route (public, no auth required for QR scanning)
   {
     path: '/attendance/scan',
@@ -168,6 +169,15 @@ const routes = [
     meta: {
       title: 'QR Attendance Scanner',
       requiresAuth: false, // Public route for QR scanning
+=======
+  // Order rating route (public - no auth required)
+  {
+    path: '/rate-order',
+    name: 'OrderRating',
+    component: () => import('../views/OrderRating.vue'),
+    meta: {
+      title: 'Rate Your Order',
+>>>>>>> a2002e1 (Implement Order Rating and POS Order Management Features)
     },
   },
   // 404 Not Found
@@ -212,7 +222,14 @@ router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore();
 
   // Routes that don't require authentication
-  const publicRoutes = ['/', '/login', '/home', '/menu', '/stores'];
+  const publicRoutes = [
+    '/',
+    '/login',
+    '/home',
+    '/menu',
+    '/stores',
+    '/rate-order',
+  ];
 
   if (publicRoutes.includes(to.path)) {
     next();

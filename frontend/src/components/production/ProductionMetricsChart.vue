@@ -593,7 +593,7 @@
     loading.value = true;
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL}/menu/analytics/production-metrics?days=${timeRange.value}`,
+        `/api/menu/analytics/production-metrics?days=${timeRange.value}`,
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem('token')}`,

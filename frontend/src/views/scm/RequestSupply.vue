@@ -269,8 +269,11 @@
       );
 
       if (selectedItemType) {
-        // For "Other Materials", allow user to select unit
-        if (row.item_type === 'Other Materials') {
+        // For "Other Materials" or Beverages, allow user to select unit
+        if (
+          row.item_type === 'Other Materials' ||
+          isBeverageType(row.item_type)
+        ) {
           // Don't auto-populate, let user choose
           row.item_unit = '';
         } else {
@@ -290,9 +293,22 @@
     }
   };
 
+  // Function to determine if the given item type belongs to Beverages category
+  const isBeverageType = (itemTypeName) => {
+    if (!itemTypeName) return false;
+    const itemType = inventoryStore.itemTypes?.find(
+      (it) => it.name === itemTypeName
+    );
+    if (!itemType) return false;
+    const category = inventoryStore.categories?.find(
+      (c) => c.id === itemType.category_id
+    );
+    return category?.name === 'Beverages';
+  };
+
   // Function to check if unit selection is required for a row
   const isUnitSelectionRequired = (row) => {
-    return row.item_type === 'Other Materials';
+    return row.item_type === 'Other Materials' || isBeverageType(row.item_type);
   };
 
   // Common unit options for "Other Materials"
@@ -319,9 +335,11 @@
     'containers',
   ];
 
+  // Unit options specifically allowed for Beverages
+  const beverageUnitOptions = ['liters', 'bottles', 'pieces', 'cans'];
+
   const priorities = ['Low', 'Normal', 'High', 'Urgent'];
   const departments = ['SCM', 'Finance', 'HR', 'Production', 'Admin', 'Branch'];
-  const branches = ['Branch 1', 'Branch 2', 'Branch 3', 'Branch 4', 'Branch 5'];
 
   // Toast state
   const toast = ref({ show: false, type: '', message: '' });
@@ -884,8 +902,8 @@
           row.item_name.trim() &&
           row.item_quantity > 0 &&
           row.item_unitPrice > 0 &&
-          // For "Other Materials", ensure unit is selected
-          (row.item_type !== 'Other Materials' || row.item_unit.trim())
+          // For dynamic-unit categories (Other Materials, Beverages), ensure unit is selected
+          (!isUnitSelectionRequired(row) || row.item_unit.trim())
       );
 
       if (validItems.length === 0) {
@@ -952,8 +970,8 @@
           row.item_name.trim() &&
           row.item_quantity > 0 &&
           row.item_unitPrice > 0 &&
-          // For "Other Materials", ensure unit is selected
-          (row.item_type !== 'Other Materials' || row.item_unit.trim())
+          // For dynamic-unit categories (Other Materials, Beverages), ensure unit is selected
+          (!isUnitSelectionRequired(row) || row.item_unit.trim())
       );
 
       if (validItems.length === 0) {
@@ -4065,15 +4083,17 @@
                 </td>
 
                 <td>
-                  <!-- Show dropdown for "Other Materials", readonly input for others -->
+                  <!-- Show dropdown for unit selection when needed (Other Materials or Beverages) -->
                   <select
-                    v-if="row.item_type === 'Other Materials'"
+                    v-if="isUnitSelectionRequired(row)"
                     v-model="row.item_unit"
                     class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor"
                   >
                     <option value="" disabled>Select Unit</option>
                     <option
-                      v-for="unit in commonUnitOptions"
+                      v-for="unit in isBeverageType(row.item_type)
+                        ? beverageUnitOptions
+                        : commonUnitOptions"
                       :key="unit"
                       :value="unit"
                     >
@@ -4542,15 +4562,17 @@
                 </td>
 
                 <td>
-                  <!-- Show dropdown for "Other Materials", readonly input for others -->
+                  <!-- Show dropdown for unit selection when needed (Other Materials or Beverages) -->
                   <select
-                    v-if="row.item_type === 'Other Materials'"
+                    v-if="isUnitSelectionRequired(row)"
                     v-model="row.item_unit"
                     class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor"
                   >
                     <option value="" disabled>Select Unit</option>
                     <option
-                      v-for="unit in commonUnitOptions"
+                      v-for="unit in isBeverageType(row.item_type)
+                        ? beverageUnitOptions
+                        : commonUnitOptions"
                       :key="unit"
                       :value="unit"
                     >

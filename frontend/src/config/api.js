@@ -12,10 +12,12 @@ function resolveBaseURL() {
     // Check if we're in development mode (localhost:8080 or network IP:8080)
     if (
       window.location.origin.includes('localhost:8080') ||
-      window.location.origin.includes('192.168.254.110:8080')
+      window.location.origin.includes('192.168.56.1:8080') ||
+      window.location.origin.includes('192.168.18.5:8080')
     ) {
       // Use network IP for backend API so it's accessible from phones
-      return 'http://192.168.254.110:5000/api';
+      // Use the Wi-Fi network IP (192.168.18.5) as it has proper gateway
+      return 'http://192.168.18.5:5000/api';
     }
     // For production or other environments, use window origin
     return `${window.location.origin.replace(/\/$/, '')}/api`;

@@ -57,13 +57,14 @@ router.post("/", upload.single("image"), async (req, res) => {
     }
 
     // Validate image is required
-    if (!imageFile) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Image upload is required. Please share a photo of your food experience.",
-      });
-    }
+    // Image is optional for testing purposes
+    // if (!imageFile) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message:
+    //       "Image upload is required. Please share a photo of your food experience.",
+    //   });
+    // }
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

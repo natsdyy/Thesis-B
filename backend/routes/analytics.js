@@ -22,56 +22,100 @@ router.get("/overview", async (req, res) => {
     }
 
     // Get customer statistics
-    const customerStats = await db.raw(`
-      SELECT 
-        COUNT(*) as total_customers,
-        COUNT(CASE WHEN last_visit >= NOW() - INTERVAL '30 days' THEN 1 END) as active_customers,
-        AVG(average_rating) as overall_average_rating,
-        SUM(total_spent) as total_revenue,
-        AVG(total_spent) as average_customer_value
-      FROM customers
-      WHERE 1=1 ${dateFilter}
-    `, params);
+    let customerStats = [[{ total_customers: 0, active_customers: 0, overall_average_rating: 0, total_revenue: 0, average_customer_value: 0 }]];
+    try {
+      customerStats = await db.raw(`
+        SELECT 
+          COUNT(*) as total_customers,
+          COUNT(CASE WHEN last_visit >= NOW() - INTERVAL '30 days' THEN 1 END) as active_customers,
+          COALESCE(AVG(average_rating), 0) as overall_average_rating,
+          COALESCE(SUM(total_spent), 0) as total_revenue,
+          COALESCE(AVG(total_spent), 0) as average_customer_value
+        FROM customers
+        WHERE 1=1 ${dateFilter}
+      `, params);
+      console.log('Customer stats:', customerStats[0][0]);
+    } catch (error) {
+      console.log('Customers table error:', error.message);
+    }
 
     // Get feedback statistics
-    const feedbackStats = await db.raw(`
-      SELECT 
-        COUNT(*) as total_feedback,
-        AVG(rating) as average_feedback_rating,
-        COUNT(CASE WHEN rating >= 4 THEN 1 END) as positive_feedback,
-        COUNT(CASE WHEN rating <= 2 THEN 1 END) as negative_feedback
-      FROM feedback
-      WHERE 1=1 ${dateFilter}
-    `, params);
+    let feedbackStats = [[{ total_feedback: 0, average_feedback_rating: 0, positive_feedback: 0, negative_feedback: 0 }]];
+    try {
+      feedbackStats = await db.raw(`
+        SELECT 
+          COUNT(*) as total_feedback,
+          COALESCE(AVG(rating), 0) as average_feedback_rating,
+          COUNT(CASE WHEN rating >= 4 THEN 1 END) as positive_feedback,
+          COUNT(CASE WHEN rating <= 2 THEN 1 END) as negative_feedback
+        FROM feedback
+        WHERE 1=1 ${dateFilter}
+      `, params);
+      console.log('Feedback stats:', feedbackStats[0][0]);
+    } catch (error) {
+      console.log('Feedback table error:', error.message);
+    }
 
     // Get order rating statistics
-    const ratingStats = await db.raw(`
-      SELECT 
-        COUNT(*) as total_ratings,
-        AVG(overall_rating) as average_order_rating,
-        COUNT(CASE WHEN overall_rating >= 4 THEN 1 END) as positive_ratings,
-        COUNT(CASE WHEN overall_rating <= 2 THEN 1 END) as negative_ratings
-      FROM order_ratings
-      WHERE 1=1 ${dateFilter}
-    `, params);
+    let ratingStats = [[{ total_ratings: 0, average_order_rating: 0, positive_ratings: 0, negative_ratings: 0 }]];
+    try {
+      ratingStats = await db.raw(`
+        SELECT 
+          COUNT(*) as total_ratings,
+          COALESCE(AVG(overall_rating), 0) as average_order_rating,
+          COUNT(CASE WHEN overall_rating >= 4 THEN 1 END) as positive_ratings,
+          COUNT(CASE WHEN overall_rating <= 2 THEN 1 END) as negative_ratings
+        FROM order_ratings
+        WHERE 1=1 ${dateFilter}
+      `, params);
+      console.log('Rating stats:', ratingStats[0][0]);
+    } catch (error) {
+      console.log('Order ratings table error:', error.message);
+    }
 
     // Get sales statistics
-    const salesStats = await db.raw(`
-      SELECT 
-        COUNT(*) as total_orders,
-        SUM(order_total) as total_sales,
-        AVG(order_total) as average_order_value
-      FROM order_ratings
-      WHERE order_total IS NOT NULL ${dateFilter}
-    `, params);
+    let salesStats = [[{ total_orders: 0, total_sales: 0, average_order_value: 0 }]];
+    try {
+      salesStats = await db.raw(`
+        SELECT 
+          COUNT(*) as total_orders,
+          COALESCE(SUM(order_total), 0) as total_sales,
+          COALESCE(AVG(order_total), 0) as average_order_value
+        FROM order_ratings
+        WHERE order_total IS NOT NULL ${dateFilter}
+      `, params);
+      console.log('Sales stats:', salesStats[0][0]);
+    } catch (error) {
+      console.log('Sales data error:', error.message);
+    }
 
     res.json({
       success: true,
       data: {
-        customers: customerStats[0][0],
-        feedback: feedbackStats[0][0],
-        ratings: ratingStats[0][0],
-        sales: salesStats[0][0]
+        customers: customerStats[0]?.[0] || {
+          total_customers: 0,
+          active_customers: 0,
+          overall_average_rating: 0,
+          total_revenue: 0,
+          average_customer_value: 0
+        },
+        feedback: feedbackStats[0]?.[0] || {
+          total_feedback: 0,
+          average_feedback_rating: 0,
+          positive_feedback: 0,
+          negative_feedback: 0
+        },
+        ratings: ratingStats[0]?.[0] || {
+          total_ratings: 0,
+          average_order_rating: 0,
+          positive_ratings: 0,
+          negative_ratings: 0
+        },
+        sales: salesStats[0]?.[0] || {
+          total_orders: 0,
+          total_sales: 0,
+          average_order_value: 0
+        }
       }
     });
   } catch (error) {

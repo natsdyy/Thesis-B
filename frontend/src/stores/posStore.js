@@ -435,7 +435,7 @@ export const usePOSStore = defineStore('pos', () => {
     resetOrder();
   };
 
-  const voidOrder = async (orderId, voidReason) => {
+  const voidOrder = async (orderId, voidReason, lossAmount = 0) => {
     try {
       loading.value = true;
       error.value = null;
@@ -443,7 +443,10 @@ export const usePOSStore = defineStore('pos', () => {
       const url = getApiUrl(`/pos/orders/${orderId}/void`);
       const { data: response } = await axios.post(
         url,
-        { void_reason: voidReason },
+        {
+          void_reason: voidReason,
+          loss_amount: lossAmount,
+        },
         {
           baseURL: apiConfig.baseURL,
           headers: { ...getAuthHeaders() },
@@ -543,12 +546,15 @@ export const usePOSStore = defineStore('pos', () => {
       );
 
       if (response.success) {
-        return response.data;
+        return {
+          data: response.data,
+          pagination: response.pagination,
+        };
       }
-      return [];
+      return { data: [], pagination: { total: 0, limit: 20, offset: 0 } };
     } catch (err) {
       console.error('Error fetching order history:', err);
-      return [];
+      return { data: [], pagination: { total: 0, limit: 20, offset: 0 } };
     }
   };
 
@@ -632,13 +638,15 @@ export const usePOSStore = defineStore('pos', () => {
     try {
       // This would need a specific API endpoint for top selling items
       // For now, we'll fetch recent orders and calculate top items
-      const orders = await fetchOrderHistory({
+      const response = await fetchOrderHistory({
         branch_id: branchId,
         status: 'completed',
         limit: 100,
         date_from: dateFrom,
         date_to: dateTo,
       });
+
+      const orders = response.data || [];
 
       if (!orders || orders.length === 0) {
         return [];
@@ -654,7 +662,7 @@ export const usePOSStore = defineStore('pos', () => {
               itemCounts[key] = { quantity: 0, revenue: 0 };
             }
             itemCounts[key].quantity += item.quantity;
-            itemCounts[key].revenue += item.total_price;
+            itemCounts[key].revenue += parseFloat(item.total_price) || 0;
           });
         }
       });
@@ -664,7 +672,7 @@ export const usePOSStore = defineStore('pos', () => {
         .map(([name, data]) => ({
           name,
           quantity: data.quantity,
-          revenue: data.revenue,
+          revenue: parseFloat(data.revenue.toFixed(2)),
         }))
         .sort((a, b) => b.quantity - a.quantity)
         .slice(0, 10); // Top 10 items

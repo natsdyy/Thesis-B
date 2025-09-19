@@ -735,16 +735,16 @@
               <div
                 v-for="item in posStore.filteredMenuItems"
                 :key="item.id"
-                class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+                class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer flex p-5"
                 @click="item.stock_quantity > 0 && handleAddToOrder(item)"
               >
                 <!-- Item Image -->
-                <div class="aspect-square bg-gray-100">
+                <div class="w-2/5 bg-gray-100 aspect-square">
                   <img
                     v-if="item.image_url"
                     :src="item.image_url"
                     :alt="item.name"
-                    class="w-full h-full object-cover"
+                    class="w-full h-full object-cover rounded-lg"
                   />
                   <div
                     v-else
@@ -755,38 +755,40 @@
                 </div>
 
                 <!-- Item Details -->
-                <div class="p-3">
-                  <div class="grid grid-cols-2 gap-2 mb-5">
-                    <!-- Stock Status -->
-                    <div class="flex mb-1 flex-col">
-                      <h2 class="font-semibold text-gray-900 text-md">
-                        {{ item.name }}
-                      </h2>
-                      <span
-                        class="badge badge-sm border-none"
-                        :class="
-                          item.stock_quantity > 0
-                            ? 'bg-success/20 text-success'
-                            : 'bg-error/20 text-error'
-                        "
-                      >
-                        Stock: {{ item.stock_quantity }}
-                      </span>
-                    </div>
-                    <div class="flex justify-end">
-                      <!-- Price -->
-                      <p class="text-md font-bold text-gray-900 mb-3">
-                        <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                        {{ parseFloat(item.price).toFixed(2) }}
-                      </p>
-                    </div>
+                <div class="w-3/5 p-3 flex flex-col justify-between">
+                  <div>
+                    <!-- Stock -->
+                    <span
+                      class="badge badge-sm border-none mb-1"
+                      :class="
+                        item.stock_quantity > 0
+                          ? 'bg-success/20 text-success'
+                          : 'bg-error/20 text-error'
+                      "
+                    >
+                      Stock: {{ item.stock_quantity }}
+                    </span>
+                  </div>
+                  <div class="my-5">
+                    <!-- Name -->
+                    <h2 class="font-semibold text-gray-900 text-md">
+                      {{ item.name }}
+                    </h2>
+                  </div>
+
+                  <div class="">
+                    <!-- Price -->
+                    <p class="text-lg font-bold text-gray-900 mt-2">
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{ parseFloat(item.price).toFixed(2) }}
+                    </p>
                   </div>
 
                   <!-- Order Button -->
                   <button
                     @click.stop="handleAddToOrder(item)"
                     :disabled="item.stock_quantity <= 0"
-                    class="btn btn-sm w-full font-medium"
+                    class="btn btn-sm w-full font-medium mt-3"
                     :class="
                       item.stock_quantity > 0
                         ? 'bg-primaryColor text-white'
@@ -971,24 +973,13 @@
               >
                 3
               </button>
-              <button
-                @click="processOrder"
-                :disabled="!posStore.isOrderValid || isProcessingOrder"
-                class="btn btn-success btn-xs sm:btn-sm touch-manipulation border-none shadow-none"
-                :class="
-                  posStore.isOrderValid
-                    ? 'bg-primaryColor hover:bg-primaryColor/80 active:bg-primaryColor/90 text-white font-thin'
-                    : 'bg-gray-400'
-                "
-              >
-                <span class="hidden sm:inline">{{
-                  isProcessingOrder ? 'Processing...' : 'Process Order'
-                }}</span>
-                <span class="sm:hidden">{{
-                  isProcessingOrder ? '...' : 'Process'
-                }}</span>
-              </button>
 
+              <button
+                @click="resetOrder"
+                class="btn btn-warning btn-xs sm:btn-sm touch-manipulation"
+              >
+                Reset
+              </button>
               <!-- Row 4 -->
               <button
                 @click="handleKeypadInput('0')"
@@ -1002,11 +993,23 @@
               >
                 00
               </button>
+
               <button
-                @click="resetOrder"
-                class="btn btn-warning btn-xs sm:btn-sm touch-manipulation"
+                @click="processOrder"
+                :disabled="!posStore.isOrderValid || isProcessingOrder"
+                class="btn btn-success btn-xs sm:btn-sm touch-manipulation border-none shadow-none col-span-2"
+                :class="
+                  posStore.isOrderValid
+                    ? 'bg-primaryColor hover:bg-primaryColor/80 active:bg-primaryColor/90 text-white font-thin'
+                    : 'bg-gray-400'
+                "
               >
-                Reset
+                <span class="hidden sm:inline">{{
+                  isProcessingOrder ? 'Processing...' : 'Process Order'
+                }}</span>
+                <span class="sm:hidden">{{
+                  isProcessingOrder ? '...' : 'Process'
+                }}</span>
               </button>
             </div>
           </div>

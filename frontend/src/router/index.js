@@ -160,7 +160,6 @@ const routes = [
       requiresDepartmentAccess: true,
     },
   },
-<<<<<<< HEAD
   // Attendance scan route (public, no auth required for QR scanning)
   {
     path: '/attendance/scan',
@@ -169,7 +168,8 @@ const routes = [
     meta: {
       title: 'QR Attendance Scanner',
       requiresAuth: false, // Public route for QR scanning
-=======
+    },
+  },
   // Order rating route (public - no auth required)
   {
     path: '/rate-order',
@@ -177,7 +177,7 @@ const routes = [
     component: () => import('../views/OrderRating.vue'),
     meta: {
       title: 'Rate Your Order',
->>>>>>> a2002e1 (Implement Order Rating and POS Order Management Features)
+      requiresAuth: false, // Public route for order rating
     },
   },
   // 404 Not Found

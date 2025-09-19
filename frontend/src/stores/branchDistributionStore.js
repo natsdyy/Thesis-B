@@ -6,7 +6,6 @@ import { apiConfig } from '../config/api.js';
 export const useBranchDistributionStore = defineStore(
   'branchDistribution',
   () => {
-    const API_BASE_URL = apiConfig.baseURL;
     // State
     const distributions = ref([]);
     const currentDistribution = ref(null);
@@ -40,7 +39,7 @@ export const useBranchDistributionStore = defineStore(
 
       try {
         const response = await axios.post(
-          `${API_BASE_URL}/branch-distributions`,
+          `${apiConfig.baseURL}/branch-distributions`,
           distributionData
         );
 
@@ -84,7 +83,7 @@ export const useBranchDistributionStore = defineStore(
         };
 
         const response = await axios.get(
-          `${API_BASE_URL}/branch-distributions`,
+          `${apiConfig.baseURL}/branch-distributions`,
           { params }
         );
 
@@ -128,7 +127,7 @@ export const useBranchDistributionStore = defineStore(
         };
 
         const response = await axios.get(
-          `${API_BASE_URL}/branch-distributions/branch/${branchId}`,
+          `${apiConfig.baseURL}/branch-distributions/branch/${branchId}`,
           { params }
         );
 
@@ -165,7 +164,7 @@ export const useBranchDistributionStore = defineStore(
 
       try {
         const response = await axios.get(
-          `${API_BASE_URL}/branch-distributions/${id}`
+          `${apiConfig.baseURL}/branch-distributions/${id}`
         );
 
         if (response.data.success) {
@@ -198,7 +197,7 @@ export const useBranchDistributionStore = defineStore(
 
       try {
         const response = await axios.get(
-          `${API_BASE_URL}/branch-distributions/reference/${reference}`
+          `${apiConfig.baseURL}/branch-distributions/reference/${reference}`
         );
 
         if (response.data.success) {
@@ -231,7 +230,7 @@ export const useBranchDistributionStore = defineStore(
 
       try {
         const response = await axios.delete(
-          `${API_BASE_URL}/branch-distributions/${id}`
+          `${apiConfig.baseURL}/branch-distributions/${id}`
         );
 
         if (response.data.success) {
@@ -269,7 +268,7 @@ export const useBranchDistributionStore = defineStore(
       error.value = null;
       try {
         const response = await axios.patch(
-          `${API_BASE_URL}/branch-distributions/${id}/status`,
+          `${apiConfig.baseURL}/branch-distributions/${id}/status`,
           { status, ...details }
         );
         if (response.data.success) {
@@ -313,7 +312,7 @@ export const useBranchDistributionStore = defineStore(
       error.value = null;
       try {
         const response = await axios.post(
-          `${API_BASE_URL}/branch-distributions/${id}/reject`,
+          `${apiConfig.baseURL}/branch-distributions/${id}/reject`,
           rejectionData
         );
         if (response.data.success) {
@@ -357,7 +356,7 @@ export const useBranchDistributionStore = defineStore(
       error.value = null;
       try {
         const response = await axios.post(
-          `${API_BASE_URL}/branch-distributions/${id}/complete`,
+          `${apiConfig.baseURL}/branch-distributions/${id}/complete`,
           completionData
         );
         if (response.data.success) {
@@ -402,7 +401,7 @@ export const useBranchDistributionStore = defineStore(
       error.value = null;
       try {
         const response = await axios.post(
-          `${API_BASE_URL}/branch-distributions/${id}/acknowledge-rejection`,
+          `${apiConfig.baseURL}/branch-distributions/${id}/acknowledge-rejection`,
           acknowledgmentData
         );
         if (response.data.success) {
@@ -452,7 +451,7 @@ export const useBranchDistributionStore = defineStore(
 
       try {
         const response = await axios.post(
-          `${API_BASE_URL}/branch-distributions/bulk-distribute`,
+          `${apiConfig.baseURL}/branch-distributions/bulk-distribute`,
           { distributions: distributionsData }
         );
 
@@ -495,7 +494,7 @@ export const useBranchDistributionStore = defineStore(
       error.value = null;
       try {
         const response = await axios.post(
-          `${API_BASE_URL}/branch-distributions/${id}/partial-accept-reject`,
+          `${apiConfig.baseURL}/branch-distributions/${id}/partial-accept-reject`,
           actionData
         );
         if (response.data.success) {

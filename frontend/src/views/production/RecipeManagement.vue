@@ -1325,8 +1325,13 @@
               <button
                 class="btn btn-xs bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none"
                 @click.stop="() => handleRestoreRecipe(recipe)"
+                :disabled="loading"
               >
-                Restore
+                <span
+                  v-if="loading"
+                  class="loading loading-spinner loading-xs mr-1"
+                ></span>
+                {{ loading ? 'Restoring...' : 'Restore' }}
               </button>
             </div>
           </div>
@@ -1666,14 +1671,22 @@
             </button>
             <button
               type="submit"
-              class="btn btn-sm bg-white text-black/70 border border-black/20 hover:bg-primaryColor/10 hover:border-primaryColor/40 rounded-lg shadow-none font-thin"
+              class="btn btn-sm bg-primaryColor text-white border-none hover:bg-primaryColor/80 rounded-lg shadow-none font-thin"
               :disabled="loading"
             >
               <span
                 v-if="loading"
                 class="loading loading-spinner loading-sm mr-2"
               ></span>
-              {{ modal.type === 'create' ? 'Create Recipe' : 'Update Recipe' }}
+              {{
+                loading
+                  ? modal.type === 'create'
+                    ? 'Creating Recipe...'
+                    : 'Updating Recipe...'
+                  : modal.type === 'create'
+                    ? 'Create Recipe'
+                    : 'Update Recipe'
+              }}
             </button>
           </div>
         </form>
@@ -1726,13 +1739,13 @@
             <!-- Selected Ingredient Details -->
             <div
               v-if="ingredientForm.inventory_item_id && !loading"
-              class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg"
+              class="mt-3 p-3 bg-primaryColor/5 border border-primaryColor/30 rounded-lg"
             >
-              <div class="text-sm font-medium text-blue-800 mb-2">
+              <div class="text-sm font-medium text-primaryColor mb-2">
                 <font-awesome-icon icon="fa-solid fa-book-open" class="mr-1" />
                 Inventory Details
               </div>
-              <div class="grid grid-cols-1 gap-2 text-xs text-blue-700">
+              <div class="grid grid-cols-1 gap-2 text-xs text-primaryColor">
                 <div class="flex justify-between">
                   <span class="font-medium">Unit:</span>
                   <span class="ml-1">{{ ingredientForm.unit || 'N/A' }}</span>
@@ -1740,7 +1753,7 @@
                 <div class="flex justify-between">
                   <span class="font-medium">Available Stock:</span>
                   <span class="ml-1 font-bold">
-                    {{ getSelectedIngredientStock() || 0 }}
+                    {{ Number(getSelectedIngredientStock()).toFixed(2) || 0 }}
                     {{ ingredientForm.unit || 'units' }}
                   </span>
                 </div>
@@ -1867,7 +1880,8 @@
                   Quantity <span class="text-red-500">*</span>
                 </span>
                 <span class="text-xs text-gray-500 ml-2">
-                  (Max: {{ getSelectedIngredientStock() || 0 }}
+                  (Max:
+                  {{ Number(getSelectedIngredientStock()).toFixed(2) || 0 }}
                   {{ ingredientForm.unit || 'units' }})
                 </span>
               </label>
@@ -1876,13 +1890,14 @@
                 type="number"
                 step="0.01"
                 :min="0"
-                :max="getSelectedIngredientStock() || 0"
+                :max="Number(getSelectedIngredientStock()).toFixed(2) || 0"
                 placeholder="0"
                 class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
                 required
               />
               <div class="text-xs text-gray-500 mt-1">
-                Available: {{ getSelectedIngredientStock() || 0 }}
+                Available:
+                {{ Number(getSelectedIngredientStock()).toFixed(2) || 0 }}
                 {{ ingredientForm.unit || 'units' }}
               </div>
               <!-- Real-time Stock Check -->
@@ -2354,8 +2369,13 @@
           <button
             @click="handleConfirmAction"
             class="btn bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80 btn-sm"
+            :disabled="loading"
           >
-            Confirm
+            <span
+              v-if="loading"
+              class="loading loading-spinner loading-xs mr-1"
+            ></span>
+            {{ loading ? 'Processing...' : 'Confirm' }}
           </button>
         </div>
       </div>

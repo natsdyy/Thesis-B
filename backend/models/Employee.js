@@ -114,10 +114,12 @@ class Employee {
         throw new Error("Employee ID is required");
       }
 
+      // Include role name for downstream consumers (e.g., POS manager check)
       const employee = await db("employees")
-        .select("*")
-        .where("employee_id", employeeId)
-        .whereNull("deleted_at")
+        .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
+        .select("employees.*", db.raw("user_roles.role as role"))
+        .where("employees.employee_id", employeeId)
+        .whereNull("employees.deleted_at")
         .first();
 
       return employee;

@@ -73,6 +73,50 @@
         })
       : 'N/A';
   const peso = (n) => `₱${parseFloat(n || 0).toLocaleString()}`;
+
+  // Map raw transaction types to user-friendly labels
+  const humanizeType = (type, adjustmentType) => {
+    const map = {
+      receipt: 'Receipt',
+      consumption: 'Consumption',
+      production_consumption: 'Production',
+      production_output: 'Production Output',
+      adjustment: 'Adjustment',
+      reservation: 'Reservation',
+      transfer: 'Transfer',
+      disposal: 'Disposal',
+    };
+    const base = map[type] || (type ? type.replace(/_/g, ' ') : '');
+    return adjustmentType
+      ? `${base} (${adjustmentType.replace(/_/g, ' ')})`
+      : base;
+  };
+
+  // Normalize common reference formats
+  const formatRef = (ref) => {
+    if (!ref) return '—';
+    try {
+      if (typeof ref === 'object') {
+        // Handle accidental object refs gracefully
+        if (ref.id) return String(ref.id);
+        return JSON.stringify(ref);
+      }
+      const s = String(ref);
+      return s.includes('[object Object]')
+        ? s.replace('[object Object]', 'UNKNOWN')
+        : s;
+    } catch (_) {
+      return String(ref);
+    }
+  };
+
+  const cleanText = (text) => {
+    if (!text) return '—';
+    const s = String(text);
+    return s.includes('[object Object]')
+      ? s.replace('[object Object]', 'UNKNOWN')
+      : s;
+  };
 </script>
 
 <template>
@@ -175,11 +219,7 @@
                   <tr v-for="t in transactions" :key="t.id">
                     <td>{{ formatDate(t.transaction_date) }}</td>
                     <td>
-                      {{
-                        t.adjustment_type
-                          ? `${t.transaction_type} (${t.adjustment_type})`
-                          : t.transaction_type
-                      }}
+                      {{ humanizeType(t.transaction_type, t.adjustment_type) }}
                     </td>
                     <td>{{ parseFloat(t.quantity).toLocaleString() }}</td>
                     <td>
@@ -190,9 +230,12 @@
                         >(+ Disposal {{ peso(t.disposal_cost) }})</span
                       >
                     </td>
-                    <td>{{ t.reference_number || '—' }}</td>
-                    <td class="max-w-[260px] truncate" :title="t.notes || ''">
-                      {{ t.reason || t.notes || '—' }}
+                    <td>{{ formatRef(t.reference_number) }}</td>
+                    <td
+                      class="max-w-[260px] truncate"
+                      :title="cleanText(t.notes) || ''"
+                    >
+                      {{ cleanText(t.reason || t.notes) }}
                     </td>
                   </tr>
                   <tr v-if="transactions.length === 0">

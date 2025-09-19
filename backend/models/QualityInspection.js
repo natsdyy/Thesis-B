@@ -368,25 +368,31 @@ class QualityInspection {
       // Extract the actual ID value from the result object
       const inspectionId = result.id || result;
 
-      // Log the quality inspection action
-      await AuditLogger.log({
-        menu_item_id: menuItemId,
-        sample_production_id: inspectionData.sample_production_id,
-        quality_inspection_id: inspectionId,
-        user_id: inspectionData.inspector_id,
-        action_type: "QUALITY_INSPECTION",
-        action_details: {
-          inspection_number: inspectionNumber,
-          inspection_type: inspectionData.inspection_type,
-          result: inspectionData.result,
-          overall_quality_score: inspectionData.overall_quality_score,
-          sample_batch_number: sampleProduction?.sample_batch_number,
-          requires_retest: inspectionData.requires_retest,
-        },
-        notes: `Quality inspection completed${sampleProduction?.sample_batch_number ? ` for batch ${sampleProduction.sample_batch_number}` : ""} - Result: ${inspectionData.result}`,
-      });
-
+      // Commit the transaction first
       await trx.commit();
+
+      // Log the quality inspection action (after transaction commit)
+      try {
+        await AuditLogger.log({
+          menu_item_id: menuItemId,
+          sample_production_id: inspectionData.sample_production_id,
+          quality_inspection_id: inspectionId,
+          employee_id: inspectionData.inspector_id,
+          action_type: "QUALITY_INSPECTION",
+          action_details: {
+            inspection_number: inspectionNumber,
+            inspection_type: inspectionData.inspection_type,
+            result: inspectionData.result,
+            overall_quality_score: inspectionData.overall_quality_score,
+            sample_batch_number: sampleProduction?.sample_batch_number,
+            requires_retest: inspectionData.requires_retest,
+          },
+          notes: `Quality inspection completed${sampleProduction?.sample_batch_number ? ` for batch ${sampleProduction.sample_batch_number}` : ""} - Result: ${inspectionData.result}`,
+        });
+      } catch (auditError) {
+        console.warn("Failed to create audit log:", auditError.message);
+        // Don't fail the entire operation if audit logging fails
+      }
       return await this.getById(inspectionId);
     } catch (error) {
       await trx.rollback();
@@ -515,38 +521,43 @@ class QualityInspection {
           updated_at: trx.fn.now(),
         });
 
-      // Log the approval action
-      await AuditLogger.log({
-        menu_item_id: inspection.menu_item_id,
-        sample_production_id: inspection.sample_production_id,
-        quality_inspection_id: id,
-        user_id: approvedByUserId,
-        action_type: "QUALITY_PASSED",
-        action_details: {
-          inspection_number: currentInspection.inspection_number,
-          sample_batch_number: currentInspection.sample_batch_number,
-          menu_item_name: currentInspection.menu_item_name,
-          overall_quality_score: currentInspection.overall_quality_score,
-        },
-        notes: `Quality inspection passed and approved for production - ${currentInspection.menu_item_name}`,
-      });
-
-      // Log the production approval
-      await AuditLogger.log({
-        menu_item_id: inspection.menu_item_id,
-        user_id: approvedByUserId,
-        action_type: "APPROVED_FOR_PRODUCTION",
-        action_details: {
-          menu_item_name: menuItem.menu_item_name,
-          selling_price: menuItem.selling_price,
-          cost_price: menuItem.cost_price,
-          profit_margin: menuItem.profit_margin,
-          quality_score: currentInspection.overall_quality_score,
-        },
-        notes: `Menu item "${menuItem.menu_item_name}" approved for production based on quality inspection`,
-      });
-
       await trx.commit();
+
+      // Log the approval action (after transaction commit)
+      try {
+        await AuditLogger.log({
+          menu_item_id: inspection.menu_item_id,
+          sample_production_id: inspection.sample_production_id,
+          quality_inspection_id: id,
+          employee_id: approvedByUserId,
+          action_type: "QUALITY_PASSED",
+          action_details: {
+            inspection_number: currentInspection.inspection_number,
+            sample_batch_number: currentInspection.sample_batch_number,
+            menu_item_name: currentInspection.menu_item_name,
+            overall_quality_score: currentInspection.overall_quality_score,
+          },
+          notes: `Quality inspection passed and approved for production - ${currentInspection.menu_item_name}`,
+        });
+
+        // Log the production approval
+        await AuditLogger.log({
+          menu_item_id: inspection.menu_item_id,
+          employee_id: approvedByUserId,
+          action_type: "APPROVED_FOR_PRODUCTION",
+          action_details: {
+            menu_item_name: menuItem.menu_item_name,
+            selling_price: menuItem.selling_price,
+            cost_price: menuItem.cost_price,
+            profit_margin: menuItem.profit_margin,
+            quality_score: currentInspection.overall_quality_score,
+          },
+          notes: `Menu item "${menuItem.menu_item_name}" approved for production based on quality inspection`,
+        });
+      } catch (auditError) {
+        console.warn("Failed to create audit log:", auditError.message);
+        // Don't fail the entire operation if audit logging fails
+      }
       return await this.getById(id);
     } catch (error) {
       await trx.rollback();

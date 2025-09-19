@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, computed, onMounted, watch } from 'vue';
+  import { ref, computed, onMounted, watch, onUnmounted } from 'vue';
   import { useBranchRequestStore } from '../../stores/branchRequestStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
@@ -779,6 +779,127 @@
     if (currentBranch.value?.id) {
       await branchInventoryStore.fetchInventory(currentBranch.value.id);
     }
+
+    // If a prefill payload was set before this component mounted, consume it
+    try {
+      const queued = window.__branchPrefillSupplyRequest;
+      if (queued && Array.isArray(queued.items) && queued.items.length) {
+        // Use same handler logic as the event
+        const e = { detail: queued };
+        const payload = e.detail || {};
+        resetForm();
+        requestForm.value.request_type = 'Regular';
+        requestForm.value.request_description = `Auto-generated from Alerts for ${payload.items?.[0]?.name || 'item'}`;
+        // Respect the incoming source if provided; otherwise, keep current tab type
+        requestForm.value.source_type = payload.source || props.inventoryType;
+        requestForm.value.branch_id = currentBranch.value?.id || null;
+        requestForm.value.department = currentBranch.value?.name || 'Branch';
+
+        const items = Array.isArray(payload.items) ? payload.items : [];
+        requestItems.value = items.map((it, idx) => ({
+          id: idx + 1,
+          inventory_item_id: null,
+          menu_item_id: null,
+          item_name: it.name || '',
+          item_quantity: Number(it.quantity || 1),
+          item_unit: it.unit || 'pieces',
+          unit_price: Number(it.unit_price || 0),
+          category: payload.category || '',
+          source: (
+            it.source ||
+            payload.source ||
+            props.inventoryType ||
+            'scm'
+          ).toLowerCase(),
+        }));
+        // Try auto-selecting matching branch inventory by name
+        requestItems.value.forEach((row) => {
+          const match = branchInventoryItems.value.find(
+            (i) =>
+              (i.item_name || '').toLowerCase() === row.item_name.toLowerCase()
+          );
+          if (match) handleSelectInventoryItem(row, match.id);
+        });
+        if (requestItems.value.length === 0) {
+          requestItems.value = [
+            {
+              id: 1,
+              inventory_item_id: null,
+              menu_item_id: null,
+              item_name: payload.items?.[0]?.name || '',
+              item_quantity: Number(payload.items?.[0]?.quantity || 1),
+              item_unit: payload.items?.[0]?.unit || 'pieces',
+              unit_price: Number(payload.items?.[0]?.unit_price || 0),
+              category: payload.category || '',
+              source: payload.source || props.inventoryType || 'scm',
+            },
+          ];
+        }
+        showCreateModal.value = true;
+        // Clear the queued payload so it isn't reused
+        delete window.__branchPrefillSupplyRequest;
+      }
+    } catch (_) {}
+
+    // Listen for prefill event from BranchInventory Alerts
+    const handler = (e) => {
+      try {
+        const payload = e.detail || {};
+        // Reset and open create modal
+        resetForm();
+        requestForm.value.request_type = 'Regular';
+        requestForm.value.request_description = `Auto-generated from Alerts for ${payload.items?.[0]?.name || 'item'}`;
+        requestForm.value.source_type = payload.source || props.inventoryType;
+        requestForm.value.branch_id = currentBranch.value?.id || null;
+        requestForm.value.department = currentBranch.value?.name || 'Branch';
+
+        // Map items
+        const items = Array.isArray(payload.items) ? payload.items : [];
+        requestItems.value = items.map((it, idx) => ({
+          id: idx + 1,
+          inventory_item_id: null, // optional: could resolve by name
+          menu_item_id: null,
+          item_name: it.name || '',
+          item_quantity: Number(it.quantity || 1),
+          item_unit: it.unit || 'pieces',
+          unit_price: Number(it.unit_price || 0),
+          category: payload.category || '',
+          source: (
+            it.source ||
+            payload.source ||
+            props.inventoryType ||
+            'scm'
+          ).toLowerCase(),
+        }));
+        // Try auto-selecting matching branch inventory by name
+        requestItems.value.forEach((row) => {
+          const match = branchInventoryItems.value.find(
+            (i) =>
+              (i.item_name || '').toLowerCase() === row.item_name.toLowerCase()
+          );
+          if (match) handleSelectInventoryItem(row, match.id);
+        });
+        if (requestItems.value.length === 0) {
+          requestItems.value = [
+            {
+              id: 1,
+              inventory_item_id: null,
+              menu_item_id: null,
+              item_name: payload.items?.[0]?.name || '',
+              item_quantity: Number(payload.items?.[0]?.quantity || 1),
+              item_unit: payload.items?.[0]?.unit || 'pieces',
+              unit_price: Number(payload.items?.[0]?.unit_price || 0),
+              category: payload.category || '',
+              source: payload.source || props.inventoryType || 'scm',
+            },
+          ];
+        }
+        showCreateModal.value = true;
+      } catch (_) {}
+    };
+    window.addEventListener('branch-prefill-supply-request', handler);
+    // store for cleanup
+    window.__branchPrefillSupplyHandler = handler;
   });
 
   // When branch changes, refresh available branch inventory
@@ -790,6 +911,16 @@
       }
     }
   );
+
+  onUnmounted(() => {
+    if (window.__branchPrefillSupplyHandler) {
+      window.removeEventListener(
+        'branch-prefill-supply-request',
+        window.__branchPrefillSupplyHandler
+      );
+      delete window.__branchPrefillSupplyHandler;
+    }
+  });
 
   const handleSelectInventoryItem = (row, inventoryItemId) => {
     const inv = branchInventoryItems.value.find(

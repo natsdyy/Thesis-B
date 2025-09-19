@@ -7,7 +7,7 @@ class AuditLogger {
    * @param {number} logData.menu_item_id - Menu item ID (optional)
    * @param {number} logData.sample_production_id - Sample production ID (optional)
    * @param {number} logData.quality_inspection_id - Quality inspection ID (optional)
-   * @param {number} logData.user_id - User who performed the action
+   * @param {number} logData.employee_id - Employee who performed the action
    * @param {string} logData.action_type - Type of action performed
    * @param {Object|string} logData.action_details - Details of the action
    * @param {string} logData.notes - Additional notes
@@ -18,7 +18,7 @@ class AuditLogger {
         menu_item_id,
         sample_production_id,
         quality_inspection_id,
-        user_id,
+        employee_id,
         action_type,
         action_details,
         notes,
@@ -35,7 +35,7 @@ class AuditLogger {
           menu_item_id,
           sample_production_id,
           quality_inspection_id,
-          user_id,
+          employee_id,
           action_type,
           action_details: detailsJson,
           notes,
@@ -60,7 +60,7 @@ class AuditLogger {
   static async getLogsForMenuItem(menuItemId, options = {}) {
     try {
       let query = db("menu_item_audit_log as al")
-        .leftJoin("employees as u", "al.user_id", "u.id")
+        .leftJoin("employees as u", "al.employee_id", "u.id")
         .select(
           "al.*",
           db.raw("concat(u.first_name,' ',u.last_name) as user_name"),
@@ -108,7 +108,7 @@ class AuditLogger {
   static async getLogsForSampleProduction(sampleProductionId) {
     try {
       const logs = await db("menu_item_audit_log as al")
-        .leftJoin("employees as u", "al.user_id", "u.id")
+        .leftJoin("employees as u", "al.employee_id", "u.id")
         .select(
           "al.*",
           db.raw("concat(u.first_name,' ',u.last_name) as user_name"),
@@ -137,7 +137,7 @@ class AuditLogger {
   static async getLogsForQualityInspection(qualityInspectionId) {
     try {
       const logs = await db("menu_item_audit_log as al")
-        .leftJoin("employees as u", "al.user_id", "u.id")
+        .leftJoin("employees as u", "al.employee_id", "u.id")
         .select(
           "al.*",
           db.raw("concat(u.first_name,' ',u.last_name) as user_name"),
@@ -166,7 +166,7 @@ class AuditLogger {
   static async getAllLogs(filters = {}) {
     try {
       let query = db("menu_item_audit_log as al")
-        .leftJoin("employees as u", "al.user_id", "u.id")
+        .leftJoin("employees as u", "al.employee_id", "u.id")
         .leftJoin("menu_items as mi", "al.menu_item_id", "mi.id")
         .leftJoin(
           "sample_productions as sp",
@@ -192,8 +192,8 @@ class AuditLogger {
         query = query.where("al.menu_item_id", filters.menu_item_id);
       }
 
-      if (filters.user_id) {
-        query = query.where("al.user_id", filters.user_id);
+      if (filters.employee_id) {
+        query = query.where("al.employee_id", filters.employee_id);
       }
 
       if (filters.action_type) {
@@ -236,7 +236,7 @@ class AuditLogger {
         .select(
           db.raw("COUNT(*) as total_logs"),
           db.raw("COUNT(DISTINCT menu_item_id) as menu_items_affected"),
-          db.raw("COUNT(DISTINCT user_id) as active_users"),
+          db.raw("COUNT(DISTINCT employee_id) as active_employees"),
           db.raw(
             "COUNT(CASE WHEN action_type = 'CREATED' THEN 1 END) as items_created"
           ),

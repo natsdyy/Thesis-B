@@ -236,7 +236,7 @@ class SampleProduction {
         await AuditLogger.log({
           menu_item_id: sampleData.menu_item_id,
           sample_production_id: sampleId,
-          user_id: sampleData.created_by,
+          employee_id: sampleData.created_by,
           action_type: "SAMPLE_PLANNED",
           action_details: {
             sample_batch_number: batchNumber,
@@ -377,7 +377,7 @@ class SampleProduction {
       await AuditLogger.log({
         menu_item_id: currentSample.menu_item_id,
         sample_production_id: id,
-        user_id: currentSample.created_by, // Use created_by since updated_by doesn't exist
+        employee_id: currentSample.created_by, // Use created_by since updated_by doesn't exist
         action_type: "SAMPLE_UPDATED",
         action_details: {
           old_data: currentSample,
@@ -553,7 +553,7 @@ class SampleProduction {
           "mi.menu_item_name",
           "sp.sample_batch_number"
         )
-        .leftJoin("employees as e", "al.user_id", "e.id")
+        .leftJoin("employees as e", "al.employee_id", "e.id")
         .leftJoin("menu_items as mi", "al.menu_item_id", "mi.id")
         .leftJoin(
           "sample_productions as sp",
@@ -575,8 +575,8 @@ class SampleProduction {
         query = query.where("al.action_type", filters.action_type);
       }
 
-      if (filters.user_id) {
-        query = query.where("al.user_id", filters.user_id);
+      if (filters.employee_id) {
+        query = query.where("al.employee_id", filters.employee_id);
       }
 
       if (filters.date_from) {

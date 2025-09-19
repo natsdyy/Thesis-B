@@ -682,7 +682,15 @@
       .filter(Boolean);
   });
 
+  // Build low-stock items with example underlying item names from current inventory
   const lowStockAlertItems = computed(() => {
+    const byTypeId = new Map();
+    // Index current inventory by item_type_id -> array of items with quantities
+    (currentInventory.value || []).forEach((inv) => {
+      if (!byTypeId.has(inv.item_type_id)) byTypeId.set(inv.item_type_id, []);
+      byTypeId.get(inv.item_type_id).push(inv);
+    });
+
     return lowStockItems.value.filter((item) => {
       const matchesSearch =
         !reportSearchQuery.value ||
@@ -695,7 +703,22 @@
           categories.value?.find((c) => c.id == reportCategoryFilter.value)
             ?.name;
 
-      return matchesSearch && matchesCategory;
+      if (!(matchesSearch && matchesCategory)) return false;
+
+      // Attach top underlying item names (e.g., Coke, Sprite) with quantities
+      const invList = byTypeId.get(item.item_type_id) || [];
+      const nameTotals = new Map();
+      invList.forEach((row) => {
+        const key = row.item_name || row.item_type_name;
+        const qty = parseFloat(row.quantity || 0);
+        nameTotals.set(key, (nameTotals.get(key) || 0) + qty);
+      });
+      const topItems = Array.from(nameTotals.entries())
+        .sort((a, b) => a[1] - b[1]) // show lowest first
+        .slice(0, 3)
+        .map(([name, qty]) => ({ name, qty }));
+      item._top_items = topItems; // non-reactive decoration for rendering
+      return true;
     });
   });
 
@@ -1322,6 +1345,73 @@
 
   const viewItemDetails = (item) => {
     showToast('info', `Viewing details for ${item.item_type_name}`);
+  };
+
+  // Open InventoryDetailsModal from low stock alert card by selecting a representative batch
+  const viewItemDetailsFromAlert = (alertItem) => {
+    const batches = (currentInventory.value || []).filter(
+      (b) => b.item_type_id === alertItem.item_type_id
+    );
+    if (!batches.length) {
+      showToast('error', 'No batch found for this item');
+      return;
+    }
+    // Choose the batch with the lowest quantity to inspect
+    const target = [...batches].sort(
+      (a, b) => parseFloat(a.quantity || 0) - parseFloat(b.quantity || 0)
+    )[0];
+    detailsModal.value = { show: true, inventoryItemId: target.id };
+  };
+
+  // Navigate to RequestSupply and preload items derived from the alert
+  const createSupplyRequestFromAlert = (alertItem) => {
+    // Build suggested items from underlying batches (grouped by item_name)
+    const batches = (currentInventory.value || []).filter(
+      (b) => b.item_type_id === alertItem.item_type_id
+    );
+    const grouped = new Map();
+    batches.forEach((b) => {
+      const key = b.item_name || b.item_type_name;
+      const unit = b.unit_of_measure || '';
+      const prev = grouped.get(key) || { name: key, unit, quantity: 0 };
+      grouped.set(key, {
+        name: key,
+        unit,
+        quantity: prev.quantity + parseFloat(b.quantity || 0),
+      });
+    });
+    // Suggest quantity as deficit to min level, spread across names
+    const deficit = Math.max(
+      0,
+      parseFloat(alertItem.min_stock_level || 0) -
+        parseFloat(alertItem.current_stock || 0)
+    );
+    const names = Array.from(grouped.values());
+    const perItem = names.length
+      ? Math.max(deficit / names.length, 1)
+      : deficit;
+    const items = names.map((n) => ({
+      name: n.name,
+      unit: n.unit,
+      unit_price: 0,
+      quantity: Math.ceil(perItem),
+    }));
+
+    // Pass preload via router state
+    try {
+      const state = {
+        preloadDistribution: null,
+        preloadSupplyRequest: {
+          items,
+          category: alertItem.category_name,
+          item_type_id: alertItem.item_type_id,
+          source: 'scm',
+        },
+      };
+      router.push({ name: 'RequestSupply', state });
+    } catch (e) {
+      showToast('error', 'Failed to navigate to Request Supply');
+    }
   };
 
   // Enhanced Reports helper functions
@@ -3636,8 +3726,17 @@
                 </div>
 
                 <div class="mt-2 flex flex-wrap gap-2">
-                  <button class="btn btn-ghost btn-xs">View Item</button>
-                  <button class="btn btn-ghost btn-xs" disabled>
+                  <button
+                    class="btn btn-ghost btn-xs"
+                    @click="viewItemDetailsFromAlert(item)"
+                  >
+                    View Item
+                  </button>
+                  <button
+                    v-if="item.current_stock > 0"
+                    class="btn btn-ghost btn-xs"
+                    @click="createSupplyRequestFromAlert(item)"
+                  >
                     Create Supply Request
                   </button>
                   <button
@@ -4011,6 +4110,21 @@
                       {{ parseFloat(item.current_stock).toLocaleString() }} |
                       Min:
                       {{ parseFloat(item.min_stock_level).toLocaleString() }}
+                    </div>
+                    <div
+                      v-if="item._top_items && item._top_items.length"
+                      class="text-xs text-gray-500 mt-1"
+                    >
+                      Top low items:
+                      <span
+                        v-for="(ti, idx) in item._top_items"
+                        :key="idx"
+                        class="mr-2"
+                      >
+                        {{ ti.name }} ({{
+                          parseFloat(ti.qty).toLocaleString()
+                        }})
+                      </span>
                     </div>
                   </div>
                   <div class="flex gap-2">

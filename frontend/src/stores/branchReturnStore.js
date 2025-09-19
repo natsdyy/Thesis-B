@@ -3,8 +3,6 @@ import { ref } from 'vue';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = apiConfig.baseURL;
-
 export const useBranchReturnStore = defineStore('branchReturn', () => {
   const returns = ref([]);
   const loading = ref(false);
@@ -19,7 +17,7 @@ export const useBranchReturnStore = defineStore('branchReturn', () => {
         if (v !== undefined && v !== null && v !== '') query.append(k, v);
       });
       const { data } = await axios.get(
-        `${API_BASE_URL}/branch-returns?${query.toString()}`
+        `${apiConfig.baseURL}/branch-returns?${query.toString()}`
       );
       if (data.success) {
         returns.value = data.data || data.data?.data || data?.data || [];
@@ -41,7 +39,7 @@ export const useBranchReturnStore = defineStore('branchReturn', () => {
     loading.value = true;
     error.value = null;
     try {
-      const { data } = await axios.post(`${API_BASE_URL}/branch-returns`, {
+      const { data } = await axios.post(`${apiConfig.baseURL}/branch-returns`, {
         branch_id,
         return_type,
         items,
@@ -69,7 +67,7 @@ export const useBranchReturnStore = defineStore('branchReturn', () => {
     error.value = null;
     try {
       const { data } = await axios.post(
-        `${API_BASE_URL}/branch-returns/${id}/approve`
+        `${apiConfig.baseURL}/branch-returns/${id}/approve`
       );
       if (data.success) {
         await fetchReturns({ status: 'Pending' });
@@ -92,7 +90,7 @@ export const useBranchReturnStore = defineStore('branchReturn', () => {
     error.value = null;
     try {
       const { data } = await axios.post(
-        `${API_BASE_URL}/branch-returns/${id}/reject`,
+        `${apiConfig.baseURL}/branch-returns/${id}/reject`,
         { reason }
       );
       if (data.success) {
@@ -114,7 +112,7 @@ export const useBranchReturnStore = defineStore('branchReturn', () => {
     error.value = null;
     try {
       const { data } = await axios.post(
-        `${API_BASE_URL}/branch-returns/${id}/acknowledge`,
+        `${apiConfig.baseURL}/branch-returns/${id}/acknowledge`,
         { notes }
       );
       if (data.success) {

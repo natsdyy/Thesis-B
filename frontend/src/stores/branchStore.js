@@ -2,8 +2,6 @@ import { defineStore } from 'pinia';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = apiConfig.baseURL;
-
 export const useBranchStore = defineStore('branch', {
   state: () => ({
     branches: [],
@@ -80,7 +78,7 @@ export const useBranchStore = defineStore('branch', {
         const params = { include_stats: includeStats ? 'true' : 'false' };
         if (includeDeleted) params.includeDeleted = 'true';
 
-        const response = await axios.get(`${API_BASE_URL}/branches`, {
+        const response = await axios.get(`${apiConfig.baseURL}/branches`, {
           ...this.getAuthHeaders(),
           params,
         });
@@ -103,7 +101,7 @@ export const useBranchStore = defineStore('branch', {
       this.clearError();
 
       try {
-        const response = await axios.get(`${API_BASE_URL}/branches`, {
+        const response = await axios.get(`${apiConfig.baseURL}/branches`, {
           ...this.getAuthHeaders(),
           params: { active: 'true' },
         });
@@ -127,7 +125,7 @@ export const useBranchStore = defineStore('branch', {
 
       try {
         const response = await axios.get(
-          `${API_BASE_URL}/branches/${id}`,
+          `${apiConfig.baseURL}/branches/${id}`,
           this.getAuthHeaders()
         );
 
@@ -148,7 +146,7 @@ export const useBranchStore = defineStore('branch', {
 
       try {
         const response = await axios.post(
-          `${API_BASE_URL}/branches`,
+          `${apiConfig.baseURL}/branches`,
           branchData,
           this.getAuthHeaders()
         );
@@ -172,7 +170,7 @@ export const useBranchStore = defineStore('branch', {
 
       try {
         const response = await axios.put(
-          `${API_BASE_URL}/branches/${id}`,
+          `${apiConfig.baseURL}/branches/${id}`,
           branchData,
           this.getAuthHeaders()
         );
@@ -204,7 +202,7 @@ export const useBranchStore = defineStore('branch', {
 
       try {
         await axios.delete(
-          `${API_BASE_URL}/branches/${id}`,
+          `${apiConfig.baseURL}/branches/${id}`,
           this.getAuthHeaders()
         );
 
@@ -232,7 +230,7 @@ export const useBranchStore = defineStore('branch', {
 
       try {
         const response = await axios.get(
-          `${API_BASE_URL}/branches/${branchId}/users`,
+          `${apiConfig.baseURL}/branches/${branchId}/users`,
           this.getAuthHeaders()
         );
 
@@ -254,7 +252,7 @@ export const useBranchStore = defineStore('branch', {
 
       try {
         const response = await axios.get(
-          `${API_BASE_URL}/branches/stats/summary`,
+          `${apiConfig.baseURL}/branches/stats/summary`,
           this.getAuthHeaders()
         );
 
@@ -277,7 +275,7 @@ export const useBranchStore = defineStore('branch', {
 
       try {
         const response = await axios.get(
-          `${API_BASE_URL}/branches/managers`,
+          `${apiConfig.baseURL}/branches/managers`,
           this.getAuthHeaders()
         );
         return response.data;
@@ -311,7 +309,7 @@ export const useBranchStore = defineStore('branch', {
 
       try {
         const response = await axios.patch(
-          `${API_BASE_URL}/branches/${id}/restore`,
+          `${apiConfig.baseURL}/branches/${id}/restore`,
           {},
           this.getAuthHeaders()
         );

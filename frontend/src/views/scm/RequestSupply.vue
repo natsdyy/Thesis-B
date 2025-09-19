@@ -170,6 +170,20 @@
     }
   };
 
+  // Open the Create Request tab and modal
+  const openCreateTab = () => {
+    activeTab.value = 'create-request';
+    // Use current rows as draft
+    openCreateRequestModalWithDraft(
+      rowRequest.value.map((r) => ({
+        item_name: r.item_name,
+        item_quantity: r.item_quantity,
+        item_unit: r.item_unit,
+        item_type: r.item_type,
+      }))
+    );
+  };
+
   // Modal state management
   const modal = ref({
     type: null,
@@ -1855,6 +1869,52 @@
     document.addEventListener('click', closeHistoryFilterDropdown);
     // Add click outside listener for status filter dropdown
     document.addEventListener('click', closeStatusFilterDropdown);
+
+    // Preload items from navigation state (e.g., from Inventory Alerts)
+    try {
+      const state = router.options?.history?.state || {};
+      const preload = state.preloadSupplyRequest;
+      if (preload && Array.isArray(preload.items) && preload.items.length) {
+        // Fill requested_by with the real employee name from auth store
+        try {
+          const u = authStore?.user || {};
+          requestForm.value.requested_by =
+            [u.first_name, u.middle_name, u.last_name]
+              .filter(Boolean)
+              .join(' ') ||
+            u.full_name ||
+            u.email ||
+            'System';
+        } catch (_) {}
+        selectedCategory.value = preload.category || '';
+        requestForm.value.request_type = '';
+        rowRequest.value = preload.items.map((it, idx) => ({
+          id: idx + 1,
+          item_name: it.name,
+          item_quantity: it.quantity || 0,
+          item_unit: it.unit || '',
+          item_type:
+            preload.item_type_name ||
+            inventoryStore.itemTypes?.find((t) => t.id === preload.item_type_id)
+              ?.name ||
+            requestForm.value.request_type,
+          item_unitPrice: it.unit_price || 0,
+          item_amount: (it.unit_price || 0) * (it.quantity || 0),
+          inventory_item_id: null,
+          menu_item_id: null,
+          category: preload.category || '',
+          source: preload.source || 'scm',
+        }));
+        // Open the create modal immediately
+        openCreateTab();
+        // Clear state so reloads don't re-add
+        try {
+          const newState = { ...state };
+          delete newState.preloadSupplyRequest;
+          window.history.replaceState(newState, document.title);
+        } catch (_) {}
+      }
+    } catch (_) {}
   });
 
   onBeforeUnmount(() => {
@@ -2546,6 +2606,17 @@
           >
             <ReceiptText class="w-4 h-4 mr-2" />
             Supply Requests
+          </button>
+          <button
+            class="tab tab-lg font-medium"
+            :class="{
+              'tab-active text-black': activeTab === 'create-request',
+              'text-black/70 hover:bg-white/10': activeTab !== 'create-request',
+            }"
+            @click="openCreateTab()"
+          >
+            <Plus class="w-4 h-4 mr-2" />
+            Create Request
           </button>
           <button
             class="tab tab-lg font-medium"

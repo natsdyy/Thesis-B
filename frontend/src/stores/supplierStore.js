@@ -4,8 +4,6 @@ import { ref, computed } from 'vue';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = apiConfig.baseURL;
-
 export const useSupplierStore = defineStore('supplier', () => {
   // State
   const suppliers = ref([]);
@@ -46,7 +44,7 @@ export const useSupplierStore = defineStore('supplier', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/suppliers?${params.toString()}`
+        `${apiConfig.baseURL}/suppliers?${params.toString()}`
       );
 
       if (response.data.success) {
@@ -72,7 +70,7 @@ export const useSupplierStore = defineStore('supplier', () => {
     error.value = null;
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/suppliers/${id}`);
+      const response = await axios.get(`${apiConfig.baseURL}/suppliers/${id}`);
 
       if (response.data.success) {
         currentSupplier.value = response.data.data;
@@ -98,7 +96,7 @@ export const useSupplierStore = defineStore('supplier', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/suppliers`,
+        `${apiConfig.baseURL}/suppliers`,
         supplierData
       );
 
@@ -126,7 +124,7 @@ export const useSupplierStore = defineStore('supplier', () => {
 
     try {
       const response = await axios.put(
-        `${API_BASE_URL}/suppliers/${id}`,
+        `${apiConfig.baseURL}/suppliers/${id}`,
         supplierData
       );
 
@@ -156,7 +154,9 @@ export const useSupplierStore = defineStore('supplier', () => {
     error.value = null;
 
     try {
-      const response = await axios.delete(`${API_BASE_URL}/suppliers/${id}`);
+      const response = await axios.delete(
+        `${apiConfig.baseURL}/suppliers/${id}`
+      );
 
       if (response.data.success) {
         suppliers.value = suppliers.value.filter((s) => s.id !== id);
@@ -182,7 +182,7 @@ export const useSupplierStore = defineStore('supplier', () => {
     error.value = null;
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/suppliers/stats`);
+      const response = await axios.get(`${apiConfig.baseURL}/suppliers/stats`);
 
       if (response.data.success) {
         suppliers.value = response.data.data;
@@ -208,7 +208,7 @@ export const useSupplierStore = defineStore('supplier', () => {
     error.value = null;
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/suppliers/active`);
+      const response = await axios.get(`${apiConfig.baseURL}/suppliers/active`);
 
       if (response.data.success) {
         suppliers.value = response.data.data;
@@ -236,7 +236,7 @@ export const useSupplierStore = defineStore('supplier', () => {
 
     try {
       const response = await axios.patch(
-        `${API_BASE_URL}/suppliers/${id}/restore`
+        `${apiConfig.baseURL}/suppliers/${id}/restore`
       );
 
       if (response.data.success) {
@@ -266,7 +266,9 @@ export const useSupplierStore = defineStore('supplier', () => {
     error.value = null;
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/suppliers/deleted`);
+      const response = await axios.get(
+        `${apiConfig.baseURL}/suppliers/deleted`
+      );
 
       if (response.data.success) {
         deletedSuppliers.value = response.data.data; // Store in state
@@ -304,7 +306,7 @@ export const useSupplierStore = defineStore('supplier', () => {
       if (params.year) queryParams.append('year', params.year);
 
       const response = await axios.get(
-        `${API_BASE_URL}/suppliers/${supplierId}/transactions?${queryParams.toString()}`
+        `${apiConfig.baseURL}/suppliers/${supplierId}/transactions?${queryParams.toString()}`
       );
 
       if (response.data.success) {

@@ -23,6 +23,7 @@
   import { usePOSStore } from '../../stores/posStore';
   import axios from 'axios';
   import { apiConfig } from '../../config/api.js';
+  import QRCodeGenerator from '../../components/common/QRCodeGenerator.vue';
 
   const branchContextStore = useBranchContextStore();
   const authStore = useAuthStore();
@@ -39,7 +40,7 @@
       window.location.hostname === '127.0.0.1'
     ) {
       // For local development, use the network IP so phones can access it
-      return `http://192.168.18.5:8080`;
+      return `http://192.168.254.110:8080`;
     }
     // In production, use the current origin
     return window.location.origin;
@@ -50,11 +51,10 @@
   const accessDenied = ref(false);
   const needsManagerLogin = ref(false);
   const managerLoginForm = ref({
-    email: '',
-    password: '',
-    confirmPassword: '',
+    employeeId: '',
   });
   const managerLoginError = ref('');
+  const showEmployeeId = ref(false);
   const stats = ref({
     todaySales: 0,
     todayTransactions: 0,
@@ -70,6 +70,8 @@
   const showVoidOrderModal = ref(false);
   const hasPrintedReceipt = ref(false);
   const orderCompleteData = ref(null);
+  const orderConfirmationData = ref(null);
+  const confirmationOrderType = ref('Dine In');
   const paymentInput = ref('');
   const isProcessingOrder = ref(false);
   const receiptData = ref(null);
@@ -96,86 +98,56 @@
     () => posSessionStore.sessionTimeRemainingMinutes
   );
 
-  // Manager login functions
+  // Manager login via Employee ID only
   const handleManagerLogin = async () => {
     managerLoginError.value = '';
 
-    if (!managerLoginForm.value.email) {
-      managerLoginError.value = 'Manager email is required';
-      return;
-    }
+    const employeeId = managerLoginForm.value.employeeId?.trim();
 
-    // Basic email format check
-    const emailRegex = /[^@\s]+@[^@\s]+\.[^@\s]+/;
-    if (!emailRegex.test(managerLoginForm.value.email)) {
-      managerLoginError.value = 'Enter a valid manager email';
-      return;
-    }
-
-    if (!managerLoginForm.value.password) {
-      managerLoginError.value = 'Password is required';
-      return;
-    }
-
-    if (
-      managerLoginForm.value.password !== managerLoginForm.value.confirmPassword
-    ) {
-      managerLoginError.value = 'Passwords do not match';
+    if (!employeeId) {
+      managerLoginError.value = 'Employee ID is required';
       return;
     }
 
     try {
-      // Authenticate manager using the same backend login endpoint
-      const response = await axios.post(`${API_BASE_URL}/auth/login`, {
-        email: managerLoginForm.value.email.trim(),
-        password: managerLoginForm.value.password,
-      });
+      // Fetch employee by employee_id
+      const res = await axios.get(
+        `${API_BASE_URL}/employees/employee-id/${encodeURIComponent(employeeId)}`
+      );
+      const employee = res.data?.data;
 
-      if (!response.data?.success) {
-        managerLoginError.value = response.data?.message || 'Login failed';
+      if (!employee) {
+        managerLoginError.value = 'Employee not found';
         return;
       }
 
-      const managerUser = response.data.data?.user;
-      if (!managerUser) {
-        managerLoginError.value = 'Invalid response from server';
-        return;
-      }
-
-      // Validate role and branch
-      const isManager = managerUser.role === 'Manager';
-      const sameBranch =
-        !!managerUser.branch_id &&
-        managerUser.branch_id === user.value.branch_id;
-
-      if (!isManager) {
+      // Role and status checks
+      if (employee.role !== 'Manager') {
         managerLoginError.value = 'Only a Manager can start a POS session';
         return;
       }
 
-      if (!sameBranch) {
+      if (!employee.branch_id || employee.branch_id !== user.value.branch_id) {
         managerLoginError.value = 'Manager must belong to this branch';
         return;
       }
 
-      // Start manager session without changing the current app auth session
+      // Start manager session (local only)
       posSessionStore.startManagerSession({
-        id: managerUser.id,
-        name:
-          `${managerUser.first_name || ''} ${managerUser.last_name || ''}`.trim() ||
-          managerUser.name,
-        role: managerUser.role,
-        branch_id: managerUser.branch_id,
-        email: managerUser.email,
+        id: employee.id,
+        name: `${employee.first_name || ''} ${employee.last_name || ''}`.trim(),
+        role: employee.role,
+        branch_id: employee.branch_id,
+        email: employee.email,
         loginTime: new Date().toISOString(),
       });
 
       needsManagerLogin.value = false;
-      managerLoginForm.value = { email: '', password: '', confirmPassword: '' };
+      managerLoginForm.value = { employeeId: '' };
     } catch (err) {
-      console.error('POS manager login failed:', err);
+      console.error('POS manager PIN login failed:', err);
       managerLoginError.value =
-        err.response?.data?.message || 'Invalid manager email or password';
+        err.response?.data?.message || 'Unable to verify manager';
     }
   };
 
@@ -262,11 +234,13 @@
     } else if (value === 'clear') {
       paymentInput.value = '';
     } else if (value === 'ok') {
-      // Process the payment input
-      posStore.setAmountPaid(paymentInput.value);
+      // Deprecated - keypad ok no longer used
     } else {
       paymentInput.value += value;
     }
+
+    // Keep store in sync so isOrderValid updates immediately
+    posStore.setAmountPaid(paymentInput.value);
   };
 
   const processOrder = async () => {
@@ -295,8 +269,16 @@
   const confirmOrder = async () => {
     isProcessingOrder.value = true;
     try {
+      // Ensure selected order type in confirmation is applied
+      if (
+        confirmationOrderType.value &&
+        confirmationOrderType.value !== posStore.currentOrder.orderType
+      ) {
+        posStore.setOrderType(confirmationOrderType.value);
+      }
       const orderData = await posStore.processOrder();
       orderCompleteData.value = orderData;
+      showOrderConfirmationModal.value = false;
       showOrderCompleteModal.value = true;
       paymentInput.value = '';
 
@@ -533,8 +515,8 @@
           <p class="text-sm sm:text-base text-primaryColor mb-4 text-center">
             {{
               userRole === 'Manager'
-                ? 'Please login to start the POS session'
-                : 'A manager must login first to activate the POS system'
+                ? 'Please enter your Employee ID to start the POS session'
+                : 'A manager must enter their Employee ID to activate the POS system'
             }}
           </p>
 
@@ -542,45 +524,31 @@
             <div class="form-control">
               <label class="label">
                 <span class="label-text text-sm sm:text-base"
-                  >Manager Email</span
+                  >Manager Employee ID</span
                 >
               </label>
-              <input
-                v-model="managerLoginForm.email"
-                type="email"
-                placeholder="Enter manager email"
-                class="input input-bordered w-full input-sm sm:input-md"
-                @keyup.enter="handleManagerLogin"
-              />
-            </div>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text text-sm sm:text-base"
-                  >Manager Password</span
+              <div class="relative">
+                <input
+                  v-model="managerLoginForm.employeeId"
+                  :type="showEmployeeId ? 'text' : 'password'"
+                  placeholder="Enter manager employee ID"
+                  class="input input-bordered w-full input-sm sm:input-md pr-10"
+                  @keyup.enter="handleManagerLogin"
+                />
+                <button
+                  type="button"
+                  class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 cursor-pointer"
+                  @click="showEmployeeId = !showEmployeeId"
                 >
-              </label>
-              <input
-                v-model="managerLoginForm.password"
-                type="password"
-                placeholder="Enter manager password"
-                class="input input-bordered w-full input-sm sm:input-md"
-                @keyup.enter="handleManagerLogin"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text text-sm sm:text-base"
-                  >Confirm Password</span
-                >
-              </label>
-              <input
-                v-model="managerLoginForm.confirmPassword"
-                type="password"
-                placeholder="Confirm manager password"
-                class="input input-bordered w-full input-sm sm:input-md"
-                @keyup.enter="handleManagerLogin"
-              />
+                  <font-awesome-icon
+                    :icon="
+                      showEmployeeId
+                        ? 'fa-solid fa-eye-slash'
+                        : 'fa-solid fa-eye'
+                    "
+                  />
+                </button>
+              </div>
             </div>
 
             <div v-if="managerLoginError" class="alert alert-error">
@@ -591,11 +559,7 @@
             <button
               @click="handleManagerLogin"
               class="btn bg-primaryColor text-white w-full font-thin border-none hover:bg-primaryColor/80 btn-sm sm:btn-md"
-              :disabled="
-                !managerLoginForm.email ||
-                !managerLoginForm.password ||
-                !managerLoginForm.confirmPassword
-              "
+              :disabled="!managerLoginForm.employeeId"
             >
               <Shield class="w-4 h-4 mr-2" />
               <span class="text-sm sm:text-base">Start POS Session</span>
@@ -618,46 +582,31 @@
             <div class="form-control">
               <label class="label">
                 <span class="label-text text-sm sm:text-base"
-                  >Manager Email</span
+                  >Manager Employee ID</span
                 >
               </label>
-              <input
-                v-model="managerLoginForm.email"
-                type="email"
-                placeholder="Enter manager email"
-                class="input input-bordered w-full input-sm sm:input-md"
-                @keyup.enter="handleManagerLogin"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text text-sm sm:text-base"
-                  >Manager Password</span
+              <div class="relative">
+                <input
+                  v-model="managerLoginForm.employeeId"
+                  :type="showEmployeeId ? 'text' : 'password'"
+                  placeholder="Enter manager employee ID"
+                  class="input input-bordered w-full input-sm sm:input-md pr-10"
+                  @keyup.enter="handleManagerLogin"
+                />
+                <button
+                  type="button"
+                  class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+                  @click="showEmployeeId = !showEmployeeId"
                 >
-              </label>
-              <input
-                v-model="managerLoginForm.password"
-                type="password"
-                placeholder="Enter manager password"
-                class="input input-bordered w-full input-sm sm:input-md"
-                @keyup.enter="handleManagerLogin"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text text-sm sm:text-base"
-                  >Confirm Password</span
-                >
-              </label>
-              <input
-                v-model="managerLoginForm.confirmPassword"
-                type="password"
-                placeholder="Confirm manager password"
-                class="input input-bordered w-full input-sm sm:input-md"
-                @keyup.enter="handleManagerLogin"
-              />
+                  <font-awesome-icon
+                    :icon="
+                      showEmployeeId
+                        ? 'fa-solid fa-eye-slash'
+                        : 'fa-solid fa-eye'
+                    "
+                  />
+                </button>
+              </div>
             </div>
 
             <div v-if="managerLoginError" class="alert alert-error">
@@ -668,11 +617,7 @@
             <button
               @click="handleManagerLogin"
               class="btn bg-primaryColor text-white w-full font-thin border-none hover:bg-primaryColor/80 btn-sm sm:btn-md"
-              :disabled="
-                !managerLoginForm.email ||
-                !managerLoginForm.password ||
-                !managerLoginForm.confirmPassword
-              "
+              :disabled="!managerLoginForm.employeeId"
             >
               <Shield class="w-4 h-4 mr-2" />
               <span class="text-sm sm:text-base">Start POS Session</span>
@@ -786,11 +731,12 @@
 
           <!-- Menu Items Grid -->
           <div class="flex-1 p-6 overflow-y-auto max-h-[90vh]">
-            <div class="grid grid-cols-4 md:grid-cols-4 gap-4">
+            <div class="grid grid-cols-3 md:grid-cols-4 gap-4">
               <div
                 v-for="item in posStore.filteredMenuItems"
                 :key="item.id"
-                class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow"
+                class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+                @click="item.stock_quantity > 0 && handleAddToOrder(item)"
               >
                 <!-- Item Image -->
                 <div class="aspect-square bg-gray-100">
@@ -810,32 +756,35 @@
 
                 <!-- Item Details -->
                 <div class="p-3">
-                  <h3 class="font-semibold text-gray-900 text-sm mb-1">
-                    {{ item.name }}
-                  </h3>
-
-                  <!-- Stock Status -->
-                  <div class="flex items-center mb-2">
-                    <span
-                      class="badge badge-sm border-none"
-                      :class="
-                        item.stock_quantity > 0
-                          ? 'bg-success/20 text-success'
-                          : 'bg-error/20 text-error'
-                      "
-                    >
-                      Stock: {{ item.stock_quantity }}
-                    </span>
+                  <div class="grid grid-cols-2 gap-2 mb-5">
+                    <!-- Stock Status -->
+                    <div class="flex mb-1 flex-col">
+                      <h2 class="font-semibold text-gray-900 text-md">
+                        {{ item.name }}
+                      </h2>
+                      <span
+                        class="badge badge-sm border-none"
+                        :class="
+                          item.stock_quantity > 0
+                            ? 'bg-success/20 text-success'
+                            : 'bg-error/20 text-error'
+                        "
+                      >
+                        Stock: {{ item.stock_quantity }}
+                      </span>
+                    </div>
+                    <div class="flex justify-end">
+                      <!-- Price -->
+                      <p class="text-md font-bold text-gray-900 mb-3">
+                        <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                        {{ parseFloat(item.price).toFixed(2) }}
+                      </p>
+                    </div>
                   </div>
-
-                  <!-- Price -->
-                  <p class="text-lg font-bold text-gray-900 mb-3">
-                    ₱{{ parseFloat(item.price).toFixed(2) }}
-                  </p>
 
                   <!-- Order Button -->
                   <button
-                    @click="handleAddToOrder(item)"
+                    @click.stop="handleAddToOrder(item)"
                     :disabled="item.stock_quantity <= 0"
                     class="btn btn-sm w-full font-medium"
                     :class="
@@ -922,7 +871,11 @@
             <div class="space-y-3">
               <div class="flex justify-between text-lg font-semibold">
                 <span>Total Cost:</span>
-                <span>₱{{ posStore.orderTotal.toFixed(2) }}</span>
+                <span
+                  ><font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                    posStore.orderTotal.toFixed(2)
+                  }}</span
+                >
               </div>
 
               <!-- Payment Input -->
@@ -936,39 +889,11 @@
                   step="0.01"
                   placeholder="0.00"
                   class="w-full px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primaryColor focus:border-transparent text-sm sm:text-base"
+                  @input="handlePaymentInput($event.target.value)"
                 />
               </div>
 
-              <!-- Order Type Selection -->
-              <div class="space-y-1 sm:space-y-2">
-                <label class="text-xs sm:text-sm font-medium text-gray-700"
-                  >Order Type:</label
-                >
-                <div class="flex space-x-1 sm:space-x-2">
-                  <button
-                    @click="handleOrderTypeChange('Dine In')"
-                    class="flex-1 py-1.5 sm:py-2 px-2 sm:px-4 rounded-sm text-xs sm:text-sm font-medium transition-colors touch-manipulation cursor-pointer"
-                    :class="
-                      posStore.currentOrder.orderType === 'Dine In'
-                        ? 'bg-primaryColor text-white'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300 active:bg-gray-400'
-                    "
-                  >
-                    Dine In
-                  </button>
-                  <button
-                    @click="handleOrderTypeChange('Take Out')"
-                    class="flex-1 py-1.5 sm:py-2 px-2 sm:px-4 rounded-sm text-xs sm:text-sm font-medium transition-colors touch-manipulation cursor-pointer"
-                    :class="
-                      posStore.currentOrder.orderType === 'Take Out'
-                        ? 'bg-primaryColor text-white'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300 active:bg-gray-400'
-                    "
-                  >
-                    Take Out
-                  </button>
-                </div>
-              </div>
+              <!-- Order Type Selection moved to confirmation modal -->
             </div>
           </div>
 
@@ -1047,10 +972,21 @@
                 3
               </button>
               <button
-                @click="handleKeypadInput('ok')"
-                class="btn bg-primaryColor text-white font-thin btn-xs sm:btn-sm touch-manipulation"
+                @click="processOrder"
+                :disabled="!posStore.isOrderValid || isProcessingOrder"
+                class="btn btn-success btn-xs sm:btn-sm touch-manipulation border-none shadow-none"
+                :class="
+                  posStore.isOrderValid
+                    ? 'bg-primaryColor hover:bg-primaryColor/80 active:bg-primaryColor/90 text-white font-thin'
+                    : 'bg-gray-400'
+                "
               >
-                Ok
+                <span class="hidden sm:inline">{{
+                  isProcessingOrder ? 'Processing...' : 'Process Order'
+                }}</span>
+                <span class="sm:hidden">{{
+                  isProcessingOrder ? '...' : 'Process'
+                }}</span>
               </button>
 
               <!-- Row 4 -->
@@ -1071,23 +1007,6 @@
                 class="btn btn-warning btn-xs sm:btn-sm touch-manipulation"
               >
                 Reset
-              </button>
-              <button
-                @click="processOrder"
-                :disabled="!posStore.isOrderValid || isProcessingOrder"
-                class="btn btn-success btn-xs sm:btn-sm touch-manipulation border-none shadow-none"
-                :class="
-                  posStore.isOrderValid
-                    ? 'bg-primaryColor hover:bg-primaryColor/80 active:bg-primaryColor/90 text-white font-thin'
-                    : 'bg-gray-400'
-                "
-              >
-                <span class="hidden sm:inline">{{
-                  isProcessingOrder ? 'Processing...' : 'Process Order'
-                }}</span>
-                <span class="sm:hidden">{{
-                  isProcessingOrder ? '...' : 'Process'
-                }}</span>
               </button>
             </div>
           </div>
@@ -1261,14 +1180,14 @@
       <!-- Order Complete Modal -->
       <div
         v-if="showOrderCompleteModal"
-        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
       >
         <div
           class="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
         >
           <div class="text-center">
             <CheckCircle
-              class="w-12 h-12 sm:w-16 sm:h-16 text-green-500 mx-auto mb-3 sm:mb-4"
+              class="w-12 h-12 sm:w-16 sm:h-16 text-primaryColor mx-auto mb-3 sm:mb-4"
             />
             <h3 class="text-lg sm:text-xl font-semibold text-gray-900 mb-2">
               Order Complete!
@@ -1281,29 +1200,29 @@
             <div class="bg-gray-50 rounded-lg p-3 sm:p-4 mb-3 sm:mb-4">
               <div class="flex justify-between text-xs sm:text-sm">
                 <span>Total:</span>
-                <span class="font-semibold">
-                  <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                <span class="font-semibold"
+                  ><font-awesome-icon icon="fa-solid fa-peso-sign" />{{
                     parseFloat(orderCompleteData?.total_amount || 0).toFixed(2)
-                  }}
-                </span>
+                  }}</span
+                >
               </div>
               <div class="flex justify-between text-xs sm:text-sm">
                 <span>Amount Paid:</span>
-                <span class="font-semibold">
-                  <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                <span class="font-semibold"
+                  ><font-awesome-icon icon="fa-solid fa-peso-sign" />{{
                     parseFloat(orderCompleteData?.amount_paid || 0).toFixed(2)
-                  }}
-                </span>
+                  }}</span
+                >
               </div>
               <div
-                class="flex justify-between text-xs sm:text-sm font-semibold text-green-600"
+                class="flex justify-between text-xs sm:text-sm font-semibold text-primaryColor"
               >
                 <span>Change:</span>
                 <span>
                   <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
                     parseFloat(orderCompleteData?.change_amount || 0).toFixed(2)
-                  }}
-                </span>
+                  }}</span
+                >
               </div>
             </div>
 
@@ -1319,7 +1238,8 @@
 
               <button
                 @click="closeOrderCompleteModal"
-                class="flex-1 btn btn-primary btn-sm sm:btn-md touch-manipulation"
+                :disabled="!hasPrintedReceipt"
+                class="flex-1 btn btn-outline btn-sm sm:btn-md touch-manipulation font-thin"
               >
                 New Order
               </button>

@@ -4,8 +4,6 @@ import { ref, computed } from 'vue';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = apiConfig.baseURL;
-
 export const useBranchRequestStore = defineStore('branchRequest', () => {
   // State
   const requests = ref([]);
@@ -75,7 +73,7 @@ export const useBranchRequestStore = defineStore('branchRequest', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/branch-requests?${params.toString()}`
+        `${apiConfig.baseURL}/branch-requests?${params.toString()}`
       );
 
       if (response.data.success) {
@@ -114,7 +112,7 @@ export const useBranchRequestStore = defineStore('branchRequest', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/branch-requests/with-items?${params.toString()}`
+        `${apiConfig.baseURL}/branch-requests/with-items?${params.toString()}`
       );
 
       if (response.data.success) {
@@ -142,7 +140,9 @@ export const useBranchRequestStore = defineStore('branchRequest', () => {
     error.value = null;
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/branch-requests/${id}`);
+      const response = await axios.get(
+        `${apiConfig.baseURL}/branch-requests/${id}`
+      );
 
       if (response.data.success) {
         currentRequest.value = response.data.data;
@@ -166,7 +166,7 @@ export const useBranchRequestStore = defineStore('branchRequest', () => {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/branch-requests/request/${requestId}`
+        `${apiConfig.baseURL}/branch-requests/request/${requestId}`
       );
 
       if (response.data.success) {
@@ -206,7 +206,7 @@ export const useBranchRequestStore = defineStore('branchRequest', () => {
       };
 
       const response = await axios.post(
-        `${API_BASE_URL}/branch-requests`,
+        `${apiConfig.baseURL}/branch-requests`,
         payload
       );
 
@@ -251,7 +251,7 @@ export const useBranchRequestStore = defineStore('branchRequest', () => {
       }
 
       const response = await axios.put(
-        `${API_BASE_URL}/branch-requests/${id}`,
+        `${apiConfig.baseURL}/branch-requests/${id}`,
         payload
       );
 
@@ -289,7 +289,7 @@ export const useBranchRequestStore = defineStore('branchRequest', () => {
       };
 
       const response = await axios.patch(
-        `${API_BASE_URL}/branch-requests/${id}/status`,
+        `${apiConfig.baseURL}/branch-requests/${id}/status`,
         payload
       );
 
@@ -322,7 +322,7 @@ export const useBranchRequestStore = defineStore('branchRequest', () => {
 
     try {
       const response = await axios.delete(
-        `${API_BASE_URL}/branch-requests/${id}`
+        `${apiConfig.baseURL}/branch-requests/${id}`
       );
 
       if (response.data.success) {
@@ -350,7 +350,7 @@ export const useBranchRequestStore = defineStore('branchRequest', () => {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/branch-requests/status/${status}`
+        `${apiConfig.baseURL}/branch-requests/status/${status}`
       );
 
       if (response.data.success) {
@@ -390,7 +390,7 @@ export const useBranchRequestStore = defineStore('branchRequest', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/branch-requests/branch/${branchId}?${params.toString()}`
+        `${apiConfig.baseURL}/branch-requests/branch/${branchId}?${params.toString()}`
       );
 
       if (response.data.success) {
@@ -428,7 +428,7 @@ export const useBranchRequestStore = defineStore('branchRequest', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/branch-requests/stats?${params.toString()}`
+        `${apiConfig.baseURL}/branch-requests/stats?${params.toString()}`
       );
 
       if (response.data.success) {
@@ -490,7 +490,7 @@ export const useBranchRequestStore = defineStore('branchRequest', () => {
   const autoMapRequest = async (id) => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/branch-requests/${id}/auto-map`
+        `${apiConfig.baseURL}/branch-requests/${id}/auto-map`
       );
       if (response.data && response.data.success) return response.data.data;
       throw new Error(response.data?.message || 'Auto-map failed');

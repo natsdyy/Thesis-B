@@ -16,6 +16,11 @@ import Toast from 'vue-toastification';
 const app = createApp(App);
 const pinia = createPinia();
 
+// Enable Vue DevTools in development
+if (import.meta.env.DEV) {
+  app.config.devtools = true;
+}
+
 app.use(pinia);
 app.use(router);
 

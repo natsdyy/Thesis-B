@@ -3,8 +3,6 @@ import { ref, computed } from 'vue';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = apiConfig.baseURL;
-
 export const useInventoryStore = defineStore('inventory', () => {
   // State
   const categories = ref([]);
@@ -85,7 +83,9 @@ export const useInventoryStore = defineStore('inventory', () => {
     error.value = null;
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/inventory/categories`);
+      const response = await axios.get(
+        `${apiConfig.baseURL}/inventory/categories`
+      );
       if (response.data.success) {
         categories.value = response.data.data;
       } else {
@@ -232,7 +232,9 @@ export const useInventoryStore = defineStore('inventory', () => {
     error.value = null;
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/inventory/item-types`);
+      const response = await axios.get(
+        `${apiConfig.baseURL}/inventory/item-types`
+      );
       if (response.data.success) {
         itemTypes.value = response.data.data;
       } else {
@@ -255,7 +257,7 @@ export const useInventoryStore = defineStore('inventory', () => {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/inventory/categories/${categoryId}/item-types`
+        `${apiConfig.baseURL}/inventory/categories/${categoryId}/item-types`
       );
       if (response.data.success) {
         return response.data.data;
@@ -287,7 +289,7 @@ export const useInventoryStore = defineStore('inventory', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/inventory/current?${queryParams}`
+        `${apiConfig.baseURL}/inventory/current?${queryParams}`
       );
       if (response.data.success) {
         currentInventory.value = response.data.data;
@@ -312,7 +314,9 @@ export const useInventoryStore = defineStore('inventory', () => {
     error.value = null;
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/inventory/summary`);
+      const response = await axios.get(
+        `${apiConfig.baseURL}/inventory/summary`
+      );
       if (response.data.success) {
         inventorySummary.value = response.data.data;
       } else {
@@ -336,7 +340,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     error.value = null;
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/inventory/stats`);
+      const response = await axios.get(`${apiConfig.baseURL}/inventory/stats`);
       if (response.data.success) {
         stats.value = response.data.data;
       } else {
@@ -361,7 +365,7 @@ export const useInventoryStore = defineStore('inventory', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/inventory/items`,
+        `${apiConfig.baseURL}/inventory/items`,
         itemData
       );
       if (response.data.success) {
@@ -391,7 +395,9 @@ export const useInventoryStore = defineStore('inventory', () => {
     error.value = null;
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/inventory/items/${id}`);
+      const response = await axios.get(
+        `${apiConfig.baseURL}/inventory/items/${id}`
+      );
       if (response.data.success) {
         return response.data.data;
       } else {
@@ -417,7 +423,7 @@ export const useInventoryStore = defineStore('inventory', () => {
 
     try {
       const response = await axios.patch(
-        `${API_BASE_URL}/inventory/items/${id}/quantity`,
+        `${apiConfig.baseURL}/inventory/items/${id}/quantity`,
         transactionData
       );
       if (response.data.success) {
@@ -448,7 +454,7 @@ export const useInventoryStore = defineStore('inventory', () => {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/inventory/items/${inventoryItemId}/transactions`
+        `${apiConfig.baseURL}/inventory/items/${inventoryItemId}/transactions`
       );
       if (response.data.success) {
         return response.data.data;
@@ -475,7 +481,7 @@ export const useInventoryStore = defineStore('inventory', () => {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/inventory/alerts/expiring?days=${days}`
+        `${apiConfig.baseURL}/inventory/alerts/expiring?days=${days}`
       );
       if (response.data.success) {
         expiringItems.value = response.data.data;
@@ -501,7 +507,7 @@ export const useInventoryStore = defineStore('inventory', () => {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/inventory/alerts/low-stock`
+        `${apiConfig.baseURL}/inventory/alerts/low-stock`
       );
       if (response.data.success) {
         lowStockItems.value = response.data.data;
@@ -527,7 +533,7 @@ export const useInventoryStore = defineStore('inventory', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/inventory/consumption/bulk`,
+        `${apiConfig.baseURL}/inventory/consumption/bulk`,
         consumptionData
       );
       if (response.data.success) {
@@ -606,7 +612,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     error.value = null;
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/inventory/categories/for-requests`
+        `${apiConfig.baseURL}/inventory/categories/for-requests`
       );
       if (response.data.success) {
         categoriesForRequests.value = response.data.data;
@@ -631,7 +637,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     error.value = null;
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/inventory/categories/${categoryId}/item-types`
+        `${apiConfig.baseURL}/inventory/categories/${categoryId}/item-types`
       );
       if (response.data.success) {
         return response.data.data;
@@ -656,7 +662,7 @@ export const useInventoryStore = defineStore('inventory', () => {
   const fetchRecentActivity = async (limit = 10) => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/inventory/recent-activity?limit=${limit}`
+        `${apiConfig.baseURL}/inventory/recent-activity?limit=${limit}`
       );
 
       if (response.data.success) {
@@ -690,7 +696,7 @@ export const useInventoryStore = defineStore('inventory', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/inventory/transactions?${queryParams.toString()}`
+        `${apiConfig.baseURL}/inventory/transactions?${queryParams.toString()}`
       );
 
       if (response.data.success) {
@@ -722,7 +728,7 @@ export const useInventoryStore = defineStore('inventory', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/inventory/disposed?${queryParams.toString()}`
+        `${apiConfig.baseURL}/inventory/disposed?${queryParams.toString()}`
       );
 
       if (response.data.success) {
@@ -745,7 +751,7 @@ export const useInventoryStore = defineStore('inventory', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/inventory/consumption/single`,
+        `${apiConfig.baseURL}/inventory/consumption/single`,
         consumptionData
       );
 
@@ -779,7 +785,7 @@ export const useInventoryStore = defineStore('inventory', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/inventory/adjustment`,
+        `${apiConfig.baseURL}/inventory/adjustment`,
         adjustmentData
       );
 
@@ -862,7 +868,7 @@ export const useInventoryStore = defineStore('inventory', () => {
       };
 
       const response = await axios.post(
-        `${API_BASE_URL}/inventory/adjustment`,
+        `${apiConfig.baseURL}/inventory/adjustment`,
         payload
       );
 
@@ -927,7 +933,7 @@ export const useInventoryStore = defineStore('inventory', () => {
       }));
 
       const response = await axios.post(
-        `${API_BASE_URL}/inventory/adjustment/bulk-distribution`,
+        `${apiConfig.baseURL}/inventory/adjustment/bulk-distribution`,
         {
           items: adjustmentItems,
           performed_by: actorName || 'System',
@@ -979,7 +985,7 @@ export const useInventoryStore = defineStore('inventory', () => {
             e.date instanceof Date ? e.date.toISOString() : e.date,
         };
         await axios.patch(
-          `${API_BASE_URL}/inventory/items/${inventoryItemId}/quantity`,
+          `${apiConfig.baseURL}/inventory/items/${inventoryItemId}/quantity`,
           payload
         );
       }
@@ -1009,7 +1015,7 @@ export const useInventoryStore = defineStore('inventory', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/inventory/alerts/configure`,
+        `${apiConfig.baseURL}/inventory/alerts/configure`,
         alertData
       );
 
@@ -1035,7 +1041,7 @@ export const useInventoryStore = defineStore('inventory', () => {
   const getAlertConfiguration = async (itemTypeId) => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/inventory/alerts/configure/${itemTypeId}`
+        `${apiConfig.baseURL}/inventory/alerts/configure/${itemTypeId}`
       );
 
       if (response.data.success) {
@@ -1055,7 +1061,7 @@ export const useInventoryStore = defineStore('inventory', () => {
   const acknowledgeAlert = async (alertId, acknowledgedBy, notes) => {
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/inventory/alerts/${alertId}/acknowledge`,
+        `${apiConfig.baseURL}/inventory/alerts/${alertId}/acknowledge`,
         { acknowledged_by: acknowledgedBy, notes }
       );
 

@@ -23,7 +23,7 @@ class MenuItem {
             "COUNT(CASE WHEN sp.status = 'Completed' THEN 1 END) as completed_samples"
           ),
           db.raw(
-            "COUNT(CASE WHEN qi.result = 'Pass' AND qi.deleted_at IS NULL THEN 1 END) as passed_inspections"
+            "COUNT(CASE WHEN (qi.result = 'Pass' AND qi.deleted_at IS NULL) OR (qi_direct.result = 'Pass' AND qi_direct.deleted_at IS NULL) THEN 1 END) as passed_inspections"
           )
         )
         .leftJoin("menus as m", "mi.menu_id", "m.id")
@@ -34,6 +34,11 @@ class MenuItem {
           "menu_quality_inspections as qi",
           "sp.id",
           "qi.sample_production_id"
+        )
+        .leftJoin(
+          "menu_quality_inspections as qi_direct",
+          "mi.id",
+          "qi_direct.menu_item_id"
         )
         .whereNull("m.deleted_at");
 
@@ -237,15 +242,17 @@ class MenuItem {
         throw new Error("Invalid recipe_id - must be a positive number");
       }
 
-      // Validate created_by user exists
+      // Validate created_by employee exists
       const createdBy = Number(menuItemData.created_by);
       if (!Number.isFinite(createdBy) || createdBy <= 0) {
-        throw new Error("Invalid created_by user ID");
+        throw new Error("Invalid created_by employee ID");
       }
 
-      const userExists = await trx("users").where("id", createdBy).first();
-      if (!userExists) {
-        throw new Error("User not found");
+      const employeeExists = await trx("employees")
+        .where("id", createdBy)
+        .first();
+      if (!employeeExists) {
+        throw new Error("Employee not found");
       }
 
       // Get recipe details to calculate costs
@@ -485,7 +492,7 @@ class MenuItem {
       try {
         await AuditLogger.log({
           menu_item_id: menuItemId,
-          user_id: Number.isFinite(Number(menuItemData.created_by))
+          employee_id: Number.isFinite(Number(menuItemData.created_by))
             ? Number(menuItemData.created_by)
             : 1,
           action_type: "CREATED",
@@ -521,9 +528,7 @@ class MenuItem {
   // Update menu item
   static async update(id, updateData, userId) {
     try {
-      console.log("MenuItem.update called with:", { id, updateData, userId });
-
-      // Get current item data before update for audit logging (lightweight query)
+        // Get current item data before update for audit logging (lightweight query)
       const currentItem = await db("menu_items")
         .select("id", "menu_item_name", "image_url", "menu_id")
         .where("id", id)
@@ -623,7 +628,7 @@ class MenuItem {
       // Log the update action
       await AuditLogger.log({
         menu_item_id: id,
-        user_id: userId,
+        employee_id: userId,
         action_type: "UPDATED",
         action_details: {
           changes: this.getChanges(currentItem, updatedItem),
@@ -691,7 +696,7 @@ class MenuItem {
         // Log the approval action
         await AuditLogger.log({
           menu_item_id: id,
-          user_id: userId,
+          employee_id: userId,
           action_type: "APPROVED_FOR_PRODUCTION",
           action_details: {
             menu_item_name: menuItem.menu_item_name,
@@ -727,7 +732,7 @@ class MenuItem {
       // Log the deletion action
       await AuditLogger.log({
         menu_item_id: id,
-        user_id: userId,
+        employee_id: userId,
         action_type: "DELETED",
         action_details: {
           menu_item_name: currentItem.menu_item_name,
@@ -766,7 +771,7 @@ class MenuItem {
       // Log the restoration action
       await AuditLogger.log({
         menu_item_id: id,
-        user_id: userId,
+        employee_id: userId,
         action_type: "RESTORED",
         action_details: {
           menu_item_name: currentItem.menu_item_name,

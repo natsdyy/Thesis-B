@@ -160,6 +160,15 @@ const routes = [
       requiresDepartmentAccess: true,
     },
   },
+  // Order rating route (public - no auth required)
+  {
+    path: '/rate-order',
+    name: 'OrderRating',
+    component: () => import('../views/OrderRating.vue'),
+    meta: {
+      title: 'Rate Your Order',
+    },
+  },
   // 404 Not Found
   {
     path: '/:pathMatch(.*)*',
@@ -202,7 +211,14 @@ router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore();
 
   // Routes that don't require authentication
-  const publicRoutes = ['/', '/login', '/home', '/menu', '/stores'];
+  const publicRoutes = [
+    '/',
+    '/login',
+    '/home',
+    '/menu',
+    '/stores',
+    '/rate-order',
+  ];
 
   if (publicRoutes.includes(to.path)) {
     next();

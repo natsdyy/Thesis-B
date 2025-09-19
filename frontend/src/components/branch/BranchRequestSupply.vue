@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, computed, onMounted, watch } from 'vue';
+  import { ref, computed, onMounted, watch, onUnmounted } from 'vue';
   import { useBranchRequestStore } from '../../stores/branchRequestStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
@@ -165,14 +165,12 @@
     'ml',
   ]);
 
-  // Mock categories for branch requests
-  const branchCategories = ref([
-    { name: 'Meat', items: ['Beef Steak', 'Chicken Breast', 'Pork Chops'] },
-    { name: 'Vegetables', items: ['French Fries', 'Onions', 'Tomatoes'] },
-    { name: 'Beverages', items: ['Coca Cola', 'Sprite', 'Water'] },
-    { name: 'Condiments', items: ['Ketchup', 'Mustard', 'Mayo'] },
-    { name: 'Dairy', items: ['Cheese', 'Milk', 'Butter'] },
-  ]);
+  // Beverage-specific unit options
+  const beverageUnitOptions = ref(['liters', 'bottles', 'pieces', 'cans']);
+
+  // Helper to detect if a row is a beverage item (by category name)
+  const isBeverageRow = (row) =>
+    String(row?.category || '').toLowerCase() === 'beverages';
 
   // Mock requests data
   const requests = ref([]);
@@ -366,9 +364,14 @@
         throw new Error('Please enter a request description');
       }
 
-      const validItems = requestItems.value.filter(
-        (item) => item.item_name.trim() && item.item_quantity > 0
-      );
+      const validItems = requestItems.value.filter((item) => {
+        if (!item.item_name.trim() || item.item_quantity <= 0) return false;
+        // If beverages, ensure unit is selected
+        if (isBeverageRow(item) && !String(item.item_unit || '').trim()) {
+          return false;
+        }
+        return true;
+      });
 
       if (validItems.length === 0) {
         throw new Error('Please add at least one valid item');
@@ -432,9 +435,13 @@
         throw new Error('Please enter a request description');
       }
 
-      const validItems = requestItems.value.filter(
-        (item) => item.item_name.trim() && item.item_quantity > 0
-      );
+      const validItems = requestItems.value.filter((item) => {
+        if (!item.item_name.trim() || item.item_quantity <= 0) return false;
+        if (isBeverageRow(item) && !String(item.item_unit || '').trim()) {
+          return false;
+        }
+        return true;
+      });
 
       if (validItems.length === 0) {
         throw new Error('Please add at least one valid item');
@@ -772,6 +779,127 @@
     if (currentBranch.value?.id) {
       await branchInventoryStore.fetchInventory(currentBranch.value.id);
     }
+
+    // If a prefill payload was set before this component mounted, consume it
+    try {
+      const queued = window.__branchPrefillSupplyRequest;
+      if (queued && Array.isArray(queued.items) && queued.items.length) {
+        // Use same handler logic as the event
+        const e = { detail: queued };
+        const payload = e.detail || {};
+        resetForm();
+        requestForm.value.request_type = 'Regular';
+        requestForm.value.request_description = `Auto-generated from Alerts for ${payload.items?.[0]?.name || 'item'}`;
+        // Respect the incoming source if provided; otherwise, keep current tab type
+        requestForm.value.source_type = payload.source || props.inventoryType;
+        requestForm.value.branch_id = currentBranch.value?.id || null;
+        requestForm.value.department = currentBranch.value?.name || 'Branch';
+
+        const items = Array.isArray(payload.items) ? payload.items : [];
+        requestItems.value = items.map((it, idx) => ({
+          id: idx + 1,
+          inventory_item_id: null,
+          menu_item_id: null,
+          item_name: it.name || '',
+          item_quantity: Number(it.quantity || 1),
+          item_unit: it.unit || 'pieces',
+          unit_price: Number(it.unit_price || 0),
+          category: payload.category || '',
+          source: (
+            it.source ||
+            payload.source ||
+            props.inventoryType ||
+            'scm'
+          ).toLowerCase(),
+        }));
+        // Try auto-selecting matching branch inventory by name
+        requestItems.value.forEach((row) => {
+          const match = branchInventoryItems.value.find(
+            (i) =>
+              (i.item_name || '').toLowerCase() === row.item_name.toLowerCase()
+          );
+          if (match) handleSelectInventoryItem(row, match.id);
+        });
+        if (requestItems.value.length === 0) {
+          requestItems.value = [
+            {
+              id: 1,
+              inventory_item_id: null,
+              menu_item_id: null,
+              item_name: payload.items?.[0]?.name || '',
+              item_quantity: Number(payload.items?.[0]?.quantity || 1),
+              item_unit: payload.items?.[0]?.unit || 'pieces',
+              unit_price: Number(payload.items?.[0]?.unit_price || 0),
+              category: payload.category || '',
+              source: payload.source || props.inventoryType || 'scm',
+            },
+          ];
+        }
+        showCreateModal.value = true;
+        // Clear the queued payload so it isn't reused
+        delete window.__branchPrefillSupplyRequest;
+      }
+    } catch (_) {}
+
+    // Listen for prefill event from BranchInventory Alerts
+    const handler = (e) => {
+      try {
+        const payload = e.detail || {};
+        // Reset and open create modal
+        resetForm();
+        requestForm.value.request_type = 'Regular';
+        requestForm.value.request_description = `Auto-generated from Alerts for ${payload.items?.[0]?.name || 'item'}`;
+        requestForm.value.source_type = payload.source || props.inventoryType;
+        requestForm.value.branch_id = currentBranch.value?.id || null;
+        requestForm.value.department = currentBranch.value?.name || 'Branch';
+
+        // Map items
+        const items = Array.isArray(payload.items) ? payload.items : [];
+        requestItems.value = items.map((it, idx) => ({
+          id: idx + 1,
+          inventory_item_id: null, // optional: could resolve by name
+          menu_item_id: null,
+          item_name: it.name || '',
+          item_quantity: Number(it.quantity || 1),
+          item_unit: it.unit || 'pieces',
+          unit_price: Number(it.unit_price || 0),
+          category: payload.category || '',
+          source: (
+            it.source ||
+            payload.source ||
+            props.inventoryType ||
+            'scm'
+          ).toLowerCase(),
+        }));
+        // Try auto-selecting matching branch inventory by name
+        requestItems.value.forEach((row) => {
+          const match = branchInventoryItems.value.find(
+            (i) =>
+              (i.item_name || '').toLowerCase() === row.item_name.toLowerCase()
+          );
+          if (match) handleSelectInventoryItem(row, match.id);
+        });
+        if (requestItems.value.length === 0) {
+          requestItems.value = [
+            {
+              id: 1,
+              inventory_item_id: null,
+              menu_item_id: null,
+              item_name: payload.items?.[0]?.name || '',
+              item_quantity: Number(payload.items?.[0]?.quantity || 1),
+              item_unit: payload.items?.[0]?.unit || 'pieces',
+              unit_price: Number(payload.items?.[0]?.unit_price || 0),
+              category: payload.category || '',
+              source: payload.source || props.inventoryType || 'scm',
+            },
+          ];
+        }
+        showCreateModal.value = true;
+      } catch (_) {}
+    };
+    window.addEventListener('branch-prefill-supply-request', handler);
+    // store for cleanup
+    window.__branchPrefillSupplyHandler = handler;
   });
 
   // When branch changes, refresh available branch inventory
@@ -783,6 +911,16 @@
       }
     }
   );
+
+  onUnmounted(() => {
+    if (window.__branchPrefillSupplyHandler) {
+      window.removeEventListener(
+        'branch-prefill-supply-request',
+        window.__branchPrefillSupplyHandler
+      );
+      delete window.__branchPrefillSupplyHandler;
+    }
+  });
 
   const handleSelectInventoryItem = (row, inventoryItemId) => {
     const inv = branchInventoryItems.value.find(
@@ -1360,13 +1498,30 @@
                   </td>
 
                   <td>
-                    <input
-                      type="text"
-                      v-model="item.item_unit"
-                      class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
-                      placeholder="unit"
-                      readonly
-                    />
+                    <template v-if="isBeverageRow(item)">
+                      <select
+                        v-model="item.item_unit"
+                        class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
+                      >
+                        <option value="" disabled>Select Unit</option>
+                        <option
+                          v-for="unit in beverageUnitOptions"
+                          :key="unit"
+                          :value="unit"
+                        >
+                          {{ unit }}
+                        </option>
+                      </select>
+                    </template>
+                    <template v-else>
+                      <input
+                        type="text"
+                        v-model="item.item_unit"
+                        class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
+                        placeholder="unit"
+                        readonly
+                      />
+                    </template>
                   </td>
 
                   <td>

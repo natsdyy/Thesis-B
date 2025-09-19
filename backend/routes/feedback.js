@@ -52,8 +52,7 @@ if (!TELEGRAM_BOT_TOKEN) {
   console.error("TELEGRAM_BOT_TOKEN is required in environment variables");
 }
 
-
-router.post("/", upload.single('image'), async (req, res) => {
+router.post("/", upload.single("image"), async (req, res) => {
   try {
     const { name, email, message, phone, rating } = req.body;
     const imageFile = req.file;
@@ -219,6 +218,228 @@ ${feedback.message}
   })}
 
 🌐 <b>Source:</b> ${feedback.source}`;
+}
+
+// Order rating endpoint for QR code scans
+router.post("/order-rating", upload.single("image"), async (req, res) => {
+  try {
+    const {
+      orderData,
+      customerName,
+      customerEmail,
+      overallRating,
+      itemRatings,
+      comments,
+    } = req.body;
+
+    const imageFile = req.file;
+
+    // Parse order data from QR code
+    let parsedOrderData;
+    try {
+      parsedOrderData =
+        typeof orderData === "string" ? JSON.parse(orderData) : orderData;
+    } catch (parseError) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order data format",
+      });
+    }
+
+    // Validate required fields
+    if (!parsedOrderData.orderNumber || !customerName || !customerEmail) {
+      return res.status(400).json({
+        success: false,
+        message: "Order number, customer name, and email are required",
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(customerEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid email address",
+      });
+    }
+
+    // Validate overall rating
+    if (overallRating && (overallRating < 1 || overallRating > 5)) {
+      return res.status(400).json({
+        success: false,
+        message: "Overall rating must be between 1 and 5",
+      });
+    }
+
+    // Create rating object
+    const rating = {
+      orderNumber: parsedOrderData.orderNumber,
+      orderTotal: parsedOrderData.total,
+      branch: parsedOrderData.branch,
+      cashier: parsedOrderData.cashier,
+      orderTimestamp: parsedOrderData.timestamp,
+      items: parsedOrderData.items || [],
+      customerName: customerName.trim(),
+      customerEmail: customerEmail.trim().toLowerCase(),
+      overallRating: overallRating || null,
+      itemRatings: itemRatings ? JSON.parse(itemRatings) : [],
+      comments: comments ? comments.trim() : null,
+      timestamp: new Date().toISOString(),
+      source: "QR Code Rating",
+      imagePath: imageFile ? imageFile.path : null,
+      imageFilename: imageFile ? imageFile.filename : null,
+    };
+
+    // Format message for Telegram
+    const telegramMessage = formatOrderRatingMessage(rating);
+
+    // Send to Telegram group
+    let telegramResponse = null;
+    try {
+      if (TELEGRAM_BOT_TOKEN) {
+        if (imageFile) {
+          const imageStream = fs.createReadStream(imageFile.path);
+          telegramResponse = await bot.sendPhoto(
+            TELEGRAM_CHAT_ID,
+            imageStream,
+            {
+              caption: telegramMessage,
+              parse_mode: "HTML",
+            }
+          );
+        } else {
+          telegramResponse = await bot.sendMessage(
+            TELEGRAM_CHAT_ID,
+            telegramMessage,
+            {
+              parse_mode: "HTML",
+            }
+          );
+        }
+        console.log(
+          "Order rating sent to Telegram successfully:",
+          telegramResponse.message_id
+        );
+      } else {
+        console.warn(
+          "TELEGRAM_BOT_TOKEN not configured, skipping Telegram notification"
+        );
+      }
+    } catch (telegramError) {
+      console.error(
+        "Failed to send order rating to Telegram:",
+        telegramError.message
+      );
+    }
+
+    // Clean up uploaded file after sending to Telegram
+    if (imageFile && fs.existsSync(imageFile.path)) {
+      try {
+        fs.unlinkSync(imageFile.path);
+        console.log("Uploaded image cleaned up:", imageFile.filename);
+      } catch (cleanupError) {
+        console.warn("Failed to cleanup uploaded image:", cleanupError.message);
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Thank you for your rating! We appreciate your feedback.",
+      data: {
+        ratingId: Date.now(),
+        orderNumber: rating.orderNumber,
+        telegramMessageId: telegramResponse?.message_id || null,
+        submittedAt: rating.timestamp,
+        hasImage: !!imageFile,
+      },
+    });
+  } catch (error) {
+    console.error("Error processing order rating:", error);
+
+    // Clean up uploaded file if there was an error
+    if (req.file && fs.existsSync(req.file.path)) {
+      try {
+        fs.unlinkSync(req.file.path);
+        console.log(
+          "Uploaded image cleaned up after error:",
+          req.file.filename
+        );
+      } catch (cleanupError) {
+        console.warn(
+          "Failed to cleanup uploaded image after error:",
+          cleanupError.message
+        );
+      }
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to submit rating. Please try again later.",
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : "Internal server error",
+    });
+  }
+});
+
+/**
+ * Format order rating data for Telegram message
+ * @param {Object} rating - The rating object
+ * @returns {string} Formatted HTML message for Telegram
+ */
+function formatOrderRatingMessage(rating) {
+  const overallStars = rating.overallRating
+    ? "⭐".repeat(rating.overallRating)
+    : "No rating";
+
+  // Format item ratings
+  let itemRatingsText = "";
+  if (rating.itemRatings && rating.itemRatings.length > 0) {
+    itemRatingsText = "\n\n🍽️ <b>Item Ratings:</b>\n";
+    rating.itemRatings.forEach((item) => {
+      const itemStars = item.rating ? "⭐".repeat(item.rating) : "No rating";
+      itemRatingsText += `• ${item.itemName}: ${itemStars}${item.comment ? ` (${item.comment})` : ""}\n`;
+    });
+  }
+
+  return `🆕 <b>New Order Rating</b>
+
+📋 <b>Order #:</b> ${rating.orderNumber}
+🏪 <b>Branch:</b> ${rating.branch}
+👤 <b>Cashier:</b> ${rating.cashier}
+💰 <b>Total:</b> ₱${rating.orderTotal}
+⭐ <b>Overall Rating:</b> ${overallStars}
+
+👤 <b>Customer:</b> ${rating.customerName}
+📧 <b>Email:</b> ${rating.customerEmail}
+💬 <b>Comments:</b> ${rating.comments || "No additional comments"}${itemRatingsText}
+
+📅 <b>Order Date:</b> ${new Date(rating.orderTimestamp).toLocaleString(
+    "en-PH",
+    {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }
+  )}
+
+📅 <b>Rating Submitted:</b> ${new Date(rating.timestamp).toLocaleString(
+    "en-PH",
+    {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }
+  )}
+
+🌐 <b>Source:</b> ${rating.source}${rating.imageFilename ? "\n📸 <b>Image:</b> Attached" : ""}`;
 }
 
 router.get("/health", async (req, res) => {

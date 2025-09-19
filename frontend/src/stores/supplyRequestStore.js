@@ -4,8 +4,6 @@ import { ref, computed } from 'vue';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = apiConfig.baseURL;
-
 export const useSupplyRequestStore = defineStore('supplyRequest', () => {
   // State
   const requests = ref([]);
@@ -76,7 +74,7 @@ export const useSupplyRequestStore = defineStore('supplyRequest', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/supply-requests?${params.toString()}`
+        `${apiConfig.baseURL}/supply-requests?${params.toString()}`
       );
 
       if (response.data.success) {
@@ -102,7 +100,9 @@ export const useSupplyRequestStore = defineStore('supplyRequest', () => {
     error.value = null;
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/supply-requests/${id}`);
+      const response = await axios.get(
+        `${apiConfig.baseURL}/supply-requests/${id}`
+      );
 
       if (response.data.success) {
         currentRequest.value = response.data.data;
@@ -126,7 +126,7 @@ export const useSupplyRequestStore = defineStore('supplyRequest', () => {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/supply-requests/request/${requestId}`
+        `${apiConfig.baseURL}/supply-requests/request/${requestId}`
       );
 
       if (response.data.success) {
@@ -168,7 +168,7 @@ export const useSupplyRequestStore = defineStore('supplyRequest', () => {
       };
 
       const response = await axios.post(
-        `${API_BASE_URL}/supply-requests`,
+        `${apiConfig.baseURL}/supply-requests`,
         payload
       );
 
@@ -214,7 +214,7 @@ export const useSupplyRequestStore = defineStore('supplyRequest', () => {
       }
 
       const response = await axios.put(
-        `${API_BASE_URL}/supply-requests/${id}`,
+        `${apiConfig.baseURL}/supply-requests/${id}`,
         payload
       );
 
@@ -252,7 +252,7 @@ export const useSupplyRequestStore = defineStore('supplyRequest', () => {
       };
 
       const response = await axios.patch(
-        `${API_BASE_URL}/supply-requests/${id}/status`,
+        `${apiConfig.baseURL}/supply-requests/${id}/status`,
         payload
       );
 
@@ -285,7 +285,7 @@ export const useSupplyRequestStore = defineStore('supplyRequest', () => {
 
     try {
       const response = await axios.delete(
-        `${API_BASE_URL}/supply-requests/${id}`
+        `${apiConfig.baseURL}/supply-requests/${id}`
       );
 
       if (response.data.success) {
@@ -313,7 +313,7 @@ export const useSupplyRequestStore = defineStore('supplyRequest', () => {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/supply-requests/status/${status}`
+        `${apiConfig.baseURL}/supply-requests/status/${status}`
       );
 
       if (response.data.success) {
@@ -350,7 +350,7 @@ export const useSupplyRequestStore = defineStore('supplyRequest', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/supply-requests/stats?${params.toString()}`
+        `${apiConfig.baseURL}/supply-requests/stats?${params.toString()}`
       );
 
       if (response.data.success) {

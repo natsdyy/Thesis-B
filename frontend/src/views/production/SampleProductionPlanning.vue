@@ -37,12 +37,14 @@
   import { useAuthStore } from '../../stores/authStore.js';
   import { useUserStore } from '../../stores/userStore.js';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
+  import { useEmployeeStore } from '../../stores/employeeStore.js';
   import SampleProductionAuditLog from '../../components/production/SampleProductionAuditLog.vue';
   import FullAuditLogModal from '../../components/production/FullAuditLogModal.vue';
 
   const productionStore = useProductionStore();
   const authStore = useAuthStore();
   const userStore = useUserStore();
+  const employeeStore = useEmployeeStore();
 
   // Reactive state
   const activeTab = ref('planning');
@@ -115,35 +117,63 @@
   const lastCheckedBatchSize = ref(null);
   const batchSizeDebounceTimeout = ref(null);
 
-  // Get users for staff assignment
+  // Get employees for staff assignment (Updated: 2025-01-18)
   const staffMembers = computed(() => {
-    // This would normally come from a users store or API call
-    return [
-      {
-        id: 1,
-        name: 'John Marco Paja',
-        department: 'Production',
-        role: 'Chef',
-      },
-      {
-        id: 2,
-        name: 'Jane Smith Paja',
-        department: 'Production',
-        role: 'Sous Chef',
-      },
-      {
-        id: 3,
-        name: 'Mike Johnson Paja',
-        department: 'Production',
-        role: 'Line Cook',
-      },
-      {
-        id: 4,
-        name: 'Sarah Wilson Paja',
-        department: 'Production',
-        role: 'Prep Cook',
-      },
-    ];
+    // Debug: Log employee store data
+    console.log('Employee store employees:', employeeStore.employees);
+    console.log('Employee store loading:', employeeStore.loading);
+
+    // Filter employees by Production department and Active status
+    const productionEmployees = employeeStore.employees
+      .filter(
+        (emp) => emp.department === 'Production' && emp.status === 'Active'
+      )
+      .map((emp) => ({
+        id: emp.id,
+        name: `${emp.first_name} ${emp.last_name}`,
+        department: emp.department,
+        role: emp.job_title || emp.role || 'Staff',
+        employee_id: emp.employee_id,
+        email: emp.email,
+      }));
+
+    console.log('Filtered production employees:', productionEmployees);
+
+    // If no production employees found, show all active employees as fallback
+    if (productionEmployees.length === 0) {
+      console.log(
+        'No production employees found, showing all active employees'
+      );
+      const allActiveEmployees = employeeStore.employees
+        .filter((emp) => emp.status === 'Active')
+        .map((emp) => ({
+          id: emp.id,
+          name: `${emp.first_name} ${emp.last_name}`,
+          department: emp.department,
+          role: emp.job_title || emp.role || 'Staff',
+          employee_id: emp.employee_id,
+          email: emp.email,
+        }));
+
+      // If still no employees, show a placeholder
+      if (allActiveEmployees.length === 0) {
+        console.log('No active employees found, showing placeholder');
+        return [
+          {
+            id: 0,
+            name: 'No employees available',
+            department: 'N/A',
+            role: 'N/A',
+            employee_id: 'N/A',
+            email: 'N/A',
+          },
+        ];
+      }
+
+      return allActiveEmployees;
+    }
+
+    return productionEmployees;
   });
 
   // Computed properties
@@ -485,14 +515,42 @@
         productionStore.fetchSampleProductions(),
         productionStore.fetchMenuItems(),
         productionStore.fetchSampleProductionStats(),
+        employeeStore.fetchEmployees(), // Fetch employees for staff assignment
       ]);
+      console.log(
+        'Data fetched successfully, employees:',
+        employeeStore.employees.length
+      );
     } catch (error) {
       console.error('Error fetching data:', error);
+      // If employee fetching fails, try to fetch employees separately
+      try {
+        await employeeStore.fetchEmployees();
+        console.log(
+          'Employees fetched separately:',
+          employeeStore.employees.length
+        );
+      } catch (empError) {
+        console.error('Error fetching employees:', empError);
+      }
     }
   };
 
-  const openCreateModal = () => {
+  const openCreateModal = async () => {
     resetForm();
+    // Ensure employees are loaded when opening the modal
+    if (employeeStore.employees.length === 0) {
+      console.log('No employees loaded, fetching employees...');
+      try {
+        await employeeStore.fetchEmployees();
+        console.log(
+          'Employees loaded for modal:',
+          employeeStore.employees.length
+        );
+      } catch (error) {
+        console.error('Error loading employees for modal:', error);
+      }
+    }
     showCreateModal.value = true;
   };
 

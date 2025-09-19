@@ -819,7 +819,7 @@ router.get(
       const filters = {
         sample_production_id: req.query.sample_production_id,
         action_type: req.query.action_type,
-        user_id: req.query.user_id,
+        employee_id: req.query.employee_id,
         date_from: req.query.date_from,
         date_to: req.query.date_to,
         limit: req.query.limit ? parseInt(req.query.limit) : 50,

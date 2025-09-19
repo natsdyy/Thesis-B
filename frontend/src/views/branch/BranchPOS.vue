@@ -23,6 +23,7 @@
   import { usePOSStore } from '../../stores/posStore';
   import axios from 'axios';
   import { apiConfig } from '../../config/api.js';
+  import QRCodeGenerator from '../../components/common/QRCodeGenerator.vue';
 
   const branchContextStore = useBranchContextStore();
   const authStore = useAuthStore();
@@ -31,28 +32,51 @@
   const router = useRouter();
   const API_BASE_URL = apiConfig.baseURL;
 
+  // Function to get the correct base URL for QR codes
+  const getQRBaseUrl = () => {
+    // In development, use the network IP so phones can access it
+    if (
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1'
+    ) {
+      // For local development, use the network IP so phones can access it
+      return `http://192.168.254.110:8080`;
+    }
+    // In production, use the current origin
+    return window.location.origin;
+  };
+
   // Local state
   const loading = ref(false);
   const accessDenied = ref(false);
   const needsManagerLogin = ref(false);
   const managerLoginForm = ref({
-    email: '',
-    password: '',
-    confirmPassword: '',
+    employeeId: '',
   });
   const managerLoginError = ref('');
+  const showEmployeeId = ref(false);
   const stats = ref({
     todaySales: 0,
     todayTransactions: 0,
     averageTransaction: 0,
     activeOrders: 0,
   });
+  const statsLoading = ref(false);
 
   // POS UI state
   const showOrderCompleteModal = ref(false);
+  const showOrderConfirmationModal = ref(false);
+  const showReceiptModal = ref(false);
+  const showVoidOrderModal = ref(false);
+  const hasPrintedReceipt = ref(false);
   const orderCompleteData = ref(null);
+  const orderConfirmationData = ref(null);
+  const confirmationOrderType = ref('Dine In');
   const paymentInput = ref('');
   const isProcessingOrder = ref(false);
+  const receiptData = ref(null);
+  const voidOrderData = ref(null);
+  const voidReason = ref('');
 
   // Computed
   const currentBranch = computed(() => branchContextStore.currentBranch);
@@ -74,86 +98,56 @@
     () => posSessionStore.sessionTimeRemainingMinutes
   );
 
-  // Manager login functions
+  // Manager login via Employee ID only
   const handleManagerLogin = async () => {
     managerLoginError.value = '';
 
-    if (!managerLoginForm.value.email) {
-      managerLoginError.value = 'Manager email is required';
-      return;
-    }
+    const employeeId = managerLoginForm.value.employeeId?.trim();
 
-    // Basic email format check
-    const emailRegex = /[^@\s]+@[^@\s]+\.[^@\s]+/;
-    if (!emailRegex.test(managerLoginForm.value.email)) {
-      managerLoginError.value = 'Enter a valid manager email';
-      return;
-    }
-
-    if (!managerLoginForm.value.password) {
-      managerLoginError.value = 'Password is required';
-      return;
-    }
-
-    if (
-      managerLoginForm.value.password !== managerLoginForm.value.confirmPassword
-    ) {
-      managerLoginError.value = 'Passwords do not match';
+    if (!employeeId) {
+      managerLoginError.value = 'Employee ID is required';
       return;
     }
 
     try {
-      // Authenticate manager using the same backend login endpoint
-      const response = await axios.post(`${API_BASE_URL}/auth/login`, {
-        email: managerLoginForm.value.email.trim(),
-        password: managerLoginForm.value.password,
-      });
+      // Fetch employee by employee_id
+      const res = await axios.get(
+        `${API_BASE_URL}/employees/employee-id/${encodeURIComponent(employeeId)}`
+      );
+      const employee = res.data?.data;
 
-      if (!response.data?.success) {
-        managerLoginError.value = response.data?.message || 'Login failed';
+      if (!employee) {
+        managerLoginError.value = 'Employee not found';
         return;
       }
 
-      const managerUser = response.data.data?.user;
-      if (!managerUser) {
-        managerLoginError.value = 'Invalid response from server';
-        return;
-      }
-
-      // Validate role and branch
-      const isManager = managerUser.role === 'Manager';
-      const sameBranch =
-        !!managerUser.branch_id &&
-        managerUser.branch_id === user.value.branch_id;
-
-      if (!isManager) {
+      // Role and status checks
+      if (employee.role !== 'Manager') {
         managerLoginError.value = 'Only a Manager can start a POS session';
         return;
       }
 
-      if (!sameBranch) {
+      if (!employee.branch_id || employee.branch_id !== user.value.branch_id) {
         managerLoginError.value = 'Manager must belong to this branch';
         return;
       }
 
-      // Start manager session without changing the current app auth session
+      // Start manager session (local only)
       posSessionStore.startManagerSession({
-        id: managerUser.id,
-        name:
-          `${managerUser.first_name || ''} ${managerUser.last_name || ''}`.trim() ||
-          managerUser.name,
-        role: managerUser.role,
-        branch_id: managerUser.branch_id,
-        email: managerUser.email,
+        id: employee.id,
+        name: `${employee.first_name || ''} ${employee.last_name || ''}`.trim(),
+        role: employee.role,
+        branch_id: employee.branch_id,
+        email: employee.email,
         loginTime: new Date().toISOString(),
       });
 
       needsManagerLogin.value = false;
-      managerLoginForm.value = { email: '', password: '', confirmPassword: '' };
+      managerLoginForm.value = { employeeId: '' };
     } catch (err) {
-      console.error('POS manager login failed:', err);
+      console.error('POS manager PIN login failed:', err);
       managerLoginError.value =
-        err.response?.data?.message || 'Invalid manager email or password';
+        err.response?.data?.message || 'Unable to verify manager';
     }
   };
 
@@ -240,11 +234,13 @@
     } else if (value === 'clear') {
       paymentInput.value = '';
     } else if (value === 'ok') {
-      // Process the payment input
-      posStore.setAmountPaid(paymentInput.value);
+      // Deprecated - keypad ok no longer used
     } else {
       paymentInput.value += value;
     }
+
+    // Keep store in sync so isOrderValid updates immediately
+    posStore.setAmountPaid(paymentInput.value);
   };
 
   const processOrder = async () => {
@@ -255,15 +251,46 @@
       return;
     }
 
+    // Show confirmation modal first
+    orderConfirmationData.value = {
+      orderNumber: posStore.getNextOrderNumber(),
+      orderType: posStore.currentOrder.orderType,
+      items: posStore.currentOrder.items,
+      subtotal: posStore.orderTotal,
+      amountPaid: parseFloat(paymentInput.value) || 0,
+      change: (parseFloat(paymentInput.value) || 0) - posStore.orderTotal,
+      cashierInfo: { name: user.value?.name },
+      timestamp: new Date().toLocaleString(),
+    };
+    confirmationOrderType.value = posStore.currentOrder.orderType;
+    showOrderConfirmationModal.value = true;
+  };
+
+  const confirmOrder = async () => {
     isProcessingOrder.value = true;
     try {
+      // Ensure selected order type in confirmation is applied
+      if (
+        confirmationOrderType.value &&
+        confirmationOrderType.value !== posStore.currentOrder.orderType
+      ) {
+        posStore.setOrderType(confirmationOrderType.value);
+      }
       const orderData = await posStore.processOrder();
       orderCompleteData.value = orderData;
+      showOrderConfirmationModal.value = false;
       showOrderCompleteModal.value = true;
       paymentInput.value = '';
+
+      // Update stats after successful order
+      await fetchTodayStats();
     } catch (error) {
       console.error('Error processing order:', error);
-      alert('Failed to process order. Please try again.');
+      const errorMessage =
+        error?.response?.data?.message ||
+        error.message ||
+        'Failed to process order. Please try again.';
+      alert(errorMessage);
     } finally {
       isProcessingOrder.value = false;
     }
@@ -274,9 +301,135 @@
     orderCompleteData.value = null;
   };
 
+  const closeOrderConfirmationModal = () => {
+    showOrderConfirmationModal.value = false;
+    orderConfirmationData.value = null;
+  };
+
+  const showReceipt = () => {
+    if (orderCompleteData.value) {
+      hasPrintedReceipt.value = false;
+      receiptData.value = {
+        ...orderCompleteData.value,
+        cashierName: user.value?.name,
+        branchName: currentBranch.value?.name,
+        branchLocation:
+          currentBranch.value?.location || currentBranch.value?.address,
+        orderType: confirmationOrderType.value,
+        timestamp: new Date().toLocaleString(),
+        qrData: `${getQRBaseUrl()}/rate-order?order=${encodeURIComponent(orderCompleteData.value.order_number)}`,
+      };
+      showReceiptModal.value = true;
+    }
+  };
+
+  const closeReceiptModal = () => {
+    showReceiptModal.value = false;
+    receiptData.value = null;
+  };
+
+  const printReceipt = () => {
+    try {
+      if (typeof window !== 'undefined' && window.print) {
+        window.print();
+        hasPrintedReceipt.value = true;
+        closeReceiptModal();
+      } else {
+        console.warn('Print function not available');
+        // Fallback: just mark as printed
+        hasPrintedReceipt.value = true;
+        closeReceiptModal();
+      }
+    } catch (error) {
+      console.error('Error printing receipt:', error);
+      // Fallback: just mark as printed
+      hasPrintedReceipt.value = true;
+      closeReceiptModal();
+    }
+  };
+
   const resetOrder = () => {
     posStore.resetOrder();
     paymentInput.value = '';
+  };
+
+  // Fetch today's sales statistics
+  const fetchTodayStats = async () => {
+    try {
+      statsLoading.value = true;
+      const today = new Date().toISOString().split('T')[0];
+      const branchId = currentBranch.value?.id || user.value?.branch_id;
+
+      if (!branchId) return;
+
+      // Use the store method instead of direct API call
+      const data = await posStore.fetchDailySummary(branchId, today);
+
+      if (data) {
+        stats.value = {
+          todaySales: data.total_sales || 0,
+          todayTransactions: data.completed_orders || 0,
+          averageTransaction: data.average_order_value || 0,
+          activeOrders:
+            data.total_orders - data.completed_orders - data.voided_orders || 0,
+        };
+      }
+    } catch (error) {
+      console.error('Error fetching today stats:', error);
+      // Keep existing stats if fetch fails
+    } finally {
+      statsLoading.value = false;
+    }
+  };
+
+  // Void order functionality
+  const showVoidOrder = (orderData) => {
+    voidOrderData.value = orderData;
+    voidReason.value = '';
+    showVoidOrderModal.value = true;
+  };
+
+  const confirmVoidOrder = async () => {
+    if (!voidReason.value.trim()) {
+      alert('Please provide a reason for voiding the order');
+      return;
+    }
+
+    try {
+      await posStore.voidOrder(voidOrderData.value.id, voidReason.value);
+      showVoidOrderModal.value = false;
+      voidOrderData.value = null;
+      voidReason.value = '';
+
+      // Update stats after voiding order
+      await fetchTodayStats();
+
+      alert('Order voided successfully');
+    } catch (error) {
+      console.error('Error voiding order:', error);
+      alert('Failed to void order. Please try again.');
+    }
+  };
+
+  const closeVoidOrderModal = () => {
+    showVoidOrderModal.value = false;
+    voidOrderData.value = null;
+    voidReason.value = '';
+  };
+
+  // Complete order functionality
+  const completeOrder = async (orderData) => {
+    try {
+      await posStore.completeOrder(orderData.id);
+
+      // Update stats after completing order
+      await fetchTodayStats();
+
+      alert('Order completed successfully');
+    } catch (error) {
+      console.error('Error completing order:', error);
+      alert('Failed to complete order. Please try again.');
+    }
   };
 
   // Placeholder data
@@ -286,6 +439,30 @@
       return;
     }
 
+    // Setup infinite scroll on the left menu panel
+    const scrollContainer = document.querySelector(
+      '.flex-1.p-6.overflow-y-auto'
+    );
+    const onScroll = async () => {
+      if (!scrollContainer) return;
+      const nearBottom =
+        scrollContainer.scrollTop + scrollContainer.clientHeight >=
+        scrollContainer.scrollHeight - 100;
+      if (nearBottom && posStore.hasMore && !posStore.loading) {
+        await posStore.loadMore({ menuId, itemCodes, branchId });
+      }
+    };
+
+    // Register cleanup hooks BEFORE any await statements
+    onUnmounted(() => {
+      if (scrollContainer) {
+        scrollContainer.removeEventListener('scroll', onScroll);
+      }
+      if (sessionTimeoutInterval) {
+        clearInterval(sessionTimeoutInterval);
+      }
+    });
+
     // Initialize branch context if not already set
     if (!branchContextStore.currentBranch) {
       await branchContextStore.initializeBranchContext();
@@ -294,23 +471,25 @@
     // Set up session timeout monitoring
     sessionTimeoutInterval = setInterval(checkSessionTimeout, 60000); // Check every minute
 
-    // Initialize POS store
-    await posStore.initialize();
+    // Initialize POS store using menuId/itemCodes if provided via route, and branch context for stock basis
+    const q = router.currentRoute.value.query || {};
+    const menuId = q.menuId ? Number(q.menuId) : undefined;
+    const itemCodes = q.codes
+      ? String(q.codes)
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    const branchId = currentBranch.value?.id || user.value?.branch_id;
 
-    // TODO: Fetch real POS data
-    stats.value = {
-      todaySales: 15420.5,
-      todayTransactions: 87,
-      averageTransaction: 177.25,
-      activeOrders: 5,
-    };
-  });
+    await posStore.initialize({ menuId, itemCodes, branchId });
 
-  // Cleanup on unmount
-  onUnmounted(() => {
-    if (sessionTimeoutInterval) {
-      clearInterval(sessionTimeoutInterval);
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', onScroll, { passive: true });
     }
+
+    // Fetch real POS data
+    await fetchTodayStats();
   });
 </script>
 
@@ -336,8 +515,8 @@
           <p class="text-sm sm:text-base text-primaryColor mb-4 text-center">
             {{
               userRole === 'Manager'
-                ? 'Please login to start the POS session'
-                : 'A manager must login first to activate the POS system'
+                ? 'Please enter your Employee ID to start the POS session'
+                : 'A manager must enter their Employee ID to activate the POS system'
             }}
           </p>
 
@@ -345,45 +524,31 @@
             <div class="form-control">
               <label class="label">
                 <span class="label-text text-sm sm:text-base"
-                  >Manager Email</span
+                  >Manager Employee ID</span
                 >
               </label>
-              <input
-                v-model="managerLoginForm.email"
-                type="email"
-                placeholder="Enter manager email"
-                class="input input-bordered w-full input-sm sm:input-md"
-                @keyup.enter="handleManagerLogin"
-              />
-            </div>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text text-sm sm:text-base"
-                  >Manager Password</span
+              <div class="relative">
+                <input
+                  v-model="managerLoginForm.employeeId"
+                  :type="showEmployeeId ? 'text' : 'password'"
+                  placeholder="Enter manager employee ID"
+                  class="input input-bordered w-full input-sm sm:input-md pr-10"
+                  @keyup.enter="handleManagerLogin"
+                />
+                <button
+                  type="button"
+                  class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 cursor-pointer"
+                  @click="showEmployeeId = !showEmployeeId"
                 >
-              </label>
-              <input
-                v-model="managerLoginForm.password"
-                type="password"
-                placeholder="Enter manager password"
-                class="input input-bordered w-full input-sm sm:input-md"
-                @keyup.enter="handleManagerLogin"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text text-sm sm:text-base"
-                  >Confirm Password</span
-                >
-              </label>
-              <input
-                v-model="managerLoginForm.confirmPassword"
-                type="password"
-                placeholder="Confirm manager password"
-                class="input input-bordered w-full input-sm sm:input-md"
-                @keyup.enter="handleManagerLogin"
-              />
+                  <font-awesome-icon
+                    :icon="
+                      showEmployeeId
+                        ? 'fa-solid fa-eye-slash'
+                        : 'fa-solid fa-eye'
+                    "
+                  />
+                </button>
+              </div>
             </div>
 
             <div v-if="managerLoginError" class="alert alert-error">
@@ -394,11 +559,7 @@
             <button
               @click="handleManagerLogin"
               class="btn bg-primaryColor text-white w-full font-thin border-none hover:bg-primaryColor/80 btn-sm sm:btn-md"
-              :disabled="
-                !managerLoginForm.email ||
-                !managerLoginForm.password ||
-                !managerLoginForm.confirmPassword
-              "
+              :disabled="!managerLoginForm.employeeId"
             >
               <Shield class="w-4 h-4 mr-2" />
               <span class="text-sm sm:text-base">Start POS Session</span>
@@ -421,46 +582,31 @@
             <div class="form-control">
               <label class="label">
                 <span class="label-text text-sm sm:text-base"
-                  >Manager Email</span
+                  >Manager Employee ID</span
                 >
               </label>
-              <input
-                v-model="managerLoginForm.email"
-                type="email"
-                placeholder="Enter manager email"
-                class="input input-bordered w-full input-sm sm:input-md"
-                @keyup.enter="handleManagerLogin"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text text-sm sm:text-base"
-                  >Manager Password</span
+              <div class="relative">
+                <input
+                  v-model="managerLoginForm.employeeId"
+                  :type="showEmployeeId ? 'text' : 'password'"
+                  placeholder="Enter manager employee ID"
+                  class="input input-bordered w-full input-sm sm:input-md pr-10"
+                  @keyup.enter="handleManagerLogin"
+                />
+                <button
+                  type="button"
+                  class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+                  @click="showEmployeeId = !showEmployeeId"
                 >
-              </label>
-              <input
-                v-model="managerLoginForm.password"
-                type="password"
-                placeholder="Enter manager password"
-                class="input input-bordered w-full input-sm sm:input-md"
-                @keyup.enter="handleManagerLogin"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text text-sm sm:text-base"
-                  >Confirm Password</span
-                >
-              </label>
-              <input
-                v-model="managerLoginForm.confirmPassword"
-                type="password"
-                placeholder="Confirm manager password"
-                class="input input-bordered w-full input-sm sm:input-md"
-                @keyup.enter="handleManagerLogin"
-              />
+                  <font-awesome-icon
+                    :icon="
+                      showEmployeeId
+                        ? 'fa-solid fa-eye-slash'
+                        : 'fa-solid fa-eye'
+                    "
+                  />
+                </button>
+              </div>
             </div>
 
             <div v-if="managerLoginError" class="alert alert-error">
@@ -471,11 +617,7 @@
             <button
               @click="handleManagerLogin"
               class="btn bg-primaryColor text-white w-full font-thin border-none hover:bg-primaryColor/80 btn-sm sm:btn-md"
-              :disabled="
-                !managerLoginForm.email ||
-                !managerLoginForm.password ||
-                !managerLoginForm.confirmPassword
-              "
+              :disabled="!managerLoginForm.employeeId"
             >
               <Shield class="w-4 h-4 mr-2" />
               <span class="text-sm sm:text-base">Start POS Session</span>
@@ -589,11 +731,12 @@
 
           <!-- Menu Items Grid -->
           <div class="flex-1 p-6 overflow-y-auto max-h-[90vh]">
-            <div class="grid grid-cols-4 md:grid-cols-4 gap-4">
+            <div class="grid grid-cols-3 md:grid-cols-4 gap-4">
               <div
                 v-for="item in posStore.filteredMenuItems"
                 :key="item.id"
-                class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow"
+                class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+                @click="item.stock_quantity > 0 && handleAddToOrder(item)"
               >
                 <!-- Item Image -->
                 <div class="aspect-square bg-gray-100">
@@ -613,32 +756,35 @@
 
                 <!-- Item Details -->
                 <div class="p-3">
-                  <h3 class="font-semibold text-gray-900 text-sm mb-1">
-                    {{ item.name }}
-                  </h3>
-
-                  <!-- Stock Status -->
-                  <div class="flex items-center mb-2">
-                    <span
-                      class="badge badge-sm border-none"
-                      :class="
-                        item.stock_quantity > 0
-                          ? 'bg-success/20 text-success'
-                          : 'bg-error/20 text-error'
-                      "
-                    >
-                      Stock: {{ item.stock_quantity }}
-                    </span>
+                  <div class="grid grid-cols-2 gap-2 mb-5">
+                    <!-- Stock Status -->
+                    <div class="flex mb-1 flex-col">
+                      <h2 class="font-semibold text-gray-900 text-md">
+                        {{ item.name }}
+                      </h2>
+                      <span
+                        class="badge badge-sm border-none"
+                        :class="
+                          item.stock_quantity > 0
+                            ? 'bg-success/20 text-success'
+                            : 'bg-error/20 text-error'
+                        "
+                      >
+                        Stock: {{ item.stock_quantity }}
+                      </span>
+                    </div>
+                    <div class="flex justify-end">
+                      <!-- Price -->
+                      <p class="text-md font-bold text-gray-900 mb-3">
+                        <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                        {{ parseFloat(item.price).toFixed(2) }}
+                      </p>
+                    </div>
                   </div>
-
-                  <!-- Price -->
-                  <p class="text-lg font-bold text-gray-900 mb-3">
-                    ₱{{ parseFloat(item.price).toFixed(2) }}
-                  </p>
 
                   <!-- Order Button -->
                   <button
-                    @click="handleAddToOrder(item)"
+                    @click.stop="handleAddToOrder(item)"
                     :disabled="item.stock_quantity <= 0"
                     class="btn btn-sm w-full font-medium"
                     :class="
@@ -662,7 +808,7 @@
           <!-- Order Header -->
           <div class="bg-primaryColor text-white px-4 py-4">
             <h2 class="text-md font-semibold">
-              Order Number {{ posStore.currentOrder.orderNumber || '#01' }}
+              Order Number {{ posStore.getNextOrderNumber() }}
             </h2>
           </div>
 
@@ -693,7 +839,8 @@
                     {{ item.name }}
                   </h4>
                   <p class="text-sm text-gray-600">
-                    ₱{{ item.price.toFixed(2) }}
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{ parseFloat(item.price || 0).toFixed(2) }}
                   </p>
                 </div>
 
@@ -724,7 +871,11 @@
             <div class="space-y-3">
               <div class="flex justify-between text-lg font-semibold">
                 <span>Total Cost:</span>
-                <span>₱{{ posStore.orderTotal.toFixed(2) }}</span>
+                <span
+                  ><font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                    posStore.orderTotal.toFixed(2)
+                  }}</span
+                >
               </div>
 
               <!-- Payment Input -->
@@ -738,39 +889,11 @@
                   step="0.01"
                   placeholder="0.00"
                   class="w-full px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primaryColor focus:border-transparent text-sm sm:text-base"
+                  @input="handlePaymentInput($event.target.value)"
                 />
               </div>
 
-              <!-- Order Type Selection -->
-              <div class="space-y-1 sm:space-y-2">
-                <label class="text-xs sm:text-sm font-medium text-gray-700"
-                  >Order Type:</label
-                >
-                <div class="flex space-x-1 sm:space-x-2">
-                  <button
-                    @click="handleOrderTypeChange('Dine In')"
-                    class="flex-1 py-1.5 sm:py-2 px-2 sm:px-4 rounded-sm text-xs sm:text-sm font-medium transition-colors touch-manipulation cursor-pointer"
-                    :class="
-                      posStore.currentOrder.orderType === 'Dine In'
-                        ? 'bg-primaryColor text-white'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300 active:bg-gray-400'
-                    "
-                  >
-                    Dine In
-                  </button>
-                  <button
-                    @click="handleOrderTypeChange('Take Out')"
-                    class="flex-1 py-1.5 sm:py-2 px-2 sm:px-4 rounded-sm text-xs sm:text-sm font-medium transition-colors touch-manipulation cursor-pointer"
-                    :class="
-                      posStore.currentOrder.orderType === 'Take Out'
-                        ? 'bg-primaryColor text-white'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300 active:bg-gray-400'
-                    "
-                  >
-                    Take Out
-                  </button>
-                </div>
-              </div>
+              <!-- Order Type Selection moved to confirmation modal -->
             </div>
           </div>
 
@@ -849,10 +972,21 @@
                 3
               </button>
               <button
-                @click="handleKeypadInput('ok')"
-                class="btn bg-primaryColor text-white font-thin btn-xs sm:btn-sm touch-manipulation"
+                @click="processOrder"
+                :disabled="!posStore.isOrderValid || isProcessingOrder"
+                class="btn btn-success btn-xs sm:btn-sm touch-manipulation border-none shadow-none"
+                :class="
+                  posStore.isOrderValid
+                    ? 'bg-primaryColor hover:bg-primaryColor/80 active:bg-primaryColor/90 text-white font-thin'
+                    : 'bg-gray-400'
+                "
               >
-                Ok
+                <span class="hidden sm:inline">{{
+                  isProcessingOrder ? 'Processing...' : 'Process Order'
+                }}</span>
+                <span class="sm:hidden">{{
+                  isProcessingOrder ? '...' : 'Process'
+                }}</span>
               </button>
 
               <!-- Row 4 -->
@@ -874,24 +1008,171 @@
               >
                 Reset
               </button>
-              <button
-                @click="processOrder"
-                :disabled="!posStore.isOrderValid || isProcessingOrder"
-                class="btn btn-success btn-xs sm:btn-sm touch-manipulation border-none shadow-none"
-                :class="
-                  posStore.isOrderValid
-                    ? 'bg-primaryColor hover:bg-primaryColor/80 active:bg-primaryColor/90 text-white font-thin'
-                    : 'bg-gray-400'
-                "
-              >
-                <span class="hidden sm:inline">{{
-                  isProcessingOrder ? 'Processing...' : 'Process Order'
-                }}</span>
-                <span class="sm:hidden">{{
-                  isProcessingOrder ? '...' : 'Process'
-                }}</span>
-              </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Order Confirmation Modal -->
+      <div
+        v-if="showOrderConfirmationModal"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
+      >
+        <div
+          class="bg-white rounded-lg p-4 sm:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        >
+          <div class="text-center mb-6">
+            <AlertCircle
+              class="w-12 h-12 sm:w-16 sm:h-16 text-amber-500 mx-auto mb-3 sm:mb-4"
+            />
+            <h3 class="text-lg sm:text-xl font-semibold text-gray-900 mb-2">
+              Confirm Order
+            </h3>
+            <p class="text-sm sm:text-base text-gray-600">
+              Please review the order details before finalizing the transaction
+            </p>
+          </div>
+
+          <!-- Order Details -->
+          <div class="space-y-4 mb-6">
+            <!-- Order Info -->
+            <div class="bg-gray-50 rounded-lg p-4">
+              <div class="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span class="font-medium text-gray-600">Order Number:</span>
+                  <p class="font-semibold">
+                    {{ orderConfirmationData?.orderNumber }}
+                  </p>
+                </div>
+                <div>
+                  <span class="font-medium text-gray-600">Order Type:</span>
+                  <div class="flex space-x-2 mt-1">
+                    <button
+                      @click="confirmationOrderType = 'Dine In'"
+                      class="px-3 py-1 rounded-sm text-xs sm:text-sm font-medium transition-colors cursor-pointer"
+                      :class="
+                        confirmationOrderType === 'Dine In'
+                          ? 'bg-primaryColor text-white'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      "
+                    >
+                      Dine In
+                    </button>
+                    <button
+                      @click="confirmationOrderType = 'Take Out'"
+                      class="px-3 py-1 rounded-sm text-xs sm:text-sm font-medium transition-colors cursor-pointer"
+                      :class="
+                        confirmationOrderType === 'Take Out'
+                          ? 'bg-primaryColor text-white'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      "
+                    >
+                      Take Out
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <span class="font-medium text-gray-600">Date & Time:</span>
+                  <p class="font-semibold">
+                    {{ orderConfirmationData?.timestamp }}
+                  </p>
+                </div>
+                <div>
+                  <span class="font-medium text-gray-600">Cashier:</span>
+                  <p class="font-semibold">
+                    {{ orderConfirmationData?.cashierInfo?.name || 'N/A' }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Order Items -->
+            <div class="bg-white border border-gray-200 rounded-lg p-4">
+              <h4 class="font-semibold text-gray-900 mb-3">Order Items</h4>
+              <div class="space-y-2">
+                <div
+                  v-for="item in orderConfirmationData?.items"
+                  :key="item.id"
+                  class="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0"
+                >
+                  <div class="flex-1">
+                    <p class="font-medium text-gray-900">{{ item.name }}</p>
+                    <p class="text-sm text-gray-600">
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{ parseFloat(item.price || 0).toFixed(2) }} ×
+                      {{ item.quantity }}
+                    </p>
+                  </div>
+                  <div class="text-right">
+                    <p class="font-semibold text-gray-900">
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{
+                        (parseFloat(item.price || 0) * item.quantity).toFixed(2)
+                      }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Payment Summary -->
+            <div class="bg-gray-50 rounded-lg p-4">
+              <div class="space-y-2">
+                <div class="flex justify-between text-sm">
+                  <span class="text-gray-600">Subtotal:</span>
+                  <span class="font-semibold">
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{
+                      parseFloat(orderConfirmationData?.subtotal || 0).toFixed(
+                        2
+                      )
+                    }}
+                  </span>
+                </div>
+                <div class="flex justify-between text-sm">
+                  <span class="text-gray-600">Amount Paid:</span>
+                  <span class="font-semibold">
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{
+                      parseFloat(
+                        orderConfirmationData?.amountPaid || 0
+                      ).toFixed(2)
+                    }}
+                  </span>
+                </div>
+                <div
+                  class="flex justify-between text-sm font-semibold text-primaryColor border-t border-gray-200 pt-2"
+                >
+                  <span>Change:</span>
+                  <span>
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{
+                      parseFloat(orderConfirmationData?.change || 0).toFixed(2)
+                    }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div
+            class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3"
+          >
+            <button
+              @click="closeOrderConfirmationModal"
+              class="flex-1 btn btn-outline btn-sm sm:btn-md touch-manipulation font-thin"
+            >
+              Cancel
+            </button>
+            <button
+              @click="confirmOrder"
+              :disabled="isProcessingOrder"
+              class="flex-1 btn bg-primaryColor text-white btn-sm sm:btn-md touch-manipulation font-thin hover:bg-primaryColor/80"
+            >
+              <span v-if="isProcessingOrder">Processing...</span>
+              <span v-else>Confirm & Finalize Order</span>
+            </button>
           </div>
         </div>
       </div>
@@ -899,14 +1180,14 @@
       <!-- Order Complete Modal -->
       <div
         v-if="showOrderCompleteModal"
-        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
       >
         <div
           class="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
         >
           <div class="text-center">
             <CheckCircle
-              class="w-12 h-12 sm:w-16 sm:h-16 text-green-500 mx-auto mb-3 sm:mb-4"
+              class="w-12 h-12 sm:w-16 sm:h-16 text-primaryColor mx-auto mb-3 sm:mb-4"
             />
             <h3 class="text-lg sm:text-xl font-semibold text-gray-900 mb-2">
               Order Complete!
@@ -920,20 +1201,28 @@
               <div class="flex justify-between text-xs sm:text-sm">
                 <span>Total:</span>
                 <span class="font-semibold"
-                  >₱{{ orderCompleteData?.total?.toFixed(2) }}</span
+                  ><font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                    parseFloat(orderCompleteData?.total_amount || 0).toFixed(2)
+                  }}</span
                 >
               </div>
               <div class="flex justify-between text-xs sm:text-sm">
                 <span>Amount Paid:</span>
                 <span class="font-semibold"
-                  >₱{{ orderCompleteData?.amount_paid?.toFixed(2) }}</span
+                  ><font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                    parseFloat(orderCompleteData?.amount_paid || 0).toFixed(2)
+                  }}</span
                 >
               </div>
               <div
-                class="flex justify-between text-xs sm:text-sm font-semibold text-green-600"
+                class="flex justify-between text-xs sm:text-sm font-semibold text-primaryColor"
               >
                 <span>Change:</span>
-                <span>₱{{ orderCompleteData?.change?.toFixed(2) }}</span>
+                <span>
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                    parseFloat(orderCompleteData?.change_amount || 0).toFixed(2)
+                  }}</span
+                >
               </div>
             </div>
 
@@ -941,18 +1230,233 @@
               class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3"
             >
               <button
-                @click="closeOrderCompleteModal"
-                class="flex-1 btn btn-primary btn-sm sm:btn-md touch-manipulation"
-              >
-                New Order
-              </button>
-              <button
-                @click="closeOrderCompleteModal"
-                class="flex-1 btn btn-outline btn-sm sm:btn-md touch-manipulation"
+                @click="showReceipt"
+                class="flex-1 btn bg-primaryColor text-white btn-sm sm:btn-md touch-manipulation font-thin hover:bg-primaryColor/80"
               >
                 Print Receipt
               </button>
+
+              <button
+                @click="closeOrderCompleteModal"
+                :disabled="!hasPrintedReceipt"
+                class="flex-1 btn btn-outline btn-sm sm:btn-md touch-manipulation font-thin"
+              >
+                New Order
+              </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Receipt Modal -->
+      <div
+        v-if="showReceiptModal"
+        id="pos_receipt_modal"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
+      >
+        <div
+          class="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
+        >
+          <!-- Receipt Header -->
+          <div class="text-center mb-6">
+            <h2 class="text-2xl font-bold text-gray-900 mb-2">
+              Countryside Steak House
+            </h2>
+            <p class="text-sm text-gray-600 mb-1">
+              {{ receiptData?.branchName }}
+            </p>
+            <p class="text-xs text-gray-500 mb-4">
+              {{ receiptData?.branchLocation }}
+            </p>
+            <div class="border-t border-gray-300 pt-2">
+              <p class="text-xs text-gray-600">
+                {{ receiptData?.timestamp }}
+              </p>
+            </div>
+          </div>
+
+          <!-- Order Details -->
+          <div class="space-y-4 mb-6">
+            <!-- Order Info -->
+            <div class="text-sm">
+              <div class="flex justify-between mb-2">
+                <span class="font-medium">Order #:</span>
+                <span>{{ receiptData?.order_number }}</span>
+              </div>
+              <div class="flex justify-between mb-2">
+                <span class="font-medium">Type:</span>
+                <span>{{ receiptData?.orderType }}</span>
+              </div>
+              <div class="flex justify-between mb-2">
+                <span class="font-medium">Cashier:</span>
+                <span>{{ receiptData?.cashierName }}</span>
+              </div>
+            </div>
+
+            <!-- Order Items -->
+            <div class="border-t border-gray-300 pt-4">
+              <div class="space-y-2">
+                <div
+                  v-for="item in receiptData?.items"
+                  :key="item.id"
+                  class="flex justify-between text-sm"
+                >
+                  <div class="flex flex- row gap-3">
+                    <p class="font-medium">{{ item.item_name }}</p>
+                    <p class="text-gray-600">
+                      {{ item.quantity }}
+                      <font-awesome-icon
+                        icon="fa-solid fa-xmark"
+                        class="!w-3 !h-3"
+                      />
+                    </p>
+                  </div>
+                  <div class="text-right">
+                    <p class="font-semibold">
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{ parseFloat(item.total_price || 0).toFixed(2) }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Payment Summary -->
+            <div class="border-t border-gray-300 pt-4">
+              <div class="space-y-1 text-sm">
+                <div class="flex justify-between">
+                  <span>Subtotal:</span>
+                  <span>
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{ parseFloat(receiptData?.total_amount || 0).toFixed(2) }}
+                  </span>
+                </div>
+                <div class="flex justify-between">
+                  <span>Amount Paid:</span>
+                  <span>
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{ parseFloat(receiptData?.amount_paid || 0).toFixed(2) }}
+                  </span>
+                </div>
+                <div
+                  class="flex justify-between font-semibold text-primaryColor border-t border-gray-300 pt-2"
+                >
+                  <span>Change:</span>
+                  <span>
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{ parseFloat(receiptData?.change_amount || 0).toFixed(2) }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- QR Code -->
+            <div class="border-t border-gray-300 pt-3 text-center">
+              <div class="mb-2 flex justify-center">
+                <div class="w-32 h-32 flex items-center justify-center">
+                  <QRCodeGenerator
+                    :data="receiptData?.qrData"
+                    :size="120"
+                    class="max-w-full max-h-full"
+                  />
+                </div>
+              </div>
+              <p class="text-xs text-gray-500">Rate your order</p>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div
+            class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3"
+          >
+            <button
+              @click="closeReceiptModal"
+              class="flex-1 btn btn-outline btn-sm sm:btn-md touch-manipulation font-thin"
+            >
+              Close
+            </button>
+            <button
+              @click="printReceipt"
+              class="flex-1 btn bg-primaryColor text-white btn-sm sm:btn-md touch-manipulation font-thin hover:bg-primaryColor/80"
+            >
+              Print Receipt
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Void Order Modal -->
+      <div
+        v-if="showVoidOrderModal"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
+      >
+        <div
+          class="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
+        >
+          <div class="text-center mb-6">
+            <AlertCircle
+              class="w-12 h-12 sm:w-16 sm:h-16 text-red-500 mx-auto mb-3 sm:mb-4"
+            />
+            <h3 class="text-lg sm:text-xl font-semibold text-gray-900 mb-2">
+              Void Order
+            </h3>
+            <p class="text-sm sm:text-base text-gray-600">
+              Are you sure you want to void this order? This action cannot be
+              undone.
+            </p>
+          </div>
+
+          <!-- Order Details -->
+          <div class="space-y-4 mb-6">
+            <div class="bg-gray-50 rounded-lg p-4">
+              <div class="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span class="font-medium text-gray-600">Order Number:</span>
+                  <p class="font-semibold">{{ voidOrderData?.order_number }}</p>
+                </div>
+                <div>
+                  <span class="font-medium text-gray-600">Total Amount:</span>
+                  <p class="font-semibold">
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{
+                      parseFloat(voidOrderData?.total_amount || 0).toFixed(2)
+                    }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Void Reason -->
+            <div class="space-y-2">
+              <label class="text-sm font-medium text-gray-700">
+                Reason for voiding:
+              </label>
+              <textarea
+                v-model="voidReason"
+                placeholder="Enter reason for voiding this order..."
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm"
+                rows="3"
+                required
+              ></textarea>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div
+            class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3"
+          >
+            <button
+              @click="closeVoidOrderModal"
+              class="flex-1 btn btn-outline btn-sm sm:btn-md touch-manipulation font-thin"
+            >
+              Cancel
+            </button>
+            <button
+              @click="confirmVoidOrder"
+              class="flex-1 btn bg-red-600 text-white btn-sm sm:btn-md touch-manipulation font-thin hover:bg-red-700"
+            >
+              Void Order
+            </button>
           </div>
         </div>
       </div>

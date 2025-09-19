@@ -1294,18 +1294,41 @@ class ProductionInventory {
         })
         .returning("id");
 
+      // Resolve assigned employee full name for audit trail
+      let performerName = `Employee ${assigned_to}`;
+      try {
+        const performer = await trx("employees")
+          .select("first_name", "middle_name", "last_name", "email")
+          .where("id", assigned_to)
+          .first();
+        if (performer) {
+          const parts = [
+            performer.first_name,
+            performer.middle_name,
+            performer.last_name,
+          ].filter(Boolean);
+          performerName = parts.join(" ") || performer.email || performerName;
+        }
+      } catch (_) {
+        // keep default performerName
+      }
+
       // Consume ingredients from SCM inventory
       const Inventory = require("./Inventory");
       const ingredientConsumption = ingredientCheck.ingredient_availability.map(
         (ingredient) => ({
           inventory_item_id: ingredient.inventory_item_id,
           quantity_consumed: ingredient.required_quantity,
-          performed_by: `User ${assigned_to}`,
+          performed_by: performerName,
         })
       );
 
+      // Ensure we pass a scalar batch ID (not an object) to downstream calls
+      const batchIdScalar =
+        typeof batchId === "object" && batchId !== null ? batchId.id : batchId;
+
       await Inventory.consumeIngredientsForProduction(
-        batchId,
+        batchIdScalar,
         ingredientConsumption
       );
 
@@ -1321,7 +1344,7 @@ class ProductionInventory {
       await trx.commit();
 
       return {
-        batch_id: batchId,
+        batch_id: batchIdScalar,
         batch_number: batchNumber,
         status: "In Progress",
         message: "Production batch started successfully",

@@ -3,8 +3,6 @@ import { ref, computed } from 'vue';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = apiConfig.baseURL;
-
 export const useUserStore = defineStore('user', () => {
   // State
   const users = ref([]);
@@ -24,7 +22,7 @@ export const useUserStore = defineStore('user', () => {
     error.value = null;
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/employees`, {
+      const response = await axios.get(`${apiConfig.baseURL}/employees`, {
         params: { includeDeleted },
       });
 
@@ -47,7 +45,10 @@ export const useUserStore = defineStore('user', () => {
     error.value = null;
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/employees`, userData);
+      const response = await axios.post(
+        `${apiConfig.baseURL}/employees`,
+        userData
+      );
 
       if (response.data.success) {
         users.value.push(response.data.data);
@@ -74,7 +75,7 @@ export const useUserStore = defineStore('user', () => {
 
     try {
       const response = await axios.put(
-        `${API_BASE_URL}/employees/${id}`,
+        `${apiConfig.baseURL}/employees/${id}`,
         userData
       );
 
@@ -102,7 +103,9 @@ export const useUserStore = defineStore('user', () => {
     error.value = null;
 
     try {
-      const response = await axios.delete(`${API_BASE_URL}/employees/${id}`);
+      const response = await axios.delete(
+        `${apiConfig.baseURL}/employees/${id}`
+      );
 
       if (response.data.success) {
         users.value = users.value.filter((user) => user.id !== id);
@@ -126,7 +129,7 @@ export const useUserStore = defineStore('user', () => {
 
     try {
       const response = await axios.put(
-        `${API_BASE_URL}/employees/${id}/restore`
+        `${apiConfig.baseURL}/employees/${id}/restore`
       );
 
       if (response.data.success) {
@@ -159,7 +162,7 @@ export const useUserStore = defineStore('user', () => {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/employees/${id}/permissions`
+        `${apiConfig.baseURL}/employees/${id}/permissions`
       );
 
       if (response.data.success) {
@@ -188,7 +191,7 @@ export const useUserStore = defineStore('user', () => {
   // Get production staff (users with production roles)
   const getProductionStaff = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/employees`, {
+      const response = await axios.get(`${apiConfig.baseURL}/employees`, {
         params: {
           department: 'Production',
           includeDeleted: false,

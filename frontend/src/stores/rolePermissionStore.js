@@ -2,8 +2,6 @@ import { defineStore } from 'pinia';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = apiConfig.baseURL;
-
 export const useRolePermissionStore = defineStore('rolePermission', {
   state: () => ({
     rolePermissions: [],
@@ -24,7 +22,9 @@ export const useRolePermissionStore = defineStore('rolePermission', {
       this.loading = true;
       this.error = null;
       try {
-        const response = await axios.get(`${API_BASE_URL}/role-permissions`);
+        const response = await axios.get(
+          `${apiConfig.baseURL}/role-permissions`
+        );
         this.rolePermissions = response.data.data;
       } catch (error) {
         this.error =
@@ -40,7 +40,7 @@ export const useRolePermissionStore = defineStore('rolePermission', {
       this.error = null;
       try {
         const response = await axios.get(
-          `${API_BASE_URL}/role-permissions/role/${roleId}`
+          `${apiConfig.baseURL}/role-permissions/role/${roleId}`
         );
         return response.data.data;
       } catch (error) {
@@ -59,7 +59,7 @@ export const useRolePermissionStore = defineStore('rolePermission', {
       this.error = null;
       try {
         const response = await axios.post(
-          `${API_BASE_URL}/role-permissions/assign`,
+          `${apiConfig.baseURL}/role-permissions/assign`,
           {
             role_id: roleId,
             permission_id: permissionId,
@@ -82,7 +82,7 @@ export const useRolePermissionStore = defineStore('rolePermission', {
       this.error = null;
       try {
         const response = await axios.post(
-          `${API_BASE_URL}/role-permissions/bulk-assign`,
+          `${apiConfig.baseURL}/role-permissions/bulk-assign`,
           {
             role_id: roleId,
             permission_ids: permissionIds,
@@ -105,7 +105,7 @@ export const useRolePermissionStore = defineStore('rolePermission', {
       this.error = null;
       try {
         const response = await axios.delete(
-          `${API_BASE_URL}/role-permissions/remove`,
+          `${apiConfig.baseURL}/role-permissions/remove`,
           {
             data: {
               role_id: roleId,
@@ -130,7 +130,7 @@ export const useRolePermissionStore = defineStore('rolePermission', {
       this.error = null;
       try {
         const response = await axios.get(
-          `${API_BASE_URL}/role-permissions/check/${roleId}/${encodeURIComponent(permissionName)}`
+          `${apiConfig.baseURL}/role-permissions/check/${roleId}/${encodeURIComponent(permissionName)}`
         );
         return response.data.data.has_permission;
       } catch (error) {

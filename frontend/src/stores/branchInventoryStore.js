@@ -3,8 +3,6 @@ import { ref, computed } from 'vue';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = apiConfig.baseURL;
-
 export const useBranchInventoryStore = defineStore('branchInventory', () => {
   // State
   const inventory = ref([]);
@@ -40,7 +38,7 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/branch-inventory/${branchId}?${params.toString()}`
+        `${apiConfig.baseURL}/branch-inventory/${branchId}?${params.toString()}`
       );
 
       if (response.data.success) {
@@ -65,7 +63,7 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
   const fetchStats = async (branchId) => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/branch-inventory/${branchId}/stats`
+        `${apiConfig.baseURL}/branch-inventory/${branchId}/stats`
       );
 
       if (response.data.success) {
@@ -84,7 +82,7 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
   const fetchLowStockItems = async (branchId) => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/branch-inventory/${branchId}/low-stock`
+        `${apiConfig.baseURL}/branch-inventory/${branchId}/low-stock`
       );
 
       if (response.data.success) {
@@ -107,7 +105,7 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
   const fetchExpiringItems = async (branchId, days = 7) => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/branch-inventory/${branchId}/expiring?days=${days}`
+        `${apiConfig.baseURL}/branch-inventory/${branchId}/expiring?days=${days}`
       );
 
       if (response.data.success) {
@@ -130,7 +128,7 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
   const fetchRecentActivity = async (branchId, limit = 10) => {
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/branch-inventory/${branchId}/activity?limit=${limit}`
+        `${apiConfig.baseURL}/branch-inventory/${branchId}/activity?limit=${limit}`
       );
 
       if (response.data.success) {
@@ -161,7 +159,7 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/branch-inventory/${branchId}/transactions?${queryParams.toString()}`
+        `${apiConfig.baseURL}/branch-inventory/${branchId}/transactions?${queryParams.toString()}`
       );
 
       if (response.data && response.data.data) {
@@ -197,7 +195,7 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
   const addItem = async (branchId, itemData) => {
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/branch-inventory/${branchId}/items`,
+        `${apiConfig.baseURL}/branch-inventory/${branchId}/items`,
         itemData
       );
 
@@ -220,7 +218,7 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
   const updateQuantity = async (itemId, quantity, reason = 'adjustment') => {
     try {
       const response = await axios.put(
-        `${API_BASE_URL}/branch-inventory/items/${itemId}/quantity`,
+        `${apiConfig.baseURL}/branch-inventory/items/${itemId}/quantity`,
         {
           quantity,
           reason,
@@ -252,7 +250,7 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
   const updateStatus = async (itemId, status) => {
     try {
       const response = await axios.put(
-        `${API_BASE_URL}/branch-inventory/items/${itemId}/status`,
+        `${apiConfig.baseURL}/branch-inventory/items/${itemId}/status`,
         {
           status,
         }
@@ -285,7 +283,7 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
   ) => {
     try {
       const response = await axios.put(
-        `${API_BASE_URL}/branch-inventory/items/${itemId}/expiry`,
+        `${apiConfig.baseURL}/branch-inventory/items/${itemId}/expiry`,
         {
           expiry_date,
           reference_number,
@@ -317,7 +315,7 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
   const deleteItem = async (itemId) => {
     try {
       const response = await axios.delete(
-        `${API_BASE_URL}/branch-inventory/items/${itemId}`
+        `${apiConfig.baseURL}/branch-inventory/items/${itemId}`
       );
 
       if (response.data.success) {

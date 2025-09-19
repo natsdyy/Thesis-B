@@ -3,8 +3,6 @@ import { ref, computed } from 'vue';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = apiConfig.baseURL;
-
 export const useGRNStore = defineStore('grn', () => {
   // State
   const grns = ref([]);
@@ -75,7 +73,7 @@ export const useGRNStore = defineStore('grn', () => {
       });
 
       const response = await axios.get(
-        `${API_BASE_URL}/grn?${params.toString()}`
+        `${apiConfig.baseURL}/grn?${params.toString()}`
       );
 
       if (response.data.success) {
@@ -125,7 +123,7 @@ export const useGRNStore = defineStore('grn', () => {
   // Fetch stats separately
   const fetchStats = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/grn/stats`);
+      const response = await axios.get(`${apiConfig.baseURL}/grn/stats`);
       if (response.data.success) {
         stats.value = response.data.data;
         return stats.value;
@@ -146,7 +144,7 @@ export const useGRNStore = defineStore('grn', () => {
     error.value = null;
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/grn/${id}`);
+      const response = await axios.get(`${apiConfig.baseURL}/grn/${id}`);
 
       if (response.data.success) {
         const grnData = response.data.data;
@@ -176,7 +174,7 @@ export const useGRNStore = defineStore('grn', () => {
 
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/purchase-orders/${poId}/can-create-grn`
+        `${apiConfig.baseURL}/purchase-orders/${poId}/can-create-grn`
       );
 
       if (response.data.success) {
@@ -202,7 +200,7 @@ export const useGRNStore = defineStore('grn', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/grn/from-po/${poId}`,
+        `${apiConfig.baseURL}/grn/from-po/${poId}`,
         grnData
       );
 
@@ -228,11 +226,14 @@ export const useGRNStore = defineStore('grn', () => {
     error.value = null;
 
     try {
-      const response = await axios.patch(`${API_BASE_URL}/grn/${id}/status`, {
-        status,
-        updated_by: updatedBy,
-        notes,
-      });
+      const response = await axios.patch(
+        `${apiConfig.baseURL}/grn/${id}/status`,
+        {
+          status,
+          updated_by: updatedBy,
+          notes,
+        }
+      );
 
       if (response.data.success) {
         // Update the GRN in the list immediately
@@ -276,7 +277,7 @@ export const useGRNStore = defineStore('grn', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/grn/${grnId}/items/${grnItemId}/inspect`,
+        `${apiConfig.baseURL}/grn/${grnId}/items/${grnItemId}/inspect`,
         {
           result,
           notes,
@@ -312,7 +313,7 @@ export const useGRNStore = defineStore('grn', () => {
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/grn/${grnId}/bulk-inspect`,
+        `${apiConfig.baseURL}/grn/${grnId}/bulk-inspect`,
         {
           result,
           notes,
@@ -347,7 +348,7 @@ export const useGRNStore = defineStore('grn', () => {
   const fetchActiveItemTypes = async () => {
     error.value = null;
     const { data } = await axios.get(
-      `${API_BASE_URL}/grn/meta/active-item-types`
+      `${apiConfig.baseURL}/grn/meta/active-item-types`
     );
     return data.data || [];
   };
@@ -355,7 +356,7 @@ export const useGRNStore = defineStore('grn', () => {
   const mapGrnItemType = async (grnId, grnItemId, itemTypeId) => {
     error.value = null;
     const { data } = await axios.post(
-      `${API_BASE_URL}/grn/${grnId}/items/${grnItemId}/map-item-type`,
+      `${apiConfig.baseURL}/grn/${grnId}/items/${grnItemId}/map-item-type`,
       { item_type_id: itemTypeId }
     );
     // Update local grn
@@ -369,7 +370,7 @@ export const useGRNStore = defineStore('grn', () => {
     error.value = null;
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/grn/${grnId}/update-inventory-data`
+        `${apiConfig.baseURL}/grn/${grnId}/update-inventory-data`
       );
 
       if (response.data.success) {

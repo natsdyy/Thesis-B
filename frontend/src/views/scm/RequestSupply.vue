@@ -170,6 +170,20 @@
     }
   };
 
+  // Open the Create Request tab and modal
+  const openCreateTab = () => {
+    activeTab.value = 'create-request';
+    // Use current rows as draft
+    openCreateRequestModalWithDraft(
+      rowRequest.value.map((r) => ({
+        item_name: r.item_name,
+        item_quantity: r.item_quantity,
+        item_unit: r.item_unit,
+        item_type: r.item_type,
+      }))
+    );
+  };
+
   // Modal state management
   const modal = ref({
     type: null,
@@ -269,8 +283,11 @@
       );
 
       if (selectedItemType) {
-        // For "Other Materials", allow user to select unit
-        if (row.item_type === 'Other Materials') {
+        // For "Other Materials" or Beverages, allow user to select unit
+        if (
+          row.item_type === 'Other Materials' ||
+          isBeverageType(row.item_type)
+        ) {
           // Don't auto-populate, let user choose
           row.item_unit = '';
         } else {
@@ -290,9 +307,22 @@
     }
   };
 
+  // Function to determine if the given item type belongs to Beverages category
+  const isBeverageType = (itemTypeName) => {
+    if (!itemTypeName) return false;
+    const itemType = inventoryStore.itemTypes?.find(
+      (it) => it.name === itemTypeName
+    );
+    if (!itemType) return false;
+    const category = inventoryStore.categories?.find(
+      (c) => c.id === itemType.category_id
+    );
+    return category?.name === 'Beverages';
+  };
+
   // Function to check if unit selection is required for a row
   const isUnitSelectionRequired = (row) => {
-    return row.item_type === 'Other Materials';
+    return row.item_type === 'Other Materials' || isBeverageType(row.item_type);
   };
 
   // Common unit options for "Other Materials"
@@ -319,9 +349,11 @@
     'containers',
   ];
 
+  // Unit options specifically allowed for Beverages
+  const beverageUnitOptions = ['liters', 'bottles', 'pieces', 'cans'];
+
   const priorities = ['Low', 'Normal', 'High', 'Urgent'];
   const departments = ['SCM', 'Finance', 'HR', 'Production', 'Admin', 'Branch'];
-  const branches = ['Branch 1', 'Branch 2', 'Branch 3', 'Branch 4', 'Branch 5'];
 
   // Toast state
   const toast = ref({ show: false, type: '', message: '' });
@@ -884,8 +916,8 @@
           row.item_name.trim() &&
           row.item_quantity > 0 &&
           row.item_unitPrice > 0 &&
-          // For "Other Materials", ensure unit is selected
-          (row.item_type !== 'Other Materials' || row.item_unit.trim())
+          // For dynamic-unit categories (Other Materials, Beverages), ensure unit is selected
+          (!isUnitSelectionRequired(row) || row.item_unit.trim())
       );
 
       if (validItems.length === 0) {
@@ -952,8 +984,8 @@
           row.item_name.trim() &&
           row.item_quantity > 0 &&
           row.item_unitPrice > 0 &&
-          // For "Other Materials", ensure unit is selected
-          (row.item_type !== 'Other Materials' || row.item_unit.trim())
+          // For dynamic-unit categories (Other Materials, Beverages), ensure unit is selected
+          (!isUnitSelectionRequired(row) || row.item_unit.trim())
       );
 
       if (validItems.length === 0) {
@@ -1837,6 +1869,52 @@
     document.addEventListener('click', closeHistoryFilterDropdown);
     // Add click outside listener for status filter dropdown
     document.addEventListener('click', closeStatusFilterDropdown);
+
+    // Preload items from navigation state (e.g., from Inventory Alerts)
+    try {
+      const state = router.options?.history?.state || {};
+      const preload = state.preloadSupplyRequest;
+      if (preload && Array.isArray(preload.items) && preload.items.length) {
+        // Fill requested_by with the real employee name from auth store
+        try {
+          const u = authStore?.user || {};
+          requestForm.value.requested_by =
+            [u.first_name, u.middle_name, u.last_name]
+              .filter(Boolean)
+              .join(' ') ||
+            u.full_name ||
+            u.email ||
+            'System';
+        } catch (_) {}
+        selectedCategory.value = preload.category || '';
+        requestForm.value.request_type = '';
+        rowRequest.value = preload.items.map((it, idx) => ({
+          id: idx + 1,
+          item_name: it.name,
+          item_quantity: it.quantity || 0,
+          item_unit: it.unit || '',
+          item_type:
+            preload.item_type_name ||
+            inventoryStore.itemTypes?.find((t) => t.id === preload.item_type_id)
+              ?.name ||
+            requestForm.value.request_type,
+          item_unitPrice: it.unit_price || 0,
+          item_amount: (it.unit_price || 0) * (it.quantity || 0),
+          inventory_item_id: null,
+          menu_item_id: null,
+          category: preload.category || '',
+          source: preload.source || 'scm',
+        }));
+        // Open the create modal immediately
+        openCreateTab();
+        // Clear state so reloads don't re-add
+        try {
+          const newState = { ...state };
+          delete newState.preloadSupplyRequest;
+          window.history.replaceState(newState, document.title);
+        } catch (_) {}
+      }
+    } catch (_) {}
   });
 
   onBeforeUnmount(() => {
@@ -2528,6 +2606,17 @@
           >
             <ReceiptText class="w-4 h-4 mr-2" />
             Supply Requests
+          </button>
+          <button
+            class="tab tab-lg font-medium"
+            :class="{
+              'tab-active text-black': activeTab === 'create-request',
+              'text-black/70 hover:bg-white/10': activeTab !== 'create-request',
+            }"
+            @click="openCreateTab()"
+          >
+            <Plus class="w-4 h-4 mr-2" />
+            Create Request
           </button>
           <button
             class="tab tab-lg font-medium"
@@ -4065,15 +4154,17 @@
                 </td>
 
                 <td>
-                  <!-- Show dropdown for "Other Materials", readonly input for others -->
+                  <!-- Show dropdown for unit selection when needed (Other Materials or Beverages) -->
                   <select
-                    v-if="row.item_type === 'Other Materials'"
+                    v-if="isUnitSelectionRequired(row)"
                     v-model="row.item_unit"
                     class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor"
                   >
                     <option value="" disabled>Select Unit</option>
                     <option
-                      v-for="unit in commonUnitOptions"
+                      v-for="unit in isBeverageType(row.item_type)
+                        ? beverageUnitOptions
+                        : commonUnitOptions"
                       :key="unit"
                       :value="unit"
                     >
@@ -4542,15 +4633,17 @@
                 </td>
 
                 <td>
-                  <!-- Show dropdown for "Other Materials", readonly input for others -->
+                  <!-- Show dropdown for unit selection when needed (Other Materials or Beverages) -->
                   <select
-                    v-if="row.item_type === 'Other Materials'"
+                    v-if="isUnitSelectionRequired(row)"
                     v-model="row.item_unit"
                     class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor"
                   >
                     <option value="" disabled>Select Unit</option>
                     <option
-                      v-for="unit in commonUnitOptions"
+                      v-for="unit in isBeverageType(row.item_type)
+                        ? beverageUnitOptions
+                        : commonUnitOptions"
                       :key="unit"
                       :value="unit"
                     >

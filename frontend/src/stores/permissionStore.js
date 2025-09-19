@@ -2,8 +2,6 @@ import { defineStore } from 'pinia';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
 
-const API_BASE_URL = apiConfig.baseURL;
-
 export const usePermissionStore = defineStore('permission', {
   state: () => ({
     permissions: [],
@@ -25,7 +23,7 @@ export const usePermissionStore = defineStore('permission', {
       this.loading = true;
       this.error = null;
       try {
-        const response = await axios.get(`${API_BASE_URL}/permissions`);
+        const response = await axios.get(`${apiConfig.baseURL}/permissions`);
         this.permissions = response.data.data;
       } catch (error) {
         this.error =
@@ -41,7 +39,7 @@ export const usePermissionStore = defineStore('permission', {
       this.error = null;
       try {
         const response = await axios.post(
-          `${API_BASE_URL}/permissions`,
+          `${apiConfig.baseURL}/permissions`,
           permissionData
         );
         this.permissions.push(response.data.data);
@@ -61,7 +59,7 @@ export const usePermissionStore = defineStore('permission', {
       this.error = null;
       try {
         const response = await axios.put(
-          `${API_BASE_URL}/permissions/${permissionId}`,
+          `${apiConfig.baseURL}/permissions/${permissionId}`,
           permissionData
         );
         const index = this.permissions.findIndex(
@@ -85,7 +83,7 @@ export const usePermissionStore = defineStore('permission', {
       this.loading = true;
       this.error = null;
       try {
-        await axios.delete(`${API_BASE_URL}/permissions/${permissionId}`);
+        await axios.delete(`${apiConfig.baseURL}/permissions/${permissionId}`);
         this.permissions = this.permissions.filter(
           (p) => p.permission_id !== permissionId
         );
@@ -103,7 +101,9 @@ export const usePermissionStore = defineStore('permission', {
       this.loading = true;
       this.error = null;
       try {
-        const response = await axios.post(`${API_BASE_URL}/permissions/seed`);
+        const response = await axios.post(
+          `${apiConfig.baseURL}/permissions/seed`
+        );
         await this.fetchPermissions(); // Refresh the list
         return response.data.data;
       } catch (error) {

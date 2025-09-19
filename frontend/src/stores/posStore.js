@@ -1,13 +1,14 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import axios from 'axios';
-import { apiConfig } from '../config/api.js';
-
-const API_BASE_URL = apiConfig.baseURL;
+import { apiConfig, getApiUrl, formatImageUrl } from '../config/api.js';
+import { usePOSSessionStore } from './posSessionStore.js';
 
 export const usePOSStore = defineStore('pos', () => {
   // State
   const menuItems = ref([]);
+  const pagination = ref({ total: 0, limit: 24, offset: 0 });
+  const hasMore = ref(true);
   const categories = ref([]);
   const currentOrder = ref({
     orderNumber: '',
@@ -26,6 +27,7 @@ export const usePOSStore = defineStore('pos', () => {
   const loading = ref(false);
   const error = ref(null);
   const orderHistory = ref([]);
+  const currentBranchId = ref(null);
 
   // Getters
   const filteredMenuItems = computed(() => {
@@ -52,7 +54,7 @@ export const usePOSStore = defineStore('pos', () => {
   });
 
   const orderTax = computed(() => {
-    return orderSubtotal.value * 0.12; // 12% VAT
+    return 0; // VAT not included in POS total
   });
 
   const orderTotal = computed(() => {
@@ -70,140 +72,93 @@ export const usePOSStore = defineStore('pos', () => {
     );
   });
 
-  // Mock data for UI development
-  const mockMenuItems = [
-    {
-      id: 1,
-      name: 'Tapsilog',
-      price: 150.0,
-      category: 'Silog Meal',
-      stock_quantity: 20,
-      image_url: '/images/menu/Silog Food.png',
-      description: 'Cured beef with garlic rice and fried egg',
-    },
-    {
-      id: 2,
-      name: 'Porksilog',
-      price: 150.0,
-      category: 'Silog Meal',
-      stock_quantity: 20,
-      image_url: '/images/menu/Silog Food.png',
-      description: 'Pork chop with garlic rice and fried egg',
-    },
-    {
-      id: 3,
-      name: 'Tocilog',
-      price: 150.0,
-      category: 'Silog Meal',
-      stock_quantity: 20,
-      image_url: '/images/menu/Silog Food.png',
-      description: 'Cured pork with garlic rice and fried egg',
-    },
-    {
-      id: 4,
-      name: 'Pork Sisig',
-      price: 150.0,
-      category: 'Sizzling',
-      stock_quantity: 20,
-      image_url: '/images/menu/Sizzling Picture.png',
-      description: 'Sizzling pork sisig on hot plate',
-    },
-    {
-      id: 5,
-      name: 'Sizzling Pusit',
-      price: 150.0,
-      category: 'Sizzling',
-      stock_quantity: 20,
-      image_url: '/images/menu/Sizzling Picture.png',
-      description: 'Sizzling squid on hot plate',
-    },
-    {
-      id: 6,
-      name: 'Tenderloin Steak',
-      price: 150.0,
-      category: 'Sizzling',
-      stock_quantity: 20,
-      image_url: '/images/menu/Sizzling Tenderloin Steak.png',
-      description: 'Tenderloin steak on hot plate',
-    },
-    {
-      id: 7,
-      name: 'Sizzling T-Bone Steak',
-      price: 150.0,
-      category: 'Sizzling',
-      stock_quantity: 20,
-      image_url: '/images/menu/Sizzling T-Bone Steak.png',
-      description: 'Sizzling T-bone steak on hot plate',
-    },
-    {
-      id: 8,
-      name: 'Sizzling Chicken Leg',
-      price: 150.0,
-      category: 'Sizzling',
-      stock_quantity: 20,
-      image_url: '/images/menu/Sizzling Picture.png',
-      description: 'Sizzling chicken leg on hot plate',
-    },
-    {
-      id: 9,
-      name: 'Burger Steak',
-      price: 150.0,
-      category: 'Chicken Meal',
-      stock_quantity: 0,
-      image_url: '/images/menu/Menu 1.png',
-      description: 'Burger steak with rice',
-    },
-    {
-      id: 10,
-      name: 'Pork Steak',
-      price: 150.0,
-      category: 'Sizzling',
-      stock_quantity: 20,
-      image_url: '/images/menu/Sizzling Picture.png',
-      description: 'Pork steak on hot plate',
-    },
-    {
-      id: 11,
-      name: 'Sizzling Beef Mushroom',
-      price: 150.0,
-      category: 'Sizzling',
-      stock_quantity: 20,
-      image_url: '/images/menu/Sizzling Picture.png',
-      description: 'Sizzling beef mushroom with rice',
-    },
-    {
-      id: 12,
-      name: 'Sizzling Chicken Wings',
-      price: 150.0,
-      category: 'Sizzling',
-      stock_quantity: 0,
-      image_url: '/images/menu/Menu 1.png',
-      description: 'Sizzling chicken wings on hot plate',
-    },
-  ];
-
-  const mockCategories = [
-    'All',
-    'All Time Favorites',
-    'Drinks',
-    'Sizzling',
-    'Silog Meal',
-    'Chicken Meal',
-    'Gulay',
-  ];
+  // Helper to get auth header
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
 
   // Actions
-  const fetchMenuItems = async () => {
+  // Fetch POS menu items from unified POS API (branch-aware)
+  const fetchMenuItems = async (options = {}) => {
     loading.value = true;
     error.value = null;
 
     try {
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      menuItems.value = mockMenuItems;
+      const {
+        menuId,
+        itemCodes = [],
+        branchId,
+        category,
+        search,
+        reset = false,
+        limit = pagination.value.limit || 24,
+      } = options;
+
+      const params = new URLSearchParams();
+      if (branchId) params.append('branch_id', String(branchId));
+      if (menuId) params.append('menu_id', String(menuId));
+      if (itemCodes.length) params.append('item_codes', itemCodes.join(','));
+      params.append('is_available', 'true');
+      if (category) params.append('category', String(category));
+      if (search) params.append('search', String(search));
+      params.append('limit', String(limit));
+      params.append('offset', String(reset ? 0 : pagination.value.offset || 0));
+
+      const url = `${getApiUrl('/pos/menu-items')}?${params.toString()}`;
+      const { data: resp } = await axios.get(url, {
+        baseURL: apiConfig.baseURL,
+        headers: { ...getAuthHeaders() },
+      });
+
+      const apiItems = Array.isArray(resp?.data) ? resp.data : [];
+
+      // Map API rows to POS-friendly structure
+      const mapped = apiItems.map((it) => ({
+        id: it.id,
+        name: it.menu_item_name || it.item_name,
+        price: parseFloat(it.selling_price || 0),
+        category: it.category,
+        stock_quantity: Number(it.branch_stock ?? 0) || 0,
+        image_url: formatImageUrl(it.image_url),
+        description: it.description || '',
+        item_code: it.item_code,
+        menu_id: it.menu_id,
+      }));
+
+      // Merge or reset list based on options.reset
+      const cleaned = mapped.filter((m) => m.stock_quantity >= 0);
+      if (reset) {
+        menuItems.value = cleaned;
+      } else {
+        menuItems.value = [...menuItems.value, ...cleaned];
+      }
+
+      // Update pagination
+      const p = resp?.pagination || {};
+      const total = Number(p.total || 0);
+      const newOffset =
+        (reset ? 0 : pagination.value.offset || 0) + cleaned.length;
+      const lim = Number(p.limit || limit);
+      pagination.value = { total, limit: lim, offset: newOffset };
+      hasMore.value = newOffset < total;
+
+      // Derive categories from items
+      const uniqueCats = Array.from(
+        new Set(menuItems.value.map((i) => i.category).filter(Boolean))
+      ).sort();
+      categories.value = ['All', ...uniqueCats];
     } catch (err) {
-      error.value = err.message || 'Failed to fetch menu items';
+      error.value =
+        err?.response?.data?.message ||
+        err.message ||
+        'Failed to fetch menu items';
       console.error('Error fetching menu items:', err);
+      if (options.reset) {
+        menuItems.value = [];
+        pagination.value = { total: 0, limit: 24, offset: 0 };
+        hasMore.value = false;
+      }
     } finally {
       loading.value = false;
     }
@@ -211,11 +166,26 @@ export const usePOSStore = defineStore('pos', () => {
 
   const fetchCategories = async () => {
     try {
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      categories.value = mockCategories;
+      // Prefer categories derived from fetched items
+      if (menuItems.value.length > 0) {
+        const uniqueCats = Array.from(
+          new Set(menuItems.value.map((i) => i.category).filter(Boolean))
+        ).sort();
+        categories.value = ['All', ...uniqueCats];
+        return;
+      }
+
+      // Fallback to menu categories endpoint
+      const url = getApiUrl('/menu/menus/categories');
+      const { data } = await axios.get(url, {
+        baseURL: apiConfig.baseURL,
+        headers: { ...getAuthHeaders() },
+      });
+      const cats = Array.isArray(data?.data) ? data.data : [];
+      categories.value = ['All', ...cats];
     } catch (err) {
       console.error('Error fetching categories:', err);
+      categories.value = ['All'];
     }
   };
 
@@ -292,11 +262,58 @@ export const usePOSStore = defineStore('pos', () => {
 
   const generateOrderNumber = () => {
     const now = new Date();
-    const timestamp = now.getTime().toString().slice(-6);
-    const random = Math.floor(Math.random() * 100)
-      .toString()
-      .padStart(2, '0');
-    return `#${timestamp}${random}`;
+    const today = now.toDateString(); // Get date string for today
+    const storageKey = `pos_order_count_${today}`;
+
+    // Clean up old order counts (keep only last 7 days)
+    cleanupOldOrderCounts();
+
+    // Get today's order count from localStorage
+    let todayOrderCount = parseInt(localStorage.getItem(storageKey)) || 0;
+
+    // Increment the count for this order
+    todayOrderCount += 1;
+
+    // Save the updated count back to localStorage
+    localStorage.setItem(storageKey, todayOrderCount.toString());
+
+    // Format as #001, #002, etc. (3 digits with leading zeros)
+    const orderNumber = todayOrderCount.toString().padStart(3, '0');
+
+    return `#${orderNumber}`;
+  };
+
+  const cleanupOldOrderCounts = () => {
+    const today = new Date();
+    const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    // Remove localStorage entries older than 7 days
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('pos_order_count_')) {
+        const dateString = key.replace('pos_order_count_', '');
+        const entryDate = new Date(dateString);
+
+        if (entryDate < sevenDaysAgo) {
+          localStorage.removeItem(key);
+        }
+      }
+    }
+  };
+
+  const getNextOrderNumber = () => {
+    const now = new Date();
+    const today = now.toDateString();
+    const storageKey = `pos_order_count_${today}`;
+
+    // Get today's current order count
+    const currentCount = parseInt(localStorage.getItem(storageKey)) || 0;
+    const nextCount = currentCount + 1;
+
+    // Format as #001, #002, etc. (3 digits with leading zeros)
+    const orderNumber = nextCount.toString().padStart(3, '0');
+
+    return `#${orderNumber}`;
   };
 
   const processOrder = async () => {
@@ -313,43 +330,76 @@ export const usePOSStore = defineStore('pos', () => {
       currentOrder.value.createdAt = new Date().toISOString();
       currentOrder.value.status = 'processing';
 
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Get manager ID from POS session
+      const posSessionStore = usePOSSessionStore();
+      const managerId = posSessionStore.managerInfo?.id || null;
 
-      // Prepare order data for mock response
+      // Prepare order data for API
       const orderData = {
-        id: Date.now(), // Mock ID
-        order_number: currentOrder.value.orderNumber,
-        items: currentOrder.value.items.map((item) => ({
-          menu_item_id: item.id,
-          quantity: item.quantity,
-          price: item.price,
-          subtotal: item.price * item.quantity,
-        })),
+        branch_id: currentBranchId.value,
+        manager_id: managerId,
         order_type: currentOrder.value.orderType,
         subtotal: orderSubtotal.value,
-        tax: orderTax.value,
-        total: orderTotal.value,
+        tax_amount: orderTax.value,
+        total_amount: orderTotal.value,
         amount_paid: currentOrder.value.amountPaid,
-        change: orderChange.value,
-        status: 'completed',
-        created_at: currentOrder.value.createdAt,
-        completed_at: new Date().toISOString(),
+        change_amount: orderChange.value,
+        items: currentOrder.value.items.map((item) => ({
+          menu_item_id: item.id,
+          item_name: item.name,
+          quantity: item.quantity,
+          unit_price: item.price,
+          total_price: item.price * item.quantity,
+          notes: item.notes || null,
+        })),
+        notes: currentOrder.value.notes || null,
       };
+
+      // Create order via API
+      const url = getApiUrl('/pos/orders');
+      const { data: response } = await axios.post(url, orderData, {
+        baseURL: apiConfig.baseURL,
+        headers: { ...getAuthHeaders() },
+      });
+
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to create order');
+      }
+
+      const createdOrder = response.data;
+
+      // Process the order (pending -> processing)
+      const processUrl = getApiUrl(`/pos/orders/${createdOrder.id}/process`);
+      const { data: processResponse } = await axios.post(
+        processUrl,
+        {},
+        {
+          baseURL: apiConfig.baseURL,
+          headers: { ...getAuthHeaders() },
+        }
+      );
+
+      if (!processResponse.success) {
+        throw new Error(processResponse.message || 'Failed to process order');
+      }
 
       // Add to order history
       orderHistory.value.unshift({
         ...currentOrder.value,
-        id: orderData.id,
-        completedAt: orderData.completed_at,
+        id: createdOrder.id,
+        order_number: createdOrder.order_number,
+        processedAt: processResponse.data.processed_at,
       });
 
       // Reset current order
       resetOrder();
 
-      return orderData;
+      return processResponse.data;
     } catch (err) {
-      error.value = err.message || 'Failed to process order';
+      error.value =
+        err?.response?.data?.message ||
+        err.message ||
+        'Failed to process order';
       console.error('Error processing order:', err);
       throw err;
     } finally {
@@ -385,16 +435,242 @@ export const usePOSStore = defineStore('pos', () => {
     resetOrder();
   };
 
+  const voidOrder = async (orderId, voidReason) => {
+    try {
+      loading.value = true;
+      error.value = null;
+
+      const url = getApiUrl(`/pos/orders/${orderId}/void`);
+      const { data: response } = await axios.post(
+        url,
+        { void_reason: voidReason },
+        {
+          baseURL: apiConfig.baseURL,
+          headers: { ...getAuthHeaders() },
+        }
+      );
+
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to void order');
+      }
+
+      // Remove from order history
+      const orderIndex = orderHistory.value.findIndex(
+        (order) => order.id === orderId
+      );
+      if (orderIndex !== -1) {
+        orderHistory.value.splice(orderIndex, 1);
+      }
+
+      return response.data;
+    } catch (err) {
+      error.value =
+        err?.response?.data?.message || err.message || 'Failed to void order';
+      console.error('Error voiding order:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const completeOrder = async (orderId) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const url = getApiUrl(`/pos/orders/${orderId}/complete`);
+      const { data: response } = await axios.post(
+        url,
+        {},
+        {
+          baseURL: apiConfig.baseURL,
+          headers: { ...getAuthHeaders() },
+        }
+      );
+
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to complete order');
+      }
+
+      // Update order in history
+      const orderIndex = orderHistory.value.findIndex(
+        (order) => order.id === orderId
+      );
+      if (orderIndex !== -1) {
+        orderHistory.value[orderIndex].status = 'completed';
+        orderHistory.value[orderIndex].completedAt = response.data.completed_at;
+      }
+
+      return response.data;
+    } catch (err) {
+      error.value =
+        err?.response?.data?.message ||
+        err.message ||
+        'Failed to complete order';
+      console.error('Error completing order:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const fetchOrderHistory = async (filters = {}) => {
     try {
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      const {
+        branch_id = null,
+        status = null,
+        limit = 20,
+        offset = 0,
+        date_from = null,
+        date_to = null,
+      } = filters;
 
-      // For now, just return the existing order history
-      // In a real implementation, this would filter based on the filters parameter
-      console.log('Fetching order history with filters:', filters);
+      const url = getApiUrl('/pos/orders');
+      const params = new URLSearchParams();
+      if (branch_id) params.append('branch_id', branch_id);
+      if (status) params.append('status', status);
+      if (limit) params.append('limit', limit);
+      if (offset) params.append('offset', offset);
+      if (date_from) params.append('date_from', date_from);
+      if (date_to) params.append('date_to', date_to);
+
+      const { data: response } = await axios.get(
+        `${url}?${params.toString()}`,
+        {
+          baseURL: apiConfig.baseURL,
+          headers: { ...getAuthHeaders() },
+        }
+      );
+
+      if (response.success) {
+        return response.data;
+      }
+      return [];
     } catch (err) {
       console.error('Error fetching order history:', err);
+      return [];
+    }
+  };
+
+  const fetchOrderById = async (orderNumber) => {
+    try {
+      const url = getApiUrl(`/pos/orders/${orderNumber}`);
+      const { data: response } = await axios.get(url, {
+        baseURL: apiConfig.baseURL,
+        headers: { ...getAuthHeaders() },
+      });
+
+      if (response.success) {
+        return response.data;
+      }
+      return null;
+    } catch (err) {
+      console.error('Error fetching order by ID:', err);
+      return null;
+    }
+  };
+
+  // Fetch daily sales summary
+  const fetchDailySummary = async (branchId, date) => {
+    try {
+      const url = getApiUrl('/pos/daily-summary');
+      const params = new URLSearchParams();
+      params.append('branch_id', branchId);
+      params.append('date', date);
+
+      const { data: response } = await axios.get(
+        `${url}?${params.toString()}`,
+        {
+          baseURL: apiConfig.baseURL,
+          headers: { ...getAuthHeaders() },
+        }
+      );
+
+      if (response.success) {
+        return response.data;
+      }
+      return null;
+    } catch (err) {
+      console.error('Error fetching daily summary:', err);
+      return null;
+    }
+  };
+
+  // Fetch sales statistics
+  const fetchSalesStats = async (branchId, dateFrom = null, dateTo = null) => {
+    try {
+      const url = getApiUrl('/pos/sales-stats');
+      const params = new URLSearchParams();
+      params.append('branch_id', branchId);
+      if (dateFrom) params.append('date_from', dateFrom);
+      if (dateTo) params.append('date_to', dateTo);
+
+      const { data: response } = await axios.get(
+        `${url}?${params.toString()}`,
+        {
+          baseURL: apiConfig.baseURL,
+          headers: { ...getAuthHeaders() },
+        }
+      );
+
+      if (response.success) {
+        return response.data;
+      }
+      return null;
+    } catch (err) {
+      console.error('Error fetching sales stats:', err);
+      return null;
+    }
+  };
+
+  // Fetch top selling items
+  const fetchTopSellingItems = async (
+    branchId,
+    dateFrom = null,
+    dateTo = null
+  ) => {
+    try {
+      // This would need a specific API endpoint for top selling items
+      // For now, we'll fetch recent orders and calculate top items
+      const orders = await fetchOrderHistory({
+        branch_id: branchId,
+        status: 'completed',
+        limit: 100,
+        date_from: dateFrom,
+        date_to: dateTo,
+      });
+
+      if (!orders || orders.length === 0) {
+        return [];
+      }
+
+      // Calculate top selling items from order data
+      const itemCounts = {};
+      orders.forEach((order) => {
+        if (order.items) {
+          order.items.forEach((item) => {
+            const key = item.item_name || item.name;
+            if (!itemCounts[key]) {
+              itemCounts[key] = { quantity: 0, revenue: 0 };
+            }
+            itemCounts[key].quantity += item.quantity;
+            itemCounts[key].revenue += item.total_price;
+          });
+        }
+      });
+
+      // Convert to array and sort by quantity
+      return Object.entries(itemCounts)
+        .map(([name, data]) => ({
+          name,
+          quantity: data.quantity,
+          revenue: data.revenue,
+        }))
+        .sort((a, b) => b.quantity - a.quantity)
+        .slice(0, 10); // Top 10 items
+    } catch (err) {
+      console.error('Error fetching top selling items:', err);
+      return [];
     }
   };
 
@@ -403,8 +679,15 @@ export const usePOSStore = defineStore('pos', () => {
   };
 
   // Initialize
-  const initialize = async () => {
-    await Promise.all([fetchMenuItems(), fetchCategories()]);
+  const initialize = async (options = {}) => {
+    currentBranchId.value = options.branchId || null;
+    await fetchMenuItems({ ...options, reset: true });
+    await fetchCategories();
+  };
+
+  const loadMore = async (options = {}) => {
+    if (!hasMore.value || loading.value) return;
+    await fetchMenuItems({ ...options, reset: false });
   };
 
   return {
@@ -416,6 +699,8 @@ export const usePOSStore = defineStore('pos', () => {
     loading,
     error,
     orderHistory,
+    pagination,
+    hasMore,
 
     // Getters
     filteredMenuItems,
@@ -430,6 +715,7 @@ export const usePOSStore = defineStore('pos', () => {
     // Actions
     fetchMenuItems,
     fetchCategories,
+    loadMore,
     addItemToOrder,
     removeItemFromOrder,
     updateItemQuantity,
@@ -438,8 +724,15 @@ export const usePOSStore = defineStore('pos', () => {
     processOrder,
     resetOrder,
     cancelOrder,
+    voidOrder,
+    completeOrder,
     fetchOrderHistory,
+    fetchOrderById,
+    fetchDailySummary,
+    fetchSalesStats,
+    fetchTopSellingItems,
     setSelectedCategory,
     initialize,
+    getNextOrderNumber,
   };
 });

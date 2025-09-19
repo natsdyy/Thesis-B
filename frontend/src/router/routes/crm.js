@@ -6,10 +6,10 @@ export default [
     meta: { title: 'CRM Dashboard' },
   },
   {
-    path: 'customers',
-    name: 'CustomerManagement',
-    component: () => import('../../views/crm/CustomerManagement.vue'),
-    meta: { title: 'Customer Management' },
+    path: 'feedback',
+    name: 'FeedbackManagement',
+    component: () => import('../../views/crm/FeedbackManagement.vue'),
+    meta: { title: 'Feedback Management' },
   },
   {
     path: 'analytics',

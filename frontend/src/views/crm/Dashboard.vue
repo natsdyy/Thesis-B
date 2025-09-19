@@ -63,24 +63,24 @@
         <h3 class="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
         <div class="space-y-3">
           <router-link
-            to="/crm/customers"
+            to="/crm/feedback"
             class="flex items-center p-3 bg-green-50 hover:bg-green-100 rounded-lg transition-colors duration-200"
           >
-            <font-awesome-icon icon="fa-solid fa-users" class="w-5 h-5 text-green-600 mr-3" />
+            <font-awesome-icon icon="fa-solid fa-comments" class="w-5 h-5 text-green-600 mr-3" />
             <div>
-              <p class="font-medium text-gray-900">Manage Customers</p>
-              <p class="text-sm text-gray-600">View and manage customer data</p>
+              <p class="font-medium text-gray-900">Manage Feedback</p>
+              <p class="text-sm text-gray-600">View and manage customer feedback</p>
             </div>
           </router-link>
           
           <router-link
-            to="/crm/feedback"
+            to="/crm/analytics"
             class="flex items-center p-3 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors duration-200"
           >
-            <font-awesome-icon icon="fa-solid fa-comments" class="w-5 h-5 text-blue-600 mr-3" />
+            <font-awesome-icon icon="fa-solid fa-chart-bar" class="w-5 h-5 text-blue-600 mr-3" />
             <div>
-              <p class="font-medium text-gray-900">View Feedback</p>
-              <p class="text-sm text-gray-600">Customer feedback and reviews</p>
+              <p class="font-medium text-gray-900">View Analytics</p>
+              <p class="text-sm text-gray-600">Customer insights and reports</p>
             </div>
           </router-link>
           

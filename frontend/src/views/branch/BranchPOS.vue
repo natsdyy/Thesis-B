@@ -65,22 +65,16 @@
 
   // POS UI state
   const showOrderCompleteModal = ref(false);
-<<<<<<< HEAD
-=======
   const showOrderConfirmationModal = ref(false);
   const showReceiptModal = ref(false);
   const showVoidOrderModal = ref(false);
   const hasPrintedReceipt = ref(false);
->>>>>>> a2002e1 (Implement Order Rating and POS Order Management Features)
   const orderCompleteData = ref(null);
   const paymentInput = ref('');
   const isProcessingOrder = ref(false);
-<<<<<<< HEAD
-=======
   const receiptData = ref(null);
   const voidOrderData = ref(null);
   const voidReason = ref('');
->>>>>>> a2002e1 (Implement Order Rating and POS Order Management Features)
 
   // Computed
   const currentBranch = computed(() => branchContextStore.currentBranch);
@@ -283,8 +277,6 @@
       return;
     }
 
-<<<<<<< HEAD
-=======
     // Show confirmation modal first
     orderConfirmationData.value = {
       orderNumber: posStore.getNextOrderNumber(),
@@ -301,7 +293,6 @@
   };
 
   const confirmOrder = async () => {
->>>>>>> a2002e1 (Implement Order Rating and POS Order Management Features)
     isProcessingOrder.value = true;
     try {
       const orderData = await posStore.processOrder();
@@ -328,8 +319,6 @@
     orderCompleteData.value = null;
   };
 
-<<<<<<< HEAD
-=======
   const closeOrderConfirmationModal = () => {
     showOrderConfirmationModal.value = false;
     orderConfirmationData.value = null;
@@ -377,7 +366,6 @@
     }
   };
 
->>>>>>> a2002e1 (Implement Order Rating and POS Order Management Features)
   const resetOrder = () => {
     posStore.resetOrder();
     paymentInput.value = '';
@@ -501,10 +489,6 @@
     // Set up session timeout monitoring
     sessionTimeoutInterval = setInterval(checkSessionTimeout, 60000); // Check every minute
 
-<<<<<<< HEAD
-    // Initialize POS store
-    await posStore.initialize();
-=======
     // Initialize POS store using menuId/itemCodes if provided via route, and branch context for stock basis
     const q = router.currentRoute.value.query || {};
     const menuId = q.menuId ? Number(q.menuId) : undefined;
@@ -521,7 +505,6 @@
     if (scrollContainer) {
       scrollContainer.addEventListener('scroll', onScroll, { passive: true });
     }
->>>>>>> a2002e1 (Implement Order Rating and POS Order Management Features)
 
     // Fetch real POS data
     await fetchTodayStats();
@@ -907,12 +890,8 @@
                     {{ item.name }}
                   </h4>
                   <p class="text-sm text-gray-600">
-<<<<<<< HEAD
-                    ₱{{ item.price.toFixed(2) }}
-=======
                     <font-awesome-icon icon="fa-solid fa-peso-sign" />
                     {{ parseFloat(item.price || 0).toFixed(2) }}
->>>>>>> a2002e1 (Implement Order Rating and POS Order Management Features)
                   </p>
                 </div>
 
@@ -1115,8 +1094,6 @@
         </div>
       </div>
 
-<<<<<<< HEAD
-=======
       <!-- Order Confirmation Modal -->
       <div
         v-if="showOrderConfirmationModal"
@@ -1281,7 +1258,6 @@
         </div>
       </div>
 
->>>>>>> a2002e1 (Implement Order Rating and POS Order Management Features)
       <!-- Order Complete Modal -->
       <div
         v-if="showOrderCompleteModal"
@@ -1305,41 +1281,29 @@
             <div class="bg-gray-50 rounded-lg p-3 sm:p-4 mb-3 sm:mb-4">
               <div class="flex justify-between text-xs sm:text-sm">
                 <span>Total:</span>
-                <span class="font-semibold"
-<<<<<<< HEAD
-                  >₱{{ orderCompleteData?.total?.toFixed(2) }}</span
-=======
-                  ><font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                <span class="font-semibold">
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
                     parseFloat(orderCompleteData?.total_amount || 0).toFixed(2)
-                  }}</span
->>>>>>> a2002e1 (Implement Order Rating and POS Order Management Features)
-                >
+                  }}
+                </span>
               </div>
               <div class="flex justify-between text-xs sm:text-sm">
                 <span>Amount Paid:</span>
-                <span class="font-semibold"
-<<<<<<< HEAD
-                  >₱{{ orderCompleteData?.amount_paid?.toFixed(2) }}</span
-=======
-                  ><font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                <span class="font-semibold">
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
                     parseFloat(orderCompleteData?.amount_paid || 0).toFixed(2)
-                  }}</span
->>>>>>> a2002e1 (Implement Order Rating and POS Order Management Features)
-                >
+                  }}
+                </span>
               </div>
               <div
                 class="flex justify-between text-xs sm:text-sm font-semibold text-green-600"
               >
                 <span>Change:</span>
-<<<<<<< HEAD
-                <span>₱{{ orderCompleteData?.change?.toFixed(2) }}</span>
-=======
                 <span>
                   <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
                     parseFloat(orderCompleteData?.change_amount || 0).toFixed(2)
-                  }}</span
-                >
->>>>>>> a2002e1 (Implement Order Rating and POS Order Management Features)
+                  }}
+                </span>
               </div>
             </div>
 
@@ -1347,8 +1311,6 @@
               class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3"
             >
               <button
-<<<<<<< HEAD
-=======
                 @click="showReceipt"
                 class="flex-1 btn bg-primaryColor text-white btn-sm sm:btn-md touch-manipulation font-thin hover:bg-primaryColor/80"
               >
@@ -1356,24 +1318,15 @@
               </button>
 
               <button
->>>>>>> a2002e1 (Implement Order Rating and POS Order Management Features)
                 @click="closeOrderCompleteModal"
                 class="flex-1 btn btn-primary btn-sm sm:btn-md touch-manipulation"
               >
                 New Order
               </button>
-              <button
-                @click="closeOrderCompleteModal"
-                class="flex-1 btn btn-outline btn-sm sm:btn-md touch-manipulation"
-              >
-                Print Receipt
-              </button>
             </div>
           </div>
         </div>
       </div>
-<<<<<<< HEAD
-=======
 
       <!-- Receipt Modal -->
       <div
@@ -1587,7 +1540,6 @@
           </div>
         </div>
       </div>
->>>>>>> a2002e1 (Implement Order Rating and POS Order Management Features)
     </div>
     <!-- Close POS Interface div -->
   </div>

@@ -9,8 +9,6 @@ function resolveBaseURL() {
 
   // If running behind the same origin (e.g., nginx proxy), use window origin
   if (typeof window !== 'undefined' && window.location?.origin) {
-<<<<<<< HEAD
-=======
     // Check if we're in development mode (localhost:8080 or network IP:8080)
     if (
       window.location.origin.includes('localhost:8080') ||
@@ -20,7 +18,6 @@ function resolveBaseURL() {
       return 'http://192.168.254.110:5000/api';
     }
     // For production or other environments, use window origin
->>>>>>> a2002e1 (Implement Order Rating and POS Order Management Features)
     return `${window.location.origin.replace(/\/$/, '')}/api`;
   }
 
@@ -45,4 +42,18 @@ export const axiosConfig = {
   baseURL: apiConfig.baseURL,
   timeout: apiConfig.timeout,
   headers: { 'Content-Type': 'application/json' },
+};
+
+export const formatImageUrl = (imagePath) => {
+  if (!imagePath) return '';
+  
+  // If it's already a full URL, return as is
+  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+    return imagePath;
+  }
+  
+  // If it's a relative path, prepend the base URL
+  const cleanBase = apiConfig.baseURL.replace(/\/$/, '');
+  const cleanPath = imagePath.replace(/^\//, '');
+  return `${cleanBase}/${cleanPath}`;
 };

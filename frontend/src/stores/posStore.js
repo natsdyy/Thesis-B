@@ -1,14 +1,10 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import axios from 'axios';
-<<<<<<< HEAD
-import { apiConfig } from '../config/api.js';
-
-const API_BASE_URL = apiConfig.baseURL;
-=======
 import { apiConfig, getApiUrl, formatImageUrl } from '../config/api.js';
 import { usePOSSessionStore } from './posSessionStore.js';
->>>>>>> a2002e1 (Implement Order Rating and POS Order Management Features)
+
+const API_BASE_URL = apiConfig.baseURL;
 
 export const usePOSStore = defineStore('pos', () => {
   // State
@@ -715,10 +711,6 @@ export const usePOSStore = defineStore('pos', () => {
   };
 
   // Initialize
-<<<<<<< HEAD
-  const initialize = async () => {
-    await Promise.all([fetchMenuItems(), fetchCategories()]);
-=======
   const initialize = async (options = {}) => {
     currentBranchId.value = options.branchId || null;
     await fetchMenuItems({ ...options, reset: true });
@@ -728,7 +720,6 @@ export const usePOSStore = defineStore('pos', () => {
   const loadMore = async (options = {}) => {
     if (!hasMore.value || loading.value) return;
     await fetchMenuItems({ ...options, reset: false });
->>>>>>> a2002e1 (Implement Order Rating and POS Order Management Features)
   };
 
   return {

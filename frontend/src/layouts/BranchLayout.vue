@@ -277,13 +277,13 @@
               <!-- Dropdown Menu -->
               <ul
                 tabindex="0"
-                class="dropdown-content menu rounded-lg shadow-lg border w-64 p-2 mt-2 bg-white text-gray-800"
+                class="dropdown-content menu rounded-lg shadow-lg w-64 p-2 mt-2 bg-white text-gray-800 border border-black/10"
               >
                 <!-- User Info Header -->
-                <li class="px-3 py-2 border-b mb-2">
-                  <div class="flex items-center space-x-3">
+                <li class="px-3 py-2 border-b border-gray-200 mb-2 -mx-2">
+                  <div class="flex items-center space-x-3 px-2">
                     <div
-                      class="W-10 h-10 rounded-full overflow-hidden bg-primaryColor flex items-center justify-center"
+                      class="w-10 h-10 rounded-full overflow-hidden bg-primaryColor flex items-center justify-center"
                     >
                       <img
                         v-if="profileImageUrl"
@@ -331,10 +331,10 @@
                 </li>
 
                 <!-- Divider + Logout -->
-                <li class="border-t mt-2 pt-2">
+                <li class="border-t border-gray-200 mt-2 pt-2 -mx-2">
                   <a
                     @click="requestLogout"
-                    class="flex items-center space-x-3 px-3 py-2 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
+                    class="flex items-center space-x-3 px-5 py-2 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
                   >
                     <LogOut class="w-4 h-4 text-red-600" />
                     <span class="text-sm text-red-700">Log Out</span>
@@ -347,12 +347,16 @@
           <!-- Mobile Controls -->
           <div class="flex lg:hidden items-center space-x-2">
             <!-- Mobile Branch Selector -->
-            <div v-if="canSwitchBranches" class="max-w-32 sm:max-w-40">
+            <div
+              v-if="canSwitchBranches"
+              class="max-w-32 sm:max-w-40 relative z-10"
+            >
               <select
                 v-model="selectedBranchId"
                 @change="handleBranchChange"
-                class="select select-xs bg-white text-primaryColor border-none w-full text-xs"
+                class="select select-xs bg-white text-primaryColor border-none w-full text-xs appearance-none"
                 :disabled="loading"
+                style="z-index: 10; position: relative"
               >
                 <option value="">Select Branch</option>
                 <option
@@ -365,23 +369,116 @@
               </select>
             </div>
 
-            <!-- Mobile User Info -->
-            <div class="flex items-center space-x-2">
-              <div class="text-right hidden sm:block">
-                <p class="text-sm font-medium">{{ user?.name || 'User' }}</p>
-                <p class="text-xs opacity-80">{{ userRole }}</p>
-              </div>
-              <div class="text-right sm:hidden">
-                <p class="text-xs font-medium">
-                  {{ user?.name?.split(' ')[0] || 'User' }}
-                </p>
-                <p class="text-xs opacity-80">{{ userRole }}</p>
-              </div>
+            <!-- Mobile User Profile Dropdown -->
+            <div class="dropdown dropdown-end relative z-20">
               <div
-                class="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-white/20 flex items-center justify-center"
+                tabindex="0"
+                role="button"
+                class="flex items-center space-x-2 p-1 rounded-lg hover:bg-white/20 transition-colors cursor-pointer"
               >
-                <User class="w-3 h-3 sm:w-4 sm:h-4" />
+                <!-- Mobile User Info -->
+                <div class="text-right hidden sm:block">
+                  <p class="text-sm font-medium">
+                    {{ user?.name || 'User' }}
+                  </p>
+                  <p class="text-xs opacity-80">{{ userRole }}</p>
+                </div>
+                <div class="text-right sm:hidden">
+                  <p class="text-xs font-medium">
+                    {{ user?.name?.split(' ')[0] || 'User' }}
+                  </p>
+                  <p class="text-xs opacity-80">{{ userRole }}</p>
+                </div>
+
+                <!-- User Avatar -->
+                <div
+                  class="w-6 h-6 sm:w-8 sm:h-8 rounded-full overflow-hidden bg-white/20 flex items-center justify-center flex-shrink-0"
+                >
+                  <img
+                    v-if="profileImageUrl"
+                    :src="profileImageUrl"
+                    alt="Profile"
+                    class="w-full h-full object-cover"
+                  />
+                  <User v-else class="w-3 h-3 sm:w-4 sm:h-4" />
+                </div>
+
+                <!-- Dropdown Arrow -->
+                <ChevronDown
+                  class="w-3 h-3 sm:w-4 sm:h-4 opacity-80 flex-shrink-0"
+                />
               </div>
+
+              <!-- Mobile Dropdown Menu -->
+              <ul
+                tabindex="0"
+                class="dropdown-content menu rounded-lg shadow-lg w-48 p-2 mt-2 bg-white text-gray-800 absolute right-0 top-full border border-black/10"
+                style="z-index: 30"
+              >
+                <!-- User Info Header -->
+                <li class="px-3 py-2 border-b border-gray-200 mb-2 -mx-2">
+                  <div class="flex items-center space-x-3 px-2">
+                    <div
+                      class="w-8 h-8 rounded-full overflow-hidden bg-primaryColor flex items-center justify-center"
+                    >
+                      <img
+                        v-if="profileImageUrl"
+                        :src="profileImageUrl"
+                        alt="Profile"
+                        class="w-full h-full object-cover"
+                      />
+                      <span v-else class="text-sm font-medium text-white">
+                        {{ user?.name?.charAt(0) || 'U' }}
+                      </span>
+                    </div>
+                    <div>
+                      <p class="font-medium text-sm">
+                        {{ user?.name || 'User' }}
+                      </p>
+                      <p class="text-xs opacity-70">{{ user?.email || '' }}</p>
+                    </div>
+                  </div>
+                </li>
+
+                <!-- Menu Items -->
+                <li>
+                  <a
+                    class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    <User class="w-4 h-4 text-primaryColor" />
+                    <span class="text-sm">Profile</span>
+                  </a>
+                </li>
+
+                <li>
+                  <a
+                    class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    <Settings class="w-4 h-4 text-primaryColor" />
+                    <span class="text-sm">Account Settings</span>
+                  </a>
+                </li>
+
+                <li>
+                  <a
+                    class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    <Clock class="w-4 h-4 text-primaryColor" />
+                    <span class="text-sm">Attendance</span>
+                  </a>
+                </li>
+
+                <!-- Divider + Logout -->
+                <li class="border-t border-gray-200 mt-2 pt-2 -mx-2">
+                  <a
+                    @click="requestLogout"
+                    class="flex items-center space-x-3 px-5 py-2 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
+                  >
+                    <LogOut class="w-4 h-4 text-red-600" />
+                    <span class="text-sm text-red-700">Log Out</span>
+                  </a>
+                </li>
+              </ul>
             </div>
           </div>
         </div>

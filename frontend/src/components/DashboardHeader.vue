@@ -1,17 +1,36 @@
 <template>
   <header
     :class="[
-      'shadow-sm border-b px-4 py-3 flex items-center justify-between transition-colors duration-300',
+      'shadow-sm border-b px-1 sm:px-2 md:px-4 py-1.5 sm:py-2 md:py-3 flex items-center justify-between transition-colors duration-300',
       themeStore.themeClasses.headerBg,
     ]"
   >
-    <!-- Left Section: Theme Toggle + Menu Button + Breadcrumb -->
-    <div class="flex items-center space-x-4">
+    <!-- Left Section: Menu Toggle + Theme Toggle + Breadcrumb -->
+    <div
+      class="flex items-center space-x-1 sm:space-x-2 md:space-x-4 min-w-0 flex-1"
+    >
+      <!-- Menu Toggle Button -->
+      <button
+        @click="toggleSidebar"
+        :class="[
+          'p-1 sm:p-1.5 md:p-2 rounded-lg transition-all duration-300 ease-in-out lg:hidden flex-shrink-0',
+          themeStore.themeClasses.hoverBg,
+          themeStore.themeClasses.textSecondary,
+        ]"
+        title="Toggle Menu"
+      >
+        <Menu
+          v-if="!props.isMobileMenuOpen"
+          class="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5"
+        />
+        <X v-else class="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5" />
+      </button>
+
       <!-- Theme Toggle Button -->
       <button
         @click="toggleTheme"
         :class="[
-          'p-2 rounded-lg transition-all duration-300 ease-in-out',
+          'p-1 sm:p-1.5 md:p-2 rounded-lg transition-all duration-300 ease-in-out flex-shrink-0',
           themeStore.themeClasses.hoverBg,
           themeStore.themeClasses.textSecondary,
         ]"
@@ -21,44 +40,53 @@
       >
         <Sun
           v-if="themeStore.isDarkMode"
-          class="w-5 h-5 text-yellow-400 transition-transform duration-300"
+          class="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-yellow-400 transition-transform duration-300"
         />
         <Moon
           v-else
-          class="w-5 h-5 text-black transition-transform duration-300"
+          class="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-black transition-transform duration-300"
         />
       </button>
 
       <!-- Breadcrumb Navigation -->
-      <nav class="flex items-center space-x-2 text-sm">
+      <nav
+        class="flex items-center space-x-0.5 sm:space-x-1 md:space-x-2 text-xs sm:text-sm min-w-0"
+      >
         <router-link
           to="/dashboard"
-          class="text-primaryColor hover:text-primaryColor/80 transition-colors"
+          class="text-primaryColor hover:text-primaryColor/80 transition-colors flex-shrink-0"
         >
           Home
         </router-link>
-        <ChevronRight :class="['w-4 h-4', themeStore.themeClasses.textMuted]" />
-        <span :class="themeStore.themeClasses.textSecondary">{{
+        <ChevronRight
+          :class="[
+            'w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 flex-shrink-0',
+            themeStore.themeClasses.textMuted,
+          ]"
+        />
+        <span :class="['truncate', themeStore.themeClasses.textSecondary]">{{
           currentPageTitle
         }}</span>
       </nav>
     </div>
 
     <!-- Right Section: User Profile -->
-    <div class="flex items-center space-x-4">
+    <div
+      class="flex items-center space-x-1 sm:space-x-2 md:space-x-4 flex-shrink-0"
+    >
       <!-- User Profile Dropdown -->
       <div class="dropdown dropdown-end">
         <div
           tabindex="0"
           role="button"
           :class="[
-            'flex items-center space-x-3 p-2 rounded-lg transition-colors cursor-pointer',
+            'flex items-center space-x-1 sm:space-x-2 md:space-x-3 p-1 sm:p-1.5 md:p-2 rounded-lg transition-colors cursor-pointer',
             themeStore.themeClasses.hoverBg,
           ]"
         >
           <!-- User Avatar -->
           <div
-            class="w-8 h-8 rounded-full overflow-hidden bg-primaryColor flex items-center justify-center"
+            class="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 rounded-full overflow-hidden bg-primaryColor flex items-center justify-center flex-shrink-0"
           >
             <img
               v-if="profileImageUrl"
@@ -66,29 +94,34 @@
               alt="Profile"
               class="w-full h-full object-cover"
             />
-            <span v-else class="text-sm font-medium text-white">
+            <span v-else class="text-xs sm:text-sm font-medium text-white">
               {{ user?.name?.charAt(0) || 'J' }}
             </span>
           </div>
 
           <!-- User Info -->
-          <div class="flex flex-col items-start">
+          <div class="hidden sm:flex flex-col items-start min-w-0">
             <span
               :class="[
-                'text-sm font-medium',
+                'text-sm font-medium truncate',
                 themeStore.themeClasses.textPrimary,
               ]"
             >
               {{ user?.name || 'John Marco Paja' }}
             </span>
-            <span :class="['text-xs', themeStore.themeClasses.textMuted]">
+            <span
+              :class="['text-xs truncate', themeStore.themeClasses.textMuted]"
+            >
               {{ user?.role || 'HR Manager' }}
             </span>
           </div>
 
           <!-- Dropdown Arrow -->
           <ChevronDown
-            :class="['w-4 h-4', themeStore.themeClasses.textMuted]"
+            :class="[
+              'w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 flex-shrink-0',
+              themeStore.themeClasses.textMuted,
+            ]"
           />
         </div>
 
@@ -243,6 +276,7 @@
   import QRAttendanceModal from './QRAttendanceModal.vue';
   import {
     Menu,
+    X,
     ChevronRight,
     ChevronDown,
     User,
@@ -252,6 +286,14 @@
     Sun,
     Moon,
   } from 'lucide-vue-next';
+
+  // Define props
+  const props = defineProps({
+    isMobileMenuOpen: {
+      type: Boolean,
+      default: false,
+    },
+  });
 
   // Define emits for parent communication
   const emit = defineEmits(['toggle-sidebar']);

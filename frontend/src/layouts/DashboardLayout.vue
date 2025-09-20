@@ -22,17 +22,33 @@
 </script>
 
 <template>
-  <div :class="['min-h-screen transition-colors duration-300', themeStore.themeClasses.mainBg]">
+  <div
+    :class="[
+      'min-h-screen transition-colors duration-300',
+      themeStore.themeClasses.mainBg,
+    ]"
+  >
     <!-- Sidebar -->
-    <Sidebar />
+    <Sidebar
+      :is-mobile-menu-open="isMobileMenuOpen"
+      @close-mobile-menu="closeMobileMenu"
+    />
 
     <!-- Main Content Area with proper margins -->
     <div class="lg:pl-64">
       <!-- Header -->
-      <DashboardHeader />
+      <DashboardHeader
+        :is-mobile-menu-open="isMobileMenuOpen"
+        @toggle-sidebar="toggleMobileMenu"
+      />
 
       <!-- Page Content -->
-      <main :class="['p-6 transition-colors duration-300', themeStore.themeClasses.textPrimary]">
+      <main
+        :class="[
+          'p-2 sm:p-4 md:p-6 transition-colors duration-300',
+          themeStore.themeClasses.textPrimary,
+        ]"
+      >
         <RouterView />
       </main>
     </div>

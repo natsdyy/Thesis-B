@@ -466,7 +466,7 @@
                   </div>
                   <div
                     class="stat-value text-warning text-xl sm:text-2xl lg:text-3xl xl:text-4xl"
-                  >
+                  ><p>
                     {{ salesData.totalTransactions }}
                   </p>
                   <div class="flex items-center mt-1">
@@ -897,8 +897,6 @@
             </div>
           </div>
         </div>
-      </div>
-    </div>
 
     <!-- Void Order Modal -->
     <div
@@ -1074,7 +1072,7 @@
 
     <!-- Remit Sales Modal -->
     <BranchRemitSalesModal :show="showRemitModal" @close="closeRemitModal" />
-  </div>
+  
 </template>
 
 <style scoped></style>

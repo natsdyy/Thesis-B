@@ -665,44 +665,62 @@
 <template>
   <div class="space-y-6">
     <!-- Header -->
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-3xl font-bold text-primaryColor">Sales Management</h1>
-        <p class="text-gray-600 mt-1">
+    <div
+      class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
+    >
+      <div class="flex-1 min-w-0">
+        <h1 class="text-2xl sm:text-3xl font-bold text-primaryColor">
+          Sales Management
+        </h1>
+        <p class="text-sm sm:text-base text-gray-600 mt-1">
           {{ currentBranch?.name }} - Sales Analytics
         </p>
       </div>
-      <div class="flex items-center space-x-2">
+      <div
+        class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3"
+      >
         <select
           v-model="selectedPeriod"
-          class="select select-bordered select-sm"
+          class="select select-bordered select-sm w-full sm:w-auto"
         >
           <option value="today">Today</option>
           <option value="week">This Week</option>
           <option value="month">This Month</option>
           <option value="year">This Year</option>
         </select>
-        <button
-          @click="refreshData"
-          :disabled="loading"
-          class="btn btn-sm font-thin text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
-        >
-          <RefreshCcw :class="['w-4 h-4 mr-2', { 'animate-spin': loading }]" />
-          Refresh
-        </button>
-        <button
-          @click="showRemitSales"
-          :disabled="remitLoading"
-          class="btn btn-sm font-thin bg-primaryColor text-white hover:bg-primaryColor/80"
-          :class="{ 'btn-disabled': remitLoading }"
-        >
-          <div
-            v-if="remitLoading"
-            class="loading loading-spinner loading-sm mr-2"
-          ></div>
-          <font-awesome-icon icon="fa-solid fa-receipt" />
-          {{ remitLoading ? 'Loading...' : 'Remit Sales' }}
-        </button>
+        <div class="flex gap-2">
+          <button
+            @click="refreshData"
+            :disabled="loading"
+            class="btn btn-sm font-thin text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white flex-1 sm:flex-none"
+          >
+            <RefreshCcw
+              :class="['w-4 h-4 mr-1 sm:mr-2', { 'animate-spin': loading }]"
+            />
+            <span class="hidden sm:inline">Refresh</span>
+          </button>
+          <button
+            @click="showRemitSales"
+            :disabled="remitLoading"
+            class="btn btn-sm font-thin bg-primaryColor text-white hover:bg-primaryColor/80 flex-1 sm:flex-none"
+            :class="{ 'btn-disabled': remitLoading }"
+          >
+            <div
+              v-if="remitLoading"
+              class="loading loading-spinner loading-sm mr-1 sm:mr-2"
+            ></div>
+            <font-awesome-icon
+              icon="fa-solid fa-receipt"
+              class="mr-1 sm:mr-0"
+            />
+            <span class="hidden sm:inline">{{
+              remitLoading ? 'Loading...' : 'Remit Sales'
+            }}</span>
+            <span class="sm:hidden">{{
+              remitLoading ? 'Loading...' : 'Remit'
+            }}</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -729,23 +747,25 @@
       <div v-else class="space-y-6">
         <!-- Tabs -->
         <div
-          class="tabs tabs-boxed mb-4 sm:mb-6 justify-center sm:justify-start"
+          class="tabs tabs-boxed mb-4 sm:mb-6 justify-center sm:justify-start w-full"
         >
           <button
             @click="activeTab = 'overview'"
-            class="tab"
+            class="tab flex-1 sm:flex-none"
             :class="{ 'tab-active': activeTab === 'overview' }"
           >
-            <BarChart3 class="w-4 h-4 mr-1" />
-            Overview
+            <BarChart3 class="w-4 h-4 mr-1 sm:mr-2" />
+            <span class="hidden xs:inline">Overview</span>
+            <span class="xs:hidden">Overview</span>
           </button>
           <button
             @click="activeTab = 'transactions'"
-            class="tab"
+            class="tab flex-1 sm:flex-none"
             :class="{ 'tab-active': activeTab === 'transactions' }"
           >
-            <ShoppingCart class="w-4 h-4 mr-1" />
-            Transactions
+            <ShoppingCart class="w-4 h-4 mr-1 sm:mr-2" />
+            <span class="hidden xs:inline">Transactions</span>
+            <span class="xs:hidden">Transactions</span>
           </button>
         </div>
 
@@ -758,7 +778,7 @@
             <div class="card-body p-3 sm:p-4 lg:p-6">
               <!-- Sales Stats -->
               <div
-                class="stats shadow w-full mb-4 sm:mb-6 bg-accentColor border border-black/10 stats-vertical lg:stats-horizontal xl:stats-horizontal rounded-lg"
+                class="stats shadow w-full mb-4 sm:mb-6 bg-accentColor border border-black/10 stats-vertical sm:stats-horizontal lg:stats-horizontal xl:stats-horizontal rounded-lg"
               >
                 <!-- Total Sales -->
                 <div
@@ -766,14 +786,14 @@
                 >
                   <div class="stat-figure">
                     <PhilippinePeso
-                      class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-primaryColor"
+                      class="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-primaryColor"
                     />
                   </div>
                   <div class="stat-title text-black/50 !text-xs sm:text-sm">
                     Total Sales
                   </div>
                   <div
-                    class="stat-value text-primaryColor text-lg sm:text-xl lg:text-2xl xl:text-3xl"
+                    class="stat-value text-primaryColor text-xl sm:text-2xl lg:text-3xl xl:text-4xl"
                   >
                     {{ salesData.totalSales.toLocaleString() }}
                   </div>
@@ -781,12 +801,15 @@
                     <div class="flex items-center justify-start">
                       <TrendingUp
                         v-if="salesData.growthRate >= 0"
-                        class="w-4 h-4 text-primaryColor mr-1"
+                        class="w-3 h-3 sm:w-4 sm:h-4 text-primaryColor mr-1"
                       />
-                      <TrendingDown v-else class="w-4 h-4 text-error mr-1" />
+                      <TrendingDown
+                        v-else
+                        class="w-3 h-3 sm:w-4 sm:h-4 text-error mr-1"
+                      />
                       <span
                         :class="[
-                          'text-sm',
+                          'text-xs sm:text-sm',
                           salesData.growthRate >= 0
                             ? 'text-primaryColor'
                             : 'text-error',
@@ -805,14 +828,14 @@
                 >
                   <div class="stat-figure">
                     <ShoppingCart
-                      class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-warning"
+                      class="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-warning"
                     />
                   </div>
                   <div class="stat-title text-black/50 !text-xs sm:text-sm">
                     Transactions
                   </div>
                   <div
-                    class="stat-value text-warning text-lg sm:text-xl lg:text-2xl xl:text-3xl"
+                    class="stat-value text-warning text-xl sm:text-2xl lg:text-3xl xl:text-4xl"
                   >
                     {{ salesData.totalTransactions }}
                   </div>
@@ -827,14 +850,14 @@
                 >
                   <div class="stat-figure">
                     <BarChart3
-                      class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-gray-600"
+                      class="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-gray-600"
                     />
                   </div>
                   <div class="stat-title text-black/50 !text-xs sm:text-sm">
                     Average Sale
                   </div>
                   <div
-                    class="stat-value text-gray-600 text-lg sm:text-xl lg:text-2xl xl:text-3xl"
+                    class="stat-value text-gray-600 text-xl sm:text-2xl lg:text-3xl xl:text-4xl"
                   >
                     {{ salesData.averageTransaction.toFixed(2) }}
                   </div>
@@ -849,14 +872,14 @@
                 >
                   <div class="stat-figure">
                     <Trash2
-                      class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-orange-600"
+                      class="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-orange-600"
                     />
                   </div>
                   <div class="stat-title text-black/50 !text-xs sm:text-sm">
                     Disposed Items
                   </div>
                   <div
-                    class="stat-value text-orange-600 text-lg sm:text-xl lg:text-2xl xl:text-3xl"
+                    class="stat-value text-orange-600 text-xl sm:text-2xl lg:text-3xl xl:text-4xl"
                   >
                     {{ salesData.totalDisposed }}
                   </div>
@@ -871,14 +894,14 @@
                 >
                   <div class="stat-figure">
                     <AlertCircle
-                      class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-red-600"
+                      class="w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 text-red-600"
                     />
                   </div>
                   <div class="stat-title text-black/50 !text-xs sm:text-sm">
                     Loss Profit
                   </div>
                   <div
-                    class="stat-value text-red-600 text-lg sm:text-xl lg:text-2xl xl:text-3xl"
+                    class="stat-value text-red-600 text-xl sm:text-2xl lg:text-3xl xl:text-4xl"
                   >
                     {{ salesData.lossProfit.toFixed(2) }}
                   </div>
@@ -1004,7 +1027,7 @@
           <div
             class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6"
           >
-            <div>
+            <div class="flex-1 min-w-0">
               <h2
                 class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl mb-2"
               >
@@ -1022,171 +1045,215 @@
                 :disabled="loading"
               >
                 <RefreshCcw class="w-4 h-4 mr-1" />
-                Refresh
+                <span class="hidden sm:inline">Refresh</span>
               </button>
             </div>
           </div>
 
-          <div class="overflow-x-auto">
-            <table class="table w-full table-zebra">
-              <thead>
-                <tr>
-                  <th>Order Number</th>
-                  <th>Items</th>
-                  <th>Time</th>
-                  <th>Amount</th>
-                  <th>Paid Amount</th>
-                  <th>Change</th>
-                  <th>Cashier</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="transaction in recentTransactions"
-                  :key="transaction.id"
-                >
-                  <td>
-                    <div class="font-mono text-sm">
-                      {{ transaction.order_number }}
-                    </div>
-                  </td>
-                  <td>
-                    <div class="text-sm max-w-sm">
+          <div class="overflow-x-auto -mx-4 sm:mx-0">
+            <div class="min-w-full px-4 sm:px-0">
+              <table class="table w-full table-zebra">
+                <thead>
+                  <tr>
+                    <th class="text-xs sm:text-sm">Order #</th>
+                    <th class="text-xs sm:text-sm hidden sm:table-cell">
+                      Items
+                    </th>
+                    <th class="text-xs sm:text-sm">Time</th>
+                    <th class="text-xs sm:text-sm">Amount</th>
+                    <th class="text-xs sm:text-sm hidden md:table-cell">
+                      Paid
+                    </th>
+                    <th class="text-xs sm:text-sm hidden md:table-cell">
+                      Change
+                    </th>
+                    <th class="text-xs sm:text-sm hidden lg:table-cell">
+                      Cashier
+                    </th>
+                    <th class="text-xs sm:text-sm hidden lg:table-cell">
+                      Type
+                    </th>
+                    <th class="text-xs sm:text-sm">Status</th>
+                    <th class="text-xs sm:text-sm">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="transaction in recentTransactions"
+                    :key="transaction.id"
+                  >
+                    <td>
+                      <div class="font-mono text-xs sm:text-sm">
+                        {{ transaction.order_number }}
+                      </div>
+                    </td>
+                    <td class="hidden sm:table-cell">
+                      <div class="text-xs sm:text-sm max-w-sm">
+                        <div
+                          v-if="
+                            transaction.items && transaction.items.length > 0
+                          "
+                          class="space-y-1"
+                        >
+                          <div
+                            v-for="item in transaction.items.slice(0, 2)"
+                            :key="item.id || item.menu_item_id"
+                            class="flex items-center justify-between"
+                          >
+                            <span class="font-medium text-xs">{{
+                              item.menu_item_name || item.item_name
+                            }}</span>
+                            <span class="text-gray-500 ml-2 text-xs"
+                              >{{ item.quantity }}x</span
+                            >
+                          </div>
+                          <div
+                            v-if="transaction.items.length > 2"
+                            class="text-xs text-gray-500"
+                          >
+                            +{{ transaction.items.length - 2 }} more
+                          </div>
+                        </div>
+                        <div v-else class="text-gray-400 text-xs">No items</div>
+                      </div>
+                    </td>
+                    <td>
+                      <div class="text-xs sm:text-sm">
+                        {{ transaction.time }}
+                      </div>
+                    </td>
+                    <td>
                       <div
-                        v-if="transaction.items && transaction.items.length > 0"
-                        class="space-y-1"
+                        class="font-semibold text-primaryColor text-xs sm:text-sm"
+                      >
+                        <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                          isNaN(transaction.amount)
+                            ? '0.00'
+                            : transaction.amount.toFixed(2)
+                        }}
+                      </div>
+                    </td>
+                    <td class="hidden md:table-cell">
+                      <div class="font-thin text-gray-600 text-xs sm:text-sm">
+                        <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                          isNaN(transaction.amount_paid)
+                            ? '0.00'
+                            : transaction.amount_paid.toFixed(2)
+                        }}
+                      </div>
+                    </td>
+                    <td class="hidden md:table-cell">
+                      <div class="font-thin text-gray-600 text-xs sm:text-sm">
+                        <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                          isNaN(transaction.change_amount)
+                            ? '0.00'
+                            : transaction.change_amount.toFixed(2)
+                        }}
+                      </div>
+                    </td>
+                    <td class="hidden lg:table-cell">
+                      <div class="text-xs sm:text-sm">
+                        {{ transaction.cashier }}
+                      </div>
+                    </td>
+                    <td class="hidden lg:table-cell">
+                      <div class="text-xs sm:text-sm">
+                        {{ transaction.order_type }}
+                      </div>
+                    </td>
+                    <td>
+                      <div
+                        v-if="transaction.status === 'void'"
+                        class="cursor-pointer"
                       >
                         <div
-                          v-for="item in transaction.items"
-                          :key="item.id || item.menu_item_id"
-                          class="flex items-center justify-between"
+                          :class="[
+                            'badge badge-xs sm:badge-sm mb-1 flex items-center gap-1 font-thin',
+                            transaction.isRefunded
+                              ? 'bg-success/10 text-success border border-success/20'
+                              : 'bg-error/10 text-error border border-error/20',
+                          ]"
+                          :title="transaction.void_reason"
                         >
-                          <span class="font-medium">{{
-                            item.menu_item_name || item.item_name
+                          <font-awesome-icon
+                            :icon="
+                              transaction.isRefunded
+                                ? 'fa-solid fa-undo'
+                                : 'fa-solid fa-exclamation-triangle'
+                            "
+                            class="w-2 h-2 sm:w-3 sm:h-3"
+                          />
+                          <span class="hidden sm:inline">{{
+                            transaction.isRefunded ? 'Refunded' : 'Loss'
                           }}</span>
-                          <span class="text-gray-500 ml-2"
-                            >{{ item.quantity }}x</span
-                          >
+                          <span class="sm:hidden">{{
+                            transaction.isRefunded ? 'R' : 'L'
+                          }}</span>
                         </div>
                       </div>
-                      <div v-else class="text-gray-400">No items</div>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="text-sm">{{ transaction.time }}</div>
-                  </td>
-                  <td>
-                    <div class="font-semibold text-primaryColor">
-                      <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                        isNaN(transaction.amount)
-                          ? '0.00'
-                          : transaction.amount.toFixed(2)
-                      }}
-                    </div>
-                  </td>
-                  <td>
-                    <div class="font-thin text-gray-600">
-                      <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                        isNaN(transaction.amount_paid)
-                          ? '0.00'
-                          : transaction.amount_paid.toFixed(2)
-                      }}
-                    </div>
-                  </td>
-                  <td>
-                    <div class="font-thin text-gray-600">
-                      <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                        isNaN(transaction.change_amount)
-                          ? '0.00'
-                          : transaction.change_amount.toFixed(2)
-                      }}
-                    </div>
-                  </td>
-                  <td>
-                    <div class="text-sm">{{ transaction.cashier }}</div>
-                  </td>
-                  <td>
-                    <div class="text-sm">{{ transaction.order_type }}</div>
-                  </td>
-                  <td>
-                    <div v-if="transaction.status === 'void'">
-                      <div
-                        :class="[
-                          'badge badge-sm mb-1 flex items-center gap-1 font-thin',
-                          transaction.isRefunded
-                            ? 'bg-success/10 text-success border border-success/20'
-                            : 'bg-error/10 text-error border border-error/20',
-                        ]"
-                      >
-                        <font-awesome-icon
-                          :icon="
-                            transaction.isRefunded
-                              ? 'fa-solid fa-undo'
-                              : 'fa-solid fa-exclamation-triangle'
-                          "
-                          class="w-3 h-3"
-                        />
-                        {{ transaction.isRefunded ? 'Refunded' : 'Loss' }}
+                      <div v-else>
+                        <div
+                          :class="[
+                            'badge badge-xs sm:badge-sm font-thin',
+                            getStatusBadgeClass(transaction.status),
+                          ]"
+                        >
+                          <span class="hidden sm:inline">{{
+                            transaction.status
+                          }}</span>
+                          <span class="sm:hidden">{{
+                            transaction.status.charAt(0).toUpperCase()
+                          }}</span>
+                        </div>
                       </div>
-                      <div class="text-xs text-gray-500">
-                        {{ transaction.void_reason }}
-                      </div>
-                    </div>
-                    <div v-else>
-                      <div
-                        :class="[
-                          'badge badge-sm font-thin',
-                          getStatusBadgeClass(transaction.status),
-                        ]"
-                      >
-                        {{ transaction.status }}
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="flex space-x-1">
-                      <button
-                        v-if="transaction.status === 'processing'"
-                        @click="showCompleteOrder(transaction)"
-                        class="btn btn-sm btn-success text-success font-thin bg-success/20 shadow-none border-none"
-                        title="Complete Order"
-                      >
-                        <font-awesome-icon icon="fa-solid fa-check" />
-                      </button>
-                      <button
-                        v-if="transaction.canVoid"
-                        @click="showVoidOrder(transaction)"
-                        class="btn btn-sm btn-error text-error font-thin bg-error/20 shadow-none border-none"
-                        :title="
-                          transaction.status === 'completed'
-                            ? 'Refund Order'
-                            : 'Void Order'
-                        "
-                      >
-                        <font-awesome-icon
-                          :icon="
+                    </td>
+
+                    <td>
+                      <div class="flex space-x-1">
+                        <button
+                          v-if="transaction.status === 'processing'"
+                          @click="showCompleteOrder(transaction)"
+                          class="btn btn-xs sm:btn-sm btn-success text-success font-thin bg-success/20 shadow-none border-none"
+                          title="Complete Order"
+                        >
+                          <font-awesome-icon
+                            icon="fa-solid fa-check"
+                            class="w-3 h-3"
+                          />
+                        </button>
+                        <button
+                          v-if="transaction.canVoid"
+                          @click="showVoidOrder(transaction)"
+                          class="btn btn-xs sm:btn-sm btn-error text-error font-thin bg-error/20 shadow-none border-none"
+                          :title="
                             transaction.status === 'completed'
-                              ? 'fa-solid fa-undo'
-                              : 'fa-solid fa-trash'
+                              ? 'Refund Order'
+                              : 'Void Order'
                           "
-                        />
-                      </button>
-                      <span
-                        v-if="
-                          !transaction.canVoid &&
-                          transaction.status !== 'processing'
-                        "
-                        class="text-gray-400 text-xs"
-                        >-</span
-                      >
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+                        >
+                          <font-awesome-icon
+                            :icon="
+                              transaction.status === 'completed'
+                                ? 'fa-solid fa-undo'
+                                : 'fa-solid fa-trash'
+                            "
+                            class="w-3 h-3"
+                          />
+                        </button>
+                        <span
+                          v-if="
+                            !transaction.canVoid &&
+                            transaction.status !== 'processing'
+                          "
+                          class="text-gray-400 text-xs"
+                          >-</span
+                        >
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div class="text-center mt-4">
@@ -1205,10 +1272,10 @@
     <!-- Void Order Modal -->
     <div
       v-if="showVoidModal"
-      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
+      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4 backdrop-blur-sm"
     >
       <div
-        class="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
+        class="bg-white rounded-lg p-3 sm:p-4 lg:p-6 max-w-md w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto"
       >
         <div class="text-center mb-6">
           <AlertCircle
@@ -1468,10 +1535,10 @@
     <!-- Complete Order Modal -->
     <div
       v-if="showCompleteModal"
-      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
+      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4 backdrop-blur-sm"
     >
       <div
-        class="bg-white rounded-lg shadow-xl w-full max-w-md mx-auto transform transition-all p-4"
+        class="bg-white rounded-lg shadow-xl w-full max-w-md mx-auto transform transition-all p-3 sm:p-4 lg:p-6"
       >
         <div class="text-center mb-6 flex flex-col gap-2 items-center">
           <div class="flex items-center justify-center gap-2 flex-row">

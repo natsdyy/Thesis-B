@@ -403,10 +403,37 @@ const checkLocation = async () => {
     const accuracy = position.coords.accuracy
 
     // Get branch coordinates from the user's branch
-    // For now, using Dasmariñas coordinates - in production, fetch from user's branch
-    const branchLat = 14.3064 // Dasmariñas coordinates (BRN003)
-    const branchLon = 120.9671
-    const requiredRadius = 2.0
+    let branchLat = null
+    let branchLon = null
+    let requiredRadius = 2.0
+    
+    try {
+      // Fetch branch coordinates from the user's branch
+      const branchResponse = await axios.get(`${API_BASE_URL}/branches/${authStore.user.branch_id}/coordinates`)
+      
+      if (branchResponse.data.success && branchResponse.data.data) {
+        const branch = branchResponse.data.data
+        branchLat = parseFloat(branch.latitude)
+        branchLon = parseFloat(branch.longitude)
+        requiredRadius = parseFloat(branch.radius_meters) || 2.0
+      }
+    } catch (error) {
+      console.warn('Failed to fetch branch coordinates:', error)
+      // Fallback to Dasmariñas coordinates if branch fetch fails
+      branchLat = 14.3064
+      branchLon = 120.9671
+    }
+    
+    // If no coordinates available, show error
+    if (!branchLat || !branchLon) {
+      locationStatus.value = {
+        withinRadius: false,
+        distance: 'Branch location not configured',
+        requiredRadius: '2m',
+        error: 'Branch GPS coordinates are not set. Please contact administrator.'
+      }
+      return
+    }
 
     // Calculate distance using Haversine formula
     const distance = calculateDistance(userLat, userLon, branchLat, branchLon)

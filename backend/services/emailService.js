@@ -1,31 +1,40 @@
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
-// Gmail SMTP Configuration with timeout settings
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: 'mailcountrysidesteakhouse@gmail.com',
-    pass: 'sclg quvi fuyh dcfa' // Gmail App Password
-  },
-  // Optimized settings for production reliability
-  connectionTimeout: 60000, // 60 seconds - increased for production
-  greetingTimeout: 30000,   // 30 seconds - increased for production
-  socketTimeout: 60000,     // 60 seconds - increased for production
-  pool: false,              // Disable pooling for better reliability
-  // Simplified rate limiting
-  rateDelta: 60000,         // 1 minute
-  rateLimit: 10,            // 10 emails per minute
-  // Gmail specific settings
-  secure: true,             // Use SSL/TLS
-  port: 587,                // Explicit port
-  tls: {
-    rejectUnauthorized: false, // For production environments
-    ciphers: 'SSLv3'        // Use SSLv3 for better compatibility
-  },
-  // Connection retry settings
-  retryDelay: 5000,         // 5 seconds between retries
-  maxRetries: 3             // Maximum 3 connection attempts
+// Create multiple transporter configurations for fallback
+const createTransporter = (config) => {
+  return nodemailer.createTransport({
+    ...config,
+    auth: {
+      user: 'mailcountrysidesteakhouse@gmail.com',
+      pass: 'sclg quvi fuyh dcfa' // Gmail App Password
+    },
+    // Production-optimized timeout settings
+    connectionTimeout: 120000, // 2 minutes
+    greetingTimeout: 60000,    // 1 minute
+    socketTimeout: 120000,     // 2 minutes
+    pool: false, // Disable connection pooling for Railway compatibility
+    tls: {
+      rejectUnauthorized: false,
+      secureProtocol: 'TLSv1_2_method'
+    },
+    debug: false, // Reduced logging for production
+    logger: false
+  });
+};
+
+// Primary transporter (Port 587 - STARTTLS)
+const transporter = createTransporter({
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false
+});
+
+// Fallback transporter (Port 465 - SSL)
+const fallbackTransporter = createTransporter({
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true
 });
 
 // Verify transporter configuration with retry
@@ -34,18 +43,37 @@ const maxVerificationAttempts = 3;
 
 const verifyTransporter = () => {
   verificationAttempts++;
-  transporter.verify((error, success) => {
-    if (error) {
-      console.error(`❌ Email service verification attempt ${verificationAttempts} failed:`, error.message);
+  console.log(`📧 Verifying email service (attempt ${verificationAttempts}/${maxVerificationAttempts})`);
+  
+  // Try primary transporter first
+  transporter.verify((primaryError, primarySuccess) => {
+    if (!primaryError) {
+      console.log('✅ Primary email service (port 587) ready to send messages');
+      return;
+    }
+    
+    console.log(`❌ Primary transporter failed: ${primaryError.message}`);
+    console.log(`📧 Trying fallback transporter (port 465)...`);
+    
+    // Try fallback transporter
+    fallbackTransporter.verify((fallbackError, fallbackSuccess) => {
+      if (!fallbackError) {
+        console.log('✅ Fallback email service (port 465) ready to send messages');
+        return;
+      }
+      
+      console.error(`❌ Both transporters failed on attempt ${verificationAttempts}`);
+      console.error(`Primary: ${primaryError.message}`);
+      console.error(`Fallback: ${fallbackError.message}`);
+      
       if (verificationAttempts < maxVerificationAttempts) {
-        console.log(`⏳ Retrying email service verification in 5 seconds...`);
-        setTimeout(verifyTransporter, 5000);
+        console.log(`⏳ Retrying email service verification in 10 seconds...`);
+        setTimeout(verifyTransporter, 10000);
       } else {
         console.error('❌ Email service verification failed after all attempts');
+        console.error('⚠️  Email functionality may be limited');
       }
-    } else {
-      console.log('✅ Email service ready to send messages');
-    }
+    });
   });
 };
 
@@ -58,7 +86,7 @@ class EmailService {
    * @param {Promise} emailPromise - The email promise
    * @param {number} timeoutMs - Timeout in milliseconds (default: 15000)
    */
-  static async withTimeout(emailPromise, timeoutMs = 90000) {
+  static async withTimeout(emailPromise, timeoutMs = 150000) {
     return Promise.race([
       emailPromise,
       new Promise((_, reject) => 
@@ -330,7 +358,16 @@ class EmailService {
         `
       };
 
-        const info = await this.withTimeout(transporter.sendMail(mailOptions), 60000);
+        // Try primary transporter first, then fallback
+        let info;
+        try {
+          console.log(`📧 Using primary transporter (port 587)`);
+          info = await this.withTimeout(transporter.sendMail(mailOptions), 120000);
+        } catch (primaryError) {
+          console.log(`❌ Primary transporter failed: ${primaryError.message}`);
+          console.log(`📧 Trying fallback transporter (port 465)`);
+          info = await this.withTimeout(fallbackTransporter.sendMail(mailOptions), 120000);
+        }
         console.log(`✅ Feedback reply email sent (attempt ${attempt}):`, info.messageId);
         return { success: true, messageId: info.messageId };
         

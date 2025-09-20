@@ -513,9 +513,11 @@
                 </button>
                 <button
                   type="submit"
-                  class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md"
+                  :disabled="isSendingReply"
+                  class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
                 >
-                  Send Reply
+                  <span v-if="isSendingReply" class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
+                  <span>{{ isSendingReply ? 'Sending...' : 'Send Reply' }}</span>
                 </button>
               </div>
             </form>
@@ -530,6 +532,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
 import { library } from '@fortawesome/fontawesome-svg-core';
+import feedbackService from '@/services/feedbackService';
 import {
   faComments,
   faStar,
@@ -585,6 +588,9 @@ const replyForm = ref({
   internal_note: ''
 });
 
+// Reply loading state
+const isSendingReply = ref(false);
+
 // Computed properties
 const satisfactionRate = computed(() => {
   if (!stats.value.total_feedback) return 0;
@@ -611,16 +617,8 @@ const debouncedSearch = () => {
 const loadFeedback = async () => {
   try {
     loading.value = true;
-    const params = new URLSearchParams();
     
-    Object.keys(filters.value).forEach(key => {
-      if (filters.value[key]) {
-        params.append(key, filters.value[key]);
-      }
-    });
-
-    const response = await fetch(`/api/feedback?${params.toString()}`);
-    const data = await response.json();
+    const data = await feedbackService.getFeedback(filters.value);
 
     if (data.success) {
       feedback.value = data.data;
@@ -664,10 +662,7 @@ const viewImage = (imageFilename) => {
 
 const markAsRead = async (feedbackId) => {
   try {
-    const response = await fetch(`/api/feedback/${feedbackId}/mark-read`, {
-      method: 'PATCH'
-    });
-    const data = await response.json();
+    const data = await feedbackService.markAsRead(feedbackId);
 
     if (data.success) {
       await loadFeedback();
@@ -697,10 +692,7 @@ const archiveFeedback = async (feedbackId) => {
   }
 
   try {
-    const response = await fetch(`/api/feedback/${feedbackId}/archive`, {
-      method: 'PATCH'
-    });
-    const data = await response.json();
+    const data = await feedbackService.archiveFeedback(feedbackId);
 
     if (data.success) {
       await loadFeedback();
@@ -718,26 +710,30 @@ const sendReply = async () => {
     return;
   }
 
+  isSendingReply.value = true;
+
   try {
-    const response = await fetch(`/api/feedback/${selectedFeedback.value.id}/reply`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(replyForm.value)
-    });
-    const data = await response.json();
+    const data = await feedbackService.sendReply(
+      selectedFeedback.value.id,
+      replyForm.value.message,
+      replyForm.value.internal_note
+    );
 
     if (data.success) {
       showReplyModal.value = false;
       replyForm.value = { message: '', internal_note: '' };
       selectedFeedback.value = null;
       await loadFeedback();
+      alert('Reply sent successfully!');
     } else {
       console.error('Failed to send reply:', data.message);
+      alert('Failed to send reply: ' + data.message);
     }
   } catch (error) {
     console.error('Error sending reply:', error);
+    alert('Error sending reply: ' + (error.response?.data?.message || error.message));
+  } finally {
+    isSendingReply.value = false;
   }
 };
 

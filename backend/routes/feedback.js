@@ -460,45 +460,53 @@ router.post("/:id/reply", async (req, res) => {
 
     // Send email asynchronously (don't wait for completion)
     console.log('Sending email to:', feedback.email);
-    EmailService.sendFeedbackReplyEmail(
-      feedback.email,
-      feedback.name,
-      feedback.message,
-      message.trim(),
-      feedback.rating
-    ).then(emailResult => {
-      console.log('Email sent successfully:', emailResult);
-      
-      // Update the feedback record with the actual email message ID
-      if (emailResult.success) {
-        db('feedback')
-          .where('id', feedbackId)
-          .update({
-            reply_sent_at: new Date(),
-            updated_at: new Date()
-          })
-          .catch(err => console.error('Error updating email status:', err));
-      } else {
-        console.error('Failed to send reply email:', emailResult.error);
-        // Optionally update status to indicate email failure
-        db('feedback')
-          .where('id', feedbackId)
-          .update({
-            status: 'replied',
-            updated_at: new Date()
-          })
-          .catch(err => console.error('Error updating email failure status:', err));
+    
+    // Use setImmediate to ensure this runs after the response is sent
+    setImmediate(async () => {
+      try {
+        const emailResult = await EmailService.sendFeedbackReplyEmail(
+          feedback.email,
+          feedback.name,
+          feedback.message,
+          message.trim(),
+          feedback.rating
+        );
+        
+        console.log('Email sent successfully:', emailResult);
+        
+        // Update the feedback record with the actual email message ID
+        if (emailResult.success) {
+          await db('feedback')
+            .where('id', feedbackId)
+            .update({
+              reply_sent_at: new Date(),
+              updated_at: new Date()
+            });
+          console.log('Email status updated successfully');
+        } else {
+          console.error('Failed to send reply email:', emailResult.error);
+          // Update status to indicate email failure
+          await db('feedback')
+            .where('id', feedbackId)
+            .update({
+              status: 'replied',
+              updated_at: new Date()
+            });
+        }
+      } catch (error) {
+        console.error('Email sending failed:', error);
+        // Update status to indicate email failure
+        try {
+          await db('feedback')
+            .where('id', feedbackId)
+            .update({
+              status: 'replied',
+              updated_at: new Date()
+            });
+        } catch (dbError) {
+          console.error('Error updating email failure status:', dbError);
+        }
       }
-    }).catch(error => {
-      console.error('Email sending failed:', error);
-      // Update status to indicate email failure
-      db('feedback')
-        .where('id', feedbackId)
-        .update({
-          status: 'replied',
-          updated_at: new Date()
-        })
-        .catch(err => console.error('Error updating email failure status:', err));
     });
 
   } catch (error) {

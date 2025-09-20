@@ -94,7 +94,13 @@ const corsConfig = {
 
 app.use(cors(corsConfig));
 app.use(express.json());
-app.use("/uploads", express.static(require("path").join(__dirname, "uploads")));
+// Serve uploads with proper CORS headers for images
+app.use("/uploads", (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  next();
+}, express.static(require("path").join(__dirname, "uploads")));
 
 // Serve frontend static files
 const frontendPath = require("path").join(__dirname, "..", "frontend", "dist");

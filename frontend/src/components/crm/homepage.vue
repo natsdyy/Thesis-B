@@ -1008,7 +1008,7 @@
                   type="text"
                   placeholder="Your Name"
                   required
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
                 />
               </div>
               <div>
@@ -1017,7 +1017,7 @@
                   type="email"
                   placeholder="Your Email"
                   required
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
                 />
               </div>
               <div>
@@ -1025,7 +1025,7 @@
                   v-model="feedbackForm.phone"
                   type="tel"
                   placeholder="Your Phone (Optional)"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
                 />
               </div>
               <div>
@@ -1084,7 +1084,7 @@
                     >
                       {{ feedbackForm.rating }}/5 stars
                     </span>
-                    <span v-else class="text-gray-500">Click to rate</span>
+                    <span v-else class="text-gray-700">Click to rate</span>
                   </div>
                 </div>
 
@@ -1106,7 +1106,7 @@
                   rows="4"
                   placeholder="Your Message"
                   required
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg resize-none"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg resize-none placeholder:text-gray-600"
                 ></textarea>
               </div>
 
@@ -1149,14 +1149,14 @@
                             d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
                           ></path>
                         </svg>
-                        <span class="text-sm text-gray-600">
+                        <span class="text-sm text-gray-700">
                           <span
                             class="font-medium text-green-600 hover:text-green-500"
                             >Click to upload</span
                           >
                           or drag and drop
                         </span>
-                        <p class="text-xs text-gray-500 mt-1">
+                        <p class="text-xs text-gray-600 mt-1">
                           PNG, JPG, GIF up to 5MB
                         </p>
                       </div>

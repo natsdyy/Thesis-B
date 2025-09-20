@@ -5,6 +5,8 @@ const fs = require("fs");
 const Feedback = require("../models/Feedback");
 const OrderRating = require("../models/OrderRating");
 const Customer = require("../models/Customer");
+const EmailService = require("../services/emailService");
+const { db } = require("../config/database");
 const router = express.Router();
 
 // Configure multer for image uploads
@@ -398,6 +400,223 @@ router.get("/ratings/top-items", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch top rated items",
+    });
+  }
+});
+
+// POST /api/feedback/:id/reply - Send reply email to customer
+router.post("/:id/reply", async (req, res) => {
+  try {
+    const feedbackId = req.params.id;
+    const { message, internal_note } = req.body;
+
+    // Validate input
+    if (!message || !message.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Reply message is required",
+      });
+    }
+
+    // Get feedback details
+    const feedback = await Feedback.getById(feedbackId);
+    if (!feedback) {
+      return res.status(404).json({
+        success: false,
+        message: "Feedback not found",
+      });
+    }
+
+    // Send reply email to customer
+    const emailResult = await EmailService.sendFeedbackReplyEmail(
+      feedback.email,
+      feedback.name,
+      feedback.message,
+      message.trim(),
+      feedback.rating
+    );
+
+    if (!emailResult.success) {
+      console.error('Failed to send reply email:', emailResult.error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send reply email",
+        error: emailResult.error,
+      });
+    }
+
+    // Update feedback status to 'replied' and store reply details
+    await db('feedback')
+      .where('id', feedbackId)
+      .update({
+        status: 'replied',
+        reply_message: message.trim(),
+        reply_internal_note: internal_note ? internal_note.trim() : null,
+        reply_sent_at: new Date(),
+        updated_at: new Date()
+      });
+
+    res.json({
+      success: true,
+      message: "Reply sent successfully to customer",
+      data: {
+        feedbackId: feedbackId,
+        customerEmail: feedback.email,
+        replyMessage: message.trim(),
+        sentAt: new Date().toISOString(),
+        emailMessageId: emailResult.messageId
+      }
+    });
+
+  } catch (error) {
+    console.error("Error sending feedback reply:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to send reply",
+      error: process.env.NODE_ENV === "development" ? error.message : "Internal server error",
+    });
+  }
+});
+
+// PATCH /api/feedback/:id/mark-read - Mark feedback as read
+router.patch("/:id/mark-read", async (req, res) => {
+  try {
+    const feedbackId = req.params.id;
+
+    // Check if feedback exists
+    const feedback = await Feedback.getById(feedbackId);
+    if (!feedback) {
+      return res.status(404).json({
+        success: false,
+        message: "Feedback not found",
+      });
+    }
+
+    // Update status to 'read'
+    await db('feedback')
+      .where('id', feedbackId)
+      .update({
+        status: 'read',
+        updated_at: new Date()
+      });
+
+    res.json({
+      success: true,
+      message: "Feedback marked as read",
+      data: {
+        feedbackId: feedbackId,
+        status: 'read'
+      }
+    });
+
+  } catch (error) {
+    console.error("Error marking feedback as read:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to mark feedback as read",
+      error: process.env.NODE_ENV === "development" ? error.message : "Internal server error",
+    });
+  }
+});
+
+// PATCH /api/feedback/:id/archive - Archive feedback
+router.patch("/:id/archive", async (req, res) => {
+  try {
+    const feedbackId = req.params.id;
+
+    // Check if feedback exists
+    const feedback = await Feedback.getById(feedbackId);
+    if (!feedback) {
+      return res.status(404).json({
+        success: false,
+        message: "Feedback not found",
+      });
+    }
+
+    // Update status to 'archived'
+    await db('feedback')
+      .where('id', feedbackId)
+      .update({
+        status: 'archived',
+        updated_at: new Date()
+      });
+
+    res.json({
+      success: true,
+      message: "Feedback archived successfully",
+      data: {
+        feedbackId: feedbackId,
+        status: 'archived'
+      }
+    });
+
+  } catch (error) {
+    console.error("Error archiving feedback:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to archive feedback",
+      error: process.env.NODE_ENV === "development" ? error.message : "Internal server error",
+    });
+  }
+});
+
+// GET /api/feedback/export - Export feedback to CSV
+router.get("/export", async (req, res) => {
+  try {
+    const filters = {
+      search: req.query.search || null,
+      rating: req.query.rating ? parseInt(req.query.rating) : null,
+      source: req.query.source || null,
+      status: req.query.status || null,
+      date_from: req.query.date_from || null,
+      date_to: req.query.date_to || null,
+    };
+
+    const { feedback } = await Feedback.getAll({ ...filters, limit: 10000 }); // Export all
+
+    // Generate CSV content
+    const csvHeaders = [
+      'ID',
+      'Name',
+      'Email',
+      'Phone',
+      'Message',
+      'Rating',
+      'Source',
+      'Status',
+      'Created At',
+      'Reply Message',
+      'Reply Sent At',
+      'Internal Note'
+    ].join(',');
+
+    const csvRows = feedback.map(item => [
+      item.id,
+      `"${(item.name || '').replace(/"/g, '""')}"`,
+      item.email || '',
+      item.phone || '',
+      `"${(item.message || '').replace(/"/g, '""')}"`,
+      item.rating || '',
+      item.source || '',
+      item.status || 'new',
+      item.created_at || '',
+      `"${(item.reply_message || '').replace(/"/g, '""')}"`,
+      item.reply_sent_at || '',
+      `"${(item.reply_internal_note || '').replace(/"/g, '""')}"`
+    ].join(','));
+
+    const csvContent = [csvHeaders, ...csvRows].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=feedback-export-${new Date().toISOString().split('T')[0]}.csv`);
+    res.send(csvContent);
+
+  } catch (error) {
+    console.error("Error exporting feedback:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to export feedback",
+      error: process.env.NODE_ENV === "development" ? error.message : "Internal server error",
     });
   }
 });

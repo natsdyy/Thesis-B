@@ -730,7 +730,7 @@ const sendReply = async () => {
       replyForm.value = { message: '', internal_note: '' };
       selectedFeedback.value = null;
       await loadFeedback();
-      alert('Reply sent successfully!');
+      alert('Reply sent successfully! The customer will receive an email shortly.');
     } else {
       console.error('Failed to send reply:', data.message);
       alert('Failed to send reply: ' + data.message);

@@ -433,28 +433,7 @@ router.post("/:id/reply", async (req, res) => {
 
     console.log('Feedback found:', feedback.email, feedback.name);
 
-    // Send reply email to customer
-    console.log('Sending email to:', feedback.email);
-    const emailResult = await EmailService.sendFeedbackReplyEmail(
-      feedback.email,
-      feedback.name,
-      feedback.message,
-      message.trim(),
-      feedback.rating
-    );
-
-    console.log('Email result:', emailResult);
-
-    if (!emailResult.success) {
-      console.error('Failed to send reply email:', emailResult.error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to send reply email",
-        error: emailResult.error,
-      });
-    }
-
-    // Update feedback status to 'replied' and store reply details
+    // Update feedback status to 'replied' and store reply details FIRST
     console.log('Updating feedback status to replied');
     await db('feedback')
       .where('id', feedbackId)
@@ -466,8 +445,7 @@ router.post("/:id/reply", async (req, res) => {
         updated_at: new Date()
       });
 
-    console.log('Reply process completed successfully');
-
+    // Send response immediately to prevent timeout
     res.json({
       success: true,
       message: "Reply sent successfully to customer",
@@ -476,8 +454,51 @@ router.post("/:id/reply", async (req, res) => {
         customerEmail: feedback.email,
         replyMessage: message.trim(),
         sentAt: new Date().toISOString(),
-        emailMessageId: emailResult.messageId
+        emailMessageId: 'pending' // Will be updated when email completes
       }
+    });
+
+    // Send email asynchronously (don't wait for completion)
+    console.log('Sending email to:', feedback.email);
+    EmailService.sendFeedbackReplyEmail(
+      feedback.email,
+      feedback.name,
+      feedback.message,
+      message.trim(),
+      feedback.rating
+    ).then(emailResult => {
+      console.log('Email sent successfully:', emailResult);
+      
+      // Update the feedback record with the actual email message ID
+      if (emailResult.success) {
+        db('feedback')
+          .where('id', feedbackId)
+          .update({
+            reply_sent_at: new Date(),
+            updated_at: new Date()
+          })
+          .catch(err => console.error('Error updating email status:', err));
+      } else {
+        console.error('Failed to send reply email:', emailResult.error);
+        // Optionally update status to indicate email failure
+        db('feedback')
+          .where('id', feedbackId)
+          .update({
+            status: 'replied',
+            updated_at: new Date()
+          })
+          .catch(err => console.error('Error updating email failure status:', err));
+      }
+    }).catch(error => {
+      console.error('Email sending failed:', error);
+      // Update status to indicate email failure
+      db('feedback')
+        .where('id', feedbackId)
+        .update({
+          status: 'replied',
+          updated_at: new Date()
+        })
+        .catch(err => console.error('Error updating email failure status:', err));
     });
 
   } catch (error) {

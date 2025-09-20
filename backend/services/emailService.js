@@ -1,13 +1,22 @@
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
-// Gmail SMTP Configuration
+// Gmail SMTP Configuration with timeout settings
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
     user: 'mailcountrysidesteakhouse@gmail.com',
     pass: 'wrmr bruz szsp emuk' // Gmail App Password
-  }
+  },
+  // Add timeout and connection settings
+  connectionTimeout: 10000, // 10 seconds
+  greetingTimeout: 5000,    // 5 seconds
+  socketTimeout: 10000,     // 10 seconds
+  pool: true,               // Use connection pooling
+  maxConnections: 5,        // Maximum number of connections
+  maxMessages: 100,         // Maximum messages per connection
+  rateDelta: 20000,         // Rate limiting
+  rateLimit: 5              // Max 5 emails per rateDelta
 });
 
 // Verify transporter configuration
@@ -20,6 +29,20 @@ transporter.verify((error, success) => {
 });
 
 class EmailService {
+  /**
+   * Wrapper to add timeout to email operations
+   * @param {Promise} emailPromise - The email promise
+   * @param {number} timeoutMs - Timeout in milliseconds (default: 15000)
+   */
+  static async withTimeout(emailPromise, timeoutMs = 15000) {
+    return Promise.race([
+      emailPromise,
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Email operation timed out')), timeoutMs)
+      )
+    ]);
+  }
+
   /**
    * Send password recovery email
    * @param {string} to - Recipient email address
@@ -277,7 +300,7 @@ class EmailService {
         `
       };
 
-      const info = await transporter.sendMail(mailOptions);
+      const info = await this.withTimeout(transporter.sendMail(mailOptions), 10000);
       console.log('✅ Feedback reply email sent:', info.messageId);
       return { success: true, messageId: info.messageId };
       

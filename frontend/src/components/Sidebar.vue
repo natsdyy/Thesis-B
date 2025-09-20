@@ -1,22 +1,8 @@
 <template>
   <div>
-    <!-- Mobile Menu Button -->
-    <div
-      class="lg:hidden fixed left-4 top-4 z-50"
-      :class="isMobileMenuOpen ? 'left-90' : 'right-4'"
-    >
-      <button
-        @click="toggleMobileMenu"
-        class="btn btn-square bg-primaryColor border-none btn-sm text-white"
-      >
-        <Menu v-if="!isMobileMenuOpen" class="w-5 h-5" />
-        <X v-else class="w-5 h-5" />
-      </button>
-    </div>
-
     <!-- Backdrop for mobile -->
     <div
-      v-if="isMobileMenuOpen"
+      v-if="props.isMobileMenuOpen"
       class="fixed inset-0 bg-primaryColor/10 backdrop-blur-sm z-40 lg:hidden"
       @click="closeMobileMenu"
     ></div>
@@ -26,7 +12,7 @@
       :class="[
         'fixed top-0 left-0 h-screen bg-primaryColor shadow-xl z-40 transition-transform duration-300 ease-in-out',
         'w-64 flex flex-col text-white min-h-screen',
-        isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full',
+        props.isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full',
         'lg:translate-x-0 lg:fixed lg:z-40',
       ]"
     >
@@ -247,15 +233,23 @@
   import { useRoute, useRouter } from 'vue-router';
   import { useAuthStore } from '../stores/authStore';
   import { menusByDepartment, departmentIcons } from '../config/menus';
-  import { Menu, X, Building2, ChevronDown } from 'lucide-vue-next';
+  import { Building2, ChevronDown } from 'lucide-vue-next';
+
+  // Define props
+  const props = defineProps({
+    isMobileMenuOpen: {
+      type: Boolean,
+      default: false,
+    },
+  });
+
+  // Define emits
+  const emit = defineEmits(['close-mobile-menu']);
 
   // Stores and router
   const authStore = useAuthStore();
   const route = useRoute();
   const router = useRouter();
-
-  // State
-  const isMobileMenuOpen = ref(false);
 
   // Computed properties
   const { isSuperAdmin, userDepartment, user } = authStore;
@@ -288,12 +282,8 @@
   };
 
   // Methods
-  const toggleMobileMenu = () => {
-    isMobileMenuOpen.value = !isMobileMenuOpen.value;
-  };
-
   const closeMobileMenu = () => {
-    isMobileMenuOpen.value = false;
+    emit('close-mobile-menu');
   };
 
   const navigateToRoute = (menuRoute) => {

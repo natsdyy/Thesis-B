@@ -61,6 +61,8 @@ const defaultAllowedOrigins = [
   "https://countrysides.up.railway.app", // Railway deployment
   "https://thesis-b-frontend-production.up.railway.app", // Railway frontend
   "https://thesis-b-backend-production.up.railway.app", // Railway backend
+  "https://www.countryside-steakhouse.site", // Production domain
+  "http://www.countryside-steakhouse.site", // Production domain (HTTP fallback)
 ];
 
 const allowList = [...defaultAllowedOrigins, ...envOrigins];

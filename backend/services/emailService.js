@@ -6,32 +6,51 @@ const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
     user: 'mailcountrysidesteakhouse@gmail.com',
-    pass: 'wrmr bruz szsp emuk' // Gmail App Password
+    pass: 'sclg quvi fuyh dcfa' // Gmail App Password
   },
-  // Add timeout and connection settings for production
-  connectionTimeout: 20000, // 20 seconds
-  greetingTimeout: 10000,   // 10 seconds
-  socketTimeout: 20000,     // 20 seconds
-  pool: true,               // Use connection pooling
-  maxConnections: 3,        // Reduced for stability
-  maxMessages: 50,          // Reduced for stability
-  rateDelta: 30000,         // Increased rate limiting
-  rateLimit: 3,             // Reduced rate limit
-  // Additional production settings
-  secure: true,             // Use SSL
+  // Optimized settings for production reliability
+  connectionTimeout: 60000, // 60 seconds - increased for production
+  greetingTimeout: 30000,   // 30 seconds - increased for production
+  socketTimeout: 60000,     // 60 seconds - increased for production
+  pool: false,              // Disable pooling for better reliability
+  // Simplified rate limiting
+  rateDelta: 60000,         // 1 minute
+  rateLimit: 10,            // 10 emails per minute
+  // Gmail specific settings
+  secure: true,             // Use SSL/TLS
+  port: 587,                // Explicit port
   tls: {
-    rejectUnauthorized: false // For production environments
-  }
+    rejectUnauthorized: false, // For production environments
+    ciphers: 'SSLv3'        // Use SSLv3 for better compatibility
+  },
+  // Connection retry settings
+  retryDelay: 5000,         // 5 seconds between retries
+  maxRetries: 3             // Maximum 3 connection attempts
 });
 
-// Verify transporter configuration
-transporter.verify((error, success) => {
-  if (error) {
-    console.error('Email service error:', error);
-  } else {
-    console.log('✅ Email service ready to send messages');
-  }
-});
+// Verify transporter configuration with retry
+let verificationAttempts = 0;
+const maxVerificationAttempts = 3;
+
+const verifyTransporter = () => {
+  verificationAttempts++;
+  transporter.verify((error, success) => {
+    if (error) {
+      console.error(`❌ Email service verification attempt ${verificationAttempts} failed:`, error.message);
+      if (verificationAttempts < maxVerificationAttempts) {
+        console.log(`⏳ Retrying email service verification in 5 seconds...`);
+        setTimeout(verifyTransporter, 5000);
+      } else {
+        console.error('❌ Email service verification failed after all attempts');
+      }
+    } else {
+      console.log('✅ Email service ready to send messages');
+    }
+  });
+};
+
+// Start verification
+verifyTransporter();
 
 class EmailService {
   /**
@@ -39,7 +58,7 @@ class EmailService {
    * @param {Promise} emailPromise - The email promise
    * @param {number} timeoutMs - Timeout in milliseconds (default: 15000)
    */
-  static async withTimeout(emailPromise, timeoutMs = 30000) {
+  static async withTimeout(emailPromise, timeoutMs = 90000) {
     return Promise.race([
       emailPromise,
       new Promise((_, reject) => 
@@ -311,7 +330,7 @@ class EmailService {
         `
       };
 
-        const info = await this.withTimeout(transporter.sendMail(mailOptions), 25000);
+        const info = await this.withTimeout(transporter.sendMail(mailOptions), 60000);
         console.log(`✅ Feedback reply email sent (attempt ${attempt}):`, info.messageId);
         return { success: true, messageId: info.messageId };
         
@@ -320,8 +339,9 @@ class EmailService {
         console.error(`❌ Error sending feedback reply email (attempt ${attempt}):`, error.message);
         
         if (attempt < maxRetries) {
-          console.log(`⏳ Retrying in 2 seconds...`);
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          const retryDelay = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
+          console.log(`⏳ Retrying in ${retryDelay/1000} seconds...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
         }
       }
     }

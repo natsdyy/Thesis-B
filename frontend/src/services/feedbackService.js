@@ -48,6 +48,10 @@ class FeedbackService {
    */
   async sendReply(feedbackId, message, internalNote = '') {
     try {
+      console.log('Sending reply to feedback ID:', feedbackId);
+      console.log('Reply message:', message);
+      console.log('API URL:', `${API_BASE_URL}/feedback/${feedbackId}/reply`);
+      
       const response = await axios.post(
         `${API_BASE_URL}/feedback/${feedbackId}/reply`,
         {
@@ -57,12 +61,21 @@ class FeedbackService {
         {
           headers: {
             'Content-Type': 'application/json',
-          }
+          },
+          timeout: 30000 // 30 second timeout
         }
       );
+      
+      console.log('Reply sent successfully:', response.data);
       return response.data;
     } catch (error) {
       console.error('Error sending feedback reply:', error);
+      console.error('Error details:', {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data
+      });
       throw error;
     }
   }

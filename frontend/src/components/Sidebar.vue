@@ -293,7 +293,7 @@
 
   const checkScreenSize = () => {
     if (window.innerWidth >= 1024) {
-      isMobileMenuOpen.value = false;
+      closeMobileMenu();
     }
   };
 

@@ -407,6 +407,8 @@ router.get("/ratings/top-items", async (req, res) => {
 // POST /api/feedback/:id/reply - Send reply email to customer
 router.post("/:id/reply", async (req, res) => {
   try {
+    console.log('Reply request received:', req.params.id, req.body);
+    
     const feedbackId = req.params.id;
     const { message, internal_note } = req.body;
 
@@ -419,15 +421,20 @@ router.post("/:id/reply", async (req, res) => {
     }
 
     // Get feedback details
+    console.log('Fetching feedback with ID:', feedbackId);
     const feedback = await Feedback.getById(feedbackId);
     if (!feedback) {
+      console.log('Feedback not found for ID:', feedbackId);
       return res.status(404).json({
         success: false,
         message: "Feedback not found",
       });
     }
 
+    console.log('Feedback found:', feedback.email, feedback.name);
+
     // Send reply email to customer
+    console.log('Sending email to:', feedback.email);
     const emailResult = await EmailService.sendFeedbackReplyEmail(
       feedback.email,
       feedback.name,
@@ -435,6 +442,8 @@ router.post("/:id/reply", async (req, res) => {
       message.trim(),
       feedback.rating
     );
+
+    console.log('Email result:', emailResult);
 
     if (!emailResult.success) {
       console.error('Failed to send reply email:', emailResult.error);
@@ -446,6 +455,7 @@ router.post("/:id/reply", async (req, res) => {
     }
 
     // Update feedback status to 'replied' and store reply details
+    console.log('Updating feedback status to replied');
     await db('feedback')
       .where('id', feedbackId)
       .update({
@@ -455,6 +465,8 @@ router.post("/:id/reply", async (req, res) => {
         reply_sent_at: new Date(),
         updated_at: new Date()
       });
+
+    console.log('Reply process completed successfully');
 
     res.json({
       success: true,

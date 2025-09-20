@@ -713,11 +713,17 @@ const sendReply = async () => {
   isSendingReply.value = true;
 
   try {
+    console.log('Starting to send reply...');
+    console.log('Feedback ID:', selectedFeedback.value.id);
+    console.log('Message:', replyForm.value.message);
+    
     const data = await feedbackService.sendReply(
       selectedFeedback.value.id,
       replyForm.value.message,
       replyForm.value.internal_note
     );
+
+    console.log('Reply response:', data);
 
     if (data.success) {
       showReplyModal.value = false;
@@ -731,7 +737,17 @@ const sendReply = async () => {
     }
   } catch (error) {
     console.error('Error sending reply:', error);
-    alert('Error sending reply: ' + (error.response?.data?.message || error.message));
+    
+    // Handle different types of errors
+    if (error.code === 'ECONNABORTED') {
+      alert('Request timed out. Please try again.');
+    } else if (error.response?.status === 401) {
+      alert('Authentication failed. Please login again.');
+    } else if (error.response?.status === 500) {
+      alert('Server error. Please try again later.');
+    } else {
+      alert('Error sending reply: ' + (error.response?.data?.message || error.message));
+    }
   } finally {
     isSendingReply.value = false;
   }

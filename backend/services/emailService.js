@@ -8,15 +8,20 @@ const transporter = nodemailer.createTransport({
     user: 'mailcountrysidesteakhouse@gmail.com',
     pass: 'wrmr bruz szsp emuk' // Gmail App Password
   },
-  // Add timeout and connection settings
-  connectionTimeout: 10000, // 10 seconds
-  greetingTimeout: 5000,    // 5 seconds
-  socketTimeout: 10000,     // 10 seconds
+  // Add timeout and connection settings for production
+  connectionTimeout: 20000, // 20 seconds
+  greetingTimeout: 10000,   // 10 seconds
+  socketTimeout: 20000,     // 20 seconds
   pool: true,               // Use connection pooling
-  maxConnections: 5,        // Maximum number of connections
-  maxMessages: 100,         // Maximum messages per connection
-  rateDelta: 20000,         // Rate limiting
-  rateLimit: 5              // Max 5 emails per rateDelta
+  maxConnections: 3,        // Reduced for stability
+  maxMessages: 50,          // Reduced for stability
+  rateDelta: 30000,         // Increased rate limiting
+  rateLimit: 3,             // Reduced rate limit
+  // Additional production settings
+  secure: true,             // Use SSL
+  tls: {
+    rejectUnauthorized: false // For production environments
+  }
 });
 
 // Verify transporter configuration
@@ -34,7 +39,7 @@ class EmailService {
    * @param {Promise} emailPromise - The email promise
    * @param {number} timeoutMs - Timeout in milliseconds (default: 15000)
    */
-  static async withTimeout(emailPromise, timeoutMs = 15000) {
+  static async withTimeout(emailPromise, timeoutMs = 30000) {
     return Promise.race([
       emailPromise,
       new Promise((_, reject) => 
@@ -206,10 +211,16 @@ class EmailService {
    * @param {number} rating - Customer's rating (if any)
    */
   static async sendFeedbackReplyEmail(customerEmail, customerName, originalMessage, replyMessage, rating = null) {
-    try {
-      const ratingText = rating ? `${rating}/5 stars` : 'No rating provided';
-      
-      const mailOptions = {
+    const maxRetries = 2;
+    let lastError;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`📧 Attempt ${attempt}/${maxRetries} - Sending feedback reply to ${customerEmail}`);
+        
+        const ratingText = rating ? `${rating}/5 stars` : 'No rating provided';
+        
+        const mailOptions = {
         from: '"Countryside Steak House" <mailcountrysidesteakhouse@gmail.com>',
         to: customerEmail,
         subject: 'Thank you for your feedback - Countryside Steak House',
@@ -300,14 +311,23 @@ class EmailService {
         `
       };
 
-      const info = await this.withTimeout(transporter.sendMail(mailOptions), 10000);
-      console.log('✅ Feedback reply email sent:', info.messageId);
-      return { success: true, messageId: info.messageId };
-      
-    } catch (error) {
-      console.error('❌ Error sending feedback reply email:', error);
-      return { success: false, error: error.message };
+        const info = await this.withTimeout(transporter.sendMail(mailOptions), 25000);
+        console.log(`✅ Feedback reply email sent (attempt ${attempt}):`, info.messageId);
+        return { success: true, messageId: info.messageId };
+        
+      } catch (error) {
+        lastError = error;
+        console.error(`❌ Error sending feedback reply email (attempt ${attempt}):`, error.message);
+        
+        if (attempt < maxRetries) {
+          console.log(`⏳ Retrying in 2 seconds...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
     }
+    
+    console.error('❌ All attempts failed for feedback reply email');
+    return { success: false, error: lastError.message };
   }
 
   /**

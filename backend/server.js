@@ -141,6 +141,7 @@ app.use("/api/branch-requests", branchRequestRoutes);
 app.use("/api/branch-distributions", branchDistributionRoutes);
 app.use("/api/branch-inventory", branchInventoryRoutes);
 app.use("/api/branch-returns", branchReturnRoutes);
+app.use("/api/branch-schedules", branchScheduleRoutes);
 app.use("/api/pos", posRoutes);
 
 // Auto-expire job

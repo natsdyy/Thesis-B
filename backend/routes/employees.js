@@ -78,6 +78,262 @@ router.get("/", async (req, res) => {
 
 /**
  * @swagger
+ * /api/employees/me:
+ *   get:
+ *     summary: Get current user's profile
+ *     tags: [Employees]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Current user profile retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Employee not found
+ */
+router.get("/me", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const employee = await Employee.getById(userId);
+    console.log("Employee found:", employee ? "Yes" : "No");
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found",
+      });
+    }
+
+    // Get role information by joining with user_roles table
+    const { db } = require("../config/database");
+    const employeeWithRole = await db("employees")
+      .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
+      .select(
+        "employees.*",
+        "user_roles.role",
+        "user_roles.description as role_description"
+      )
+      .where("employees.id", userId)
+      .whereNull("employees.deleted_at")
+      .first();
+
+  
+
+    res.json({
+      success: true,
+      data: employeeWithRole,
+    });
+  } catch (error) {
+    console.error("Error fetching current user profile:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching profile",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/employees/me:
+ *   put:
+ *     summary: Update current user's profile
+ *     tags: [Employees]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               first_name:
+ *                 type: string
+ *               last_name:
+ *                 type: string
+ *               phone_number:
+ *                 type: string
+ *               address:
+ *                 type: string
+ *               postal_code:
+ *                 type: string
+ *               emergency_contact_name:
+ *                 type: string
+ *               emergency_contact_number:
+ *                 type: string
+ *               emergency_contact_address:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Employee not found
+ */
+router.put("/me", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const profileData = req.body;
+
+    // Only allow updating certain fields for profile
+    const allowedFields = {
+      first_name: profileData.first_name,
+      last_name: profileData.last_name,
+      phone_number: profileData.phone_number,
+      address: profileData.address,
+      postal_code: profileData.postal_code,
+      emergency_contact_name: profileData.emergency_contact_name,
+      emergency_contact_number: profileData.emergency_contact_number,
+      emergency_contact_address: profileData.emergency_contact_address,
+      alternate_contact_number: profileData.alternate_contact_number,
+      emergency_contact_email: profileData.emergency_contact_email,
+    };
+
+    // Remove undefined values
+    Object.keys(allowedFields).forEach((key) => {
+      if (allowedFields[key] === undefined) {
+        delete allowedFields[key];
+      }
+    });
+
+    const updatedEmployee = await Employee.update(
+      userId,
+      allowedFields,
+      userId
+    );
+
+    if (!updatedEmployee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: updatedEmployee,
+      message: "Profile updated successfully",
+    });
+  } catch (error) {
+    console.error("Error updating profile:", error);
+
+    if (
+      error.message.includes("Validation failed") ||
+      error.message.includes("already exists")
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Error updating profile",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/employees/me/change-password:
+ *   put:
+ *     summary: Change current user's password
+ *     tags: [Employees]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - current_password
+ *               - new_password
+ *             properties:
+ *               current_password:
+ *                 type: string
+ *               new_password:
+ *                 type: string
+ *                 minLength: 8
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ *       400:
+ *         description: Validation error or invalid current password
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Employee not found
+ */
+router.put("/me/change-password", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { current_password, new_password } = req.body;
+
+    if (!current_password || !new_password) {
+      return res.status(400).json({
+        success: false,
+        message: "Current password and new password are required",
+      });
+    }
+
+    if (new_password.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be at least 8 characters long",
+      });
+    }
+
+    // Get employee with password
+    const employee = await Employee.getById(userId);
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found",
+      });
+    }
+
+    // Verify current password
+    const isValidPassword = await Employee.comparePassword(
+      current_password,
+      employee.password
+    );
+
+    if (!isValidPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Current password is incorrect",
+      });
+    }
+
+    // Update password
+    await Employee.setPassword(employee.employee_id, new_password);
+
+    res.json({
+      success: true,
+      message: "Password changed successfully",
+    });
+  } catch (error) {
+    console.error("Error changing password:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error changing password",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
  * /api/employees/stats:
  *   get:
  *     summary: Get employee statistics
@@ -928,5 +1184,50 @@ router.patch("/:id/restore-terminated", authenticateToken, async (req, res) => {
     });
   }
 });
+
+// Upload profile picture endpoint
+router.post(
+  "/me/upload-photo",
+  authenticateToken,
+  upload.single("photo"),
+  async (req, res) => {
+    try {
+      const userId = req.user.id;
+
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: "No photo file uploaded",
+        });
+      }
+
+      const photoUrl = `/uploads/employee-photos/${req.file.filename}`;
+
+      // Update employee record with new photo URL
+      const { db } = require("../config/database");
+      await db("employees").where("id", userId).update({
+        photo_url: photoUrl,
+        updated_at: new Date(),
+      });
+
+ 
+
+      res.json({
+        success: true,
+        message: "Profile photo updated successfully",
+        data: {
+          photo_url: photoUrl,
+        },
+      });
+    } catch (error) {
+      console.error("Error uploading profile photo:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error uploading profile photo",
+        error: error.message,
+      });
+    }
+  }
+);
 
 module.exports = router;

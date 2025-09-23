@@ -713,6 +713,39 @@ export const usePOSStore = defineStore('pos', () => {
     }
   };
 
+  // Fetch precise loss/disposed trends from backend
+  const fetchLossTrends = async (
+    branchId,
+    dateFrom = null,
+    dateTo = null,
+    bucket = 'auto'
+  ) => {
+    try {
+      const url = getApiUrl('/pos/loss-trends');
+      const params = new URLSearchParams();
+      if (branchId) params.append('branch_id', branchId);
+      if (dateFrom) params.append('date_from', dateFrom);
+      if (dateTo) params.append('date_to', dateTo);
+      if (bucket) params.append('bucket', bucket);
+
+      const { data: response } = await axios.get(
+        `${url}?${params.toString()}`,
+        {
+          baseURL: apiConfig.baseURL,
+          headers: { ...getAuthHeaders() },
+        }
+      );
+
+      if (response.success) {
+        return response.data; // { labels, disposed, loss }
+      }
+      return { labels: [], disposed: [], loss: [] };
+    } catch (err) {
+      console.error('Error fetching loss trends:', err);
+      return { labels: [], disposed: [], loss: [] };
+    }
+  };
+
   // Fetch all branch menu items (read-only helper, does not mutate store)
   const fetchBranchMenuItems = async (
     branchId,
@@ -815,6 +848,7 @@ export const usePOSStore = defineStore('pos', () => {
     setSelectedCategory,
     initialize,
     getNextOrderNumber,
+    fetchLossTrends,
 
     // Selected transaction
     selectedTransaction,

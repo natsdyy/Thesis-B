@@ -771,6 +771,109 @@ class POSOrder {
     }
   }
 
+  // Precise, bucketed loss/disposed trends
+  static async getLossTrends(
+    branchId,
+    dateFrom = null,
+    dateTo = null,
+    bucket = "day"
+  ) {
+    try {
+      // Determine date column for grouping
+      const voidedAtCol = "pos_sales_orders.voided_at";
+      const recordedAtCol = "loss_profit_records.recorded_at";
+
+      // Helper: build date bucket expression
+      const bucketExpr = (col) => {
+        if (bucket === "hour") {
+          return db.raw("to_char(??, 'HH24:00')", [col]);
+        }
+        // default day bucket
+        return db.raw("to_char(??, 'YYYY-MM-DD')", [col]);
+      };
+
+      // 1) Build time range array of labels
+      const start = dateFrom ? new Date(dateFrom) : null;
+      const end = dateTo ? new Date(dateTo) : null;
+      let labels = [];
+      if (bucket === "hour") {
+        labels = Array.from(
+          { length: 24 },
+          (_, i) => `${String(i).padStart(2, "0")}:00`
+        );
+      } else {
+        // daily labels between dateFrom and dateTo
+        const s = start ? new Date(start) : null;
+        const e = end ? new Date(end) : null;
+        if (s && e) {
+          const cur = new Date(s.getFullYear(), s.getMonth(), s.getDate());
+          const stop = new Date(e.getFullYear(), e.getMonth(), e.getDate());
+          while (cur <= stop) {
+            const y = cur.getFullYear();
+            const m = String(cur.getMonth() + 1).padStart(2, "0");
+            const d = String(cur.getDate()).padStart(2, "0");
+            labels.push(`${y}-${m}-${d}`);
+            cur.setDate(cur.getDate() + 1);
+          }
+        }
+      }
+
+      // 2) Query disposed counts grouped by bucket from voided orders
+      let disposedQuery = db("pos_sales_orders")
+        .where("pos_sales_orders.branch_id", branchId)
+        .where("pos_sales_orders.status", "void");
+      if (dateFrom)
+        disposedQuery = disposedQuery.where(voidedAtCol, ">=", dateFrom);
+      if (dateTo)
+        disposedQuery = disposedQuery.where(voidedAtCol, "<=", dateTo);
+
+      const disposedRows = await disposedQuery
+        .select({ label: bucketExpr(voidedAtCol) })
+        .count({ value: "pos_sales_orders.id" })
+        .groupBy("label");
+
+      // 3) Query precise loss amounts grouped by bucket from loss_profit_records
+      let lossQuery = db("loss_profit_records")
+        .leftJoin(
+          "pos_sales_orders",
+          "loss_profit_records.order_id",
+          "pos_sales_orders.id"
+        )
+        .where("pos_sales_orders.branch_id", branchId);
+      if (dateFrom) lossQuery = lossQuery.where(recordedAtCol, ">=", dateFrom);
+      if (dateTo) lossQuery = lossQuery.where(recordedAtCol, "<=", dateTo);
+
+      const lossRows = await lossQuery
+        .select({ label: bucketExpr(recordedAtCol) })
+        .sum({ value: "loss_profit_records.loss_amount" })
+        .groupBy("label");
+
+      // 4) Merge to dictionary
+      const disposedMap = new Map();
+      disposedRows.forEach((r) =>
+        disposedMap.set(String(r.label), parseInt(r.value) || 0)
+      );
+      const lossMap = new Map();
+      lossRows.forEach((r) =>
+        lossMap.set(String(r.label), parseFloat(r.value) || 0)
+      );
+
+      // 5) Build aligned arrays using labels; if labels empty (no range), fall back to rows' labels
+      if (labels.length === 0) {
+        const unique = new Set([...disposedMap.keys(), ...lossMap.keys()]);
+        labels = Array.from(unique).sort();
+      }
+
+      const disposed = labels.map((l) => disposedMap.get(l) || 0);
+      const loss = labels.map((l) => lossMap.get(l) || 0);
+
+      return { labels, disposed, loss };
+    } catch (error) {
+      console.error("Error building loss trends:", error);
+      throw new Error("Failed to build loss trends");
+    }
+  }
+
   // Get daily sales summary
   static async getDailySummary(branchId, date) {
     try {

@@ -276,6 +276,58 @@ class Branch {
         updated_at: new Date(),
       };
 
+      // Optional: allow updating radius and GPS directly if provided
+      if (branchData.radius_meters !== undefined) {
+        updateData.radius_meters = branchData.radius_meters;
+      }
+      if (
+        branchData.latitude !== undefined &&
+        branchData.longitude !== undefined
+      ) {
+        updateData.latitude = branchData.latitude;
+        updateData.longitude = branchData.longitude;
+      }
+
+      // Auto-geocode: when address changed and no explicit lat/lon provided, or when forced
+      const addressChanged =
+        branchData.address &&
+        branchData.address.trim() !== (existingBranch.address || "").trim();
+      const shouldAutoGeocode =
+        Boolean(branchData.auto_geocode) ||
+        (addressChanged &&
+          (branchData.latitude === undefined ||
+            branchData.longitude === undefined));
+
+      if (addressChanged) {
+        console.log("[Branch.update] Address changed for branch", id, {
+          old: existingBranch.address,
+          new: branchData.address,
+        });
+      }
+
+      if (shouldAutoGeocode) {
+        try {
+          const { geocodeAddress } = require("../services/geocodingService");
+          console.log(
+            "[Branch.update] Auto-geocoding address:",
+            updateData.address
+          );
+          const geo = await geocodeAddress(updateData.address);
+          if (geo) {
+            console.log("[Branch.update] Geocode result:", geo);
+            updateData.latitude = geo.latitude;
+            updateData.longitude = geo.longitude;
+          } else {
+            console.warn(
+              "[Branch.update] Geocode returned null for address:",
+              updateData.address
+            );
+          }
+        } catch (geoErr) {
+          console.warn("[Branch.update] Auto-geocode failed:", geoErr.message);
+        }
+      }
+
       const [branch] = await db("branches")
         .where("id", id)
         .update(updateData)

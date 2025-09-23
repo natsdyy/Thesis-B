@@ -78,6 +78,8 @@
   // OpenStreetMap (Leaflet) related data
   const locationSearch = ref('');
   const selectedAddress = ref('');
+  const selectedLat = ref(null);
+  const selectedLng = ref(null);
   const mapContainer = ref(null);
   const map = ref(null);
   const marker = ref(null);
@@ -96,6 +98,8 @@
     country: '',
     is_active: true,
     description: '',
+    latitude: null,
+    longitude: null,
   });
 
   // Computed properties
@@ -416,6 +420,14 @@
   const applySelectedAddress = () => {
     if (selectedAddress.value.trim()) {
       branchForm.value.address = selectedAddress.value.trim();
+      // If coordinates were picked on the map, include them
+      if (
+        Number.isFinite(selectedLat.value) &&
+        Number.isFinite(selectedLng.value)
+      ) {
+        branchForm.value.latitude = selectedLat.value;
+        branchForm.value.longitude = selectedLng.value;
+      }
 
       // If we have individual address components, use them
       // (These are already populated by placeMarker function)
@@ -451,6 +463,8 @@
     googleMapsModal.value = false;
     locationSearch.value = '';
     selectedAddress.value = '';
+    selectedLat.value = null;
+    selectedLng.value = null;
 
     // Clean up map resources
     if (marker.value) {
@@ -477,6 +491,10 @@
       draggable: true,
       title: 'Branch Location',
     }).addTo(map.value);
+
+    // Save selected coordinates
+    selectedLat.value = latLng.lat;
+    selectedLng.value = latLng.lng;
 
     // Get address for this location using reverse geocoding
     try {
@@ -575,6 +593,10 @@
             if (data.display_name) {
               selectedAddress.value = data.display_name;
 
+              // Save coordinates from current location
+              selectedLat.value = latitude;
+              selectedLng.value = longitude;
+
               // Auto-populate individual address fields
               if (data.address) {
                 branchForm.value.city =
@@ -610,6 +632,8 @@
           console.error('Reverse geocoding failed:', error);
           // Fallback: just show coordinates
           selectedAddress.value = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+          selectedLat.value = latitude;
+          selectedLng.value = longitude;
 
           // Center map on coordinates
           if (map.value) {
@@ -750,10 +774,14 @@
           confirmModal.value.loading = true;
 
           if (editingBranch.value) {
-            await branchStore.updateBranch(
-              editingBranch.value.id,
-              branchForm.value
-            );
+            // Build payload; trigger backend auto-geocode when address changes
+            const payload = { ...branchForm.value };
+            const prevAddr = (editingBranch.value.address || '').trim();
+            const nextAddr = (branchForm.value.address || '').trim();
+            if (prevAddr !== nextAddr) {
+              payload.auto_geocode = true;
+            }
+            await branchStore.updateBranch(editingBranch.value.id, payload);
             showToast(
               'success',
               `Branch "${branchForm.value.name}" updated successfully`

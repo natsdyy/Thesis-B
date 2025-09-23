@@ -18,9 +18,11 @@
   } from 'lucide-vue-next';
   import { useBranchContextStore } from '../../stores/branchContextStore';
   import { usePOSStore } from '../../stores/posStore';
+  // Use store helper for menu items; avoid direct API calls
   import { useCustomToast } from '../../composables/useCustomToast';
   import BranchSalesTransactionsModal from '../../components/branch/BranchSalesTransactionsModal.vue';
   import BranchRemitSalesModal from '../../components/branch/BranchRemitSalesModal.vue';
+  import SalesTrendsChart from '../../components/branch/SalesTrendsChart.vue';
 
   const branchContextStore = useBranchContextStore();
   const posStore = usePOSStore();
@@ -56,6 +58,12 @@
   const voidLoading = ref(false);
   const completeLoading = ref(false);
   const remitLoading = ref(false);
+
+  // Sales Trends reactive state
+  const selectedMetric = ref('totalSales');
+  const chartLabels = ref([]);
+  const chartSeries = ref([]);
+  const chartLoading = ref(false);
 
   // Predefined void reasons
   const voidReasons = ref([
@@ -217,6 +225,9 @@
 
       // Fetch top selling items
       await loadTopSellingItems(branchId, dateFrom, dateTo);
+
+      // Build trends for chart
+      await buildSalesTrends(branchId, selectedMetric.value, dateFrom, dateTo);
     } catch (error) {
       console.error('Error loading sales data:', error);
       // Fallback to empty data on error
@@ -241,61 +252,61 @@
 
     switch (period) {
       case 'today':
-        // Create date range in UTC to match database timestamps
-        const todayUTC = new Date(
+        // Local day boundaries, then convert to ISO (UTC) when sending
+        const todayLocal = new Date(
           now.getFullYear(),
           now.getMonth(),
           now.getDate()
         );
-        dateFrom = new Date(todayUTC);
-        dateFrom.setUTCHours(0, 0, 0, 0);
+        dateFrom = new Date(todayLocal);
+        dateFrom.setHours(0, 0, 0, 0);
 
-        dateTo = new Date(todayUTC);
-        dateTo.setUTCHours(23, 59, 59, 999);
+        dateTo = new Date(todayLocal);
+        dateTo.setHours(23, 59, 59, 999);
         break;
       case 'week':
-        // Start of week (Sunday = 0, Monday = 1, etc.) in UTC
+        // Start of week (Sunday = 0, Monday = 1, etc.) in local time
         const startOfWeek = new Date(now);
         startOfWeek.setDate(now.getDate() - now.getDay());
-        startOfWeek.setUTCHours(0, 0, 0, 0);
+        startOfWeek.setHours(0, 0, 0, 0);
         dateFrom = startOfWeek;
 
-        // End of current day in UTC
+        // End of current day in local time
         const endOfToday = new Date(
           now.getFullYear(),
           now.getMonth(),
           now.getDate()
         );
         dateTo = new Date(endOfToday);
-        dateTo.setUTCHours(23, 59, 59, 999);
+        dateTo.setHours(23, 59, 59, 999);
         break;
       case 'month':
-        // Start of current month in UTC
+        // Start of current month in local time
         dateFrom = new Date(now.getFullYear(), now.getMonth(), 1);
-        dateFrom.setUTCHours(0, 0, 0, 0);
+        dateFrom.setHours(0, 0, 0, 0);
 
-        // End of current day in UTC
+        // End of current day in local time
         const endOfTodayMonth = new Date(
           now.getFullYear(),
           now.getMonth(),
           now.getDate()
         );
         dateTo = new Date(endOfTodayMonth);
-        dateTo.setUTCHours(23, 59, 59, 999);
+        dateTo.setHours(23, 59, 59, 999);
         break;
       case 'year':
-        // Start of current year in UTC
+        // Start of current year in local time
         dateFrom = new Date(now.getFullYear(), 0, 1);
-        dateFrom.setUTCHours(0, 0, 0, 0);
+        dateFrom.setHours(0, 0, 0, 0);
 
-        // End of current day in UTC
+        // End of current day in local time
         const endOfTodayYear = new Date(
           now.getFullYear(),
           now.getMonth(),
           now.getDate()
         );
         dateTo = new Date(endOfTodayYear);
-        dateTo.setUTCHours(23, 59, 59, 999);
+        dateTo.setHours(23, 59, 59, 999);
         break;
       default:
         const todayDefault = new Date(
@@ -304,10 +315,10 @@
           now.getDate()
         );
         dateFrom = new Date(todayDefault);
-        dateFrom.setUTCHours(0, 0, 0, 0);
+        dateFrom.setHours(0, 0, 0, 0);
 
         dateTo = new Date(todayDefault);
-        dateTo.setUTCHours(23, 59, 59, 999);
+        dateTo.setHours(23, 59, 59, 999);
     }
 
     return {
@@ -463,7 +474,24 @@
         dateFrom,
         dateTo
       );
-      topSellingItems.value = items || [];
+
+      // Fallback to empty array
+      const soldItems = Array.isArray(items) ? items : [];
+
+      // Fetch all available branch menu items to include zero-sales
+      const allMenu = await posStore.fetchBranchMenuItems(branchId);
+
+      // Merge zero-sale items
+      const existing = new Map(soldItems.map((it) => [it.name, it]));
+      const merged = [...soldItems];
+      allMenu.forEach((mi) => {
+        const name = mi.name;
+        if (name && !existing.has(name)) {
+          merged.push({ name, quantity: 0, revenue: 0 });
+        }
+      });
+
+      topSellingItems.value = merged;
     } catch (error) {
       console.error('Error loading top selling items:', error);
       topSellingItems.value = [];
@@ -537,7 +565,7 @@
       selectedVoidReason.value === 'custom'
         ? customReason.value.trim()
         : voidReasons.value.find((r) => r.value === selectedVoidReason.value)
-            ?.label;
+            ?.value;
 
     // Get the selected reason type
     const selectedReason = voidReasons.value.find(
@@ -546,23 +574,29 @@
     const isLossReason = selectedReason?.type === 'loss';
     const isRefundReason = selectedReason?.type === 'refund';
 
-    // Calculate loss amount based on reason type
+    // Calculate loss amount based on order status + reason type
+    // If order is completed and refund reason → treat as loss (deduct inventory)
+    const orderStatus = selectedOrder.value?.status || '';
+    const isOrderCompleted = orderStatus === 'completed';
+
     let lossAmount = 0;
     if (isLossReason) {
-      // For loss reasons, use the calculated loss amount
       lossAmount = calculatedLoss.value;
     } else if (isRefundReason) {
-      // For refund reasons, don't record loss profit
-      lossAmount = 0;
+      lossAmount = isOrderCompleted ? calculatedLoss.value : 0;
     } else {
-      // Default to loss behavior for safety
       lossAmount = calculatedLoss.value;
     }
 
     voidLoading.value = true;
 
     try {
-      await posStore.voidOrder(selectedOrder.value.id, finalReason, lossAmount);
+      await posStore.voidOrder(
+        selectedOrder.value.id,
+        finalReason,
+        lossAmount,
+        { refund_on_completed: isRefundReason && isOrderCompleted }
+      );
 
       showVoidModal.value = false;
       selectedOrder.value = null;
@@ -652,9 +686,197 @@
   };
 
   // Watch for period changes
-  watch(selectedPeriod, () => {
-    loadSalesData();
+  watch(selectedPeriod, async () => {
+    await loadSalesData();
   });
+
+  // Watch for metric changes to update chart only
+  watch(selectedMetric, async () => {
+    const branchId = currentBranch.value?.id;
+    if (!branchId) return;
+    const { dateFrom, dateTo } = getDateRange(selectedPeriod.value);
+    await buildSalesTrends(branchId, selectedMetric.value, dateFrom, dateTo);
+  });
+
+  const selectMetric = (metric) => {
+    selectedMetric.value = metric;
+  };
+
+  const buildSalesTrends = async (branchId, metric, dateFrom, dateTo) => {
+    try {
+      chartLoading.value = true;
+
+      // Get orders within the range
+      const resp = await posStore.fetchOrderHistory({
+        branch_id: branchId,
+        limit: 1000,
+        date_from: dateFrom,
+        date_to: dateTo,
+      });
+      const orders = Array.isArray(resp?.data) ? resp.data : [];
+
+      // Build buckets based on period
+      const buckets = new Map();
+      const labels = [];
+
+      const period = selectedPeriod.value;
+      const df = new Date(dateFrom);
+      const dt = new Date(dateTo);
+
+      const toYmd = (d) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      };
+
+      if (period === 'today') {
+        for (let h = 0; h < 24; h++) {
+          const label = `${String(h).padStart(2, '0')}:00`;
+          labels.push(label);
+          buckets.set(label, []);
+        }
+      } else {
+        const cur = new Date(df);
+        cur.setHours(0, 0, 0, 0);
+        const end = new Date(dt);
+        end.setHours(0, 0, 0, 0);
+        while (cur <= end) {
+          const label = toYmd(cur);
+          labels.push(label);
+          buckets.set(label, []);
+          cur.setDate(cur.getDate() + 1);
+        }
+      }
+
+      // Assign orders to buckets
+      orders.forEach((o) => {
+        const created = new Date(o.created_at);
+        let key;
+        if (period === 'today') {
+          const hour = created.getHours();
+          key = `${String(hour).padStart(2, '0')}:00`;
+        } else {
+          key = toYmd(
+            new Date(
+              created.getFullYear(),
+              created.getMonth(),
+              created.getDate()
+            )
+          );
+        }
+        if (buckets.has(key)) {
+          buckets.get(key).push(o);
+        }
+      });
+
+      // Compute series per metric
+      const refundReasons = [
+        'customer_cancelled',
+        'wrong_order',
+        'duplicate_order',
+        'payment_issue',
+        'system_error',
+        'Customer Cancelled',
+        'Wrong Order',
+        'Duplicate Order',
+        'Payment Issue',
+        'System Error',
+      ];
+      const lossReasons = [
+        'staff_error',
+        'item_damaged',
+        'expired_item',
+        'quality_issue',
+        'preparation_error',
+        'Staff Error',
+        'Item Damaged',
+        'Expired Item',
+        'Quality Issue',
+        'Preparation Error',
+      ];
+
+      // If precise backend trends are requested for loss/disposed, fetch and map
+      if (metric === 'lossProfit' || metric === 'totalDisposed') {
+        const bucket = selectedPeriod.value === 'today' ? 'hour' : 'day';
+        const trends = await posStore.fetchLossTrends(
+          branchId,
+          dateFrom,
+          dateTo,
+          bucket
+        );
+        chartLabels.value = Array.isArray(trends.labels) ? trends.labels : [];
+        if (metric === 'lossProfit') {
+          chartSeries.value = Array.isArray(trends.loss) ? trends.loss : [];
+        } else {
+          chartSeries.value = Array.isArray(trends.disposed)
+            ? trends.disposed
+            : [];
+        }
+        return;
+      }
+
+      const data = labels.map((label) => {
+        const list = buckets.get(label) || [];
+        if (metric === 'totalSales') {
+          return list
+            .filter((o) => o.status === 'completed')
+            .reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
+        }
+        if (metric === 'totalTransactions') {
+          return list.filter((o) => o.status === 'completed').length;
+        }
+        if (metric === 'averageTransaction') {
+          const completed = list.filter((o) => o.status === 'completed');
+          if (completed.length === 0) return 0;
+          const total = completed.reduce(
+            (sum, o) => sum + (parseFloat(o.total_amount) || 0),
+            0
+          );
+          return total / completed.length;
+        }
+        if (metric === 'refundedAmount') {
+          return list
+            .filter(
+              (o) =>
+                o.status === 'void' && refundReasons.includes(o.void_reason)
+            )
+            .reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
+        }
+        if (metric === 'lossProfit') {
+          // Approximate loss profit per bucket
+          // Rules:
+          // - If order is void AND has completed_at → treat as refund on completed (loss equals total_amount)
+          // - Else if order is void AND reason is a loss reason → treat as loss equals total_amount
+          // - Else → 0
+          return list
+            .filter((o) => o.status === 'void')
+            .reduce((sum, o) => {
+              const isCompletedRefund = Boolean(o.completed_at);
+              const isLoss = lossReasons.includes(o.void_reason);
+              if (isCompletedRefund || isLoss) {
+                return sum + (parseFloat(o.total_amount) || 0);
+              }
+              return sum;
+            }, 0);
+        }
+        if (metric === 'totalDisposed') {
+          // Number of voided orders in the bucket
+          return list.filter((o) => o.status === 'void').length;
+        }
+        return 0;
+      });
+
+      chartLabels.value = labels;
+      chartSeries.value = data;
+    } catch (e) {
+      console.error('Failed to build sales trends', e);
+      chartLabels.value = [];
+      chartSeries.value = [];
+    } finally {
+      chartLoading.value = false;
+    }
+  };
 
   // Initialize
   onMounted(() => {
@@ -782,7 +1004,12 @@
               >
                 <!-- Total Sales -->
                 <div
-                  class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
+                  class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10 cursor-pointer"
+                  :class="{
+                    'ring ring-primaryColor/50':
+                      selectedMetric === 'totalSales',
+                  }"
+                  @click="selectMetric('totalSales')"
                 >
                   <div class="stat-figure">
                     <PhilippinePeso
@@ -824,7 +1051,12 @@
 
                 <!-- Total Transactions -->
                 <div
-                  class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
+                  class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10 cursor-pointer"
+                  :class="{
+                    'ring ring-warning/50':
+                      selectedMetric === 'totalTransactions',
+                  }"
+                  @click="selectMetric('totalTransactions')"
                 >
                   <div class="stat-figure">
                     <ShoppingCart
@@ -846,7 +1078,12 @@
 
                 <!-- Average Transaction -->
                 <div
-                  class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
+                  class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10 cursor-pointer"
+                  :class="{
+                    'ring ring-gray-400/50':
+                      selectedMetric === 'averageTransaction',
+                  }"
+                  @click="selectMetric('averageTransaction')"
                 >
                   <div class="stat-figure">
                     <BarChart3
@@ -868,7 +1105,12 @@
 
                 <!-- Disposed Items -->
                 <div
-                  class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
+                  class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10 cursor-pointer"
+                  :class="{
+                    'ring ring-orange-400/50':
+                      selectedMetric === 'totalDisposed',
+                  }"
+                  @click="selectMetric('totalDisposed')"
                 >
                   <div class="stat-figure">
                     <Trash2
@@ -890,7 +1132,11 @@
 
                 <!-- Loss Profit -->
                 <div
-                  class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
+                  class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10 cursor-pointer"
+                  :class="{
+                    'ring ring-red-400/50': selectedMetric === 'lossProfit',
+                  }"
+                  @click="selectMetric('lossProfit')"
                 >
                   <div class="stat-figure">
                     <AlertCircle
@@ -912,29 +1158,31 @@
               </div>
 
               <!-- Charts Section -->
-              <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <!-- Sales Chart Placeholder -->
-                <div class="card bg-white shadow-lg">
+              <div class="flex flex-col lg:flex-row gap-6">
+                <!-- Sales Trends Chart -->
+                <div class="card bg-white shadow-lg flex-1">
                   <div class="card-body">
                     <h2 class="card-title text-primaryColor mb-4">
                       <BarChart3 class="w-5 h-5" />
                       Sales Trends
                     </h2>
-
-                    <div class="text-center py-12">
-                      <BarChart3 class="w-16 h-16 mx-auto text-gray-400 mb-4" />
-                      <h3 class="text-lg font-medium text-gray-900 mb-2">
-                        Sales Chart Coming Soon
-                      </h3>
-                      <p class="text-gray-600">
-                        Interactive sales analytics will be implemented
-                      </p>
+                    <div v-if="chartLoading" class="text-center py-12">
+                      <div
+                        class="loading loading-spinner loading-lg text-primaryColor"
+                      ></div>
+                    </div>
+                    <div v-else>
+                      <SalesTrendsChart
+                        :labels="chartLabels"
+                        :data="chartSeries"
+                        :metric="selectedMetric"
+                      />
                     </div>
                   </div>
                 </div>
 
                 <!-- Top/Least Selling Items -->
-                <div class="card bg-white shadow-lg">
+                <div class="card bg-white shadow-l">
                   <div class="card-body">
                     <div class="flex items-center justify-between mb-4">
                       <h2 class="card-title text-primaryColor">
@@ -947,19 +1195,24 @@
                             : 'Top Selling Items'
                         }}
                       </h2>
+                      <!-- Toggle Button (icon only with tooltip) -->
                       <button
                         @click="toggleSellingItems"
-                        class="btn btn-sm font-thin text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
+                        class="btn btn-sm text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
                         :class="{
                           'bg-primaryColor text-white': showLeastSelling,
                         }"
+                        :title="
+                          showLeastSelling
+                            ? 'Show Top Selling'
+                            : 'Show Least Selling'
+                        "
                       >
                         <TrendingDown
                           v-if="!showLeastSelling"
-                          class="w-4 h-4 mr-1"
+                          class="w-5 h-5"
                         />
-                        <TrendingUp v-else class="w-4 h-4 mr-1" />
-                        {{ showLeastSelling ? 'Show Top' : 'Show Least' }}
+                        <TrendingUp v-else class="w-5 h-5" />
                       </button>
                     </div>
 
@@ -1483,7 +1736,11 @@
                     Refund Processing
                   </h4>
                   <p class="text-xs text-primaryColor mt-1">
-                    No inventory deduction • No loss profit recorded
+                    {{
+                      selectedOrder?.status === 'completed'
+                        ? 'Inventory stays deducted • Loss profit will be recorded'
+                        : 'No inventory deduction • No loss profit recorded'
+                    }}
                   </p>
                 </div>
                 <div class="text-right">

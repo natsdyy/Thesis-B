@@ -225,7 +225,11 @@ router.post("/orders/:id/complete", authenticateToken, async (req, res) => {
 // POST /api/pos/orders/:id/void - Void order (cancel)
 router.post("/orders/:id/void", authenticateToken, async (req, res) => {
   try {
-    const { void_reason, loss_amount = 0 } = req.body;
+    const {
+      void_reason,
+      loss_amount = 0,
+      refund_on_completed = false,
+    } = req.body;
 
     if (!void_reason) {
       return res.status(400).json({
@@ -238,7 +242,8 @@ router.post("/orders/:id/void", authenticateToken, async (req, res) => {
       req.params.id,
       void_reason,
       req.user.id,
-      parseFloat(loss_amount) || 0
+      parseFloat(loss_amount) || 0,
+      Boolean(refund_on_completed)
     );
 
     res.json({
@@ -309,6 +314,52 @@ router.get("/daily-summary", authenticateToken, async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || "Failed to fetch daily summary",
+    });
+  }
+});
+
+// GET /api/pos/loss-trends - Get bucketed loss/disposed trends
+router.get("/loss-trends", authenticateToken, async (req, res) => {
+  try {
+    const { branch_id, date_from, date_to, bucket = "auto" } = req.query;
+
+    if (!branch_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Branch ID is required",
+      });
+    }
+
+    const start = date_from ? new Date(date_from) : null;
+    const end = date_to ? new Date(date_to) : null;
+
+    // Decide bucket: hour for same-day; else day
+    let bucketType = bucket;
+    if (bucket === "auto") {
+      if (start && end) {
+        const sameDay =
+          start.getFullYear() === end.getFullYear() &&
+          start.getMonth() === end.getMonth() &&
+          start.getDate() === end.getDate();
+        bucketType = sameDay ? "hour" : "day";
+      } else {
+        bucketType = "day";
+      }
+    }
+
+    const results = await POSOrder.getLossTrends(
+      parseInt(branch_id),
+      date_from || null,
+      date_to || null,
+      bucketType
+    );
+
+    res.json({ success: true, data: results });
+  } catch (error) {
+    console.error("Error fetching loss trends:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch loss trends",
     });
   }
 });

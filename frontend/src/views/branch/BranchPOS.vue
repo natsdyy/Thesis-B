@@ -146,6 +146,8 @@
 
       needsManagerLogin.value = false;
       managerLoginForm.value = { employeeId: '' };
+      // Load POS data immediately after session activation
+      await startPOSDataLoad();
     } catch (err) {
       console.error('POS manager PIN login failed:', err);
       managerLoginError.value =
@@ -434,6 +436,21 @@
 
   // Refresh POS data after transaction operations
   const refreshPOSData = async () => {
+    // Reload menu items to reflect latest branch stock without full page reload
+    const q = router.currentRoute.value.query || {};
+    const menuId = q.menuId ? Number(q.menuId) : undefined;
+    const itemCodes = q.codes
+      ? String(q.codes)
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    const branchId = currentBranch.value?.id || user.value?.branch_id;
+
+    // Refetch POS menu with reset so quantities update reactively
+    await posStore.fetchMenuItems({ menuId, itemCodes, branchId, reset: true });
+    await posStore.fetchCategories();
+
     await fetchTodayStats();
   };
 
@@ -443,12 +460,39 @@
       await posStore.completeOrder(orderData.id);
 
       // Update stats after completing order
-      await fetchTodayStats();
+      await refreshPOSData();
 
       alert('Order completed successfully');
     } catch (error) {
       console.error('Error completing order:', error);
       alert('Failed to complete order. Please try again.');
+    }
+  };
+
+  // Encapsulated POS data bootstrap so we can reuse after manager login
+  const startPOSDataLoad = async () => {
+    try {
+      // Ensure branch context is ready
+      if (!branchContextStore.currentBranch) {
+        await branchContextStore.initializeBranchContext();
+      }
+
+      const q = router.currentRoute.value.query || {};
+      const menuId = q.menuId ? Number(q.menuId) : undefined;
+      const itemCodes = q.codes
+        ? String(q.codes)
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+      const branchId = currentBranch.value?.id || user.value?.branch_id;
+
+      if (!branchId) return;
+
+      await posStore.initialize({ menuId, itemCodes, branchId });
+      await fetchTodayStats();
+    } catch (e) {
+      console.error('Failed to start POS data load:', e);
     }
   };
 

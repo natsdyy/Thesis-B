@@ -614,8 +614,10 @@
             :key="status.value"
             class="btn btn-xs"
             :class="{
-              'btn-primary': selectedTransactionStatus === status.value,
-              'btn-outline': selectedTransactionStatus !== status.value,
+              'bg-primaryColor text-white shadow-none hover:bg-primaryColor/80 font-thin':
+                selectedTransactionStatus === status.value,
+              'bg-white text-primaryColor hover:bg-primaryColor/10 font-thin':
+                selectedTransactionStatus !== status.value,
             }"
             @click="selectedTransactionStatus = status.value"
           >
@@ -1123,7 +1125,7 @@
                     item.received_total_price
                       ? Number(item.received_total_price).toFixed(2)
                       : Number(
-                          item.amount ||
+                          item.total_price ??
                             (item.quantity || 0) * (item.unit_price || 0)
                         ).toFixed(2)
                   }}
@@ -1142,7 +1144,12 @@
                       ? Number(
                           receiptModal.order.items?.reduce(
                             (sum, item) =>
-                              sum + Number(item.received_total_price || 0),
+                              sum +
+                              Number(
+                                item.received_total_price ??
+                                  item.total_price ??
+                                  (item.quantity || 0) * (item.unit_price || 0)
+                              ),
                             0
                           ) || 0
                         ).toFixed(2)
@@ -1178,7 +1185,12 @@
                   Number(
                     receiptModal.order.items?.reduce(
                       (sum, item) =>
-                        sum + Number(item.received_total_price || 0),
+                        sum +
+                        Number(
+                          item.received_total_price ??
+                            item.total_price ??
+                            (item.quantity || 0) * (item.unit_price || 0)
+                        ),
                       0
                     ) || 0
                   ).toLocaleString()
@@ -1223,11 +1235,18 @@
                   ? Number(
                       receiptModal.order.items?.reduce(
                         (sum, item) =>
-                          sum + Number(item.received_total_price || 0),
+                          sum +
+                          Number(
+                            item.received_total_price ??
+                              item.total_price ??
+                              (item.quantity || 0) * (item.unit_price || 0)
+                          ),
                         0
                       ) || 0
                     ).toLocaleString()
-                  : receiptModal.order.total_amount.toLocaleString()
+                  : Number(
+                      receiptModal.order.total_amount || 0
+                    ).toLocaleString()
               }}
             </span>
           </div>
@@ -2007,28 +2026,28 @@
   const getTransactionTypeClass = (type) => {
     switch (type) {
       case 'Purchase Order':
-        return 'badge-primary';
+        return 'bg-info/20 text-info';
       case 'Return':
-        return 'badge-warning';
+        return 'bg-warning/20 text-warning';
       case 'Refund':
-        return 'badge-error';
+        return 'bg-error/20 text-error';
       default:
-        return 'badge-neutral';
+        return 'bg-gray-200 text-gray-600';
     }
   };
 
   const getTransactionStatusClass = (status) => {
     switch (status) {
       case 'completed':
-        return 'badge-success';
+        return 'bg-success/20 text-success';
       case 'returned':
-        return 'badge-warning';
+        return 'bg-warning/20 text-warning';
       case 'pending':
-        return 'badge-info';
+        return 'bg-info/20 text-info';
       case 'cancelled':
-        return 'badge-error';
+        return 'bg-error/20 text-error';
       default:
-        return 'badge-neutral';
+        return 'bg-gray-200 text-gray-600';
     }
   };
 

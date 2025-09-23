@@ -7,8 +7,22 @@ const BranchProfile = () => import('../../views/branch/BranchProfile.vue');
 
 // Role-based access control
 const rolePermissions = {
-  'Super Admin': ['dashboard', 'sales', 'inventory', 'employees', 'profile', 'attendance'],
-  Manager: ['dashboard', 'sales', 'inventory', 'employees', 'profile', 'attendance'],
+  'Super Admin': [
+    'dashboard',
+    'sales',
+    'inventory',
+    'employees',
+    'profile',
+    'attendance',
+  ],
+  Manager: [
+    'dashboard',
+    'sales',
+    'inventory',
+    'employees',
+    'profile',
+    'attendance',
+  ],
   Cashier: ['dashboard', 'profile', 'attendance'],
   Cook: ['dashboard', 'inventory', 'profile', 'attendance'],
   Waiter: ['dashboard', 'profile', 'attendance'],

@@ -574,13 +574,13 @@
           <h2
             class="text-lg sm:text-xl font-bold text-primaryColor mb-2 text-center"
           >
-            Manager Login Required
+            Manager PIN Required
           </h2>
           <p class="text-sm sm:text-base text-primaryColor mb-4 text-center">
             {{
               userRole === 'Manager'
                 ? 'Please enter your Employee ID to start the POS session'
-                : 'A manager must enter their Employee ID to activate the POS system'
+                : 'A manager must enter their PIN to activate the POS system'
             }}
           </p>
 
@@ -637,23 +637,23 @@
               </p>
               <p><strong>Branch:</strong> {{ currentBranch?.name }}</p>
               <p class="mt-2">
-                A manager must login to activate the POS system.
+                A manager must enter their PIN to activate the POS system.
               </p>
             </div>
 
-            <div class="divider">Manager Login Required</div>
+            <div class="divider">Manager PIN Required</div>
 
             <div class="form-control">
               <label class="label">
                 <span class="label-text text-sm sm:text-base"
-                  >Manager Employee ID</span
+                  >Manager PIN</span
                 >
               </label>
               <div class="relative">
                 <input
                   v-model="managerLoginForm.employeeId"
                   :type="showEmployeeId ? 'text' : 'password'"
-                  placeholder="Enter manager employee ID"
+                  placeholder="Enter manager PIN"
                   class="input input-bordered w-full input-sm sm:input-md pr-10"
                   @keyup.enter="handleManagerLogin"
                 />

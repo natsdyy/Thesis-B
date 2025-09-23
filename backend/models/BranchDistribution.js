@@ -796,7 +796,7 @@ class BranchDistribution {
           })
           .first();
 
-        if (existingItem) {
+        if (existingItem && existingItem.status !== "disposed") {
           // Update existing item
           await trx("branch_inventory")
             .where("id", existingItem.id)
@@ -1156,7 +1156,7 @@ class BranchDistribution {
               })
               .first();
 
-            if (existingItem) {
+            if (existingItem && existingItem.status !== "disposed") {
               // Update existing item
               console.log(
                 "Debug - Updating existing branch inventory item:",

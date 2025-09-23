@@ -21,6 +21,8 @@
   } from 'lucide-vue-next';
   import { usePOSStore } from '../../stores/posStore.js';
   import { useBranchContextStore } from '../../stores/branchContextStore.js';
+  import axios from 'axios';
+  import { apiConfig, getApiUrl } from '../../config/api.js';
 
   const props = defineProps({
     show: { type: Boolean, default: false },
@@ -84,34 +86,34 @@
       case 'today':
         // Today: start and end of current day
         dateFrom = new Date(today);
-        dateFrom.setUTCHours(0, 0, 0, 0);
+        dateFrom.setHours(0, 0, 0, 0);
 
         dateTo = new Date(today);
-        dateTo.setUTCHours(23, 59, 59, 999);
+        dateTo.setHours(23, 59, 59, 999);
         break;
       case 'thisWeek':
         // This week: start of week to end of today
         const startOfWeek = new Date(today);
         startOfWeek.setDate(today.getDate() - today.getDay());
-        startOfWeek.setUTCHours(0, 0, 0, 0);
+        startOfWeek.setHours(0, 0, 0, 0);
         dateFrom = startOfWeek;
 
         dateTo = new Date(today);
-        dateTo.setUTCHours(23, 59, 59, 999);
+        dateTo.setHours(23, 59, 59, 999);
         break;
       case 'thisMonth':
         // This month: start of month to end of today
         dateFrom = new Date(today.getFullYear(), today.getMonth(), 1);
-        dateFrom.setUTCHours(0, 0, 0, 0);
+        dateFrom.setHours(0, 0, 0, 0);
 
         dateTo = new Date(today);
-        dateTo.setUTCHours(23, 59, 59, 999);
+        dateTo.setHours(23, 59, 59, 999);
         break;
       default:
         dateFrom = new Date(today);
-        dateFrom.setUTCHours(0, 0, 0, 0);
+        dateFrom.setHours(0, 0, 0, 0);
         dateTo = new Date(today);
-        dateTo.setUTCHours(23, 59, 59, 999);
+        dateTo.setHours(23, 59, 59, 999);
     }
 
     const result = {
@@ -180,8 +182,13 @@
       const orders = response.data || [];
       console.log(`Orders returned for ${period}:`, orders.length, 'orders');
 
-      // Calculate most and least selling items
-      const itemAnalysis = analyzeSellingItems(orders);
+      // Fetch all available menu items for the branch to include zero-sale items
+      const allMenuItems = await posStore.fetchBranchMenuItems(
+        context.currentBranch.id
+      );
+
+      // Calculate most and least selling items (including zero-sale items)
+      const itemAnalysis = analyzeSellingItems(orders, allMenuItems);
 
       // Prepare data
       const data = {
@@ -217,7 +224,7 @@
     }
   };
 
-  const analyzeSellingItems = (orders) => {
+  const analyzeSellingItems = (orders, allMenuItems = []) => {
     const itemCounts = {};
 
     // Count items from all orders (handle refunded orders properly)
@@ -274,7 +281,19 @@
     });
 
     // Convert to array and sort
-    const itemsArray = Object.values(itemCounts);
+    let itemsArray = Object.values(itemCounts);
+
+    // Include zero-sale items based on current available menu items list
+    if (Array.isArray(allMenuItems) && allMenuItems.length > 0) {
+      const existingNames = new Set(itemsArray.map((i) => i.name));
+      allMenuItems.forEach((mi) => {
+        const name = mi.name;
+        if (name && !existingNames.has(name)) {
+          itemsArray.push({ name, quantity: 0, revenue: 0, orders: 0 });
+          existingNames.add(name);
+        }
+      });
+    }
 
     // Most selling (by quantity)
     const mostSelling = [...itemsArray]

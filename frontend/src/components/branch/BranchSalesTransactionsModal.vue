@@ -238,6 +238,8 @@
             isLoss: isLoss,
             void_reason: order.void_reason,
             voided_at: order.voided_at,
+            processed_at: order.processed_at,
+            completed_at: order.completed_at,
           };
         });
 
@@ -364,7 +366,7 @@
 
 <template>
   <dialog id="branch_sales_transaction_modal" class="modal">
-    <div class="modal-box max-w-7xl">
+    <div class="modal-box max-w-7xl max-h-[90vh] overflow-y-auto">
       <div class="flex items-center justify-between mb-4">
         <h3 class="card-title text-primaryColor">
           <ShoppingCart class="w-5 h-5 mr-2" />
@@ -559,11 +561,18 @@
                   <div v-if="transaction.status === 'void'">
                     <div
                       :class="[
-                        'badge badge-sm mb-1 flex items-center gap-1',
+                        'badge badge-sm mb-1 flex items-center gap-1 cursor-pointer',
                         transaction.isRefunded
                           ? 'bg-green-100 text-green-800 border border-green-200'
                           : 'bg-red-100 text-red-800 border border-red-200',
                       ]"
+                      :title="
+                        transaction.isRefunded
+                          ? transaction.completed_at
+                            ? 'Refunded (Inventory deducted • Loss recorded)'
+                            : 'Refunded (No inventory deduction • No loss)'
+                          : transaction.void_reason
+                      "
                     >
                       <font-awesome-icon
                         :icon="
@@ -574,9 +583,6 @@
                         class="w-3 h-3"
                       />
                       {{ transaction.isRefunded ? 'Refunded' : 'Loss' }}
-                    </div>
-                    <div class="text-xs text-gray-500">
-                      {{ transaction.void_reason }}
                     </div>
                   </div>
                   <div v-else>

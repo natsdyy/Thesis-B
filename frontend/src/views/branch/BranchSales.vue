@@ -18,6 +18,7 @@
   } from 'lucide-vue-next';
   import { useBranchContextStore } from '../../stores/branchContextStore';
   import { usePOSStore } from '../../stores/posStore';
+  // Use store helper for menu items; avoid direct API calls
   import { useCustomToast } from '../../composables/useCustomToast';
   import BranchSalesTransactionsModal from '../../components/branch/BranchSalesTransactionsModal.vue';
   import BranchRemitSalesModal from '../../components/branch/BranchRemitSalesModal.vue';
@@ -241,61 +242,61 @@
 
     switch (period) {
       case 'today':
-        // Create date range in UTC to match database timestamps
-        const todayUTC = new Date(
+        // Local day boundaries, then convert to ISO (UTC) when sending
+        const todayLocal = new Date(
           now.getFullYear(),
           now.getMonth(),
           now.getDate()
         );
-        dateFrom = new Date(todayUTC);
-        dateFrom.setUTCHours(0, 0, 0, 0);
+        dateFrom = new Date(todayLocal);
+        dateFrom.setHours(0, 0, 0, 0);
 
-        dateTo = new Date(todayUTC);
-        dateTo.setUTCHours(23, 59, 59, 999);
+        dateTo = new Date(todayLocal);
+        dateTo.setHours(23, 59, 59, 999);
         break;
       case 'week':
-        // Start of week (Sunday = 0, Monday = 1, etc.) in UTC
+        // Start of week (Sunday = 0, Monday = 1, etc.) in local time
         const startOfWeek = new Date(now);
         startOfWeek.setDate(now.getDate() - now.getDay());
-        startOfWeek.setUTCHours(0, 0, 0, 0);
+        startOfWeek.setHours(0, 0, 0, 0);
         dateFrom = startOfWeek;
 
-        // End of current day in UTC
+        // End of current day in local time
         const endOfToday = new Date(
           now.getFullYear(),
           now.getMonth(),
           now.getDate()
         );
         dateTo = new Date(endOfToday);
-        dateTo.setUTCHours(23, 59, 59, 999);
+        dateTo.setHours(23, 59, 59, 999);
         break;
       case 'month':
-        // Start of current month in UTC
+        // Start of current month in local time
         dateFrom = new Date(now.getFullYear(), now.getMonth(), 1);
-        dateFrom.setUTCHours(0, 0, 0, 0);
+        dateFrom.setHours(0, 0, 0, 0);
 
-        // End of current day in UTC
+        // End of current day in local time
         const endOfTodayMonth = new Date(
           now.getFullYear(),
           now.getMonth(),
           now.getDate()
         );
         dateTo = new Date(endOfTodayMonth);
-        dateTo.setUTCHours(23, 59, 59, 999);
+        dateTo.setHours(23, 59, 59, 999);
         break;
       case 'year':
-        // Start of current year in UTC
+        // Start of current year in local time
         dateFrom = new Date(now.getFullYear(), 0, 1);
-        dateFrom.setUTCHours(0, 0, 0, 0);
+        dateFrom.setHours(0, 0, 0, 0);
 
-        // End of current day in UTC
+        // End of current day in local time
         const endOfTodayYear = new Date(
           now.getFullYear(),
           now.getMonth(),
           now.getDate()
         );
         dateTo = new Date(endOfTodayYear);
-        dateTo.setUTCHours(23, 59, 59, 999);
+        dateTo.setHours(23, 59, 59, 999);
         break;
       default:
         const todayDefault = new Date(
@@ -304,10 +305,10 @@
           now.getDate()
         );
         dateFrom = new Date(todayDefault);
-        dateFrom.setUTCHours(0, 0, 0, 0);
+        dateFrom.setHours(0, 0, 0, 0);
 
         dateTo = new Date(todayDefault);
-        dateTo.setUTCHours(23, 59, 59, 999);
+        dateTo.setHours(23, 59, 59, 999);
     }
 
     return {
@@ -463,7 +464,24 @@
         dateFrom,
         dateTo
       );
-      topSellingItems.value = items || [];
+
+      // Fallback to empty array
+      const soldItems = Array.isArray(items) ? items : [];
+
+      // Fetch all available branch menu items to include zero-sales
+      const allMenu = await posStore.fetchBranchMenuItems(branchId);
+
+      // Merge zero-sale items
+      const existing = new Map(soldItems.map((it) => [it.name, it]));
+      const merged = [...soldItems];
+      allMenu.forEach((mi) => {
+        const name = mi.name;
+        if (name && !existing.has(name)) {
+          merged.push({ name, quantity: 0, revenue: 0 });
+        }
+      });
+
+      topSellingItems.value = merged;
     } catch (error) {
       console.error('Error loading top selling items:', error);
       topSellingItems.value = [];
@@ -537,7 +555,7 @@
       selectedVoidReason.value === 'custom'
         ? customReason.value.trim()
         : voidReasons.value.find((r) => r.value === selectedVoidReason.value)
-            ?.label;
+            ?.value;
 
     // Get the selected reason type
     const selectedReason = voidReasons.value.find(
@@ -546,23 +564,29 @@
     const isLossReason = selectedReason?.type === 'loss';
     const isRefundReason = selectedReason?.type === 'refund';
 
-    // Calculate loss amount based on reason type
+    // Calculate loss amount based on order status + reason type
+    // If order is completed and refund reason → treat as loss (deduct inventory)
+    const orderStatus = selectedOrder.value?.status || '';
+    const isOrderCompleted = orderStatus === 'completed';
+
     let lossAmount = 0;
     if (isLossReason) {
-      // For loss reasons, use the calculated loss amount
       lossAmount = calculatedLoss.value;
     } else if (isRefundReason) {
-      // For refund reasons, don't record loss profit
-      lossAmount = 0;
+      lossAmount = isOrderCompleted ? calculatedLoss.value : 0;
     } else {
-      // Default to loss behavior for safety
       lossAmount = calculatedLoss.value;
     }
 
     voidLoading.value = true;
 
     try {
-      await posStore.voidOrder(selectedOrder.value.id, finalReason, lossAmount);
+      await posStore.voidOrder(
+        selectedOrder.value.id,
+        finalReason,
+        lossAmount,
+        { refund_on_completed: isRefundReason && isOrderCompleted }
+      );
 
       showVoidModal.value = false;
       selectedOrder.value = null;
@@ -1483,7 +1507,11 @@
                     Refund Processing
                   </h4>
                   <p class="text-xs text-primaryColor mt-1">
-                    No inventory deduction • No loss profit recorded
+                    {{
+                      selectedOrder?.status === 'completed'
+                        ? 'Inventory stays deducted • Loss profit will be recorded'
+                        : 'No inventory deduction • No loss profit recorded'
+                    }}
                   </p>
                 </div>
                 <div class="text-right">

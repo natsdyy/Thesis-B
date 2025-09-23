@@ -1468,10 +1468,27 @@
   const printReceipt = () => window.print();
 
   // Return methods
-  const openReturnModal = (order) => {
+  const returnStats = ref({});
+  const openReturnModal = async (order) => {
     if (!canReturnItems(order)) {
       showToast('error', 'Returns are only allowed for completed orders');
       return;
+    }
+
+    // Build per-item returned totals to compute availability
+    try {
+      const returns = await purchaseOrderStore.fetchItemReturns(order.id);
+      const totals = {};
+      (returns || []).forEach((r) => {
+        if (r.status !== 'Cancelled') {
+          const key = r.purchase_order_item_id;
+          const qty = Number(r.return_quantity || 0);
+          totals[key] = (totals[key] || 0) + (isNaN(qty) ? 0 : qty);
+        }
+      });
+      returnStats.value = totals;
+    } catch (e) {
+      returnStats.value = {};
     }
 
     returnModal.value = { show: true, order };
@@ -1485,6 +1502,23 @@
 
   const resetReturnForm = () => {
     returnForm.value = { item_id: '', quantity: 1, reason: '', notes: '' };
+  };
+
+  // Returns: compute available quantity based on actual received minus prior returns
+  const selectedReturnItem = computed(() => {
+    const id = returnForm.value.item_id;
+    return (returnModal.value.order?.items || []).find((it) => it.id === id);
+  });
+
+  const getAvailableForReturn = (item) => {
+    if (!item) return 0;
+    const received = Number(item.received_quantity ?? item.quantity ?? 0);
+    // Prefer received_quantity if present; fall back to quantity
+    const totalReceived = isNaN(received) ? 0 : received;
+    const alreadyReturned = Number(returnStats.value[item.id] || 0);
+    const available =
+      totalReceived - (isNaN(alreadyReturned) ? 0 : alreadyReturned);
+    return available < 0 ? 0 : available;
   };
 
   // CRUD operations
@@ -1699,7 +1733,11 @@
         return_quantity: returnForm.value.quantity,
         return_reason: returnForm.value.reason,
         notes: returnForm.value.notes,
-        logged_by: 'SCM User',
+        logged_by:
+          authStore.user?.name ||
+          `${authStore.user?.first_name || ''} ${authStore.user?.last_name || ''}`.trim() ||
+          authStore.user?.email ||
+          'SCM User',
       });
 
       closeReturnModal();
@@ -1861,6 +1899,14 @@
     }
     if (returnForm.value.quantity < 1) {
       showToast('error', 'Please enter a valid quantity');
+      return;
+    }
+
+    // Validate against availability
+    const item = selectedReturnItem.value;
+    const available = getAvailableForReturn(item);
+    if (returnForm.value.quantity > available) {
+      showToast('error', `Maximum return for this item is ${available}`);
       return;
     }
 
@@ -4426,7 +4472,12 @@
                       ? Number(
                           receiptModal.order.items?.reduce(
                             (sum, item) =>
-                              sum + Number(item.received_total_price || 0),
+                              sum +
+                              Number(
+                                item.received_total_price ??
+                                  item.total_price ??
+                                  (item.quantity || 0) * (item.unit_price || 0)
+                              ),
                             0
                           ) || 0
                         ).toFixed(2)
@@ -4475,7 +4526,12 @@
                   Number(
                     receiptModal.order.items?.reduce(
                       (sum, item) =>
-                        sum + Number(item.received_total_price || 0),
+                        sum +
+                        Number(
+                          item.received_total_price ??
+                            item.total_price ??
+                            (item.quantity || 0) * (item.unit_price || 0)
+                        ),
                       0
                     ) || 0
                   ).toLocaleString()
@@ -4520,11 +4576,18 @@
                   ? Number(
                       receiptModal.order.items?.reduce(
                         (sum, item) =>
-                          sum + Number(item.received_total_price || 0),
+                          sum +
+                          Number(
+                            item.received_total_price ??
+                              item.total_price ??
+                              (item.quantity || 0) * (item.unit_price || 0)
+                          ),
                         0
                       ) || 0
                     ).toLocaleString()
-                  : receiptModal.order.total_amount.toLocaleString()
+                  : Number(
+                      receiptModal.order.total_amount || 0
+                    ).toLocaleString()
               }}
             </span>
           </div>
@@ -4606,7 +4669,8 @@
               :key="item.id"
               :value="item.id"
             >
-              {{ item.item_name }} (Available: {{ item.quantity }})
+              {{ item.item_name }} (Available:
+              {{ getAvailableForReturn(item) }})
             </option>
           </select>
         </div>
@@ -4617,6 +4681,11 @@
             v-model.number="returnForm.quantity"
             type="number"
             min="1"
+            :max="
+              selectedReturnItem
+                ? getAvailableForReturn(selectedReturnItem)
+                : undefined
+            "
             class="input input-bordered w-full"
             required
           />

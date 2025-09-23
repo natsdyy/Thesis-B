@@ -634,8 +634,7 @@
       showCompleteModal.value = false;
       posStore.clearSelectedTransaction();
 
-      // Reopen the transaction modal and refresh POS data
-      emit('reopen');
+      // Refresh POS data only; do not reopen the transactions modal
       emit('refresh');
 
       showSuccess('Order completed successfully');
@@ -650,9 +649,6 @@
   const closeCompleteModal = () => {
     showCompleteModal.value = false;
     posStore.clearSelectedTransaction();
-
-    // Reopen the transaction modal
-    emit('reopen');
   };
 
   const handleVoidOrder = (transaction) => {
@@ -690,7 +686,7 @@
       selectedVoidReason.value === 'custom'
         ? customReason.value.trim()
         : voidReasons.value.find((r) => r.value === selectedVoidReason.value)
-            ?.label;
+            ?.value;
 
     // Get the selected reason type
     const selectedReason = voidReasons.value.find(
@@ -699,16 +695,21 @@
     const isLossReason = selectedReason?.type === 'loss';
     const isRefundReason = selectedReason?.type === 'refund';
 
-    // Calculate loss amount based on reason type
+    // Calculate loss amount based on order status + reason type
+    // Business rule:
+    // - If order is Pending/Processing and reason is Refund → NO deduction, NO loss
+    // - If order is Completed and reason is Refund → behave like Loss (deduct & record loss)
+    // - Loss reasons always deduct & record loss
+    const orderStatus = posStore.selectedTransaction?.status || '';
+    const isOrderCompleted = orderStatus === 'completed';
+
     let lossAmount = 0;
     if (isLossReason) {
-      // For loss reasons, use the calculated loss amount
       lossAmount = calculatedLoss.value;
     } else if (isRefundReason) {
-      // For refund reasons, don't record loss profit
-      lossAmount = 0;
+      lossAmount = isOrderCompleted ? calculatedLoss.value : 0;
     } else {
-      // Default to loss behavior for safety
+      // Fallback to safe behavior
       lossAmount = calculatedLoss.value;
     }
 
@@ -718,7 +719,8 @@
       await posStore.voidOrder(
         posStore.selectedTransaction.id,
         finalReason,
-        lossAmount
+        lossAmount,
+        { refund_on_completed: isRefundReason && isOrderCompleted }
       );
 
       // Close void modal and reopen transaction modal
@@ -961,11 +963,12 @@
                   <div v-if="transaction.status === 'void'">
                     <div
                       :class="[
-                        'badge badge-sm mb-1 flex items-center gap-1',
+                        'badge badge-sm mb-1 flex items-center gap-1 cursor-pointer',
                         transaction.isRefunded
                           ? 'bg-green-100 text-green-800 border border-green-200'
                           : 'bg-red-100 text-red-800 border border-red-200',
                       ]"
+                      :title="transaction.void_reason"
                     >
                       <font-awesome-icon
                         :icon="
@@ -976,9 +979,6 @@
                         class="w-3 h-3"
                       />
                       {{ transaction.isRefunded ? 'Refunded' : 'Loss' }}
-                    </div>
-                    <div class="text-xs text-gray-500">
-                      {{ transaction.void_reason }}
                     </div>
                   </div>
                   <div v-else>
@@ -1407,7 +1407,9 @@
                 {{
                   voidReasons.find((r) => r.value === selectedVoidReason)
                     ?.type === 'refund'
-                    ? ' No inventory deduction • No loss profit recorded'
+                    ? posStore.selectedTransaction?.status === 'completed'
+                      ? 'Inventory stays deducted • Loss profit will be recorded'
+                      : ' No inventory deduction • No loss profit recorded'
                     : 'Inventory will be deducted • Loss profit will be recorded'
                 }}
               </p>
@@ -1472,7 +1474,11 @@
                   Refund Processing
                 </h4>
                 <p class="text-xs text-primaryColor mt-1">
-                  No inventory deduction • No loss profit recorded
+                  {{
+                    posStore.selectedTransaction?.status === 'completed'
+                      ? 'Inventory will be deducted • Loss profit will be recorded'
+                      : 'No inventory deduction • No loss profit recorded'
+                  }}
                 </p>
               </div>
               <div class="text-right">

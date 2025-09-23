@@ -392,7 +392,13 @@ class POSOrder {
   }
 
   // Void order (cancel the order)
-  static async voidOrder(id, voidReason, voidedBy, lossAmount = 0) {
+  static async voidOrder(
+    id,
+    voidReason,
+    voidedBy,
+    lossAmount = 0,
+    refundOnCompleted = false
+  ) {
     const trx = await db.transaction();
 
     try {
@@ -432,8 +438,19 @@ class POSOrder {
         "custom",
       ];
 
-      const isRefundReason = refundReasons.includes(voidReason);
-      const isLossReason = lossReasons.includes(voidReason);
+      // Normalize reason to snake_case to accept labels from older clients
+      const normalize = (s) =>
+        String(s || "")
+          .toLowerCase()
+          .replaceAll(" ", "_");
+      const normalizedReason = normalize(voidReason);
+
+      const isRefundReason =
+        refundReasons.includes(voidReason) ||
+        refundReasons.includes(normalizedReason);
+      const isLossReason =
+        lossReasons.includes(voidReason) ||
+        lossReasons.includes(normalizedReason);
 
       // Update order status
       const [updatedOrder] = await trx("pos_sales_orders")
@@ -449,32 +466,27 @@ class POSOrder {
 
       // Handle inventory deduction and loss profit recording based on void reason and order status
       if (isCompletedOrder) {
-        // For completed orders (refunds): handle based on reason type
-        if (isLossReason) {
-          // Loss refund: deduct inventory and record loss profit
+        // For completed orders (refunds):
+        // Treat BOTH refund and loss reasons as business loss. Inventory already deducted at completion.
+        // We do not re-deduct inventory; we only record loss profit.
+        if (isLossReason || isRefundReason) {
+          // Completed refunds/loss: DO NOT re-deduct inventory (it was deducted at completion)
+          // Only record the loss profit
           console.log(
-            `Refund reason "${voidReason}" treated as LOSS - deducting inventory and recording loss profit`
+            `Refund(${voidReason}) on completed order - inventory stays deducted, recording loss profit`
           );
 
-          // Deduct inventory for each item in the order
-          const orderItems = await trx("pos_sales_order_items")
-            .where("order_id", id)
-            .select("menu_item_id", "quantity");
-
-          for (const item of orderItems) {
-            await trx("inventory_items")
-              .where("menu_item_id", item.menu_item_id)
-              .where("branch_id", order.branch_id)
-              .decrement("current_stock", item.quantity);
-          }
-
           // Record loss profit if amount is greater than 0
-          if (lossAmount > 0) {
+          const amountToRecord =
+            parseFloat(lossAmount) > 0
+              ? parseFloat(lossAmount)
+              : parseFloat(order.total_amount) || 0;
+          if (amountToRecord > 0) {
             await trx("loss_profit_records").insert({
               order_id: id,
               order_number: order.order_number,
               branch_id: order.branch_id,
-              loss_amount: lossAmount,
+              loss_amount: amountToRecord,
               void_reason: voidReason,
               voided_by: voidedBy,
               recorded_at: new Date(),

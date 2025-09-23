@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
+import { useAuthStore } from './authStore.js';
 
 export const useGRNStore = defineStore('grn', () => {
   // State
@@ -276,13 +277,15 @@ export const useGRNStore = defineStore('grn', () => {
     error.value = null;
 
     try {
+      const authStore = useAuthStore();
+      const inspectorId = authStore?.user?.id || null;
       const response = await axios.post(
         `${apiConfig.baseURL}/grn/${grnId}/items/${grnItemId}/inspect`,
         {
           result,
           notes,
           inspection_criteria: inspectionCriteria,
-          inspector_id: 4, // Hardcoded for now - should come from auth store
+          inspector_id: inspectorId,
         }
       );
 
@@ -312,12 +315,14 @@ export const useGRNStore = defineStore('grn', () => {
     error.value = null;
 
     try {
+      const authStore = useAuthStore();
+      const inspectorId = authStore?.user?.id || null;
       const response = await axios.post(
         `${apiConfig.baseURL}/grn/${grnId}/bulk-inspect`,
         {
           result,
           notes,
-          inspector_id: 4, // Hardcoded for now - should come from auth store
+          inspector_id: inspectorId,
         }
       );
 

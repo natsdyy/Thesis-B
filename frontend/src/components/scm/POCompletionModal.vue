@@ -242,12 +242,33 @@
     () => props.show,
     (newValue) => {
       if (newValue && props.purchaseOrder?.items) {
-        completionItems.value = props.purchaseOrder.items.map((item) => ({
-          ...item,
-          received_quantity: item.received_quantity || item.quantity,
-          received_unit_price: item.received_unit_price || item.unit_price,
-          received_total_price: item.received_total_price || item.total_price,
-        }));
+        completionItems.value = props.purchaseOrder.items.map((item) => {
+          const orderedQuantity = Number(item.quantity || 0);
+          const orderedUnitPrice = Number(item.unit_price || 0);
+          const orderedTotalPrice = Number(
+            item.total_price ?? orderedQuantity * orderedUnitPrice
+          );
+
+          const receivedQuantity = Number(
+            item.received_quantity ?? orderedQuantity
+          );
+          const receivedUnitPrice = Number(
+            item.received_unit_price ?? orderedUnitPrice
+          );
+          const receivedTotalPrice = Number(
+            item.received_total_price ?? receivedQuantity * receivedUnitPrice
+          );
+
+          return {
+            ...item,
+            quantity: orderedQuantity,
+            unit_price: orderedUnitPrice,
+            total_price: orderedTotalPrice,
+            received_quantity: receivedQuantity,
+            received_unit_price: receivedUnitPrice,
+            received_total_price: receivedTotalPrice,
+          };
+        });
         completionNotes.value = props.purchaseOrder.completion_notes || '';
       }
     }
@@ -255,18 +276,25 @@
 
   // Computed properties
   const totalOrderedValue = computed(() => {
-    const total = completionItems.value.reduce(
-      (sum, item) => sum + (item.total_price || 0),
-      0
-    );
+    const total = completionItems.value.reduce((sum, item) => {
+      const itemTotal = Number(
+        item.total_price ??
+          Number(item.quantity || 0) * Number(item.unit_price || 0)
+      );
+      return sum + (isNaN(itemTotal) ? 0 : itemTotal);
+    }, 0);
     return Math.round(total * 100) / 100; // Round to 2 decimal places
   });
 
   const totalReceivedValue = computed(() => {
-    const total = completionItems.value.reduce(
-      (sum, item) => sum + (item.received_total_price || 0),
-      0
-    );
+    const total = completionItems.value.reduce((sum, item) => {
+      const itemTotal = Number(
+        item.received_total_price ??
+          Number(item.received_quantity || 0) *
+            Number(item.received_unit_price || 0)
+      );
+      return sum + (isNaN(itemTotal) ? 0 : itemTotal);
+    }, 0);
     return Math.round(total * 100) / 100; // Round to 2 decimal places
   });
 
@@ -286,12 +314,10 @@
   // Methods
   const updateItemTotals = (index) => {
     const item = completionItems.value[index];
-    if (item.received_quantity && item.received_unit_price) {
-      item.received_total_price =
-        item.received_quantity * item.received_unit_price;
-    } else {
-      item.received_total_price = 0;
-    }
+    const qty = Number(item.received_quantity || 0);
+    const price = Number(item.received_unit_price || 0);
+    const total = qty * price;
+    item.received_total_price = isNaN(total) ? 0 : total;
   };
 
   const setReceivedToOrdered = (index) => {

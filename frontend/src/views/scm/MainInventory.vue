@@ -1906,6 +1906,24 @@
     }
   };
 
+  // Refresh data for Branch Distribution tab only (no full page reload)
+  const refreshDistributionData = async () => {
+    try {
+      distributionLoading.value = true;
+      await Promise.all([
+        fetchBranches(),
+        distributionInventoryType.value === 'production'
+          ? fetchProductionInventory()
+          : inventoryStore.fetchCurrentInventory(),
+      ]);
+      showToast('success', 'Branch Distribution refreshed');
+    } catch (error) {
+      showToast('error', 'Failed to refresh Branch Distribution');
+    } finally {
+      distributionLoading.value = false;
+    }
+  };
+
   // Reset forecasting pagination
   const resetForecastPagination = () => {
     forecastCurrentPage.value = 1;
@@ -2151,6 +2169,8 @@
     distributionCurrentPage.value = 1;
     distributionSearchQuery.value = '';
     distributionCategoryFilter.value = '';
+    // Ensure the visible list reflects the selected source
+    refreshDistributionData();
   };
 
   const goToDistributionPage = (page) => {

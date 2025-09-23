@@ -3,6 +3,7 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
+import { useAuthStore } from './authStore.js';
 
 export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
   // State
@@ -385,9 +386,15 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     error.value = null;
 
     try {
+      const authStore = useAuthStore();
+      const defaultLogger =
+        authStore.user?.name ||
+        `${authStore.user?.first_name || ''} ${authStore.user?.last_name || ''}`.trim() ||
+        authStore.user?.email ||
+        'SCM User';
       const payload = {
         ...returnData,
-        logged_by: returnData.logged_by || 'SCM User',
+        logged_by: returnData.logged_by || defaultLogger,
       };
 
       const response = await axios.post(

@@ -225,7 +225,11 @@ router.post("/orders/:id/complete", authenticateToken, async (req, res) => {
 // POST /api/pos/orders/:id/void - Void order (cancel)
 router.post("/orders/:id/void", authenticateToken, async (req, res) => {
   try {
-    const { void_reason, loss_amount = 0 } = req.body;
+    const {
+      void_reason,
+      loss_amount = 0,
+      refund_on_completed = false,
+    } = req.body;
 
     if (!void_reason) {
       return res.status(400).json({
@@ -238,7 +242,8 @@ router.post("/orders/:id/void", authenticateToken, async (req, res) => {
       req.params.id,
       void_reason,
       req.user.id,
-      parseFloat(loss_amount) || 0
+      parseFloat(loss_amount) || 0,
+      Boolean(refund_on_completed)
     );
 
     res.json({

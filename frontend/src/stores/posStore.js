@@ -464,7 +464,7 @@ export const usePOSStore = defineStore('pos', () => {
     resetOrder();
   };
 
-  const voidOrder = async (orderId, voidReason, lossAmount = 0) => {
+  const voidOrder = async (orderId, voidReason, lossAmount = 0, flags = {}) => {
     try {
       loading.value = true;
       error.value = null;
@@ -475,6 +475,8 @@ export const usePOSStore = defineStore('pos', () => {
         {
           void_reason: voidReason,
           loss_amount: lossAmount,
+          // Backend flag to differentiate refund timing behavior
+          refund_on_completed: Boolean(flags?.refund_on_completed),
         },
         {
           baseURL: apiConfig.baseURL,
@@ -711,6 +713,35 @@ export const usePOSStore = defineStore('pos', () => {
     }
   };
 
+  // Fetch all branch menu items (read-only helper, does not mutate store)
+  const fetchBranchMenuItems = async (
+    branchId,
+    { includeUnavailable = false } = {}
+  ) => {
+    try {
+      const url = getApiUrl('/pos/menu-items');
+      const params = new URLSearchParams();
+      if (branchId) params.append('branch_id', String(branchId));
+      if (!includeUnavailable) params.append('is_available', 'true');
+      params.append('limit', '10000');
+
+      const { data } = await axios.get(`${url}?${params.toString()}`, {
+        baseURL: apiConfig.baseURL,
+        headers: { ...getAuthHeaders() },
+      });
+
+      const items = Array.isArray(data?.data) ? data.data : [];
+      return items.map((it) => ({
+        id: it.id,
+        name: it.menu_item_name || it.item_name || it.name,
+        category: it.category,
+      }));
+    } catch (err) {
+      console.warn('Failed to fetch branch menu items:', err);
+      return [];
+    }
+  };
+
   const setSelectedCategory = (category) => {
     selectedCategory.value = category;
   };
@@ -780,6 +811,7 @@ export const usePOSStore = defineStore('pos', () => {
     fetchDailySummary,
     fetchSalesStats,
     fetchTopSellingItems,
+    fetchBranchMenuItems,
     setSelectedCategory,
     initialize,
     getNextOrderNumber,

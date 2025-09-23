@@ -15,6 +15,7 @@
     Clock,
     Building2,
     Shield,
+    Camera,
   } from 'lucide-vue-next';
   import { useBranchContextStore } from '../../stores/branchContextStore';
   import { useAuthStore } from '../../stores/authStore';
@@ -26,6 +27,9 @@
   const loading = ref(false);
   const editMode = ref(false);
   const showPasswordSection = ref(false);
+  const imageLoadError = ref(false);
+  const uploadingImage = ref(false);
+  const imageInput = ref(null);
 
   // Profile data
   const profileData = ref({
@@ -74,6 +78,28 @@
     return 'U';
   });
 
+  const profileImageUrl = computed(() => {
+    if (imageLoadError.value) {
+      console.log('Image load error is true, returning null');
+      return null; // Don't show image if it failed to load
+    }
+    const url =
+      profileData.value.profile_picture || user.value?.photo_url || null;
+    console.log('Profile image URL computation:', {
+      profile_picture: profileData.value.profile_picture,
+      user_photo_url: user.value?.photo_url,
+      final_url: url,
+    });
+    if (!url) return null;
+    if (/^https?:\/\//i.test(url)) return url;
+    // Handle relative URLs from the backend - images are served by backend on port 5000
+    const backendOrigin = 'http://localhost:5000';
+    const path = url.startsWith('/') ? url : `/${url}`;
+    const fullUrl = `${backendOrigin}${path}`;
+    console.log('Constructed full URL:', fullUrl);
+    return fullUrl;
+  });
+
   const canEditProfile = computed(() => true); // All users can edit their own profile
 
   // Methods
@@ -88,22 +114,62 @@
     loading.value = true;
 
     try {
-      // TODO: Fetch real profile data from API
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // First, refresh user data in auth store to ensure we have the latest info
+      await authStore.refreshUserData();
 
-      // Mock data based on user
+      // Fetch real profile data from API
+      const token = localStorage.getItem('token');
+
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      console.log(
+        'Loading profile data with token:',
+        token.substring(0, 20) + '...'
+      );
+
+      const response = await fetch('/api/employees/me', {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      console.log('Profile API response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Profile API error response:', errorText);
+        throw new Error(
+          `Failed to fetch profile: ${response.status} ${response.statusText}`
+        );
+      }
+
+      const result = await response.json();
+      console.log('Profile API result:', result);
+
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to load profile data');
+      }
+
+      const employee = result.data;
+      console.log('Employee data received:', employee);
+
+      // Map employee data to profile format
       profileData.value = {
-        first_name: user.value?.name?.split(' ')[0] || 'John',
-        last_name: user.value?.name?.split(' ')[1] || 'Doe',
-        email: user.value?.email || 'john.doe@branch.com',
-        phone: '+63 912 345 6789',
-        address: '123 Main Street, Quezon City, Metro Manila',
-        hire_date: '2023-06-15',
-        employee_id: 'EMP001',
-        role: user.value?.role || 'Employee',
-        department: user.value?.department || 'Branch',
-        last_login: '2024-01-15T14:30:00Z',
-        profile_picture: null,
+        first_name: employee.first_name || '',
+        last_name: employee.last_name || '',
+        email: employee.email || '',
+        phone: employee.phone_number || '',
+        address: employee.address || '',
+        hire_date: employee.created_at || '',
+        employee_id: employee.employee_id || '',
+        role: employee.role || 'Employee',
+        department: employee.department || 'Branch',
+        last_login: employee.last_login || '',
+        profile_picture: employee.photo_url || null,
       };
 
       // Initialize edit form
@@ -113,9 +179,33 @@
         phone: profileData.value.phone,
         address: profileData.value.address,
       };
+
+      console.log('Profile data loaded successfully:', profileData.value);
+      console.log('Profile image URL:', profileImageUrl.value);
+
+      // Reset image error flag when new data is loaded
+      imageLoadError.value = false;
     } catch (error) {
       console.error('Error loading profile data:', error);
-      showToast('error', 'Failed to load profile data');
+      showToast('error', error.message || 'Failed to load profile data');
+
+      // Fallback to user data from auth store if available
+      if (user.value) {
+        console.log('Using fallback data from auth store');
+        profileData.value = {
+          first_name: user.value.name?.split(' ')[0] || 'User',
+          last_name: user.value.name?.split(' ')[1] || '',
+          email: user.value.email || '',
+          phone: '',
+          address: '',
+          hire_date: '',
+          employee_id: user.value.employee_id || '',
+          role: user.value.role || 'Employee',
+          department: user.value.department || 'Branch',
+          last_login: '',
+          profile_picture: user.value.photo_url || null,
+        };
+      }
     } finally {
       loading.value = false;
     }
@@ -138,17 +228,57 @@
     loading.value = true;
 
     try {
-      // TODO: Save profile data to API
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Save profile data to API
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/employees/me', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          first_name: editForm.value.first_name,
+          last_name: editForm.value.last_name,
+          phone_number: editForm.value.phone,
+          address: editForm.value.address,
+        }),
+      });
 
-      // Update profile data
-      Object.assign(profileData.value, editForm.value);
+      if (!response.ok) {
+        const errorResult = await response.json();
+        throw new Error(
+          errorResult.message ||
+            `Failed to update profile: ${response.statusText}`
+        );
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to update profile');
+      }
+
+      // Update profile data with the response
+      const employee = result.data;
+      profileData.value = {
+        first_name: employee.first_name || '',
+        last_name: employee.last_name || '',
+        email: employee.email || '',
+        phone: employee.phone_number || '',
+        address: employee.address || '',
+        hire_date: employee.created_at || '',
+        employee_id: employee.employee_id || '',
+        role: employee.role || 'Employee',
+        department: employee.department || 'Branch',
+        last_login: employee.last_login || '',
+        profile_picture: employee.photo_url || null,
+      };
 
       editMode.value = false;
       showToast('success', 'Profile updated successfully');
     } catch (error) {
       console.error('Error saving profile:', error);
-      showToast('error', 'Failed to update profile');
+      showToast('error', error.message || 'Failed to update profile');
     } finally {
       loading.value = false;
     }
@@ -170,8 +300,33 @@
     loading.value = true;
 
     try {
-      // TODO: Change password via API
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Change password via API
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/employees/me/change-password', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          current_password: passwordForm.value.current_password,
+          new_password: passwordForm.value.new_password,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorResult = await response.json();
+        throw new Error(
+          errorResult.message ||
+            `Failed to change password: ${response.statusText}`
+        );
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to change password');
+      }
 
       // Reset form
       passwordForm.value = {
@@ -184,7 +339,7 @@
       showToast('success', 'Password changed successfully');
     } catch (error) {
       console.error('Error changing password:', error);
-      showToast('error', 'Failed to change password');
+      showToast('error', error.message || 'Failed to change password');
     } finally {
       loading.value = false;
     }
@@ -196,6 +351,88 @@
 
   const formatDateTime = (dateString) => {
     return new Date(dateString).toLocaleString();
+  };
+
+  const handleImageLoad = (event) => {
+    console.log('Profile image loaded successfully:', event.target.src);
+    // Reset error flag when image loads successfully
+    imageLoadError.value = false;
+  };
+
+  const handleImageError = (event) => {
+    console.warn('Profile image failed to load:', event.target.src);
+    console.log('Setting imageLoadError to true');
+    // Set the error flag to trigger fallback to initials
+    imageLoadError.value = true;
+  };
+
+  const triggerImageUpload = () => {
+    imageInput.value?.click();
+  };
+
+  const handleImageUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      showToast('error', 'Please select a valid image file');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('error', 'Image file size must be less than 5MB');
+      return;
+    }
+
+    uploadingImage.value = true;
+
+    try {
+      const formData = new FormData();
+      formData.append('photo', file);
+
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/employees/me/upload-photo', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorResult = await response.json();
+        throw new Error(
+          errorResult.message ||
+            `Failed to upload photo: ${response.statusText}`
+        );
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to upload photo');
+      }
+
+      // Update profile data with new photo URL
+      profileData.value.profile_picture = result.data.photo_url;
+
+      // Reset image error flag and refresh user data in auth store
+      imageLoadError.value = false;
+      await authStore.refreshUserData();
+
+      showToast('success', 'Profile picture updated successfully');
+    } catch (error) {
+      console.error('Error uploading profile picture:', error);
+      showToast('error', error.message || 'Failed to upload profile picture');
+    } finally {
+      uploadingImage.value = false;
+      // Reset the file input
+      if (imageInput.value) {
+        imageInput.value.value = '';
+      }
+    }
   };
 
   // Initialize
@@ -252,11 +489,55 @@
           <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <!-- Profile Picture Section -->
             <div class="text-center">
-              <div
-                class="w-32 h-32 bg-primaryColor text-white rounded-full flex items-center justify-center text-4xl font-bold mx-auto mb-4"
-              >
-                {{ profileInitials }}
+              <div class="relative inline-block">
+                <div
+                  class="w-32 h-32 rounded-full overflow-hidden mx-auto mb-4 border-4 border-gray-200 cursor-pointer transition-colors duration-200"
+                  @click="triggerImageUpload"
+                  :class="{ 'opacity-50': uploadingImage }"
+                >
+                  <img
+                    v-if="profileImageUrl && !imageLoadError"
+                    :src="profileImageUrl"
+                    :alt="`${profileData.first_name} ${profileData.last_name}`"
+                    class="w-full h-full object-cover"
+                    @load="handleImageLoad"
+                    @error="handleImageError"
+                  />
+                  <div
+                    v-else
+                    class="w-full h-full text-white flex items-center justify-center text-4xl font-bold"
+                  >
+                    {{ profileInitials }}
+                  </div>
+                  <!-- Upload overlay -->
+                  <div
+                    v-if="uploadingImage"
+                    class="absolute inset-0 bg-opacity-50 flex items-center justify-center rounded-full"
+                  >
+                    <div
+                      class="loading loading-spinner loading-md text-white"
+                    ></div>
+                  </div>
+                  <!-- Camera icon overlay - only show on hover -->
+                  <div
+                    v-else
+                    class="absolute inset-0 bg-opacity-0 hover:bg-opacity-20 flex items-center justify-center rounded-full transition-all duration-200 group"
+                  >
+                    <Camera
+                      class="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                    />
+                  </div>
+                </div>
+                <!-- Hidden file input -->
+                <input
+                  ref="imageInput"
+                  type="file"
+                  accept="image/*"
+                  @change="handleImageUpload"
+                  class="hidden"
+                />
               </div>
+              <p class="text-xs text-gray-500 mb-2">Click to upload photo</p>
               <h3 class="text-xl font-semibold">
                 {{ profileData.first_name }} {{ profileData.last_name }}
               </h3>

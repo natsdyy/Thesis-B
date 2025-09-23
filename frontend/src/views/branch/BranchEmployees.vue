@@ -17,8 +17,10 @@
     BadgeCheck,
   } from 'lucide-vue-next';
   import { useBranchContextStore } from '../../stores/branchContextStore';
+  import { useEmployeeStore } from '../../stores/employeeStore.js';
 
   const branchContextStore = useBranchContextStore();
+  const employeeStore = useEmployeeStore();
 
   // Local state following EmployeeManager pattern
   const searchQuery = ref('');
@@ -90,70 +92,38 @@
     loading.value = true;
 
     try {
-      // TODO: Fetch real employee data from API
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Fetch real employees from API via Pinia store
+      // Grab a large page to cover typical branch sizes; pagination UI can be added later
+      await employeeStore.fetchEmployees(false, 1, 500, false);
 
-      // Mock data
-      branchEmployees.value = [
-        {
-          id: 1,
-          employee_id: 'EMP001',
-          first_name: 'Maria',
-          last_name: 'Santos',
-          email: 'maria.santos@branch.com',
-          phone: '+63 912 345 6789',
-          role: 'Manager',
-          department: 'Branch',
-          status: 'Active',
-          hire_date: '2023-01-15',
-          last_login: '2024-01-15T14:30:00Z',
-          attendance_today: 'Present',
-        },
-        {
-          id: 2,
-          employee_id: 'EMP002',
-          first_name: 'Juan',
-          last_name: 'Dela Cruz',
-          email: 'juan.delacruz@branch.com',
-          phone: '+63 912 345 6790',
-          role: 'Cashier',
-          department: 'Branch',
-          status: 'Active',
-          hire_date: '2023-03-20',
-          last_login: '2024-01-15T13:45:00Z',
-          attendance_today: 'Present',
-        },
-        {
-          id: 3,
-          employee_id: 'EMP003',
-          first_name: 'Ana',
-          last_name: 'Rodriguez',
-          email: 'ana.rodriguez@branch.com',
-          phone: '+63 912 345 6791',
-          role: 'Cook',
-          department: 'Branch',
-          status: 'Active',
-          hire_date: '2023-05-10',
-          last_login: '2024-01-15T12:00:00Z',
-          attendance_today: 'Present',
-        },
-        {
-          id: 4,
-          employee_id: 'EMP004',
-          first_name: 'Pedro',
-          last_name: 'Garcia',
-          email: 'pedro.garcia@branch.com',
-          phone: '+63 912 345 6792',
-          role: 'Waiter',
-          department: 'Branch',
-          status: 'On Leave',
-          hire_date: '2023-07-01',
-          last_login: '2024-01-14T18:00:00Z',
-          attendance_today: 'On Leave',
-        },
-      ];
+      const branchId = branchContextStore.currentBranch?.id || null;
+      const all = Array.isArray(employeeStore.employees)
+        ? employeeStore.employees
+        : [];
 
-      // Calculate stats
+      // Filter by current branch; fallback to all if branch not set
+      const byBranch = branchId
+        ? all.filter((e) => e.branch_id === branchId)
+        : all;
+
+      // Map to view model fields used in template
+      branchEmployees.value = byBranch.map((e) => ({
+        id: e.id,
+        employee_id: e.employee_id,
+        first_name: e.first_name,
+        last_name: e.last_name,
+        email: e.email,
+        phone: e.phone_number,
+        role: e.role || e.job_title || 'Staff',
+        department: e.department,
+        status: e.status || (e.is_active ? 'Active' : 'Inactive'),
+        hire_date: e.created_at,
+        last_login: e.last_login,
+        attendance_today:
+          e.attendance_today ||
+          (e.status === 'On Leave' ? 'On Leave' : 'Present'),
+      }));
+
       employeeStats.value = {
         totalEmployees: branchEmployees.value.length,
         activeEmployees: branchEmployees.value.filter(

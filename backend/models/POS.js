@@ -77,11 +77,13 @@ class POSModel {
         });
 
         baseQuery = baseQuery.select(
-          db.raw("COALESCE(bi.quantity, 0) as branch_stock")
+          db.raw("COALESCE(bi.quantity, 0) as branch_stock"),
+          "bi.expiry_date as branch_expiry_date"
         );
       } else {
         baseQuery = baseQuery.select(
-          db.raw("CAST(0 as integer) as branch_stock")
+          db.raw("CAST(0 as integer) as branch_stock"),
+          db.raw("NULL as branch_expiry_date")
         );
       }
 
@@ -100,7 +102,23 @@ class POSModel {
         .offset(Math.max(0, Number(offset)));
 
       const [countRow] = await countQuery;
-      const rows = await dataQuery;
+      let rows = await dataQuery;
+
+      // Filter out expired items for POS safety
+      if (branch_id) {
+        const today = new Date().toISOString().split("T")[0];
+        rows = rows.filter((item) => {
+          // If item has expiry date, check if it's expired
+          if (item.branch_expiry_date) {
+            const expiryDate = new Date(item.branch_expiry_date)
+              .toISOString()
+              .split("T")[0];
+            return expiryDate > today; // Only include items that haven't expired
+          }
+          // If no expiry date, include the item (assume it doesn't expire)
+          return true;
+        });
+      }
 
       const total = parseInt(countRow?.total || 0, 10);
       return { rows, total };

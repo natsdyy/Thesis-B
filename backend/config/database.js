@@ -1,18 +1,18 @@
-const knex = require('knex');
-const knexConfig = require('../knexfile');
-require('dotenv').config();
+const knex = require("knex");
+const knexConfig = require("../knexfile");
+require("dotenv").config();
 
 // Initialize Knex instance
-const environment = process.env.NODE_ENV || 'development';
+const environment = process.env.NODE_ENV || "development";
 const db = knex(knexConfig[environment]);
 
 // Test database connection using Knex
 const testConnection = async () => {
   try {
-    await db.raw('SELECT 1');
-    console.log('✅ Database connected successfully');
+    await db.raw("SELECT 1");
+    console.log("✅ Database connected successfully");
   } catch (err) {
-    console.error('❌ Database connection error:', err.message);
+    console.error("❌ Database connection error:", err.message);
   }
 };
 
@@ -20,9 +20,9 @@ const testConnection = async () => {
 const runMigrations = async () => {
   try {
     await db.migrate.latest();
-    console.log('✅ Database migrations completed successfully');
+    console.log("✅ Database migrations completed successfully");
   } catch (error) {
-    console.error('❌ Migration error:', error);
+    console.error("❌ Migration error:", error);
     throw error;
   }
 };
@@ -30,5 +30,5 @@ const runMigrations = async () => {
 module.exports = {
   db,
   testConnection,
-  runMigrations
+  runMigrations,
 };

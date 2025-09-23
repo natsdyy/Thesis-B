@@ -292,8 +292,9 @@
   };
 
   const checkScreenSize = () => {
-    if (window.innerWidth >= 1024) {
-      closeMobileMenu();
+    if (window.innerWidth >= 1024 && props.isMobileMenuOpen) {
+      // On desktop widths, ensure mobile sidebar is closed via parent
+      emit('close-mobile-menu');
     }
   };
 

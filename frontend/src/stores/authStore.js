@@ -176,20 +176,74 @@ export const useAuthStore = defineStore('auth', () => {
     return permissionKeys.some((key) => checkPermission(key));
   };
 
+  const refreshUserData = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      console.warn('No token found for refreshing user data');
+      return false;
+    }
+
+    try {
+      console.log('Refreshing user data from API...');
+      const response = await axios.get(`${apiConfig.baseURL}/employees/me`);
+
+      if (response.data.success) {
+        const employeeData = response.data.data;
+
+        // Map employee data to user format
+        const userData = {
+          id: employeeData.id,
+          employee_id: employeeData.employee_id,
+          first_name: employeeData.first_name,
+          last_name: employeeData.last_name,
+          name: `${employeeData.first_name} ${employeeData.last_name}`,
+          email: employeeData.email,
+          role_id: employeeData.role_id,
+          role: employeeData.role,
+          department: employeeData.department,
+          branch_id: employeeData.branch_id,
+          photo_url: employeeData.photo_url || null,
+        };
+
+        user.value = userData;
+        isAuthenticated.value = true;
+
+        // Update localStorage with fresh data
+        localStorage.setItem('user', JSON.stringify(userData));
+        localStorage.setItem('isAuthenticated', 'true');
+
+        console.log('User data refreshed successfully:', userData);
+        return true;
+      } else {
+        console.warn('Failed to refresh user data:', response.data.message);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error refreshing user data:', error);
+      return false;
+    }
+  };
+
   const initializeAuth = async () => {
     const storedUser = localStorage.getItem('user');
     const storedAuth = localStorage.getItem('isAuthenticated');
+    const token = localStorage.getItem('token');
 
-    if (storedUser && storedAuth === 'true') {
+    if (storedUser && storedAuth === 'true' && token) {
       try {
         user.value = JSON.parse(storedUser);
         isAuthenticated.value = true;
 
-        // Validate the session to ensure role is still active
-        const isValid = await validateSession();
-        if (!isValid) {
-          error.value =
-            'Your access has been revoked. Please contact your administrator.';
+        // Try to refresh user data from API for fresh information
+        const refreshed = await refreshUserData();
+
+        if (!refreshed) {
+          // If refresh failed, validate the session with stored data
+          const isValid = await validateSession();
+          if (!isValid) {
+            error.value =
+              'Your access has been revoked. Please contact your administrator.';
+          }
         }
       } catch (e) {
         console.error('Error parsing stored user data:', e);
@@ -220,6 +274,7 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     setUser,
     validateSession,
+    refreshUserData,
     checkPermission,
     hasAnyPermission,
     initializeAuth,

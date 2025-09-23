@@ -77,21 +77,33 @@ class POSOrder {
         .limit(limit)
         .offset(offset);
 
-      // Fetch items for each order
-      const ordersWithItems = await Promise.all(
-        orders.map(async (order) => {
-          const items = await db("pos_order_items as poi")
-            .leftJoin("menu_items as mi", "poi.menu_item_id", "mi.id")
-            .select("poi.*", "mi.menu_item_name", "mi.image_url", "mi.category")
-            .where("poi.order_id", order.id)
-            .orderBy("poi.id");
+      // Fetch all items for all orders in a single query to avoid N+1
+      const orderIds = orders.map((order) => order.id);
+      let items = [];
 
-          return {
-            ...order,
-            items,
-          };
-        })
-      );
+      if (orderIds.length > 0) {
+        items = await db("pos_order_items as poi")
+          .leftJoin("menu_items as mi", "poi.menu_item_id", "mi.id")
+          .select("poi.*", "mi.menu_item_name", "mi.image_url", "mi.category")
+          .whereIn("poi.order_id", orderIds)
+          .orderBy("poi.order_id")
+          .orderBy("poi.id");
+      }
+
+      // Group items by order_id
+      const itemsByOrderId = items.reduce((acc, item) => {
+        if (!acc[item.order_id]) {
+          acc[item.order_id] = [];
+        }
+        acc[item.order_id].push(item);
+        return acc;
+      }, {});
+
+      // Combine orders with their items
+      const ordersWithItems = orders.map((order) => ({
+        ...order,
+        items: itemsByOrderId[order.id] || [],
+      }));
 
       return { orders: ordersWithItems, total };
     } catch (error) {
@@ -195,6 +207,32 @@ class POSOrder {
     const trx = await db.transaction();
 
     try {
+      // Validate that no expired items are being sold
+      if (orderData.items && orderData.items.length > 0) {
+        const today = new Date().toISOString().split("T")[0];
+
+        for (const item of orderData.items) {
+          // Check if the menu item has branch inventory with expiry date
+          const branchInventory = await trx("branch_inventory")
+            .where("item_name", item.item_name)
+            .where("item_type", "production")
+            .where("branch_id", orderData.branch_id)
+            .whereNull("deleted_at")
+            .first();
+
+          if (branchInventory && branchInventory.expiry_date) {
+            const expiryDate = new Date(branchInventory.expiry_date)
+              .toISOString()
+              .split("T")[0];
+            if (expiryDate <= today) {
+              throw new Error(
+                `Cannot sell expired item: ${item.item_name} (expired on ${expiryDate})`
+              );
+            }
+          }
+        }
+      }
+
       // Generate order number
       const orderNumber = this.generateOrderNumber();
 
@@ -354,21 +392,65 @@ class POSOrder {
   }
 
   // Void order (cancel the order)
-  static async voidOrder(id, voidReason, voidedBy) {
+  static async voidOrder(
+    id,
+    voidReason,
+    voidedBy,
+    lossAmount = 0,
+    refundOnCompleted = false
+  ) {
     const trx = await db.transaction();
 
     try {
-      // Check if order can be voided
+      // Check if order can be voided/refunded
       const order = await trx("pos_sales_orders")
         .where("id", id)
-        .whereIn("status", ["pending", "processing"])
+        .whereIn("status", ["pending", "processing", "completed"])
         .first();
 
       if (!order) {
         throw new Error(
-          "Order not found or cannot be voided (already completed/voided)"
+          "Order not found or cannot be voided/refunded (already voided)"
         );
       }
+
+      // Determine if this is a refund (completed order) or void (pending/processing order)
+      const isCompletedOrder = order.status === "completed";
+      const isPendingOrder =
+        order.status === "pending" || order.status === "processing";
+
+      // Define void reasons that should be treated as refunds (no inventory deduction, no loss profit)
+      const refundReasons = [
+        "customer_cancelled",
+        "wrong_order",
+        "duplicate_order",
+        "payment_issue",
+        "system_error",
+      ];
+
+      // Define void reasons that should deduct inventory and record loss profit
+      const lossReasons = [
+        "staff_error",
+        "item_damaged",
+        "expired_item",
+        "quality_issue",
+        "preparation_error",
+        "custom",
+      ];
+
+      // Normalize reason to snake_case to accept labels from older clients
+      const normalize = (s) =>
+        String(s || "")
+          .toLowerCase()
+          .replaceAll(" ", "_");
+      const normalizedReason = normalize(voidReason);
+
+      const isRefundReason =
+        refundReasons.includes(voidReason) ||
+        refundReasons.includes(normalizedReason);
+      const isLossReason =
+        lossReasons.includes(voidReason) ||
+        lossReasons.includes(normalizedReason);
 
       // Update order status
       const [updatedOrder] = await trx("pos_sales_orders")
@@ -381,6 +463,118 @@ class POSOrder {
           updated_at: new Date(),
         })
         .returning("*");
+
+      // Handle inventory deduction and loss profit recording based on void reason and order status
+      if (isCompletedOrder) {
+        // For completed orders (refunds):
+        // Treat BOTH refund and loss reasons as business loss. Inventory already deducted at completion.
+        // We do not re-deduct inventory; we only record loss profit.
+        if (isLossReason || isRefundReason) {
+          // Completed refunds/loss: DO NOT re-deduct inventory (it was deducted at completion)
+          // Only record the loss profit
+          console.log(
+            `Refund(${voidReason}) on completed order - inventory stays deducted, recording loss profit`
+          );
+
+          // Record loss profit if amount is greater than 0
+          const amountToRecord =
+            parseFloat(lossAmount) > 0
+              ? parseFloat(lossAmount)
+              : parseFloat(order.total_amount) || 0;
+          if (amountToRecord > 0) {
+            await trx("loss_profit_records").insert({
+              order_id: id,
+              order_number: order.order_number,
+              branch_id: order.branch_id,
+              loss_amount: amountToRecord,
+              void_reason: voidReason,
+              voided_by: voidedBy,
+              recorded_at: new Date(),
+              created_at: new Date(),
+              updated_at: new Date(),
+            });
+          }
+        } else {
+          // Refund: do NOT deduct inventory, do NOT record loss profit
+          console.log(
+            `Refund reason "${voidReason}" treated as REFUND - no inventory deduction, no loss profit`
+          );
+          // Inventory stays the same, no loss profit recorded
+        }
+      } else if (isPendingOrder) {
+        // For pending/processing orders (voids): handle based on reason type
+        if (isLossReason) {
+          // Loss void: deduct inventory and record loss profit
+          console.log(
+            `Void reason "${voidReason}" treated as LOSS - deducting inventory and recording loss profit`
+          );
+
+          // Deduct inventory for each item in the order
+          const orderItems = await trx("pos_sales_order_items")
+            .where("order_id", id)
+            .select("menu_item_id", "quantity");
+
+          for (const item of orderItems) {
+            await trx("inventory_items")
+              .where("menu_item_id", item.menu_item_id)
+              .where("branch_id", order.branch_id)
+              .decrement("current_stock", item.quantity);
+          }
+
+          // Record loss profit if amount is greater than 0
+          if (lossAmount > 0) {
+            await trx("loss_profit_records").insert({
+              order_id: id,
+              order_number: order.order_number,
+              branch_id: order.branch_id,
+              loss_amount: lossAmount,
+              void_reason: voidReason,
+              voided_by: voidedBy,
+              recorded_at: new Date(),
+              created_at: new Date(),
+              updated_at: new Date(),
+            });
+          }
+        } else {
+          // Refund void: do NOT deduct inventory, do NOT record loss profit
+          console.log(
+            `Void reason "${voidReason}" treated as REFUND - no inventory deduction, no loss profit`
+          );
+          // Inventory stays the same, no loss profit recorded
+        }
+      } else {
+        // For unknown reasons, default to loss behavior for safety
+        console.log(
+          `Unknown void reason "${voidReason}" - defaulting to LOSS behavior`
+        );
+
+        // Deduct inventory for each item in the order
+        const orderItems = await trx("pos_sales_order_items")
+          .where("order_id", id)
+          .select("menu_item_id", "quantity");
+
+        for (const item of orderItems) {
+          await trx("inventory_items")
+            .where("menu_item_id", item.menu_item_id)
+            .where("branch_id", order.branch_id)
+            .decrement("current_stock", item.quantity);
+        }
+
+        // Record loss profit if amount is greater than 0
+        if (lossAmount > 0) {
+          await trx("loss_profit_records").insert({
+            order_id: id,
+            order_number: order.order_number,
+            branch_id: order.branch_id,
+            loss_amount: lossAmount,
+            void_reason: voidReason,
+            voided_by: voidedBy,
+            recorded_at: new Date(),
+            created_at: new Date(),
+            updated_at: new Date(),
+          });
+        }
+      }
 
       await trx.commit();
       return updatedOrder;
@@ -415,15 +609,268 @@ class POSOrder {
         )
         .first();
 
+      // Get refunded orders to adjust total sales
+      let refundedAmount = 0;
+      try {
+        const refundedQuery = db("pos_sales_orders")
+          .where("branch_id", branchId)
+          .where("status", "void")
+          .whereIn("void_reason", [
+            "customer_cancelled",
+            "wrong_order",
+            "duplicate_order",
+            "payment_issue",
+            "system_error",
+            "Customer Cancelled",
+            "Wrong Order",
+            "Duplicate Order",
+            "Payment Issue",
+            "System Error",
+          ]);
+
+        if (dateFrom) {
+          refundedQuery.where("voided_at", ">=", dateFrom);
+        }
+        if (dateTo) {
+          refundedQuery.where("voided_at", "<=", dateTo);
+        }
+
+        const refundedStats = await refundedQuery
+          .select(db.raw("SUM(total_amount) as total_refunded"))
+          .first();
+
+        refundedAmount = parseFloat(refundedStats.total_refunded) || 0;
+      } catch (error) {
+        console.error("Error fetching refunded amount:", error);
+      }
+
+      // Get disposal and loss profit data in a single optimized query
+      let disposalStats = { total_disposed: 0, loss_profit: 0 };
+
+      try {
+        // Single query to get both voided orders count and loss profit
+        const disposalQuery = db("pos_sales_orders")
+          .leftJoin(
+            "loss_profit_records",
+            "pos_sales_orders.id",
+            "loss_profit_records.order_id"
+          )
+          .where("pos_sales_orders.branch_id", branchId)
+          .where("pos_sales_orders.status", "void");
+
+        if (dateFrom) {
+          disposalQuery.where("pos_sales_orders.voided_at", ">=", dateFrom);
+        }
+        if (dateTo) {
+          disposalQuery.where("pos_sales_orders.voided_at", "<=", dateTo);
+        }
+
+        const disposalResult = await disposalQuery
+          .select(
+            db.raw("COUNT(DISTINCT pos_sales_orders.id) as total_voided"),
+            db.raw(
+              "COALESCE(SUM(loss_profit_records.loss_amount), 0) as total_loss"
+            )
+          )
+          .first();
+
+        disposalStats = {
+          total_disposed: parseInt(disposalResult.total_voided) || 0,
+          loss_profit: parseFloat(disposalResult.total_loss) || 0,
+        };
+      } catch (error) {
+        console.error("Error fetching disposal stats:", error);
+        // Keep default values if there's an error
+      }
+
+      // Calculate adjusted total sales (subtract refunded amounts)
+      const originalTotalSales = parseFloat(stats.total_sales) || 0;
+      const adjustedTotalSales = Math.max(
+        0,
+        originalTotalSales - refundedAmount
+      );
+
       return {
         total_orders: parseInt(stats.total_orders) || 0,
-        total_sales: parseFloat(stats.total_sales) || 0,
+        total_sales: adjustedTotalSales,
         average_order_value: parseFloat(stats.average_order_value) || 0,
         total_tax: parseFloat(stats.total_tax) || 0,
+        total_disposed: disposalStats.total_disposed,
+        loss_profit: disposalStats.loss_profit,
+        refunded_amount: refundedAmount,
+        original_total_sales: originalTotalSales, // For debugging
       };
     } catch (error) {
       console.error("Error fetching sales stats:", error);
       throw new Error("Failed to fetch sales statistics");
+    }
+  }
+
+  // Get disposal statistics
+  static async getDisposalStats(branchId, dateFrom = null, dateTo = null) {
+    try {
+      // Get voided orders count and total amount
+      let voidedQuery = db("pos_sales_orders")
+        .where("branch_id", branchId)
+        .where("status", "void");
+
+      if (dateFrom) {
+        voidedQuery = voidedQuery.where("created_at", ">=", dateFrom);
+      }
+      if (dateTo) {
+        voidedQuery = voidedQuery.where("created_at", "<=", dateTo);
+      }
+
+      const voidedStats = await voidedQuery
+        .select(
+          db.raw("COUNT(*) as total_voided"),
+          db.raw("SUM(total_amount) as total_voided_amount")
+        )
+        .first();
+
+      // Get loss profit from loss_profit_records
+      let lossQuery = db("loss_profit_records")
+        .leftJoin(
+          "pos_sales_orders",
+          "loss_profit_records.order_id",
+          "pos_sales_orders.id"
+        )
+        .where("pos_sales_orders.branch_id", branchId);
+
+      if (dateFrom) {
+        lossQuery = lossQuery.where(
+          "loss_profit_records.recorded_at",
+          ">=",
+          dateFrom
+        );
+      }
+      if (dateTo) {
+        lossQuery = lossQuery.where(
+          "loss_profit_records.recorded_at",
+          "<=",
+          dateTo
+        );
+      }
+
+      const lossStats = await lossQuery
+        .select(
+          db.raw("SUM(loss_profit_records.loss_amount) as total_loss"),
+          db.raw("COUNT(*) as total_loss_records")
+        )
+        .first();
+
+      return {
+        total_disposed: parseInt(voidedStats.total_voided) || 0,
+        total_voided_amount: parseFloat(voidedStats.total_voided_amount) || 0,
+        loss_profit: parseFloat(lossStats.total_loss) || 0,
+        total_loss_records: parseInt(lossStats.total_loss_records) || 0,
+      };
+    } catch (error) {
+      console.error("Error fetching disposal stats:", error);
+      throw new Error("Failed to fetch disposal statistics");
+    }
+  }
+
+  // Precise, bucketed loss/disposed trends
+  static async getLossTrends(
+    branchId,
+    dateFrom = null,
+    dateTo = null,
+    bucket = "day"
+  ) {
+    try {
+      // Determine date column for grouping
+      const voidedAtCol = "pos_sales_orders.voided_at";
+      const recordedAtCol = "loss_profit_records.recorded_at";
+
+      // Helper: build date bucket expression
+      const bucketExpr = (col) => {
+        if (bucket === "hour") {
+          return db.raw("to_char(??, 'HH24:00')", [col]);
+        }
+        // default day bucket
+        return db.raw("to_char(??, 'YYYY-MM-DD')", [col]);
+      };
+
+      // 1) Build time range array of labels
+      const start = dateFrom ? new Date(dateFrom) : null;
+      const end = dateTo ? new Date(dateTo) : null;
+      let labels = [];
+      if (bucket === "hour") {
+        labels = Array.from(
+          { length: 24 },
+          (_, i) => `${String(i).padStart(2, "0")}:00`
+        );
+      } else {
+        // daily labels between dateFrom and dateTo
+        const s = start ? new Date(start) : null;
+        const e = end ? new Date(end) : null;
+        if (s && e) {
+          const cur = new Date(s.getFullYear(), s.getMonth(), s.getDate());
+          const stop = new Date(e.getFullYear(), e.getMonth(), e.getDate());
+          while (cur <= stop) {
+            const y = cur.getFullYear();
+            const m = String(cur.getMonth() + 1).padStart(2, "0");
+            const d = String(cur.getDate()).padStart(2, "0");
+            labels.push(`${y}-${m}-${d}`);
+            cur.setDate(cur.getDate() + 1);
+          }
+        }
+      }
+
+      // 2) Query disposed counts grouped by bucket from voided orders
+      let disposedQuery = db("pos_sales_orders")
+        .where("pos_sales_orders.branch_id", branchId)
+        .where("pos_sales_orders.status", "void");
+      if (dateFrom)
+        disposedQuery = disposedQuery.where(voidedAtCol, ">=", dateFrom);
+      if (dateTo)
+        disposedQuery = disposedQuery.where(voidedAtCol, "<=", dateTo);
+
+      const disposedRows = await disposedQuery
+        .select({ label: bucketExpr(voidedAtCol) })
+        .count({ value: "pos_sales_orders.id" })
+        .groupBy("label");
+
+      // 3) Query precise loss amounts grouped by bucket from loss_profit_records
+      let lossQuery = db("loss_profit_records")
+        .leftJoin(
+          "pos_sales_orders",
+          "loss_profit_records.order_id",
+          "pos_sales_orders.id"
+        )
+        .where("pos_sales_orders.branch_id", branchId);
+      if (dateFrom) lossQuery = lossQuery.where(recordedAtCol, ">=", dateFrom);
+      if (dateTo) lossQuery = lossQuery.where(recordedAtCol, "<=", dateTo);
+
+      const lossRows = await lossQuery
+        .select({ label: bucketExpr(recordedAtCol) })
+        .sum({ value: "loss_profit_records.loss_amount" })
+        .groupBy("label");
+
+      // 4) Merge to dictionary
+      const disposedMap = new Map();
+      disposedRows.forEach((r) =>
+        disposedMap.set(String(r.label), parseInt(r.value) || 0)
+      );
+      const lossMap = new Map();
+      lossRows.forEach((r) =>
+        lossMap.set(String(r.label), parseFloat(r.value) || 0)
+      );
+
+      // 5) Build aligned arrays using labels; if labels empty (no range), fall back to rows' labels
+      if (labels.length === 0) {
+        const unique = new Set([...disposedMap.keys(), ...lossMap.keys()]);
+        labels = Array.from(unique).sort();
+      }
+
+      const disposed = labels.map((l) => disposedMap.get(l) || 0);
+      const loss = labels.map((l) => lossMap.get(l) || 0);
+
+      return { labels, disposed, loss };
+    } catch (error) {
+      console.error("Error building loss trends:", error);
+      throw new Error("Failed to build loss trends");
     }
   }
 

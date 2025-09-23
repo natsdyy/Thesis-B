@@ -29,6 +29,10 @@ export const usePOSStore = defineStore('pos', () => {
   const orderHistory = ref([]);
   const currentBranchId = ref(null);
 
+  // Selected transaction for void/refund operations
+  const selectedTransaction = ref(null);
+  const pendingAction = ref(null);
+
   // Getters
   const filteredMenuItems = computed(() => {
     if (selectedCategory.value === 'All') {
@@ -40,11 +44,17 @@ export const usePOSStore = defineStore('pos', () => {
   });
 
   const availableItems = computed(() => {
-    return filteredMenuItems.value.filter((item) => item.stock_quantity > 0);
+    return filteredMenuItems.value.filter(
+      (item) => item.stock_quantity > 0 && !item.is_expired
+    );
   });
 
   const outOfStockItems = computed(() => {
     return filteredMenuItems.value.filter((item) => item.stock_quantity <= 0);
+  });
+
+  const expiredItems = computed(() => {
+    return filteredMenuItems.value.filter((item) => item.is_expired);
   });
 
   const orderSubtotal = computed(() => {
@@ -114,17 +124,36 @@ export const usePOSStore = defineStore('pos', () => {
       const apiItems = Array.isArray(resp?.data) ? resp.data : [];
 
       // Map API rows to POS-friendly structure
-      const mapped = apiItems.map((it) => ({
-        id: it.id,
-        name: it.menu_item_name || it.item_name,
-        price: parseFloat(it.selling_price || 0),
-        category: it.category,
-        stock_quantity: Number(it.branch_stock ?? 0) || 0,
-        image_url: formatImageUrl(it.image_url),
-        description: it.description || '',
-        item_code: it.item_code,
-        menu_id: it.menu_id,
-      }));
+      const mapped = apiItems.map((it) => {
+        const today = new Date().toISOString().split('T')[0];
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+        const isExpired =
+          it.branch_expiry_date &&
+          new Date(it.branch_expiry_date).toISOString().split('T')[0] <= today;
+        const isExpiringSoon =
+          it.branch_expiry_date &&
+          new Date(it.branch_expiry_date).toISOString().split('T')[0] <=
+            tomorrowStr &&
+          !isExpired;
+
+        return {
+          id: it.id,
+          name: it.menu_item_name || it.item_name,
+          price: parseFloat(it.selling_price || 0),
+          category: it.category,
+          stock_quantity: Number(it.branch_stock ?? 0) || 0,
+          image_url: formatImageUrl(it.image_url),
+          description: it.description || '',
+          item_code: it.item_code,
+          menu_id: it.menu_id,
+          expiry_date: it.branch_expiry_date,
+          is_expired: isExpired,
+          is_expiring_soon: isExpiringSoon,
+        };
+      });
 
       // Merge or reset list based on options.reset
       const cleaned = mapped.filter((m) => m.stock_quantity >= 0);
@@ -435,7 +464,7 @@ export const usePOSStore = defineStore('pos', () => {
     resetOrder();
   };
 
-  const voidOrder = async (orderId, voidReason) => {
+  const voidOrder = async (orderId, voidReason, lossAmount = 0, flags = {}) => {
     try {
       loading.value = true;
       error.value = null;
@@ -443,7 +472,12 @@ export const usePOSStore = defineStore('pos', () => {
       const url = getApiUrl(`/pos/orders/${orderId}/void`);
       const { data: response } = await axios.post(
         url,
-        { void_reason: voidReason },
+        {
+          void_reason: voidReason,
+          loss_amount: lossAmount,
+          // Backend flag to differentiate refund timing behavior
+          refund_on_completed: Boolean(flags?.refund_on_completed),
+        },
         {
           baseURL: apiConfig.baseURL,
           headers: { ...getAuthHeaders() },
@@ -543,12 +577,15 @@ export const usePOSStore = defineStore('pos', () => {
       );
 
       if (response.success) {
-        return response.data;
+        return {
+          data: response.data,
+          pagination: response.pagination,
+        };
       }
-      return [];
+      return { data: [], pagination: { total: 0, limit: 20, offset: 0 } };
     } catch (err) {
       console.error('Error fetching order history:', err);
-      return [];
+      return { data: [], pagination: { total: 0, limit: 20, offset: 0 } };
     }
   };
 
@@ -632,13 +669,15 @@ export const usePOSStore = defineStore('pos', () => {
     try {
       // This would need a specific API endpoint for top selling items
       // For now, we'll fetch recent orders and calculate top items
-      const orders = await fetchOrderHistory({
+      const response = await fetchOrderHistory({
         branch_id: branchId,
         status: 'completed',
         limit: 100,
         date_from: dateFrom,
         date_to: dateTo,
       });
+
+      const orders = response.data || [];
 
       if (!orders || orders.length === 0) {
         return [];
@@ -654,7 +693,7 @@ export const usePOSStore = defineStore('pos', () => {
               itemCounts[key] = { quantity: 0, revenue: 0 };
             }
             itemCounts[key].quantity += item.quantity;
-            itemCounts[key].revenue += item.total_price;
+            itemCounts[key].revenue += parseFloat(item.total_price) || 0;
           });
         }
       });
@@ -664,12 +703,74 @@ export const usePOSStore = defineStore('pos', () => {
         .map(([name, data]) => ({
           name,
           quantity: data.quantity,
-          revenue: data.revenue,
+          revenue: parseFloat(data.revenue.toFixed(2)),
         }))
         .sort((a, b) => b.quantity - a.quantity)
         .slice(0, 10); // Top 10 items
     } catch (err) {
       console.error('Error fetching top selling items:', err);
+      return [];
+    }
+  };
+
+  // Fetch precise loss/disposed trends from backend
+  const fetchLossTrends = async (
+    branchId,
+    dateFrom = null,
+    dateTo = null,
+    bucket = 'auto'
+  ) => {
+    try {
+      const url = getApiUrl('/pos/loss-trends');
+      const params = new URLSearchParams();
+      if (branchId) params.append('branch_id', branchId);
+      if (dateFrom) params.append('date_from', dateFrom);
+      if (dateTo) params.append('date_to', dateTo);
+      if (bucket) params.append('bucket', bucket);
+
+      const { data: response } = await axios.get(
+        `${url}?${params.toString()}`,
+        {
+          baseURL: apiConfig.baseURL,
+          headers: { ...getAuthHeaders() },
+        }
+      );
+
+      if (response.success) {
+        return response.data; // { labels, disposed, loss }
+      }
+      return { labels: [], disposed: [], loss: [] };
+    } catch (err) {
+      console.error('Error fetching loss trends:', err);
+      return { labels: [], disposed: [], loss: [] };
+    }
+  };
+
+  // Fetch all branch menu items (read-only helper, does not mutate store)
+  const fetchBranchMenuItems = async (
+    branchId,
+    { includeUnavailable = false } = {}
+  ) => {
+    try {
+      const url = getApiUrl('/pos/menu-items');
+      const params = new URLSearchParams();
+      if (branchId) params.append('branch_id', String(branchId));
+      if (!includeUnavailable) params.append('is_available', 'true');
+      params.append('limit', '10000');
+
+      const { data } = await axios.get(`${url}?${params.toString()}`, {
+        baseURL: apiConfig.baseURL,
+        headers: { ...getAuthHeaders() },
+      });
+
+      const items = Array.isArray(data?.data) ? data.data : [];
+      return items.map((it) => ({
+        id: it.id,
+        name: it.menu_item_name || it.item_name || it.name,
+        category: it.category,
+      }));
+    } catch (err) {
+      console.warn('Failed to fetch branch menu items:', err);
       return [];
     }
   };
@@ -690,6 +791,17 @@ export const usePOSStore = defineStore('pos', () => {
     await fetchMenuItems({ ...options, reset: false });
   };
 
+  // Selected transaction management
+  const setSelectedTransaction = (transaction, action) => {
+    selectedTransaction.value = transaction;
+    pendingAction.value = action;
+  };
+
+  const clearSelectedTransaction = () => {
+    selectedTransaction.value = null;
+    pendingAction.value = null;
+  };
+
   return {
     // State
     menuItems,
@@ -706,6 +818,7 @@ export const usePOSStore = defineStore('pos', () => {
     filteredMenuItems,
     availableItems,
     outOfStockItems,
+    expiredItems,
     orderSubtotal,
     orderTax,
     orderTotal,
@@ -731,8 +844,16 @@ export const usePOSStore = defineStore('pos', () => {
     fetchDailySummary,
     fetchSalesStats,
     fetchTopSellingItems,
+    fetchBranchMenuItems,
     setSelectedCategory,
     initialize,
     getNextOrderNumber,
+    fetchLossTrends,
+
+    // Selected transaction
+    selectedTransaction,
+    pendingAction,
+    setSelectedTransaction,
+    clearSelectedTransaction,
   };
 });

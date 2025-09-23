@@ -12,10 +12,10 @@
     <div class="card bg-base-100 shadow-xl">
       <div class="card-body">
         <h2 class="card-title text-2xl mb-4">Current Status</h2>
-        <div class="alert" :class="currentStatus === 'checked-in' ? 'alert-success' : 'alert-info'">
+        <div class="alert " :class="currentStatus === 'checked-in' ? 'alert-success border-none' : 'bg-primaryColor text-white border-none'">
           <Clock class="w-5 h-5" />
           <div>
-            <div class="font-medium">Current Status</div>
+            <div class="font-medium ">Current Status</div>
             <div class="text-sm opacity-80">
               {{ currentStatus === 'checked-in' ? 'Currently Checked In' : 'Ready to Check In' }}
             </div>
@@ -36,7 +36,7 @@
           <p class="text-sm text-base-content/70 mb-4">
             Generate QR codes for time-in and time-out
           </p>
-          <button @click="openQRModal" class="btn btn-primary w-full">
+          <button @click="openQRModal" class="btn bg-primaryColor text-white font-thin w-full hover:bg-primaryColor/80">
             <Clock class="w-4 h-4 mr-2" />
             Open QR Generator
           </button>
@@ -50,7 +50,7 @@
           <p class="text-sm text-base-content/70 mb-4">
             Record attendance manually
           </p>
-          <button @click="openManualModal" class="btn btn-outline w-full">
+          <button @click="openManualModal" class="btn btn-outline font-thin w-full hover:bg-base-200">
             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
             </svg>
@@ -65,7 +65,7 @@
       <div class="card-body">
         <div class="flex justify-between items-center mb-4">
           <h3 class="card-title">My Attendance History</h3>
-          <button @click="refreshAttendance" class="btn btn-sm btn-outline">
+          <button @click="refreshAttendance" class="btn btn-sm btn-outline font-thin">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
             </svg>

@@ -100,6 +100,7 @@
     description: '',
     latitude: null,
     longitude: null,
+    radius_meters: 2,
   });
 
   // Computed properties
@@ -312,7 +313,8 @@
 
       // Add click listener to map
       map.value.on('click', (event) => {
-        placeMarker(event.latlng);
+        showToast('info', 'Fetching address for selected point...');
+        placeMarker(event.latlng, true);
       });
 
       // If there's a search query, search for it
@@ -352,6 +354,7 @@
       mapContainer.value.appendChild(loadingDiv);
 
       // Search using Nominatim API
+      showToast('info', 'Searching location...');
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearch.value)}&limit=1&addressdetails=1`
       );
@@ -364,11 +367,13 @@
           const lat = parseFloat(location.lat);
           const lon = parseFloat(location.lon);
 
-          // Center map on search result
-          map.value.setView([lat, lon], 16);
+          // Center map on search result if map is ready
+          if (map.value) {
+            map.value.setView([lat, lon], 16);
+          }
 
-          // Place marker
-          placeMarker({ lat, lng: lon });
+          // Place marker and notify (works even if map isn't ready)
+          placeMarker({ lat, lng: lon }, true);
 
           // Update selected address
           selectedAddress.value = location.display_name;
@@ -414,6 +419,16 @@
         mapContainer.value.removeChild(loadingDiv);
       }
     }
+  };
+
+  // Wrapper to ensure toast fires immediately on UI action
+  const handleSearchClick = () => {
+    if (!locationSearch.value.trim()) {
+      showToast('warning', 'Please enter a location to search.');
+      return;
+    }
+    showToast('info', 'Searching location...');
+    searchLocation();
   };
 
   // Apply the selected address to the form
@@ -478,19 +493,20 @@
   };
 
   // Place marker on map and get address
-  const placeMarker = async (latLng) => {
-    if (!map.value) return;
+  const placeMarker = async (latLng, notify = false) => {
+    // If map is initialized, maintain marker on the map
+    if (map.value) {
+      // Remove existing marker
+      if (marker.value) {
+        map.value.removeLayer(marker.value);
+      }
 
-    // Remove existing marker
-    if (marker.value) {
-      map.value.removeLayer(marker.value);
+      // Create new marker using Leaflet
+      marker.value = L.marker([latLng.lat, latLng.lng], {
+        draggable: true,
+        title: 'Branch Location',
+      }).addTo(map.value);
     }
-
-    // Create new marker using Leaflet
-    marker.value = L.marker([latLng.lat, latLng.lng], {
-      draggable: true,
-      title: 'Branch Location',
-    }).addTo(map.value);
 
     // Save selected coordinates
     selectedLat.value = latLng.lat;
@@ -535,11 +551,20 @@
       selectedAddress.value = `${latLng.lat.toFixed(6)}, ${latLng.lng.toFixed(6)}`;
     }
 
-    // Add drag listener to update address when marker is moved
-    marker.value.on('dragend', (event) => {
-      const newLatLng = event.target.getLatLng();
-      placeMarker({ lat: newLatLng.lat, lng: newLatLng.lng });
-    });
+    if (notify) {
+      showToast(
+        'success',
+        `Location found! Coordinates: ${latLng.lat.toFixed(6)}, ${latLng.lng.toFixed(6)}. Click "Apply Address" to use this location.`
+      );
+    }
+
+    // Add drag listener to update address when marker is moved (only if map exists)
+    if (map.value && marker.value) {
+      marker.value.on('dragend', (event) => {
+        const newLatLng = event.target.getLatLng();
+        placeMarker({ lat: newLatLng.lat, lng: newLatLng.lng }, false);
+      });
+    }
   };
 
   // Map control functions
@@ -759,6 +784,9 @@
       country: '',
       is_active: true,
       description: '',
+      latitude: null,
+      longitude: null,
+      radius_meters: 2,
     };
   };
 
@@ -773,12 +801,21 @@
         try {
           confirmModal.value.loading = true;
 
+          // Ensure numeric radius value
+          if (branchForm.value.radius_meters !== undefined) {
+            const parsed = parseFloat(branchForm.value.radius_meters);
+            branchForm.value.radius_meters = Number.isNaN(parsed) ? 2 : parsed;
+          }
+
           if (editingBranch.value) {
             // Build payload; trigger backend auto-geocode when address changes
             const payload = { ...branchForm.value };
             const prevAddr = (editingBranch.value.address || '').trim();
             const nextAddr = (branchForm.value.address || '').trim();
-            if (prevAddr !== nextAddr) {
+            const hasCoords =
+              Number.isFinite(payload.latitude) &&
+              Number.isFinite(payload.longitude);
+            if (prevAddr !== nextAddr && !hasCoords) {
               payload.auto_geocode = true;
             }
             await branchStore.updateBranch(editingBranch.value.id, payload);
@@ -787,7 +824,8 @@
               `Branch "${branchForm.value.name}" updated successfully`
             );
           } else {
-            await branchStore.createBranch(branchForm.value);
+            const payload = { ...branchForm.value };
+            await branchStore.createBranch(payload);
             showToast(
               'success',
               `Branch "${branchForm.value.name}" created successfully`
@@ -1286,7 +1324,7 @@
 
           <!-- Location Details Section -->
           <div
-            class="grid grid-cols-1 lg:grid-cols-4 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
+            class="grid grid-cols-1 lg:grid-cols-5 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
           >
             <!-- City -->
             <div class="form-control">
@@ -1338,6 +1376,24 @@
                 placeholder="Enter country"
                 class="input input-sm sm:input-md input-bordered w-full"
               />
+            </div>
+
+            <!-- Radius (meters) -->
+            <div class="form-control">
+              <label class="label mb-1">
+                <span class="label-text">Allowed Radius (meters)</span>
+              </label>
+              <input
+                v-model.number="branchForm.radius_meters"
+                type="number"
+                min="1"
+                step="0.5"
+                placeholder="e.g., 2"
+                class="input input-sm sm:input-md input-bordered w-full"
+              />
+              <span class="text-xs text-gray-500 mt-1"
+                >Used for attendance geofencing tolerance.</span
+              >
             </div>
           </div>
 
@@ -1604,11 +1660,11 @@
                 themeStore.themeClasses.input,
               ]"
               placeholder="Search for business location, landmark, or address..."
-              @keyup.enter="searchLocation"
+              @keyup.enter="handleSearchClick"
             />
             <div class="flex gap-2 justify-end items-center">
               <button
-                @click="searchLocation"
+                @click="handleSearchClick"
                 class="btn btn-sm bg-gray-200 font-thin hover:bg-gray-300 text-gray-700 border-none"
               >
                 <font-awesome-icon icon="fa-solid fa-search" />

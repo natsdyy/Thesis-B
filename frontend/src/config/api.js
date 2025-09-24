@@ -19,7 +19,11 @@ function resolveBaseURL() {
       // Use the Wi-Fi network IP (192.168.18.5) as it has proper gateway
       return 'http://192.168.18.5:5000/api';
     }
-    // For production or other environments, use window origin
+    // For production domain, use the production backend
+    if (window.location.origin.includes('countryside-steakhouse.site')) {
+      return 'https://www.countryside-steakhouse.site/api';
+    }
+    // For other environments, use window origin
     return `${window.location.origin.replace(/\/$/, '')}/api`;
   }
 

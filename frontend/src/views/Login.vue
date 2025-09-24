@@ -3,7 +3,14 @@
   import { useAuthStore } from '../stores/authStore';
   import { useAttendanceStore } from '../stores/attendanceStore';
   import { useRouter } from 'vue-router';
-  import { Eye, EyeOff, ArrowLeft, CheckCircle, XCircle, Clock } from 'lucide-vue-next';
+  import {
+    Eye,
+    EyeOff,
+    ArrowLeft,
+    CheckCircle,
+    XCircle,
+    Clock,
+  } from 'lucide-vue-next';
   import { nextTick } from 'vue';
   import { QrcodeStream } from 'vue-qrcode-reader';
   import { computed } from 'vue';
@@ -198,68 +205,71 @@
 
   const processAttendance = async () => {
     if (!scanResult.value) return;
-    
+
     try {
       isProcessingAttendance.value = true;
       attendanceResult.value = null;
-      
+
       // Try to parse the QR code data
       let qrData;
       try {
         qrData = JSON.parse(scanResult.value);
       } catch (parseError) {
         // If it's not JSON, treat it as a simple QR code string
-        qrData = scanResult.value;
+        qrData = {
+          qr_code: scanResult.value,
+          action: 'time-in', // Default action
+          employee_id: 'MANUAL_SCAN', // This will need to be handled differently
+          location: 'Manual Scan',
+          timestamp: new Date().toISOString(),
+          valid_until: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // 5 minutes from now
+        };
       }
-      
-      // Process the attendance based on the QR code type
+
+      // Use the public scan endpoint (no authentication required)
       let result;
-      if (typeof qrData === 'object' && qrData.action) {
-        // This is a mobile app QR code with action data
-        if (qrData.action === 'time-in') {
-          result = await attendanceStore.timeIn(qrData.qr_code || scanResult.value);
-        } else if (qrData.action === 'time-out') {
-          result = await attendanceStore.timeOut();
-        } else {
-          throw new Error('Invalid QR code action');
-        }
+      if (typeof qrData === 'object' && qrData.action && qrData.employee_id) {
+        // This is a properly formatted mobile app QR code
+        result = await attendanceStore.scanQRCode(qrData);
       } else {
-        // This is a regular QR code, try time-in first
-        try {
-          result = await attendanceStore.timeIn(scanResult.value);
-        } catch (timeInError) {
-          // If time-in fails, try time-out
-          result = await attendanceStore.timeOut();
-        }
+        // Fallback for simple QR codes - try to process as time-in
+        const fallbackQRData = {
+          qr_code: scanResult.value,
+          action: 'time-in',
+          employee_id: 'MANUAL_SCAN',
+          location: 'Manual Scan',
+          timestamp: new Date().toISOString(),
+          valid_until: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        };
+        result = await attendanceStore.scanQRCode(fallbackQRData);
       }
-      
+
       attendanceResult.value = {
         success: true,
         message: result.message,
-        data: result.data
+        data: result.data,
       };
-      
+
       // Close scanner and show result
       closeScanner();
       showAttendanceResult.value = true;
-      
+
       // Auto-close result after 5 seconds
       setTimeout(() => {
         showAttendanceResult.value = false;
         attendanceResult.value = null;
       }, 5000);
-      
     } catch (error) {
       console.error('Attendance processing error:', error);
       attendanceResult.value = {
         success: false,
-        message: error.message || 'Failed to process attendance'
+        message: error.message || 'Failed to process attendance',
       };
-      
+
       // Close scanner and show error
       closeScanner();
       showAttendanceResult.value = true;
-      
+
       // Auto-close error after 5 seconds
       setTimeout(() => {
         showAttendanceResult.value = false;
@@ -609,7 +619,11 @@
       <div class="modal-box max-w-md">
         <div class="flex items-center justify-between mb-4">
           <h3 class="font-bold text-lg">
-            {{ attendanceResult?.success ? 'Attendance Recorded' : 'Attendance Error' }}
+            {{
+              attendanceResult?.success
+                ? 'Attendance Recorded'
+                : 'Attendance Error'
+            }}
           </h3>
           <button
             @click="closeAttendanceResult"
@@ -621,36 +635,49 @@
 
         <!-- Success State -->
         <div v-if="attendanceResult?.success" class="text-center">
-          <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div
+            class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4"
+          >
             <CheckCircle class="w-8 h-8 text-green-600" />
           </div>
           <h4 class="text-lg font-semibold text-green-600 mb-2">Success!</h4>
           <p class="text-gray-700 mb-4">{{ attendanceResult.message }}</p>
-          
+
           <!-- Show additional data if available -->
-          <div v-if="attendanceResult.data" class="bg-gray-50 rounded-lg p-3 text-sm text-left">
+          <div
+            v-if="attendanceResult.data"
+            class="bg-gray-50 rounded-lg p-3 text-sm text-left"
+          >
             <div v-if="attendanceResult.data.employee" class="mb-2">
-              <span class="font-medium">Employee:</span> {{ attendanceResult.data.employee.name }}
+              <span class="font-medium">Employee:</span>
+              {{ attendanceResult.data.employee.name }}
             </div>
             <div v-if="attendanceResult.data.action" class="mb-2">
-              <span class="font-medium">Action:</span> {{ attendanceResult.data.action.replace('-', ' ').toUpperCase() }}
+              <span class="font-medium">Action:</span>
+              {{ attendanceResult.data.action.replace('-', ' ').toUpperCase() }}
             </div>
             <div v-if="attendanceResult.data.time" class="mb-2">
-              <span class="font-medium">Time:</span> {{ new Date(attendanceResult.data.time).toLocaleString() }}
+              <span class="font-medium">Time:</span>
+              {{ new Date(attendanceResult.data.time).toLocaleString() }}
             </div>
             <div v-if="attendanceResult.data.location" class="mb-2">
-              <span class="font-medium">Location:</span> {{ attendanceResult.data.location }}
+              <span class="font-medium">Location:</span>
+              {{ attendanceResult.data.location }}
             </div>
           </div>
         </div>
 
         <!-- Error State -->
         <div v-else class="text-center">
-          <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div
+            class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4"
+          >
             <XCircle class="w-8 h-8 text-red-600" />
           </div>
           <h4 class="text-lg font-semibold text-red-600 mb-2">Error</h4>
-          <p class="text-gray-700 mb-4">{{ attendanceResult?.message || 'Failed to process attendance' }}</p>
+          <p class="text-gray-700 mb-4">
+            {{ attendanceResult?.message || 'Failed to process attendance' }}
+          </p>
         </div>
 
         <div class="modal-action">

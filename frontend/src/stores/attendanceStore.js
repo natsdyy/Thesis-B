@@ -274,6 +274,28 @@ export const useAttendanceStore = defineStore('attendance', () => {
     }
   };
 
+  const scanQRCode = async (qrData) => {
+    try {
+      loading.value = true;
+      error.value = null;
+
+      const response = await axios.post(getApiUrl('/attendance/scan'), {
+        qrData: qrData,
+      });
+
+      if (response.data.success) {
+        return response.data;
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (err) {
+      error.value = err.response?.data?.message || err.message;
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const getAttendanceReport = async (userId = null, startDate, endDate) => {
     try {
       loading.value = true;
@@ -334,6 +356,7 @@ export const useAttendanceStore = defineStore('attendance', () => {
     fetchTodayAttendance,
     fetchMyAttendance,
     validateQRCode,
+    scanQRCode,
     getAttendanceReport,
     clearError,
   };

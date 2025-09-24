@@ -18,9 +18,13 @@
   } from 'lucide-vue-next';
   import { useBranchContextStore } from '../../stores/branchContextStore';
   import { useEmployeeStore } from '../../stores/employeeStore.js';
+  import { useAttendanceStore } from '../../stores/attendanceStore';
+  import { apiConfig } from '../../config/api';
+  import EmployeeScheduleComponent from '../../components/branch/EmployeeScheduleComponent.vue';
 
   const branchContextStore = useBranchContextStore();
   const employeeStore = useEmployeeStore();
+  const attendanceStore = useAttendanceStore();
 
   // Local state following EmployeeManager pattern
   const searchQuery = ref('');
@@ -29,6 +33,7 @@
   const currentPage = ref(1);
   const itemsPerPage = ref(10);
   const loading = ref(false);
+  const activeTab = ref('overview');
 
   const branchEmployees = ref([]);
   const employeeStats = ref({
@@ -79,13 +84,25 @@
   });
 
   // Methods
+  const resolvePhotoUrl = (photoPath) => {
+    if (!photoPath) return null;
+    // If already absolute (http/https/blob), return as-is
+    if (/^(https?:)?\/\//i.test(photoPath) || photoPath.startsWith('blob:')) {
+      return photoPath;
+    }
+    // Build from backend base (strip trailing /api if present)
+    const backendBase = (apiConfig.baseURL || '').replace(/\/?api\/?$/, '');
+    return `${backendBase}${photoPath}`;
+  };
   const getStatusBadge = (status) => {
     const badges = {
-      Active: { class: 'badge-success', text: 'Active' },
-      'On Leave': { class: 'badge-warning', text: 'On Leave' },
-      Inactive: { class: 'badge-error', text: 'Inactive' },
+      Active: { class: 'bg-success/20 text-success', text: 'Active' },
+      'On Leave': { class: 'bg-warning/20 text-warning', text: 'On Leave' },
+      Inactive: { class: 'bg-error/20 text-error', text: 'Inactive' },
     };
-    return badges[status] || { class: 'badge-ghost', text: status };
+    return (
+      badges[status] || { class: 'bg-gray-500/20 text-gray-500', text: status }
+    );
   };
 
   const loadBranchEmployees = async () => {
@@ -106,35 +123,84 @@
         ? all.filter((e) => e.branch_id === branchId)
         : all;
 
-      // Map to view model fields used in template
-      branchEmployees.value = byBranch.map((e) => ({
-        id: e.id,
-        employee_id: e.employee_id,
-        first_name: e.first_name,
-        last_name: e.last_name,
-        email: e.email,
-        phone: e.phone_number,
-        role: e.role || e.job_title || 'Staff',
-        department: e.department,
-        status: e.status || (e.is_active ? 'Active' : 'Inactive'),
-        hire_date: e.created_at,
-        last_login: e.last_login,
-        attendance_today:
-          e.attendance_today ||
-          (e.status === 'On Leave' ? 'On Leave' : 'Present'),
-      }));
+      // Fetch today's attendance records for all employees (full-day window)
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 59, 999);
+      const startIso = startOfDay.toISOString();
+      const endIso = endOfDay.toISOString();
+
+      const attendanceReport = await attendanceStore.getAttendanceReport(
+        null,
+        startIso,
+        endIso
+      );
+      const todaysRecords = Array.isArray(attendanceReport)
+        ? attendanceReport
+        : [];
+
+      // Build latest record per employee for accurate on-duty computation
+      const latestByEmployeeKey = {};
+      const toMillis = (rec) => {
+        const fallback = rec.created_at || rec.time_in || rec.time_out;
+        const preferred = rec.time_out || rec.time_in || fallback;
+        return preferred ? new Date(preferred).getTime() : 0;
+      };
+      todaysRecords.forEach((rec) => {
+        const key = String(rec.employee_id);
+        const current = latestByEmployeeKey[key];
+        if (!current || toMillis(rec) > toMillis(current)) {
+          latestByEmployeeKey[key] = rec;
+        }
+      });
+
+      // Map to view model fields used in template and merge attendance
+      const mapped = byBranch.map((e) => {
+        const record =
+          latestByEmployeeKey[String(e.id)] ||
+          latestByEmployeeKey[String(e.employee_id)];
+        const isOnLeave = (e.status || '').toLowerCase() === 'on leave';
+        let attendanceToday = 'Absent';
+        let isOnDuty = false;
+        if (isOnLeave) {
+          attendanceToday = 'On Leave';
+        } else if (record) {
+          // If timed in today, mark Present; if timed out exists, still Present but not on duty
+          const hasTimeIn = Boolean(record.time_in);
+          const hasTimeOut = Boolean(record.time_out);
+          if (hasTimeIn) {
+            attendanceToday = 'Present';
+            isOnDuty = !hasTimeOut;
+          }
+        }
+
+        return {
+          id: e.id,
+          employee_id: e.employee_id,
+          first_name: e.first_name,
+          last_name: e.last_name,
+          photo_url: e.photo_url,
+          email: e.email,
+          phone: e.phone_number,
+          role: e.role || e.job_title || 'Staff',
+          department: e.department,
+          status: e.status || (e.is_active ? 'Active' : 'Inactive'),
+          hire_date: e.created_at,
+          last_login: e.last_login,
+          attendance_today: attendanceToday,
+          _on_duty: isOnDuty,
+        };
+      });
+
+      branchEmployees.value = mapped;
 
       employeeStats.value = {
-        totalEmployees: branchEmployees.value.length,
-        activeEmployees: branchEmployees.value.filter(
-          (emp) => emp.status === 'Active'
-        ).length,
-        onDutyEmployees: branchEmployees.value.filter(
-          (emp) => emp.attendance_today === 'Present'
-        ).length,
-        onLeaveEmployees: branchEmployees.value.filter(
-          (emp) => emp.status === 'On Leave'
-        ).length,
+        totalEmployees: mapped.length,
+        activeEmployees: mapped.filter((emp) => emp.status === 'Active').length,
+        onDutyEmployees: mapped.filter((emp) => emp._on_duty).length,
+        onLeaveEmployees: mapped.filter((emp) => emp.status === 'On Leave')
+          .length,
       };
     } catch (error) {
       console.error('Error loading branch employees:', error);
@@ -197,251 +263,306 @@
     </div>
 
     <div v-else class="space-y-6">
-      <!-- Stats Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div class="card bg-white shadow-lg">
-          <div class="card-body">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600">Total Staff</p>
-                <p class="text-2xl font-bold text-primaryColor">
-                  {{ employeeStats.totalEmployees }}
-                </p>
-              </div>
-              <div class="p-3 bg-blue-100 rounded-full">
-                <Users class="w-6 h-6 text-blue-600" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card bg-white shadow-lg">
-          <div class="card-body">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600">Active</p>
-                <p class="text-2xl font-bold text-green-600">
-                  {{ employeeStats.activeEmployees }}
-                </p>
-              </div>
-              <div class="p-3 bg-green-100 rounded-full">
-                <UserCheck class="w-6 h-6 text-green-600" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card bg-white shadow-lg">
-          <div class="card-body">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600">On Duty</p>
-                <p class="text-2xl font-bold text-blue-600">
-                  {{ employeeStats.onDutyEmployees }}
-                </p>
-              </div>
-              <div class="p-3 bg-blue-100 rounded-full">
-                <Clock class="w-6 h-6 text-blue-600" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card bg-white shadow-lg">
-          <div class="card-body">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-gray-600">On Leave</p>
-                <p class="text-2xl font-bold text-orange-600">
-                  {{ employeeStats.onLeaveEmployees }}
-                </p>
-              </div>
-              <div class="p-3 bg-orange-100 rounded-full">
-                <Calendar class="w-6 h-6 text-orange-600" />
-              </div>
-            </div>
-          </div>
-        </div>
+      <!-- Tabs -->
+      <div
+        class="tabs tabs-boxed mb-4 sm:mb-6 justify-center sm:justify-start w-full"
+      >
+        <button
+          @click="activeTab = 'overview'"
+          class="tab flex-1 sm:flex-none"
+          :class="{ 'tab-active': activeTab === 'overview' }"
+        >
+          <Users class="w-4 h-4 mr-1 sm:mr-2" />
+          <span class="hidden xs:inline">Overview</span>
+          <span class="xs:hidden">Overview</span>
+        </button>
+        <button
+          @click="activeTab = 'schedules'"
+          class="tab flex-1 sm:flex-none"
+          :class="{ 'tab-active': activeTab === 'schedules' }"
+        >
+          <Calendar class="w-4 h-4 mr-1 sm:mr-2" />
+          <span class="hidden xs:inline">Schedules</span>
+          <span class="xs:hidden">Schedules</span>
+        </button>
+        <button
+          @click="activeTab = 'overtime'"
+          class="tab flex-1 sm:flex-none"
+          :class="{ 'tab-active': activeTab === 'overtime' }"
+        >
+          <BadgeCheck class="w-4 h-4 mr-1 sm:mr-2" />
+          <span class="hidden xs:inline">Overtime Approvals</span>
+          <span class="xs:hidden">Overtime</span>
+        </button>
       </div>
 
-      <!-- Search and Filters -->
-      <div class="card bg-white shadow-lg">
-        <div class="card-body">
-          <div class="flex flex-col md:flex-row gap-4">
-            <!-- Search -->
-            <div class="flex-1">
-              <div class="relative">
-                <Search
-                  class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"
-                />
-                <input
-                  v-model="searchQuery"
-                  type="text"
-                  placeholder="Search employees..."
-                  class="input input-bordered w-full pl-10"
-                />
+      <!-- Overview Tab -->
+      <template v-if="activeTab === 'overview'">
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div class="card bg-white shadow-lg">
+            <div class="card-body">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">Total Staff</p>
+                  <p class="text-2xl font-bold text-primaryColor">
+                    {{ employeeStats.totalEmployees }}
+                  </p>
+                </div>
+                <div class="p-3 bg-primaryColor/10 rounded-full">
+                  <Users class="w-6 h-6 text-primaryColor" />
+                </div>
               </div>
             </div>
+          </div>
 
-            <!-- Status Filter -->
-            <select v-model="statusFilter" class="select select-bordered">
-              <option value="">All Status</option>
-              <option value="Active">Active</option>
-              <option value="On Leave">On Leave</option>
-              <option value="Inactive">Inactive</option>
-            </select>
+          <div class="card bg-white shadow-lg">
+            <div class="card-body">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">Active</p>
+                  <p class="text-2xl font-bold text-primaryColor">
+                    {{ employeeStats.activeEmployees }}
+                  </p>
+                </div>
+                <div class="p-3 bg-primaryColor/10 rounded-full">
+                  <UserCheck class="w-6 h-6 text-primaryColor" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card bg-white shadow-lg">
+            <div class="card-body">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">On Duty</p>
+                  <p class="text-2xl font-bold text-gray-600">
+                    {{ employeeStats.onDutyEmployees }}
+                  </p>
+                </div>
+                <div class="p-3 bg-gray-600/10 rounded-full">
+                  <Clock class="w-6 h-6 text-gray-600" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card bg-white shadow-lg">
+            <div class="card-body">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">On Leave</p>
+                  <p class="text-2xl font-bold text-warning">
+                    {{ employeeStats.onLeaveEmployees }}
+                  </p>
+                </div>
+                <div class="p-3 bg-warning/10 rounded-full">
+                  <Calendar class="w-6 h-6 text-warning" />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- Employee List -->
-      <div class="card bg-white shadow-lg">
-        <div class="card-body">
-          <h2 class="card-title text-primaryColor mb-4">
-            <Users class="w-5 h-5" />
-            Branch Staff
-          </h2>
+        <!-- Search and Filters -->
+        <div class="card bg-white shadow-lg">
+          <div class="card-body">
+            <div class="flex flex-col md:flex-row gap-4">
+              <!-- Search -->
+              <div class="flex-1">
+                <div class="relative">
+                  <Search
+                    class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"
+                  />
+                  <input
+                    v-model="searchQuery"
+                    type="text"
+                    placeholder="Search employees..."
+                    class="input input-bordered w-full pl-10"
+                  />
+                </div>
+              </div>
 
-          <!-- Loading State -->
-          <div v-if="loading" class="flex justify-center items-center py-12">
-            <div
-              class="loading loading-spinner loading-lg text-primaryColor"
-            ></div>
+              <!-- Status Filter -->
+              <select v-model="statusFilter" class="select select-bordered">
+                <option value="">All Status</option>
+                <option value="Active">Active</option>
+                <option value="On Leave">On Leave</option>
+                <option value="Inactive">Inactive</option>
+              </select>
+            </div>
           </div>
+        </div>
 
-          <!-- Employee Table -->
-          <div v-else-if="paginatedEmployees.length > 0" class="space-y-4">
-            <div class="overflow-x-auto">
-              <table class="table w-full">
-                <thead>
-                  <tr>
-                    <th>Employee</th>
-                    <th>Role</th>
-                    <th>Contact</th>
-                    <th>Status</th>
-                    <th>Attendance</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="employee in paginatedEmployees" :key="employee.id">
-                    <td>
-                      <div class="flex items-center space-x-3">
-                        <div
-                          class="w-10 h-10 bg-primaryColor text-white rounded-full flex items-center justify-center font-semibold"
-                        >
-                          {{ employee.first_name.charAt(0)
-                          }}{{ employee.last_name.charAt(0) }}
-                        </div>
-                        <div>
-                          <div class="font-semibold">
-                            {{ employee.first_name }} {{ employee.last_name }}
+        <!-- Employee List -->
+        <div class="card bg-white shadow-lg">
+          <div class="card-body">
+            <h2 class="card-title text-primaryColor mb-4">
+              <Users class="w-5 h-5" />
+              Branch Staff
+            </h2>
+
+            <!-- Loading State -->
+            <div v-if="loading" class="flex justify-center items-center py-12">
+              <div
+                class="loading loading-spinner loading-lg text-primaryColor"
+              ></div>
+            </div>
+
+            <!-- Employee Table -->
+            <div v-else-if="paginatedEmployees.length > 0" class="space-y-4">
+              <div class="overflow-x-auto">
+                <table class="table table-zebra w-full">
+                  <thead>
+                    <tr>
+                      <th>Employee</th>
+                      <th>Position</th>
+                      <th>Contact</th>
+
+                      <th>Attendance</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="employee in paginatedEmployees"
+                      :key="employee.id"
+                    >
+                      <td>
+                        <div class="flex items-center space-x-3">
+                          <template v-if="resolvePhotoUrl(employee.photo_url)">
+                            <img
+                              :src="resolvePhotoUrl(employee.photo_url)"
+                              alt="employee avatar"
+                              class="w-10 h-10 rounded-full object-cover"
+                            />
+                          </template>
+                          <template v-else>
+                            <div
+                              class="w-10 h-10 bg-primaryColor text-white rounded-full flex items-center justify-center font-semibold"
+                            >
+                              {{ employee.first_name.charAt(0)
+                              }}{{ employee.last_name.charAt(0) }}
+                            </div>
+                          </template>
+                          <div>
+                            <div class="font-semibold">
+                              {{ employee.first_name }} {{ employee.last_name }}
+                            </div>
                           </div>
-                          <div class="text-sm text-gray-500">
-                            {{ employee.employee_id }}
+                        </div>
+                      </td>
+                      <td>
+                        <div class="font-medium">
+                          {{ employee.role }}
+                        </div>
+                      </td>
+                      <td>
+                        <div class="text-sm">
+                          <div class="flex items-center mb-1">
+                            <Mail class="w-3 h-3 mr-1 text-gray-400" />
+                            {{ employee.email }}
+                          </div>
+                          <div class="flex items-center">
+                            <Phone class="w-3 h-3 mr-1 text-gray-400" />
+                            {{ employee.phone }}
                           </div>
                         </div>
-                      </div>
-                    </td>
-                    <td>
-                      <div class="badge badge-outline">{{ employee.role }}</div>
-                    </td>
-                    <td>
-                      <div class="text-sm">
-                        <div class="flex items-center mb-1">
-                          <Mail class="w-3 h-3 mr-1 text-gray-400" />
-                          {{ employee.email }}
-                        </div>
+                      </td>
+
+                      <td>
                         <div class="flex items-center">
-                          <Phone class="w-3 h-3 mr-1 text-gray-400" />
-                          {{ employee.phone }}
+                          <div
+                            :class="[
+                              'w-2 h-2 rounded-full mr-2',
+                              employee.attendance_today === 'Present'
+                                ? 'bg-success'
+                                : employee.attendance_today === 'On Leave'
+                                  ? 'bg-warning'
+                                  : 'bg-error',
+                            ]"
+                          ></div>
+                          <span class="text-sm">{{
+                            employee.attendance_today
+                          }}</span>
                         </div>
-                      </div>
-                    </td>
-                    <td>
-                      <div
-                        :class="[
-                          'badge',
-                          getStatusBadge(employee.status).class,
-                        ]"
-                      >
-                        {{ getStatusBadge(employee.status).text }}
-                      </div>
-                    </td>
-                    <td>
-                      <div class="flex items-center">
+                      </td>
+                      <td>
                         <div
                           :class="[
-                            'w-2 h-2 rounded-full mr-2',
-                            employee.attendance_today === 'Present'
-                              ? 'bg-green-500'
-                              : employee.attendance_today === 'On Leave'
-                                ? 'bg-orange-500'
-                                : 'bg-red-500',
+                            'badge badge-sm border-none font-medium',
+                            getStatusBadge(employee.status).class,
                           ]"
-                        ></div>
-                        <span class="text-sm">{{
-                          employee.attendance_today
-                        }}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <div class="flex items-center space-x-2">
-                        <button
-                          @click="viewEmployee(employee)"
-                          class="btn btn-sm btn-ghost"
-                          title="View Details"
                         >
-                          <Eye class="w-4 h-4" />
-                        </button>
-                        <button
-                          @click="editEmployee(employee)"
-                          class="btn btn-sm btn-ghost"
-                          title="Edit Employee"
-                        >
-                          <Edit class="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+                          {{ getStatusBadge(employee.status).text }}
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
 
-            <!-- Pagination -->
-            <div class="flex justify-center mt-6">
-              <div class="join">
-                <button
-                  :disabled="currentPage === 1"
-                  @click="currentPage--"
-                  class="join-item btn"
-                >
-                  «
-                </button>
-                <button class="join-item btn">
-                  Page {{ currentPage }} of {{ totalPages }}
-                </button>
-                <button
-                  :disabled="currentPage === totalPages"
-                  @click="currentPage++"
-                  class="join-item btn"
-                >
-                  »
-                </button>
+              <!-- Pagination -->
+              <div class="flex justify-center mt-6">
+                <div class="join">
+                  <button
+                    :disabled="currentPage === 1"
+                    @click="currentPage--"
+                    class="join-item btn"
+                  >
+                    «
+                  </button>
+                  <button class="join-item btn">
+                    Page {{ currentPage }} of {{ totalPages }}
+                  </button>
+                  <button
+                    :disabled="currentPage === totalPages"
+                    @click="currentPage++"
+                    class="join-item btn"
+                  >
+                    »
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
 
-          <!-- Empty State -->
-          <div v-else class="text-center py-12">
-            <Users class="w-16 h-16 mx-auto text-gray-400 mb-4" />
-            <h3 class="text-lg font-medium text-gray-900 mb-2">
-              No employees found
-            </h3>
-            <p class="text-gray-600">Try adjusting your search criteria</p>
+            <!-- Empty State -->
+            <div v-else class="text-center py-12">
+              <Users class="w-16 h-16 mx-auto text-gray-400 mb-4" />
+              <h3 class="text-lg font-medium text-gray-900 mb-2">
+                No employees found
+              </h3>
+              <p class="text-gray-600">Try adjusting your search criteria</p>
+            </div>
           </div>
         </div>
-      </div>
+      </template>
+
+      <!-- Schedules Tab -->
+      <template v-else-if="activeTab === 'schedules'">
+        <EmployeeScheduleComponent
+          :employees="branchEmployees"
+          :branch-id="currentBranch?.id"
+          @schedule-updated="refreshEmployees"
+        />
+      </template>
+
+      <!-- Overtime Approvals Tab -->
+      <template v-else>
+        <div class="card bg-white shadow-lg">
+          <div class="card-body">
+            <h2 class="card-title text-primaryColor mb-2">
+              <BadgeCheck class="w-5 h-5" />
+              Overtime Approvals
+            </h2>
+            <p class="text-gray-600">
+              Review, approve, or reject overtime requests submitted by branch
+              staff.
+            </p>
+          </div>
+        </div>
+      </template>
     </div>
   </div>
 </template>

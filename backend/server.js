@@ -35,6 +35,8 @@ const branchDistributionRoutes = require("./routes/branchDistributions");
 const branchInventoryRoutes = require("./routes/branchInventory");
 const branchReturnRoutes = require("./routes/branchReturns");
 const branchScheduleRoutes = require("./routes/branchSchedules");
+const employeeScheduleRoutes = require("./routes/employeeSchedules");
+const shiftTypesRoutes = require("./routes/shiftTypes");
 const { serve, setup } = require("./config/swagger");
 const posRoutes = require("./routes/pos");
 
@@ -75,14 +77,14 @@ const corsConfig = {
     const isLanDevOrigin = /^http:\/\/192\.168\.\d+\.\d+:(8080|80)$/.test(
       origin
     );
-    
+
     // Allow Railway domains
     const isRailwayOrigin = /^https:\/\/.*\.up\.railway\.app$/.test(origin);
 
     if (allowList.includes(origin) || isLanDevOrigin || isRailwayOrigin) {
       return callback(null, true);
     }
-    
+
     console.log(`CORS blocked origin: ${origin}`);
     return callback(new Error("Not allowed by CORS"));
   },
@@ -95,12 +97,16 @@ const corsConfig = {
 app.use(cors(corsConfig));
 app.use(express.json());
 // Serve uploads with proper CORS headers for images
-app.use("/uploads", (req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
-  next();
-}, express.static(require("path").join(__dirname, "uploads")));
+app.use(
+  "/uploads",
+  (req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET");
+    res.header("Access-Control-Allow-Headers", "Content-Type");
+    next();
+  },
+  express.static(require("path").join(__dirname, "uploads"))
+);
 
 // Serve frontend static files
 const frontendPath = require("path").join(__dirname, "..", "frontend", "dist");
@@ -108,10 +114,10 @@ app.use(express.static(frontendPath));
 
 // Health check endpoint for Railway
 app.get("/api/health", (req, res) => {
-  res.status(200).json({ 
-    status: "healthy", 
+  res.status(200).json({
+    status: "healthy",
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || "development"
+    environment: process.env.NODE_ENV || "development",
   });
 });
 
@@ -142,6 +148,8 @@ app.use("/api/branch-distributions", branchDistributionRoutes);
 app.use("/api/branch-inventory", branchInventoryRoutes);
 app.use("/api/branch-returns", branchReturnRoutes);
 app.use("/api/branch-schedules", branchScheduleRoutes);
+app.use("/api/employee-schedules", employeeScheduleRoutes);
+app.use("/api/shift-types", shiftTypesRoutes);
 app.use("/api/pos", posRoutes);
 
 // Auto-expire job
@@ -213,9 +221,13 @@ app.get("/api/health/db", async (req, res) => {
 // Start server
 const server = app.listen(PORT, "0.0.0.0", async () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📚 API Documentation available at http://localhost:${PORT}/api-docs`);
-  console.log(`🏥 Health check available at http://localhost:${PORT}/api/health`);
+  console.log(`🌐 Environment: ${process.env.NODE_ENV || "development"}`);
+  console.log(
+    `📚 API Documentation available at http://localhost:${PORT}/api-docs`
+  );
+  console.log(
+    `🏥 Health check available at http://localhost:${PORT}/api/health`
+  );
 
   try {
     await testConnection();
@@ -231,26 +243,26 @@ const server = app.listen(PORT, "0.0.0.0", async () => {
 });
 
 // Handle server errors
-server.on('error', (error) => {
-  console.error('❌ Server error:', error);
-  if (error.code === 'EADDRINUSE') {
+server.on("error", (error) => {
+  console.error("❌ Server error:", error);
+  if (error.code === "EADDRINUSE") {
     console.error(`❌ Port ${PORT} is already in use`);
   }
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('🛑 SIGTERM received, shutting down gracefully');
+process.on("SIGTERM", () => {
+  console.log("🛑 SIGTERM received, shutting down gracefully");
   server.close(() => {
-    console.log('✅ Server closed');
+    console.log("✅ Server closed");
     process.exit(0);
   });
 });
 
-process.on('SIGINT', () => {
-  console.log('🛑 SIGINT received, shutting down gracefully');
+process.on("SIGINT", () => {
+  console.log("🛑 SIGINT received, shutting down gracefully");
   server.close(() => {
-    console.log('✅ Server closed');
+    console.log("✅ Server closed");
     process.exit(0);
   });
 });

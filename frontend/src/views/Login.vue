@@ -13,7 +13,7 @@
   } from 'lucide-vue-next';
   import { nextTick } from 'vue';
   import { QrcodeStream } from 'vue-qrcode-reader';
-  import { computed } from 'vue';
+  import { computed, watch } from 'vue';
 
   // Attendance scanner state
   const isScannerOpen = ref(false);
@@ -41,6 +41,7 @@
   const isProcessingAttendance = ref(false);
   const attendanceResult = ref(null);
   const showAttendanceResult = ref(false);
+  const resultDialogRef = ref(null);
 
   const currentCameraLabel = computed(() => {
     const found = availableCameras.value.find(
@@ -56,6 +57,50 @@
       year: 'numeric',
     })
   );
+
+  // Human-readable rendering of the last scanned code for better UX
+  const scanResultDisplay = computed(() => {
+    const raw = scanResult.value;
+    if (!raw) return '';
+    // Try parse as JSON
+    try {
+      const data = JSON.parse(raw);
+      if (data && (data.employee_id || data.employee_name || data.first_name)) {
+        const displayName =
+          [
+            data.employee_name,
+            [data.first_name, data.middle_name, data.last_name]
+              .filter(Boolean)
+              .join(' '),
+          ].find((v) => v && v.trim().length > 0) || 'Unknown';
+        const action = (data.action || '').replace('-', ' ');
+        const loc =
+          data.branch_name || data.location_name || data.location || '';
+        return [displayName, action, loc].filter(Boolean).join(' — ');
+      }
+    } catch {}
+    // Try parse as URL with ?data=
+    try {
+      const url = new URL(raw);
+      const param = url.searchParams.get('data');
+      if (param) {
+        const data = JSON.parse(decodeURIComponent(param));
+        const displayName =
+          [
+            data.employee_name,
+            [data.first_name, data.middle_name, data.last_name]
+              .filter(Boolean)
+              .join(' '),
+          ].find((v) => v && v.trim().length > 0) || 'Unknown';
+        const action = (data.action || '').replace('-', ' ');
+        const loc =
+          data.branch_name || data.location_name || data.location || '';
+        return [displayName, action, loc].filter(Boolean).join(' — ');
+      }
+    } catch {}
+    // Fallback to raw when not recognized
+    return raw;
+  });
 
   const startClock = () => {
     stopClock();
@@ -182,6 +227,24 @@
     torchSupported.value = !!cameraCapabilities?.torch;
   };
 
+  // Open/close the result dialog above the scanner dialog
+  watch(
+    () => showAttendanceResult.value,
+    (isOpen) => {
+      const dlg = resultDialogRef.value;
+      if (!dlg) return;
+      try {
+        if (isOpen) {
+          if (!dlg.open) dlg.showModal();
+        } else {
+          if (dlg.open) dlg.close();
+        }
+      } catch {
+        // ignore dialog errors
+      }
+    }
+  );
+
   const toggleTorch = () => {
     if (torchSupported.value) {
       torchOn.value = !torchOn.value;
@@ -210,39 +273,74 @@
       isProcessingAttendance.value = true;
       attendanceResult.value = null;
 
-      // Try to parse the QR code data
+      // Parse the QR code data; support raw JSON or URL with ?data=
       let qrData;
+      const raw = scanResult.value;
       try {
-        qrData = JSON.parse(scanResult.value);
+        // Try direct JSON
+        qrData = JSON.parse(raw);
       } catch (parseError) {
-        // If it's not JSON, treat it as a simple QR code string
-        qrData = {
-          qr_code: scanResult.value,
-          action: 'time-in', // Default action
-          employee_id: 'MANUAL_SCAN', // This will need to be handled differently
-          location: 'Manual Scan',
-          timestamp: new Date().toISOString(),
-          valid_until: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // 5 minutes from now
-        };
+        // Try URL with encoded data
+        try {
+          const url = new URL(raw);
+          const dataParam = url.searchParams.get('data');
+          if (!dataParam) throw new Error('Missing data param');
+          qrData = JSON.parse(decodeURIComponent(dataParam));
+        } catch (e) {
+          throw new Error(
+            'Invalid QR format. Please scan your official employee QR.'
+          );
+        }
       }
 
-      // Use the public scan endpoint (no authentication required)
-      let result;
-      if (typeof qrData === 'object' && qrData.action && qrData.employee_id) {
-        // This is a properly formatted mobile app QR code
-        result = await attendanceStore.scanQRCode(qrData);
-      } else {
-        // Fallback for simple QR codes - try to process as time-in
-        const fallbackQRData = {
-          qr_code: scanResult.value,
-          action: 'time-in',
-          employee_id: 'MANUAL_SCAN',
-          location: 'Manual Scan',
-          timestamp: new Date().toISOString(),
-          valid_until: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-        };
-        result = await attendanceStore.scanQRCode(fallbackQRData);
+      // Validate required fields
+      if (!qrData?.employee_id || !qrData?.action) {
+        throw new Error(
+          'QR missing required fields. Please regenerate your employee QR.'
+        );
       }
+
+      // Validate supported action
+      const allowedActions = ['time-in', 'time-out'];
+      if (!allowedActions.includes(qrData.action)) {
+        throw new Error('Invalid action in QR. Must be time-in or time-out.');
+      }
+
+      // Optional: basic employee identity validation (either full name or EMP code)
+      const hasName =
+        typeof qrData.employee_name === 'string' && qrData.employee_name.trim();
+      const empPattern = /^EMP\d{3,}$/; // e.g., EMP000013
+      const hasValidId =
+        typeof qrData.employee_id === 'string' &&
+        empPattern.test(qrData.employee_id.trim());
+      if (!hasName && !hasValidId) {
+        throw new Error('QR is missing a valid employee identity.');
+      }
+
+      // Optional UX: validate expiry
+      if (qrData.valid_until) {
+        const now = new Date();
+        const expiry = new Date(qrData.valid_until);
+        if (now > expiry) {
+          throw new Error(
+            'QR has expired. Please regenerate your employee QR.'
+          );
+        }
+      }
+
+      // Optional sanity check: timestamp not more than 10 minutes in the future
+      if (qrData.timestamp) {
+        const ts = new Date(qrData.timestamp);
+        const now = new Date();
+        if (ts.getTime() - now.getTime() > 10 * 60 * 1000) {
+          throw new Error(
+            'QR timestamp appears invalid (too far in the future).'
+          );
+        }
+      }
+
+      // Proceed with public scan endpoint (no authentication required)
+      const result = await attendanceStore.scanQRCode(qrData);
 
       attendanceResult.value = {
         success: true,
@@ -250,31 +348,20 @@
         data: result.data,
       };
 
-      // Close scanner and show result
-      closeScanner();
+      // Show result; keep scanner open for manual control
       showAttendanceResult.value = true;
-
-      // Auto-close result after 5 seconds
-      setTimeout(() => {
-        showAttendanceResult.value = false;
-        attendanceResult.value = null;
-      }, 5000);
     } catch (error) {
       console.error('Attendance processing error:', error);
       attendanceResult.value = {
         success: false,
-        message: error.message || 'Failed to process attendance',
+        message:
+          error?.response?.data?.message ||
+          error.message ||
+          'Failed to process attendance',
       };
 
-      // Close scanner and show error
-      closeScanner();
+      // Show error; keep scanner open for manual control
       showAttendanceResult.value = true;
-
-      // Auto-close error after 5 seconds
-      setTimeout(() => {
-        showAttendanceResult.value = false;
-        attendanceResult.value = null;
-      }, 5000);
     } finally {
       isProcessingAttendance.value = false;
     }
@@ -566,7 +653,7 @@
             <div class="text-sm font-medium text-primaryColor mb-1">
               Last scanned code
             </div>
-            <div class="text-sm break-all">{{ scanResult }}</div>
+            <div class="text-sm break-all">{{ scanResultDisplay }}</div>
             <div class="mt-2 text-xs">
               Scanned at: {{ lastScanAt?.toLocaleString?.() }}
             </div>
@@ -614,8 +701,8 @@
       </form>
     </dialog>
 
-    <!-- Attendance Result Modal -->
-    <div v-if="showAttendanceResult" class="modal modal-open">
+    <!-- Attendance Result Modal (dialog above scanner) -->
+    <dialog ref="resultDialogRef" id="attendance_result_modal" class="modal">
       <div class="modal-box max-w-md">
         <div class="flex items-center justify-between mb-4">
           <h3 class="font-bold text-lg">
@@ -681,7 +768,7 @@
         </div>
 
         <div class="modal-action">
-          <button @click="closeAttendanceResult" class="btn btn-primary">
+          <button @click="closeAttendanceResult" class="btn bg-gray-200 btn-sm">
             {{ attendanceResult?.success ? 'Close' : 'Try Again' }}
           </button>
         </div>
@@ -689,7 +776,7 @@
       <form method="dialog" class="modal-backdrop">
         <button @click="closeAttendanceResult">close</button>
       </form>
-    </div>
+    </dialog>
 
     <!-- Desktop Layout -->
     <div

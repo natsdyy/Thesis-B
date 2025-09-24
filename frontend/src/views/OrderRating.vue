@@ -35,7 +35,12 @@
             Invalid QR Code
           </h3>
           <p class="text-gray-600 mb-4">{{ error }}</p>
-          <button @click="goHome" class="btn btn-primary">Go Home</button>
+          <button
+            @click="goHome"
+            class="btn bg-primaryColor text-white font-thin"
+          >
+            Go Home
+          </button>
         </div>
       </div>
 

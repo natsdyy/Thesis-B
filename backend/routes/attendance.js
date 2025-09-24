@@ -419,6 +419,8 @@ router.post("/scan", async (req, res) => {
       }
     }
 
+    // Signature verification disabled per requirement; trusting client-generated QR
+
     // Find employee by employee_id
     const Employee = require("../models/Employee");
     const employee = await Employee.getByEmployeeId(employee_id);
@@ -493,7 +495,8 @@ router.post("/scan", async (req, res) => {
 // Public route for mobile app QR code processing (no authentication required)
 router.post("/mobile-scan", async (req, res) => {
   try {
-    const { action, employee_id, location, latitude, longitude } = req.body;
+    const { action, employee_id, location, latitude, longitude, valid_until } =
+      req.body;
 
     if (!action || !employee_id) {
       return res.status(400).json({
@@ -501,6 +504,20 @@ router.post("/mobile-scan", async (req, res) => {
         message: "Action and employee_id are required",
       });
     }
+
+    // Validate expiry if provided
+    if (valid_until) {
+      const validUntil = new Date(valid_until);
+      const now = new Date();
+      if (now > validUntil) {
+        return res.status(400).json({
+          success: false,
+          message: "QR code has expired",
+        });
+      }
+    }
+
+    // Signature verification disabled per requirement
 
     // Find employee by employee_id
     const Employee = require("../models/Employee");

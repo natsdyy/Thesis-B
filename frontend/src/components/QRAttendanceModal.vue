@@ -268,6 +268,16 @@
           View Attendance Records
         </button>
       </div>
+
+      <!-- Debug Info (remove in production) -->
+      <!-- <div v-if="qrCodeData" class="mt-4 p-2 bg-gray-100 rounded text-xs">
+        <details>
+          <summary class="cursor-pointer text-gray-600">Debug Info</summary>
+          <pre class="mt-2 text-xs overflow-x-auto">{{
+            JSON.stringify(qrCodeData, null, 2)
+          }}</pre>
+        </details>
+      </div> -->
     </div>
 
     <!-- Attendance Records Modal -->
@@ -297,9 +307,11 @@
                 <th>Date</th>
                 <th>Time In</th>
                 <th>Time Out</th>
-                <th>Status</th>
-                <th>Location</th>
+
+                <th>Overtime</th>
+
                 <th>Hours Worked</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
@@ -307,10 +319,16 @@
                 <td>{{ formatDate(record.created_at) }}</td>
                 <td>{{ formatTime(record.time_in) }}</td>
                 <td>{{ formatTime(record.time_out) }}</td>
+
+                <td>{{ record.overtime || 'N/A' }}</td>
+
+                <td>
+                  {{ record.hours_worked ? `${record.hours_worked}h` : 'N/A' }}
+                </td>
                 <td>
                   <span
                     :class="[
-                      'badge font-thin ',
+                      'badge font-thin badge-sm',
                       record.status === 'present'
                         ? 'bg-success/20 text-success font-thin  border-none'
                         : record.status === 'late'
@@ -320,10 +338,6 @@
                   >
                     {{ record.status || 'Present' }}
                   </span>
-                </td>
-                <td>{{ record.location_name || 'N/A' }}</td>
-                <td>
-                  {{ record.hours_worked ? `${record.hours_worked}h` : 'N/A' }}
                 </td>
               </tr>
             </tbody>
@@ -351,16 +365,6 @@
             No Attendance Records
           </h3>
           <p class="text-gray-500">You haven't recorded any attendance yet.</p>
-        </div>
-
-        <!-- Close Button -->
-        <div class="modal-action">
-          <button
-            @click="closeAttendanceRecords"
-            class="btn bg-primaryColor text-white font-thin border-none"
-          >
-            Close
-          </button>
         </div>
       </div>
     </div>
@@ -400,6 +404,7 @@
   const currentStatus = ref('checked-out'); // 'checked-in' or 'checked-out'
   const locationChecking = ref(false);
   const locationStatus = ref(null);
+  const branchInfo = ref(null);
   const watchId = ref(null);
   const showAttendanceRecords = ref(false);
   const attendanceRecords = ref([]);
@@ -525,6 +530,13 @@
           branchLat = parseFloat(branch.latitude);
           branchLon = parseFloat(branch.longitude);
           requiredRadius = parseFloat(branch.radius_meters) || 2.0;
+          branchInfo.value = {
+            id: branch.id,
+            name: branch.name,
+            latitude: branchLat,
+            longitude: branchLon,
+            radius_meters: requiredRadius,
+          };
         }
       } catch (error) {
         console.warn('Failed to fetch branch coordinates:', error);
@@ -669,7 +681,8 @@
         employee_name:
           `${employee?.first_name || employee?.name || ''} ${employee?.last_name || ''}`.trim(),
         branch_id: employee?.branch_id,
-        branch_name: employee?.branch_name || 'Main Office',
+        branch_name:
+          branchInfo.value?.name || employee?.branch_name || 'Branch',
         timestamp: new Date().toISOString(),
         location: 'Mobile App QR Code',
         valid_until: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // 5 minutes from now

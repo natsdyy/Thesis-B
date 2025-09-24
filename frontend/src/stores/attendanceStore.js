@@ -332,6 +332,54 @@ export const useAttendanceStore = defineStore('attendance', () => {
     error.value = null;
   };
 
+  // Schedule-related methods
+  const fetchMySchedule = async () => {
+    try {
+      loading.value = true;
+      error.value = null;
+
+      const response = await axios.get(
+        getApiUrl('/attendance/my-schedule'),
+        getAuthHeaders()
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (err) {
+      error.value = err.response?.data?.message || err.message;
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const validateSchedule = async (currentTime = null) => {
+    try {
+      loading.value = true;
+      error.value = null;
+
+      const response = await axios.post(
+        getApiUrl('/attendance/validate-schedule'),
+        { currentTime },
+        getAuthHeaders()
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (err) {
+      error.value = err.response?.data?.message || err.message;
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   return {
     // State
     qrCodes,
@@ -358,6 +406,8 @@ export const useAttendanceStore = defineStore('attendance', () => {
     validateQRCode,
     scanQRCode,
     getAttendanceReport,
+    fetchMySchedule,
+    validateSchedule,
     clearError,
   };
 });

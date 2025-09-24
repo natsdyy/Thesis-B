@@ -372,6 +372,24 @@
     attendanceResult.value = null;
   };
 
+  // Helper function to detect schedule-related errors
+  const isScheduleError = (message) => {
+    if (!message) return false;
+    const scheduleKeywords = [
+      'schedule',
+      'scheduled hours',
+      'work schedule',
+      'supervisor',
+      'outside your scheduled',
+      'No work schedule assigned',
+      'before your scheduled time',
+      'after your scheduled time',
+    ];
+    return scheduleKeywords.some((keyword) =>
+      message.toLowerCase().includes(keyword.toLowerCase())
+    );
+  };
+
   const authStore = useAuthStore();
   const router = useRouter();
 
@@ -757,14 +775,56 @@
         <!-- Error State -->
         <div v-else class="text-center">
           <div
-            class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4"
+            :class="[
+              'w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4',
+              isScheduleError(attendanceResult?.message)
+                ? 'bg-orange-100'
+                : 'bg-red-100',
+            ]"
           >
-            <XCircle class="w-8 h-8 text-red-600" />
+            <XCircle
+              :class="[
+                'w-8 h-8',
+                isScheduleError(attendanceResult?.message)
+                  ? 'text-orange-600'
+                  : 'text-red-600',
+              ]"
+            />
           </div>
-          <h4 class="text-lg font-semibold text-red-600 mb-2">Error</h4>
+          <h4
+            :class="[
+              'text-lg font-semibold mb-2',
+              isScheduleError(attendanceResult?.message)
+                ? 'text-orange-600'
+                : 'text-red-600',
+            ]"
+          >
+            {{
+              isScheduleError(attendanceResult?.message)
+                ? 'Schedule Issue'
+                : 'Error'
+            }}
+          </h4>
           <p class="text-gray-700 mb-4">
             {{ attendanceResult?.message || 'Failed to process attendance' }}
           </p>
+
+          <!-- Additional info for schedule errors -->
+          <div
+            v-if="isScheduleError(attendanceResult?.message)"
+            class="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-left"
+          >
+            <div class="flex items-start space-x-2">
+              <Clock class="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p class="font-medium text-orange-800">Schedule Information</p>
+                <p class="text-orange-700 text-xs mt-1">
+                  Please check your work schedule or contact your Manager for
+                  assistance.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="modal-action">

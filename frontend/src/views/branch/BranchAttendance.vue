@@ -4,7 +4,11 @@
     <div class="flex justify-between items-center">
       <h1 class="text-3xl font-bold">My Attendance</h1>
       <div class="text-sm text-base-content/70">
-        Last updated: {{ new Date().toLocaleDateString() }}
+        Last updated: {{ lastUpdated.toLocaleTimeString() }}
+        <span v-if="isStatusLoading || isHistoryLoading" class="ml-2">
+          <span class="loading loading-spinner loading-xs"></span>
+          Updating...
+        </span>
       </div>
     </div>
 
@@ -41,8 +45,28 @@
       <!-- Current Status Card -->
       <div class="card bg-base-100 shadow-xl">
         <div class="card-body">
-          <h2 class="card-title text-2xl mb-4">Current Status</h2>
+          <h2 class="card-title text-2xl mb-4">
+            Current Status
+            <span
+              v-if="isStatusLoading"
+              class="loading loading-spinner loading-sm ml-2"
+            ></span>
+          </h2>
+
+          <!-- Loading State -->
           <div
+            v-if="isStatusLoading"
+            class="flex items-center justify-center py-8"
+          >
+            <div class="flex flex-col items-center space-y-2">
+              <span class="loading loading-spinner loading-md"></span>
+              <p class="text-sm text-gray-500">Loading current status...</p>
+            </div>
+          </div>
+
+          <!-- Status Display -->
+          <div
+            v-else
             class="alert"
             :class="
               currentStatus === 'checked-in'
@@ -88,16 +112,30 @@
       <div class="card bg-base-100 shadow-xl">
         <div class="card-body">
           <div class="flex justify-between items-center mb-4">
-            <h3 class="card-title">My Attendance History</h3>
+            <h3 class="card-title">
+              My Attendance History
+              <span
+                v-if="isHistoryLoading"
+                class="loading loading-spinner loading-sm ml-2"
+              ></span>
+              <span
+                v-if="!isHistoryLoading && attendanceHistory.length > 0"
+                class="badge badge-ghost ml-2"
+              >
+                {{ attendanceHistory.length }} records
+              </span>
+            </h3>
             <button
               @click="refreshAttendance"
               class="btn btn-sm btn-outline font-thin"
+              :disabled="isHistoryLoading"
             >
               <svg
                 class="w-4 h-4"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
+                :class="{ 'animate-spin': isHistoryLoading }"
               >
                 <path
                   stroke-linecap="round"
@@ -106,11 +144,23 @@
                   d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                 ></path>
               </svg>
-              Refresh
+              {{ isHistoryLoading ? 'Refreshing...' : 'Refresh' }}
             </button>
           </div>
 
-          <div class="overflow-x-auto">
+          <!-- Loading State for Table -->
+          <div
+            v-if="isHistoryLoading"
+            class="flex items-center justify-center py-12"
+          >
+            <div class="flex flex-col items-center space-y-3">
+              <span class="loading loading-spinner loading-lg"></span>
+              <p class="text-sm text-gray-500">Loading attendance history...</p>
+            </div>
+          </div>
+
+          <!-- Table Content -->
+          <div v-else class="overflow-x-auto">
             <table class="table table-zebra w-full">
               <thead>
                 <tr>
@@ -133,15 +183,15 @@
                   </td>
 
                   <td>
-                    <span v-if="row.duration" class="font-mono text-sm">{{
-                      row.duration
-                    }}</span>
+                    <span v-if="row.duration" class="font-mono text-sm">
+                      {{ formatHoursWorked(row.duration) }}
+                    </span>
                     <span v-else class="text-gray-400">-</span>
                   </td>
                   <td>
-                    <span v-if="row.overtime" class="font-mono text-sm">{{
-                      row.overtime
-                    }}</span>
+                    <span v-if="row.overtime" class="font-mono text-sm">
+                      {{ formatHoursWorked(row.overtime) }}
+                    </span>
                     <span v-else class="text-gray-400">-</span>
                   </td>
                   <td>
@@ -151,7 +201,7 @@
                     <span v-else class="text-gray-400">-</span>
                   </td>
                 </tr>
-                <tr v-if="mergedHistory.length === 0">
+                <tr v-if="mergedHistory.length === 0 && !isHistoryLoading">
                   <td colspan="7" class="text-center py-8 text-gray-500">
                     <div class="flex flex-col items-center space-y-2">
                       <svg
@@ -173,6 +223,27 @@
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <!-- Load More Button -->
+          <div
+            v-if="hasMoreRecords && !isHistoryLoading"
+            class="flex justify-center mt-4"
+          >
+            <button @click="loadMoreHistory" class="btn btn-outline btn-sm">
+              Load More Records
+            </button>
+          </div>
+
+          <!-- Loading More Indicator -->
+          <div
+            v-if="isHistoryLoading && attendanceHistory.length > 0"
+            class="flex justify-center mt-4"
+          >
+            <div class="flex items-center space-x-2 text-sm text-gray-500">
+              <span class="loading loading-spinner loading-sm"></span>
+              <span>Loading more records...</span>
+            </div>
           </div>
         </div>
       </div>
@@ -211,7 +282,10 @@
               ></textarea>
             </div>
             <div class="md:col-span-2 flex justify-end">
-              <button type="button" class="btn bg-primaryColor text-white font-thin hover:bg-primaryColor/80">
+              <button
+                type="button"
+                class="btn bg-primaryColor text-white font-thin hover:bg-primaryColor/80"
+              >
                 Submit OT Request
               </button>
             </div>
@@ -346,7 +420,7 @@
 </template>
 
 <script setup>
-  import { ref, onMounted, computed } from 'vue';
+  import { ref, onMounted, onUnmounted, computed } from 'vue';
   import { useAuthStore } from '../../stores/authStore';
   import { useAttendanceStore } from '../../stores/attendanceStore';
   import { apiConfig } from '../../config/api';
@@ -360,10 +434,20 @@
 
   // Reactive data
   const isLoading = ref(false);
+  const isStatusLoading = ref(false);
+  const isHistoryLoading = ref(false);
   const isSubmitting = ref(false);
   const showQRModal = ref(false);
   const showManualModal = ref(false);
   const activeTab = ref('add');
+  const autoRefreshInterval = ref(null);
+  const lastUpdated = ref(new Date());
+
+  // Pagination for attendance history
+  const currentPage = ref(1);
+  const itemsPerPage = ref(10);
+  const totalRecords = ref(0);
+  const hasMoreRecords = ref(false);
   // Derive real-time status from attendance store
   const today = computed(() => attendanceStore.todayAttendance);
   const hasTimeIn = computed(() => Boolean(today.value?.time_in));
@@ -380,30 +464,79 @@
   const lastTimeIn = computed(() => today.value?.time_in || null);
   const attendanceHistory = ref([]);
   const mergedHistory = computed(() => {
-    // Merge separate time-in/time-out events for the same day into one row
+    // Process attendance records for display
+    console.log(
+      'mergedHistory computed - attendanceHistory.value:',
+      attendanceHistory.value
+    );
+
+    if (!attendanceHistory.value || attendanceHistory.value.length === 0) {
+      console.log('No attendance history data found');
+      return [];
+    }
+
+    // If we have a single record (today's attendance), format it for display
+    const records = Array.isArray(attendanceHistory.value)
+      ? attendanceHistory.value
+      : [attendanceHistory.value];
+    console.log('Records to process:', records);
+
     const byDate = {};
-    attendanceHistory.value.forEach((rec) => {
-      const dateKey = new Date(rec.created_at).toISOString().split('T')[0];
-      if (!byDate[dateKey])
+    records.forEach((rec) => {
+      const dateKey = new Date(rec.created_at || rec.time_in)
+        .toISOString()
+        .split('T')[0];
+      console.log('Processing record:', rec, 'Date key:', dateKey);
+
+      if (!byDate[dateKey]) {
         byDate[dateKey] = {
           date: dateKey,
           timeIn: null,
           timeOut: null,
-          location: rec.location_name || null,
+          location: rec.location_name || 'QR Code Scan',
           duration: null,
+          overtime: null,
+          tardiness: null,
         };
+      }
+
+      // Handle both single record format and event-based format
+      if (rec.time_in) {
+        byDate[dateKey].timeIn = rec.time_in;
+      }
+      if (rec.time_out) {
+        byDate[dateKey].timeOut = rec.time_out;
+      }
+
+      // Handle event_type format (legacy)
       if (rec.event_type === 'time-in') {
         byDate[dateKey].timeIn = rec.created_at;
       } else if (rec.event_type === 'time-out') {
         byDate[dateKey].timeOut = rec.created_at;
       }
+
       // Prefer latest known location if available
       if (rec.location_name) byDate[dateKey].location = rec.location_name;
       if (rec.duration) byDate[dateKey].duration = rec.duration;
+      if (rec.overtime_hours) byDate[dateKey].overtime = rec.overtime_hours;
+
+      // Map hours_worked to duration for display
+      if (rec.hours_worked) {
+        byDate[dateKey].duration = rec.hours_worked;
+      }
+
+      // Map overtime_hours to overtime for display
+      if (rec.overtime_hours) {
+        byDate[dateKey].overtime = rec.overtime_hours;
+      }
     });
-    return Object.values(byDate).sort(
+
+    const result = Object.values(byDate).sort(
       (a, b) => new Date(b.date) - new Date(a.date)
     );
+
+    console.log('mergedHistory result:', result);
+    return result;
   });
 
   // Manual entry form
@@ -425,8 +558,10 @@
     showQRModal.value = true;
   };
 
-  const closeQRModal = () => {
+  const closeQRModal = async () => {
     showQRModal.value = false;
+    // Refresh data when QR modal closes to get latest attendance status
+    await refreshAttendance();
   };
 
   const openManualModal = () => {
@@ -444,35 +579,88 @@
     fetchAttendanceHistory();
   };
 
-  const fetchAttendanceHistory = async () => {
+  const fetchAttendanceHistory = async (loadMore = false) => {
     try {
-      isLoading.value = true;
-      const today = new Date().toISOString().split('T')[0];
-      const response = await axios.get(`${API_BASE_URL}/attendance/history`, {
-        headers: authHeaders(),
-        params: {
-          start_date: today,
-          end_date: today,
-          employee_id: authStore.user?.employee_id,
-        },
-      });
+      isHistoryLoading.value = true;
 
-      if (response.data.success) {
-        attendanceHistory.value = response.data.data || [];
+      if (!loadMore) {
+        currentPage.value = 1;
+        attendanceHistory.value = [];
+      }
+
+      // For now, let's use today's attendance data from the store
+      // This will show the current attendance record in the history table
+      const todayData = attendanceStore.todayAttendance;
+
+      if (todayData) {
+        // Convert today's attendance record to array format for display
+        const historyArray = [todayData];
+        console.log('Today data found:', todayData);
+        console.log('History array:', historyArray);
+
+        if (loadMore) {
+          attendanceHistory.value = [
+            ...attendanceHistory.value,
+            ...historyArray,
+          ];
+        } else {
+          attendanceHistory.value = historyArray;
+        }
+
+        console.log('Attendance history updated:', attendanceHistory.value);
+
+        // Update pagination info
+        totalRecords.value = historyArray.length;
+        hasMoreRecords.value = false; // For now, we only show today's record
+        lastUpdated.value = new Date();
+      } else {
+        // If no today's data, try to fetch from API directly
+        const today = new Date().toISOString().split('T')[0];
+        const response = await axios.get(`${API_BASE_URL}/attendance/today`, {
+          headers: authHeaders(),
+        });
+
+        if (response.data.success && response.data.data) {
+          const historyArray = [response.data.data];
+
+          if (loadMore) {
+            attendanceHistory.value = [
+              ...attendanceHistory.value,
+              ...historyArray,
+            ];
+          } else {
+            attendanceHistory.value = historyArray;
+          }
+
+          totalRecords.value = historyArray.length;
+          hasMoreRecords.value = false;
+          lastUpdated.value = new Date();
+        }
       }
     } catch (error) {
       console.error('Error fetching attendance history:', error);
-      attendanceHistory.value = [];
+      if (!loadMore) {
+        attendanceHistory.value = [];
+      }
     } finally {
-      isLoading.value = false;
+      isHistoryLoading.value = false;
     }
+  };
+
+  const loadMoreHistory = () => {
+    currentPage.value += 1;
+    fetchAttendanceHistory(true);
   };
 
   const checkCurrentStatus = async () => {
     try {
+      isStatusLoading.value = true;
       await attendanceStore.fetchTodayAttendance();
+      lastUpdated.value = new Date();
     } catch (error) {
       console.error('Error checking attendance status:', error);
+    } finally {
+      isStatusLoading.value = false;
     }
   };
 
@@ -498,8 +686,27 @@
     }
   };
 
-  const refreshAttendance = () => {
-    Promise.all([checkCurrentStatus(), fetchAttendanceHistory()]);
+  const refreshAttendance = async () => {
+    await Promise.all([checkCurrentStatus(), fetchAttendanceHistory()]);
+  };
+
+  // Auto-refresh methods
+  const startAutoRefresh = () => {
+    // Refresh every 30 seconds
+    autoRefreshInterval.value = setInterval(async () => {
+      await checkCurrentStatus();
+      // Only refresh history if we're on the attendance tab
+      if (activeTab.value === 'add') {
+        await fetchAttendanceHistory();
+      }
+    }, 30000);
+  };
+
+  const stopAutoRefresh = () => {
+    if (autoRefreshInterval.value) {
+      clearInterval(autoRefreshInterval.value);
+      autoRefreshInterval.value = null;
+    }
   };
 
   const getEventTypeBadgeClass = (eventType) => {
@@ -531,9 +738,38 @@
     });
   };
 
+  const formatHoursWorked = (hoursString) => {
+    if (!hoursString) return 'N/A';
+
+    // Convert string to number
+    const hours = parseFloat(hoursString);
+
+    if (isNaN(hours)) return 'N/A';
+
+    // Convert hours to minutes for display
+    const totalMinutes = Math.round(hours * 60);
+    const hoursPart = Math.floor(totalMinutes / 60);
+    const minutesPart = totalMinutes % 60;
+
+    if (hoursPart > 0) {
+      return minutesPart > 0
+        ? `${hoursPart}h ${minutesPart}m`
+        : `${hoursPart}h`;
+    } else {
+      return `${minutesPart}m`;
+    }
+  };
+
   // Lifecycle
   onMounted(() => {
-    Promise.all([checkCurrentStatus(), fetchAttendanceHistory()]);
+    Promise.all([checkCurrentStatus(), fetchAttendanceHistory()]).then(() => {
+      startAutoRefresh();
+    });
+  });
+
+  // Cleanup on unmount
+  onUnmounted(() => {
+    stopAutoRefresh();
   });
 </script>
 

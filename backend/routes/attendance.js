@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const AttendanceQRCode = require("../models/AttendanceQRCode");
 const AttendanceRecord = require("../models/AttendanceRecord");
+const EmployeeScheduleService = require("../services/EmployeeScheduleService");
 const { authenticateToken } = require("../middleware/rbac");
 const { db } = require("../config/database");
 
@@ -586,6 +587,58 @@ router.post("/mobile-scan", async (req, res) => {
     res.status(400).json({
       success: false,
       message: error.message,
+    });
+  }
+});
+
+// Get employee schedule information for today
+router.get("/my-schedule", authenticateToken, async (req, res) => {
+  try {
+    const employeeId = req.user.id;
+    const today = new Date().toISOString().split("T")[0];
+
+    const scheduleInfo = await EmployeeScheduleService.getScheduleDisplayInfo(
+      employeeId,
+      today
+    );
+
+    res.json({
+      success: true,
+      data: scheduleInfo,
+    });
+  } catch (error) {
+    console.error("Error fetching employee schedule:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch employee schedule",
+      error: error.message,
+    });
+  }
+});
+
+// Validate time-in against schedule (for preview before actual time-in)
+router.post("/validate-schedule", authenticateToken, async (req, res) => {
+  try {
+    const employeeId = req.user.id;
+    const { currentTime } = req.body;
+
+    // Use provided time or current time
+    const validationTime = currentTime ? new Date(currentTime) : new Date();
+    const validation = await EmployeeScheduleService.validateTimeInSchedule(
+      employeeId,
+      validationTime
+    );
+
+    res.json({
+      success: true,
+      data: validation,
+    });
+  } catch (error) {
+    console.error("Error validating schedule:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to validate schedule",
+      error: error.message,
     });
   }
 });

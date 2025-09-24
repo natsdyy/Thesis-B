@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, watch, onMounted, computed } from 'vue';
+  import { ref, watch, onMounted, onUnmounted, computed } from 'vue';
   import FullCalendar from '@fullcalendar/vue3';
   import dayGridPlugin from '@fullcalendar/daygrid';
   import timeGridPlugin from '@fullcalendar/timegrid';
@@ -19,6 +19,9 @@
   const calendarRef = ref(null);
   const currentRange = ref({ startStr: '', endStr: '' });
   const currentViewType = ref('dayGridMonth');
+  const viewportWidth = ref(
+    typeof window !== 'undefined' ? window.innerWidth : 1200
+  );
 
   const headerText = computed(
     () => `${props.employee.first_name} ${props.employee.last_name} • Schedule`
@@ -43,6 +46,14 @@
       right: 'prev,next today dayGridMonth,timeGridWeek',
     },
     height: 'auto',
+    handleWindowResize: true,
+    expandRows: true,
+    nowIndicator: true,
+    stickyHeaderDates: true,
+    slotMinTime: '00:00:00',
+    slotMaxTime: '24:00:00',
+    slotDuration: '01:00:00',
+    slotLabelFormat: { hour: '2-digit', minute: '2-digit', hour12: true },
     selectable: false,
     editable: false,
     weekends: true,
@@ -85,6 +96,50 @@
       refreshEvents();
     },
   });
+
+  function updateCalendarForViewport(width) {
+    const calendarApi = calendarRef.value?.getApi?.();
+    if (!calendarApi) return;
+
+    const isMobile = width < 640; // < sm
+    const isTablet = width >= 640 && width < 1024; // sm - md/lg
+
+    // Toolbar: simplify on small screens
+    if (isMobile) {
+      calendarApi.setOption('headerToolbar', {
+        left: 'prev',
+        center: 'title',
+        right: 'next today timeGridWeek',
+      });
+      calendarApi.setOption('dayMaxEvents', 2);
+      calendarApi.setOption('aspectRatio', 0.85);
+      if (calendarApi.view?.type !== 'timeGridWeek') {
+        calendarApi.changeView('timeGridWeek');
+      }
+    } else if (isTablet) {
+      calendarApi.setOption('headerToolbar', {
+        left: 'prev,next',
+        center: 'title',
+        right: 'today dayGridMonth,timeGridWeek',
+      });
+      calendarApi.setOption('dayMaxEvents', 3);
+      calendarApi.setOption('aspectRatio', 1.05);
+      if (calendarApi.view?.type !== 'dayGridMonth') {
+        calendarApi.changeView('dayGridMonth');
+      }
+    } else {
+      calendarApi.setOption('headerToolbar', {
+        left: 'title',
+        center: '',
+        right: 'prev,next today dayGridMonth,timeGridWeek',
+      });
+      calendarApi.setOption('dayMaxEvents', 3);
+      calendarApi.setOption('aspectRatio', 1.35);
+      if (calendarApi.view?.type !== 'dayGridMonth') {
+        calendarApi.changeView('dayGridMonth');
+      }
+    }
+  }
 
   function formatDateKey(date) {
     return new Date(date).toISOString().split('T')[0];
@@ -201,6 +256,22 @@
   onMounted(() => {
     // Ensure the initial events are loaded when modal opens
     setTimeout(refreshEvents, 0);
+    // Track viewport and update calendar layout
+    const onResize = () => {
+      viewportWidth.value = window.innerWidth;
+      updateCalendarForViewport(viewportWidth.value);
+    };
+    window.addEventListener('resize', onResize, { passive: true });
+    // Initial update
+    updateCalendarForViewport(viewportWidth.value);
+    // Store remover
+    resizeCleanup = () => window.removeEventListener('resize', onResize);
+  });
+
+  let resizeCleanup = null;
+
+  onUnmounted(() => {
+    if (typeof resizeCleanup === 'function') resizeCleanup();
   });
 
   function closeModal() {
@@ -238,13 +309,44 @@
 <style scoped>
   :deep(.fc) {
     --fc-border-color: #e5e7eb;
-    --fc-button-bg-color: #14532d;
-    --fc-button-border-color: #14532d;
-    --fc-button-hover-bg-color: #166534;
-    --fc-button-hover-border-color: #166534;
+    --fc-button-bg-color: #466114;
+    --fc-button-border-color: #466114;
+    --fc-button-hover-bg-color: #466114;
+    --fc-button-hover-border-color: #466114;
     --fc-button-text-color: #ffffff;
     --fc-button-border-radius: 10px;
     --fc-today-bg-color: rgba(20, 83, 45, 0.06);
+  }
+
+  /* Ensure calendar shrinks nicely and toolbar wraps on small screens */
+  :deep(.fc) {
+    width: 100%;
+  }
+  :deep(.fc .fc-toolbar) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  :deep(.fc .fc-toolbar-chunk) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  :deep(.fc .fc-toolbar-title) {
+    white-space: nowrap;
+  }
+
+  @media (max-width: 640px) {
+    :deep(.fc .fc-toolbar-title) {
+      font-size: 1rem;
+    }
+    :deep(.fc .fc-button) {
+      padding: 0.25rem 0.45rem;
+      font-size: 0.75rem;
+    }
+    :deep(.fc .fc-daygrid-day-number) {
+      font-size: 0.75rem;
+    }
   }
 
   :deep(.fc .cs-event) {

@@ -207,9 +207,36 @@ class Branch {
           branchData.is_active !== undefined ? branchData.is_active : true,
         opening_hours: branchData.opening_hours || null,
         description: branchData.description?.trim() || null,
+        // Respect provided coordinates if supplied by the client
+        latitude:
+          branchData.latitude !== undefined ? branchData.latitude : null,
+        longitude:
+          branchData.longitude !== undefined ? branchData.longitude : null,
+        // Optional radius
+        radius_meters:
+          branchData.radius_meters !== undefined
+            ? branchData.radius_meters
+            : undefined,
         created_at: new Date(),
         updated_at: new Date(),
       };
+
+      // Auto-geocode only if coordinates are not provided but we have an address
+      if (
+        insertData.address &&
+        (insertData.latitude === null || insertData.longitude === null)
+      ) {
+        try {
+          const { geocodeAddress } = require("../services/geocodingService");
+          const geo = await geocodeAddress(insertData.address);
+          if (geo) {
+            insertData.latitude = geo.latitude;
+            insertData.longitude = geo.longitude;
+          }
+        } catch (geoErr) {
+          console.warn("[Branch.create] Auto-geocode failed:", geoErr.message);
+        }
+      }
 
       const [branch] = await db("branches").insert(insertData).returning("*");
 
@@ -275,6 +302,61 @@ class Branch {
         description: branchData.description?.trim() || null,
         updated_at: new Date(),
       };
+
+      // Optional: allow updating radius and GPS directly if provided
+      if (branchData.radius_meters !== undefined) {
+        updateData.radius_meters = branchData.radius_meters;
+      }
+      if (
+        branchData.latitude !== undefined &&
+        branchData.longitude !== undefined
+      ) {
+        updateData.latitude = branchData.latitude;
+        updateData.longitude = branchData.longitude;
+      }
+
+      // Auto-geocode: when address changed and no explicit lat/lon provided, or when forced
+      const addressChanged =
+        branchData.address &&
+        branchData.address.trim() !== (existingBranch.address || "").trim();
+      const shouldAutoGeocode =
+        Boolean(branchData.auto_geocode) ||
+        (addressChanged &&
+          // Only auto-geocode when caller did NOT provide both coordinates
+          !(
+            branchData.latitude !== undefined &&
+            branchData.longitude !== undefined
+          ));
+
+      if (addressChanged) {
+        console.log("[Branch.update] Address changed for branch", id, {
+          old: existingBranch.address,
+          new: branchData.address,
+        });
+      }
+
+      if (shouldAutoGeocode) {
+        try {
+          const { geocodeAddress } = require("../services/geocodingService");
+          console.log(
+            "[Branch.update] Auto-geocoding address:",
+            updateData.address
+          );
+          const geo = await geocodeAddress(updateData.address);
+          if (geo) {
+            console.log("[Branch.update] Geocode result:", geo);
+            updateData.latitude = geo.latitude;
+            updateData.longitude = geo.longitude;
+          } else {
+            console.warn(
+              "[Branch.update] Geocode returned null for address:",
+              updateData.address
+            );
+          }
+        } catch (geoErr) {
+          console.warn("[Branch.update] Auto-geocode failed:", geoErr.message);
+        }
+      }
 
       const [branch] = await db("branches")
         .where("id", id)

@@ -25,6 +25,119 @@
         </div>
       </div>
 
+      <!-- Schedule Information -->
+      <div class="mb-6">
+        <div class="card bg-base-100 shadow-sm border">
+          <div class="card-body p-4">
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="font-semibold text-sm flex items-center">
+                <Calendar class="w-4 h-4 mr-2" />
+                Today's Schedule
+              </h4>
+              <button
+                @click="fetchScheduleInfo"
+                :disabled="scheduleLoading"
+                class="btn btn-xs btn-outline"
+              >
+                <span
+                  v-if="scheduleLoading"
+                  class="loading loading-spinner loading-xs"
+                ></span>
+                {{ scheduleLoading ? 'Loading...' : 'Refresh' }}
+              </button>
+            </div>
+
+            <!-- Loading State -->
+            <div v-if="scheduleLoading" class="text-center py-4">
+              <div class="loading loading-spinner loading-sm"></div>
+              <p class="text-xs text-gray-500 mt-2">Loading schedule...</p>
+            </div>
+
+            <!-- Schedule Display -->
+            <div v-else-if="scheduleInfo">
+              <div v-if="scheduleInfo.hasSchedule" class="space-y-2">
+                <!-- Schedule Details -->
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center space-x-2">
+                    <div
+                      :class="[
+                        'w-3 h-3 rounded-full',
+                        scheduleValidation?.isValid
+                          ? 'bg-success'
+                          : scheduleValidation?.reason === 'NO_SCHEDULE'
+                            ? 'bg-warning'
+                            : 'bg-error',
+                      ]"
+                    ></div>
+                    <span class="text-sm font-medium">
+                      {{ scheduleInfo.schedule.shift_name }}
+                    </span>
+                  </div>
+                  <div class="text-xs text-gray-600">
+                    {{ scheduleInfo.schedule.start_time }} -
+                    {{ scheduleInfo.schedule.end_time }}
+                  </div>
+                </div>
+
+                <!-- Validation Status -->
+                <div v-if="scheduleValidation" class="text-xs">
+                  <div
+                    :class="[
+                      'flex items-center space-x-1',
+                      scheduleValidation.isValid
+                        ? 'text-success'
+                        : 'text-warning',
+                    ]"
+                  >
+                    <CheckCircle
+                      v-if="scheduleValidation.isValid"
+                      class="w-3 h-3"
+                    />
+                    <AlertCircle v-else class="w-3 h-3" />
+                    <span>{{ scheduleValidation.message }}</span>
+                  </div>
+                  <div
+                    v-if="
+                      scheduleValidation.timeDifference &&
+                      !scheduleValidation.isValid
+                    "
+                    class="text-xs text-gray-500 mt-1"
+                  >
+                    Current time: {{ scheduleValidation.currentTime }}
+                  </div>
+                </div>
+
+                <!-- Notes -->
+                <div
+                  v-if="scheduleInfo.schedule.notes"
+                  class="text-xs text-gray-600 bg-gray-50 p-2 rounded"
+                >
+                  <strong>Note:</strong> {{ scheduleInfo.schedule.notes }}
+                </div>
+              </div>
+
+              <!-- No Schedule -->
+              <div v-else class="text-center py-4">
+                <AlertCircle class="w-8 h-8 text-warning mx-auto mb-2" />
+                <p class="text-sm text-warning font-medium">No Schedule</p>
+                <p class="text-xs text-gray-500">{{ scheduleInfo.message }}</p>
+              </div>
+            </div>
+
+            <!-- Error State -->
+            <div v-else class="text-center py-4">
+              <AlertCircle class="w-8 h-8 text-error mx-auto mb-2" />
+              <p class="text-sm text-error font-medium">
+                Error Loading Schedule
+              </p>
+              <p class="text-xs text-gray-500">
+                Unable to retrieve schedule information
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Location Status -->
       <div class="mb-6">
         <div class="card bg-base-100 shadow-sm border">
@@ -208,9 +321,72 @@
             </div>
           </div>
 
+          <!-- Error State -->
+          <div v-else-if="qrCodeError" class="text-center py-8">
+            <div class="flex flex-col items-center space-y-3">
+              <AlertCircle class="w-12 h-12 text-red-500 mx-auto" />
+              <div>
+                <p class="text-sm font-medium text-red-600">
+                  Failed to Generate QR Code
+                </p>
+                <p class="text-xs text-red-500 mt-1">{{ qrCodeError }}</p>
+              </div>
+              <button @click="clearQRCodeError" class="btn btn-sm btn-outline">
+                Try Again
+              </button>
+            </div>
+          </div>
+
+          <!-- Default State -->
           <div v-else class="text-center py-8">
-            <AlertCircle class="w-12 h-12 text-gray-400 mx-auto mb-2" />
-            <p class="text-sm text-gray-500">Failed to generate QR code</p>
+            <div class="flex flex-col items-center space-y-3">
+              <div
+                class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center"
+              >
+                <svg
+                  class="w-8 h-8 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 4v16m8-8H4"
+                  ></path>
+                </svg>
+              </div>
+              <div>
+                <p class="text-sm font-medium text-gray-600">
+                  Ready to Generate QR Code
+                </p>
+                <p class="text-xs text-gray-500 mt-1">
+                  Click the button below to generate your attendance QR code
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Instructions for QR scanning -->
+        <div
+          v-if="qrCodeData"
+          class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg"
+        >
+          <div class="flex items-start space-x-2">
+            <Smartphone class="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <p class="text-sm font-medium text-blue-800">
+                How to use this QR code:
+              </p>
+              <p class="text-xs text-blue-700 mt-1">
+                1. Open the Login page in another device or browser tab<br />
+                2. Click "Scan QR Code" on the Login page<br />
+                3. Point the camera at this QR code to scan it<br />
+                4. Your attendance will be recorded automatically
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -219,13 +395,34 @@
       <div class="flex gap-3">
         <button
           @click="generateQRCode('time-in')"
-          :disabled="qrCodeLoading"
+          :disabled="
+            qrCodeLoading ||
+            currentStatus === 'checked-in' ||
+            (scheduleValidation &&
+              !scheduleValidation.isValid &&
+              scheduleValidation.reason !== 'NO_SCHEDULE')
+          "
           :class="[
             'btn flex-1',
-            currentStatus === 'checked-out'
+            currentStatus === 'checked-out' &&
+            (!scheduleValidation || scheduleValidation.isValid)
               ? 'bg-primaryColor hover:bg-primaryColor/80 text-white font-thin  border-none'
               : 'btn-outline',
+            scheduleValidation &&
+            !scheduleValidation.isValid &&
+            scheduleValidation.reason !== 'NO_SCHEDULE'
+              ? 'opacity-50 cursor-not-allowed'
+              : '',
           ]"
+          :title="
+            currentStatus === 'checked-in'
+              ? 'You have already timed in today'
+              : scheduleValidation &&
+                  !scheduleValidation.isValid &&
+                  scheduleValidation.reason !== 'NO_SCHEDULE'
+                ? 'Time-in is outside scheduled hours'
+                : ''
+          "
         >
           <LogIn class="w-4 h-4 mr-2" />
           {{ qrCodeLoading ? 'Generating...' : 'Generate Time In QR' }}
@@ -233,13 +430,18 @@
 
         <button
           @click="generateQRCode('time-out')"
-          :disabled="qrCodeLoading"
+          :disabled="qrCodeLoading || currentStatus === 'checked-out'"
           :class="[
             'btn flex-1',
             currentStatus === 'checked-in'
-              ? 'bg-warning text-white font-thin  border-none'
+              ? 'bg-primaryColor text-white font-thin  border-none hover:bg-primaryColor/80'
               : 'btn-outline font-thin',
           ]"
+          :title="
+            currentStatus === 'checked-out'
+              ? 'You must time in before timing out'
+              : ''
+          "
         >
           <LogOut class="w-4 h-4 mr-2" />
           {{ qrCodeLoading ? 'Generating...' : 'Generate Time Out QR' }}
@@ -268,6 +470,16 @@
           View Attendance Records
         </button>
       </div>
+
+      <!-- Debug Info (remove in production) -->
+      <!-- <div v-if="qrCodeData" class="mt-4 p-2 bg-gray-100 rounded text-xs">
+        <details>
+          <summary class="cursor-pointer text-gray-600">Debug Info</summary>
+          <pre class="mt-2 text-xs overflow-x-auto">{{
+            JSON.stringify(qrCodeData, null, 2)
+          }}</pre>
+        </details>
+      </div> -->
     </div>
 
     <!-- Attendance Records Modal -->
@@ -297,9 +509,11 @@
                 <th>Date</th>
                 <th>Time In</th>
                 <th>Time Out</th>
-                <th>Status</th>
-                <th>Location</th>
+
+                <th>Overtime</th>
+
                 <th>Hours Worked</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
@@ -307,10 +521,16 @@
                 <td>{{ formatDate(record.created_at) }}</td>
                 <td>{{ formatTime(record.time_in) }}</td>
                 <td>{{ formatTime(record.time_out) }}</td>
+
+                <td>{{ formatHoursWorked(record.overtime_hours) }}</td>
+
+                <td>
+                  {{ formatHoursWorked(record.hours_worked) }}
+                </td>
                 <td>
                   <span
                     :class="[
-                      'badge font-thin ',
+                      'badge font-thin badge-sm',
                       record.status === 'present'
                         ? 'bg-success/20 text-success font-thin  border-none'
                         : record.status === 'late'
@@ -320,10 +540,6 @@
                   >
                     {{ record.status || 'Present' }}
                   </span>
-                </td>
-                <td>{{ record.location_name || 'N/A' }}</td>
-                <td>
-                  {{ record.hours_worked ? `${record.hours_worked}h` : 'N/A' }}
                 </td>
               </tr>
             </tbody>
@@ -352,24 +568,75 @@
           </h3>
           <p class="text-gray-500">You haven't recorded any attendance yet.</p>
         </div>
+      </div>
+    </div>
 
-        <!-- Close Button -->
+    <!-- Success Modal -->
+    <div v-if="showSuccessModal" class="modal modal-open">
+      <div class="modal-box max-w-md">
+        <div class="flex justify-between items-center mb-6">
+          <h3 class="font-bold text-xl text-success">Attendance Recorded!</h3>
+          <button
+            @click="closeSuccessModal"
+            class="btn btn-sm btn-circle btn-ghost"
+          >
+            <X class="w-4 h-4" />
+          </button>
+        </div>
+
+        <div class="text-center">
+          <div
+            class="w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-4"
+          >
+            <CheckCircle class="w-8 h-8 text-success" />
+          </div>
+          <h4 class="text-lg font-semibold text-success mb-2">Success!</h4>
+          <p class="text-gray-700 mb-4">{{ successMessage }}</p>
+
+          <!-- Show additional data if available -->
+          <div
+            v-if="successData"
+            class="bg-gray-50 rounded-lg p-3 text-sm text-left"
+          >
+            <div v-if="successData.employee" class="mb-2">
+              <span class="font-medium">Employee:</span>
+              {{ successData.employee }}
+            </div>
+            <div v-if="successData.action" class="mb-2">
+              <span class="font-medium">Action:</span>
+              {{ successData.action.replace('-', ' ').toUpperCase() }}
+            </div>
+            <div v-if="successData.time" class="mb-2">
+              <span class="font-medium">Time:</span>
+              {{ new Date(successData.time).toLocaleString() }}
+            </div>
+            <div v-if="successData.location" class="mb-2">
+              <span class="font-medium">Location:</span>
+              {{ successData.location }}
+            </div>
+          </div>
+        </div>
+
         <div class="modal-action">
           <button
-            @click="closeAttendanceRecords"
-            class="btn bg-primaryColor text-white font-thin border-none"
+            @click="closeSuccessModal"
+            class="btn bg-success text-white hover:bg-success/80 border-none"
           >
             Close
           </button>
         </div>
       </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="closeSuccessModal">close</button>
+      </form>
     </div>
   </div>
 </template>
 
 <script setup>
-  import { ref, onMounted, onUnmounted, watch } from 'vue';
+  import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
   import { useAuthStore } from '../stores/authStore';
+  import { useAttendanceStore } from '../stores/attendanceStore';
   import { apiConfig } from '../config/api';
   import axios from 'axios';
   import QRCode from 'qrcode';
@@ -380,6 +647,8 @@
     LogOut,
     AlertCircle,
     Smartphone,
+    Calendar,
+    CheckCircle,
   } from 'lucide-vue-next';
 
   const props = defineProps({
@@ -393,19 +662,56 @@
 
   // Auth store
   const authStore = useAuthStore();
+  const attendanceStore = useAttendanceStore();
 
   // Reactive data
   const qrCodeLoading = ref(false);
   const qrCodeData = ref(null);
+  const qrCodeError = ref(null);
   const currentStatus = ref('checked-out'); // 'checked-in' or 'checked-out'
   const locationChecking = ref(false);
   const locationStatus = ref(null);
+  const branchInfo = ref(null);
+
+  // Reactive computed property that automatically updates current status
+  const currentStatusFromStore = computed(() => {
+    const todayData = attendanceStore.todayAttendance;
+    if (todayData) {
+      return todayData.time_out ? 'checked-out' : 'checked-in';
+    }
+    return 'checked-out';
+  });
+
+  // Watch for changes in the store and update local status
+  watch(
+    currentStatusFromStore,
+    (newStatus) => {
+      if (newStatus !== currentStatus.value) {
+        console.log(
+          'QRAttendanceModal - Status changed from',
+          currentStatus.value,
+          'to',
+          newStatus
+        );
+        currentStatus.value = newStatus;
+      }
+    },
+    { immediate: true }
+  );
   const watchId = ref(null);
   const showAttendanceRecords = ref(false);
   const attendanceRecords = ref([]);
   const recordsLoading = ref(false);
+  const scheduleInfo = ref(null);
+  const scheduleValidation = ref(null);
+  const scheduleLoading = ref(false);
+  const showSuccessModal = ref(false);
+  const successMessage = ref('');
+  const successData = ref(null);
+  const attendancePollingInterval = ref(null);
+  const lastShownRecordId = ref(null);
 
-  // API Configuration
+  // API Configuration (only for branch coordinates)
   const API_BASE_URL = apiConfig.baseURL;
   const authHeaders = () => {
     const token = localStorage.getItem('token');
@@ -425,25 +731,45 @@
   const fetchAttendanceRecords = async () => {
     try {
       recordsLoading.value = true;
-      const response = await axios.get(
-        `${API_BASE_URL}/attendance/my-attendance`,
-        {
-          headers: authHeaders(),
-          params: {
-            limit: 10,
-            offset: 0,
-          },
-        }
+
+      // First, fetch today's attendance to ensure we have the latest data
+      await attendanceStore.fetchTodayAttendance();
+
+      // Get today's attendance data from the store
+      const todayData = attendanceStore.todayAttendance;
+      console.log(
+        'QRAttendanceModal - fetchAttendanceRecords - Today data:',
+        todayData
       );
 
-      if (response.data.success) {
-        attendanceRecords.value = response.data.data || [];
-      } else {
-        console.error(
-          'Failed to fetch attendance records:',
-          response.data.message
+      if (todayData) {
+        // Convert today's attendance record to array format for display
+        const recordsArray = [todayData];
+        attendanceRecords.value = recordsArray;
+        console.log(
+          'QRAttendanceModal - fetchAttendanceRecords - Records set:',
+          recordsArray
         );
-        attendanceRecords.value = [];
+      } else {
+        // If no today's data, try to fetch from API directly
+        const today = new Date().toISOString().split('T')[0];
+        const response = await axios.get(`${API_BASE_URL}/attendance/today`, {
+          headers: authHeaders(),
+        });
+
+        if (response.data.success && response.data.data) {
+          const recordsArray = [response.data.data];
+          attendanceRecords.value = recordsArray;
+          console.log(
+            'QRAttendanceModal - fetchAttendanceRecords - API Records set:',
+            recordsArray
+          );
+        } else {
+          attendanceRecords.value = [];
+          console.log(
+            'QRAttendanceModal - fetchAttendanceRecords - No records found'
+          );
+        }
       }
     } catch (error) {
       console.error('Error fetching attendance records:', error);
@@ -525,6 +851,13 @@
           branchLat = parseFloat(branch.latitude);
           branchLon = parseFloat(branch.longitude);
           requiredRadius = parseFloat(branch.radius_meters) || 2.0;
+          branchInfo.value = {
+            id: branch.id,
+            name: branch.name,
+            latitude: branchLat,
+            longitude: branchLon,
+            radius_meters: requiredRadius,
+          };
         }
       } catch (error) {
         console.warn('Failed to fetch branch coordinates:', error);
@@ -657,6 +990,7 @@
   const generateQRCode = async (action) => {
     try {
       qrCodeLoading.value = true;
+      qrCodeError.value = null; // Clear any previous errors
 
       // Get employee information from auth store
       const employee = authStore.user;
@@ -669,7 +1003,8 @@
         employee_name:
           `${employee?.first_name || employee?.name || ''} ${employee?.last_name || ''}`.trim(),
         branch_id: employee?.branch_id,
-        branch_name: employee?.branch_name || 'Main Office',
+        branch_name:
+          branchInfo.value?.name || employee?.branch_name || 'Branch',
         timestamp: new Date().toISOString(),
         location: 'Mobile App QR Code',
         valid_until: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // 5 minutes from now
@@ -696,6 +1031,8 @@
     } catch (error) {
       console.error('Error generating QR code:', error);
       qrCodeData.value = null;
+      qrCodeError.value =
+        error.message || 'Failed to generate QR code. Please try again.';
     } finally {
       qrCodeLoading.value = false;
     }
@@ -753,28 +1090,232 @@
     });
   };
 
+  const formatHoursWorked = (hoursString) => {
+    if (!hoursString) return 'N/A';
+
+    // Convert string to number
+    const hours = parseFloat(hoursString);
+
+    if (isNaN(hours)) return 'N/A';
+
+    // Convert hours to minutes for display
+    const totalMinutes = Math.round(hours * 60);
+    const hoursPart = Math.floor(totalMinutes / 60);
+    const minutesPart = totalMinutes % 60;
+
+    if (hoursPart > 0) {
+      return minutesPart > 0
+        ? `${hoursPart}h ${minutesPart}m`
+        : `${hoursPart}h`;
+    } else {
+      return `${minutesPart}m`;
+    }
+  };
+
   const checkCurrentStatus = async () => {
     try {
-      const today = new Date().toISOString().split('T')[0];
-      const response = await axios.get(
-        `${API_BASE_URL}/attendance/my-attendance`,
-        {
-          headers: authHeaders(),
-          params: { date: today },
-        }
-      );
+      // First, fetch today's attendance to ensure we have the latest data
+      await attendanceStore.fetchTodayAttendance();
 
-      if (response.data.success && response.data.data.length > 0) {
-        const latestRecord = response.data.data[0];
-        currentStatus.value = latestRecord.time_out
-          ? 'checked-out'
-          : 'checked-in';
+      // Use the attendance store to get today's attendance
+      const todayData = attendanceStore.todayAttendance;
+      console.log('QRAttendanceModal - Today data:', todayData);
+
+      if (todayData) {
+        // Check if user has time_out (meaning they're checked out)
+        currentStatus.value = todayData.time_out ? 'checked-out' : 'checked-in';
+        console.log(
+          'QRAttendanceModal - Current status updated to:',
+          currentStatus.value
+        );
       } else {
         currentStatus.value = 'checked-out';
+        console.log(
+          'QRAttendanceModal - No today data, status set to checked-out'
+        );
       }
     } catch (error) {
       console.error('Error checking attendance status:', error);
       currentStatus.value = 'checked-out';
+    }
+  };
+
+  // Schedule-related methods
+  const fetchScheduleInfo = async () => {
+    try {
+      scheduleLoading.value = true;
+      scheduleInfo.value = await attendanceStore.fetchMySchedule();
+    } catch (error) {
+      console.error('Error fetching schedule info:', error);
+      scheduleInfo.value = null;
+    } finally {
+      scheduleLoading.value = false;
+    }
+  };
+
+  const validateCurrentSchedule = async () => {
+    try {
+      scheduleValidation.value = await attendanceStore.validateSchedule();
+    } catch (error) {
+      console.error('Error validating schedule:', error);
+      scheduleValidation.value = null;
+    }
+  };
+
+  // Success modal methods
+  const closeSuccessModal = () => {
+    showSuccessModal.value = false;
+    successMessage.value = '';
+    successData.value = null;
+  };
+
+  const clearQRCodeError = () => {
+    qrCodeError.value = null;
+  };
+
+  const checkForNewAttendance = async () => {
+    try {
+      // Use the attendance store to get today's attendance
+      const todayData = attendanceStore.todayAttendance;
+
+      if (todayData) {
+        console.log('CheckForNewAttendance - Latest record:', todayData);
+        console.log(
+          'CheckForNewAttendance - Current status:',
+          currentStatus.value
+        );
+        console.log(
+          'CheckForNewAttendance - Has time_in:',
+          !!todayData.time_in
+        );
+        console.log(
+          'CheckForNewAttendance - Has time_out:',
+          !!todayData.time_out
+        );
+
+        // Check if this is a new attendance record (created in the last 60 seconds)
+        const recordTime = new Date(todayData.created_at);
+        const now = new Date();
+        const timeDiff = (now - recordTime) / 1000; // seconds
+
+        console.log('Time difference:', timeDiff, 'seconds');
+
+        // Check if we have a time-in record and we were previously checked out
+        if (
+          todayData.time_in &&
+          !todayData.time_out &&
+          currentStatus.value === 'checked-out' &&
+          lastShownRecordId.value !== todayData.id
+        ) {
+          // This is a new time-in record, show success modal
+          successMessage.value = `Successfully timed in at ${recordTime.toLocaleTimeString()}`;
+          successData.value = {
+            employee:
+              `${authStore.user?.first_name || ''} ${authStore.user?.last_name || ''}`.trim(),
+            action: 'time-in',
+            time: todayData.time_in,
+            location: 'QR Code Scan',
+          };
+          showSuccessModal.value = true;
+          lastShownRecordId.value = todayData.id;
+
+          console.log('Showing success modal for time-in');
+
+          // Update current status
+          await checkCurrentStatus();
+          await validateCurrentSchedule();
+        }
+        // Check if we have a time-out record and we were previously checked in
+        else if (
+          todayData.time_out &&
+          currentStatus.value === 'checked-in' &&
+          lastShownRecordId.value !== todayData.id
+        ) {
+          // This is a new time-out record, show success modal
+          successMessage.value = `Successfully timed out at ${new Date(todayData.time_out).toLocaleTimeString()}`;
+          successData.value = {
+            employee:
+              `${authStore.user?.first_name || ''} ${authStore.user?.last_name || ''}`.trim(),
+            action: 'time-out',
+            time: todayData.time_out,
+            location: 'QR Code Scan',
+          };
+          showSuccessModal.value = true;
+          lastShownRecordId.value = todayData.id;
+
+          console.log('Showing success modal for time-out');
+
+          // Update current status
+          await checkCurrentStatus();
+          await validateCurrentSchedule();
+        }
+      }
+    } catch (error) {
+      console.error('Error checking for new attendance:', error);
+    }
+  };
+
+  // Polling methods
+  const startAttendancePolling = () => {
+    // Check for new attendance every 2 seconds for more responsive detection
+    console.log('Starting attendance polling...');
+    attendancePollingInterval.value = setInterval(checkForNewAttendance, 2000);
+  };
+
+  const stopAttendancePolling = () => {
+    if (attendancePollingInterval.value) {
+      clearInterval(attendancePollingInterval.value);
+      attendancePollingInterval.value = null;
+    }
+  };
+
+  // Direct attendance processing (without QR scanning)
+  const processDirectAttendance = async (action) => {
+    try {
+      qrCodeLoading.value = true;
+
+      // Get employee information from auth store
+      const employee = authStore.user;
+
+      // Create QR code data for direct processing
+      const qrData = {
+        action: action, // 'time-in' or 'time-out'
+        employee_id: employee?.employee_id || employee?.id,
+        employee_name:
+          `${employee?.first_name || employee?.name || ''} ${employee?.last_name || ''}`.trim(),
+        branch_id: employee?.branch_id,
+        branch_name:
+          branchInfo.value?.name || employee?.branch_name || 'Branch',
+        timestamp: new Date().toISOString(),
+        location: 'Direct Attendance Processing',
+        valid_until: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      };
+
+      console.log('Processing direct attendance:', qrData);
+
+      // Process attendance directly using the attendance store
+      const result = await attendanceStore.scanQRCode(qrData);
+
+      // Show success message
+      successMessage.value = result.message;
+      successData.value = result.data;
+      showSuccessModal.value = true;
+
+      // Update current status and refresh schedule validation
+      await checkCurrentStatus();
+      await validateCurrentSchedule();
+
+      // Clear QR data since we processed directly
+      qrCodeData.value = null;
+    } catch (error) {
+      console.error('Error processing attendance:', error);
+      showErrorMessage(
+        error?.response?.data?.message ||
+          error.message ||
+          'Failed to process attendance'
+      );
+    } finally {
+      qrCodeLoading.value = false;
     }
   };
 
@@ -791,14 +1332,25 @@
       if (isOpen) {
         console.log('Modal opened, checking status...');
         checkCurrentStatus();
+        fetchScheduleInfo();
+        validateCurrentSchedule();
         startLocationWatching();
+        startAttendancePolling(); // Start polling for new attendance records
         // Automatically check location when modal opens
         setTimeout(() => {
           checkLocation();
         }, 500); // Small delay to ensure modal is fully rendered
       } else {
         qrCodeData.value = null;
+        qrCodeError.value = null;
+        scheduleInfo.value = null;
+        scheduleValidation.value = null;
+        showSuccessModal.value = false;
+        successMessage.value = '';
+        successData.value = null;
+        lastShownRecordId.value = null;
         stopLocationWatching();
+        stopAttendancePolling();
       }
     }
   );
@@ -807,6 +1359,7 @@
   onUnmounted(() => {
     qrCodeData.value = null;
     stopLocationWatching();
+    stopAttendancePolling();
   });
 </script>
 

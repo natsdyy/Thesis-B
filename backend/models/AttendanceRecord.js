@@ -54,7 +54,12 @@ class AttendanceRecord {
       .first();
   }
 
-  static async timeIn(employeeId, qrCodeId, userLatitude = null, userLongitude = null) {
+  static async timeIn(
+    employeeId,
+    qrCodeId,
+    userLatitude = null,
+    userLongitude = null
+  ) {
     // Check if employee already has attendance for today
     const existingRecord = await this.getTodayAttendance(employeeId);
 
@@ -62,10 +67,39 @@ class AttendanceRecord {
       throw new Error("You have already timed in today");
     }
 
+    // Validate employee schedule for time-in
+    const EmployeeScheduleService = require("../services/EmployeeScheduleService");
+    const scheduleValidation =
+      await EmployeeScheduleService.validateTimeInSchedule(employeeId);
+
+    if (!scheduleValidation.isValid) {
+      // Create a more descriptive error message based on the validation result
+      let errorMessage = scheduleValidation.message;
+
+      if (scheduleValidation.reason === "NO_SCHEDULE") {
+        errorMessage =
+          "No work schedule assigned for today. Please contact your supervisor to set up your schedule.";
+      } else if (scheduleValidation.reason === "OUTSIDE_SCHEDULE") {
+        const { schedule, currentTime, timeDifference, direction } =
+          scheduleValidation;
+        if (timeDifference && direction) {
+          const timeDiffText =
+            timeDifference < 60
+              ? `${timeDifference} minutes`
+              : `${Math.round(timeDifference / 60)} hours`;
+          errorMessage = `You are ${timeDiffText} ${direction} your scheduled time. Your schedule today is ${schedule.start_time} - ${schedule.end_time} (${schedule.shift_name}).`;
+        } else {
+          errorMessage = `Time-in is outside your scheduled hours. Your schedule today is ${schedule.start_time} - ${schedule.end_time} (${schedule.shift_name}).`;
+        }
+      }
+
+      throw new Error(errorMessage);
+    }
+
     // Get QR code details for location validation
-    const qrCode = await knex('attendance_qr_codes')
-      .where('id', qrCodeId)
-      .andWhere('is_active', true)
+    const qrCode = await knex("attendance_qr_codes")
+      .where("id", qrCodeId)
+      .andWhere("is_active", true)
       .first();
 
     if (!qrCode) {
@@ -74,37 +108,47 @@ class AttendanceRecord {
 
     // Validate location if GPS coordinates are provided
     if (userLatitude && userLongitude && qrCode.latitude && qrCode.longitude) {
-      const { isWithinRadius, isValidCoordinates } = require('../utils/locationUtils');
-      
+      const {
+        isWithinRadius,
+        isValidCoordinates,
+      } = require("../utils/locationUtils");
+
       // Validate coordinates
       if (!isValidCoordinates(userLatitude, userLongitude)) {
         throw new Error("Invalid GPS coordinates provided");
       }
-      
-      if (!isValidCoordinates(parseFloat(qrCode.latitude), parseFloat(qrCode.longitude))) {
+
+      if (
+        !isValidCoordinates(
+          parseFloat(qrCode.latitude),
+          parseFloat(qrCode.longitude)
+        )
+      ) {
         throw new Error("QR code location coordinates are invalid");
       }
 
       // Check if user is within allowed radius
       const allowedRadius = qrCode.radius_meters || 2.0;
       const isWithinRange = isWithinRadius(
-        userLatitude, 
-        userLongitude, 
-        parseFloat(qrCode.latitude), 
-        parseFloat(qrCode.longitude), 
+        userLatitude,
+        userLongitude,
+        parseFloat(qrCode.latitude),
+        parseFloat(qrCode.longitude),
         allowedRadius
       );
 
       if (!isWithinRange) {
-        const { getDistanceInfo } = require('../utils/locationUtils');
+        const { getDistanceInfo } = require("../utils/locationUtils");
         const distanceInfo = getDistanceInfo(
-          userLatitude, 
-          userLongitude, 
-          parseFloat(qrCode.latitude), 
+          userLatitude,
+          userLongitude,
+          parseFloat(qrCode.latitude),
           parseFloat(qrCode.longitude)
         );
-        
-        throw new Error(`You are too far from the attendance location. Distance: ${distanceInfo.humanReadable}, Required: within ${allowedRadius}m`);
+
+        throw new Error(
+          `You are too far from the attendance location. Distance: ${distanceInfo.humanReadable}, Required: within ${allowedRadius}m`
+        );
       }
     }
 
@@ -204,7 +248,7 @@ class AttendanceRecord {
   // Get detailed attendance history (individual time-in/time-out events)
   static async getAttendanceHistory({ start_date, end_date, employee_id }) {
     const startDate = new Date(start_date).toISOString();
-    const endDate = new Date(end_date + 'T23:59:59.999Z').toISOString();
+    const endDate = new Date(end_date + "T23:59:59.999Z").toISOString();
 
     let query = knex("attendance_records")
       .select(
@@ -214,7 +258,11 @@ class AttendanceRecord {
         "employees.employee_id",
         "attendance_qr_codes.location_name"
       )
-      .leftJoin("attendance_qr_codes", "attendance_records.qr_code_id", "attendance_qr_codes.id")
+      .leftJoin(
+        "attendance_qr_codes",
+        "attendance_records.qr_code_id",
+        "attendance_qr_codes.id"
+      )
       .leftJoin("employees", "attendance_records.employee_id", "employees.id")
       .whereBetween("attendance_records.created_at", [startDate, endDate]);
 
@@ -222,43 +270,54 @@ class AttendanceRecord {
       query = query.where("employees.employee_id", employee_id);
     }
 
-    const records = await query.orderBy("attendance_records.created_at", "desc");
+    const records = await query.orderBy(
+      "attendance_records.created_at",
+      "desc"
+    );
 
     // Transform records to show individual time-in/time-out events
     const history = [];
-    
-    records.forEach(record => {
+
+    records.forEach((record) => {
       // Add time-in event if it exists
       if (record.time_in) {
         history.push({
           id: `${record.id}_time_in`,
           employee_id: record.employee_id,
-          employee_name: `${record.first_name || ''} ${record.last_name || ''}`.trim(),
-          event_type: 'time-in',
+          employee_name:
+            `${record.first_name || ""} ${record.last_name || ""}`.trim(),
+          event_type: "time-in",
           created_at: record.time_in,
           location_name: record.location_name,
-          status: 'present',
-          duration: record.time_out ? this.calculateDuration(record.time_in, record.time_out) : null
+          status: "present",
+          duration: record.time_out
+            ? this.calculateDuration(record.time_in, record.time_out)
+            : null,
         });
       }
-      
+
       // Add time-out event if it exists
       if (record.time_out) {
         history.push({
           id: `${record.id}_time_out`,
           employee_id: record.employee_id,
-          employee_name: `${record.first_name || ''} ${record.last_name || ''}`.trim(),
-          event_type: 'time-out',
+          employee_name:
+            `${record.first_name || ""} ${record.last_name || ""}`.trim(),
+          event_type: "time-out",
           created_at: record.time_out,
           location_name: record.location_name,
-          status: 'present',
-          duration: record.time_in ? this.calculateDuration(record.time_in, record.time_out) : null
+          status: "present",
+          duration: record.time_in
+            ? this.calculateDuration(record.time_in, record.time_out)
+            : null,
         });
       }
     });
 
     // Sort by date and time (newest first)
-    return history.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    return history.sort(
+      (a, b) => new Date(b.created_at) - new Date(a.created_at)
+    );
   }
 
   // Helper method to calculate duration between two timestamps

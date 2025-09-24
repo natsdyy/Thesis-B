@@ -123,41 +123,54 @@ const requirePermission = (permissionName) => {
  *       404:
  *         description: Branch not found
  */
-router.get(
-  "/:id/coordinates",
-  async (req, res) => {
-    try {
-      const { id } = req.params;
-      const branchId = parseInt(id);
-      const branch = await Branch.getById(branchId);
+router.get("/:id/coordinates", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const branchId = parseInt(id);
+    const branch = await Branch.getById(branchId);
 
-      if (!branch) {
-        return res.status(404).json({ 
-          success: false,
-          error: "Branch not found" 
-        });
-      }
-
-      // Return only coordinate data needed for attendance
-      res.json({
-        success: true,
-        data: {
-          id: branch.id,
-          name: branch.name,
-          latitude: branch.latitude,
-          longitude: branch.longitude,
-          radius_meters: branch.radius_meters
-        }
-      });
-    } catch (error) {
-      console.error("Error fetching branch coordinates:", error);
-      res.status(500).json({ 
+    if (!branch) {
+      return res.status(404).json({
         success: false,
-        error: "Failed to fetch branch coordinates" 
+        error: "Branch not found",
       });
     }
+
+    // If coordinates are missing but address exists, geocode dynamically
+    let latitude = branch.latitude;
+    let longitude = branch.longitude;
+    if ((!latitude || !longitude) && branch.address) {
+      try {
+        const { geocodeAddress } = require("../services/geocodingService");
+        const geo = await geocodeAddress(branch.address);
+        if (geo) {
+          latitude = geo.latitude;
+          longitude = geo.longitude;
+        }
+      } catch (geoErr) {
+        console.warn("Geocoding fallback failed:", geoErr.message);
+      }
+    }
+
+    // Return only coordinate data needed for attendance
+    res.json({
+      success: true,
+      data: {
+        id: branch.id,
+        name: branch.name,
+        latitude,
+        longitude,
+        radius_meters: branch.radius_meters,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching branch coordinates:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch branch coordinates",
+    });
   }
-);
+});
 
 // =============================================================================
 // SPECIFIC ROUTES (MUST COME FIRST - BEFORE PARAMETRIC ROUTES)
@@ -516,21 +529,21 @@ router.get(
       const branch = await Branch.getById(branchId);
 
       if (!branch) {
-        return res.status(404).json({ 
+        return res.status(404).json({
           success: false,
-          error: "Branch not found" 
+          error: "Branch not found",
         });
       }
 
       res.json({
         success: true,
-        data: branch
+        data: branch,
       });
     } catch (error) {
       console.error("Error fetching branch:", error);
-      res.status(500).json({ 
+      res.status(500).json({
         success: false,
-        error: "Failed to fetch branch" 
+        error: "Failed to fetch branch",
       });
     }
   }

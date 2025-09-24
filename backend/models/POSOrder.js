@@ -224,10 +224,56 @@ class POSOrder {
             const expiryDate = new Date(branchInventory.expiry_date)
               .toISOString()
               .split("T")[0];
+
+            // If the recorded expiry is past/today, double-check if a newer
+            // distribution batch exists after that expiry. If so, allow selling.
             if (expiryDate <= today) {
-              throw new Error(
-                `Cannot sell expired item: ${item.item_name} (expired on ${expiryDate})`
-              );
+              const latestDistribution = await trx(
+                "branch_inventory_transactions"
+              )
+                .where({
+                  branch_id: orderData.branch_id,
+                  item_name: item.item_name,
+                  item_type: "production",
+                  transaction_type: "distribution",
+                })
+                .whereNull("deleted_at")
+                .orderBy("created_at", "desc")
+                .select("created_at", "transaction_date", "new_expiry_date")
+                .first();
+
+              let allowSell = false;
+              if (latestDistribution) {
+                const distDate = new Date(
+                  latestDistribution.transaction_date ||
+                    latestDistribution.created_at
+                )
+                  .toISOString()
+                  .split("T")[0];
+
+                // If the latest distribution explicitly carries a new future expiry, honor it
+                if (latestDistribution.new_expiry_date) {
+                  const distExpiry = new Date(
+                    latestDistribution.new_expiry_date
+                  )
+                    .toISOString()
+                    .split("T")[0];
+                  if (distExpiry > today) {
+                    allowSell = true;
+                  }
+                }
+
+                // Otherwise, if the distribution happened after the old expiry, treat as new batch
+                if (!allowSell && distDate > expiryDate) {
+                  allowSell = true;
+                }
+              }
+
+              if (!allowSell) {
+                throw new Error(
+                  `Cannot sell expired item: ${item.item_name} (expired on ${expiryDate})`
+                );
+              }
             }
           }
         }

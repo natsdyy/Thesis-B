@@ -1,8 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import axios from 'axios';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+import { apiConfig, getApiUrl } from '../config/api.js';
 
 export const useAttendanceStore = defineStore('attendance', () => {
   // State
@@ -30,13 +29,25 @@ export const useAttendanceStore = defineStore('attendance', () => {
   });
 
   // Actions
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('token');
+    return {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    };
+  };
   const fetchQRCodes = async () => {
     try {
       loading.value = true;
       error.value = null;
-      
-      const response = await axios.get(`${API_BASE_URL}/attendance/qr-codes`);
-      
+
+      const response = await axios.get(
+        getApiUrl('/attendance/qr-codes'),
+        getAuthHeaders()
+      );
+
       if (response.data.success) {
         qrCodes.value = response.data.data;
       } else {
@@ -54,12 +65,16 @@ export const useAttendanceStore = defineStore('attendance', () => {
     try {
       loading.value = true;
       error.value = null;
-      
-      const response = await axios.post(`${API_BASE_URL}/attendance/qr-codes`, {
-        location_name: locationName,
-        description: description
-      });
-      
+
+      const response = await axios.post(
+        getApiUrl('/attendance/qr-codes'),
+        {
+          location_name: locationName,
+          description: description,
+        },
+        getAuthHeaders()
+      );
+
       if (response.data.success) {
         await fetchQRCodes(); // Refresh the list
         return response.data.data;
@@ -78,9 +93,13 @@ export const useAttendanceStore = defineStore('attendance', () => {
     try {
       loading.value = true;
       error.value = null;
-      
-      const response = await axios.put(`${API_BASE_URL}/attendance/qr-codes/${id}`, data);
-      
+
+      const response = await axios.put(
+        getApiUrl(`/attendance/qr-codes/${id}`),
+        data,
+        getAuthHeaders()
+      );
+
       if (response.data.success) {
         await fetchQRCodes(); // Refresh the list
         return response.data.data;
@@ -99,9 +118,12 @@ export const useAttendanceStore = defineStore('attendance', () => {
     try {
       loading.value = true;
       error.value = null;
-      
-      const response = await axios.delete(`${API_BASE_URL}/attendance/qr-codes/${id}`);
-      
+
+      const response = await axios.delete(
+        getApiUrl(`/attendance/qr-codes/${id}`),
+        getAuthHeaders()
+      );
+
       if (response.data.success) {
         await fetchQRCodes(); // Refresh the list
       } else {
@@ -119,11 +141,37 @@ export const useAttendanceStore = defineStore('attendance', () => {
     try {
       loading.value = true;
       error.value = null;
-      
-      const response = await axios.post(`${API_BASE_URL}/attendance/time-in`, {
-        qr_code: qrCode
-      });
-      
+
+      // Try to get current GPS coordinates (non-blocking fallback)
+      const getPosition = () =>
+        new Promise((resolve) => {
+          if (!navigator.geolocation) return resolve(null);
+          navigator.geolocation.getCurrentPosition(
+            (pos) =>
+              resolve({
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+              }),
+            () => resolve(null),
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+          );
+        });
+
+      const coords = await getPosition();
+      const payload = coords
+        ? {
+            qr_code: qrCode,
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+          }
+        : { qr_code: qrCode };
+
+      const response = await axios.post(
+        getApiUrl('/attendance/time-in'),
+        payload,
+        getAuthHeaders()
+      );
+
       if (response.data.success) {
         await fetchTodayAttendance(); // Refresh today's attendance
         return response.data;
@@ -142,9 +190,13 @@ export const useAttendanceStore = defineStore('attendance', () => {
     try {
       loading.value = true;
       error.value = null;
-      
-      const response = await axios.post(`${API_BASE_URL}/attendance/time-out`);
-      
+
+      const response = await axios.post(
+        getApiUrl('/attendance/time-out'),
+        {},
+        getAuthHeaders()
+      );
+
       if (response.data.success) {
         await fetchTodayAttendance(); // Refresh today's attendance
         return response.data;
@@ -163,9 +215,12 @@ export const useAttendanceStore = defineStore('attendance', () => {
     try {
       loading.value = true;
       error.value = null;
-      
-      const response = await axios.get(`${API_BASE_URL}/attendance/today`);
-      
+
+      const response = await axios.get(
+        getApiUrl('/attendance/today'),
+        getAuthHeaders()
+      );
+
       if (response.data.success) {
         todayAttendance.value = response.data.data;
       } else {
@@ -183,10 +238,13 @@ export const useAttendanceStore = defineStore('attendance', () => {
     try {
       loading.value = true;
       error.value = null;
-      
+
       const params = date ? { date } : {};
-      const response = await axios.get(`${API_BASE_URL}/attendance/my-attendance`, { params });
-      
+      const response = await axios.get(getApiUrl('/attendance/my-attendance'), {
+        ...getAuthHeaders(),
+        params,
+      });
+
       if (response.data.success) {
         attendanceRecords.value = response.data.data;
       } else {
@@ -202,10 +260,10 @@ export const useAttendanceStore = defineStore('attendance', () => {
 
   const validateQRCode = async (qrCode) => {
     try {
-      const response = await axios.post(`${API_BASE_URL}/attendance/validate-qr`, {
-        qr_code: qrCode
+      const response = await axios.post(getApiUrl('/attendance/validate-qr'), {
+        qr_code: qrCode,
       });
-      
+
       if (response.data.success) {
         return response.data.data;
       } else {
@@ -216,22 +274,47 @@ export const useAttendanceStore = defineStore('attendance', () => {
     }
   };
 
+  const scanQRCode = async (qrData) => {
+    try {
+      loading.value = true;
+      error.value = null;
+
+      const response = await axios.post(getApiUrl('/attendance/scan'), {
+        qrData: qrData,
+      });
+
+      if (response.data.success) {
+        return response.data;
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (err) {
+      error.value = err.response?.data?.message || err.message;
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const getAttendanceReport = async (userId = null, startDate, endDate) => {
     try {
       loading.value = true;
       error.value = null;
-      
+
       const params = {
         start_date: startDate,
-        end_date: endDate
+        end_date: endDate,
       };
-      
+
       if (userId) {
         params.user_id = userId;
       }
-      
-      const response = await axios.get(`${API_BASE_URL}/attendance/report`, { params });
-      
+
+      const response = await axios.get(getApiUrl('/attendance/report'), {
+        ...getAuthHeaders(),
+        params,
+      });
+
       if (response.data.success) {
         return response.data.data;
       } else {
@@ -249,6 +332,54 @@ export const useAttendanceStore = defineStore('attendance', () => {
     error.value = null;
   };
 
+  // Schedule-related methods
+  const fetchMySchedule = async () => {
+    try {
+      loading.value = true;
+      error.value = null;
+
+      const response = await axios.get(
+        getApiUrl('/attendance/my-schedule'),
+        getAuthHeaders()
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (err) {
+      error.value = err.response?.data?.message || err.message;
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const validateSchedule = async (currentTime = null) => {
+    try {
+      loading.value = true;
+      error.value = null;
+
+      const response = await axios.post(
+        getApiUrl('/attendance/validate-schedule'),
+        { currentTime },
+        getAuthHeaders()
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (err) {
+      error.value = err.response?.data?.message || err.message;
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   return {
     // State
     qrCodes,
@@ -256,13 +387,13 @@ export const useAttendanceStore = defineStore('attendance', () => {
     todayAttendance,
     loading,
     error,
-    
+
     // Getters
     isTimeInToday,
     isTimeOutToday,
     canTimeIn,
     canTimeOut,
-    
+
     // Actions
     fetchQRCodes,
     createQRCode,
@@ -273,7 +404,10 @@ export const useAttendanceStore = defineStore('attendance', () => {
     fetchTodayAttendance,
     fetchMyAttendance,
     validateQRCode,
+    scanQRCode,
     getAttendanceReport,
-    clearError
+    fetchMySchedule,
+    validateSchedule,
+    clearError,
   };
 });

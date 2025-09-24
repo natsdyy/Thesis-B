@@ -1274,251 +1274,238 @@
             </div>
           </div>
         </div>
-
-        <!-- Transactions Tab -->
-        <div v-if="activeTab === 'transactions'" class="space-y-6">
-          <div
-            class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6"
+      </div>
+    </div>
+    <!-- Transactions Tab -->
+    <div v-if="activeTab === 'transactions'" class="space-y-6">
+      <div
+        class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6"
+      >
+        <div class="flex-1 min-w-0">
+          <h2
+            class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl mb-2"
           >
-            <div class="flex-1 min-w-0">
-              <h2
-                class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl mb-2"
-              >
-                <ShoppingCart class="w-5 h-5 sm:w-6 sm:h-6" />
-                Recent Transactions
-              </h2>
-              <p class="text-sm text-gray-600">
-                View and manage recent sales transactions
-              </p>
-            </div>
-            <div class="flex gap-2">
-              <button
-                @click="refreshData"
-                class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
-                :disabled="loading"
-              >
-                <RefreshCcw class="w-4 h-4 mr-1" />
-                <span class="hidden sm:inline">Refresh</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="overflow-x-auto -mx-4 sm:mx-0">
-            <div class="min-w-full px-4 sm:px-0">
-              <table class="table w-full table-zebra">
-                <thead>
-                  <tr>
-                    <th class="text-xs sm:text-sm">Order #</th>
-                    <th class="text-xs sm:text-sm hidden sm:table-cell">
-                      Items
-                    </th>
-                    <th class="text-xs sm:text-sm">Time</th>
-                    <th class="text-xs sm:text-sm">Amount</th>
-                    <th class="text-xs sm:text-sm hidden md:table-cell">
-                      Paid
-                    </th>
-                    <th class="text-xs sm:text-sm hidden md:table-cell">
-                      Change
-                    </th>
-                    <th class="text-xs sm:text-sm hidden lg:table-cell">
-                      Cashier
-                    </th>
-                    <th class="text-xs sm:text-sm hidden lg:table-cell">
-                      Type
-                    </th>
-                    <th class="text-xs sm:text-sm">Status</th>
-                    <th class="text-xs sm:text-sm">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="transaction in recentTransactions"
-                    :key="transaction.id"
-                  >
-                    <td>
-                      <div class="font-mono text-xs sm:text-sm">
-                        {{ transaction.order_number }}
-                      </div>
-                    </td>
-                    <td class="hidden sm:table-cell">
-                      <div class="text-xs sm:text-sm max-w-sm">
-                        <div
-                          v-if="
-                            transaction.items && transaction.items.length > 0
-                          "
-                          class="space-y-1"
-                        >
-                          <div
-                            v-for="item in transaction.items.slice(0, 2)"
-                            :key="item.id || item.menu_item_id"
-                            class="flex items-center justify-between"
-                          >
-                            <span class="font-medium text-xs">{{
-                              item.menu_item_name || item.item_name
-                            }}</span>
-                            <span class="text-gray-500 ml-2 text-xs"
-                              >{{ item.quantity }}x</span
-                            >
-                          </div>
-                          <div
-                            v-if="transaction.items.length > 2"
-                            class="text-xs text-gray-500"
-                          >
-                            +{{ transaction.items.length - 2 }} more
-                          </div>
-                        </div>
-                        <div v-else class="text-gray-400 text-xs">No items</div>
-                      </div>
-                    </td>
-                    <td>
-                      <div class="text-xs sm:text-sm">
-                        {{ transaction.time }}
-                      </div>
-                    </td>
-                    <td>
-                      <div
-                        class="font-semibold text-primaryColor text-xs sm:text-sm"
-                      >
-                        <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                          isNaN(transaction.amount)
-                            ? '0.00'
-                            : transaction.amount.toFixed(2)
-                        }}
-                      </div>
-                    </td>
-                    <td class="hidden md:table-cell">
-                      <div class="font-thin text-gray-600 text-xs sm:text-sm">
-                        <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                          isNaN(transaction.amount_paid)
-                            ? '0.00'
-                            : transaction.amount_paid.toFixed(2)
-                        }}
-                      </div>
-                    </td>
-                    <td class="hidden md:table-cell">
-                      <div class="font-thin text-gray-600 text-xs sm:text-sm">
-                        <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                          isNaN(transaction.change_amount)
-                            ? '0.00'
-                            : transaction.change_amount.toFixed(2)
-                        }}
-                      </div>
-                    </td>
-                    <td class="hidden lg:table-cell">
-                      <div class="text-xs sm:text-sm">
-                        {{ transaction.cashier }}
-                      </div>
-                    </td>
-                    <td class="hidden lg:table-cell">
-                      <div class="text-xs sm:text-sm">
-                        {{ transaction.order_type }}
-                      </div>
-                    </td>
-                    <td>
-                      <div
-                        v-if="transaction.status === 'void'"
-                        class="cursor-pointer"
-                      >
-                        <div
-                          :class="[
-                            'badge badge-xs sm:badge-sm mb-1 flex items-center gap-1 font-thin',
-                            transaction.isRefunded
-                              ? 'bg-success/10 text-success border border-success/20'
-                              : 'bg-error/10 text-error border border-error/20',
-                          ]"
-                          :title="transaction.void_reason"
-                        >
-                          <font-awesome-icon
-                            :icon="
-                              transaction.isRefunded
-                                ? 'fa-solid fa-undo'
-                                : 'fa-solid fa-exclamation-triangle'
-                            "
-                            class="w-2 h-2 sm:w-3 sm:h-3"
-                          />
-                          <span class="hidden sm:inline">{{
-                            transaction.isRefunded ? 'Refunded' : 'Loss'
-                          }}</span>
-                          <span class="sm:hidden">{{
-                            transaction.isRefunded ? 'R' : 'L'
-                          }}</span>
-                        </div>
-                      </div>
-                      <div v-else>
-                        <div
-                          :class="[
-                            'badge badge-xs sm:badge-sm font-thin',
-                            getStatusBadgeClass(transaction.status),
-                          ]"
-                        >
-                          <span class="hidden sm:inline">{{
-                            transaction.status
-                          }}</span>
-                          <span class="sm:hidden">{{
-                            transaction.status.charAt(0).toUpperCase()
-                          }}</span>
-                        </div>
-                      </div>
-                    </td>
-
-                    <td>
-                      <div class="flex space-x-1">
-                        <button
-                          v-if="transaction.status === 'processing'"
-                          @click="showCompleteOrder(transaction)"
-                          class="btn btn-xs sm:btn-sm btn-success text-success font-thin bg-success/20 shadow-none border-none"
-                          title="Complete Order"
-                        >
-                          <font-awesome-icon
-                            icon="fa-solid fa-check"
-                            class="w-3 h-3"
-                          />
-                        </button>
-                        <button
-                          v-if="transaction.canVoid"
-                          @click="showVoidOrder(transaction)"
-                          class="btn btn-xs sm:btn-sm btn-error text-error font-thin bg-error/20 shadow-none border-none"
-                          :title="
-                            transaction.status === 'completed'
-                              ? 'Refund Order'
-                              : 'Void Order'
-                          "
-                        >
-                          <font-awesome-icon
-                            :icon="
-                              transaction.status === 'completed'
-                                ? 'fa-solid fa-undo'
-                                : 'fa-solid fa-trash'
-                            "
-                            class="w-3 h-3"
-                          />
-                        </button>
-                        <span
-                          v-if="
-                            !transaction.canVoid &&
-                            transaction.status !== 'processing'
-                          "
-                          class="text-gray-400 text-xs"
-                          >-</span
-                        >
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div class="text-center mt-4">
-            <button
-              @click="showAllTransactions"
-              class="btn btn-outline btn-sm text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
-            >
-              <Eye class="w-4 h-4 mr-1" />
-              View All Transactions
-            </button>
-          </div>
+            <ShoppingCart class="w-5 h-5 sm:w-6 sm:h-6" />
+            Recent Transactions
+          </h2>
+          <p class="text-sm text-gray-600">
+            View and manage recent sales transactions
+          </p>
         </div>
+        <div class="flex gap-2">
+          <button
+            @click="refreshData"
+            class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
+            :disabled="loading"
+          >
+            <RefreshCcw class="w-4 h-4 mr-1" />
+            <span class="hidden sm:inline">Refresh</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto -mx-4 sm:mx-0">
+        <div class="min-w-full px-4 sm:px-0">
+          <table class="table w-full table-zebra">
+            <thead>
+              <tr>
+                <th class="text-xs sm:text-sm">Order #</th>
+                <th class="text-xs sm:text-sm hidden sm:table-cell">Items</th>
+                <th class="text-xs sm:text-sm">Time</th>
+                <th class="text-xs sm:text-sm">Amount</th>
+                <th class="text-xs sm:text-sm hidden md:table-cell">Paid</th>
+                <th class="text-xs sm:text-sm hidden md:table-cell">Change</th>
+                <th class="text-xs sm:text-sm hidden lg:table-cell">Cashier</th>
+                <th class="text-xs sm:text-sm hidden lg:table-cell">Type</th>
+                <th class="text-xs sm:text-sm">Status</th>
+                <th class="text-xs sm:text-sm">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="transaction in recentTransactions"
+                :key="transaction.id"
+              >
+                <td>
+                  <div class="font-mono text-xs sm:text-sm">
+                    {{ transaction.order_number }}
+                  </div>
+                </td>
+                <td class="hidden sm:table-cell">
+                  <div class="text-xs sm:text-sm max-w-sm">
+                    <div
+                      v-if="transaction.items && transaction.items.length > 0"
+                      class="space-y-1"
+                    >
+                      <div
+                        v-for="item in transaction.items.slice(0, 2)"
+                        :key="item.id || item.menu_item_id"
+                        class="flex items-center justify-between"
+                      >
+                        <span class="font-medium text-xs">{{
+                          item.menu_item_name || item.item_name
+                        }}</span>
+                        <span class="text-gray-500 ml-2 text-xs"
+                          >{{ item.quantity }}x</span
+                        >
+                      </div>
+                      <div
+                        v-if="transaction.items.length > 2"
+                        class="text-xs text-gray-500"
+                      >
+                        +{{ transaction.items.length - 2 }} more
+                      </div>
+                    </div>
+                    <div v-else class="text-gray-400 text-xs">No items</div>
+                  </div>
+                </td>
+                <td>
+                  <div class="text-xs sm:text-sm">
+                    {{ transaction.time }}
+                  </div>
+                </td>
+                <td>
+                  <div
+                    class="font-semibold text-primaryColor text-xs sm:text-sm"
+                  >
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                      isNaN(transaction.amount)
+                        ? '0.00'
+                        : transaction.amount.toFixed(2)
+                    }}
+                  </div>
+                </td>
+                <td class="hidden md:table-cell">
+                  <div class="font-thin text-gray-600 text-xs sm:text-sm">
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                      isNaN(transaction.amount_paid)
+                        ? '0.00'
+                        : transaction.amount_paid.toFixed(2)
+                    }}
+                  </div>
+                </td>
+                <td class="hidden md:table-cell">
+                  <div class="font-thin text-gray-600 text-xs sm:text-sm">
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                      isNaN(transaction.change_amount)
+                        ? '0.00'
+                        : transaction.change_amount.toFixed(2)
+                    }}
+                  </div>
+                </td>
+                <td class="hidden lg:table-cell">
+                  <div class="text-xs sm:text-sm">
+                    {{ transaction.cashier }}
+                  </div>
+                </td>
+                <td class="hidden lg:table-cell">
+                  <div class="text-xs sm:text-sm">
+                    {{ transaction.order_type }}
+                  </div>
+                </td>
+                <td>
+                  <div
+                    v-if="transaction.status === 'void'"
+                    class="cursor-pointer"
+                  >
+                    <div
+                      :class="[
+                        'badge badge-xs sm:badge-sm mb-1 flex items-center gap-1 font-thin',
+                        transaction.isRefunded
+                          ? 'bg-success/10 text-success border border-success/20'
+                          : 'bg-error/10 text-error border border-error/20',
+                      ]"
+                      :title="transaction.void_reason"
+                    >
+                      <font-awesome-icon
+                        :icon="
+                          transaction.isRefunded
+                            ? 'fa-solid fa-undo'
+                            : 'fa-solid fa-exclamation-triangle'
+                        "
+                        class="w-2 h-2 sm:w-3 sm:h-3"
+                      />
+                      <span class="hidden sm:inline">{{
+                        transaction.isRefunded ? 'Refunded' : 'Loss'
+                      }}</span>
+                      <span class="sm:hidden">{{
+                        transaction.isRefunded ? 'R' : 'L'
+                      }}</span>
+                    </div>
+                  </div>
+                  <div v-else>
+                    <div
+                      :class="[
+                        'badge badge-xs sm:badge-sm font-thin',
+                        getStatusBadgeClass(transaction.status),
+                      ]"
+                    >
+                      <span class="hidden sm:inline">{{
+                        transaction.status
+                      }}</span>
+                      <span class="sm:hidden">{{
+                        transaction.status.charAt(0).toUpperCase()
+                      }}</span>
+                    </div>
+                  </div>
+                </td>
+
+                <td>
+                  <div class="flex space-x-1">
+                    <button
+                      v-if="transaction.status === 'processing'"
+                      @click="showCompleteOrder(transaction)"
+                      class="btn btn-xs sm:btn-sm btn-success text-success font-thin bg-success/20 shadow-none border-none"
+                      title="Complete Order"
+                    >
+                      <font-awesome-icon
+                        icon="fa-solid fa-check"
+                        class="w-3 h-3"
+                      />
+                    </button>
+                    <button
+                      v-if="transaction.canVoid"
+                      @click="showVoidOrder(transaction)"
+                      class="btn btn-xs sm:btn-sm btn-error text-error font-thin bg-error/20 shadow-none border-none"
+                      :title="
+                        transaction.status === 'completed'
+                          ? 'Refund Order'
+                          : 'Void Order'
+                      "
+                    >
+                      <font-awesome-icon
+                        :icon="
+                          transaction.status === 'completed'
+                            ? 'fa-solid fa-undo'
+                            : 'fa-solid fa-trash'
+                        "
+                        class="w-3 h-3"
+                      />
+                    </button>
+                    <span
+                      v-if="
+                        !transaction.canVoid &&
+                        transaction.status !== 'processing'
+                      "
+                      class="text-gray-400 text-xs"
+                      >-</span
+                    >
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="text-center mt-4">
+        <button
+          @click="showAllTransactions"
+          class="btn btn-outline btn-sm text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
+        >
+          <Eye class="w-4 h-4 mr-1" />
+          View All Transactions
+        </button>
       </div>
     </div>
 

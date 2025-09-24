@@ -23,6 +23,8 @@ const supplierRatingsRoutes = require("./routes/supplierRatings");
 const inventoryRoutes = require("./routes/inventory");
 const grnRoutes = require("./routes/grn");
 const feedbackRoutes = require("./routes/feedback");
+const customerRoutes = require("./routes/customers");
+const analyticsRoutes = require("./routes/analytics");
 const productionRoutes = require("./routes/production");
 const menuRoutes = require("./routes/menu");
 const menuAnalyticsRoutes = require("./routes/menuAnalytics");
@@ -32,11 +34,14 @@ const branchRequestRoutes = require("./routes/branchRequests");
 const branchDistributionRoutes = require("./routes/branchDistributions");
 const branchInventoryRoutes = require("./routes/branchInventory");
 const branchReturnRoutes = require("./routes/branchReturns");
+const branchScheduleRoutes = require("./routes/branchSchedules");
+const employeeScheduleRoutes = require("./routes/employeeSchedules");
+const shiftTypesRoutes = require("./routes/shiftTypes");
 const { serve, setup } = require("./config/swagger");
 const posRoutes = require("./routes/pos");
 
 const app = express();
-const PORT = process.env.BACKEND_PORT || 5000;
+const PORT = process.env.PORT || process.env.BACKEND_PORT || 5000;
 
 // Middleware
 // Enhanced CORS to allow localhost, LAN dev origins, and Railway deployment
@@ -55,9 +60,11 @@ const defaultAllowedOrigins = [
   "http://localhost:8080", // Localhost frontend
   "http://192.168.18.5:8080", // Legacy network frontend
   "http://192.168.56.1:5000", // Ethernet 3 backend
-  "http://localhost:8080", // Localhost frontend
   "https://countrysides.up.railway.app", // Railway deployment
-  "https://*.up.railway.app", // Railway wildcard
+  "https://thesis-b-frontend-production.up.railway.app", // Railway frontend
+  "https://thesis-b-backend-production.up.railway.app", // Railway backend
+  "https://www.countryside-steakhouse.site", // Production domain
+  "http://www.countryside-steakhouse.site", // Production domain (HTTP fallback)
 ];
 
 const allowList = [...defaultAllowedOrigins, ...envOrigins];
@@ -71,9 +78,14 @@ const corsConfig = {
       origin
     );
 
-    if (allowList.includes(origin) || isLanDevOrigin) {
+    // Allow Railway domains
+    const isRailwayOrigin = /^https:\/\/.*\.up\.railway\.app$/.test(origin);
+
+    if (allowList.includes(origin) || isLanDevOrigin || isRailwayOrigin) {
       return callback(null, true);
     }
+
+    console.log(`CORS blocked origin: ${origin}`);
     return callback(new Error("Not allowed by CORS"));
   },
   credentials: true,
@@ -84,7 +96,30 @@ const corsConfig = {
 
 app.use(cors(corsConfig));
 app.use(express.json());
-app.use("/uploads", express.static(require("path").join(__dirname, "uploads")));
+// Serve uploads with proper CORS headers for images
+app.use(
+  "/uploads",
+  (req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET");
+    res.header("Access-Control-Allow-Headers", "Content-Type");
+    next();
+  },
+  express.static(require("path").join(__dirname, "uploads"))
+);
+
+// Serve frontend static files
+const frontendPath = require("path").join(__dirname, "..", "frontend", "dist");
+app.use(express.static(frontendPath));
+
+// Health check endpoint for Railway
+app.get("/api/health", (req, res) => {
+  res.status(200).json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || "development",
+  });
+});
 
 // API Routes
 app.use("/api/roles", roleRoutes);
@@ -101,6 +136,8 @@ app.use("/api/supplier-ratings", supplierRatingsRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/grn", grnRoutes);
 app.use("/api/feedback", feedbackRoutes);
+app.use("/api/customers", customerRoutes);
+app.use("/api/analytics", analyticsRoutes);
 app.use("/api/production", productionRoutes);
 app.use("/api/menu", menuRoutes);
 app.use("/api/menu/analytics", menuAnalyticsRoutes);
@@ -110,6 +147,9 @@ app.use("/api/branch-requests", branchRequestRoutes);
 app.use("/api/branch-distributions", branchDistributionRoutes);
 app.use("/api/branch-inventory", branchInventoryRoutes);
 app.use("/api/branch-returns", branchReturnRoutes);
+app.use("/api/branch-schedules", branchScheduleRoutes);
+app.use("/api/employee-schedules", employeeScheduleRoutes);
+app.use("/api/shift-types", shiftTypesRoutes);
 app.use("/api/pos", posRoutes);
 
 // Auto-expire job
@@ -154,6 +194,11 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// Catch-all handler: send back React's index.html file for any non-API routes
+app.get("*", (req, res) => {
+  res.sendFile(require("path").join(frontendPath, "index.html"));
+});
+
 // Database health check
 app.get("/api/health/db", async (req, res) => {
   try {
@@ -174,19 +219,50 @@ app.get("/api/health/db", async (req, res) => {
 });
 
 // Start server
-app.listen(PORT, async () => {
-  console.log(`Server running on port ${PORT}`);
+const server = app.listen(PORT, "0.0.0.0", async () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🌐 Environment: ${process.env.NODE_ENV || "development"}`);
   console.log(
-    `API Documentation available at http://localhost:${PORT}/api-docs`
+    `📚 API Documentation available at http://localhost:${PORT}/api-docs`
+  );
+  console.log(
+    `🏥 Health check available at http://localhost:${PORT}/api/health`
   );
 
   try {
     await testConnection();
     console.log("✅ Database connected successfully");
-
+    console.log("🔄 Running database migrations...");
     await runMigrations();
     console.log("✅ Database migrations completed");
+    console.log("🎉 Server is ready to accept requests!");
   } catch (error) {
     console.error("❌ Database connection failed:", error.message);
+    console.error("⚠️ Server started but database is not available");
   }
+});
+
+// Handle server errors
+server.on("error", (error) => {
+  console.error("❌ Server error:", error);
+  if (error.code === "EADDRINUSE") {
+    console.error(`❌ Port ${PORT} is already in use`);
+  }
+});
+
+// Graceful shutdown
+process.on("SIGTERM", () => {
+  console.log("🛑 SIGTERM received, shutting down gracefully");
+  server.close(() => {
+    console.log("✅ Server closed");
+    process.exit(0);
+  });
+});
+
+process.on("SIGINT", () => {
+  console.log("🛑 SIGINT received, shutting down gracefully");
+  server.close(() => {
+    console.log("✅ Server closed");
+    process.exit(0);
+  });
 });

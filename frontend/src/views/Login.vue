@@ -1,11 +1,19 @@
 <script setup>
   import { ref } from 'vue';
   import { useAuthStore } from '../stores/authStore';
+  import { useAttendanceStore } from '../stores/attendanceStore';
   import { useRouter } from 'vue-router';
-  import { Eye, EyeOff, ArrowLeft } from 'lucide-vue-next';
+  import {
+    Eye,
+    EyeOff,
+    ArrowLeft,
+    CheckCircle,
+    XCircle,
+    Clock,
+  } from 'lucide-vue-next';
   import { nextTick } from 'vue';
   import { QrcodeStream } from 'vue-qrcode-reader';
-  import { computed } from 'vue';
+  import { computed, watch } from 'vue';
 
   // Attendance scanner state
   const isScannerOpen = ref(false);
@@ -28,6 +36,13 @@
   const isCopying = ref(false);
   const copyMessage = ref('');
 
+  // Attendance processing state
+  const attendanceStore = useAttendanceStore();
+  const isProcessingAttendance = ref(false);
+  const attendanceResult = ref(null);
+  const showAttendanceResult = ref(false);
+  const resultDialogRef = ref(null);
+
   const currentCameraLabel = computed(() => {
     const found = availableCameras.value.find(
       (c) => c.id === selectedDeviceId.value
@@ -42,6 +57,50 @@
       year: 'numeric',
     })
   );
+
+  // Human-readable rendering of the last scanned code for better UX
+  const scanResultDisplay = computed(() => {
+    const raw = scanResult.value;
+    if (!raw) return '';
+    // Try parse as JSON
+    try {
+      const data = JSON.parse(raw);
+      if (data && (data.employee_id || data.employee_name || data.first_name)) {
+        const displayName =
+          [
+            data.employee_name,
+            [data.first_name, data.middle_name, data.last_name]
+              .filter(Boolean)
+              .join(' '),
+          ].find((v) => v && v.trim().length > 0) || 'Unknown';
+        const action = (data.action || '').replace('-', ' ');
+        const loc =
+          data.branch_name || data.location_name || data.location || '';
+        return [displayName, action, loc].filter(Boolean).join(' — ');
+      }
+    } catch {}
+    // Try parse as URL with ?data=
+    try {
+      const url = new URL(raw);
+      const param = url.searchParams.get('data');
+      if (param) {
+        const data = JSON.parse(decodeURIComponent(param));
+        const displayName =
+          [
+            data.employee_name,
+            [data.first_name, data.middle_name, data.last_name]
+              .filter(Boolean)
+              .join(' '),
+          ].find((v) => v && v.trim().length > 0) || 'Unknown';
+        const action = (data.action || '').replace('-', ' ');
+        const loc =
+          data.branch_name || data.location_name || data.location || '';
+        return [displayName, action, loc].filter(Boolean).join(' — ');
+      }
+    } catch {}
+    // Fallback to raw when not recognized
+    return raw;
+  });
 
   const startClock = () => {
     stopClock();
@@ -168,6 +227,24 @@
     torchSupported.value = !!cameraCapabilities?.torch;
   };
 
+  // Open/close the result dialog above the scanner dialog
+  watch(
+    () => showAttendanceResult.value,
+    (isOpen) => {
+      const dlg = resultDialogRef.value;
+      if (!dlg) return;
+      try {
+        if (isOpen) {
+          if (!dlg.open) dlg.showModal();
+        } else {
+          if (dlg.open) dlg.close();
+        }
+      } catch {
+        // ignore dialog errors
+      }
+    }
+  );
+
   const toggleTorch = () => {
     if (torchSupported.value) {
       torchOn.value = !torchOn.value;
@@ -187,6 +264,130 @@
     } finally {
       isCopying.value = false;
     }
+  };
+
+  const processAttendance = async () => {
+    if (!scanResult.value) return;
+
+    try {
+      isProcessingAttendance.value = true;
+      attendanceResult.value = null;
+
+      // Parse the QR code data; support raw JSON or URL with ?data=
+      let qrData;
+      const raw = scanResult.value;
+      try {
+        // Try direct JSON
+        qrData = JSON.parse(raw);
+      } catch (parseError) {
+        // Try URL with encoded data
+        try {
+          const url = new URL(raw);
+          const dataParam = url.searchParams.get('data');
+          if (!dataParam) throw new Error('Missing data param');
+          qrData = JSON.parse(decodeURIComponent(dataParam));
+        } catch (e) {
+          throw new Error(
+            'Invalid QR format. Please scan your official employee QR.'
+          );
+        }
+      }
+
+      // Validate required fields
+      if (!qrData?.employee_id || !qrData?.action) {
+        throw new Error(
+          'QR missing required fields. Please regenerate your employee QR.'
+        );
+      }
+
+      // Validate supported action
+      const allowedActions = ['time-in', 'time-out'];
+      if (!allowedActions.includes(qrData.action)) {
+        throw new Error('Invalid action in QR. Must be time-in or time-out.');
+      }
+
+      // Optional: basic employee identity validation (either full name or EMP code)
+      const hasName =
+        typeof qrData.employee_name === 'string' && qrData.employee_name.trim();
+      const empPattern = /^EMP\d{3,}$/; // e.g., EMP000013
+      const hasValidId =
+        typeof qrData.employee_id === 'string' &&
+        empPattern.test(qrData.employee_id.trim());
+      if (!hasName && !hasValidId) {
+        throw new Error('QR is missing a valid employee identity.');
+      }
+
+      // Optional UX: validate expiry
+      if (qrData.valid_until) {
+        const now = new Date();
+        const expiry = new Date(qrData.valid_until);
+        if (now > expiry) {
+          throw new Error(
+            'QR has expired. Please regenerate your employee QR.'
+          );
+        }
+      }
+
+      // Optional sanity check: timestamp not more than 10 minutes in the future
+      if (qrData.timestamp) {
+        const ts = new Date(qrData.timestamp);
+        const now = new Date();
+        if (ts.getTime() - now.getTime() > 10 * 60 * 1000) {
+          throw new Error(
+            'QR timestamp appears invalid (too far in the future).'
+          );
+        }
+      }
+
+      // Proceed with public scan endpoint (no authentication required)
+      const result = await attendanceStore.scanQRCode(qrData);
+
+      attendanceResult.value = {
+        success: true,
+        message: result.message,
+        data: result.data,
+      };
+
+      // Show result; keep scanner open for manual control
+      showAttendanceResult.value = true;
+    } catch (error) {
+      console.error('Attendance processing error:', error);
+      attendanceResult.value = {
+        success: false,
+        message:
+          error?.response?.data?.message ||
+          error.message ||
+          'Failed to process attendance',
+      };
+
+      // Show error; keep scanner open for manual control
+      showAttendanceResult.value = true;
+    } finally {
+      isProcessingAttendance.value = false;
+    }
+  };
+
+  const closeAttendanceResult = () => {
+    showAttendanceResult.value = false;
+    attendanceResult.value = null;
+  };
+
+  // Helper function to detect schedule-related errors
+  const isScheduleError = (message) => {
+    if (!message) return false;
+    const scheduleKeywords = [
+      'schedule',
+      'scheduled hours',
+      'work schedule',
+      'supervisor',
+      'outside your scheduled',
+      'No work schedule assigned',
+      'before your scheduled time',
+      'after your scheduled time',
+    ];
+    return scheduleKeywords.some((keyword) =>
+      message.toLowerCase().includes(keyword.toLowerCase())
+    );
   };
 
   const authStore = useAuthStore();
@@ -470,15 +671,17 @@
             <div class="text-sm font-medium text-primaryColor mb-1">
               Last scanned code
             </div>
-            <div class="text-sm break-all">{{ scanResult }}</div>
+            <div class="text-sm break-all">{{ scanResultDisplay }}</div>
             <div class="mt-2 text-xs">
               Scanned at: {{ lastScanAt?.toLocaleString?.() }}
             </div>
             <div class="mt-3 flex gap-2">
               <button
+                @click="processAttendance"
+                :disabled="isProcessingAttendance"
                 class="btn btn-primary btn-sm bg-primaryColor hover:bg-primaryColor/80 border-none shadow-none font-thin"
               >
-                Use this scan
+                {{ isProcessingAttendance ? 'Processing...' : 'Use this scan' }}
               </button>
               <button
                 class="btn btn-outline btn-sm shadow-none font-thin"
@@ -513,6 +716,125 @@
       </div>
       <form method="dialog" class="modal-backdrop">
         <button @click="closeScanner">close</button>
+      </form>
+    </dialog>
+
+    <!-- Attendance Result Modal (dialog above scanner) -->
+    <dialog ref="resultDialogRef" id="attendance_result_modal" class="modal">
+      <div class="modal-box max-w-md">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-bold text-lg">
+            {{
+              attendanceResult?.success
+                ? 'Attendance Recorded'
+                : 'Attendance Error'
+            }}
+          </h3>
+          <button
+            @click="closeAttendanceResult"
+            class="btn btn-xs btn-circle btn-ghost"
+          >
+            ✕
+          </button>
+        </div>
+
+        <!-- Success State -->
+        <div v-if="attendanceResult?.success" class="text-center">
+          <div
+            class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4"
+          >
+            <CheckCircle class="w-8 h-8 text-green-600" />
+          </div>
+          <h4 class="text-lg font-semibold text-green-600 mb-2">Success!</h4>
+          <p class="text-gray-700 mb-4">{{ attendanceResult.message }}</p>
+
+          <!-- Show additional data if available -->
+          <div
+            v-if="attendanceResult.data"
+            class="bg-gray-50 rounded-lg p-3 text-sm text-left"
+          >
+            <div v-if="attendanceResult.data.employee" class="mb-2">
+              <span class="font-medium">Employee:</span>
+              {{ attendanceResult.data.employee.name }}
+            </div>
+            <div v-if="attendanceResult.data.action" class="mb-2">
+              <span class="font-medium">Action:</span>
+              {{ attendanceResult.data.action.replace('-', ' ').toUpperCase() }}
+            </div>
+            <div v-if="attendanceResult.data.time" class="mb-2">
+              <span class="font-medium">Time:</span>
+              {{ new Date(attendanceResult.data.time).toLocaleString() }}
+            </div>
+            <div v-if="attendanceResult.data.location" class="mb-2">
+              <span class="font-medium">Location:</span>
+              {{ attendanceResult.data.location }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Error State -->
+        <div v-else class="text-center">
+          <div
+            :class="[
+              'w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4',
+              isScheduleError(attendanceResult?.message)
+                ? 'bg-orange-100'
+                : 'bg-red-100',
+            ]"
+          >
+            <XCircle
+              :class="[
+                'w-8 h-8',
+                isScheduleError(attendanceResult?.message)
+                  ? 'text-orange-600'
+                  : 'text-red-600',
+              ]"
+            />
+          </div>
+          <h4
+            :class="[
+              'text-lg font-semibold mb-2',
+              isScheduleError(attendanceResult?.message)
+                ? 'text-orange-600'
+                : 'text-red-600',
+            ]"
+          >
+            {{
+              isScheduleError(attendanceResult?.message)
+                ? 'Schedule Issue'
+                : 'Error'
+            }}
+          </h4>
+          <p class="text-gray-700 mb-4">
+            {{ attendanceResult?.message || 'Failed to process attendance' }}
+          </p>
+
+          <!-- Additional info for schedule errors -->
+          <div
+            v-if="isScheduleError(attendanceResult?.message)"
+            class="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-left"
+          >
+            <div class="flex items-start space-x-2">
+              <Clock class="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p class="font-medium text-orange-800">Schedule Information</p>
+                <p class="text-orange-700 text-xs mt-1">
+                  Please check your work schedule or contact your Manager for
+                  assistance.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-action">
+          <button @click="closeAttendanceResult" class="btn bg-gray-200 btn-sm">
+            {{ attendanceResult?.success ? 'Close' : 'Try Again' }}
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="closeAttendanceResult">close</button>
       </form>
     </dialog>
 

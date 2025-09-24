@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { analyticsService } from '../services/analyticsService';
+import analyticsService from '../services/analyticsService';
 
 export const useAnalyticsStore = defineStore('analytics', {
   state: () => ({
@@ -111,40 +111,32 @@ export const useAnalyticsStore = defineStore('analytics', {
 
       try {
         const [
-          dashboard,
-          mostUsed,
-          leastUsed,
-          categoryBreakdown,
-          usageAnalytics,
-          turnover,
+          overview,
+          topFoods,
+          branchPerformance,
+          trends,
+          ratingDistribution,
         ] = await Promise.all([
-          analyticsService.getDashboardData(this.selectedTimeframe),
-          analyticsService.getMostUsedItems(10, this.selectedTimeframe),
-          analyticsService.getLeastUsedItems(10, this.selectedTimeframe),
-          analyticsService.getCategoryBreakdown(this.selectedTimeframe),
-          analyticsService.getUsageAnalytics(this.selectedTimeframe),
-          analyticsService.getInventoryTurnover(this.selectedTimeframe),
+          analyticsService.getOverview({}),
+          analyticsService.getTopFoods({ limit: 10 }),
+          analyticsService.getBranchPerformance({}),
+          analyticsService.getTrends({ period: this.selectedTimeframe }),
+          analyticsService.getRatingDistribution({}),
         ]);
 
-        // Update state
-        this.dashboardData = dashboard || {};
-        this.mostUsedItems = mostUsed || [];
-        this.leastUsedItems = leastUsed || [];
-        this.categoryBreakdown = categoryBreakdown || [];
-        this.usageAnalytics = usageAnalytics || {};
-        this.inventoryTurnover = turnover || [];
+        // Update state with CRM analytics data
+        this.dashboardData = overview?.data || {};
+        this.mostUsedItems = topFoods?.data || [];
+        this.leastUsedItems = []; // Not applicable for CRM analytics
+        this.categoryBreakdown = branchPerformance?.data || [];
+        this.usageAnalytics = trends?.data || {};
+        this.inventoryTurnover = []; // Not applicable for CRM analytics
 
-        // Process consumption trends
-        if (
-          usageAnalytics &&
-          usageAnalytics.consumption_trend &&
-          Array.isArray(usageAnalytics.consumption_trend)
-        ) {
+        // Process consumption trends from sales trends
+        if (trends?.data?.sales && Array.isArray(trends.data.sales)) {
           this.consumptionTrends = {
-            labels: usageAnalytics.consumption_trend.map((item) => item.period),
-            values: usageAnalytics.consumption_trend.map(
-              (item) => item.quantity
-            ),
+            labels: trends.data.sales.map((item) => item.period),
+            values: trends.data.sales.map((item) => item.total_sales || 0),
           };
         } else {
           this.consumptionTrends = { labels: [], values: [] };
@@ -153,16 +145,8 @@ export const useAnalyticsStore = defineStore('analytics', {
         // Process alerts and recommendations
         this.processInventoryAlerts();
 
-        // Load recent transactions
-        if (
-          dashboard &&
-          dashboard.recent_transactions &&
-          Array.isArray(dashboard.recent_transactions)
-        ) {
-          this.recentTransactions = dashboard.recent_transactions;
-        } else {
-          this.recentTransactions = [];
-        }
+        // Load recent activity
+        this.recentTransactions = [];
       } catch (error) {
         console.error('Error loading dashboard data:', error);
         this.error = error.message || 'Failed to load dashboard data';
@@ -176,13 +160,14 @@ export const useAnalyticsStore = defineStore('analytics', {
       if (!this.selectedForecastItem) return;
 
       try {
-        const forecast = await analyticsService.getForecast(
-          this.selectedForecastItem,
-          this.forecastPeriods
-        );
+        // For CRM analytics, we'll use trends data as forecast
+        const trends = await analyticsService.getTrends({ 
+          period: this.forecastPeriods === '7' ? 'day' : 
+                 this.forecastPeriods === '30' ? 'week' : 'month'
+        });
 
         // Store forecast data by item name
-        this.forecastData[this.selectedForecastItem] = forecast;
+        this.forecastData[this.selectedForecastItem] = trends?.data || {};
       } catch (error) {
         console.error('Error loading forecast data:', error);
         this.error = error.message || 'Failed to load forecast data';
@@ -192,8 +177,9 @@ export const useAnalyticsStore = defineStore('analytics', {
     // Load seasonal patterns for specific item
     async loadSeasonalPatterns(itemName) {
       try {
-        const patterns = await analyticsService.getSeasonalPatterns(itemName);
-        this.seasonalPatterns[itemName] = patterns;
+        // For CRM analytics, we'll use trends data as seasonal patterns
+        const trends = await analyticsService.getTrends({ period: 'month' });
+        this.seasonalPatterns[itemName] = trends?.data || {};
       } catch (error) {
         console.error('Error loading seasonal patterns:', error);
         this.error = error.message || 'Failed to load seasonal patterns';
@@ -202,12 +188,11 @@ export const useAnalyticsStore = defineStore('analytics', {
 
     // Process inventory alerts and recommendations
     processInventoryAlerts() {
-      // Extract low stock items from dashboard data
-      this.lowStockItems = this.dashboardData.low_stock_items || [];
+      // For CRM analytics, we'll use feedback data as "alerts"
+      this.lowStockItems = this.dashboardData.negative_feedback || [];
 
       // Extract reorder recommendations from dashboard data
-      this.reorderRecommendations =
-        this.dashboardData.reorder_recommendations || [];
+      this.reorderRecommendations = [];
     },
 
     // Refresh all data

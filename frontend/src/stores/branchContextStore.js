@@ -38,16 +38,18 @@ export const useBranchContextStore = defineStore('branchContext', {
 
     canAccessProfile: () => true, // All roles can access profile
 
+    canAccessAttendance: () => true, // All roles can access attendance
+
     // Get available operations for current user
     availableOperations: (state) => {
       const rolePermissions = {
-        Manager: ['dashboard', 'sales', 'inventory', 'employees', 'profile'],
-        Cashier: ['dashboard', 'profile'],
-        Cook: ['dashboard', 'inventory', 'profile'],
-        Waiter: ['dashboard', 'profile'],
+        Manager: ['dashboard', 'sales', 'inventory', 'employees', 'profile', 'attendance'],
+        Cashier: ['dashboard', 'profile', 'attendance'],
+        Cook: ['dashboard', 'inventory', 'profile', 'attendance'],
+        Waiter: ['dashboard', 'profile', 'attendance'],
       };
 
-      return rolePermissions[state.userRole] || ['dashboard', 'profile'];
+      return rolePermissions[state.userRole] || ['dashboard', 'profile', 'attendance'];
     },
 
     // Check if user can switch branches (only Super Admin)

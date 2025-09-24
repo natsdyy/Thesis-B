@@ -7,10 +7,25 @@ const BranchProfile = () => import('../../views/branch/BranchProfile.vue');
 
 // Role-based access control
 const rolePermissions = {
-  Manager: ['dashboard', 'sales', 'inventory', 'employees', 'profile'],
-  Cashier: ['dashboard', 'profile'],
-  Cook: ['dashboard', 'inventory', 'profile'],
-  Waiter: ['dashboard', 'profile'],
+  'Super Admin': [
+    'dashboard',
+    'sales',
+    'inventory',
+    'employees',
+    'profile',
+    'attendance',
+  ],
+  Manager: [
+    'dashboard',
+    'sales',
+    'inventory',
+    'employees',
+    'profile',
+    'attendance',
+  ],
+  Cashier: ['dashboard', 'profile', 'attendance'],
+  Cook: ['dashboard', 'inventory', 'profile', 'attendance'],
+  Waiter: ['dashboard', 'profile', 'attendance'],
 };
 
 // Route guard for role-based access
@@ -27,7 +42,13 @@ function checkBranchAccess(to, from, next) {
     const operation =
       to.name?.replace('Branch', '').toLowerCase() || 'dashboard';
 
-    // Check role permissions
+    // Super Admin has access to all operations
+    if (userRole === 'Super Admin') {
+      next();
+      return;
+    }
+
+    // Check role permissions for other roles
     const allowedOperations = rolePermissions[userRole] || [];
     if (!allowedOperations.includes(operation)) {
       console.warn(`Access denied: ${userRole} cannot access ${operation}`);
@@ -103,6 +124,17 @@ export default [
       title: 'Employee Profile',
       requiresAuth: true,
       operation: 'profile',
+    },
+  },
+  {
+    path: 'attendance',
+    name: 'BranchAttendance',
+    component: () => import('../../views/branch/BranchAttendance.vue'),
+    beforeEnter: checkBranchAccess,
+    meta: {
+      title: 'My Attendance',
+      requiresAuth: true,
+      operation: 'attendance',
     },
   },
 ];

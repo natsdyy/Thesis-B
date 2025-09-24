@@ -1,17 +1,13 @@
 const express = require("express");
-const TelegramBot = require("node-telegram-bot-api");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const Feedback = require("../models/Feedback");
+const OrderRating = require("../models/OrderRating");
+const Customer = require("../models/Customer");
+const EmailService = require("../services/emailService");
+const { db } = require("../config/database");
 const router = express.Router();
-
-// Initialize Telegram bot
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: false });
-
-// Configure Telegram settings
-const TELEGRAM_CHAT_ID =
-  process.env.TELEGRAM_CHAT_ID || "@PNCountryside_Feedbacks";
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 // Configure multer for image uploads
 const storage = multer.diskStorage({
@@ -47,10 +43,7 @@ const upload = multer({
   },
 });
 
-// Validate required environment variables
-if (!TELEGRAM_BOT_TOKEN) {
-  console.error("TELEGRAM_BOT_TOKEN is required in environment variables");
-}
+// No environment variables required for database-only storage
 
 router.post("/", upload.single("image"), async (req, res) => {
   try {
@@ -66,13 +59,14 @@ router.post("/", upload.single("image"), async (req, res) => {
     }
 
     // Validate image is required
-    if (!imageFile) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Image upload is required. Please share a photo of your food experience.",
-      });
-    }
+    // Image is optional for testing purposes
+    // if (!imageFile) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message:
+    //       "Image upload is required. Please share a photo of your food experience.",
+    //   });
+    // }
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -91,68 +85,40 @@ router.post("/", upload.single("image"), async (req, res) => {
       });
     }
 
+    // Find or create customer
+    const customer = await Customer.findOrCreate({
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      phone: phone ? phone.trim() : null,
+    });
+
     // Create feedback object
-    const feedback = {
+    const feedbackData = {
       name: name.trim(),
       email: email.trim().toLowerCase(),
       message: message.trim(),
       phone: phone ? phone.trim() : null,
       rating: rating || null,
-      timestamp: new Date().toISOString(),
       source: "Website Contact Form",
       imagePath: imageFile ? imageFile.path : null,
       imageFilename: imageFile ? imageFile.filename : null,
+      customer_id: customer.id,
     };
 
-    // Format message for Telegram
-    const telegramMessage = formatTelegramMessage(feedback);
+    // Store feedback in database
+    const savedFeedback = await Feedback.create(feedbackData);
 
-    // Send to Telegram group
-    let telegramResponse = null;
-    try {
-      if (TELEGRAM_BOT_TOKEN) {
-        // Always send image with caption to Telegram since image is required
-        const imageStream = fs.createReadStream(imageFile.path);
-        telegramResponse = await bot.sendPhoto(TELEGRAM_CHAT_ID, imageStream, {
-          caption: telegramMessage,
-          parse_mode: "HTML",
-        });
-        console.log(
-          "Feedback with image sent to Telegram successfully:",
-          telegramResponse.message_id
-        );
-      } else {
-        console.warn(
-          "TELEGRAM_BOT_TOKEN not configured, skipping Telegram notification"
-        );
-      }
-    } catch (telegramError) {
-      console.error(
-        "Failed to send feedback to Telegram:",
-        telegramError.message
-      );
-      // Don't fail the request if Telegram fails, just log it
-    }
-
-    // Clean up uploaded file after sending to Telegram
-    if (imageFile && fs.existsSync(imageFile.path)) {
-      try {
-        fs.unlinkSync(imageFile.path);
-        console.log("Uploaded image cleaned up:", imageFile.filename);
-      } catch (cleanupError) {
-        console.warn("Failed to cleanup uploaded image:", cleanupError.message);
-      }
-    }
+    // Update customer statistics
+    await Customer.updateStats(customer.id);
 
     res.status(200).json({
       success: true,
       message:
         "Thank you for your feedback and photo! We'll get back to you soon.",
       data: {
-        feedbackId: Date.now(), // Simple ID for now
-        telegramMessageId: telegramResponse?.message_id || null,
-        submittedAt: feedback.timestamp,
-        hasImage: true, // Always true since image is required
+        feedbackId: savedFeedback.id,
+        submittedAt: savedFeedback.created_at,
+        hasImage: !!imageFile,
       },
     });
   } catch (error) {
@@ -185,40 +151,7 @@ router.post("/", upload.single("image"), async (req, res) => {
   }
 });
 
-/**
- * Format feedback data for Telegram message
- * @param {Object} feedback - The feedback object
- * @returns {string} Formatted HTML message for Telegram
- */
-function formatTelegramMessage(feedback) {
-  const ratingStars = feedback.rating
-    ? "⭐".repeat(feedback.rating)
-    : "No rating";
-  const phoneInfo = feedback.phone
-    ? `\n📱 <b>Phone:</b> ${feedback.phone}`
-    : "";
-
-  return `🆕 <b>New Customer Feedback with Photo</b>
-
-👤 <b>Name:</b> ${feedback.name}
-📧 <b>Email:</b> ${feedback.email}${phoneInfo}
-⭐ <b>Rating:</b> ${ratingStars}
-📸 <b>Image:</b> Attached
-💬 <b>Message:</b>
-
-${feedback.message}
-
-📅 <b>Submitted:</b> ${new Date(feedback.timestamp).toLocaleString("en-PH", {
-    timeZone: "Asia/Manila",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })}
-
-🌐 <b>Source:</b> ${feedback.source}`;
-}
+// Telegram formatting functions removed - data now stored in database only
 
 // Order rating endpoint for QR code scans
 router.post("/order-rating", upload.single("image"), async (req, res) => {
@@ -271,85 +204,43 @@ router.post("/order-rating", upload.single("image"), async (req, res) => {
       });
     }
 
+    // Find or create customer
+    const customer = await Customer.findOrCreate({
+      name: customerName.trim(),
+      email: customerEmail.trim().toLowerCase(),
+    });
+
     // Create rating object
-    const rating = {
+    const ratingData = {
       orderNumber: parsedOrderData.orderNumber,
       orderTotal: parsedOrderData.total,
       branch: parsedOrderData.branch,
       cashier: parsedOrderData.cashier,
       orderTimestamp: parsedOrderData.timestamp,
-      items: parsedOrderData.items || [],
       customerName: customerName.trim(),
       customerEmail: customerEmail.trim().toLowerCase(),
       overallRating: overallRating || null,
       itemRatings: itemRatings ? JSON.parse(itemRatings) : [],
       comments: comments ? comments.trim() : null,
-      timestamp: new Date().toISOString(),
       source: "QR Code Rating",
       imagePath: imageFile ? imageFile.path : null,
       imageFilename: imageFile ? imageFile.filename : null,
+      customer_id: customer.id,
     };
 
-    // Format message for Telegram
-    const telegramMessage = formatOrderRatingMessage(rating);
+    // Store rating in database
+    const savedRating = await OrderRating.create(ratingData);
 
-    // Send to Telegram group
-    let telegramResponse = null;
-    try {
-      if (TELEGRAM_BOT_TOKEN) {
-        if (imageFile) {
-          const imageStream = fs.createReadStream(imageFile.path);
-          telegramResponse = await bot.sendPhoto(
-            TELEGRAM_CHAT_ID,
-            imageStream,
-            {
-              caption: telegramMessage,
-              parse_mode: "HTML",
-            }
-          );
-        } else {
-          telegramResponse = await bot.sendMessage(
-            TELEGRAM_CHAT_ID,
-            telegramMessage,
-            {
-              parse_mode: "HTML",
-            }
-          );
-        }
-        console.log(
-          "Order rating sent to Telegram successfully:",
-          telegramResponse.message_id
-        );
-      } else {
-        console.warn(
-          "TELEGRAM_BOT_TOKEN not configured, skipping Telegram notification"
-        );
-      }
-    } catch (telegramError) {
-      console.error(
-        "Failed to send order rating to Telegram:",
-        telegramError.message
-      );
-    }
-
-    // Clean up uploaded file after sending to Telegram
-    if (imageFile && fs.existsSync(imageFile.path)) {
-      try {
-        fs.unlinkSync(imageFile.path);
-        console.log("Uploaded image cleaned up:", imageFile.filename);
-      } catch (cleanupError) {
-        console.warn("Failed to cleanup uploaded image:", cleanupError.message);
-      }
-    }
+    // Update customer statistics
+    await Customer.updateStats(customer.id);
 
     res.status(200).json({
       success: true,
       message: "Thank you for your rating! We appreciate your feedback.",
       data: {
-        ratingId: Date.now(),
-        orderNumber: rating.orderNumber,
-        telegramMessageId: telegramResponse?.message_id || null,
-        submittedAt: rating.timestamp,
+        ratingId: savedRating.id,
+        orderNumber: savedRating.order_number,
+        submittedAt: savedRating.created_at,
         hasImage: !!imageFile,
       },
     });
@@ -383,77 +274,400 @@ router.post("/order-rating", upload.single("image"), async (req, res) => {
   }
 });
 
-/**
- * Format order rating data for Telegram message
- * @param {Object} rating - The rating object
- * @returns {string} Formatted HTML message for Telegram
- */
-function formatOrderRatingMessage(rating) {
-  const overallStars = rating.overallRating
-    ? "⭐".repeat(rating.overallRating)
-    : "No rating";
+// Telegram formatting functions removed - data now stored in database only
 
-  // Format item ratings
-  let itemRatingsText = "";
-  if (rating.itemRatings && rating.itemRatings.length > 0) {
-    itemRatingsText = "\n\n🍽️ <b>Item Ratings:</b>\n";
-    rating.itemRatings.forEach((item) => {
-      const itemStars = item.rating ? "⭐".repeat(item.rating) : "No rating";
-      itemRatingsText += `• ${item.itemName}: ${itemStars}${item.comment ? ` (${item.comment})` : ""}\n`;
+// GET /api/feedback - Get all feedback with filters
+router.get("/", async (req, res) => {
+  try {
+    const filters = {
+      limit: req.query.limit ? parseInt(req.query.limit) : 20,
+      offset: req.query.offset ? parseInt(req.query.offset) : 0,
+      search: req.query.search || null,
+      rating: req.query.rating ? parseInt(req.query.rating) : null,
+      source: req.query.source || null,
+      date_from: req.query.date_from || null,
+      date_to: req.query.date_to || null,
+    };
+
+    const { feedback, total } = await Feedback.getAll(filters);
+
+    res.json({
+      success: true,
+      data: feedback,
+      pagination: {
+        total,
+        limit: filters.limit,
+        offset: filters.offset,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching feedback:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch feedback",
     });
   }
+});
 
-  return `🆕 <b>New Order Rating</b>
+// GET /api/feedback/stats - Get feedback statistics
+router.get("/stats", async (req, res) => {
+  try {
+    const stats = await Feedback.getStats();
 
-📋 <b>Order #:</b> ${rating.orderNumber}
-🏪 <b>Branch:</b> ${rating.branch}
-👤 <b>Cashier:</b> ${rating.cashier}
-💰 <b>Total:</b> ₱${rating.orderTotal}
-⭐ <b>Overall Rating:</b> ${overallStars}
+    res.json({
+      success: true,
+      data: stats,
+    });
+  } catch (error) {
+    console.error("Error fetching feedback stats:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch feedback statistics",
+    });
+  }
+});
 
-👤 <b>Customer:</b> ${rating.customerName}
-📧 <b>Email:</b> ${rating.customerEmail}
-💬 <b>Comments:</b> ${rating.comments || "No additional comments"}${itemRatingsText}
+// GET /api/feedback/ratings - Get all order ratings with filters
+router.get("/ratings", async (req, res) => {
+  try {
+    const filters = {
+      limit: req.query.limit ? parseInt(req.query.limit) : 20,
+      offset: req.query.offset ? parseInt(req.query.offset) : 0,
+      search: req.query.search || null,
+      rating: req.query.rating ? parseInt(req.query.rating) : null,
+      order_number: req.query.order_number || null,
+      branch_name: req.query.branch_name || null,
+      date_from: req.query.date_from || null,
+      date_to: req.query.date_to || null,
+    };
 
-📅 <b>Order Date:</b> ${new Date(rating.orderTimestamp).toLocaleString(
-    "en-PH",
-    {
-      timeZone: "Asia/Manila",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
+    const { ratings, total } = await OrderRating.getAll(filters);
+
+    res.json({
+      success: true,
+      data: ratings,
+      pagination: {
+        total,
+        limit: filters.limit,
+        offset: filters.offset,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching order ratings:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch order ratings",
+    });
+  }
+});
+
+// GET /api/feedback/ratings/stats - Get rating statistics
+router.get("/ratings/stats", async (req, res) => {
+  try {
+    const filters = {
+      branch_name: req.query.branch_name || null,
+      date_from: req.query.date_from || null,
+      date_to: req.query.date_to || null,
+    };
+
+    const stats = await OrderRating.getStats(filters);
+
+    res.json({
+      success: true,
+      data: stats,
+    });
+  } catch (error) {
+    console.error("Error fetching rating stats:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch rating statistics",
+    });
+  }
+});
+
+// GET /api/feedback/ratings/top-items - Get top rated items
+router.get("/ratings/top-items", async (req, res) => {
+  try {
+    const limit = req.query.limit ? parseInt(req.query.limit) : 10;
+    const topItems = await OrderRating.getTopRatedItems(limit);
+
+    res.json({
+      success: true,
+      data: topItems,
+    });
+  } catch (error) {
+    console.error("Error fetching top rated items:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch top rated items",
+    });
+  }
+});
+
+// POST /api/feedback/:id/reply - Send reply email to customer
+router.post("/:id/reply", async (req, res) => {
+  try {
+    console.log('Reply request received:', req.params.id, req.body);
+    
+    const feedbackId = req.params.id;
+    const { message, internal_note } = req.body;
+
+    // Validate input
+    if (!message || !message.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Reply message is required",
+      });
     }
-  )}
 
-📅 <b>Rating Submitted:</b> ${new Date(rating.timestamp).toLocaleString(
-    "en-PH",
-    {
-      timeZone: "Asia/Manila",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
+    // Get feedback details
+    console.log('Fetching feedback with ID:', feedbackId);
+    const feedback = await Feedback.getById(feedbackId);
+    if (!feedback) {
+      console.log('Feedback not found for ID:', feedbackId);
+      return res.status(404).json({
+        success: false,
+        message: "Feedback not found",
+      });
     }
-  )}
 
-🌐 <b>Source:</b> ${rating.source}${rating.imageFilename ? "\n📸 <b>Image:</b> Attached" : ""}`;
-}
+    console.log('Feedback found:', feedback.email, feedback.name);
+
+    // Update feedback status to 'replied' and store reply details FIRST
+    console.log('Updating feedback status to replied');
+    await db('feedback')
+      .where('id', feedbackId)
+      .update({
+        status: 'replied',
+        reply_message: message.trim(),
+        reply_internal_note: internal_note ? internal_note.trim() : null,
+        reply_sent_at: new Date(),
+        updated_at: new Date()
+      });
+
+    // Send response immediately to prevent timeout
+    res.json({
+      success: true,
+      message: "Reply sent successfully to customer",
+      data: {
+        feedbackId: feedbackId,
+        customerEmail: feedback.email,
+        replyMessage: message.trim(),
+        sentAt: new Date().toISOString(),
+        emailMessageId: 'pending' // Will be updated when email completes
+      }
+    });
+
+    // Send email asynchronously (don't wait for completion)
+    console.log('Sending email to:', feedback.email);
+    
+    // Use setImmediate to ensure this runs after the response is sent
+    setImmediate(async () => {
+      try {
+        const emailResult = await EmailService.sendFeedbackReplyEmail(
+          feedback.email,
+          feedback.name,
+          feedback.message,
+          message.trim(),
+          feedback.rating
+        );
+        
+        console.log('Email sent successfully:', emailResult);
+        
+        // Update the feedback record with the actual email message ID
+        if (emailResult.success) {
+          await db('feedback')
+            .where('id', feedbackId)
+            .update({
+              reply_sent_at: new Date(),
+              updated_at: new Date()
+            });
+          console.log('Email status updated successfully');
+        } else {
+          console.error('Failed to send reply email:', emailResult.error);
+          // Update status to indicate email failure
+          await db('feedback')
+            .where('id', feedbackId)
+            .update({
+              status: 'replied',
+              updated_at: new Date()
+            });
+        }
+      } catch (error) {
+        console.error('Email sending failed:', error);
+        // Update status to indicate email failure
+        try {
+          await db('feedback')
+            .where('id', feedbackId)
+            .update({
+              status: 'replied',
+              updated_at: new Date()
+            });
+        } catch (dbError) {
+          console.error('Error updating email failure status:', dbError);
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error("Error sending feedback reply:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to send reply",
+      error: process.env.NODE_ENV === "development" ? error.message : "Internal server error",
+    });
+  }
+});
+
+// PATCH /api/feedback/:id/mark-read - Mark feedback as read
+router.patch("/:id/mark-read", async (req, res) => {
+  try {
+    const feedbackId = req.params.id;
+
+    // Check if feedback exists
+    const feedback = await Feedback.getById(feedbackId);
+    if (!feedback) {
+      return res.status(404).json({
+        success: false,
+        message: "Feedback not found",
+      });
+    }
+
+    // Update status to 'read'
+    await db('feedback')
+      .where('id', feedbackId)
+      .update({
+        status: 'read',
+        updated_at: new Date()
+      });
+
+    res.json({
+      success: true,
+      message: "Feedback marked as read",
+      data: {
+        feedbackId: feedbackId,
+        status: 'read'
+      }
+    });
+
+  } catch (error) {
+    console.error("Error marking feedback as read:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to mark feedback as read",
+      error: process.env.NODE_ENV === "development" ? error.message : "Internal server error",
+    });
+  }
+});
+
+// PATCH /api/feedback/:id/archive - Archive feedback
+router.patch("/:id/archive", async (req, res) => {
+  try {
+    const feedbackId = req.params.id;
+
+    // Check if feedback exists
+    const feedback = await Feedback.getById(feedbackId);
+    if (!feedback) {
+      return res.status(404).json({
+        success: false,
+        message: "Feedback not found",
+      });
+    }
+
+    // Update status to 'archived'
+    await db('feedback')
+      .where('id', feedbackId)
+      .update({
+        status: 'archived',
+        updated_at: new Date()
+      });
+
+    res.json({
+      success: true,
+      message: "Feedback archived successfully",
+      data: {
+        feedbackId: feedbackId,
+        status: 'archived'
+      }
+    });
+
+  } catch (error) {
+    console.error("Error archiving feedback:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to archive feedback",
+      error: process.env.NODE_ENV === "development" ? error.message : "Internal server error",
+    });
+  }
+});
+
+// GET /api/feedback/export - Export feedback to CSV
+router.get("/export", async (req, res) => {
+  try {
+    const filters = {
+      search: req.query.search || null,
+      rating: req.query.rating ? parseInt(req.query.rating) : null,
+      source: req.query.source || null,
+      status: req.query.status || null,
+      date_from: req.query.date_from || null,
+      date_to: req.query.date_to || null,
+    };
+
+    const { feedback } = await Feedback.getAll({ ...filters, limit: 10000 }); // Export all
+
+    // Generate CSV content
+    const csvHeaders = [
+      'ID',
+      'Name',
+      'Email',
+      'Phone',
+      'Message',
+      'Rating',
+      'Source',
+      'Status',
+      'Created At',
+      'Reply Message',
+      'Reply Sent At',
+      'Internal Note'
+    ].join(',');
+
+    const csvRows = feedback.map(item => [
+      item.id,
+      `"${(item.name || '').replace(/"/g, '""')}"`,
+      item.email || '',
+      item.phone || '',
+      `"${(item.message || '').replace(/"/g, '""')}"`,
+      item.rating || '',
+      item.source || '',
+      item.status || 'new',
+      item.created_at || '',
+      `"${(item.reply_message || '').replace(/"/g, '""')}"`,
+      item.reply_sent_at || '',
+      `"${(item.reply_internal_note || '').replace(/"/g, '""')}"`
+    ].join(','));
+
+    const csvContent = [csvHeaders, ...csvRows].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=feedback-export-${new Date().toISOString().split('T')[0]}.csv`);
+    res.send(csvContent);
+
+  } catch (error) {
+    console.error("Error exporting feedback:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to export feedback",
+      error: process.env.NODE_ENV === "development" ? error.message : "Internal server error",
+    });
+  }
+});
 
 router.get("/health", async (req, res) => {
   try {
-    const telegramStatus = {
-      configured: !!TELEGRAM_BOT_TOKEN,
-      chatId: TELEGRAM_CHAT_ID,
-      botToken: TELEGRAM_BOT_TOKEN ? "Configured" : "Not configured",
-    };
-
     res.status(200).json({
       success: true,
       message: "Feedback service is healthy",
-      telegram: telegramStatus,
+      storage: "Database",
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

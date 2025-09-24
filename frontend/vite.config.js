@@ -3,9 +3,15 @@ import vue from '@vitejs/plugin-vue';
 import VueDevTools from 'vite-plugin-vue-devtools';
 import tailwindcss from '@tailwindcss/postcss';
 import autoprefixer from 'autoprefixer';
+import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [vue(), VueDevTools()],
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'),
+    },
+  },
   css: {
     postcss: {
       plugins: [tailwindcss, autoprefixer],

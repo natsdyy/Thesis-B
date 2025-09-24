@@ -11,16 +11,14 @@
     "migrate:status": "knex migrate:status --knexfile knexfile.js",
     "migrate:make": "knex migrate:make --knexfile knexfile.js",
     "seed": "node seeders/seedDefaultData.js",
-    "setup": "npm run migrate && npm run seed",
-    "test:telegram": "node scripts/test-telegram-bot.js",
-    "test:image-upload": "node scripts/test-image-upload.js",
-    "setup:telegram": "node setup-telegram.js"
+    "setup": "npm run migrate && npm run seed"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@sendgrid/mail": "^8.1.6",
     "axios": "^1.11.0",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
@@ -31,7 +29,7 @@
     "multer": "^1.4.5-lts.1",
     "node-cron": "^4.2.1",
     "node-fetch": "^2.7.0",
-    "node-telegram-bot-api": "^0.64.0",
+    "nodemailer": "^7.0.6",
     "pg": "^8.16.3",
     "qrcode": "^1.5.3",
     "swagger-jsdoc": "^6.2.8",
@@ -42,7 +40,7 @@
     "nodemon": "^3.1.10"
   },
   "engines": {
-    "node": "18.20.5",
+    "node": ">=20.0.0",
     "npm": ">=8.0.0"
   }
 }

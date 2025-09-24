@@ -81,6 +81,98 @@ const requirePermission = (permissionName) => {
  */
 
 // =============================================================================
+// PUBLIC ROUTES (NO AUTHENTICATION REQUIRED)
+// =============================================================================
+
+/**
+ * @swagger
+ * /api/branches/{id}/coordinates:
+ *   get:
+ *     summary: Get branch coordinates for attendance validation
+ *     tags: [Branches]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Branch ID
+ *     responses:
+ *       200:
+ *         description: Branch coordinates
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     name:
+ *                       type: string
+ *                     latitude:
+ *                       type: number
+ *                     longitude:
+ *                       type: number
+ *                     radius_meters:
+ *                       type: number
+ *       404:
+ *         description: Branch not found
+ */
+router.get("/:id/coordinates", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const branchId = parseInt(id);
+    const branch = await Branch.getById(branchId);
+
+    if (!branch) {
+      return res.status(404).json({
+        success: false,
+        error: "Branch not found",
+      });
+    }
+
+    // If coordinates are missing but address exists, geocode dynamically
+    let latitude = branch.latitude;
+    let longitude = branch.longitude;
+    if ((!latitude || !longitude) && branch.address) {
+      try {
+        const { geocodeAddress } = require("../services/geocodingService");
+        const geo = await geocodeAddress(branch.address);
+        if (geo) {
+          latitude = geo.latitude;
+          longitude = geo.longitude;
+        }
+      } catch (geoErr) {
+        console.warn("Geocoding fallback failed:", geoErr.message);
+      }
+    }
+
+    // Return only coordinate data needed for attendance
+    res.json({
+      success: true,
+      data: {
+        id: branch.id,
+        name: branch.name,
+        latitude,
+        longitude,
+        radius_meters: branch.radius_meters,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching branch coordinates:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch branch coordinates",
+    });
+  }
+});
+
+// =============================================================================
 // SPECIFIC ROUTES (MUST COME FIRST - BEFORE PARAMETRIC ROUTES)
 // =============================================================================
 
@@ -437,13 +529,22 @@ router.get(
       const branch = await Branch.getById(branchId);
 
       if (!branch) {
-        return res.status(404).json({ error: "Branch not found" });
+        return res.status(404).json({
+          success: false,
+          error: "Branch not found",
+        });
       }
 
-      res.json(branch);
+      res.json({
+        success: true,
+        data: branch,
+      });
     } catch (error) {
       console.error("Error fetching branch:", error);
-      res.status(500).json({ error: "Failed to fetch branch" });
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch branch",
+      });
     }
   }
 );

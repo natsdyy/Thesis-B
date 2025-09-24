@@ -1,0 +1,153 @@
+const { db } = require("../config/database");
+
+class Feedback {
+  // Create new feedback
+  static async create(feedbackData) {
+    try {
+      const [feedback] = await db("feedback")
+        .insert({
+          name: feedbackData.name,
+          email: feedbackData.email,
+          message: feedbackData.message,
+          phone: feedbackData.phone || null,
+          rating: feedbackData.rating || null,
+          source: feedbackData.source || "Website Contact Form",
+          image_filename: feedbackData.imageFilename || null,
+          image_path: feedbackData.imagePath || null,
+          customer_id: feedbackData.customer_id || null,
+        })
+        .returning("*");
+
+      return feedback;
+    } catch (error) {
+      console.error("Error creating feedback:", error);
+      throw new Error("Failed to create feedback");
+    }
+  }
+
+  // Get all feedback with pagination
+  static async getAll(filters = {}) {
+    try {
+      const {
+        limit = 20,
+        offset = 0,
+        search = null,
+        rating = null,
+        source = null,
+        date_from = null,
+        date_to = null,
+      } = filters;
+
+      let query = db("feedback");
+
+      // Apply filters
+      if (search) {
+        query = query.where(function () {
+          this.where("name", "ilike", `%${search}%`)
+            .orWhere("email", "ilike", `%${search}%`)
+            .orWhere("message", "ilike", `%${search}%`);
+        });
+      }
+
+      if (rating) {
+        query = query.where("rating", rating);
+      }
+
+      if (source) {
+        query = query.where("source", source);
+      }
+
+      if (date_from) {
+        query = query.where("created_at", ">=", date_from);
+      }
+
+      if (date_to) {
+        query = query.where("created_at", "<=", date_to);
+      }
+
+      // Get total count
+      const countQuery = query.clone().clearSelect().count({ total: "id" });
+      const [countRow] = await countQuery;
+      const total = parseInt(countRow?.total || 0, 10);
+
+      // Get paginated results
+      const feedback = await query
+        .orderBy("created_at", "desc")
+        .limit(limit)
+        .offset(offset);
+
+      return { feedback, total };
+    } catch (error) {
+      console.error("Error fetching feedback:", error);
+      throw new Error("Failed to fetch feedback");
+    }
+  }
+
+  // Get feedback by ID
+  static async getById(id) {
+    try {
+      const feedback = await db("feedback").where("id", id).first();
+      return feedback;
+    } catch (error) {
+      console.error("Error fetching feedback by ID:", error);
+      throw new Error("Failed to fetch feedback");
+    }
+  }
+
+  // Update feedback
+  static async update(id, updateData) {
+    try {
+      const [updatedFeedback] = await db("feedback")
+        .where("id", id)
+        .update({
+          ...updateData,
+          updated_at: new Date(),
+        })
+        .returning("*");
+
+      return updatedFeedback;
+    } catch (error) {
+      console.error("Error updating feedback:", error);
+      throw new Error("Failed to update feedback");
+    }
+  }
+
+  // Delete feedback
+  static async delete(id) {
+    try {
+      const deletedCount = await db("feedback").where("id", id).del();
+      return deletedCount > 0;
+    } catch (error) {
+      console.error("Error deleting feedback:", error);
+      throw new Error("Failed to delete feedback");
+    }
+  }
+
+  // Get feedback statistics
+  static async getStats() {
+    try {
+      const stats = await db("feedback")
+        .select(
+          db.raw("COUNT(*) as total_feedback"),
+          db.raw("AVG(rating) as average_rating"),
+          db.raw("COUNT(CASE WHEN rating >= 4 THEN 1 END) as positive_feedback"),
+          db.raw("COUNT(CASE WHEN rating <= 2 THEN 1 END) as negative_feedback"),
+          db.raw("COUNT(CASE WHEN image_filename IS NOT NULL THEN 1 END) as feedback_with_images")
+        )
+        .first();
+
+      return {
+        total_feedback: parseInt(stats.total_feedback) || 0,
+        average_rating: parseFloat(stats.average_rating) || 0,
+        positive_feedback: parseInt(stats.positive_feedback) || 0,
+        negative_feedback: parseInt(stats.negative_feedback) || 0,
+        feedback_with_images: parseInt(stats.feedback_with_images) || 0,
+      };
+    } catch (error) {
+      console.error("Error fetching feedback stats:", error);
+      throw new Error("Failed to fetch feedback statistics");
+    }
+  }
+}
+
+module.exports = Feedback;

@@ -1,6 +1,9 @@
 const express = require("express");
 const Employee = require("../models/Employee");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+const EmailService = require("../services/emailService");
+const { db } = require("../config/database");
 const router = express.Router();
 
 /**
@@ -444,6 +447,286 @@ router.put("/change-password", async (req, res) => {
       success: false,
       message:
         "Password update service is temporarily unavailable. Please try again.",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/auth/forgot-password:
+ *   post:
+ *     summary: Request password reset via email
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *     responses:
+ *       200:
+ *         description: Password reset email sent
+ *       400:
+ *         description: Bad request
+ *       404:
+ *         description: Email not found
+ *       500:
+ *         description: Server error
+ */
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // Validate email
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email address is required",
+        code: "MISSING_EMAIL",
+      });
+    }
+
+    const trimmedEmail = email.trim().toLowerCase();
+    if (trimmedEmail.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Email address cannot be empty",
+        code: "EMPTY_EMAIL",
+      });
+    }
+
+    // Check if user exists
+    const employee = await Employee.findByEmail(trimmedEmail);
+    if (!employee) {
+      // Don't reveal if email exists or not for security
+      return res.json({
+        success: true,
+        message: "If the email exists, a password reset link has been sent",
+        code: "RESET_EMAIL_SENT",
+      });
+    }
+
+    // Check if employee is active
+    if (employee.deleted_at || !employee.is_active || employee.status !== "Active") {
+      return res.json({
+        success: true,
+        message: "If the email exists, a password reset link has been sent",
+        code: "RESET_EMAIL_SENT",
+      });
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour from now
+
+    // Store reset token in database
+    await db('employees')
+      .where('id', employee.id)
+      .update({
+        reset_token: resetToken,
+        reset_token_expiry: resetTokenExpiry,
+        updated_at: new Date()
+      });
+
+    // Send password recovery email
+    const emailResult = await EmailService.sendPasswordRecoveryEmail(
+      trimmedEmail,
+      resetToken,
+      `${employee.first_name} ${employee.last_name}`
+    );
+
+    if (!emailResult.success) {
+      console.error('Failed to send password recovery email:', emailResult.error);
+      // Don't reveal email sending failure to user for security
+    }
+
+    res.json({
+      success: true,
+      message: "If the email exists, a password reset link has been sent",
+      code: "RESET_EMAIL_SENT",
+    });
+
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Password reset service is temporarily unavailable. Please try again.",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/auth/reset-password:
+ *   post:
+ *     summary: Reset password using token
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *               - new_password
+ *             properties:
+ *               token:
+ *                 type: string
+ *               new_password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Password reset successfully
+ *       400:
+ *         description: Bad request - invalid or expired token
+ *       404:
+ *         description: Invalid reset token
+ *       500:
+ *         description: Server error
+ */
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { token, new_password } = req.body;
+
+    // Validate input
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: "Reset token is required",
+        code: "MISSING_TOKEN",
+      });
+    }
+
+    if (!new_password) {
+      return res.status(400).json({
+        success: false,
+        message: "New password is required",
+        code: "MISSING_PASSWORD",
+      });
+    }
+
+    // Find employee with valid reset token
+    const employee = await db('employees')
+      .where('reset_token', token)
+      .where('reset_token_expiry', '>', new Date())
+      .whereNull('deleted_at')
+      .where('is_active', true)
+      .where('status', 'Active')
+      .first();
+
+    if (!employee) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset token",
+        code: "INVALID_TOKEN",
+      });
+    }
+
+    // Update password and clear reset token
+    await Employee.setPassword(employee.id, new_password);
+    
+    await db('employees')
+      .where('id', employee.id)
+      .update({
+        reset_token: null,
+        reset_token_expiry: null,
+        updated_at: new Date()
+      });
+
+    res.json({
+      success: true,
+      message: "Password has been reset successfully",
+      code: "PASSWORD_RESET_SUCCESS",
+    });
+
+  } catch (error) {
+    console.error("Reset password error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Password reset service is temporarily unavailable. Please try again.",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/auth/validate-reset-token:
+ *   post:
+ *     summary: Validate password reset token
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *             properties:
+ *               token:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Token is valid
+ *       400:
+ *         description: Invalid or expired token
+ *       500:
+ *         description: Server error
+ */
+router.post("/validate-reset-token", async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: "Reset token is required",
+        code: "MISSING_TOKEN",
+      });
+    }
+
+    // Check if token exists and is not expired
+    const employee = await db('employees')
+      .where('reset_token', token)
+      .where('reset_token_expiry', '>', new Date())
+      .whereNull('deleted_at')
+      .where('is_active', true)
+      .where('status', 'Active')
+      .first();
+
+    if (!employee) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset token",
+        code: "INVALID_TOKEN",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Reset token is valid",
+      code: "TOKEN_VALID",
+      data: {
+        email: employee.email,
+        name: `${employee.first_name} ${employee.last_name}`
+      }
+    });
+
+  } catch (error) {
+    console.error("Validate reset token error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Token validation service is temporarily unavailable. Please try again.",
       code: "INTERNAL_SERVER_ERROR",
     });
   }

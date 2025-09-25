@@ -22,11 +22,13 @@
   import { useEmployeeStore } from '../../stores/employeeStore.js';
   import { useAttendanceStore } from '../../stores/attendanceStore';
   import { apiConfig } from '../../config/api';
+  import { useOvertimeStore } from '../../stores/overtimeStore';
   import EmployeeScheduleComponent from '../../components/branch/EmployeeScheduleComponent.vue';
 
   const branchContextStore = useBranchContextStore();
   const employeeStore = useEmployeeStore();
   const attendanceStore = useAttendanceStore();
+  const overtimeStore = useOvertimeStore();
 
   // Local state following EmployeeManager pattern
   const searchQuery = ref('');
@@ -45,90 +47,9 @@
     onLeaveEmployees: 0,
   });
 
-  // OT Approval mock data
-  const otRequests = ref([
-    {
-      id: 1,
-      employee_id: 1,
-      employee_name: 'John Smith',
-      employee_role: 'Cashier',
-      date: '2024-01-15',
-      start_time: '18:00',
-      end_time: '22:00',
-      total_hours: 4,
-      reason:
-        'High customer volume during dinner rush, needed to assist with closing procedures',
-      status: 'pending',
-      submitted_at: '2024-01-15T16:30:00Z',
-      approved_by: null,
-      approved_at: null,
-      notes: '',
-    },
-    {
-      id: 2,
-      employee_id: 2,
-      employee_name: 'Maria Garcia',
-      employee_role: 'Kitchen Staff',
-      date: '2024-01-14',
-      start_time: '17:30',
-      end_time: '21:30',
-      total_hours: 4,
-      reason: 'Inventory restocking and preparation for next day',
-      status: 'approved',
-      submitted_at: '2024-01-14T15:45:00Z',
-      approved_by: 'Manager Johnson',
-      approved_at: '2024-01-14T20:15:00Z',
-      notes: 'Approved for inventory preparation',
-    },
-    {
-      id: 3,
-      employee_id: 3,
-      employee_name: 'David Wilson',
-      employee_role: 'Server',
-      date: '2024-01-13',
-      start_time: '19:00',
-      end_time: '23:00',
-      total_hours: 4,
-      reason: 'Special event preparation and cleanup',
-      status: 'rejected',
-      submitted_at: '2024-01-13T18:20:00Z',
-      approved_by: 'Manager Johnson',
-      approved_at: '2024-01-13T19:30:00Z',
-      notes: 'Event was not pre-approved, overtime not justified',
-    },
-    {
-      id: 4,
-      employee_id: 4,
-      employee_name: 'Sarah Johnson',
-      employee_role: 'Assistant Manager',
-      date: '2024-01-12',
-      start_time: '18:00',
-      end_time: '22:30',
-      total_hours: 4.5,
-      reason: 'Staff training session and monthly report preparation',
-      status: 'approved',
-      submitted_at: '2024-01-12T17:30:00Z',
-      approved_by: 'Branch Manager',
-      approved_at: '2024-01-12T18:45:00Z',
-      notes: 'Training session approved',
-    },
-    {
-      id: 5,
-      employee_id: 5,
-      employee_name: 'Michael Brown',
-      employee_role: 'Delivery Driver',
-      date: '2024-01-11',
-      start_time: '20:00',
-      end_time: '24:00',
-      total_hours: 4,
-      reason: 'Late delivery orders and vehicle maintenance',
-      status: 'pending',
-      submitted_at: '2024-01-11T19:15:00Z',
-      approved_by: null,
-      approved_at: null,
-      notes: '',
-    },
-  ]);
+  // OT requests from API
+  const otRequests = ref([]);
+  const API_BASE_URL = apiConfig.baseURL;
 
   const otStats = ref({
     totalRequests: 0,
@@ -381,6 +302,16 @@
     };
   };
 
+  const loadOtRequests = async () => {
+    await overtimeStore.fetchRequests({
+      branch_id: currentBranch?.value?.id,
+      page: 1,
+      limit: 100,
+    });
+    otRequests.value = overtimeStore.requests;
+    updateOtStats();
+  };
+
   const openApprovalModal = (requestId) => {
     selectedRequest.value = otRequests.value.find(
       (req) => req.id === requestId
@@ -401,14 +332,11 @@
 
     try {
       isProcessing.value = true;
-
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      selectedRequest.value.status = 'approved';
-      selectedRequest.value.approved_by = 'Current Manager'; // In real app, get from auth
-      selectedRequest.value.approved_at = new Date().toISOString();
-      updateOtStats();
+      await overtimeStore.approve(
+        selectedRequest.value.id,
+        selectedRequest.value.notes || ''
+      );
+      await loadOtRequests();
 
       showApprovalModal.value = false;
       selectedRequest.value = null;
@@ -424,15 +352,11 @@
 
     try {
       isProcessing.value = true;
-
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      selectedRequest.value.status = 'rejected';
-      selectedRequest.value.approved_by = 'Current Manager'; // In real app, get from auth
-      selectedRequest.value.approved_at = new Date().toISOString();
-      selectedRequest.value.notes = rejectionNotes.value;
-      updateOtStats();
+      await overtimeStore.reject(
+        selectedRequest.value.id,
+        rejectionNotes.value || ''
+      );
+      await loadOtRequests();
 
       showRejectionModal.value = false;
       selectedRequest.value = null;
@@ -482,7 +406,7 @@
   // Initialize
   onMounted(() => {
     loadBranchEmployees();
-    updateOtStats();
+    loadOtRequests();
   });
 </script>
 
@@ -1003,9 +927,10 @@
                         <button
                           v-if="request.status !== 'pending'"
                           class="btn btn-sm btn-ghost"
+                          :title="request.notes || ''"
                           disabled
                         >
-                          {{ request.approved_by }}
+                          {{ request.approved_by || '—' }}
                         </button>
                       </div>
                     </td>

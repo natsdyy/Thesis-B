@@ -595,11 +595,13 @@ router.post("/mobile-scan", async (req, res) => {
 router.get("/my-schedule", authenticateToken, async (req, res) => {
   try {
     const employeeId = req.user.id;
+    const requested = (req.query?.date || "").trim();
     const today = new Date().toISOString().split("T")[0];
+    const date = requested || today;
 
     const scheduleInfo = await EmployeeScheduleService.getScheduleDisplayInfo(
       employeeId,
-      today
+      date
     );
 
     res.json({

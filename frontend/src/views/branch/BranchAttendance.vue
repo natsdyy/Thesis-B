@@ -89,6 +89,12 @@
               >
                 Late by {{ tardinessMinutesToday }} minute(s)
               </div>
+              <div
+                v-if="overtimeMinutesToday > 0"
+                class="text-xs mt-1 text-neutral/50"
+              >
+                Overtime today: {{ overtimeMinutesToday }} minute(s)
+              </div>
             </div>
           </div>
         </div>
@@ -305,7 +311,12 @@
                 v-model="otStartTime"
                 type="time"
                 class="input input-bordered w-full"
+                :min="scheduleEndTime ? scheduleEndTime.slice(0, 5) : undefined"
               />
+              <div v-if="scheduleEndTime" class="text-xs text-neutral/60 mt-1">
+                Scheduled end time: {{ scheduleEndTime.slice(0, 5) }} — OT
+                starts from here
+              </div>
             </div>
             <div class="form-control">
               <label class="label"
@@ -605,6 +616,17 @@
               >Are you sure you want to submit this overtime request?</span
             >
           </div>
+
+          <div v-if="otError" class="alert bg-error/10 text-error">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fill-rule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11V5a1 1 0 10-2 0v2a1 1 0 002 0zm0 6a1 1 0 10-2 0v-4a1 1 0 102 0v4z"
+                clip-rule="evenodd"
+              ></path>
+            </svg>
+            <span class="text-sm">{{ otError }}</span>
+          </div>
         </div>
 
         <div class="modal-action">
@@ -633,9 +655,10 @@
 </template>
 
 <script setup>
-  import { ref, onMounted, onUnmounted, computed } from 'vue';
+  import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
   import { useAuthStore } from '../../stores/authStore';
   import { useAttendanceStore } from '../../stores/attendanceStore';
+  import { useOvertimeStore } from '../../stores/overtimeStore';
   import { apiConfig } from '../../config/api';
   import axios from 'axios';
   import QRAttendanceModal from '../../components/QRAttendanceModal.vue';
@@ -644,6 +667,7 @@
   // Stores
   const authStore = useAuthStore();
   const attendanceStore = useAttendanceStore();
+  const overtimeStore = useOvertimeStore();
 
   // Reactive data
   const isLoading = ref(false);
@@ -652,10 +676,12 @@
   const isSubmitting = ref(false);
   const showOTConfirmModal = ref(false);
   const isSubmittingOT = ref(false);
+  const otError = ref('');
   const otDate = ref('');
   const otStartTime = ref('');
   const otEndTime = ref('');
   const otReason = ref('');
+  const scheduleEndTime = ref('');
   const showQRModal = ref(false);
   const showManualModal = ref(false);
   const activeTab = ref('add');
@@ -678,6 +704,11 @@
   const tardinessMinutesToday = computed(() =>
     Number(today.value?.tardiness_minutes || 0)
   );
+  const overtimeMinutesToday = computed(() => {
+    const hours = Number(today.value?.overtime_hours || 0);
+    if (isNaN(hours)) return 0;
+    return Math.round(hours * 60);
+  });
   const currentStatus = computed(() => {
     if (hasTimeIn.value && !hasTimeOut.value) return 'checked-in';
     return 'checked-out';
@@ -689,36 +720,8 @@
   });
   const lastTimeIn = computed(() => today.value?.time_in || null);
   const attendanceHistory = ref([]);
-  // Mock: My overtime requests (replace with API/store when available)
-  const myOtRequests = ref([
-    {
-      id: 1,
-      date: new Date().toISOString().split('T')[0],
-      start_at: '2025-09-25T18:00:00Z',
-      end_at: '2025-09-25T21:00:00Z',
-      total_hours: 3,
-      reason: 'Assisted with end-of-day inventory and cleanup',
-      status: 'pending', // pending | approved | rejected
-    },
-    {
-      id: 2,
-      date: '2025-09-24',
-      start_at: '2025-09-24T17:30:00Z',
-      end_at: '2025-09-24T20:00:00Z',
-      total_hours: 2.5,
-      reason: 'Handled late orders during peak hours',
-      status: 'approved',
-    },
-    {
-      id: 3,
-      date: '2025-09-22',
-      start_at: '2025-09-22T19:00:00Z',
-      end_at: '2025-09-22T22:00:00Z',
-      total_hours: 3,
-      reason: 'Training for new POS features',
-      status: 'rejected',
-    },
-  ]);
+  // My overtime requests (fetched from API)
+  const myOtRequests = ref([]);
 
   // Pagination for My OT Requests
   const otCurrentPage = ref(1);
@@ -731,6 +734,11 @@
     const end = start + otItemsPerPage.value;
     return myOtRequests.value.slice(start, end);
   });
+
+  const fetchMyOtRequests = async () => {
+    await overtimeStore.fetchMyRequests(1, 50);
+    myOtRequests.value = overtimeStore.myRequests;
+  };
   const mergedHistory = computed(() => {
     // Process attendance records for display
     console.log(
@@ -873,6 +881,7 @@
       // Keep UX simple here; in your app you might use a toast
       return;
     }
+    otError.value = '';
     showOTConfirmModal.value = true;
   };
 
@@ -884,26 +893,19 @@
   const submitOTRequestConfirmed = async () => {
     try {
       isSubmittingOT.value = true;
-      // Simulate API latency
-      await new Promise((r) => setTimeout(r, 1200));
-
-      // Compute hours quickly (naive, for mock/demo)
+      otError.value = '';
+      // Compute hours and submit to API
       const start = new Date(`${otDate.value}T${otStartTime.value}:00`);
       const end = new Date(`${otDate.value}T${otEndTime.value}:00`);
       const hours = Math.max(0, (end - start) / (1000 * 60 * 60));
 
-      myOtRequests.value = [
-        {
-          id: Date.now(),
-          date: otDate.value,
-          start_at: start.toISOString(),
-          end_at: end.toISOString(),
-          total_hours: Math.round(hours * 10) / 10,
-          reason: otReason.value,
-          status: 'pending',
-        },
-        ...myOtRequests.value,
-      ];
+      await overtimeStore.submitRequest({
+        ot_date: otDate.value,
+        start_time: otStartTime.value,
+        end_time: otEndTime.value,
+        total_hours: Math.round(hours * 100) / 100,
+        reason: otReason.value,
+      });
 
       // Reset form
       otDate.value = '';
@@ -917,12 +919,49 @@
       }
 
       showOTConfirmModal.value = false;
+      // Refresh list
+      await fetchMyOtRequests();
     } catch (e) {
       console.error('Error submitting OT request:', e);
+      otError.value = e?.message || 'Failed to submit OT request';
+      return;
     } finally {
       isSubmittingOT.value = false;
     }
   };
+
+  // Fetch schedule end time for selected date and enforce min
+  const fetchScheduleForDate = async () => {
+    try {
+      scheduleEndTime.value = '';
+      if (!otDate.value) return;
+      const res = await fetch(
+        `${API_BASE_URL.replace(/\/?$/, '')}/attendance/my-schedule?date=${otDate.value}`,
+        { headers: { 'Content-Type': 'application/json', ...authHeaders() } }
+      );
+      const json = await res.json();
+      const endTime = json?.data?.schedule?.end_time || json?.data?.end_time;
+      if (endTime) {
+        scheduleEndTime.value = endTime; // format HH:MM:SS from backend
+        // If chosen start time is earlier than end time, bump it to end time
+        if (otStartTime.value && scheduleEndTime.value) {
+          const startVal = otStartTime.value;
+          const minVal = scheduleEndTime.value.slice(0, 5);
+          if (startVal < minVal) {
+            otStartTime.value = minVal;
+          }
+        }
+      }
+    } catch (_) {}
+  };
+
+  // Watch date change to fetch schedule
+  watch(
+    () => otDate.value,
+    async () => {
+      await fetchScheduleForDate();
+    }
+  );
 
   const openManualModal = () => {
     showManualModal.value = true;
@@ -1131,7 +1170,11 @@
 
   // Lifecycle
   onMounted(() => {
-    Promise.all([checkCurrentStatus(), fetchAttendanceHistory()]).then(() => {
+    Promise.all([
+      checkCurrentStatus(),
+      fetchAttendanceHistory(),
+      fetchMyOtRequests(),
+    ]).then(() => {
       startAutoRefresh();
     });
   });

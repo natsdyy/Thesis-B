@@ -144,6 +144,14 @@ router.post("/", authenticateToken, async (req, res) => {
       });
     }
 
+    // Check if employee has "Day Off" shift - cannot request OT on day off
+    if (schedule.shift_name === "Day Off") {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot request overtime on your scheduled day off.",
+      });
+    }
+
     // Build Date objects considering possible overnight shifts
     const baseDateStr = ot_date; // YYYY-MM-DD
     const schedStart = new Date(`${baseDateStr}T${schedule.start_time}`);

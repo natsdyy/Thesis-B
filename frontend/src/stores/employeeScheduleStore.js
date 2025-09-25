@@ -50,7 +50,21 @@ export const useEmployeeScheduleStore = defineStore('employeeSchedule', () => {
       const processedSchedules = {};
       apiSchedules.forEach((schedule) => {
         // Normalize date to YYYY-MM-DD format for consistent key matching
-        const normalizedDate = schedule.schedule_date.split('T')[0];
+        // Handle both string and Date object formats
+        let normalizedDate;
+        if (schedule.schedule_date instanceof Date) {
+          // Convert Date object to YYYY-MM-DD in local timezone
+          const year = schedule.schedule_date.getFullYear();
+          const month = String(schedule.schedule_date.getMonth() + 1).padStart(
+            2,
+            '0'
+          );
+          const day = String(schedule.schedule_date.getDate()).padStart(2, '0');
+          normalizedDate = `${year}-${month}-${day}`;
+        } else {
+          // Handle string format - split on 'T' or ' ' to get date part
+          normalizedDate = schedule.schedule_date.split(/T| /)[0];
+        }
         const key = `${schedule.employee_id}_${normalizedDate}`;
         processedSchedules[key] = {
           id: schedule.id,
@@ -266,6 +280,7 @@ export const useEmployeeScheduleStore = defineStore('employeeSchedule', () => {
       'Morning Shift': 'bg-blue-100 text-blue-800',
       'Afternoon Shift': 'bg-green-100 text-green-800',
       'Night Shift': 'bg-purple-100 text-purple-800',
+      'Day Off': 'bg-gray-100 text-gray-600',
     };
     return colorMap[shiftName] || 'bg-gray-100 text-gray-800';
   };

@@ -31,7 +31,6 @@
   const currentPage = ref(1);
   const itemsPerPage = ref(10);
   const showDeletedEmployees = ref(false);
-  const loadingMore = ref(false);
 
   // Toast state (mirrors other views)
   const toast = ref({ show: false, type: 'success', message: '' });
@@ -159,8 +158,6 @@
   // Loading and error from store
   const loading = computed(() => employeeStore.loading);
   const error = computed(() => employeeStore.error);
-  const pagination = computed(() => employeeStore.pagination);
-  const hasMore = computed(() => employeeStore.hasMore);
 
   // Base employees list
   const employees = computed(() => employeeStore.employees || []);
@@ -209,8 +206,50 @@
     );
   });
 
-  // Use filtered employees directly since we're using server-side pagination
-  const paginatedEmployees = computed(() => filteredEmployees.value);
+  // Client-side pagination
+  const paginatedEmployees = computed(() => {
+    const start = (currentPage.value - 1) * itemsPerPage.value;
+    const end = start + itemsPerPage.value;
+    return filteredEmployees.value.slice(start, end);
+  });
+
+  // Total pages for pagination
+  const totalPages = computed(() => {
+    return Math.ceil(filteredEmployees.value.length / itemsPerPage.value);
+  });
+
+  // Pagination info
+  const paginationInfo = computed(() => {
+    const start = (currentPage.value - 1) * itemsPerPage.value + 1;
+    const end = Math.min(
+      currentPage.value * itemsPerPage.value,
+      filteredEmployees.value.length
+    );
+    return {
+      start,
+      end,
+      total: filteredEmployees.value.length,
+    };
+  });
+
+  // Pagination functions
+  const goToPage = (page) => {
+    if (page >= 1 && page <= totalPages.value) {
+      currentPage.value = page;
+    }
+  };
+
+  const goToNextPage = () => {
+    if (currentPage.value < totalPages.value) {
+      currentPage.value++;
+    }
+  };
+
+  const goToPreviousPage = () => {
+    if (currentPage.value > 1) {
+      currentPage.value--;
+    }
+  };
 
   // Keep current page in range when filters/data change
   watch([filteredEmployees, itemsPerPage], () => {
@@ -222,25 +261,11 @@
       await employeeStore.fetchEmployees(
         showDeletedEmployees.value,
         1,
-        itemsPerPage.value
+        1000 // Fetch all employees for client-side pagination
       );
       showToast('success', 'Employee list refreshed');
     } catch (e) {
       showToast('error', e.message || 'Failed to refresh employees');
-    }
-  };
-
-  // Load more employees for lazy loading
-  const loadMore = async () => {
-    if (loadingMore.value || !hasMore.value) return;
-
-    loadingMore.value = true;
-    try {
-      await employeeStore.loadMoreEmployees(showDeletedEmployees.value);
-    } catch (error) {
-      showToast('error', error.message || 'Failed to load more employees');
-    } finally {
-      loadingMore.value = false;
     }
   };
 
@@ -250,7 +275,7 @@
       await employeeStore.fetchEmployees(
         showDeletedEmployees.value,
         1,
-        itemsPerPage.value
+        1000 // Fetch all employees for client-side pagination
       );
       showToast(
         'success',
@@ -574,28 +599,12 @@
     }
   };
 
-  // Infinite scroll functionality
-  const handleScroll = () => {
-    const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
-    const scrollPercentage = (scrollTop + clientHeight) / scrollHeight;
-
-    // Load more when user scrolls to 80% of the page
-    if (
-      scrollPercentage > 0.8 &&
-      hasMore.value &&
-      !loadingMore.value &&
-      !loading.value
-    ) {
-      loadMore();
-    }
-  };
-
   onMounted(async () => {
     if (!employees.value?.length) {
       await employeeStore.fetchEmployees(
         showDeletedEmployees.value,
         1,
-        itemsPerPage.value
+        1000 // Fetch all employees for client-side pagination
       );
     }
     await fetchDepartmentsWithRoles();
@@ -605,14 +614,6 @@
     } catch (e) {
       console.error('Failed to load branches', e);
     }
-
-    // Add scroll listener for infinite scroll
-    window.addEventListener('scroll', handleScroll);
-  });
-
-  // Cleanup scroll listener
-  onUnmounted(() => {
-    window.removeEventListener('scroll', handleScroll);
   });
 </script>
 
@@ -677,6 +678,16 @@
           </div>
 
           <div class="flex items-center gap-2 justify-end">
+            <select
+              v-model="itemsPerPage"
+              class="select select-sm select-bordered"
+            >
+              <option value="5">5 per page</option>
+              <option value="10">10 per page</option>
+              <option value="20">20 per page</option>
+              <option value="50">50 per page</option>
+            </select>
+
             <button
               class="btn btn-outline btn-sm text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
               :disabled="loading"
@@ -848,32 +859,64 @@
         </div>
 
         <!-- Pagination -->
-        <!-- Load More Section -->
         <div
-          class="flex flex-col items-center p-4 gap-3 border-t-1 border-black/10"
-          v-if="employees.length > 0"
+          class="flex flex-col sm:flex-row items-center justify-between p-4 gap-3 border-t border-black/10"
+          v-if="filteredEmployees.length > 0"
         >
+          <!-- Pagination Info -->
           <div class="text-xs sm:text-sm text-black/60">
-            Showing {{ employees.length }} of {{ pagination.total }} employees
+            Showing {{ paginationInfo.start }} to {{ paginationInfo.end }} of
+            {{ paginationInfo.total }} employees
           </div>
 
-          <!-- Load More Button -->
-          <button
-            v-if="hasMore"
-            @click="loadMore"
-            :disabled="loadingMore"
-            class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/90 border-none"
-          >
-            <span
-              v-if="loadingMore"
-              class="loading loading-spinner loading-xs mr-2"
-            ></span>
-            {{ loadingMore ? 'Loading...' : 'Load More' }}
-          </button>
+          <!-- Pagination Controls -->
+          <div class="flex items-center gap-2">
+            <!-- Previous Button -->
+            <button
+              @click="goToPreviousPage"
+              :disabled="currentPage === 1"
+              class="btn btn-sm btn-outline"
+            >
+              Previous
+            </button>
 
-          <!-- No more data message -->
-          <div v-else-if="employees.length > 0" class="text-xs text-gray-500">
-            All employees loaded
+            <!-- Page Numbers -->
+            <div class="flex items-center gap-1">
+              <button
+                v-for="page in Math.min(5, totalPages)"
+                :key="page"
+                @click="goToPage(page)"
+                :class="[
+                  'btn btn-sm',
+                  page === currentPage
+                    ? 'bg-primaryColor text-white border-primaryColor'
+                    : 'btn-outline',
+                ]"
+              >
+                {{ page }}
+              </button>
+
+              <!-- Show ellipsis if there are more pages -->
+              <span v-if="totalPages > 5" class="px-2 text-gray-500">...</span>
+
+              <!-- Show last page if it's not in the visible range -->
+              <button
+                v-if="totalPages > 5 && currentPage < totalPages - 2"
+                @click="goToPage(totalPages)"
+                class="btn btn-sm btn-outline"
+              >
+                {{ totalPages }}
+              </button>
+            </div>
+
+            <!-- Next Button -->
+            <button
+              @click="goToNextPage"
+              :disabled="currentPage === totalPages"
+              class="btn btn-sm btn-outline"
+            >
+              Next
+            </button>
           </div>
         </div>
       </div>

@@ -55,6 +55,23 @@ class EmployeeScheduleService {
         };
       }
 
+      // Check if employee has "Day Off" shift
+      if (schedule.shift_name === "Day Off") {
+        return {
+          isValid: false,
+          message: "You are scheduled for Day Off today",
+          schedule: {
+            id: schedule.id,
+            shift_name: schedule.shift_name,
+            start_time: schedule.start_time,
+            end_time: schedule.end_time,
+            date: schedule.schedule_date,
+          },
+          currentTime: currentTime.toTimeString().split(" ")[0],
+          reason: "DAY_OFF",
+        };
+      }
+
       // Parse schedule times
       const scheduleStart = new Date(`${date}T${schedule.start_time}`);
       const scheduleEnd = new Date(`${date}T${schedule.end_time}`);

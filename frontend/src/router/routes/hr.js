@@ -44,4 +44,10 @@ export default [
     component: () => import('../../views/hr/AttendanceRecords.vue'),
     meta: { title: 'Attendance Records' },
   },
+  {
+    path: 'schedules',
+    name: 'HRSchedules',
+    component: () => import('../../views/hr/Schedules.vue'),
+    meta: { title: 'Employee Schedules' },
+  },
 ];

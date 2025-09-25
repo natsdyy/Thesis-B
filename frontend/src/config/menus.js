@@ -37,8 +37,8 @@ export const menuItems = [
     department: 'Human Resource',
     subItems: [
       { name: 'Employees', route: '/hr/employee-manager' },
-      { name: 'Manage Schedules', route: '/hr/schedules' },
-      { name: 'Add Schedules', route: '/hr/schedules/add' },
+      { name: 'Schedules', route: '/hr/schedules' },
+
       { name: 'Positions', route: '/hr/positions' },
       { name: 'Leave Management', route: '/hr/leave' },
       { name: 'Add Employee', route: '/hr/add-employee' },

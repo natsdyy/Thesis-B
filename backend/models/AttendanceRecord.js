@@ -79,6 +79,9 @@ class AttendanceRecord {
       if (scheduleValidation.reason === "NO_SCHEDULE") {
         errorMessage =
           "No work schedule assigned for today. Please contact your supervisor to set up your schedule.";
+      } else if (scheduleValidation.reason === "DAY_OFF") {
+        errorMessage =
+          "You are scheduled for Day Off today. You cannot time in on your scheduled day off.";
       } else if (scheduleValidation.reason === "OUTSIDE_SCHEDULE") {
         const { schedule, currentTime, timeDifference, direction } =
           scheduleValidation;

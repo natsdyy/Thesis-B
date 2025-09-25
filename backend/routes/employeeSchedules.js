@@ -165,16 +165,8 @@ router.post("/", authenticateToken, async (req, res) => {
       });
     }
 
-    // Prevent scheduling on Sunday
-    // Parse the date as local date to avoid timezone issues
-    const [year, month, day] = schedule_date.split("-").map(Number);
-    const scheduleDate = new Date(year, month - 1, day); // month is 0-indexed
-    if (scheduleDate.getDay() === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Sunday is a day off for all employees",
-      });
-    }
+    // No automatic day-off restrictions - all days are working days
+    // Day Off is now handled as a shift type that can be assigned
 
     const newSchedule = {
       employee_id,
@@ -255,14 +247,7 @@ router.put("/:id", authenticateToken, async (req, res) => {
       });
     }
 
-    // Prevent updating Sunday schedules
-    const scheduleDate = new Date(existingSchedule.schedule_date);
-    if (scheduleDate.getDay() === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Sunday is a day off for all employees",
-      });
-    }
+    // No automatic day-off restrictions - all days are working days
 
     const updateData = {
       updated_at: db.fn.now(),
@@ -339,14 +324,7 @@ router.delete("/:id", authenticateToken, async (req, res) => {
       });
     }
 
-    // Prevent deleting Sunday schedules
-    const scheduleDate = new Date(existingSchedule.schedule_date);
-    if (scheduleDate.getDay() === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Sunday is a day off for all employees",
-      });
-    }
+    // No automatic day-off restrictions - all days are working days
 
     // Soft delete by setting is_active to false
     await db("employee_schedules").where("id", id).update({

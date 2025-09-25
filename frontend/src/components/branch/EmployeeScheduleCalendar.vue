@@ -33,6 +33,7 @@
       'Morning Shift': { bg: '#bfdbfe', text: '#1e40af', solid: '#3b82f6' },
       'Afternoon Shift': { bg: '#bbf7d0', text: '#065f46', solid: '#10b981' },
       'Night Shift': { bg: '#e9d5ff', text: '#6b21a8', solid: '#8b5cf6' },
+      'Day Off': { bg: '#f3f4f6', text: '#6b7280', solid: '#9ca3af' },
     };
     return map[name] || { bg: '#e5e7eb', text: '#374151', solid: '#6b7280' };
   };
@@ -65,7 +66,8 @@
     buttonText: { today: 'today', month: 'month', week: 'week' },
     eventContent(arg) {
       const root = document.createElement('div');
-      root.className = 'cs-event-pill';
+      const isDayOff = arg.event.title === 'Day Off';
+      root.className = `cs-event-pill${isDayOff ? ' day-off' : ''}`;
       const label =
         arg.event.extendedProps?.label || arg.timeText || arg.event.title || '';
       const span = document.createElement('span');
@@ -198,7 +200,10 @@
             classNames: ['cs-event'],
             extendedProps: {
               notes: sched.notes || '',
-              label: `${formatClock(startDate)} - ${formatClock(endDate)} ${shortTitle(sched)}`,
+              label:
+                (sched.shift?.name || sched.shift_name) === 'Day Off'
+                  ? shortTitle(sched)
+                  : `${formatClock(startDate)} - ${formatClock(endDate)} ${shortTitle(sched)}`,
             },
           });
         } else {
@@ -215,7 +220,10 @@
             classNames: ['cs-event'],
             extendedProps: {
               notes: sched.notes || '',
-              label: `${formatClock(startDate)} - ${formatClock(endDate)} ${shortTitle(sched)}`,
+              label:
+                (sched.shift?.name || sched.shift_name) === 'Day Off'
+                  ? shortTitle(sched)
+                  : `${formatClock(startDate)} - ${formatClock(endDate)} ${shortTitle(sched)}`,
             },
           });
         }
@@ -365,6 +373,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .cs-event-pill.day-off {
+    justify-content: center !important;
+    text-align: center !important;
   }
   .cs-event-time {
     opacity: 0.9;

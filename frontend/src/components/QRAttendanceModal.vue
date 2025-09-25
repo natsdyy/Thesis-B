@@ -21,6 +21,12 @@
                   : 'Ready to Time Out'
               }}
             </div>
+            <div
+              v-if="isLateToday && tardinessMinutesToday > 0"
+              class="text-xs mt-1 text-warning"
+            >
+              Late by {{ tardinessMinutesToday }} minute(s)
+            </div>
           </div>
         </div>
       </div>
@@ -314,9 +320,13 @@
                 class="mt-2 p-2 bg-orange-50 border border-orange-200 rounded text-orange-700"
               >
                 <p class="text-xs font-medium">
-                  ⚠️ Generated outside 2m radius
+                  ⚠️ Generated outside
+                  {{ locationStatus.requiredRadius || '2m' }} radius
                 </p>
-                <p class="text-xs">Scanning will require proper location</p>
+                <p class="text-xs">
+                  Scanning will require being within
+                  {{ locationStatus.requiredRadius || '2m' }}
+                </p>
               </div>
             </div>
           </div>
@@ -487,12 +497,28 @@
       <div class="modal-box max-w-4xl">
         <div class="flex justify-between items-center mb-6">
           <h3 class="font-bold text-xl">My Attendance Records</h3>
-          <button
-            @click="closeAttendanceRecords"
-            class="btn btn-sm btn-circle btn-ghost"
-          >
-            <X class="w-4 h-4" />
-          </button>
+          <div class="flex items-center gap-2">
+            <select
+              v-model="recordsRange"
+              class="select select-bordered select-sm"
+            >
+              <option value="today">Today</option>
+              <option value="week">This Week</option>
+              <option value="month">This Month</option>
+            </select>
+            <button
+              @click="fetchAttendanceRecords"
+              class="btn btn-sm btn-outline"
+            >
+              Refresh
+            </button>
+            <button
+              @click="closeAttendanceRecords"
+              class="btn btn-sm btn-circle btn-ghost"
+            >
+              <X class="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <!-- Loading State -->
@@ -514,10 +540,11 @@
 
                 <th>Hours Worked</th>
                 <th>Status</th>
+                <th>Tardiness</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="record in attendanceRecords" :key="record.id">
+              <tr v-for="record in paginatedRecords" :key="record.id">
                 <td>{{ formatDate(record.created_at) }}</td>
                 <td>{{ formatTime(record.time_in) }}</td>
                 <td>{{ formatTime(record.time_out) }}</td>
@@ -541,9 +568,37 @@
                     {{ record.status || 'Present' }}
                   </span>
                 </td>
+                <td>
+                  <span class="font-mono text-xs">{{
+                    Number(record.tardiness_minutes || 0)
+                  }}</span>
+                </td>
               </tr>
             </tbody>
           </table>
+          <div class="flex justify-center mt-4" v-if="recordsTotalPages > 1">
+            <div class="join">
+              <button
+                class="join-item btn btn-sm"
+                :disabled="recordsPage === 1"
+                @click="recordsPage = Math.max(1, recordsPage - 1)"
+              >
+                «
+              </button>
+              <button class="join-item btn btn-sm">
+                Page {{ recordsPage }} of {{ recordsTotalPages }}
+              </button>
+              <button
+                class="join-item btn btn-sm"
+                :disabled="recordsPage === recordsTotalPages"
+                @click="
+                  recordsPage = Math.min(recordsTotalPages, recordsPage + 1)
+                "
+              >
+                »
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- Empty State -->
@@ -614,6 +669,17 @@
               <span class="font-medium">Location:</span>
               {{ successData.location }}
             </div>
+            <div v-if="successData.status" class="mb-2">
+              <span class="font-medium">Status:</span>
+              {{ successData.status.toUpperCase() }}
+            </div>
+            <div
+              v-if="Number(successData.tardiness_minutes || 0) > 0"
+              class="mb-2"
+            >
+              <span class="font-medium">Tardiness:</span>
+              {{ Number(successData.tardiness_minutes) }} minute(s)
+            </div>
           </div>
         </div>
 
@@ -681,6 +747,15 @@
     }
     return 'checked-out';
   });
+  const isLateToday = computed(() => {
+    const status = (
+      attendanceStore.todayAttendance?.status || ''
+    ).toLowerCase();
+    return status === 'late';
+  });
+  const tardinessMinutesToday = computed(() => {
+    return Number(attendanceStore.todayAttendance?.tardiness_minutes || 0);
+  });
 
   // Watch for changes in the store and update local status
   watch(
@@ -702,6 +777,20 @@
   const showAttendanceRecords = ref(false);
   const attendanceRecords = ref([]);
   const recordsLoading = ref(false);
+  const recordsRange = ref('today');
+  const recordsPage = ref(1);
+  const recordsPerPage = ref(10);
+  const recordsTotalPages = computed(() =>
+    Math.max(
+      1,
+      Math.ceil(attendanceRecords.value.length / recordsPerPage.value)
+    )
+  );
+  const paginatedRecords = computed(() => {
+    const start = (recordsPage.value - 1) * recordsPerPage.value;
+    const end = start + recordsPerPage.value;
+    return attendanceRecords.value.slice(start, end);
+  });
   const scheduleInfo = ref(null);
   const scheduleValidation = ref(null);
   const scheduleLoading = ref(false);
@@ -732,45 +821,54 @@
     try {
       recordsLoading.value = true;
 
-      // First, fetch today's attendance to ensure we have the latest data
-      await attendanceStore.fetchTodayAttendance();
-
-      // Get today's attendance data from the store
-      const todayData = attendanceStore.todayAttendance;
-      console.log(
-        'QRAttendanceModal - fetchAttendanceRecords - Today data:',
-        todayData
+      // Determine date range
+      const now = new Date();
+      const end = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        23,
+        59,
+        59,
+        999
       );
-
-      if (todayData) {
-        // Convert today's attendance record to array format for display
-        const recordsArray = [todayData];
-        attendanceRecords.value = recordsArray;
-        console.log(
-          'QRAttendanceModal - fetchAttendanceRecords - Records set:',
-          recordsArray
+      let start;
+      if (recordsRange.value === 'today') {
+        start = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          0,
+          0,
+          0,
+          0
         );
+      } else if (recordsRange.value === 'week') {
+        const startOfToday = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate()
+        );
+        const day = startOfToday.getDay();
+        const diff = (day + 6) % 7; // Monday start
+        start = new Date(startOfToday);
+        start.setDate(start.getDate() - diff);
       } else {
-        // If no today's data, try to fetch from API directly
-        const today = new Date().toISOString().split('T')[0];
-        const response = await axios.get(`${API_BASE_URL}/attendance/today`, {
-          headers: authHeaders(),
-        });
-
-        if (response.data.success && response.data.data) {
-          const recordsArray = [response.data.data];
-          attendanceRecords.value = recordsArray;
-          console.log(
-            'QRAttendanceModal - fetchAttendanceRecords - API Records set:',
-            recordsArray
-          );
-        } else {
-          attendanceRecords.value = [];
-          console.log(
-            'QRAttendanceModal - fetchAttendanceRecords - No records found'
-          );
-        }
+        start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
       }
+
+      // Fetch report (current user) via store
+      const startIso = start.toISOString();
+      const endIso = end.toISOString();
+      const currentUserId =
+        authStore.user?.id || authStore.user?.employee_internal_id || null;
+      const report = await attendanceStore.getAttendanceReport(
+        currentUserId,
+        startIso,
+        endIso
+      );
+      attendanceRecords.value = Array.isArray(report) ? report : [];
+      recordsPage.value = 1;
     } catch (error) {
       console.error('Error fetching attendance records:', error);
       attendanceRecords.value = [];
@@ -1215,6 +1313,8 @@
             action: 'time-in',
             time: todayData.time_in,
             location: 'QR Code Scan',
+            status: todayData.status,
+            tardiness_minutes: todayData.tardiness_minutes,
           };
           showSuccessModal.value = true;
           lastShownRecordId.value = todayData.id;

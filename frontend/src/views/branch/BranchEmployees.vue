@@ -15,6 +15,8 @@
     Mail,
     MapPin,
     BadgeCheck,
+    Check,
+    X,
   } from 'lucide-vue-next';
   import { useBranchContextStore } from '../../stores/branchContextStore';
   import { useEmployeeStore } from '../../stores/employeeStore.js';
@@ -42,6 +44,106 @@
     onDutyEmployees: 0,
     onLeaveEmployees: 0,
   });
+
+  // OT Approval mock data
+  const otRequests = ref([
+    {
+      id: 1,
+      employee_id: 1,
+      employee_name: 'John Smith',
+      employee_role: 'Cashier',
+      date: '2024-01-15',
+      start_time: '18:00',
+      end_time: '22:00',
+      total_hours: 4,
+      reason:
+        'High customer volume during dinner rush, needed to assist with closing procedures',
+      status: 'pending',
+      submitted_at: '2024-01-15T16:30:00Z',
+      approved_by: null,
+      approved_at: null,
+      notes: '',
+    },
+    {
+      id: 2,
+      employee_id: 2,
+      employee_name: 'Maria Garcia',
+      employee_role: 'Kitchen Staff',
+      date: '2024-01-14',
+      start_time: '17:30',
+      end_time: '21:30',
+      total_hours: 4,
+      reason: 'Inventory restocking and preparation for next day',
+      status: 'approved',
+      submitted_at: '2024-01-14T15:45:00Z',
+      approved_by: 'Manager Johnson',
+      approved_at: '2024-01-14T20:15:00Z',
+      notes: 'Approved for inventory preparation',
+    },
+    {
+      id: 3,
+      employee_id: 3,
+      employee_name: 'David Wilson',
+      employee_role: 'Server',
+      date: '2024-01-13',
+      start_time: '19:00',
+      end_time: '23:00',
+      total_hours: 4,
+      reason: 'Special event preparation and cleanup',
+      status: 'rejected',
+      submitted_at: '2024-01-13T18:20:00Z',
+      approved_by: 'Manager Johnson',
+      approved_at: '2024-01-13T19:30:00Z',
+      notes: 'Event was not pre-approved, overtime not justified',
+    },
+    {
+      id: 4,
+      employee_id: 4,
+      employee_name: 'Sarah Johnson',
+      employee_role: 'Assistant Manager',
+      date: '2024-01-12',
+      start_time: '18:00',
+      end_time: '22:30',
+      total_hours: 4.5,
+      reason: 'Staff training session and monthly report preparation',
+      status: 'approved',
+      submitted_at: '2024-01-12T17:30:00Z',
+      approved_by: 'Branch Manager',
+      approved_at: '2024-01-12T18:45:00Z',
+      notes: 'Training session approved',
+    },
+    {
+      id: 5,
+      employee_id: 5,
+      employee_name: 'Michael Brown',
+      employee_role: 'Delivery Driver',
+      date: '2024-01-11',
+      start_time: '20:00',
+      end_time: '24:00',
+      total_hours: 4,
+      reason: 'Late delivery orders and vehicle maintenance',
+      status: 'pending',
+      submitted_at: '2024-01-11T19:15:00Z',
+      approved_by: null,
+      approved_at: null,
+      notes: '',
+    },
+  ]);
+
+  const otStats = ref({
+    totalRequests: 0,
+    pendingRequests: 0,
+    approvedRequests: 0,
+    rejectedRequests: 0,
+    totalOvertimeHours: 0,
+  });
+
+  // Modal states
+  const showApprovalModal = ref(false);
+  const showRejectionModal = ref(false);
+  const selectedRequest = ref(null);
+  const isProcessing = ref(false);
+  const rejectionNotes = ref('');
 
   // Computed
   const currentBranch = computed(() => branchContextStore.currentBranch);
@@ -81,6 +183,41 @@
 
   const totalPages = computed(() => {
     return Math.ceil(filteredEmployees.value.length / itemsPerPage.value);
+  });
+
+  // OT Approval computed properties
+  const filteredOtRequests = computed(() => {
+    let requests = otRequests.value;
+
+    // Filter by status if needed
+    if (statusFilter.value && statusFilter.value !== '') {
+      requests = requests.filter((req) => req.status === statusFilter.value);
+    }
+
+    // Filter by search query
+    if (searchQuery.value.trim()) {
+      const query = searchQuery.value.toLowerCase();
+      requests = requests.filter(
+        (req) =>
+          req.employee_name.toLowerCase().includes(query) ||
+          req.employee_role.toLowerCase().includes(query) ||
+          req.reason.toLowerCase().includes(query)
+      );
+    }
+
+    return requests;
+  });
+
+  const pendingOtRequests = computed(() => {
+    return otRequests.value.filter((req) => req.status === 'pending');
+  });
+
+  const approvedOtRequests = computed(() => {
+    return otRequests.value.filter((req) => req.status === 'approved');
+  });
+
+  const rejectedOtRequests = computed(() => {
+    return otRequests.value.filter((req) => req.status === 'rejected');
   });
 
   // Methods
@@ -166,12 +303,19 @@
         if (isOnLeave) {
           attendanceToday = 'On Leave';
         } else if (record) {
-          // If timed in today, mark Present; if timed out exists, still Present but not on duty
+          // Mark Present/Late only if currently on duty today (time-in exists, no time-out, and same local date)
           const hasTimeIn = Boolean(record.time_in);
           const hasTimeOut = Boolean(record.time_out);
-          if (hasTimeIn) {
-            attendanceToday = 'Present';
-            isOnDuty = !hasTimeOut;
+          if (hasTimeIn && !hasTimeOut) {
+            const timeInLocalDate = new Date(record.time_in).toLocaleDateString(
+              'en-CA'
+            );
+            const todayLocalDate = new Date().toLocaleDateString('en-CA');
+            if (timeInLocalDate === todayLocalDate) {
+              const status = (record.status || '').toLowerCase();
+              attendanceToday = status === 'late' ? 'Late' : 'Present';
+              isOnDuty = true;
+            }
           }
         }
 
@@ -223,9 +367,122 @@
     console.log('Edit employee:', employee);
   };
 
+  // OT Approval methods
+  const updateOtStats = () => {
+    otStats.value = {
+      totalRequests: otRequests.value.length,
+      pendingRequests: pendingOtRequests.value.length,
+      approvedRequests: approvedOtRequests.value.length,
+      rejectedRequests: rejectedOtRequests.value.length,
+      totalOvertimeHours: approvedOtRequests.value.reduce(
+        (sum, req) => sum + req.total_hours,
+        0
+      ),
+    };
+  };
+
+  const openApprovalModal = (requestId) => {
+    selectedRequest.value = otRequests.value.find(
+      (req) => req.id === requestId
+    );
+    showApprovalModal.value = true;
+  };
+
+  const openRejectionModal = (requestId) => {
+    selectedRequest.value = otRequests.value.find(
+      (req) => req.id === requestId
+    );
+    rejectionNotes.value = '';
+    showRejectionModal.value = true;
+  };
+
+  const approveOtRequest = async () => {
+    if (!selectedRequest.value) return;
+
+    try {
+      isProcessing.value = true;
+
+      // Simulate API call delay
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      selectedRequest.value.status = 'approved';
+      selectedRequest.value.approved_by = 'Current Manager'; // In real app, get from auth
+      selectedRequest.value.approved_at = new Date().toISOString();
+      updateOtStats();
+
+      showApprovalModal.value = false;
+      selectedRequest.value = null;
+    } catch (error) {
+      console.error('Error approving OT request:', error);
+    } finally {
+      isProcessing.value = false;
+    }
+  };
+
+  const rejectOtRequest = async () => {
+    if (!selectedRequest.value) return;
+
+    try {
+      isProcessing.value = true;
+
+      // Simulate API call delay
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      selectedRequest.value.status = 'rejected';
+      selectedRequest.value.approved_by = 'Current Manager'; // In real app, get from auth
+      selectedRequest.value.approved_at = new Date().toISOString();
+      selectedRequest.value.notes = rejectionNotes.value;
+      updateOtStats();
+
+      showRejectionModal.value = false;
+      selectedRequest.value = null;
+      rejectionNotes.value = '';
+    } catch (error) {
+      console.error('Error rejecting OT request:', error);
+    } finally {
+      isProcessing.value = false;
+    }
+  };
+
+  const closeModals = () => {
+    showApprovalModal.value = false;
+    showRejectionModal.value = false;
+    selectedRequest.value = null;
+    rejectionNotes.value = '';
+    isProcessing.value = false;
+  };
+
+  const getStatusBadgeClass = (status) => {
+    const badges = {
+      pending: 'bg-warning/20 text-warning',
+      approved: 'bg-success/20 text-success',
+      rejected: 'bg-error/20 text-error',
+    };
+    return badges[status] || 'bg-gray-500/20 text-gray-500';
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const formatTime = (timeString) => {
+    if (!timeString) return 'N/A';
+    return new Date(`2000-01-01T${timeString}`).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  };
+
   // Initialize
   onMounted(() => {
     loadBranchEmployees();
+    updateOtStats();
   });
 </script>
 
@@ -480,7 +737,9 @@
                                 ? 'bg-success'
                                 : employee.attendance_today === 'On Leave'
                                   ? 'bg-warning'
-                                  : 'bg-error',
+                                  : employee.attendance_today === 'Late'
+                                    ? 'bg-warning'
+                                    : 'bg-error',
                             ]"
                           ></div>
                           <span class="text-sm">{{
@@ -550,19 +809,392 @@
 
       <!-- Overtime Approvals Tab -->
       <template v-else>
+        <!-- OT Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div class="card bg-white shadow-lg">
+            <div class="card-body">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">Total Requests</p>
+                  <p class="text-2xl font-bold text-primaryColor">
+                    {{ otStats.totalRequests }}
+                  </p>
+                </div>
+                <div class="p-3 bg-primaryColor/10 rounded-full">
+                  <BadgeCheck class="w-6 h-6 text-primaryColor" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card bg-white shadow-lg">
+            <div class="card-body">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">Pending</p>
+                  <p class="text-2xl font-bold text-warning">
+                    {{ otStats.pendingRequests }}
+                  </p>
+                </div>
+                <div class="p-3 bg-warning/10 rounded-full">
+                  <Clock class="w-6 h-6 text-warning" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card bg-white shadow-lg">
+            <div class="card-body">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">Approved</p>
+                  <p class="text-2xl font-bold text-success">
+                    {{ otStats.approvedRequests }}
+                  </p>
+                </div>
+                <div class="p-3 bg-success/10 rounded-full">
+                  <UserCheck class="w-6 h-6 text-success" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card bg-white shadow-lg">
+            <div class="card-body">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">Total OT Hours</p>
+                  <p class="text-2xl font-bold text-gray-600">
+                    {{ otStats.totalOvertimeHours }}h
+                  </p>
+                </div>
+                <div class="p-3 bg-gray-600/10 rounded-full">
+                  <Calendar class="w-6 h-6 text-gray-600" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Search and Filters -->
         <div class="card bg-white shadow-lg">
           <div class="card-body">
-            <h2 class="card-title text-primaryColor mb-2">
+            <div class="flex flex-col md:flex-row gap-4">
+              <!-- Search -->
+              <div class="flex-1">
+                <div class="relative">
+                  <Search
+                    class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"
+                  />
+                  <input
+                    v-model="searchQuery"
+                    type="text"
+                    placeholder="Search OT requests..."
+                    class="input input-bordered w-full pl-10"
+                  />
+                </div>
+              </div>
+
+              <!-- Status Filter -->
+              <select v-model="statusFilter" class="select select-bordered">
+                <option value="">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- OT Requests Table -->
+        <div class="card bg-white shadow-lg">
+          <div class="card-body">
+            <h2 class="card-title text-primaryColor mb-4">
               <BadgeCheck class="w-5 h-5" />
-              Overtime Approvals
+              Overtime Requests
             </h2>
-            <p class="text-gray-600">
-              Review, approve, or reject overtime requests submitted by branch
-              staff.
-            </p>
+
+            <!-- Loading State -->
+            <div v-if="loading" class="flex justify-center items-center py-12">
+              <div
+                class="loading loading-spinner loading-lg text-primaryColor"
+              ></div>
+            </div>
+
+            <!-- OT Requests Table -->
+            <div
+              v-else-if="filteredOtRequests.length > 0"
+              class="overflow-x-auto"
+            >
+              <table class="table table-zebra w-full">
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Hours</th>
+                    <th>Reason</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="request in filteredOtRequests" :key="request.id">
+                    <td>
+                      <div>
+                        <div class="font-semibold">
+                          {{ request.employee_name }}
+                        </div>
+                        <div class="text-sm text-gray-500">
+                          {{ request.employee_role }}
+                        </div>
+                      </div>
+                    </td>
+                    <td>{{ formatDate(request.date) }}</td>
+                    <td>
+                      <div class="text-sm">
+                        <div>
+                          {{ formatTime(request.start_time) }} -
+                          {{ formatTime(request.end_time) }}
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span class="font-mono text-sm"
+                        >{{ request.total_hours }}h</span
+                      >
+                    </td>
+                    <td>
+                      <div class="max-w-xs truncate" :title="request.reason">
+                        {{ request.reason }}
+                      </div>
+                    </td>
+                    <td>
+                      <div
+                        :class="[
+                          'badge badge-sm border-none font-medium',
+                          getStatusBadgeClass(request.status),
+                        ]"
+                      >
+                        {{
+                          request.status.charAt(0).toUpperCase() +
+                          request.status.slice(1)
+                        }}
+                      </div>
+                    </td>
+                    <td>
+                      <div class="flex space-x-2">
+                        <button
+                          v-if="request.status === 'pending'"
+                          title="Approve"
+                          @click="openApprovalModal(request.id)"
+                          class="btn btn-xs bg-success/10 rounded-full font-thin shadow-none border border-none hover:bg-success/30 text-success"
+                        >
+                          <Check class="w-4 h-4" />
+                        </button>
+                        <button
+                          v-if="request.status === 'pending'"
+                          title="Reject"
+                          @click="openRejectionModal(request.id)"
+                          class="btn btn-xs bg-error/10 rounded-full font-thin shadow-none border border-none hover:bg-error/30 text-error"
+                        >
+                          <X class="w-4 h-4" />
+                        </button>
+                        <button
+                          v-if="request.status !== 'pending'"
+                          class="btn btn-sm btn-ghost"
+                          disabled
+                        >
+                          {{ request.approved_by }}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Empty State -->
+            <div v-else class="text-center py-12">
+              <BadgeCheck class="w-16 h-16 mx-auto text-gray-400 mb-4" />
+              <h3 class="text-lg font-medium text-gray-900 mb-2">
+                No overtime requests found
+              </h3>
+              <p class="text-gray-600">Try adjusting your search criteria</p>
+            </div>
           </div>
         </div>
       </template>
+    </div>
+
+    <!-- Approval Confirmation Modal -->
+    <div v-if="showApprovalModal" class="modal modal-open">
+      <div class="modal-box max-w-md">
+        <h3 class="font-bold text-lg mb-4 text-primaryColor">
+          <UserCheck class="w-5 h-5 inline mr-2" />
+          Approve Overtime Request
+        </h3>
+
+        <div v-if="selectedRequest" class="space-y-4">
+          <div class="bg-gray-50 p-4 rounded-lg">
+            <div class="flex justify-between items-start mb-2">
+              <div>
+                <h4 class="font-semibold">
+                  {{ selectedRequest.employee_name }}
+                </h4>
+                <p class="text-sm text-gray-600">
+                  {{ selectedRequest.employee_role }}
+                </p>
+              </div>
+              <div class="text-right">
+                <p class="text-sm font-medium">
+                  {{ formatDate(selectedRequest.date) }}
+                </p>
+                <p class="text-sm text-gray-600">
+                  {{ formatTime(selectedRequest.start_time) }} -
+                  {{ formatTime(selectedRequest.end_time) }}
+                </p>
+              </div>
+            </div>
+            <div class="mt-2">
+              <span class="badge badge-sm bg-primaryColor/10 text-primaryColor"
+                >{{ selectedRequest.total_hours }} hours</span
+              >
+            </div>
+            <div class="mt-3">
+              <p class="text-sm text-gray-700">
+                <strong>Reason:</strong> {{ selectedRequest.reason }}
+              </p>
+            </div>
+          </div>
+
+          <div class="alert bg-primaryColor/10 text-primaryColor">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fill-rule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                clip-rule="evenodd"
+              ></path>
+            </svg>
+            <span class="text-sm"
+              >Are you sure you want to approve this overtime request?</span
+            >
+          </div>
+        </div>
+
+        <div class="modal-action">
+          <button
+            @click="closeModals"
+            class="btn btn-ghost btn-sm font-thin shadow-none border border-none hover:bg-primaryColor/10"
+            :disabled="isProcessing"
+          >
+            Cancel
+          </button>
+          <button
+            @click="approveOtRequest"
+            class="btn bg-primaryColor font-thin text-white btn-sm shadow-none border border-none hover:bg-primaryColor/80"
+            :disabled="isProcessing"
+          >
+            <span
+              v-if="isProcessing"
+              class="loading loading-spinner loading-sm mr-2"
+            ></span>
+            <UserCheck v-else class="w-4 h-4 mr-2" />
+            {{ isProcessing ? 'Approving...' : 'Approve Request' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rejection Confirmation Modal -->
+    <div v-if="showRejectionModal" class="modal modal-open">
+      <div class="modal-box max-w-md">
+        <h3 class="font-bold text-lg mb-4 text-error">
+          <UserX class="w-5 h-5 inline mr-2" />
+          Reject Overtime Request
+        </h3>
+
+        <div v-if="selectedRequest" class="space-y-4">
+          <div class="bg-gray-50 p-4 rounded-lg">
+            <div class="flex justify-between items-start mb-2">
+              <div>
+                <h4 class="font-semibold">
+                  {{ selectedRequest.employee_name }}
+                </h4>
+                <p class="text-sm text-gray-600">
+                  {{ selectedRequest.employee_role }}
+                </p>
+              </div>
+              <div class="text-right">
+                <p class="text-sm font-medium">
+                  {{ formatDate(selectedRequest.date) }}
+                </p>
+                <p class="text-sm text-gray-600">
+                  {{ formatTime(selectedRequest.start_time) }} -
+                  {{ formatTime(selectedRequest.end_time) }}
+                </p>
+              </div>
+            </div>
+            <div class="mt-2">
+              <span class="badge badge-sm bg-primaryColor/10 text-primaryColor"
+                >{{ selectedRequest.total_hours }} hours</span
+              >
+            </div>
+            <div class="mt-3">
+              <p class="text-sm text-gray-700">
+                <strong>Reason:</strong> {{ selectedRequest.reason }}
+              </p>
+            </div>
+          </div>
+
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">Rejection Notes (Optional)</span>
+            </label>
+            <textarea
+              v-model="rejectionNotes"
+              class="textarea textarea-bordered w-full"
+              rows="3"
+              placeholder="Provide feedback on why this request is being rejected..."
+            ></textarea>
+          </div>
+
+          <div class="alert bg-warning/10 text-warning">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fill-rule="evenodd"
+                d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                clip-rule="evenodd"
+              ></path>
+            </svg>
+            <span class="text-sm"
+              >Are you sure you want to reject this overtime request?</span
+            >
+          </div>
+        </div>
+
+        <div class="modal-action">
+          <button
+            @click="closeModals"
+            class="btn btn-ghost btn-sm font-thin shadow-none border border-none hover:bg-gray-100"
+            :disabled="isProcessing"
+          >
+            Cancel
+          </button>
+          <button
+            @click="rejectOtRequest"
+            class="btn btn-error text-white btn-sm shadow-none border border-none hover:bg-error/80 font-thin"
+            :disabled="isProcessing"
+          >
+            <span
+              v-if="isProcessing"
+              class="loading loading-spinner loading-sm mr-2"
+            ></span>
+            <UserX v-else class="w-4 h-4 mr-2" />
+            {{ isProcessing ? 'Rejecting...' : 'Reject Request' }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>

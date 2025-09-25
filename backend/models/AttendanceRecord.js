@@ -152,11 +152,41 @@ class AttendanceRecord {
       }
     }
 
+    // Determine attendance status with grace period based on schedule
+    const GRACE_PERIOD_MINUTES = 10;
+    let attendanceStatus = "present";
+    let tardinessMinutes = 0;
+
+    try {
+      const { schedule } = scheduleValidation || {};
+      if (schedule && schedule.start_time) {
+        // Build today's local date string to avoid timezone skew from DATE columns
+        const localDateStr = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
+        const scheduleStart = new Date(
+          `${localDateStr}T${schedule.start_time}`
+        );
+        const graceLimit = new Date(
+          scheduleStart.getTime() + GRACE_PERIOD_MINUTES * 60 * 1000
+        );
+        const now = new Date();
+        if (now > graceLimit) {
+          attendanceStatus = "late";
+          const diffMs = now - scheduleStart;
+          const mins = Math.floor(diffMs / (1000 * 60));
+          tardinessMinutes = Math.max(mins - GRACE_PERIOD_MINUTES, 0);
+        }
+      }
+    } catch (_) {
+      // Fallback to present if any parsing issue occurs
+      attendanceStatus = "present";
+    }
+
     const data = {
       employee_id: employeeId,
       qr_code_id: qrCodeId,
       time_in: knex.fn.now(),
-      status: "present",
+      status: attendanceStatus,
+      tardiness_minutes: tardinessMinutes,
     };
 
     if (existingRecord) {
@@ -165,7 +195,8 @@ class AttendanceRecord {
         .where("id", existingRecord.id)
         .update({
           time_in: knex.fn.now(),
-          status: "present",
+          status: attendanceStatus,
+          tardiness_minutes: tardinessMinutes,
           updated_at: knex.fn.now(),
         })
         .returning("*");
@@ -193,7 +224,37 @@ class AttendanceRecord {
 
     const timeOut = new Date();
     const timeIn = new Date(todayRecord.time_in);
-    const hoursWorked = (timeOut - timeIn) / (1000 * 60 * 60); // Convert to hours
+
+    // Default calculations without schedule
+    let hoursWorked = (timeOut - timeIn) / (1000 * 60 * 60);
+
+    try {
+      // Use today's local date to avoid timezone skew
+      const localDateStr = new Date().toLocaleDateString("en-CA");
+      const EmployeeScheduleService = require("../services/EmployeeScheduleService");
+      const schedule = await EmployeeScheduleService.getEmployeeScheduleForDate(
+        employeeId,
+        localDateStr
+      );
+
+      if (schedule && schedule.start_time && schedule.end_time) {
+        const scheduleStart = new Date(
+          `${localDateStr}T${schedule.start_time}`
+        );
+        let scheduleEnd = new Date(`${localDateStr}T${schedule.end_time}`);
+        if (scheduleEnd <= scheduleStart) {
+          scheduleEnd.setDate(scheduleEnd.getDate() + 1);
+        }
+
+        const endForWorkCalc = timeOut < scheduleEnd ? timeOut : scheduleEnd;
+        const workingMs = Math.max(0, endForWorkCalc - timeIn);
+        hoursWorked = workingMs / (1000 * 60 * 60);
+        // Per requirement: do not auto-calculate OT; approval flow handles OT separately
+      }
+    } catch (_) {
+      // Fallback to simple diff if schedule fetch fails
+      hoursWorked = (timeOut - timeIn) / (1000 * 60 * 60);
+    }
 
     const [updated] = await knex("attendance_records")
       .where("id", todayRecord.id)

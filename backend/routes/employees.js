@@ -97,7 +97,6 @@ router.get("/me", authenticateToken, async (req, res) => {
     const userId = req.user.id;
 
     const employee = await Employee.getById(userId);
-    console.log("Employee found:", employee ? "Yes" : "No");
 
     if (!employee) {
       return res.status(404).json({
@@ -118,8 +117,6 @@ router.get("/me", authenticateToken, async (req, res) => {
       .where("employees.id", userId)
       .whereNull("employees.deleted_at")
       .first();
-
-  
 
     res.json({
       success: true,
@@ -1209,8 +1206,6 @@ router.post(
         photo_url: photoUrl,
         updated_at: new Date(),
       });
-
- 
 
       res.json({
         success: true,

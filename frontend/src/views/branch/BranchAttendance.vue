@@ -15,7 +15,7 @@
     <!-- Tabs (mirrors BranchSales style) -->
     <div class="tabs tabs-boxed mb-4 justify-start w-full">
       <button
-        @click="activeTab = 'add'"
+        @click="setActiveTab('add')"
         class="tab"
         :class="{ 'tab-active': activeTab === 'add' }"
       >
@@ -23,7 +23,7 @@
         <span>Add Attendance</span>
       </button>
       <button
-        @click="activeTab = 'ot'"
+        @click="setActiveTab('ot')"
         class="tab"
         :class="{ 'tab-active': activeTab === 'ot' }"
       >
@@ -31,7 +31,7 @@
         <span>Apply Overtime</span>
       </button>
       <button
-        @click="activeTab = 'leave'"
+        @click="setActiveTab('leave')"
         class="tab"
         :class="{ 'tab-active': activeTab === 'leave' }"
       >
@@ -656,6 +656,7 @@
 
 <script setup>
   import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+  import { useRoute, useRouter } from 'vue-router';
   import { useAuthStore } from '../../stores/authStore';
   import { useAttendanceStore } from '../../stores/attendanceStore';
   import { useOvertimeStore } from '../../stores/overtimeStore';
@@ -685,6 +686,40 @@
   const showQRModal = ref(false);
   const showManualModal = ref(false);
   const activeTab = ref('add');
+  const route = useRoute();
+  const router = useRouter();
+  // Tab routing helpers (sync tab with URL query)
+  const validTabs = new Set(['add', 'ot', 'leave']);
+  const setActiveTab = (tab) => {
+    const nextTab = validTabs.has(tab) ? tab : 'add';
+    if (activeTab.value !== nextTab) {
+      activeTab.value = nextTab;
+    }
+    // Update URL query without reloading component
+    router.replace({
+      query: { ...route.query, tab: nextTab },
+    });
+  };
+
+  // Initialize tab from query on mount
+  const initTabFromRoute = () => {
+    const qTab = (route.query?.tab || '').toString();
+    if (validTabs.has(qTab)) {
+      activeTab.value = qTab;
+    }
+  };
+
+  // Watch route changes (e.g., when navigated from dropdown)
+  watch(
+    () => route.query.tab,
+    (newVal) => {
+      const qTab = (newVal || '').toString();
+      if (validTabs.has(qTab) && activeTab.value !== qTab) {
+        activeTab.value = qTab;
+      }
+    }
+  );
+
   const autoRefreshInterval = ref(null);
   const lastUpdated = ref(new Date());
 

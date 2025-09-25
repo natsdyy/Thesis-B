@@ -42,4 +42,10 @@ export default [
     component: () => import('../../views/production/ProductionExecution.vue'),
     meta: { title: 'Production Execution' },
   },
+  {
+    path: 'profile',
+    name: 'ProductionProfile',
+    component: () => import('../../views/common/DepartmentProfile.vue'),
+    meta: { title: 'Production Profile' },
+  },
 ];

@@ -17,4 +17,10 @@ export default [
     component: () => import('../../views/crm/Analytics.vue'),
     meta: { title: 'Analytics Dashboard' },
   },
+  {
+    path: 'profile',
+    name: 'CRMProfile',
+    component: () => import('../../views/common/DepartmentProfile.vue'),
+    meta: { title: 'CRM Profile' },
+  },
 ];

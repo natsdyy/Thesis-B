@@ -56,12 +56,6 @@ export const menuItems = [
     route: '/hr/payroll',
     department: 'Human Resource',
   },
-  {
-    name: 'User Role',
-    icon: UserCog,
-    route: '/hr/user-role',
-    department: 'Human Resource',
-  },
 
   // Supply Chain Management
   {

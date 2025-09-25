@@ -35,4 +35,10 @@ export default [
     component: () => import('../../views/scm/GRNManager.vue'),
     meta: { title: 'Goods Receipt Notes' },
   },
+  {
+    path: 'profile',
+    name: 'SCMProfile',
+    component: () => import('../../views/common/DepartmentProfile.vue'),
+    meta: { title: 'SCM Profile' },
+  },
 ];

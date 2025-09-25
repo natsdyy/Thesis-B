@@ -18,4 +18,10 @@ export default [
     component: () => import('../../views/finance/BudgetRelease.vue'),
     meta: { title: 'Budget Release' },
   },
+  {
+    path: 'profile',
+    name: 'FinanceProfile',
+    component: () => import('../../views/common/DepartmentProfile.vue'),
+    meta: { title: 'Finance Profile' },
+  },
 ];

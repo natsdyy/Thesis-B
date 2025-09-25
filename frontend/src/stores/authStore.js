@@ -224,6 +224,77 @@ export const useAuthStore = defineStore('auth', () => {
     }
   };
 
+  // Fetch full employee profile for the logged-in user (raw fields)
+  const fetchMyFullProfile = async () => {
+    try {
+      const response = await axios.get(`${apiConfig.baseURL}/employees/me`);
+      if (response.data?.success) {
+        return response.data.data;
+      }
+      throw new Error(response.data?.message || 'Failed to fetch profile');
+    } catch (error) {
+      console.error('fetchMyFullProfile error:', error);
+      throw error;
+    }
+  };
+
+  // Update own employee profile
+  const updateMyProfile = async (payload) => {
+    try {
+      const response = await axios.put(
+        `${apiConfig.baseURL}/employees/me`,
+        payload
+      );
+      if (response.data?.success) {
+        // refresh lightweight user cache
+        await refreshUserData();
+        return response.data.data;
+      }
+      throw new Error(response.data?.message || 'Failed to update profile');
+    } catch (error) {
+      console.error('updateMyProfile error:', error);
+      throw error;
+    }
+  };
+
+  // Change own password
+  const changeMyPassword = async (current_password, new_password) => {
+    try {
+      const response = await axios.put(
+        `${apiConfig.baseURL}/employees/me/change-password`,
+        { current_password, new_password }
+      );
+      if (response.data?.success) {
+        return true;
+      }
+      throw new Error(response.data?.message || 'Failed to change password');
+    } catch (error) {
+      console.error('changeMyPassword error:', error);
+      throw error;
+    }
+  };
+
+  // Upload own profile photo
+  const uploadMyPhoto = async (file) => {
+    try {
+      const formData = new FormData();
+      formData.append('photo', file);
+      const response = await axios.post(
+        `${apiConfig.baseURL}/employees/me/upload-photo`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+      if (response.data?.success) {
+        await refreshUserData();
+        return response.data.data;
+      }
+      throw new Error(response.data?.message || 'Failed to upload photo');
+    } catch (error) {
+      console.error('uploadMyPhoto error:', error);
+      throw error;
+    }
+  };
+
   const initializeAuth = async () => {
     const storedUser = localStorage.getItem('user');
     const storedAuth = localStorage.getItem('isAuthenticated');
@@ -279,5 +350,9 @@ export const useAuthStore = defineStore('auth', () => {
     hasAnyPermission,
     initializeAuth,
     clearError,
+    fetchMyFullProfile,
+    updateMyProfile,
+    changeMyPassword,
+    uploadMyPhoto,
   };
 });

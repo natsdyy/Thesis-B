@@ -50,4 +50,10 @@ export default [
     component: () => import('../../views/hr/Schedules.vue'),
     meta: { title: 'Employee Schedules' },
   },
+  {
+    path: 'profile',
+    name: 'HRProfile',
+    component: () => import('../../views/common/DepartmentProfile.vue'),
+    meta: { title: 'HR Profile' },
+  },
 ];

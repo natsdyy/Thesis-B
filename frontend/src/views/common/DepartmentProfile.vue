@@ -5,8 +5,6 @@
     Edit,
     Save,
     X,
-    Eye,
-    EyeOff,
     Phone,
     Mail,
     MapPin,
@@ -16,11 +14,11 @@
     Building2,
     Shield,
     Camera,
+    Eye,
+    EyeOff,
   } from 'lucide-vue-next';
-  import { useBranchContextStore } from '../../stores/branchContextStore';
   import { useAuthStore } from '../../stores/authStore';
 
-  const branchContextStore = useBranchContextStore();
   const authStore = useAuthStore();
 
   // Local state
@@ -70,7 +68,6 @@
   const toast = ref({ show: false, type: 'success', message: '' });
 
   // Computed
-  const currentBranch = computed(() => branchContextStore.currentBranch);
   const user = computed(() => authStore.user);
 
   const profileInitials = computed(() => {
@@ -84,28 +81,17 @@
   });
 
   const profileImageUrl = computed(() => {
-    if (imageLoadError.value) {
-      console.log('Image load error is true, returning null');
-      return null; // Don't show image if it failed to load
-    }
+    if (imageLoadError.value) return null;
     const url =
       profileData.value.profile_picture || user.value?.photo_url || null;
-    console.log('Profile image URL computation:', {
-      profile_picture: profileData.value.profile_picture,
-      user_photo_url: user.value?.photo_url,
-      final_url: url,
-    });
     if (!url) return null;
     if (/^https?:\/\//i.test(url)) return url;
-    // Handle relative URLs from the backend - images are served by backend on port 5000
     const backendOrigin = 'http://localhost:5000';
     const path = url.startsWith('/') ? url : `/${url}`;
-    const fullUrl = `${backendOrigin}${path}`;
-    console.log('Constructed full URL:', fullUrl);
-    return fullUrl;
+    return `${backendOrigin}${path}`;
   });
 
-  const canEditProfile = computed(() => true); // All users can edit their own profile
+  const canEditProfile = computed(() => true);
 
   // Methods
   const showToast = (type, message) => {
@@ -117,52 +103,9 @@
 
   const loadProfileData = async () => {
     loading.value = true;
-
     try {
-      // First, refresh user data in auth store to ensure we have the latest info
       await authStore.refreshUserData();
-
-      // Fetch real profile data from API
-      const token = localStorage.getItem('token');
-
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
-
-      console.log(
-        'Loading profile data with token:',
-        token.substring(0, 20) + '...'
-      );
-
-      const response = await fetch('/api/employees/me', {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      console.log('Profile API response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Profile API error response:', errorText);
-        throw new Error(
-          `Failed to fetch profile: ${response.status} ${response.statusText}`
-        );
-      }
-
-      const result = await response.json();
-      console.log('Profile API result:', result);
-
-      if (!result.success) {
-        throw new Error(result.message || 'Failed to load profile data');
-      }
-
-      const employee = result.data;
-      console.log('Employee data received:', employee);
-
-      // Map employee data to profile format
+      const employee = await authStore.fetchMyFullProfile();
       profileData.value = {
         first_name: employee.first_name || '',
         last_name: employee.last_name || '',
@@ -172,12 +115,11 @@
         hire_date: employee.created_at || '',
         employee_id: employee.employee_id || '',
         role: employee.role || 'Employee',
-        department: employee.department || 'Branch',
+        department: employee.department || '',
         last_login: employee.last_login || '',
         profile_picture: employee.photo_url || null,
       };
 
-      // Initialize edit form
       editForm.value = {
         first_name: profileData.value.first_name,
         last_name: profileData.value.last_name,
@@ -185,18 +127,10 @@
         address: profileData.value.address,
       };
 
-      console.log('Profile data loaded successfully:', profileData.value);
-      console.log('Profile image URL:', profileImageUrl.value);
-
-      // Reset image error flag when new data is loaded
       imageLoadError.value = false;
     } catch (error) {
-      console.error('Error loading profile data:', error);
       showToast('error', error.message || 'Failed to load profile data');
-
-      // Fallback to user data from auth store if available
       if (user.value) {
-        console.log('Using fallback data from auth store');
         profileData.value = {
           first_name: user.value.name?.split(' ')[0] || 'User',
           last_name: user.value.name?.split(' ')[1] || '',
@@ -206,7 +140,7 @@
           hire_date: '',
           employee_id: user.value.employee_id || '',
           role: user.value.role || 'Employee',
-          department: user.value.department || 'Branch',
+          department: user.value.department || '',
           last_login: '',
           profile_picture: user.value.photo_url || null,
         };
@@ -218,7 +152,6 @@
 
   const toggleEditMode = () => {
     if (editMode.value) {
-      // Cancel edit
       editForm.value = {
         first_name: profileData.value.first_name,
         last_name: profileData.value.last_name,
@@ -231,39 +164,12 @@
 
   const saveProfile = async () => {
     loading.value = true;
-
     try {
-      // Save profile data to API
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/employees/me', {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          // First and last name are intentionally immutable here
-          phone_number: editForm.value.phone,
-          address: editForm.value.address,
-        }),
+      const employee = await authStore.updateMyProfile({
+        // First and last name are read-only in this view
+        phone_number: editForm.value.phone,
+        address: editForm.value.address,
       });
-
-      if (!response.ok) {
-        const errorResult = await response.json();
-        throw new Error(
-          errorResult.message ||
-            `Failed to update profile: ${response.statusText}`
-        );
-      }
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.message || 'Failed to update profile');
-      }
-
-      // Update profile data with the response
-      const employee = result.data;
       profileData.value = {
         first_name: employee.first_name || '',
         last_name: employee.last_name || '',
@@ -273,7 +179,7 @@
         hire_date: employee.created_at || '',
         employee_id: employee.employee_id || '',
         role: employee.role || 'Employee',
-        department: employee.department || 'Branch',
+        department: employee.department || '',
         last_login: employee.last_login || '',
         profile_picture: employee.photo_url || null,
       };
@@ -281,7 +187,6 @@
       editMode.value = false;
       showToast('success', 'Profile updated successfully');
     } catch (error) {
-      console.error('Error saving profile:', error);
       showToast('error', error.message || 'Failed to update profile');
     } finally {
       loading.value = false;
@@ -295,7 +200,6 @@
       showToast('error', 'New passwords do not match');
       return;
     }
-
     if (passwordForm.value.new_password.length < 8) {
       showToast('error', 'Password must be at least 8 characters long');
       return;
@@ -319,7 +223,6 @@
         new_password: '',
         confirm_password: '',
       };
-
       showPasswordSection.value = false;
       showPasswordConfirmModal.value = false;
       showToast('success', 'Password changed successfully');
@@ -346,97 +249,44 @@
     showConfirmPassword.value = !showConfirmPassword.value;
   };
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString();
-  };
+  const formatDate = (dateString) => new Date(dateString).toLocaleDateString();
+  const formatDateTime = (dateString) => new Date(dateString).toLocaleString();
 
-  const formatDateTime = (dateString) => {
-    return new Date(dateString).toLocaleString();
-  };
-
-  const handleImageLoad = (event) => {
-    console.log('Profile image loaded successfully:', event.target.src);
-    // Reset error flag when image loads successfully
+  const handleImageLoad = () => {
     imageLoadError.value = false;
   };
-
-  const handleImageError = (event) => {
-    console.warn('Profile image failed to load:', event.target.src);
-    console.log('Setting imageLoadError to true');
-    // Set the error flag to trigger fallback to initials
+  const handleImageError = () => {
     imageLoadError.value = true;
   };
-
   const triggerImageUpload = () => {
     imageInput.value?.click();
   };
-
   const handleImageUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
-
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       showToast('error', 'Please select a valid image file');
       return;
     }
-
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       showToast('error', 'Image file size must be less than 5MB');
       return;
     }
 
     uploadingImage.value = true;
-
     try {
-      const formData = new FormData();
-      formData.append('photo', file);
-
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/employees/me/upload-photo', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorResult = await response.json();
-        throw new Error(
-          errorResult.message ||
-            `Failed to upload photo: ${response.statusText}`
-        );
-      }
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.message || 'Failed to upload photo');
-      }
-
-      // Update profile data with new photo URL
-      profileData.value.profile_picture = result.data.photo_url;
-
-      // Reset image error flag and refresh user data in auth store
+      const result = await authStore.uploadMyPhoto(file);
+      profileData.value.profile_picture = result.photo_url;
       imageLoadError.value = false;
-      await authStore.refreshUserData();
-
       showToast('success', 'Profile picture updated successfully');
     } catch (error) {
-      console.error('Error uploading profile picture:', error);
       showToast('error', error.message || 'Failed to upload profile picture');
     } finally {
       uploadingImage.value = false;
-      // Reset the file input
-      if (imageInput.value) {
-        imageInput.value.value = '';
-      }
+      if (imageInput.value) imageInput.value.value = '';
     }
   };
 
-  // Initialize
   onMounted(() => {
     loadProfileData();
   });
@@ -448,9 +298,7 @@
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-3xl font-bold text-primaryColor">Employee Profile</h1>
-        <p class="text-gray-600 mt-1">
-          {{ currentBranch?.name }} - Personal Information
-        </p>
+        <p class="text-gray-600 mt-1">Personal Information</p>
       </div>
     </div>
 
@@ -510,7 +358,6 @@
                   >
                     {{ profileInitials }}
                   </div>
-                  <!-- Upload overlay -->
                   <div
                     v-if="uploadingImage"
                     class="absolute inset-0 bg-opacity-50 flex items-center justify-center rounded-full"
@@ -519,7 +366,6 @@
                       class="loading loading-spinner loading-md text-white"
                     ></div>
                   </div>
-                  <!-- Camera icon overlay - only show on hover -->
                   <div
                     v-else
                     class="absolute inset-0 bg-opacity-0 hover:bg-opacity-20 flex items-center justify-center rounded-full transition-all duration-200 group"
@@ -529,7 +375,6 @@
                     />
                   </div>
                 </div>
-                <!-- Hidden file input -->
                 <input
                   ref="imageInput"
                   type="file"
@@ -543,11 +388,11 @@
                 {{ profileData.first_name }} {{ profileData.last_name }}
               </h3>
               <p class="text-gray-600">{{ profileData.role }}</p>
+  
             </div>
 
             <!-- Personal Details -->
             <div class="lg:col-span-2 space-y-4">
-              <!-- Name Fields (read-only) -->
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="form-control">
                   <label class="label">
@@ -557,7 +402,6 @@
                     {{ profileData.first_name }}
                   </div>
                 </div>
-
                 <div class="form-control">
                   <label class="label">
                     <span class="label-text font-medium">Last Name</span>
@@ -568,7 +412,6 @@
                 </div>
               </div>
 
-              <!-- Contact Information -->
               <div class="form-control">
                 <label class="label">
                   <span class="label-text font-medium">Email Address</span>
@@ -580,7 +423,6 @@
                 </div>
               </div>
 
-              <!-- Editable fields aligned in grid -->
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="form-control md:col-span-1">
                   <label class="label">
@@ -621,7 +463,6 @@
                 </div>
               </div>
 
-              <!-- Save Button (Edit Mode) -->
               <div v-if="editMode" class="flex justify-end space-x-2 pt-4">
                 <button
                   @click="saveProfile"
@@ -686,14 +527,6 @@
 
             <div class="p-4 bg-gray-50 rounded-lg">
               <div class="flex items-center mb-2">
-                <Building2 class="w-4 h-4 text-gray-400 mr-2" />
-                <span class="text-sm font-medium text-gray-600">Branch</span>
-              </div>
-              <p class="font-semibold">{{ currentBranch?.name }}</p>
-            </div>
-
-            <div class="p-4 bg-gray-50 rounded-lg">
-              <div class="flex items-center mb-2">
                 <Clock class="w-4 h-4 text-gray-400 mr-2" />
                 <span class="text-sm font-medium text-gray-600"
                   >Last Login</span
@@ -745,7 +578,6 @@
                 </button>
               </div>
             </div>
-
             <div class="form-control">
               <label class="label">
                 <span class="label-text font-medium">New Password</span>
@@ -767,7 +599,6 @@
                 </button>
               </div>
             </div>
-
             <div class="form-control">
               <label class="label">
                 <span class="label-text font-medium">Confirm New Password</span>
@@ -789,7 +620,6 @@
                 </button>
               </div>
             </div>
-
             <div class="flex space-x-2 pt-2">
               <button
                 @click="changePassword"
@@ -873,22 +703,6 @@
 </template>
 
 <style scoped>
-  /* .card {
-    @apply transition-shadow duration-200;
-  }
-
-  .card:hover {
-    @apply shadow-xl;
-  }
-
-  .form-control .label {
-    @apply pb-1;
-  }
-
-  .badge {
-    @apply text-xs;
-  } */
-
   .toast {
     z-index: 9999;
   }

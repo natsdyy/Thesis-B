@@ -16,6 +16,8 @@
     X,
     ChevronDown,
     Settings,
+    Timer,
+    FileText,
     Clock,
     LogOut,
   } from 'lucide-vue-next';
@@ -304,30 +306,45 @@
 
                 <!-- Menu Items -->
                 <li>
-                  <a
+                  <router-link
+                    to="/branch/profile"
                     class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
                   >
                     <User class="w-4 h-4 text-primaryColor" />
                     <span class="text-sm">Profile</span>
-                  </a>
+                  </router-link>
                 </li>
 
                 <li>
-                  <a
+                  <router-link
+                    :to="{ path: '/branch/attendance', query: { tab: 'ot' } }"
                     class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
                   >
-                    <Settings class="w-4 h-4 text-primaryColor" />
-                    <span class="text-sm">Account Settings</span>
-                  </a>
+                    <Timer class="w-4 h-4 text-primaryColor" />
+                    <span class="text-sm">Apply Overtime</span>
+                  </router-link>
+                </li>
+                <li>
+                  <router-link
+                    :to="{
+                      path: '/branch/attendance',
+                      query: { tab: 'leave' },
+                    }"
+                    class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    <FileText class="w-4 h-4 text-primaryColor" />
+                    <span class="text-sm">Apply Leave</span>
+                  </router-link>
                 </li>
 
                 <li>
-                  <a
+                  <router-link
+                    to="/branch/attendance"
                     class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
                   >
                     <Clock class="w-4 h-4 text-primaryColor" />
                     <span class="text-sm">Attendance</span>
-                  </a>
+                  </router-link>
                 </li>
 
                 <!-- Divider + Logout -->
@@ -442,30 +459,45 @@
 
                 <!-- Menu Items -->
                 <li>
-                  <a
+                  <router-link
+                    to="/branch/profile"
                     class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
                   >
                     <User class="w-4 h-4 text-primaryColor" />
                     <span class="text-sm">Profile</span>
-                  </a>
+                  </router-link>
                 </li>
 
                 <li>
-                  <a
+                  <router-link
+                    :to="{ path: '/branch/attendance', query: { tab: 'ot' } }"
                     class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
                   >
-                    <Settings class="w-4 h-4 text-primaryColor" />
-                    <span class="text-sm">Account Settings</span>
-                  </a>
+                    <Timer class="w-4 h-4 text-primaryColor" />
+                    <span class="text-sm">Apply Overtime</span>
+                  </router-link>
+                </li>
+                <li>
+                  <router-link
+                    :to="{
+                      path: '/branch/attendance',
+                      query: { tab: 'leave' },
+                    }"
+                    class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    <FileText class="w-4 h-4 text-primaryColor" />
+                    <span class="text-sm">Apply Leave</span>
+                  </router-link>
                 </li>
 
                 <li>
-                  <a
+                  <router-link
+                    to="/branch/attendance"
                     class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
                   >
                     <Clock class="w-4 h-4 text-primaryColor" />
                     <span class="text-sm">Attendance</span>
-                  </a>
+                  </router-link>
                 </li>
 
                 <!-- Divider + Logout -->

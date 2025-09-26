@@ -7,7 +7,7 @@ const createTransporter = (config) => {
     ...config,
     auth: {
       user: 'mailcountrysidesteakhouse@gmail.com',
-      pass: 'sclg quvi fuyh dcfa' // Gmail App Password
+      pass: 'hgne ityd ejzn dgnv' // Updated Gmail App Password
     },
     // Production-optimized timeout settings
     connectionTimeout: 120000, // 2 minutes
@@ -23,18 +23,18 @@ const createTransporter = (config) => {
   });
 };
 
-// Primary transporter (Port 587 - STARTTLS)
+// Primary transporter (Port 465 - SSL) - Updated to use SSL as primary
 const transporter = createTransporter({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false
-});
-
-// Fallback transporter (Port 465 - SSL)
-const fallbackTransporter = createTransporter({
   host: 'smtp.gmail.com',
   port: 465,
   secure: true
+});
+
+// Fallback transporter (Port 587 - STARTTLS)
+const fallbackTransporter = createTransporter({
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false
 });
 
 // Verify transporter configuration with retry
@@ -45,20 +45,20 @@ const verifyTransporter = () => {
   verificationAttempts++;
   console.log(`📧 Verifying email service (attempt ${verificationAttempts}/${maxVerificationAttempts})`);
   
-  // Try primary transporter first
+  // Try primary transporter first (Port 465 - SSL)
   transporter.verify((primaryError, primarySuccess) => {
     if (!primaryError) {
-      console.log('✅ Primary email service (port 587) ready to send messages');
+      console.log('✅ Primary email service (port 465 SSL) ready to send messages');
       return;
     }
     
     console.log(`❌ Primary transporter failed: ${primaryError.message}`);
-    console.log(`📧 Trying fallback transporter (port 465)...`);
+    console.log(`📧 Trying fallback transporter (port 587)...`);
     
-    // Try fallback transporter
+    // Try fallback transporter (Port 587 - STARTTLS)
     fallbackTransporter.verify((fallbackError, fallbackSuccess) => {
       if (!fallbackError) {
-        console.log('✅ Fallback email service (port 465) ready to send messages');
+        console.log('✅ Fallback email service (port 587 STARTTLS) ready to send messages');
         return;
       }
       
@@ -358,14 +358,14 @@ class EmailService {
         `
       };
 
-        // Try primary transporter first, then fallback
+        // Try primary transporter first (Port 465 SSL), then fallback (Port 587 STARTTLS)
         let info;
         try {
-          console.log(`📧 Using primary transporter (port 587)`);
+          console.log(`📧 Using primary transporter (port 465 SSL)`);
           info = await this.withTimeout(transporter.sendMail(mailOptions), 120000);
         } catch (primaryError) {
           console.log(`❌ Primary transporter failed: ${primaryError.message}`);
-          console.log(`📧 Trying fallback transporter (port 465)`);
+          console.log(`📧 Trying fallback transporter (port 587 STARTTLS)`);
           info = await this.withTimeout(fallbackTransporter.sendMail(mailOptions), 120000);
         }
         console.log(`✅ Feedback reply email sent (attempt ${attempt}):`, info.messageId);

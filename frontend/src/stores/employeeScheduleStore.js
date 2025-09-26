@@ -24,20 +24,30 @@ export const useEmployeeScheduleStore = defineStore('employeeSchedule', () => {
   const getShiftTypes = computed(() => shiftTypes.value);
 
   // Actions
-  const fetchSchedules = async (branchId, startDate, endDate) => {
+  const fetchSchedules = async (
+    branchId,
+    startDate,
+    endDate,
+    departmentEmployees = false
+  ) => {
     loading.value = true;
     error.value = null;
 
     try {
-      const response = await fetch(
-        `${apiConfig.baseURL}/employee-schedules?branch_id=${branchId}&start_date=${startDate}&end_date=${endDate}`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      let url = `${apiConfig.baseURL}/employee-schedules?start_date=${startDate}&end_date=${endDate}`;
+
+      if (departmentEmployees) {
+        url += '&department_employees=true';
+      } else if (branchId) {
+        url += `&branch_id=${branchId}`;
+      }
+
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json',
+        },
+      });
 
       if (!response.ok) {
         throw new Error('Failed to fetch schedules');

@@ -114,17 +114,26 @@
   };
 
   const openMySchedule = async () => {
-    // Prefetch current month schedules for this branch
+    // Prefetch current month schedules for this branch or department
     const branchId = currentBranch.value?.id;
-    if (!branchId) {
-      return;
-    }
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), 1);
     const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     const toYMD = (d) => new Date(d).toISOString().split('T')[0];
     try {
-      await scheduleStore.fetchSchedules(branchId, toYMD(start), toYMD(end));
+      // For department employees (no branch), use department_employees=true
+      // For branch employees, use branchId
+      if (branchId) {
+        await scheduleStore.fetchSchedules(branchId, toYMD(start), toYMD(end));
+      } else {
+        // Department employee - fetch schedules without branch requirement
+        await scheduleStore.fetchSchedules(
+          null,
+          toYMD(start),
+          toYMD(end),
+          true
+        );
+      }
     } catch (e) {
       // non-blocking
       console.warn('Failed to prefetch schedules', e);
@@ -134,13 +143,24 @@
   // Prefetch schedules for inline calendar on load
   const prefetchMySchedule = async () => {
     const branchId = currentBranch.value?.id;
-    if (!branchId) return;
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), 1);
     const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     const toYMD = (d) => new Date(d).toISOString().split('T')[0];
     try {
-      await scheduleStore.fetchSchedules(branchId, toYMD(start), toYMD(end));
+      // For department employees (no branch), use department_employees=true
+      // For branch employees, use branchId
+      if (branchId) {
+        await scheduleStore.fetchSchedules(branchId, toYMD(start), toYMD(end));
+      } else {
+        // Department employee - fetch schedules without branch requirement
+        await scheduleStore.fetchSchedules(
+          null,
+          toYMD(start),
+          toYMD(end),
+          true
+        );
+      }
     } catch (e) {
       console.warn('Failed to prefetch schedules', e);
     }
@@ -232,8 +252,9 @@
           first_name: me?.first_name || me?.firstName || '',
           last_name: me?.last_name || me?.lastName || '',
         }"
-        :branch-id="currentBranch?.id"
+        :branch-id="currentBranch?.id || null"
         :schedules="scheduleStore.schedules"
+        :show-shift-label="false"
       />
     </div>
   </div>

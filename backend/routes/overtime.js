@@ -293,12 +293,14 @@ router.get(
   },
   async (req, res) => {
     try {
-      const { status, branch_id } = req.query;
+      const { status, branch_id, department_only, department } = req.query;
       const page = parseInt(req.query.page || "1");
       const limit = parseInt(req.query.limit || "50");
       const rows = await OvertimeRequest.getAll({
         status,
         branch_id,
+        department_only,
+        department,
         page,
         limit,
       });

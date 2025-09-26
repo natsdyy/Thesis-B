@@ -36,6 +36,12 @@ export default [
     meta: { title: 'Goods Receipt Notes' },
   },
   {
+    path: 'attendance',
+    name: 'SCMAttendance',
+    component: () => import('../../views/common/DepartmentAttendance.vue'),
+    meta: { title: 'My Attendance' },
+  },
+  {
     path: 'profile',
     name: 'SCMProfile',
     component: () => import('../../views/common/DepartmentProfile.vue'),

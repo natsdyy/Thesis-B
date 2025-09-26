@@ -19,6 +19,12 @@ export default [
     meta: { title: 'Budget Release' },
   },
   {
+    path: 'attendance',
+    name: 'FinanceAttendance',
+    component: () => import('../../views/common/DepartmentAttendance.vue'),
+    meta: { title: 'My Attendance' },
+  },
+  {
     path: 'profile',
     name: 'FinanceProfile',
     component: () => import('../../views/common/DepartmentProfile.vue'),

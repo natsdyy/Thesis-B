@@ -20,6 +20,7 @@ import {
   ClipboardList,
   Trash2,
   ChefHat,
+  UserCheck,
 } from 'lucide-vue-next';
 
 export const menuItems = [
@@ -36,20 +37,25 @@ export const menuItems = [
     route: '/hr/employees',
     department: 'Human Resource',
     subItems: [
-      { name: 'Employees', route: '/hr/employee-manager' },
+      { name: 'Employee List', route: '/hr/employee-manager' },
       { name: 'Schedules', route: '/hr/schedules' },
 
       { name: 'Positions', route: '/hr/positions' },
-      { name: 'Leave Management', route: '/hr/leave' },
-      { name: 'Add Employee', route: '/hr/add-employee' },
+      { name: 'Manage Employee', route: '/hr/add-employee' },
     ],
   },
+
   {
-    name: 'Attendance',
-    icon: Clock,
-    route: '/hr/attendance',
+    name: 'Approval Management',
+    icon: UserCheck,
+    route: '/hr/approval-management',
     department: 'Human Resource',
+    subItems: [
+      { name: 'Overtime Approvals', route: '/hr/overtime-approval' },
+      { name: 'Leave Approval', route: '/hr/leave' },
+    ],
   },
+
   {
     name: 'Payroll',
     icon: PhilippinePeso,

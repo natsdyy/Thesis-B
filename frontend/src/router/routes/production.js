@@ -43,6 +43,12 @@ export default [
     meta: { title: 'Production Execution' },
   },
   {
+    path: 'attendance',
+    name: 'ProductionAttendance',
+    component: () => import('../../views/common/DepartmentAttendance.vue'),
+    meta: { title: 'My Attendance' },
+  },
+  {
     path: 'profile',
     name: 'ProductionProfile',
     component: () => import('../../views/common/DepartmentProfile.vue'),

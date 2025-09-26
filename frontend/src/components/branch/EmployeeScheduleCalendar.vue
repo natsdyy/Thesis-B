@@ -7,11 +7,13 @@
 
   const props = defineProps({
     employee: { type: Object, required: true },
-    branchId: { type: [String, Number], required: true },
+    branchId: { type: [String, Number], required: false }, // Made optional for department employees
     // schedules map from store: key `${employee_id}_${YYYY-MM-DD}` -> schedule obj
     schedules: { type: Object, required: true },
     isOpen: { type: Boolean, default: false },
     inline: { type: Boolean, default: false },
+    // When false, render only the time range (hide shift name like "Regular")
+    showShiftLabel: { type: Boolean, default: true },
   });
 
   const emit = defineEmits(['close']);
@@ -68,8 +70,19 @@
       const root = document.createElement('div');
       const isDayOff = arg.event.title === 'Day Off';
       root.className = `cs-event-pill${isDayOff ? ' day-off' : ''}`;
-      const label =
-        arg.event.extendedProps?.label || arg.timeText || arg.event.title || '';
+      // Prefer custom label; otherwise show "time + title" instead of just time
+      const fallback = props.showShiftLabel
+        ? arg.timeText
+          ? `${arg.timeText} ${arg.event.title || ''}`.trim()
+          : arg.event.title || ''
+        : arg.timeText || '';
+      let label = arg.event.extendedProps?.label || fallback;
+      // Truncate label based on viewport so it never exceeds cell width
+      const maxLen =
+        viewportWidth.value < 640 ? 22 : viewportWidth.value < 1024 ? 28 : 36;
+      if (label.length > maxLen) {
+        label = label.slice(0, maxLen - 1) + '…';
+      }
       const span = document.createElement('span');
       span.className = 'cs-event-title';
       span.textContent = label;
@@ -188,6 +201,12 @@
           // Month view: show only on the start day cell with full time range in label
           const endOfStart = new Date(startDate);
           endOfStart.setHours(23, 59, 59, 999);
+          const labelText =
+            (sched.shift?.name || sched.shift_name) === 'Day Off'
+              ? shortTitle(sched)
+              : props.showShiftLabel
+                ? `${formatClock(startDate)} - ${formatClock(endDate)} ${shortTitle(sched)}`
+                : `${formatClock(startDate)} - ${formatClock(endDate)}`;
           events.push({
             id: String(sched.id),
             title: sched.shift?.name || sched.shift_name,
@@ -200,14 +219,17 @@
             classNames: ['cs-event'],
             extendedProps: {
               notes: sched.notes || '',
-              label:
-                (sched.shift?.name || sched.shift_name) === 'Day Off'
-                  ? shortTitle(sched)
-                  : `${formatClock(startDate)} - ${formatClock(endDate)} ${shortTitle(sched)}`,
+              label: labelText,
             },
           });
         } else {
           // Week/time views: show as one continuous event across days
+          const labelText =
+            (sched.shift?.name || sched.shift_name) === 'Day Off'
+              ? shortTitle(sched)
+              : props.showShiftLabel
+                ? `${formatClock(startDate)} - ${formatClock(endDate)} ${shortTitle(sched)}`
+                : `${formatClock(startDate)} - ${formatClock(endDate)}`;
           events.push({
             id: String(sched.id),
             title: sched.shift?.name || sched.shift_name,
@@ -220,14 +242,14 @@
             classNames: ['cs-event'],
             extendedProps: {
               notes: sched.notes || '',
-              label:
-                (sched.shift?.name || sched.shift_name) === 'Day Off'
-                  ? shortTitle(sched)
-                  : `${formatClock(startDate)} - ${formatClock(endDate)} ${shortTitle(sched)}`,
+              label: labelText,
             },
           });
         }
       } else {
+        const labelText = props.showShiftLabel
+          ? `${formatClock(startDate)} - ${formatClock(endDate)} ${shortTitle(sched)}`
+          : `${formatClock(startDate)} - ${formatClock(endDate)}`;
         events.push({
           id: String(sched.id),
           title: sched.shift?.name || sched.shift_name,
@@ -240,7 +262,7 @@
           classNames: ['cs-event'],
           extendedProps: {
             notes: sched.notes || '',
-            label: `${formatClock(startDate)} - ${formatClock(endDate)} ${shortTitle(sched)}`,
+            label: labelText,
           },
         });
       }

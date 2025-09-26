@@ -86,6 +86,7 @@
     inventory: Package,
     employees: Users,
     profile: UserCircle,
+    attendance: Clock,
   };
 
   // Operation labels mapping
@@ -96,6 +97,7 @@
     inventory: 'Inventory',
     employees: 'Employees',
     profile: 'Profile',
+    attendance: 'Attendance',
   };
 
   // Methods

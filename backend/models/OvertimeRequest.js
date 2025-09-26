@@ -49,7 +49,14 @@ class OvertimeRequest {
     return rows;
   }
 
-  static async getAll({ status, branch_id, page = 1, limit = 50 } = {}) {
+  static async getAll({
+    status,
+    branch_id,
+    department_only,
+    department,
+    page = 1,
+    limit = 50,
+  } = {}) {
     // Join employees to optionally filter by branch and include approver name
     let query = knex("overtime_requests as ot")
       .select(
@@ -74,10 +81,12 @@ class OvertimeRequest {
         "e.employee_id as employee_code",
         "e.role_id",
         "e.branch_id",
+        knex.raw("ur.department as department"),
         knex.raw("COALESCE(appr.first_name, '') as approver_first_name"),
         knex.raw("COALESCE(appr.last_name, '') as approver_last_name")
       )
       .leftJoin("employees as e", "ot.employee_id", "e.id")
+      .leftJoin("user_roles as ur", "e.role_id", "ur.role_id")
       .leftJoin("employees as appr", "ot.approved_by", "appr.id")
       .whereNull("ot.deleted_at")
       .orderBy("ot.created_at", "desc");
@@ -87,6 +96,13 @@ class OvertimeRequest {
     }
     if (branch_id) {
       query = query.where("e.branch_id", branch_id);
+    }
+    if (department_only === "true") {
+      // Only show department employees (those without branch_id)
+      query = query.whereNull("e.branch_id");
+    }
+    if (department) {
+      query = query.andWhere("ur.department", department);
     }
 
     const rows = await query.limit(limit).offset((page - 1) * limit);

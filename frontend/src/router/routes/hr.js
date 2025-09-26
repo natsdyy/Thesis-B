@@ -51,9 +51,21 @@ export default [
     meta: { title: 'Employee Schedules' },
   },
   {
+    path: 'attendance',
+    name: 'HRAttendance',
+    component: () => import('../../views/common/DepartmentAttendance.vue'),
+    meta: { title: 'My Attendance' },
+  },
+  {
     path: 'profile',
     name: 'HRProfile',
     component: () => import('../../views/common/DepartmentProfile.vue'),
     meta: { title: 'HR Profile' },
+  },
+  {
+    path: 'overtime-approval',
+    name: 'HROvertimeApproval',
+    component: () => import('../../views/hr/OvertimeApproval.vue'),
+    meta: { title: 'Overtime Approval' },
   },
 ];

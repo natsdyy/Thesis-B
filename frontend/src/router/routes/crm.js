@@ -18,6 +18,12 @@ export default [
     meta: { title: 'Analytics Dashboard' },
   },
   {
+    path: 'attendance',
+    name: 'CRMAttendance',
+    component: () => import('../../views/common/DepartmentAttendance.vue'),
+    meta: { title: 'My Attendance' },
+  },
+  {
     path: 'profile',
     name: 'CRMProfile',
     component: () => import('../../views/common/DepartmentProfile.vue'),

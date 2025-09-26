@@ -40,6 +40,15 @@ export default [
     },
   },
   {
+    path: 'attendance',
+    name: 'AdminAttendance',
+    component: () => import('../../views/common/DepartmentAttendance.vue'),
+    meta: {
+      title: 'My Attendance',
+      permission: 'View Attendance',
+    },
+  },
+  {
     path: 'settings',
     name: 'AdminSettings',
     component: () => import('../../views/admin/Settings.vue'),

@@ -3,17 +3,16 @@ const router = express.Router();
 const { db } = require("../config/database");
 const { authenticateToken } = require("../middleware/rbac");
 
-// Get employee schedules for a specific branch and date range
+// Get employee schedules for a specific branch and date range, or department employees
 router.get("/", authenticateToken, async (req, res) => {
   try {
-    const { branch_id, start_date, end_date, employee_id } = req.query;
-
-    if (!branch_id) {
-      return res.status(400).json({
-        success: false,
-        message: "Branch ID is required",
-      });
-    }
+    const {
+      branch_id,
+      start_date,
+      end_date,
+      employee_id,
+      department_employees,
+    } = req.query;
 
     let query = db("employee_schedules as es")
       .select(
@@ -35,8 +34,22 @@ router.get("/", authenticateToken, async (req, res) => {
       )
       .leftJoin("employees as e", "es.employee_id", "e.id")
       .leftJoin("user_roles as ur", "e.role_id", "ur.role_id")
-      .where("es.branch_id", branch_id)
       .where("es.is_active", true);
+
+    // Handle department employees (no branch_id) or branch employees
+    if (department_employees === "true") {
+      // For department employees, get schedules where branch_id is null
+      query = query.whereNull("es.branch_id");
+    } else {
+      // For branch employees, require branch_id
+      if (!branch_id) {
+        return res.status(400).json({
+          success: false,
+          message: "Branch ID is required for branch employees",
+        });
+      }
+      query = query.where("es.branch_id", branch_id);
+    }
 
     // Filter by date range if provided
     if (start_date) {
@@ -121,10 +134,9 @@ router.post("/", authenticateToken, async (req, res) => {
       notes = "",
     } = req.body;
 
-    // Validation
+    // Validation - branch_id is optional for department employees
     if (
       !employee_id ||
-      !branch_id ||
       !schedule_date ||
       !shift_name ||
       !start_time ||
@@ -133,21 +145,31 @@ router.post("/", authenticateToken, async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "employee_id, branch_id, schedule_date, shift_name, start_time, and end_time are required",
+          "employee_id, schedule_date, shift_name, start_time, and end_time are required",
       });
     }
 
-    // Check if employee belongs to the branch
-    const employee = await db("employees")
-      .where("id", employee_id)
-      .where("branch_id", branch_id)
-      .first();
+    // Get employee details
+    const employee = await db("employees").where("id", employee_id).first();
 
     if (!employee) {
       return res.status(400).json({
         success: false,
-        message: "Employee not found in this branch",
+        message: "Employee not found",
       });
+    }
+
+    // Check if this is a department employee (no branch_id) or branch employee
+    const isDepartmentEmployee = !employee.branch_id || !branch_id;
+
+    if (!isDepartmentEmployee) {
+      // For branch employees, verify they belong to the specified branch
+      if (employee.branch_id !== branch_id) {
+        return res.status(400).json({
+          success: false,
+          message: "Employee not found in this branch",
+        });
+      }
     }
 
     // Check if schedule already exists for this employee on this date
@@ -170,7 +192,7 @@ router.post("/", authenticateToken, async (req, res) => {
 
     const newSchedule = {
       employee_id,
-      branch_id,
+      branch_id: isDepartmentEmployee ? null : branch_id,
       schedule_date,
       shift_name,
       start_time,

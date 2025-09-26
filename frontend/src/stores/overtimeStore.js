@@ -98,13 +98,28 @@ export const useOvertimeStore = defineStore('overtime', {
       }
       await this.fetchMyRequests();
     },
-    async fetchRequests({ status, branch_id, page = 1, limit = 100 } = {}) {
+    async fetchRequests({
+      status,
+      branch_id,
+      department_only,
+      department_id,
+      page = 1,
+      limit = 100,
+    } = {}) {
       const params = new URLSearchParams({
         page: String(page),
         limit: String(limit),
       });
       if (status) params.set('status', status);
       if (branch_id) params.set('branch_id', String(branch_id));
+      if (department_only)
+        params.set('department_only', String(department_only));
+      if (department_id) params.set('department_id', String(department_id));
+      // If department_id is a string department name, pass as department filter
+      if (typeof department_id === 'string' && department_id) {
+        params.delete('department_id');
+        params.set('department', department_id);
+      }
       const res = await fetch(
         `${apiConfig.baseURL}/overtime?${params.toString()}`,
         {
@@ -125,11 +140,14 @@ export const useOvertimeStore = defineStore('overtime', {
         return {
           id: r.id,
           employee_id: r.employee_id,
+          first_name: r.first_name || '',
+          last_name: r.last_name || '',
           employee_name:
             `${r.first_name || ''} ${r.last_name || ''}`.trim() ||
             r.employee_code ||
             `#${r.employee_id}`,
           employee_role: r.role || '',
+          department: r.department || null,
           date: datePart,
           start_time: r.start_time,
           end_time: r.end_time,

@@ -207,10 +207,10 @@
           </li>
 
           <li>
-            <a
-              @click="openAttendanceModal"
+            <router-link
+              :to="getAttendanceRoute()"
               :class="[
-                'flex items-center space-x-3 px-3 py-2 rounded-md transition-colors cursor-pointer',
+                'flex items-center space-x-3 px-3 py-2 rounded-md transition-colors',
                 themeStore.themeClasses.hoverBg,
               ]"
             >
@@ -218,7 +218,7 @@
               <span :class="['text-sm', themeStore.themeClasses.textSecondary]"
                 >Attendance</span
               >
-            </a>
+            </router-link>
           </li>
 
           <!-- Divider -->
@@ -239,13 +239,6 @@
       </div>
     </div>
   </header>
-
-  <!-- QR Attendance Modal -->
-  <QRAttendanceModal
-    :isOpen="showAttendanceModal"
-    @close="closeAttendanceModal"
-    @viewRecords="viewAttendanceRecords"
-  />
 
   <!-- Logout Confirmation Modal -->
   <div v-if="showLogoutModal" class="modal modal-open">
@@ -282,7 +275,6 @@
   import { useAuthStore } from '../stores/authStore';
   import { useThemeStore } from '../stores/themeStore';
   import { apiConfig } from '../config/api';
-  import QRAttendanceModal from './QRAttendanceModal.vue';
   import {
     Menu,
     X,
@@ -348,7 +340,6 @@
 
   // Methods
   const showLogoutModal = ref(false);
-  const showAttendanceModal = ref(false);
 
   const toggleSidebar = () => {
     emit('toggle-sidebar');
@@ -372,20 +363,6 @@
     router.push('/login');
   };
 
-  const openAttendanceModal = () => {
-    showAttendanceModal.value = true;
-  };
-
-  const closeAttendanceModal = () => {
-    showAttendanceModal.value = false;
-  };
-
-  const viewAttendanceRecords = () => {
-    closeAttendanceModal();
-    // All users should access HR attendance records (which shows their own records)
-    router.push('/hr/attendance-records');
-  };
-
   // Map Profile to department-specific /profile route via router link in template
   const getProfileRoute = () => {
     const dept = authStore.userDepartment;
@@ -399,6 +376,21 @@
       System: '/admin/profile',
     };
     return map[dept] || '/hr/profile';
+  };
+
+  // Map Attendance to department-specific /attendance route
+  const getAttendanceRoute = () => {
+    const dept = authStore.userDepartment;
+    const map = {
+      'Human Resource': '/hr/attendance',
+      SCM: '/scm/attendance',
+      Finance: '/finance/attendance',
+      Production: '/production/attendance',
+      CRM: '/crm/attendance',
+      Branch: '/branch/attendance',
+      System: '/admin/attendance',
+    };
+    return map[dept] || '/hr/attendance';
   };
 </script>
 

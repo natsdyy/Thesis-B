@@ -254,15 +254,8 @@
       const startDate = weekDays.value[0].dateString;
       const endDate = weekDays.value[6].dateString;
 
-      // Debug: Check what's currently in the schedule store
-      console.log('Current schedule store contents:', scheduleStore.schedules);
-      console.log('Schedule store keys:', Object.keys(scheduleStore.schedules));
-
       // Load schedules for department employees
-      // Since department employees don't have branch assignments, we'll fetch schedules
-      // using a generic approach or fetch all schedules and filter client-side
-      // For now, we'll skip branch-specific fetching since department employees don't have branches
-      console.log('Loading schedules for department employees...');
+      await scheduleStore.fetchSchedules(null, startDate, endDate, true); // true for department_employees
     } catch (error) {
       console.error('Error loading schedules:', error);
       showError('Failed to load schedules');
@@ -284,7 +277,7 @@
     selectedDate.value = date;
     shiftForm.value = {
       employeeId: employee.id,
-      branchId: employee.branch_id,
+      branchId: null, // Department employees don't have branch_id
       date: date.dateString,
       shiftId: null,
       notes: '',
@@ -299,7 +292,7 @@
     editingShift.value = schedule;
     shiftForm.value = {
       employeeId: employee.id,
-      branchId: employee.branch_id,
+      branchId: null, // Department employees don't have branch_id
       date: date.dateString,
       shiftId: schedule.shift.id,
       notes: schedule.notes || '',
@@ -314,13 +307,15 @@
         return;
       }
 
+      loading.value = true; // Set loading state
+
       const selectedShift = shifts.value.find(
         (s) => s.id === shiftForm.value.shiftId
       );
 
       const scheduleData = {
         employee_id: shiftForm.value.employeeId,
-        branch_id: shiftForm.value.branchId,
+        branch_id: shiftForm.value.branchId, // Will be null for department employees
         schedule_date: shiftForm.value.date,
         shift_name: selectedShift.name,
         start_time: selectedShift.start_time,
@@ -348,6 +343,8 @@
     } catch (error) {
       console.error('Error saving shift:', error);
       showError(error.message || 'Failed to save shift');
+    } finally {
+      loading.value = false; // Clear loading state
     }
   };
 
@@ -359,6 +356,8 @@
 
   const confirmDeleteShift = async () => {
     try {
+      loading.value = true; // Set loading state
+
       if (shiftToDelete.value) {
         const { employeeId, dateString } = shiftToDelete.value;
         const schedule = getShiftForEmployee(employeeId, dateString);
@@ -372,6 +371,8 @@
     } catch (error) {
       console.error('Error deleting shift:', error);
       showError(error.message || 'Failed to remove shift');
+    } finally {
+      loading.value = false; // Clear loading state
     }
   };
 
@@ -1003,8 +1004,13 @@
           <button
             @click="confirmDeleteShift"
             class="btn bg-error text-white btn-sm font-thin border-none hover:bg-error/80 w-full sm:w-auto"
+            :disabled="loading"
           >
-            Remove Shift
+            <span
+              v-if="loading"
+              class="loading loading-spinner loading-xs mr-2"
+            ></span>
+            {{ loading ? 'Removing...' : 'Remove Shift' }}
           </button>
         </div>
       </div>

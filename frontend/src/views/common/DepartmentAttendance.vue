@@ -12,7 +12,7 @@
       </div>
     </div>
 
-    <!-- Tabs (mirrors BranchSales style) -->
+    <!-- Tabs -->
     <div class="tabs tabs-boxed mb-4 justify-start w-full">
       <button
         @click="setActiveTab('add')"
@@ -229,7 +229,7 @@
                   </td>
                 </tr>
                 <tr v-if="mergedHistory.length === 0 && !isHistoryLoading">
-                  <td colspan="7" class="text-center py-8 text-gray-500">
+                  <td colspan="6" class="text-center py-8 text-gray-500">
                     <div class="flex flex-col items-center space-y-2">
                       <svg
                         class="w-12 h-12 text-gray-300"
@@ -252,128 +252,49 @@
             </table>
           </div>
 
-          <!-- Load More Button -->
-          <div class="flex justify-center mt-4" v-if="totalPages > 1">
-            <div class="join">
-              <button
-                class="join-item btn btn-sm"
-                :disabled="currentPage === 1"
-                @click="currentPage = Math.max(1, currentPage - 1)"
-              >
-                «
-              </button>
-              <button class="join-item btn btn-sm">
-                Page {{ currentPage }} of {{ totalPages }}
-              </button>
-              <button
-                class="join-item btn btn-sm"
-                :disabled="currentPage === totalPages"
-                @click="currentPage = Math.min(totalPages, currentPage + 1)"
-              >
-                »
-              </button>
-            </div>
-          </div>
-
-          <!-- Loading More Indicator -->
+          <!-- Pagination -->
           <div
-            v-if="isHistoryLoading && attendanceHistory.length > 0"
-            class="flex justify-center mt-4"
+            v-if="totalPages > 1"
+            class="flex justify-center items-center space-x-2 mt-4"
           >
-            <div class="flex items-center space-x-2 text-sm text-gray-500">
-              <span class="loading loading-spinner loading-sm"></span>
-              <span>Loading more records...</span>
-            </div>
+            <button
+              @click="currentPage = Math.max(1, currentPage - 1)"
+              :disabled="currentPage === 1"
+              class="btn btn-sm btn-outline"
+            >
+              Previous
+            </button>
+            <span class="text-sm text-gray-500">
+              Page {{ currentPage }} of {{ totalPages }}
+            </span>
+            <button
+              @click="currentPage = Math.min(totalPages, currentPage + 1)"
+              :disabled="currentPage === totalPages"
+              class="btn btn-sm btn-outline"
+            >
+              Next
+            </button>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Apply OT -->
-    <div v-if="activeTab === 'ot'">
-      <OvertimeRequest />
+    <!-- Overtime Request -->
+    <div v-if="activeTab === 'ot'" class="space-y-6">
+      <OvertimeRequest @overtime-submitted="handleOvertimeSubmitted" />
     </div>
 
-    <!-- Apply Leave -->
-    <div v-if="activeTab === 'leave'">
-      <LeaveRequest />
+    <!-- Leave Request -->
+    <div v-if="activeTab === 'leave'" class="space-y-6">
+      <LeaveRequest @leave-submitted="handleLeaveSubmitted" />
     </div>
 
     <!-- QR Attendance Modal -->
     <QRAttendanceModal
       :isOpen="showQRModal"
       @close="closeQRModal"
-      @viewRecords="viewAttendanceRecords"
+      @viewRecords="refreshAttendance"
     />
-
-    <!-- Manual Entry Modal -->
-    <div v-if="activeTab === 'add' && showManualModal" class="modal modal-open">
-      <div class="modal-box max-w-md">
-        <h3 class="font-bold text-lg mb-4">Manual Attendance Entry</h3>
-        <form @submit.prevent="submitManualEntry" class="space-y-4">
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Action</span>
-            </label>
-            <select
-              v-model="manualEntry.action"
-              class="select select-bordered w-full"
-              required
-            >
-              <option value="">Select Action</option>
-              <option value="time-in">Time In</option>
-              <option value="time-out">Time Out</option>
-            </select>
-          </div>
-
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Location</span>
-            </label>
-            <input
-              v-model="manualEntry.location"
-              type="text"
-              placeholder="Enter location"
-              class="input input-bordered w-full"
-              required
-            />
-          </div>
-
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Notes (Optional)</span>
-            </label>
-            <textarea
-              v-model="manualEntry.notes"
-              placeholder="Additional notes..."
-              class="textarea textarea-bordered w-full"
-              rows="3"
-            ></textarea>
-          </div>
-
-          <div class="modal-action">
-            <button
-              type="button"
-              @click="closeManualModal"
-              class="btn btn-ghost"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              class="btn btn-primary"
-              :disabled="isSubmitting"
-            >
-              <span
-                v-if="isSubmitting"
-                class="loading loading-spinner loading-sm"
-              ></span>
-              {{ isSubmitting ? 'Submitting...' : 'Submit' }}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -388,10 +309,12 @@
   import LeaveRequest from '../../components/LeaveRequest.vue';
   import OvertimeRequest from '../../components/OvertimeRequest.vue';
   import { Clock, Timer, FileText } from 'lucide-vue-next';
+  import { useCustomToast } from '../../composables/useCustomToast';
 
   // Stores
   const authStore = useAuthStore();
   const attendanceStore = useAttendanceStore();
+  const { showSuccess, showError } = useCustomToast();
 
   // Reactive data
   const isLoading = ref(false);
@@ -403,36 +326,24 @@
   const activeTab = ref('add');
   const route = useRoute();
   const router = useRouter();
+
   // Tab routing helpers (sync tab with URL query)
-  const validTabs = new Set(['add', 'ot', 'leave']);
   const setActiveTab = (tab) => {
-    const nextTab = validTabs.has(tab) ? tab : 'add';
-    if (activeTab.value !== nextTab) {
-      activeTab.value = nextTab;
-    }
-    // Update URL query without reloading component
-    router.replace({
-      query: { ...route.query, tab: nextTab },
-    });
+    activeTab.value = tab;
+    // Update URL without triggering navigation
+    const newQuery = { ...route.query, tab };
+    router.replace({ query: newQuery });
   };
 
-  // Initialize tab from query on mount
-  const initTabFromRoute = () => {
-    const qTab = (route.query?.tab || '').toString();
-    if (validTabs.has(qTab)) {
-      activeTab.value = qTab;
-    }
-  };
-
-  // Watch route changes (e.g., when navigated from dropdown)
+  // Watch for URL changes to sync tab
   watch(
     () => route.query.tab,
-    (newVal) => {
-      const qTab = (newVal || '').toString();
-      if (validTabs.has(qTab) && activeTab.value !== qTab) {
-        activeTab.value = qTab;
+    (newTab) => {
+      if (newTab && ['add', 'ot', 'leave'].includes(newTab)) {
+        activeTab.value = newTab;
       }
-    }
+    },
+    { immediate: true }
   );
 
   const autoRefreshInterval = ref(null);
@@ -444,6 +355,7 @@
   const totalRecords = ref(0);
   const hasMoreRecords = ref(false);
   const historyRange = ref('today'); // today | week | month
+
   // Derive real-time status from attendance store
   const today = computed(() => attendanceStore.todayAttendance);
   const hasTimeIn = computed(() => Boolean(today.value?.time_in));
@@ -478,95 +390,37 @@
     );
 
     if (!attendanceHistory.value || attendanceHistory.value.length === 0) {
-      console.log('No attendance history data found');
       return [];
     }
 
-    // If we have a single record (today's attendance), format it for display
-    const records = Array.isArray(attendanceHistory.value)
-      ? attendanceHistory.value
-      : [attendanceHistory.value];
-    console.log('Records to process:', records);
+    const result = attendanceHistory.value.map((record) => {
+      const timeIn = record.time_in ? new Date(record.time_in) : null;
+      const timeOut = record.time_out ? new Date(record.time_out) : null;
+      let duration = null;
+      let overtime = null;
 
-    const byDate = {};
-    records.forEach((rec) => {
-      const dateKey = new Date(rec.created_at || rec.time_in)
-        .toISOString()
-        .split('T')[0];
-      console.log('Processing record:', rec, 'Date key:', dateKey);
+      if (timeIn && timeOut) {
+        const diffMs = timeOut - timeIn;
+        const totalMinutes = Math.floor(diffMs / (1000 * 60));
+        duration = totalMinutes;
 
-      if (!byDate[dateKey]) {
-        byDate[dateKey] = {
-          date: dateKey,
-          timeIn: null,
-          timeOut: null,
-          location: rec.location_name || 'QR Code Scan',
-          duration: null,
-          overtime: null,
-          tardiness: null,
-        };
+        // Calculate overtime (assuming 8 hours = 480 minutes standard)
+        const standardMinutes = 480; // 8 hours
+        if (totalMinutes > standardMinutes) {
+          overtime = totalMinutes - standardMinutes;
+        }
       }
 
-      // Handle both single record format and event-based format
-      if (rec.time_in) {
-        byDate[dateKey].timeIn = rec.time_in;
-      }
-      if (rec.time_out) {
-        byDate[dateKey].timeOut = rec.time_out;
-      }
-
-      // Handle event_type format (legacy)
-      if (rec.event_type === 'time-in') {
-        byDate[dateKey].timeIn = rec.created_at;
-      } else if (rec.event_type === 'time-out') {
-        byDate[dateKey].timeOut = rec.created_at;
-      }
-
-      // Prefer latest known location if available
-      if (rec.location_name) byDate[dateKey].location = rec.location_name;
-      if (rec.duration) byDate[dateKey].duration = rec.duration;
-      if (rec.overtime_hours && parseFloat(rec.overtime_hours) > 0) {
-        byDate[dateKey].overtime = rec.overtime_hours;
-      }
-      if (typeof rec.tardiness_minutes !== 'undefined') {
-        byDate[dateKey].tardiness = rec.tardiness_minutes;
-      }
-
-      // Map hours_worked to duration for display
-      if (rec.hours_worked) {
-        byDate[dateKey].duration = rec.hours_worked;
-      }
-
-      // Map overtime_hours to overtime for display
-      if (rec.overtime_hours && parseFloat(rec.overtime_hours) > 0) {
-        byDate[dateKey].overtime = rec.overtime_hours;
-      }
+      return {
+        date: record.date || record.attendance_date,
+        timeIn: timeIn,
+        timeOut: timeOut,
+        duration: duration,
+        overtime: overtime,
+        tardiness: record.tardiness_minutes || 0,
+        status: record.status || 'Present',
+      };
     });
-
-    let result = Object.values(byDate).sort(
-      (a, b) => new Date(b.date) - new Date(a.date)
-    );
-
-    // Apply range filter
-    const now = new Date();
-    const startOfToday = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate()
-    );
-    let start;
-    if (historyRange.value === 'today') {
-      start = startOfToday;
-    } else if (historyRange.value === 'week') {
-      const day = startOfToday.getDay();
-      const diff = (day + 6) % 7; // Monday as start (optional)
-      start = new Date(startOfToday);
-      start.setDate(start.getDate() - diff);
-    } else {
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-    }
-
-    result = result.filter((r) => new Date(r.date) >= start);
 
     console.log('mergedHistory result:', result);
     return result;
@@ -580,20 +434,6 @@
     const end = start + itemsPerPage.value;
     return mergedHistory.value.slice(start, end);
   });
-
-  // Manual entry form
-  const manualEntry = ref({
-    action: '',
-    location: '',
-    notes: '',
-  });
-
-  // API Configuration
-  const API_BASE_URL = apiConfig.baseURL;
-  const authHeaders = () => {
-    const token = localStorage.getItem('token');
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  };
 
   // Methods
   const openQRModal = () => {
@@ -612,82 +452,71 @@
 
   const closeManualModal = () => {
     showManualModal.value = false;
-    manualEntry.value = { action: '', location: '', notes: '' };
-  };
-
-  const viewAttendanceRecords = () => {
-    closeQRModal();
-    // For branch employees, we'll show their own records in this component
-    fetchAttendanceHistory();
   };
 
   const fetchAttendanceHistory = async (loadMore = false) => {
     try {
       isHistoryLoading.value = true;
 
-      // Determine date range
-      const now = new Date();
-      const end = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate(),
-        23,
-        59,
-        59,
-        999
-      );
-      let start;
+      const params = new URLSearchParams({
+        employee_id: authStore.user.id,
+        page: loadMore ? currentPage.value + 1 : 1,
+        limit: itemsPerPage.value,
+      });
+
+      // Add range filter
       if (historyRange.value === 'today') {
-        start = new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          now.getDate(),
-          0,
-          0,
-          0,
-          0
-        );
+        const today = new Date().toISOString().split('T')[0];
+        params.append('start_date', today);
+        params.append('end_date', today);
       } else if (historyRange.value === 'week') {
-        const startOfToday = new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          now.getDate()
-        );
-        const day = startOfToday.getDay();
-        const diff = (day + 6) % 7; // Monday start
-        start = new Date(startOfToday);
-        start.setDate(start.getDate() - diff);
-      } else {
-        start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        const today = new Date();
+        const weekStart = new Date(today);
+        weekStart.setDate(today.getDate() - today.getDay());
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+
+        params.append('start_date', weekStart.toISOString().split('T')[0]);
+        params.append('end_date', weekEnd.toISOString().split('T')[0]);
+      } else if (historyRange.value === 'month') {
+        const today = new Date();
+        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+        params.append('start_date', monthStart.toISOString().split('T')[0]);
+        params.append('end_date', monthEnd.toISOString().split('T')[0]);
       }
 
-      // Fetch report for current user over the selected range
-      const startIso = start.toISOString();
-      const endIso = end.toISOString();
-      const currentUserId =
-        authStore.user?.id || authStore.user?.employee_internal_id || null;
-      const report = await attendanceStore.getAttendanceReport(
-        currentUserId,
-        startIso,
-        endIso
+      const response = await axios.get(
+        `${apiConfig.baseURL}/attendance/history?${params.toString()}`
       );
-      attendanceHistory.value = Array.isArray(report) ? report : [];
-      totalRecords.value = attendanceHistory.value.length;
-      hasMoreRecords.value = false;
-      lastUpdated.value = new Date();
+
+      if (response.data.success) {
+        const newRecords = response.data.data || [];
+
+        if (loadMore) {
+          attendanceHistory.value = [...attendanceHistory.value, ...newRecords];
+          currentPage.value += 1;
+        } else {
+          attendanceHistory.value = newRecords;
+          currentPage.value = 1;
+        }
+
+        hasMoreRecords.value = newRecords.length === itemsPerPage.value;
+        totalRecords.value = response.data.total || newRecords.length;
+      }
     } catch (error) {
       console.error('Error fetching attendance history:', error);
-      if (!loadMore) {
-        attendanceHistory.value = [];
-      }
+      showError('Failed to load attendance history');
     } finally {
       isHistoryLoading.value = false;
     }
   };
 
   const loadMoreHistory = () => {
-    currentPage.value += 1;
-    fetchAttendanceHistory(true);
+    if (!isHistoryLoading.value && hasMoreRecords.value) {
+      fetchAttendanceHistory(true);
+    }
   };
 
   const checkCurrentStatus = async () => {
@@ -696,7 +525,7 @@
       await attendanceStore.fetchTodayAttendance();
       lastUpdated.value = new Date();
     } catch (error) {
-      console.error('Error checking attendance status:', error);
+      console.error('Error checking current status:', error);
     } finally {
       isStatusLoading.value = false;
     }
@@ -706,19 +535,26 @@
     try {
       isSubmitting.value = true;
 
-      if (manualEntry.value.action === 'time-in') {
-        await attendanceStore.timeIn(
-          'MANUAL_ENTRY',
-          manualEntry.value.location
-        );
-      } else if (manualEntry.value.action === 'time-out') {
-        await attendanceStore.timeOut();
-      }
+      const response = await axios.post(
+        `${apiConfig.baseURL}/attendance/manual`,
+        {
+          employee_id: authStore.user.id,
+          action: manualEntry.value.action,
+          location: manualEntry.value.location,
+          notes: manualEntry.value.notes,
+        }
+      );
 
-      closeManualModal();
-      await Promise.all([checkCurrentStatus(), fetchAttendanceHistory()]);
+      if (response.data.success) {
+        showSuccess('Attendance recorded successfully');
+        closeManualModal();
+        await refreshAttendance();
+      } else {
+        showError(response.data.message || 'Failed to record attendance');
+      }
     } catch (error) {
       console.error('Error submitting manual entry:', error);
+      showError('Failed to record attendance');
     } finally {
       isSubmitting.value = false;
     }
@@ -729,16 +565,51 @@
     await Promise.all([checkCurrentStatus(), fetchAttendanceHistory()]);
   };
 
-  // Auto-refresh methods
+  // Manual entry form
+  const manualEntry = ref({
+    action: '',
+    location: '',
+    notes: '',
+  });
+
+  const formatTime = (date) => {
+    if (!date) return '-';
+    return new Date(date).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return '-';
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const formatHoursWorked = (minutes) => {
+    if (!minutes || minutes === 0) return '0h 0m';
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours}h ${mins}m`;
+  };
+
+  const handleOvertimeSubmitted = () => {
+    showSuccess('Overtime request submitted successfully');
+  };
+
+  const handleLeaveSubmitted = () => {
+    showSuccess('Leave request submitted successfully');
+  };
+
+  // Auto-refresh every 30 seconds
   const startAutoRefresh = () => {
-    // Refresh every 30 seconds
     autoRefreshInterval.value = setInterval(async () => {
       await checkCurrentStatus();
-      // Only refresh history if we're on the attendance tab
-      if (activeTab.value === 'add') {
-        await fetchAttendanceHistory();
-      }
-    }, 30000);
+    }, 30000); // 30 seconds
   };
 
   const stopAutoRefresh = () => {
@@ -748,70 +619,15 @@
     }
   };
 
-  const getEventTypeBadgeClass = (eventType) => {
-    switch (eventType) {
-      case 'time-in':
-        return 'badge-success';
-      case 'time-out':
-        return 'badge-warning';
-      default:
-        return 'badge-ghost';
-    }
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
-
-  const formatTime = (timeString) => {
-    if (!timeString) return 'N/A';
-    return new Date(timeString).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
-  };
-
-  const formatHoursWorked = (hoursString) => {
-    if (!hoursString) return 'N/A';
-
-    // Convert string to number
-    const hours = parseFloat(hoursString);
-
-    if (isNaN(hours)) return 'N/A';
-
-    // Convert hours to minutes for display
-    const totalMinutes = Math.round(hours * 60);
-    const hoursPart = Math.floor(totalMinutes / 60);
-    const minutesPart = totalMinutes % 60;
-
-    if (hoursPart > 0) {
-      return minutesPart > 0
-        ? `${hoursPart}h ${minutesPart}m`
-        : `${hoursPart}h`;
-    } else {
-      return `${minutesPart}m`;
-    }
-  };
-
-  // Lifecycle
-  onMounted(() => {
-    Promise.all([checkCurrentStatus(), fetchAttendanceHistory()]).then(() => {
-      startAutoRefresh();
-    });
+  // Initialize
+  onMounted(async () => {
+    await Promise.all([checkCurrentStatus(), fetchAttendanceHistory()]);
+    startAutoRefresh();
   });
 
-  // Cleanup on unmount
   onUnmounted(() => {
     stopAutoRefresh();
   });
 </script>
 
-<style scoped>
-  /* Add any custom styles here */
-</style>
+<style scoped></style>

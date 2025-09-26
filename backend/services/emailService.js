@@ -9,17 +9,20 @@ const createTransporter = (config) => {
       user: 'mailcountrysidesteakhouse@gmail.com',
       pass: 'hgne ityd ejzn dgnv' // Updated Gmail App Password
     },
-    // Production-optimized timeout settings
-    connectionTimeout: 120000, // 2 minutes
-    greetingTimeout: 60000,    // 1 minute
-    socketTimeout: 120000,     // 2 minutes
+    // Optimized timeout settings for better reliability
+    connectionTimeout: 30000,  // 30 seconds
+    greetingTimeout: 15000,    // 15 seconds
+    socketTimeout: 30000,      // 30 seconds
     pool: false, // Disable connection pooling for Railway compatibility
     tls: {
       rejectUnauthorized: false,
       secureProtocol: 'TLSv1_2_method'
     },
     debug: false, // Reduced logging for production
-    logger: false
+    logger: false,
+    // Additional reliability settings
+    requireTLS: true,
+    ignoreTLS: false
   });
 };
 
@@ -67,11 +70,12 @@ const verifyTransporter = () => {
       console.error(`Fallback: ${fallbackError.message}`);
       
       if (verificationAttempts < maxVerificationAttempts) {
-        console.log(`⏳ Retrying email service verification in 10 seconds...`);
-        setTimeout(verifyTransporter, 10000);
+        console.log(`⏳ Retrying email service verification in 5 seconds...`);
+        setTimeout(verifyTransporter, 5000);
       } else {
         console.error('❌ Email service verification failed after all attempts');
         console.error('⚠️  Email functionality may be limited');
+        console.error('💡 Check your internet connection and Gmail app password');
       }
     });
   });
@@ -86,7 +90,7 @@ class EmailService {
    * @param {Promise} emailPromise - The email promise
    * @param {number} timeoutMs - Timeout in milliseconds (default: 15000)
    */
-  static async withTimeout(emailPromise, timeoutMs = 150000) {
+  static async withTimeout(emailPromise, timeoutMs = 45000) {
     return Promise.race([
       emailPromise,
       new Promise((_, reject) => 
@@ -362,11 +366,11 @@ class EmailService {
         let info;
         try {
           console.log(`📧 Using primary transporter (port 465 SSL)`);
-          info = await this.withTimeout(transporter.sendMail(mailOptions), 120000);
+          info = await this.withTimeout(transporter.sendMail(mailOptions), 45000);
         } catch (primaryError) {
           console.log(`❌ Primary transporter failed: ${primaryError.message}`);
           console.log(`📧 Trying fallback transporter (port 587 STARTTLS)`);
-          info = await this.withTimeout(fallbackTransporter.sendMail(mailOptions), 120000);
+          info = await this.withTimeout(fallbackTransporter.sendMail(mailOptions), 45000);
         }
         console.log(`✅ Feedback reply email sent (attempt ${attempt}):`, info.messageId);
         return { success: true, messageId: info.messageId };

@@ -22,9 +22,9 @@ router.get("/overview", async (req, res) => {
     }
 
     // Get customer statistics
-    let customerStats = [[{ total_customers: 0, active_customers: 0, overall_average_rating: 0, total_revenue: 0, average_customer_value: 0 }]];
+    let customerStats = { total_customers: 0, active_customers: 0, overall_average_rating: 0, total_revenue: 0, average_customer_value: 0 };
     try {
-      customerStats = await db.raw(`
+      const result = await db.raw(`
         SELECT 
           COUNT(*) as total_customers,
           COUNT(CASE WHEN last_visit >= NOW() - INTERVAL '30 days' THEN 1 END) as active_customers,
@@ -34,15 +34,16 @@ router.get("/overview", async (req, res) => {
         FROM customers
         WHERE 1=1 ${dateFilter}
       `, params);
-      console.log('Customer stats:', customerStats[0][0]);
+      customerStats = result?.[0]?.[0] || customerStats;
+      console.log('Customer stats:', customerStats);
     } catch (error) {
       console.log('Customers table error:', error.message);
     }
 
     // Get feedback statistics
-    let feedbackStats = [[{ total_feedback: 0, average_feedback_rating: 0, positive_feedback: 0, negative_feedback: 0 }]];
+    let feedbackStats = { total_feedback: 0, average_feedback_rating: 0, positive_feedback: 0, negative_feedback: 0 };
     try {
-      feedbackStats = await db.raw(`
+      const result = await db.raw(`
         SELECT 
           COUNT(*) as total_feedback,
           COALESCE(AVG(rating), 0) as average_feedback_rating,
@@ -51,15 +52,16 @@ router.get("/overview", async (req, res) => {
         FROM feedback
         WHERE 1=1 ${dateFilter}
       `, params);
-      console.log('Feedback stats:', feedbackStats[0][0]);
+      feedbackStats = result?.[0]?.[0] || feedbackStats;
+      console.log('Feedback stats:', feedbackStats);
     } catch (error) {
       console.log('Feedback table error:', error.message);
     }
 
     // Get order rating statistics
-    let ratingStats = [[{ total_ratings: 0, average_order_rating: 0, positive_ratings: 0, negative_ratings: 0 }]];
+    let ratingStats = { total_ratings: 0, average_order_rating: 0, positive_ratings: 0, negative_ratings: 0 };
     try {
-      ratingStats = await db.raw(`
+      const result = await db.raw(`
         SELECT 
           COUNT(*) as total_ratings,
           COALESCE(AVG(overall_rating), 0) as average_order_rating,
@@ -68,15 +70,16 @@ router.get("/overview", async (req, res) => {
         FROM order_ratings
         WHERE 1=1 ${dateFilter}
       `, params);
-      console.log('Rating stats:', ratingStats[0][0]);
+      ratingStats = result?.[0]?.[0] || ratingStats;
+      console.log('Rating stats:', ratingStats);
     } catch (error) {
       console.log('Order ratings table error:', error.message);
     }
 
     // Get sales statistics
-    let salesStats = [[{ total_orders: 0, total_sales: 0, average_order_value: 0 }]];
+    let salesStats = { total_orders: 0, total_sales: 0, average_order_value: 0 };
     try {
-      salesStats = await db.raw(`
+      const result = await db.raw(`
         SELECT 
           COUNT(*) as total_orders,
           COALESCE(SUM(order_total), 0) as total_sales,
@@ -84,7 +87,8 @@ router.get("/overview", async (req, res) => {
         FROM order_ratings
         WHERE order_total IS NOT NULL ${dateFilter}
       `, params);
-      console.log('Sales stats:', salesStats[0][0]);
+      salesStats = result?.[0]?.[0] || salesStats;
+      console.log('Sales stats:', salesStats);
     } catch (error) {
       console.log('Sales data error:', error.message);
     }
@@ -92,30 +96,10 @@ router.get("/overview", async (req, res) => {
     res.json({
       success: true,
       data: {
-        customers: customerStats[0]?.[0] || {
-          total_customers: 0,
-          active_customers: 0,
-          overall_average_rating: 0,
-          total_revenue: 0,
-          average_customer_value: 0
-        },
-        feedback: feedbackStats[0]?.[0] || {
-          total_feedback: 0,
-          average_feedback_rating: 0,
-          positive_feedback: 0,
-          negative_feedback: 0
-        },
-        ratings: ratingStats[0]?.[0] || {
-          total_ratings: 0,
-          average_order_rating: 0,
-          positive_ratings: 0,
-          negative_ratings: 0
-        },
-        sales: salesStats[0]?.[0] || {
-          total_orders: 0,
-          total_sales: 0,
-          average_order_value: 0
-        }
+        customers: customerStats,
+        feedback: feedbackStats,
+        ratings: ratingStats,
+        sales: salesStats
       }
     });
   } catch (error) {

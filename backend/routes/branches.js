@@ -127,6 +127,47 @@ router.get("/:id/coordinates", async (req, res) => {
   try {
     const { id } = req.params;
     const branchId = parseInt(id);
+
+    // If employee has no branch (department-only), use a specific fallback branch ID
+    if (!branchId || Number.isNaN(branchId)) {
+      try {
+        const fallbackBranchId = parseInt(
+          process.env.DEPARTMENT_FALLBACK_BRANCH_ID || "7"
+        );
+        if (!Number.isNaN(fallbackBranchId) && fallbackBranchId > 0) {
+          const fallback = await Branch.getById(fallbackBranchId);
+          if (fallback) {
+            return res.json({
+              success: true,
+              data: {
+                id: fallback.id,
+                name: fallback.name + " (For Department)",
+                latitude: fallback.latitude || null,
+                longitude: fallback.longitude || null,
+                radius_meters: fallback.radius_meters || null,
+                fallback_used: true,
+              },
+            });
+          }
+        }
+      } catch (fallbackErr) {
+        console.warn("Fallback branch lookup failed:", fallbackErr.message);
+      }
+
+      // Final fallback: explicit no-geofence
+      return res.json({
+        success: true,
+        data: {
+          id: null,
+          name: "Department Employee",
+          latitude: null,
+          longitude: null,
+          radius_meters: null,
+          no_geofence: true,
+        },
+      });
+    }
+
     const branch = await Branch.getById(branchId);
 
     if (!branch) {

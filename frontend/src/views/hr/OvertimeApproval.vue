@@ -77,14 +77,6 @@
               </option>
             </select>
           </div>
-
-          <button
-            @click="clearFilters"
-            class="btn btn-outline"
-            :disabled="isLoading"
-          >
-            Clear
-          </button>
         </div>
       </div>
     </div>
@@ -101,10 +93,10 @@
               class="loading loading-spinner loading-sm ml-2"
             ></span>
             <span
-              v-if="!isLoading && overtimeRequests.length > 0"
+              v-if="!isLoading && pendingRequests.length > 0"
               class="badge badge-ghost ml-2"
             >
-              {{ overtimeRequests.length }} requests
+              {{ pendingRequests.length }} requests
             </span>
           </h3>
           <button
@@ -154,7 +146,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="request in paginatedRequests" :key="request.id">
+              <tr v-for="request in paginatedPendingRequests" :key="request.id">
                 <td>
                   <div class="flex items-center space-x-3">
                     <div>
@@ -224,7 +216,7 @@
                   </div>
                 </td>
               </tr>
-              <tr v-if="overtimeRequests.length === 0 && !isLoading">
+              <tr v-if="pendingRequests.length === 0 && !isLoading">
                 <td colspan="8" class="text-center py-8 text-gray-500">
                   <div class="flex flex-col items-center space-y-2">
                     <svg
@@ -270,6 +262,95 @@
           >
             Next
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Overtime History -->
+    <div class="card bg-base-100 shadow-xl">
+      <div class="card-body">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="card-title text-primaryColor">
+            <BadgeCheck class="w-5 h-5" />
+            Overtime History
+          </h3>
+          <div class="flex gap-3 items-end">
+            <div class="form-control">
+              <label class="label"
+                ><span class="label-text">Status</span></label
+              >
+              <select
+                v-model="historyStatus"
+                class="select select-bordered select-sm"
+              >
+                <option value="approved">Completed</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </div>
+            <div class="form-control">
+              <label class="label"
+                ><span class="label-text">Date Range</span></label
+              >
+              <select
+                v-model="historyPreset"
+                @change="setPreset(historyPreset)"
+                class="select select-bordered select-sm"
+              >
+                <option value="today">Today</option>
+                <option value="week">This Week</option>
+                <option value="month">This Month</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="table table-zebra w-full">
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Department</th>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Hours</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in historyRows" :key="row.id">
+                <td>
+                  <div class="font-medium">
+                    {{ row.first_name }} {{ row.last_name }}
+                  </div>
+                  <div class="text-xs opacity-50">{{ row.employee_code }}</div>
+                </td>
+                <td>{{ row.department || 'Department Employee' }}</td>
+                <td>{{ formatDate(row.date) }}</td>
+                <td class="text-sm">
+                  {{ formatTime(row.start_time) }} -
+                  {{ formatTime(row.end_time) }}
+                </td>
+                <td class="text-sm">{{ formatHours(row.total_hours) }}</td>
+                <td>
+                  <div
+                    :class="[
+                      'badge badge-sm border-none',
+                      getStatusBadgeClass(row.status),
+                    ]"
+                  >
+                    {{
+                      row.status.charAt(0).toUpperCase() + row.status.slice(1)
+                    }}
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="historyRows.length === 0">
+                <td colspan="6" class="text-center py-8 text-gray-500">
+                  No records found
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -357,26 +438,11 @@
         </div>
 
         <div class="modal-action">
-          <button @click="closeDetailsModal" class="btn btn-ghost">
+          <button
+            @click="closeDetailsModal"
+            class="btn btn-ghost btn-sm font-thin shadow-none border border-none hover:bg-gray-100"
+          >
             Close
-          </button>
-          <button
-            v-if="selectedRequest?.status === 'pending'"
-            @click="approveRequest(selectedRequest)"
-            class="btn btn-success"
-            :disabled="isProcessing"
-          >
-            <Check class="w-4 h-4 mr-2" />
-            Approve
-          </button>
-          <button
-            v-if="selectedRequest?.status === 'pending'"
-            @click="rejectRequest(selectedRequest)"
-            class="btn btn-error"
-            :disabled="isProcessing"
-          >
-            <X class="w-4 h-4 mr-2" />
-            Reject
           </button>
         </div>
       </div>
@@ -594,19 +660,68 @@
     department: '',
   });
 
+  // History filters
+  const historyStatus = ref('approved'); // 'approved' (Completed) or 'rejected'
+  const historyPreset = ref('today'); // today | week | month
+
+  const setPreset = (preset) => {
+    historyPreset.value = preset;
+  };
+
   // Pagination
   const currentPage = ref(1);
   const itemsPerPage = ref(10);
 
   // Computed
-  const totalPages = computed(() =>
-    Math.max(1, Math.ceil(overtimeRequests.value.length / itemsPerPage.value))
+  const pendingRequests = computed(() =>
+    (overtimeRequests.value || []).filter((r) => r.status === 'pending')
   );
 
-  const paginatedRequests = computed(() => {
+  const totalPages = computed(() =>
+    Math.max(1, Math.ceil(pendingRequests.value.length / itemsPerPage.value))
+  );
+
+  const paginatedPendingRequests = computed(() => {
     const start = (currentPage.value - 1) * itemsPerPage.value;
     const end = start + itemsPerPage.value;
-    return overtimeRequests.value.slice(start, end);
+    return pendingRequests.value.slice(start, end);
+  });
+
+  // History computed
+  const startEndForPreset = (preset) => {
+    const now = new Date();
+    const start = new Date(now);
+    const end = new Date(now);
+    if (preset === 'today') {
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+    } else if (preset === 'week') {
+      const day = now.getDay(); // 0=Sun
+      const diffToMonday = (day + 6) % 7; // Mon=0
+      start.setDate(now.getDate() - diffToMonday);
+      start.setHours(0, 0, 0, 0);
+      end.setDate(start.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+    } else if (preset === 'month') {
+      start.setDate(1);
+      start.setHours(0, 0, 0, 0);
+      end.setMonth(start.getMonth() + 1, 0); // last day of month
+      end.setHours(23, 59, 59, 999);
+    }
+    return { start, end };
+  };
+
+  const historyRows = computed(() => {
+    const desiredStatus = historyStatus.value;
+    const { start, end } = startEndForPreset(historyPreset.value);
+    const rows = (overtimeRequests.value || []).filter(
+      (r) => r.status === desiredStatus
+    );
+    return rows.filter((r) => {
+      // r.date is YYYY-MM-DD
+      const d = new Date(`${r.date}T12:00:00`); // noon to avoid TZ shift
+      return d >= start && d <= end;
+    });
   });
 
   // Stats (mirror Branch overtime tab)

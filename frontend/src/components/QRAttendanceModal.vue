@@ -739,10 +739,27 @@
   const locationStatus = ref(null);
   const branchInfo = ref(null);
 
+  // Helper: is the given timestamp on the same local day as now?
+  const isSameLocalDay = (timestamp) => {
+    if (!timestamp) return false;
+    const d = new Date(timestamp);
+    const now = new Date();
+    return (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+    );
+  };
+
   // Reactive computed property that automatically updates current status
   const currentStatusFromStore = computed(() => {
     const todayData = attendanceStore.todayAttendance;
     if (todayData) {
+      // If time_in exists but it's not for today (local), treat as not checked in
+      const hasTodayTimeIn = isSameLocalDay(todayData.time_in);
+      if (!hasTodayTimeIn) {
+        return 'checked-out';
+      }
       return todayData.time_out ? 'checked-out' : 'checked-in';
     }
     return 'checked-out';
@@ -1220,8 +1237,13 @@
       console.log('QRAttendanceModal - Today data:', todayData);
 
       if (todayData) {
-        // Check if user has time_out (meaning they're checked out)
-        currentStatus.value = todayData.time_out ? 'checked-out' : 'checked-in';
+        // Consider checked-in ONLY if there is a time_in for today and no time_out yet
+        const hasTodayTimeIn = isSameLocalDay(todayData.time_in);
+        if (hasTodayTimeIn && !todayData.time_out) {
+          currentStatus.value = 'checked-in';
+        } else {
+          currentStatus.value = 'checked-out';
+        }
         console.log(
           'QRAttendanceModal - Current status updated to:',
           currentStatus.value

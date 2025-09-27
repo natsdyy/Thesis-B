@@ -91,6 +91,8 @@
     return `${backendOrigin}${path}`;
   });
 
+  const defaultProfileImageUrl = `${import.meta.env.BASE_URL}profile.jpg`;
+
   const canEditProfile = computed(() => true);
 
   // Methods
@@ -352,12 +354,12 @@
                     @load="handleImageLoad"
                     @error="handleImageError"
                   />
-                  <div
+                  <img
                     v-else
-                    class="w-full h-full text-white flex items-center justify-center text-4xl font-bold"
-                  >
-                    {{ profileInitials }}
-                  </div>
+                    :src="defaultProfileImageUrl"
+                    alt="Default profile image"
+                    class="w-full h-full object-cover"
+                  />
                   <div
                     v-if="uploadingImage"
                     class="absolute inset-0 bg-opacity-50 flex items-center justify-center rounded-full"
@@ -371,7 +373,7 @@
                     class="absolute inset-0 bg-opacity-0 hover:bg-opacity-20 flex items-center justify-center rounded-full transition-all duration-200 group"
                   >
                     <Camera
-                      class="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                      class="w-6 h-6 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
                     />
                   </div>
                 </div>
@@ -388,7 +390,6 @@
                 {{ profileData.first_name }} {{ profileData.last_name }}
               </h3>
               <p class="text-gray-600">{{ profileData.role }}</p>
-  
             </div>
 
             <!-- Personal Details -->

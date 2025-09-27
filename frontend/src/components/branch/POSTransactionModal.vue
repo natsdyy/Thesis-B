@@ -1325,7 +1325,7 @@
               required
             >
               <option value="">Select a reason...</option>
-              <optgroup label="Refund Reasons (No inventory deduction)">
+              <optgroup label="Refund Reasons">
                 <option
                   v-for="reason in voidReasons.filter(
                     (r) => r.type === 'refund'
@@ -1336,9 +1336,7 @@
                   {{ reason.label }}
                 </option>
               </optgroup>
-              <optgroup
-                label="Loss Reasons (Inventory deduction + Loss profit)"
-              >
+              <optgroup label="Loss Reasons ">
                 <option
                   v-for="reason in voidReasons.filter((r) => r.type === 'loss')"
                   :key="reason.value"

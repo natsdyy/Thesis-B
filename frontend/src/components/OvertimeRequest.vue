@@ -320,16 +320,18 @@
       }
     }
 
-    // Validate that end time is after start time
+    // Validate duration: allow overnight (end past midnight). Only block if equal times.
     if (otStartTime.value && otEndTime.value) {
       const startTimeMinutes = timeToMinutes(otStartTime.value);
       const endTimeMinutes = timeToMinutes(otEndTime.value);
 
-      if (startTimeMinutes >= endTimeMinutes) {
+      // If equal, zero duration -> invalid
+      if (startTimeMinutes === endTimeMinutes) {
         otError.value = 'End time must be after start time';
         showOTConfirmModal.value = true;
         return;
       }
+      // If end < start, treat as next-day OT and allow (backend computes correctly)
     }
 
     // Clear any previous errors since validation passed

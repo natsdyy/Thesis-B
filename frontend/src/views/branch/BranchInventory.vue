@@ -2707,7 +2707,7 @@
                       class="input input-bordered input-sm join-item flex-1"
                     />
                     <button
-                      class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 join-item"
+                      class="btn btn-sm text-gray-500 hover:bg-primaryColor/10 join-item"
                     >
                       <Search class="w-4 h-4" />
                     </button>

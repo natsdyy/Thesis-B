@@ -165,6 +165,8 @@ class Branch {
     }
   }
 
+  // (Removed getByName; use getById or code-based lookup instead)
+
   // Get active branches only
   static async getActiveBranches() {
     try {

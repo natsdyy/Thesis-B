@@ -103,7 +103,10 @@
       </div>
 
       <!-- Leave Status Notice -->
-      <div v-if="currentStatus === 'on-leave'" class="alert alert-info">
+      <div
+        v-if="currentStatus === 'on-leave'"
+        class="alert bg-primaryColor/5 border-primaryColor text-primaryColor font-thin"
+      >
         <svg
           xmlns="http://www.w3.org/2000/svg"
           fill="none"

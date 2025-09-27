@@ -195,6 +195,12 @@
       if (sched.employee_id !== empId) return;
 
       const dayKey = formatDateKey(sched.schedule_date);
+
+      // Check if employee is on leave for this date
+      if (isEmployeeOnLeave(empId, dayKey)) {
+        return; // Skip adding schedule events when employee is on leave
+      }
+
       const startClock = sched.shift?.startTime || sched.start_time || '00:00';
       const startIso = `${dayKey}T${startClock}`;
       const endTime = sched.shift?.endTime || sched.end_time || '00:00';
@@ -350,8 +356,8 @@
   onMounted(async () => {
     // Load leave data for the employee
     try {
+      // Fetch all leave requests to ensure we have the latest data
       await leaveStore.fetchAllLeaveRequests({
-        employee_id: props.employee.id,
         page: 1,
         limit: 1000,
       });

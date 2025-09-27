@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const LeaveRequest = require("../models/LeaveRequest");
+const { db } = require("../config/database");
 const { authenticateToken } = require("../middleware/rbac");
 const { requireAnyPermission } = require("../middleware/rbac");
 
@@ -278,6 +279,224 @@ router.post("/", authenticateToken, async (req, res) => {
     });
   }
 });
+
+/**
+ * @swagger
+ * /api/leave/department-employees:
+ *   get:
+ *     summary: Get department employee leave requests (single approval)
+ *     tags: [Leave Requests]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of department employee requests
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ */
+router.get(
+  "/department-employees",
+  authenticateToken,
+  requireAnyPermission([
+    "Approve Leave Requests",
+    "Manage Employee Leave",
+    "Manage Employees",
+  ]),
+  async (req, res) => {
+    try {
+      const departmentRequests =
+        await LeaveRequest.getDepartmentEmployeeRequests();
+
+      res.json({
+        success: true,
+        data: departmentRequests,
+      });
+    } catch (error) {
+      console.error("Error fetching department employee requests:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error fetching department employee requests",
+        error: error.message,
+      });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/leave/history:
+ *   get:
+ *     summary: Get completed/approved leave requests history
+ *     tags: [Leave Requests]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [approved_by_hr, rejected]
+ *         description: Filter by completion status
+ *       - in: query
+ *         name: branch_id
+ *         schema:
+ *           type: integer
+ *         description: Filter by branch ID
+ *       - in: query
+ *         name: department
+ *         schema:
+ *           type: string
+ *         description: Filter by department
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Items per page
+ *     responses:
+ *       200:
+ *         description: List of completed leave requests
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ */
+router.get(
+  "/history",
+  authenticateToken,
+  requireAnyPermission([
+    "Approve Leave Requests",
+    "Manage Employee Leave",
+    "Manage Employees",
+    "View Leave Reports",
+  ]),
+  async (req, res) => {
+    try {
+      const { status, branch_id, department, page = 1, limit = 10 } = req.query;
+
+      // Build the query for completed requests
+      let query = db("leave_requests as lr")
+        .select(
+          "lr.*",
+          "e.first_name",
+          "e.last_name",
+          "e.employee_id as employee_code",
+          "e.branch_id",
+          "e.department",
+          "b.name as branch_name",
+          db.raw("COALESCE(mgr.first_name, '') as manager_first_name"),
+          db.raw("COALESCE(mgr.last_name, '') as manager_last_name"),
+          db.raw("COALESCE(hr.first_name, '') as hr_first_name"),
+          db.raw("COALESCE(hr.last_name, '') as hr_last_name")
+        )
+        .leftJoin("employees as e", "lr.employee_id", "e.id")
+        .leftJoin("branches as b", "e.branch_id", "b.id")
+        .leftJoin("employees as mgr", "lr.approved_by_manager", "mgr.id")
+        .leftJoin("employees as hr", "lr.approved_by_hr", "hr.id")
+        .where("lr.status", "approved_by_hr")
+        .whereNull("lr.deleted_at")
+        .orderBy("lr.created_at", "desc");
+
+      // Apply filters
+      if (status) {
+        query = query.where("lr.status", status);
+      }
+
+      if (branch_id) {
+        query = query.where("e.branch_id", branch_id);
+      }
+
+      if (department) {
+        query = query.where("e.department", department);
+      }
+
+      // Get total count for pagination
+      const countQuery = db("leave_requests as lr")
+        .leftJoin("employees as e", "lr.employee_id", "e.id")
+        .leftJoin("branches as b", "e.branch_id", "b.id")
+        .where("lr.status", "approved_by_hr")
+        .whereNull("lr.deleted_at");
+
+      // Apply same filters to count query
+      if (status) {
+        countQuery.where("lr.status", status);
+      }
+
+      if (branch_id) {
+        countQuery.where("e.branch_id", branch_id);
+      }
+
+      if (department) {
+        countQuery.where("e.department", department);
+      }
+
+      const countResult = await countQuery.count("* as total").first();
+      const totalCount = parseInt(countResult.total);
+
+      // Apply pagination
+      const offset = (parseInt(page) - 1) * parseInt(limit);
+      const completedRequests = await query
+        .offset(offset)
+        .limit(parseInt(limit));
+
+      // Format the response data
+      const formattedRequests = completedRequests.map((request) => ({
+        id: request.id,
+        employee_id: request.employee_id,
+        first_name: request.first_name || "",
+        last_name: request.last_name || "",
+        employee_code: request.employee_code || "",
+        department: request.department || "",
+        branch_id: request.branch_id,
+        branch_name: request.branch_name || "",
+        leave_type: request.leave_type,
+        from_date: request.from_date,
+        to_date: request.to_date,
+        reason: request.reason,
+        status: request.status,
+        created_at: request.created_at,
+        manager_approved_at: request.manager_approved_at,
+        hr_approved_at: request.hr_approved_at,
+        rejected_at: request.rejected_at,
+        manager_first_name: request.manager_first_name || "",
+        manager_last_name: request.manager_last_name || "",
+        hr_first_name: request.hr_first_name || "",
+        hr_last_name: request.hr_last_name || "",
+        manager_notes: request.manager_notes,
+        hr_notes: request.hr_notes,
+        rejection_reason: request.rejection_reason,
+      }));
+
+      const totalPages = Math.ceil(totalCount / parseInt(limit));
+
+      res.json({
+        success: true,
+        data: formattedRequests,
+        pagination: {
+          current_page: parseInt(page),
+          total_pages: totalPages,
+          total_items: totalCount,
+          items_per_page: parseInt(limit),
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching leave history:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error fetching leave history",
+        error: error.message,
+      });
+    }
+  }
+);
 
 /**
  * @swagger

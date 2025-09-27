@@ -62,6 +62,11 @@ class LeaveRequest {
         );
       }
 
+      // All employees start with pending status
+      // Department employees skip manager approval and go directly to HR
+      // Branch employees go through manager approval first
+      const initialStatus = "pending";
+
       const [leaveRequest] = await db("leave_requests")
         .insert({
           employee_id,
@@ -69,7 +74,7 @@ class LeaveRequest {
           to_date,
           leave_type,
           reason,
-          status: "pending",
+          status: initialStatus,
           created_by: createdBy,
           created_at: new Date(),
           updated_at: new Date(),
@@ -284,6 +289,8 @@ class LeaveRequest {
         throw new Error(`Leave request is already ${leaveRequest.status}`);
       }
 
+      // Allow employees to approve their own requests
+
       const [updated] = await db("leave_requests")
         .where("id", id)
         .update({
@@ -298,7 +305,8 @@ class LeaveRequest {
       return updated;
     } catch (error) {
       console.error("Error approving leave by manager:", error);
-      throw new Error("Failed to approve leave request");
+      // Re-throw the original error to preserve the specific error message
+      throw error;
     }
   }
 
@@ -310,8 +318,23 @@ class LeaveRequest {
         throw new Error("Leave request not found");
       }
 
-      if (leaveRequest.status !== "approved_by_manager") {
-        throw new Error("Leave request must be approved by manager first");
+      // Allow employees to approve their own requests
+
+      // Check if this is a department employee (single approval) or branch employee (dual approval)
+      if (leaveRequest.branch_id) {
+        // Branch employee - must be approved by manager first
+        if (leaveRequest.status !== "approved_by_manager") {
+          throw new Error(
+            "Branch employee leave request must be approved by manager first"
+          );
+        }
+      } else {
+        // Department employee - can be approved directly by HR
+        if (leaveRequest.status !== "pending") {
+          throw new Error(
+            "Department employee leave request must be pending for HR approval"
+          );
+        }
       }
 
       const [updated] = await db("leave_requests")
@@ -328,7 +351,8 @@ class LeaveRequest {
       return updated;
     } catch (error) {
       console.error("Error approving leave by HR:", error);
-      throw new Error("Failed to approve leave request");
+      // Re-throw the original error to preserve the specific error message
+      throw error;
     }
   }
 
@@ -362,7 +386,8 @@ class LeaveRequest {
       return updated;
     } catch (error) {
       console.error("Error rejecting leave request:", error);
-      throw new Error("Failed to reject leave request");
+      // Re-throw the original error to preserve the specific error message
+      throw error;
     }
   }
 
@@ -454,7 +479,39 @@ class LeaveRequest {
     }
   }
 
-  // Get leave requests pending HR approval
+  // Get department employee requests that need direct HR approval (single approval)
+  static async getDepartmentEmployeeRequests() {
+    try {
+      const rows = await db("leave_requests as lr")
+        .select(
+          "lr.id",
+          "lr.employee_id",
+          db.raw("to_char(lr.from_date, 'YYYY-MM-DD') as from_date"),
+          db.raw("to_char(lr.to_date, 'YYYY-MM-DD') as to_date"),
+          "lr.leave_type",
+          "lr.reason",
+          "lr.status",
+          "lr.created_at",
+          "e.first_name",
+          "e.last_name",
+          "e.employee_id as employee_code",
+          "e.branch_id",
+          "e.department"
+        )
+        .leftJoin("employees as e", "lr.employee_id", "e.id")
+        .where("lr.status", "pending")
+        .whereNull("e.branch_id") // Department employees only
+        .whereNull("lr.deleted_at")
+        .orderBy("lr.created_at", "desc");
+
+      return rows;
+    } catch (error) {
+      console.error("Error fetching department employee requests:", error);
+      throw new Error("Failed to retrieve department employee requests");
+    }
+  }
+
+  // Get leave requests pending HR approval (branch employees only)
   static async getPendingHRApproval() {
     try {
       const rows = await db("leave_requests as lr")
@@ -481,7 +538,7 @@ class LeaveRequest {
         .leftJoin("employees as mgr", "lr.approved_by_manager", "mgr.id")
         .where("lr.status", "approved_by_manager")
         .whereNull("lr.deleted_at")
-        .orderBy("lr.manager_approved_at", "desc");
+        .orderBy("lr.created_at", "desc");
 
       return rows;
     } catch (error) {

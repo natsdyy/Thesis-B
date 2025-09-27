@@ -9,6 +9,7 @@ export const useLeaveStore = defineStore('leave', () => {
   const allLeaveRequests = ref([]);
   const pendingManagerApprovals = ref([]);
   const pendingHRApprovals = ref([]);
+  const departmentEmployeeRequests = ref([]);
   const loading = ref(false);
   const error = ref(null);
 
@@ -347,6 +348,31 @@ export const useLeaveStore = defineStore('leave', () => {
     }
   };
 
+  // Fetch department employee requests (single approval)
+  const fetchDepartmentEmployeeRequests = async () => {
+    try {
+      loading.value = true;
+      error.value = null;
+
+      const response = await axios.get(
+        getApiUrl('/leave/department-employees'),
+        getAuthHeaders()
+      );
+
+      if (response.data.success) {
+        departmentEmployeeRequests.value = response.data.data || [];
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (err) {
+      error.value = err.response?.data?.message || err.message;
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   // Clear error
   const clearError = () => {
     error.value = null;
@@ -380,6 +406,40 @@ export const useLeaveStore = defineStore('leave', () => {
     }
   };
 
+  // Fetch completed/approved leave requests history
+  const fetchLeaveHistory = async (filters = {}) => {
+    try {
+      loading.value = true;
+      error.value = null;
+
+      const params = new URLSearchParams();
+      if (filters.status) params.append('status', filters.status);
+      if (filters.branch_id) params.append('branch_id', filters.branch_id);
+      if (filters.department) params.append('department', filters.department);
+      if (filters.page) params.append('page', filters.page);
+      if (filters.limit) params.append('limit', filters.limit);
+
+      const response = await axios.get(
+        getApiUrl(`/leave/history?${params.toString()}`),
+        getAuthHeaders()
+      );
+
+      if (response.data.success) {
+        return {
+          data: response.data.data,
+          pagination: response.data.pagination,
+        };
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (err) {
+      error.value = err.response?.data?.message || err.message;
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   // Refresh all data
   const refreshAll = async () => {
     await Promise.all([
@@ -395,6 +455,7 @@ export const useLeaveStore = defineStore('leave', () => {
     allLeaveRequests,
     pendingManagerApprovals,
     pendingHRApprovals,
+    departmentEmployeeRequests,
     loading,
     error,
 
@@ -416,7 +477,9 @@ export const useLeaveStore = defineStore('leave', () => {
     rejectLeaveRequest,
     fetchPendingManagerApprovals,
     fetchPendingHRApprovals,
+    fetchDepartmentEmployeeRequests,
     fetchLeaveStatistics,
+    fetchLeaveHistory,
     clearError,
     refreshAll,
   };

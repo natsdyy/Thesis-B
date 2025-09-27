@@ -251,7 +251,7 @@
                       getStatusBadgeClass(request.status),
                     ]"
                   >
-                    {{ getStatusDisplayText(request.status) }}
+                    {{ getStatusDisplayText(request.status, request) }}
                   </div>
                 </td>
                 <td>{{ formatDateTime(request.created_at) }}</td>
@@ -303,6 +303,226 @@
                 class="join-item btn btn-sm"
                 :disabled="currentPage === totalPages"
                 @click="currentPage = Math.min(totalPages, currentPage + 1)"
+              >
+                »
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Leave Requests History -->
+    <div class="card bg-base-100 shadow-xl">
+      <div class="card-body">
+        <div
+          class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
+        >
+          <h3 class="card-title text-primaryColor">
+            <Clock class="w-5 h-5" />
+            Leave Requests History
+            <span
+              v-if="historyLoading"
+              class="loading loading-spinner loading-sm ml-2"
+            ></span>
+            <span
+              v-if="!historyLoading && filteredHistoryRequests.length > 0"
+              class="badge badge-ghost ml-2"
+            >
+              {{ filteredHistoryRequests.length }} completed requests
+            </span>
+          </h3>
+          <div class="flex gap-2">
+            <button
+              @click="refreshHistoryData"
+              class="btn btn-sm btn-outline"
+              :disabled="historyLoading"
+            >
+              <RefreshCcw
+                class="w-4 h-4"
+                :class="{ 'animate-spin': historyLoading }"
+              />
+              <span class="hidden sm:inline">{{
+                historyLoading ? 'Refreshing...' : 'Refresh'
+              }}</span>
+            </button>
+            <button
+              @click="exportHistoryToCSV"
+              class="btn btn-outline btn-sm"
+              :disabled="filteredHistoryRequests.length === 0"
+            >
+              <Download class="w-4 h-4 mr-1" />
+              <span class="hidden sm:inline">Export CSV</span>
+              <span class="sm:hidden">Export</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- History Filters -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-gray-700">
+              Date Range
+            </label>
+            <select
+              v-model="historyFilters.dateRange"
+              @change="applyHistoryFilters"
+              class="select select-bordered w-full"
+            >
+              <option value="today">Today</option>
+              <option value="week">This Week</option>
+              <option value="month">This Month</option>
+              <option value="all">All Time</option>
+            </select>
+          </div>
+
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-gray-700">
+              Search
+            </label>
+            <div class="relative">
+              <Search
+                class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"
+              />
+              <input
+                v-model="historyFilters.search"
+                @input="applyHistoryFilters"
+                type="text"
+                placeholder="Search by employee name..."
+                class="input input-bordered w-full pl-10"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Loading State -->
+        <div
+          v-if="historyLoading"
+          class="flex items-center justify-center py-12"
+        >
+          <div class="flex flex-col items-center space-y-3">
+            <span class="loading loading-spinner loading-lg"></span>
+            <p class="text-sm text-gray-500">Loading leave history...</p>
+          </div>
+        </div>
+
+        <!-- Empty State -->
+        <div
+          v-else-if="filteredHistoryRequests.length === 0"
+          class="text-center py-8 text-gray-500"
+        >
+          <div class="flex flex-col items-center space-y-2">
+            <FileText class="w-12 h-12 text-gray-300" />
+            <p>
+              {{
+                hasActiveHistoryFilters
+                  ? 'No completed leave requests match your filters'
+                  : 'No completed leave requests found'
+              }}
+            </p>
+          </div>
+        </div>
+
+        <!-- History Table -->
+        <div v-else class="overflow-x-auto">
+          <table class="table table-zebra w-full">
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Department</th>
+                <th>Branch</th>
+                <th>Leave Type</th>
+                <th>From Date</th>
+                <th>To Date</th>
+                <th>Days</th>
+                <th>Status</th>
+                <th>Completed Date</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="request in paginatedHistoryRequests" :key="request.id">
+                <td>
+                  <div class="flex items-center space-x-3">
+                    <div>
+                      <div class="font-medium">
+                        {{ request.first_name }} {{ request.last_name }}
+                      </div>
+                      <div class="text-sm text-gray-500">
+                        {{ request.employee_code }}
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <span class="">{{ request.department || 'N/A' }}</span>
+                </td>
+                <td>
+                  <span class="">{{ getBranchName(request.branch_id) }}</span>
+                </td>
+                <td>
+                  <span class="font-medium">{{ request.leave_type }}</span>
+                </td>
+                <td>{{ formatDate(request.from_date) }}</td>
+                <td>{{ formatDate(request.to_date) }}</td>
+                <td>
+                  <span class="badge badge-ghost"
+                    >{{
+                      calculateDays(request.from_date, request.to_date)
+                    }}
+                    days</span
+                  >
+                </td>
+                <td>
+                  <div
+                    :class="[
+                      'badge badge-sm border-none font-medium',
+                      getStatusBadgeClass(request.status),
+                    ]"
+                  >
+                    {{ getStatusDisplayText(request.status, request) }}
+                  </div>
+                </td>
+                <td>{{ formatDateTime(getCompletionDate(request)) }}</td>
+                <td>
+                  <div class="flex space-x-2">
+                    <button
+                      @click="viewLeaveRequest(request)"
+                      class="btn btn-ghost btn-xs"
+                      title="View Details"
+                    >
+                      <Eye class="w-4 h-4" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- History Pagination -->
+          <div class="flex justify-center mt-4">
+            <div class="join">
+              <button
+                class="join-item btn btn-sm"
+                :disabled="currentHistoryPage === 1"
+                @click="
+                  currentHistoryPage = Math.max(1, currentHistoryPage - 1)
+                "
+              >
+                «
+              </button>
+              <button class="join-item btn btn-sm">
+                Page {{ currentHistoryPage }} of {{ totalHistoryPages }}
+              </button>
+              <button
+                class="join-item btn btn-sm"
+                :disabled="currentHistoryPage === totalHistoryPages"
+                @click="
+                  currentHistoryPage = Math.min(
+                    totalHistoryPages,
+                    currentHistoryPage + 1
+                  )
+                "
               >
                 »
               </button>
@@ -410,7 +630,12 @@
                       getStatusBadgeClass(selectedRequest.status),
                     ]"
                   >
-                    {{ getStatusDisplayText(selectedRequest.status) }}
+                    {{
+                      getStatusDisplayText(
+                        selectedRequest.status,
+                        selectedRequest
+                      )
+                    }}
                   </span>
                 </div>
                 <div class="flex justify-between">
@@ -747,7 +972,7 @@
   import { useCustomToast } from '../../composables/useCustomToast';
   import { apiConfig } from '../../config/api';
 
-  const { showSuccess, showError } = useCustomToast();
+  const { showSuccess, showError, showLoading, dismiss } = useCustomToast();
   const leaveStore = useLeaveStore();
   const branchStore = useBranchStore();
 
@@ -759,11 +984,25 @@
   const allLeaveRequests = ref([]);
   const departments = ref([]);
 
+  // History section state
+  const historyLoading = ref(false);
+  const allHistoryRequests = ref([]);
+  const currentHistoryPage = ref(1);
+  const historyItemsPerPage = ref(10);
+
   // Filters
   const filters = ref({
     status: '',
     branch_id: '',
     department: '',
+    search: '',
+  });
+
+  // History filters
+  const historyFilters = ref({
+    dateRange: 'today',
+    status: '',
+    branch_id: '',
     search: '',
   });
 
@@ -872,19 +1111,194 @@
       allLeaveRequests.value.filter((req) => req.status !== 'rejected').length
   );
 
+  // History computed properties
+  const filteredHistoryRequests = computed(() => {
+    let filtered = [...allHistoryRequests.value];
+
+    // Apply date range filter
+    if (historyFilters.value.dateRange !== 'all') {
+      const now = new Date();
+      let startDate;
+
+      switch (historyFilters.value.dateRange) {
+        case 'today':
+          startDate = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate()
+          );
+          break;
+        case 'week':
+          startDate = new Date(now);
+          startDate.setDate(now.getDate() - now.getDay());
+          break;
+        case 'month':
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          break;
+        default:
+          startDate = null;
+      }
+
+      if (startDate) {
+        filtered = filtered.filter((req) => {
+          const completionDate = getCompletionDate(req);
+          return new Date(completionDate) >= startDate;
+        });
+      }
+    }
+
+    // Apply status filter
+    if (historyFilters.value.status) {
+      filtered = filtered.filter(
+        (req) => req.status === historyFilters.value.status
+      );
+    }
+
+    // Apply branch filter
+    if (historyFilters.value.branch_id) {
+      filtered = filtered.filter(
+        (req) => req.branch_id === parseInt(historyFilters.value.branch_id)
+      );
+    }
+
+    // Apply search filter
+    if (historyFilters.value.search) {
+      const searchTerm = historyFilters.value.search.toLowerCase();
+      filtered = filtered.filter(
+        (req) =>
+          `${req.first_name} ${req.last_name}`
+            .toLowerCase()
+            .includes(searchTerm) ||
+          req.employee_code.toLowerCase().includes(searchTerm)
+      );
+    }
+
+    return filtered;
+  });
+
+  const paginatedHistoryRequests = computed(() => {
+    const start = (currentHistoryPage.value - 1) * historyItemsPerPage.value;
+    const end = start + historyItemsPerPage.value;
+    return filteredHistoryRequests.value.slice(start, end);
+  });
+
+  const totalHistoryPages = computed(() => {
+    return Math.max(
+      1,
+      Math.ceil(
+        filteredHistoryRequests.value.length / historyItemsPerPage.value
+      )
+    );
+  });
+
+  const hasActiveHistoryFilters = computed(() => {
+    return (
+      historyFilters.value.dateRange !== 'today' ||
+      historyFilters.value.status ||
+      historyFilters.value.branch_id ||
+      historyFilters.value.search
+    );
+  });
+
+  // Error handling methods
+  const handleApprovalError = (error) => {
+    const errorMessage = error.response?.data?.message || error.message || '';
+
+    if (errorMessage.includes('Leave request is already')) {
+      showError(
+        'This leave request has already been processed. Please refresh the page to see the latest status.',
+        'Request Already Processed'
+      );
+    } else if (errorMessage.includes('Leave request not found')) {
+      showError(
+        'The leave request could not be found. It may have been deleted or the ID is invalid.',
+        'Request Not Found'
+      );
+    } else if (
+      errorMessage.includes('Unauthorized') ||
+      errorMessage.includes('Forbidden')
+    ) {
+      showError(
+        'You do not have permission to approve this leave request. Please contact your administrator.',
+        'Permission Denied'
+      );
+    } else if (
+      errorMessage.includes('Network Error') ||
+      errorMessage.includes('timeout')
+    ) {
+      showError(
+        'Unable to connect to the server. Please check your internet connection and try again.',
+        'Connection Error'
+      );
+    } else {
+      showError(
+        errorMessage ||
+          'An unexpected error occurred while approving the leave request. Please try again.',
+        'Approval Failed'
+      );
+    }
+  };
+
+  const handleRejectionError = (error) => {
+    const errorMessage = error.response?.data?.message || error.message || '';
+
+    if (errorMessage.includes('Leave request is already')) {
+      showError(
+        'This leave request has already been processed. Please refresh the page to see the latest status.',
+        'Request Already Processed'
+      );
+    } else if (errorMessage.includes('Leave request not found')) {
+      showError(
+        'The leave request could not be found. It may have been deleted or the ID is invalid.',
+        'Request Not Found'
+      );
+    } else if (
+      errorMessage.includes('Unauthorized') ||
+      errorMessage.includes('Forbidden')
+    ) {
+      showError(
+        'You do not have permission to reject this leave request. Please contact your administrator.',
+        'Permission Denied'
+      );
+    } else if (
+      errorMessage.includes('Network Error') ||
+      errorMessage.includes('timeout')
+    ) {
+      showError(
+        'Unable to connect to the server. Please check your internet connection and try again.',
+        'Connection Error'
+      );
+    } else {
+      showError(
+        errorMessage ||
+          'An unexpected error occurred while rejecting the leave request. Please try again.',
+        'Rejection Failed'
+      );
+    }
+  };
+
   // Methods
   const fetchLeaveRequests = async () => {
     try {
       loading.value = true;
-      const result = await leaveStore.fetchAllLeaveRequests({
-        page: 1,
-        limit: 1000, // Get all requests for client-side filtering
-      });
 
-      allLeaveRequests.value = result.data || [];
+      // Fetch both branch employee requests (manager approved) and department employee requests (pending)
+      await Promise.all([
+        leaveStore.fetchPendingHRApprovals(),
+        leaveStore.fetchDepartmentEmployeeRequests(),
+      ]);
+
+      // Combine both types of requests
+      const branchRequests = leaveStore.pendingHRApprovals || [];
+      const departmentRequests = leaveStore.departmentEmployeeRequests || [];
+
+      allLeaveRequests.value = [...branchRequests, ...departmentRequests];
     } catch (error) {
       console.error('Error fetching leave requests:', error);
-      showError('Failed to fetch leave requests');
+      showError(
+        'Unable to load leave requests. Please check your connection and try again.',
+        'Loading Failed'
+      );
     } finally {
       loading.value = false;
     }
@@ -930,7 +1344,10 @@
       }
     } catch (error) {
       console.error('Error fetching departments:', error);
-      showError('Failed to load departments');
+      showError(
+        'Unable to load department list. Using default departments.',
+        'Department Loading Failed'
+      );
       // Fallback to basic departments if API fails (excluding Admin)
       departments.value = [
         'Human Resource',
@@ -950,6 +1367,84 @@
       branchStore.fetchActiveBranches(),
     ]);
     lastUpdated.value = new Date();
+  };
+
+  // History methods
+  const fetchHistoryRequests = async () => {
+    try {
+      historyLoading.value = true;
+
+      // Fetch completed/approved leave requests using the store
+      const result = await leaveStore.fetchLeaveHistory({
+        page: currentHistoryPage.value,
+        limit: historyItemsPerPage.value,
+        status: historyFilters.value.status,
+        branch_id: historyFilters.value.branch_id,
+      });
+
+      allHistoryRequests.value = result.data || [];
+    } catch (error) {
+      console.error('Error fetching leave history:', error);
+      showError(
+        'Unable to load leave history. Please check your connection and try again.',
+        'History Loading Failed'
+      );
+    } finally {
+      historyLoading.value = false;
+    }
+  };
+
+  const refreshHistoryData = async () => {
+    await fetchHistoryRequests();
+  };
+
+  const applyHistoryFilters = () => {
+    currentHistoryPage.value = 1; // Reset to first page when filtering
+  };
+
+  const getCompletionDate = (request) => {
+    // Return the most recent completion date (HR approval, manager approval, or rejection)
+    if (request.hr_approved_at) return request.hr_approved_at;
+    if (request.manager_approved_at) return request.manager_approved_at;
+    if (request.rejected_at) return request.rejected_at;
+    return request.created_at; // Fallback to creation date
+  };
+
+  const exportHistoryToCSV = () => {
+    const csvContent = generateHistoryCSV(filteredHistoryRequests.value);
+    downloadCSV(csvContent, 'leave_history.csv');
+  };
+
+  const generateHistoryCSV = (data) => {
+    const headers = [
+      'Employee Name',
+      'Employee ID',
+      'Department',
+      'Branch',
+      'Leave Type',
+      'From Date',
+      'To Date',
+      'Days',
+      'Status',
+      'Reason',
+      'Completed Date',
+    ];
+
+    const rows = data.map((request) => [
+      `"${request.first_name} ${request.last_name}"`,
+      `"${request.employee_code}"`,
+      `"${request.department || 'N/A'}"`,
+      `"${getBranchName(request.branch_id)}"`,
+      `"${request.leave_type}"`,
+      `"${formatDate(request.from_date)}"`,
+      `"${formatDate(request.to_date)}"`,
+      calculateDays(request.from_date, request.to_date),
+      `"${getStatusDisplayText(request.status, request)}"`,
+      `"${request.reason}"`,
+      `"${formatDateTime(getCompletionDate(request))}"`,
+    ]);
+
+    return [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
   };
 
   const applyFilters = () => {
@@ -978,7 +1473,11 @@
 
   const canApprove = (request) => {
     if (!request) return false;
-    return request.status === 'approved_by_manager'; // HR can approve after manager approval
+    // HR can approve after manager approval OR department employees with pending status
+    return (
+      request.status === 'approved_by_manager' ||
+      (request.status === 'pending' && !request.branch_id)
+    );
   };
 
   const canReject = (request) => {
@@ -1014,33 +1513,60 @@
       return;
     }
 
+    let loadingToast;
     try {
       isProcessing.value = true;
 
+      // Show loading toast
+      loadingToast = showLoading(
+        'Processing approval...',
+        'Approving Leave Request'
+      );
+
+      // For department employees (no branch_id), use HR approval directly
+      // For branch employees, use manager approval first, then HR approval
       if (selectedRequest.value.status === 'approved_by_manager') {
+        // Branch employee - already approved by manager, now HR approval
         await leaveStore.approveByHR(
           selectedRequest.value.id,
           approvalNotes.value
         );
-        showSuccess('Leave request approved by HR');
+        showSuccess(
+          `Leave request for ${selectedRequest.value.first_name} ${selectedRequest.value.last_name} has been approved by HR.`,
+          'HR Approval Successful'
+        );
+      } else if (!selectedRequest.value.branch_id) {
+        // Department employee - direct HR approval (single approval)
+        await leaveStore.approveByHR(
+          selectedRequest.value.id,
+          approvalNotes.value
+        );
+        showSuccess(
+          `Leave request for ${selectedRequest.value.first_name} ${selectedRequest.value.last_name} has been approved by HR.`,
+          'HR Approval Successful'
+        );
       } else {
+        // Branch employee - manager approval first
         await leaveStore.approveByManager(
           selectedRequest.value.id,
           approvalNotes.value
         );
-        showSuccess('Leave request approved by manager');
+        showSuccess(
+          `Leave request for ${selectedRequest.value.first_name} ${selectedRequest.value.last_name} has been approved by manager.`,
+          'Manager Approval Successful'
+        );
       }
 
       closeApprovalModal();
       await fetchLeaveRequests();
     } catch (error) {
       console.error('Error approving leave request:', error);
-      const errorMessage =
-        error.response?.data?.message ||
-        error.message ||
-        'Failed to approve leave request';
-      showError(errorMessage);
+      handleApprovalError(error);
     } finally {
+      // Dismiss loading toast
+      if (loadingToast) {
+        dismiss(loadingToast);
+      }
       isProcessing.value = false;
     }
   };
@@ -1073,24 +1599,35 @@
       return;
     }
 
+    let loadingToast;
     try {
       isProcessing.value = true;
+
+      // Show loading toast
+      loadingToast = showLoading(
+        'Processing rejection...',
+        'Rejecting Leave Request'
+      );
+
       await leaveStore.rejectLeaveRequest(
         selectedRequest.value.id,
         rejectionReason.value
       );
-      showSuccess('Leave request rejected');
+      showSuccess(
+        `Leave request for ${selectedRequest.value.first_name} ${selectedRequest.value.last_name} has been rejected.`,
+        'Leave Request Rejected'
+      );
 
       closeRejectionModal();
       await fetchLeaveRequests();
     } catch (error) {
       console.error('Error rejecting leave request:', error);
-      const errorMessage =
-        error.response?.data?.message ||
-        error.message ||
-        'Failed to reject leave request';
-      showError(errorMessage);
+      handleRejectionError(error);
     } finally {
+      // Dismiss loading toast
+      if (loadingToast) {
+        dismiss(loadingToast);
+      }
       isProcessing.value = false;
     }
   };
@@ -1124,7 +1661,7 @@
       `"${formatDate(request.from_date)}"`,
       `"${formatDate(request.to_date)}"`,
       calculateDays(request.from_date, request.to_date),
-      `"${getStatusDisplayText(request.status)}"`,
+      `"${getStatusDisplayText(request.status, request)}"`,
       `"${request.reason}"`,
       `"${formatDateTime(request.created_at)}"`,
     ]);
@@ -1197,7 +1734,7 @@
     }
   };
 
-  const getStatusDisplayText = (status) => {
+  const getStatusDisplayText = (status, request = null) => {
     switch ((status || '').toLowerCase()) {
       case 'approved_by_hr':
         return 'Approved';
@@ -1206,6 +1743,11 @@
       case 'rejected':
         return 'Rejected';
       case 'pending':
+        // Department employees (no branch_id) with pending status go directly to HR (single approval)
+        if (request && !request.branch_id) {
+          return 'Pending HR Approval';
+        }
+        return 'Pending Manager';
       default:
         return 'Pending Manager';
     }
@@ -1223,6 +1765,7 @@
   // Lifecycle
   onMounted(() => {
     refreshData();
+    fetchHistoryRequests();
   });
 </script>
 

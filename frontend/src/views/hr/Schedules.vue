@@ -184,8 +184,6 @@
 
     try {
       await leaveStore.fetchAllLeaveRequests({
-        from_date: startDate,
-        to_date: endDate,
         page: 1,
         limit: 1000,
       });
@@ -205,8 +203,6 @@
 
     try {
       await leaveStore.fetchAllLeaveRequests({
-        from_date: startDate,
-        to_date: endDate,
         page: 1,
         limit: 1000,
       });
@@ -485,8 +481,6 @@
 
     try {
       await leaveStore.fetchAllLeaveRequests({
-        from_date: startDate,
-        to_date: endDate,
         page: 1,
         limit: 1000,
       });
@@ -692,9 +686,23 @@
                   <div
                     class="min-h-[60px] flex flex-col items-center justify-center"
                   >
-                    <!-- Existing Shift -->
+                    <!-- Leave Status (Priority) -->
                     <template
-                      v-if="getShiftForEmployee(employee.id, day.dateString)"
+                      v-if="isEmployeeOnLeave(employee.id, day.dateString)"
+                    >
+                      <div
+                        class="badge badge-xs sm:badge-sm mb-1 bg-warning/20 text-warning"
+                      >
+                        <span class="hidden sm:inline">On Leave</span>
+                        <span class="sm:hidden">Leave</span>
+                      </div>
+                    </template>
+
+                    <!-- Existing Shift (Only if not on leave) -->
+                    <template
+                      v-else-if="
+                        getShiftForEmployee(employee.id, day.dateString)
+                      "
                     >
                       <div
                         class="badge badge-xs sm:badge-sm mb-1 text-xs"
@@ -777,19 +785,11 @@
                       </div>
                     </template>
 
-                    <!-- No Shift or Leave Status -->
+                    <!-- No Shift (Only if not on leave) -->
                     <template v-else>
-                      <!-- Leave Status -->
-                      <div
-                        v-if="isEmployeeOnLeave(employee.id, day.dateString)"
-                        class="badge badge-xs sm:badge-sm mb-1 bg-warning text-warning-content"
-                      >
-                        <span class="hidden sm:inline">On Leave</span>
-                        <span class="sm:hidden">Leave</span>
-                      </div>
                       <!-- Add Shift Button -->
                       <button
-                        v-else-if="canEditSchedule(day)"
+                        v-if="canEditSchedule(day)"
                         @click="openAddShiftModal(employee, day)"
                         class="btn btn-ghost btn-xs sm:btn-sm text-gray-400 hover:text-primaryColor"
                         title="Add shift"

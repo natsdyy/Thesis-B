@@ -26,6 +26,7 @@
   import { apiConfig } from '../../config/api';
   import { useOvertimeStore } from '../../stores/overtimeStore';
   import { useLeaveStore } from '../../stores/leaveStore';
+  import { useCustomToast } from '../../composables/useCustomToast';
   import EmployeeScheduleComponent from '../../components/branch/EmployeeScheduleComponent.vue';
 
   const branchContextStore = useBranchContextStore();
@@ -33,6 +34,7 @@
   const attendanceStore = useAttendanceStore();
   const overtimeStore = useOvertimeStore();
   const leaveStore = useLeaveStore();
+  const { showSuccess, showError } = useCustomToast();
 
   // Local state following EmployeeManager pattern
   const searchQuery = ref('');
@@ -410,10 +412,19 @@
       );
       await loadOtRequests();
 
+      showSuccess(
+        `Overtime request for ${selectedRequest.value.employee_name} has been approved.`,
+        'Overtime Request Approved'
+      );
+
       showApprovalModal.value = false;
       selectedRequest.value = null;
     } catch (error) {
       console.error('Error approving OT request:', error);
+      showError(
+        'Failed to approve overtime request. Please try again.',
+        'Approval Failed'
+      );
     } finally {
       isProcessing.value = false;
     }
@@ -430,11 +441,20 @@
       );
       await loadOtRequests();
 
+      showSuccess(
+        `Overtime request for ${selectedRequest.value.employee_name} has been rejected.`,
+        'Overtime Request Rejected'
+      );
+
       showRejectionModal.value = false;
       selectedRequest.value = null;
       rejectionNotes.value = '';
     } catch (error) {
       console.error('Error rejecting OT request:', error);
+      showError(
+        'Failed to reject overtime request. Please try again.',
+        'Rejection Failed'
+      );
     } finally {
       isProcessing.value = false;
     }
@@ -519,11 +539,20 @@
       );
       await loadLeaveRequests();
 
+      showSuccess(
+        `Leave request for ${selectedLeaveRequest.value.first_name} ${selectedLeaveRequest.value.last_name} has been approved by manager.`,
+        'Leave Request Approved'
+      );
+
       showLeaveApprovalModal.value = false;
       selectedLeaveRequest.value = null;
       leaveApprovalNotes.value = '';
     } catch (error) {
       console.error('Error approving leave request:', error);
+      showError(
+        'Failed to approve leave request. Please try again.',
+        'Approval Failed'
+      );
     } finally {
       isProcessingLeave.value = false;
     }
@@ -540,11 +569,20 @@
       );
       await loadLeaveRequests();
 
+      showSuccess(
+        `Leave request for ${selectedLeaveRequest.value.first_name} ${selectedLeaveRequest.value.last_name} has been rejected.`,
+        'Leave Request Rejected'
+      );
+
       showLeaveRejectionModal.value = false;
       selectedLeaveRequest.value = null;
       leaveRejectionNotes.value = '';
     } catch (error) {
       console.error('Error rejecting leave request:', error);
+      showError(
+        'Failed to reject leave request. Please try again.',
+        'Rejection Failed'
+      );
     } finally {
       isProcessingLeave.value = false;
     }

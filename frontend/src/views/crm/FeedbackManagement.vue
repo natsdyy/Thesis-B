@@ -461,7 +461,7 @@
         <div class="mt-3">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-medium text-gray-900">Reply to Feedback</h3>
-            <button @click="showReplyModal = false" class="text-gray-400 hover:text-gray-600">
+            <button @click="showReplyModal = false; replyAttemptCount = 0" class="text-gray-400 hover:text-gray-600">
               <font-awesome-icon icon="fa-solid fa-times" />
             </button>
           </div>
@@ -506,7 +506,7 @@
               <div class="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
-                  @click="showReplyModal = false"
+                  @click="showReplyModal = false; replyAttemptCount = 0"
                   class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md"
                 >
                   Cancel
@@ -517,7 +517,7 @@
                   class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
                 >
                   <span v-if="isSendingReply" class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
-                  <span>{{ isSendingReply ? 'Sending...' : 'Send Reply' }}</span>
+                  <span>{{ isSendingReply ? `Sending... (Attempt ${replyAttemptCount}/3)` : 'Send Reply' }}</span>
                 </button>
               </div>
             </form>
@@ -590,6 +590,7 @@ const replyForm = ref({
 
 // Reply loading state
 const isSendingReply = ref(false);
+const replyAttemptCount = ref(0);
 
 // Computed properties
 const satisfactionRate = computed(() => {
@@ -682,6 +683,7 @@ const replyToFeedback = (feedbackId) => {
       message: '',
       internal_note: ''
     };
+    replyAttemptCount.value = 0; // Reset attempt count
     showReplyModal.value = true;
   }
 };
@@ -704,16 +706,18 @@ const archiveFeedback = async (feedbackId) => {
   }
 };
 
-const sendReply = async () => {
+const sendReply = async (retryCount = 0) => {
   if (!replyForm.value.message.trim()) {
     alert('Please enter a reply message');
     return;
   }
 
   isSendingReply.value = true;
+  replyAttemptCount.value = retryCount + 1;
+  const maxRetries = 2;
 
   try {
-    console.log('Starting to send reply...');
+    console.log(`Starting to send reply... (attempt ${retryCount + 1}/${maxRetries + 1})`);
     console.log('Feedback ID:', selectedFeedback.value.id);
     console.log('Message:', replyForm.value.message);
     
@@ -729,25 +733,59 @@ const sendReply = async () => {
       showReplyModal.value = false;
       replyForm.value = { message: '', internal_note: '' };
       selectedFeedback.value = null;
+      replyAttemptCount.value = 0; // Reset attempt count on success
       await loadFeedback();
       alert('Reply sent successfully! The customer will receive an email shortly.');
     } else {
       console.error('Failed to send reply:', data.message);
-      alert('Failed to send reply: ' + data.message);
+      if (retryCount < maxRetries) {
+        console.log(`Retrying... (attempt ${retryCount + 2}/${maxRetries + 1})`);
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+        return sendReply(retryCount + 1);
+      } else {
+        alert('Failed to send reply after multiple attempts: ' + data.message);
+      }
     }
   } catch (error) {
     console.error('Error sending reply:', error);
     
-    // Handle different types of errors
-    if (error.code === 'ECONNABORTED') {
-      alert('Request timed out. Please try again.');
-    } else if (error.response?.status === 401) {
-      alert('Authentication failed. Please login again.');
-    } else if (error.response?.status === 500) {
-      alert('Server error. Please try again later.');
-    } else {
-      alert('Error sending reply: ' + (error.response?.data?.message || error.message));
+    // Check if we should retry for certain errors
+    const shouldRetry = retryCount < maxRetries && (
+      error.code === 'ECONNABORTED' || 
+      error.message.includes('timeout') ||
+      error.response?.status === 500 ||
+      error.message.includes('Network Error')
+    );
+    
+    if (shouldRetry) {
+      console.log(`Retrying due to error... (attempt ${retryCount + 2}/${maxRetries + 1})`);
+      await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3 seconds before retry
+      isSendingReply.value = false; // Reset loading state
+      return sendReply(retryCount + 1);
     }
+    
+    // Handle different types of errors with better user feedback
+    let errorMessage = 'Failed to send reply. ';
+    
+    if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+      errorMessage += 'The request timed out after multiple attempts. This might be due to email processing delays. Please check if the reply was sent before trying again.';
+    } else if (error.response?.status === 401) {
+      errorMessage += 'Authentication failed. Please refresh the page and login again.';
+    } else if (error.response?.status === 400) {
+      errorMessage += error.response?.data?.message || 'Invalid request data.';
+    } else if (error.response?.status === 404) {
+      errorMessage += 'Feedback not found. It may have been deleted.';
+    } else if (error.response?.status === 500) {
+      errorMessage += `Server error occurred after ${retryCount + 1} attempts. The reply might still be processing. Please check the feedback status before retrying.`;
+    } else if (error.response?.status) {
+      errorMessage += `Server responded with error ${error.response.status}: ${error.response?.data?.message || 'Unknown error'}`;
+    } else if (error.message.includes('Network Error') || error.message.includes('fetch')) {
+      errorMessage += `Network connection error after ${retryCount + 1} attempts. Please check your internet connection and try again.`;
+    } else {
+      errorMessage += error.response?.data?.message || error.message || 'Unknown error occurred.';
+    }
+    
+    alert(errorMessage);
   } finally {
     isSendingReply.value = false;
   }

@@ -62,7 +62,7 @@ class FeedbackService {
           headers: {
             'Content-Type': 'application/json',
           },
-          timeout: 15000 // 15 second timeout (reduced from 30s)
+          timeout: 30000 // 30 second timeout to allow for email processing
         }
       );
       

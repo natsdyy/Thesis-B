@@ -262,23 +262,4 @@
   <!-- Calendar modal removed; shown inline above -->
 </template>
 
-<style scoped>
-  /* Custom styles following the reference patterns */
-  /* .card {
-    @apply transition-shadow duration-200;
-  }
-
-  .card:hover {
-    @apply shadow-xl;
-  }
-
-  .btn {
-    @apply transition-all duration-200;
-  } */
-
-  /* Stats card hover effects */
-  /* .card-body:hover .text-primaryColor {
-    @apply scale-105;
-    transition: transform 0.2s ease;
-  } */
-</style>
+<style scoped></style>

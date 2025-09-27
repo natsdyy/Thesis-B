@@ -52,7 +52,7 @@ export const menuItems = [
     department: 'Human Resource',
     subItems: [
       { name: 'Overtime Approvals', route: '/hr/overtime-approval' },
-      { name: 'Leave Approval', route: '/hr/leave' },
+      { name: 'Leave Approvals', route: '/hr/leave-approvals' },
     ],
   },
 

@@ -69,9 +69,11 @@
             v-else
             class="alert"
             :class="
-              currentStatus === 'checked-in'
-                ? '!bg-success/5 !text-success !border-success'
-                : '!bg-success/5 !text-success !border-success'
+              currentStatus === 'on-leave'
+                ? '!bg-warning/5 !text-warning !border-warning'
+                : currentStatus === 'checked-in'
+                  ? '!bg-success/5 !text-success !border-success'
+                  : '!bg-info/5 !text-info !border-info'
             "
           >
             <Clock class="w-5 h-5" />
@@ -100,6 +102,30 @@
         </div>
       </div>
 
+      <!-- Leave Status Notice -->
+      <div v-if="currentStatus === 'on-leave'" class="alert alert-info">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          class="stroke-current shrink-0 w-6 h-6"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          ></path>
+        </svg>
+        <div>
+          <h3 class="font-bold">You are currently on approved leave</h3>
+          <div class="text-xs">
+            Attendance tracking is disabled during your leave period. You can
+            still view your attendance history below.
+          </div>
+        </div>
+      </div>
+
       <!-- Quick Actions -->
       <div class="grid grid-cols-1 md:grid-cols-1 gap-6">
         <!-- QR Code Generator -->
@@ -112,9 +138,14 @@
             <button
               @click="openQRModal"
               class="btn bg-primaryColor text-white font-thin w-full hover:bg-primaryColor/80"
+              :disabled="currentStatus === 'on-leave'"
             >
               <Clock class="w-4 h-4 mr-2" />
-              Open QR Generator
+              {{
+                currentStatus === 'on-leave'
+                  ? 'Unavailable (On Leave)'
+                  : 'Open QR Generator'
+              }}
             </button>
           </div>
         </div>
@@ -460,10 +491,12 @@
     return Math.round(hours * 60);
   });
   const currentStatus = computed(() => {
+    if (today.value?.is_on_leave) return 'on-leave';
     if (hasTimeIn.value && !hasTimeOut.value) return 'checked-in';
     return 'checked-out';
   });
   const statusText = computed(() => {
+    if (today.value?.is_on_leave) return 'On Leave';
     if (hasTimeIn.value && !hasTimeOut.value) return 'Currently Checked In';
     if (hasTimeIn.value && hasTimeOut.value) return 'Checked Out';
     return 'Ready to Check In';

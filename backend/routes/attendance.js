@@ -213,7 +213,7 @@ router.get("/today", authenticateToken, async (req, res) => {
     const employeeId = req.user.id; // This is the employee ID from JWT
 
     const todayAttendance =
-      await AttendanceRecord.getTodayAttendance(employeeId);
+      await AttendanceRecord.getTodayAttendanceWithLeaveStatus(employeeId);
 
     res.json({
       success: true,

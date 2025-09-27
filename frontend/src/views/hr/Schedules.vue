@@ -23,12 +23,14 @@
   import { useEmployeeScheduleStore } from '../../stores/employeeScheduleStore';
   import { useShiftTypesStore } from '../../stores/shiftTypesStore';
   import { useEmployeeStore } from '../../stores/employeeStore';
+  import { useLeaveStore } from '../../stores/leaveStore';
   import ShiftManagementModal from '../../components/branch/ShiftManagementModal.vue';
 
   const { showSuccess, showError, showWarning, showInfo } = useCustomToast();
   const scheduleStore = useEmployeeScheduleStore();
   const shiftTypesStore = useShiftTypesStore();
   const employeeStore = useEmployeeStore();
+  const leaveStore = useLeaveStore();
 
   // Local state
   const currentWeek = ref(new Date());
@@ -171,15 +173,47 @@
   });
 
   // Methods
-  const navigateWeek = (direction) => {
+  const navigateWeek = async (direction) => {
     const newWeek = new Date(currentWeek.value);
     newWeek.setDate(newWeek.getDate() + direction * 7);
     currentWeek.value = newWeek;
+
+    // Load leave data for the new week
+    const startDate = weekDays.value[0].dateString;
+    const endDate = weekDays.value[6].dateString;
+
+    try {
+      await leaveStore.fetchAllLeaveRequests({
+        from_date: startDate,
+        to_date: endDate,
+        page: 1,
+        limit: 1000,
+      });
+    } catch (error) {
+      console.warn('Could not load leave data:', error);
+    }
+
     loadSchedules();
   };
 
-  const goToCurrentWeek = () => {
+  const goToCurrentWeek = async () => {
     currentWeek.value = new Date();
+
+    // Load leave data for the current week
+    const startDate = weekDays.value[0].dateString;
+    const endDate = weekDays.value[6].dateString;
+
+    try {
+      await leaveStore.fetchAllLeaveRequests({
+        from_date: startDate,
+        to_date: endDate,
+        page: 1,
+        limit: 1000,
+      });
+    } catch (error) {
+      console.warn('Could not load leave data:', error);
+    }
+
     loadSchedules();
   };
 
@@ -405,6 +439,21 @@
     return null;
   };
 
+  const isEmployeeOnLeave = (employeeId, dateString) => {
+    // Check if employee has approved leave for this date
+    const date = new Date(dateString);
+    const leaveRequests = leaveStore.allLeaveRequests || [];
+
+    return leaveRequests.some(
+      (request) =>
+        request.employee_id === employeeId &&
+        (request.status === 'approved_by_hr' ||
+          request.status === 'approved_by_manager') &&
+        new Date(request.from_date) <= date &&
+        new Date(request.to_date) >= date
+    );
+  };
+
   const canEditSchedule = (date) => {
     // All days are working days - no automatic day-off restrictions
     return !date.isPast;
@@ -429,6 +478,21 @@
   onMounted(async () => {
     // Clear any existing schedule data to start fresh
     scheduleStore.clearSchedules();
+
+    // Load leave data for the current week
+    const startDate = weekDays.value[0].dateString;
+    const endDate = weekDays.value[6].dateString;
+
+    try {
+      await leaveStore.fetchAllLeaveRequests({
+        from_date: startDate,
+        to_date: endDate,
+        page: 1,
+        limit: 1000,
+      });
+    } catch (error) {
+      console.warn('Could not load leave data:', error);
+    }
 
     await Promise.all([loadEmployees(), loadShiftTypes(), loadSchedules()]);
   });
@@ -713,10 +777,19 @@
                       </div>
                     </template>
 
-                    <!-- Add Shift Button -->
+                    <!-- No Shift or Leave Status -->
                     <template v-else>
+                      <!-- Leave Status -->
+                      <div
+                        v-if="isEmployeeOnLeave(employee.id, day.dateString)"
+                        class="badge badge-xs sm:badge-sm mb-1 bg-warning text-warning-content"
+                      >
+                        <span class="hidden sm:inline">On Leave</span>
+                        <span class="sm:hidden">Leave</span>
+                      </div>
+                      <!-- Add Shift Button -->
                       <button
-                        v-if="canEditSchedule(day)"
+                        v-else-if="canEditSchedule(day)"
                         @click="openAddShiftModal(employee, day)"
                         class="btn btn-ghost btn-xs sm:btn-sm text-gray-400 hover:text-primaryColor"
                         title="Add shift"

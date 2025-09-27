@@ -19,11 +19,13 @@
   import { useCustomToast } from '../../composables/useCustomToast';
   import { useEmployeeScheduleStore } from '../../stores/employeeScheduleStore';
   import { useShiftTypesStore } from '../../stores/shiftTypesStore';
+  import { useLeaveStore } from '../../stores/leaveStore';
   import ShiftManagementModal from './ShiftManagementModal.vue';
 
   const { showSuccess, showError, showWarning, showInfo } = useCustomToast();
   const scheduleStore = useEmployeeScheduleStore();
   const shiftTypesStore = useShiftTypesStore();
+  const leaveStore = useLeaveStore();
 
   // Props
   const props = defineProps({
@@ -136,6 +138,19 @@
     try {
       const startDate = weekDays.value[0].dateString;
       const endDate = weekDays.value[6].dateString;
+
+      // Load leave data for the current week
+      try {
+        await leaveStore.fetchAllLeaveRequests({
+          branch_id: props.branchId,
+          from_date: startDate,
+          to_date: endDate,
+          page: 1,
+          limit: 1000,
+        });
+      } catch (error) {
+        console.warn('Could not load leave data:', error);
+      }
 
       await scheduleStore.fetchSchedules(props.branchId, startDate, endDate);
     } catch (error) {
@@ -275,6 +290,21 @@
     }
 
     return null;
+  };
+
+  const isEmployeeOnLeave = (employeeId, dateString) => {
+    // Check if employee has approved leave for this date
+    const date = new Date(dateString);
+    const leaveRequests = leaveStore.allLeaveRequests || [];
+
+    return leaveRequests.some(
+      (request) =>
+        request.employee_id === employeeId &&
+        (request.status === 'approved_by_hr' ||
+          request.status === 'approved_by_manager') &&
+        new Date(request.from_date) <= date &&
+        new Date(request.to_date) >= date
+    );
   };
 
   const canEditSchedule = (date) => {
@@ -485,10 +515,18 @@
                       </div>
                     </template>
 
-                    <!-- Add Shift Button -->
+                    <!-- No Shift or Leave Status -->
                     <template v-else>
+                      <!-- Leave Status -->
+                      <div
+                        v-if="isEmployeeOnLeave(employee.id, day.dateString)"
+                        class="badge badge-sm mb-1 bg-warning text-warning-content"
+                      >
+                        On Leave
+                      </div>
+                      <!-- Add Shift Button -->
                       <button
-                        v-if="canEditSchedule(day)"
+                        v-else-if="canEditSchedule(day)"
                         @click="openAddShiftModal(employee, day)"
                         class="btn btn-ghost btn-sm text-gray-400 hover:text-primaryColor"
                         title="Add shift"

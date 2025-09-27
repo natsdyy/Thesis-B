@@ -10,15 +10,24 @@
 
       <!-- Current Status -->
       <div class="mb-6">
-        <div class="alert bg-success/10 border-success">
+        <div
+          class="alert"
+          :class="
+            currentStatus === 'on-leave'
+              ? 'bg-warning/10 border-warning'
+              : 'bg-success/10 border-success'
+          "
+        >
           <Clock class="w-5 h-5" />
           <div>
             <div class="font-medium">Current Status</div>
             <div class="text-sm opacity-80">
               {{
-                currentStatus === 'checked-out'
-                  ? 'Ready to Time In'
-                  : 'Ready to Time Out'
+                currentStatus === 'on-leave'
+                  ? 'On Leave'
+                  : currentStatus === 'checked-out'
+                    ? 'Ready to Time In'
+                    : 'Ready to Time Out'
               }}
             </div>
             <div
@@ -26,6 +35,12 @@
               class="text-xs mt-1 text-warning"
             >
               Late by {{ tardinessMinutesToday }} minute(s)
+            </div>
+            <div
+              v-if="currentStatus === 'on-leave'"
+              class="text-xs mt-1 text-warning"
+            >
+              Attendance tracking is disabled during your leave period
             </div>
           </div>
         </div>
@@ -407,6 +422,7 @@
           @click="generateQRCode('time-in')"
           :disabled="
             qrCodeLoading ||
+            currentStatus === 'on-leave' ||
             currentStatus === 'checked-in' ||
             (scheduleValidation &&
               !scheduleValidation.isValid &&
@@ -414,24 +430,29 @@
           "
           :class="[
             'btn flex-1',
-            currentStatus === 'checked-out' &&
-            (!scheduleValidation || scheduleValidation.isValid)
-              ? 'bg-primaryColor hover:bg-primaryColor/80 text-white font-thin  border-none'
-              : 'btn-outline',
+            currentStatus === 'on-leave'
+              ? 'btn-outline opacity-50 cursor-not-allowed'
+              : currentStatus === 'checked-out' &&
+                  (!scheduleValidation || scheduleValidation.isValid)
+                ? 'bg-primaryColor hover:bg-primaryColor/80 text-white font-thin  border-none'
+                : 'btn-outline',
             scheduleValidation &&
             !scheduleValidation.isValid &&
-            scheduleValidation.reason !== 'NO_SCHEDULE'
+            scheduleValidation.reason !== 'NO_SCHEDULE' &&
+            currentStatus !== 'on-leave'
               ? 'opacity-50 cursor-not-allowed'
               : '',
           ]"
           :title="
-            currentStatus === 'checked-in'
-              ? 'You have already timed in today'
-              : scheduleValidation &&
-                  !scheduleValidation.isValid &&
-                  scheduleValidation.reason !== 'NO_SCHEDULE'
-                ? 'Time-in is outside scheduled hours'
-                : ''
+            currentStatus === 'on-leave'
+              ? 'Attendance tracking is disabled during leave'
+              : currentStatus === 'checked-in'
+                ? 'You have already timed in today'
+                : scheduleValidation &&
+                    !scheduleValidation.isValid &&
+                    scheduleValidation.reason !== 'NO_SCHEDULE'
+                  ? 'Time-in is outside scheduled hours'
+                  : ''
           "
         >
           <LogIn class="w-4 h-4 mr-2" />
@@ -440,17 +461,25 @@
 
         <button
           @click="generateQRCode('time-out')"
-          :disabled="qrCodeLoading || currentStatus === 'checked-out'"
+          :disabled="
+            qrCodeLoading ||
+            currentStatus === 'on-leave' ||
+            currentStatus === 'checked-out'
+          "
           :class="[
             'btn flex-1',
-            currentStatus === 'checked-in'
-              ? 'bg-primaryColor text-white font-thin  border-none hover:bg-primaryColor/80'
-              : 'btn-outline font-thin',
+            currentStatus === 'on-leave'
+              ? 'btn-outline opacity-50 cursor-not-allowed font-thin'
+              : currentStatus === 'checked-in'
+                ? 'bg-primaryColor text-white font-thin  border-none hover:bg-primaryColor/80'
+                : 'btn-outline font-thin',
           ]"
           :title="
-            currentStatus === 'checked-out'
-              ? 'You must time in before timing out'
-              : ''
+            currentStatus === 'on-leave'
+              ? 'Attendance tracking is disabled during leave'
+              : currentStatus === 'checked-out'
+                ? 'You must time in before timing out'
+                : ''
           "
         >
           <LogOut class="w-4 h-4 mr-2" />
@@ -755,6 +784,11 @@
   const currentStatusFromStore = computed(() => {
     const todayData = attendanceStore.todayAttendance;
     if (todayData) {
+      // Check if employee is on leave first
+      if (todayData.is_on_leave) {
+        return 'on-leave';
+      }
+
       // If time_in exists but it's not for today (local), treat as not checked in
       const hasTodayTimeIn = isSameLocalDay(todayData.time_in);
       if (!hasTodayTimeIn) {
@@ -1237,12 +1271,17 @@
       console.log('QRAttendanceModal - Today data:', todayData);
 
       if (todayData) {
-        // Consider checked-in ONLY if there is a time_in for today and no time_out yet
-        const hasTodayTimeIn = isSameLocalDay(todayData.time_in);
-        if (hasTodayTimeIn && !todayData.time_out) {
-          currentStatus.value = 'checked-in';
+        // Check if employee is on leave first
+        if (todayData.is_on_leave) {
+          currentStatus.value = 'on-leave';
         } else {
-          currentStatus.value = 'checked-out';
+          // Consider checked-in ONLY if there is a time_in for today and no time_out yet
+          const hasTodayTimeIn = isSameLocalDay(todayData.time_in);
+          if (hasTodayTimeIn && !todayData.time_out) {
+            currentStatus.value = 'checked-in';
+          } else {
+            currentStatus.value = 'checked-out';
+          }
         }
         console.log(
           'QRAttendanceModal - Current status updated to:',

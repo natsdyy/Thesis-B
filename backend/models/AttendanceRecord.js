@@ -67,6 +67,14 @@ class AttendanceRecord {
       throw new Error("You have already timed in today");
     }
 
+    // Check if employee is on approved leave
+    const isOnLeave = await this.isEmployeeOnLeave(employeeId);
+    if (isOnLeave) {
+      throw new Error(
+        "You are currently on approved leave and cannot time in. Please contact HR if you need to return early."
+      );
+    }
+
     // Validate employee schedule for time-in
     const EmployeeScheduleService = require("../services/EmployeeScheduleService");
     const scheduleValidation =
@@ -291,7 +299,7 @@ class AttendanceRecord {
   }
 
   static async getAllAttendanceReport(startDate, endDate) {
-    return await knex("attendance_records")
+    const records = await knex("attendance_records")
       .select(
         "attendance_records.*",
         "attendance_qr_codes.location_name",
@@ -307,6 +315,23 @@ class AttendanceRecord {
       .leftJoin("employees", "attendance_records.employee_id", "employees.id")
       .whereBetween("attendance_records.created_at", [startDate, endDate])
       .orderBy("attendance_records.created_at", "desc");
+
+    // Add leave status to each record
+    const recordsWithLeaveStatus = await Promise.all(
+      records.map(async (record) => {
+        const isOnLeave = await this.isEmployeeOnLeave(
+          record.employee_id,
+          record.created_at
+        );
+        return {
+          ...record,
+          is_on_leave: isOnLeave,
+          attendance_status: isOnLeave ? "on_leave" : record.status || "absent",
+        };
+      })
+    );
+
+    return recordsWithLeaveStatus;
   }
 
   // Get detailed attendance history (individual time-in/time-out events)
@@ -392,6 +417,48 @@ class AttendanceRecord {
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
     return `${diffHours}h ${diffMinutes}m`;
+  }
+
+  // Check if employee is on approved leave for a specific date
+  static async isEmployeeOnLeave(employeeId, date = null) {
+    const targetDate = date ? new Date(date) : new Date();
+    const dateStr = targetDate.toISOString().split("T")[0];
+
+    const leaveRequest = await knex("leave_requests")
+      .where("employee_id", employeeId)
+      .where("from_date", "<=", dateStr)
+      .where("to_date", ">=", dateStr)
+      .where("status", "approved_by_hr") // Only HR-approved requests count as actual leave
+      .first();
+
+    return !!leaveRequest;
+  }
+
+  // Enhanced getTodayAttendance that includes leave status
+  static async getTodayAttendanceWithLeaveStatus(employeeId) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Get attendance record
+    const attendanceRecord = await knex("attendance_records")
+      .where("employee_id", employeeId)
+      .whereBetween("created_at", [today, endOfDay])
+      .first();
+
+    // Check if employee is on leave
+    const isOnLeave = await this.isEmployeeOnLeave(employeeId);
+
+    return {
+      ...attendanceRecord,
+      is_on_leave: isOnLeave,
+      attendance_status: isOnLeave
+        ? "on_leave"
+        : attendanceRecord
+          ? attendanceRecord.status
+          : "absent",
+    };
   }
 }
 

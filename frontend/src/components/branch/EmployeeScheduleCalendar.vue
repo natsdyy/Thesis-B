@@ -4,6 +4,7 @@
   import dayGridPlugin from '@fullcalendar/daygrid';
   import timeGridPlugin from '@fullcalendar/timegrid';
   import interactionPlugin from '@fullcalendar/interaction';
+  import { useLeaveStore } from '../../stores/leaveStore';
 
   const props = defineProps({
     employee: { type: Object, required: true },
@@ -18,6 +19,7 @@
 
   const emit = defineEmits(['close']);
 
+  const leaveStore = useLeaveStore();
   const calendarRef = ref(null);
   const currentRange = ref({ startStr: '', endStr: '' });
   const currentViewType = ref('dayGridMonth');
@@ -36,8 +38,24 @@
       'Afternoon Shift': { bg: '#bbf7d0', text: '#065f46', solid: '#10b981' },
       'Night Shift': { bg: '#e9d5ff', text: '#6b21a8', solid: '#8b5cf6' },
       'Day Off': { bg: '#f3f4f6', text: '#6b7280', solid: '#9ca3af' },
+      'On Leave': { bg: '#fed7aa', text: '#9a3412', solid: '#ea580c' },
     };
     return map[name] || { bg: '#e5e7eb', text: '#374151', solid: '#6b7280' };
+  };
+
+  const isEmployeeOnLeave = (employeeId, dateString) => {
+    // Check if employee has approved leave for this date
+    const date = new Date(dateString);
+    const leaveRequests = leaveStore.allLeaveRequests || [];
+
+    return leaveRequests.some(
+      (request) =>
+        request.employee_id === employeeId &&
+        (request.status === 'approved_by_hr' ||
+          request.status === 'approved_by_manager') &&
+        new Date(request.from_date) <= date &&
+        new Date(request.to_date) >= date
+    );
   };
 
   const calendarOptions = ref({
@@ -267,6 +285,46 @@
         });
       }
     });
+
+    // Add leave events for days when employee is on leave
+    const leaveRequests = leaveStore.allLeaveRequests || [];
+    const employeeLeaveRequests = leaveRequests.filter(
+      (request) =>
+        request.employee_id === empId &&
+        (request.status === 'approved_by_hr' ||
+          request.status === 'approved_by_manager')
+    );
+
+    employeeLeaveRequests.forEach((leaveRequest) => {
+      const startDate = new Date(leaveRequest.from_date);
+      const endDate = new Date(leaveRequest.to_date);
+
+      // Create all-day leave events for each day in the leave period
+      const currentDate = new Date(startDate);
+      while (currentDate <= endDate) {
+        const dayKey = formatDateKey(currentDate);
+        const colors = shiftColorHex('On Leave');
+
+        events.push({
+          id: `leave-${leaveRequest.id}-${dayKey}`,
+          title: 'On Leave',
+          start: currentDate.toISOString(),
+          allDay: true,
+          backgroundColor: colors.bg,
+          borderColor: colors.solid,
+          textColor: colors.text,
+          classNames: ['cs-event', 'leave-event'],
+          extendedProps: {
+            leaveType: leaveRequest.leave_type,
+            reason: leaveRequest.reason,
+            label: `On Leave - ${leaveRequest.leave_type}`,
+          },
+        });
+
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+    });
+
     return events;
   }
 
@@ -283,7 +341,24 @@
     { deep: true }
   );
 
-  onMounted(() => {
+  watch(
+    () => leaveStore.allLeaveRequests,
+    () => refreshEvents(),
+    { deep: true }
+  );
+
+  onMounted(async () => {
+    // Load leave data for the employee
+    try {
+      await leaveStore.fetchAllLeaveRequests({
+        employee_id: props.employee.id,
+        page: 1,
+        limit: 1000,
+      });
+    } catch (error) {
+      console.warn('Could not load leave data:', error);
+    }
+
     // Ensure the initial events are loaded when modal opens
     setTimeout(refreshEvents, 0);
     // Track viewport and update calendar layout

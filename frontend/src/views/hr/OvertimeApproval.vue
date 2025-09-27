@@ -1,13 +1,21 @@
 <template>
   <div class="space-y-6">
     <!-- Header -->
-    <div class="flex justify-between items-center">
-      <h1 class="text-3xl font-bold">Overtime Approval</h1>
+    <div
+      class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
+    >
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-bold">Overtime Approval</h1>
+        <p class="text-sm text-gray-600 mt-1 hidden sm:block">
+          Manage overtime requests from all departments
+        </p>
+      </div>
       <div class="text-sm text-base-content/70">
-        Last updated: {{ lastUpdated.toLocaleTimeString() }}
+        <span class="hidden sm:inline">Last updated: </span
+        >{{ lastUpdated.toLocaleTimeString() }}
         <span v-if="isLoading" class="ml-2">
           <span class="loading loading-spinner loading-xs"></span>
-          Updating...
+          <span class="hidden sm:inline">Updating...</span>
         </span>
       </div>
     </div>
@@ -41,15 +49,15 @@
     <!-- Filters -->
     <div class="card bg-base-100 shadow-xl">
       <div class="card-body">
-        <div class="flex flex-wrap gap-4 items-end">
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Status</span>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-gray-700">
+              Status
             </label>
             <select
               v-model="filters.status"
               @change="applyFilters"
-              class="select select-bordered"
+              class="select select-bordered w-full"
             >
               <option value="">All Status</option>
               <option value="pending">Pending</option>
@@ -58,14 +66,14 @@
             </select>
           </div>
 
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Department</span>
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-gray-700">
+              Department
             </label>
             <select
               v-model="filters.department"
               @change="applyFilters"
-              class="select select-bordered"
+              class="select select-bordered w-full"
             >
               <option value="">All Departments</option>
               <option
@@ -84,7 +92,9 @@
     <!-- Overtime Requests Table -->
     <div class="card bg-base-100 shadow-xl">
       <div class="card-body">
-        <div class="flex justify-between items-center mb-4">
+        <div
+          class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
+        >
           <h3 class="card-title text-primaryColor">
             <BadgeCheck class="w-5 h-5" />
             Overtime Requests
@@ -118,7 +128,9 @@
                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
               ></path>
             </svg>
-            {{ isLoading ? 'Refreshing...' : 'Refresh' }}
+            <span class="hidden sm:inline">{{
+              isLoading ? 'Refreshing...' : 'Refresh'
+            }}</span>
           </button>
         </div>
 
@@ -774,9 +786,23 @@
       );
       if (response.data.success) {
         const raw = response.data.data || {};
-        // Convert object keyed by department names to [{ name }], excluding Branch for HR view
-        departments.value = Object.keys(raw)
-          .filter((name) => name !== 'Branch')
+        // Normalize department names to avoid duplicates
+        const departmentMapping = {
+          SCM: 'Supply Chain',
+          CRM: 'Customer Relationship',
+        };
+
+        // Convert object keyed by department names to [{ name }], excluding Branch and Admin for HR view
+        const departmentSet = new Set();
+        Object.keys(raw).forEach((name) => {
+          if (name !== 'Branch' && name !== 'Admin') {
+            const normalizedName = departmentMapping[name] || name;
+            departmentSet.add(normalizedName);
+          }
+        });
+
+        departments.value = Array.from(departmentSet)
+          .sort()
           .map((name) => ({ name }));
       }
     } catch (error) {

@@ -68,4 +68,10 @@ export default [
     component: () => import('../../views/hr/OvertimeApproval.vue'),
     meta: { title: 'Overtime Approval' },
   },
+  {
+    path: 'leave-approvals',
+    name: 'HRLeaveApprovals',
+    component: () => import('../../views/hr/LeaveApprovals.vue'),
+    meta: { title: 'Leave Approvals' },
+  },
 ];

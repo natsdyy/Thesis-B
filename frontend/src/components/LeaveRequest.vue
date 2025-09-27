@@ -142,9 +142,7 @@
                       getLeaveBadgeClass(req.status),
                     ]"
                   >
-                    {{
-                      req.status.charAt(0).toUpperCase() + req.status.slice(1)
-                    }}
+                    {{ getStatusDisplayText(req.status) }}
                   </div>
                 </td>
               </tr>
@@ -249,8 +247,10 @@
 <script setup>
   import { ref, computed, onMounted } from 'vue';
   import { useCustomToast } from '../composables/useCustomToast';
+  import { useLeaveStore } from '../stores/leaveStore';
 
   const { showSuccess, showError } = useCustomToast();
+  const leaveStore = useLeaveStore();
 
   // Leave form data
   const leaveFromDate = ref('');
@@ -261,10 +261,12 @@
   const isSubmitting = ref(false);
   const showLeaveConfirmModal = ref(false);
 
-  // My leave requests data
-  const myLeaveRequests = ref([]);
+  // Pagination data
   const leaveCurrentPage = ref(1);
   const leaveItemsPerPage = ref(5);
+
+  // Use store data
+  const myLeaveRequests = computed(() => leaveStore.myLeaveRequests);
   const leaveTotalPages = computed(() =>
     Math.max(
       1,
@@ -276,6 +278,37 @@
     const end = start + leaveItemsPerPage.value;
     return myLeaveRequests.value.slice(start, end);
   });
+
+  // Check for overlapping approved leave requests (only current/future ones)
+  const checkForOverlappingLeave = (fromDate, toDate) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset time to start of day
+
+    const approvedRequests = myLeaveRequests.value.filter((request) => {
+      const isApproved = ['approved_by_manager', 'approved_by_hr'].includes(
+        request.status
+      );
+      const hasNotEnded = new Date(request.to_date) >= today;
+      return isApproved && hasNotEnded;
+    });
+
+    return approvedRequests.find((request) => {
+      const existingFrom = new Date(request.from_date);
+      const existingTo = new Date(request.to_date);
+
+      // Check if dates overlap using the same logic as backend
+      return (
+        // New request starts during existing approved period
+        (existingFrom <= fromDate && existingTo >= fromDate) ||
+        // New request ends during existing approved period
+        (existingFrom <= toDate && existingTo >= toDate) ||
+        // New request completely contains existing approved period
+        (existingFrom >= fromDate && existingTo <= toDate) ||
+        // Existing approved period completely contains new request
+        (existingFrom <= fromDate && existingTo >= toDate)
+      );
+    });
+  };
 
   const openLeaveConfirmModal = () => {
     // Basic validation before showing modal
@@ -303,6 +336,22 @@
       return;
     }
 
+    // Check for overlapping approved leave requests
+    const overlappingRequest = checkForOverlappingLeave(fromDate, toDate);
+    if (overlappingRequest) {
+      const existingFrom = new Date(
+        overlappingRequest.from_date
+      ).toLocaleDateString();
+      const existingTo = new Date(
+        overlappingRequest.to_date
+      ).toLocaleDateString();
+      showError(
+        `You already have an approved leave request from ${existingFrom} to ${existingTo}. ` +
+          `Please choose different dates or contact HR if you need to modify your existing leave.`
+      );
+      return;
+    }
+
     showLeaveConfirmModal.value = true;
   };
 
@@ -324,27 +373,21 @@
             ? leaveOtherSpecify.value
             : leaveType.value,
         reason: leaveReason.value,
-        status: 'pending',
       };
 
-      // TODO: Implement API call to submit leave request
-      console.log('Submitting leave request:', leaveData);
-
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Submit leave request using store
+      await leaveStore.createLeaveRequest(leaveData);
 
       showSuccess('Leave request submitted successfully');
 
       // Reset form
       resetForm();
-
-      // Refresh leave requests list
-      await fetchMyLeaveRequests();
-
       showLeaveConfirmModal.value = false;
     } catch (error) {
       console.error('Error submitting leave request:', error);
-      showError('Failed to submit leave request. Please try again.');
+      showError(
+        error.message || 'Failed to submit leave request. Please try again.'
+      );
     } finally {
       isSubmitting.value = false;
     }
@@ -370,8 +413,10 @@
 
   const getLeaveBadgeClass = (status) => {
     switch ((status || '').toLowerCase()) {
-      case 'approved':
+      case 'approved_by_hr':
         return 'bg-success/20 text-success';
+      case 'approved_by_manager':
+        return 'bg-info/20 text-info';
       case 'rejected':
         return 'bg-error/20 text-error';
       case 'pending':
@@ -380,34 +425,33 @@
     }
   };
 
-  // Fetch leave requests (placeholder - implement API call)
+  const getStatusDisplayText = (status) => {
+    switch ((status || '').toLowerCase()) {
+      case 'approved_by_hr':
+        return 'Approved';
+      case 'approved_by_manager':
+        return 'Manager Approved';
+      case 'rejected':
+        return 'Rejected';
+      case 'pending':
+      default:
+        return 'Pending';
+    }
+  };
+
+  // Fetch leave requests using store
   const fetchMyLeaveRequests = async () => {
     try {
-      // TODO: Replace with actual API call
-      // For now, using mock data
-      const mockLeaveRequests = [
-        {
-          id: 1,
-          from_date: '2024-01-15',
-          to_date: '2024-01-17',
-          leave_type: 'Sick Leave',
-          reason: 'Feeling unwell and need rest',
-          status: 'pending',
-        },
-        {
-          id: 2,
-          from_date: '2024-01-10',
-          to_date: '2024-01-12',
-          leave_type: 'Vacation Leave',
-          reason: 'Family vacation',
-          status: 'approved',
-        },
-      ];
-
-      myLeaveRequests.value = mockLeaveRequests;
+      await leaveStore.fetchMyLeaveRequests(
+        leaveCurrentPage.value,
+        leaveItemsPerPage.value
+      );
     } catch (error) {
       console.error('Error fetching leave requests:', error);
-      myLeaveRequests.value = [];
+      // Don't show error toast for initial load to avoid spamming user
+      if (myLeaveRequests.value.length > 0) {
+        showError('Failed to refresh leave requests');
+      }
     }
   };
 

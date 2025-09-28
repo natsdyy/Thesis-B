@@ -5,6 +5,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const { authenticateToken } = require("../middleware/rbac");
+const EmailService = require("../services/emailService");
 
 /**
  * @swagger
@@ -543,6 +544,33 @@ router.post("/", authenticateToken, async (req, res) => {
 
     const newEmployee = await Employee.create(employeeData, createdBy);
 
+    // Send welcome email to employee if email is provided
+    if (newEmployee.email) {
+      try {
+        const employeeName = `${newEmployee.first_name} ${newEmployee.last_name}`;
+        const defaultPassword = employeeData.password || newEmployee.last_name;
+
+        const emailResult = await EmailService.sendEmployeeWelcomeEmail(
+          newEmployee.email,
+          employeeName,
+          newEmployee.email,
+          defaultPassword
+        );
+
+        if (emailResult.success) {
+          console.log(`✅ Welcome email sent to ${newEmployee.email}`);
+        } else {
+          console.error(
+            `❌ Failed to send welcome email to ${newEmployee.email}:`,
+            emailResult.error
+          );
+        }
+      } catch (emailError) {
+        console.error("❌ Error sending welcome email:", emailError);
+        // Don't fail the employee creation if email fails
+      }
+    }
+
     res.status(201).json({
       success: true,
       data: newEmployee,
@@ -618,6 +646,33 @@ router.post(
         { ...payload, photo_url: photoUrl },
         createdBy
       );
+
+      // Send welcome email to employee if email is provided
+      if (employee.email) {
+        try {
+          const employeeName = `${employee.first_name} ${employee.last_name}`;
+          const defaultPassword = payload.password || employee.last_name;
+
+          const emailResult = await EmailService.sendEmployeeWelcomeEmail(
+            employee.email,
+            employeeName,
+            employee.email,
+            defaultPassword
+          );
+
+          if (emailResult.success) {
+            console.log(`✅ Welcome email sent to ${employee.email}`);
+          } else {
+            console.error(
+              `❌ Failed to send welcome email to ${employee.email}:`,
+              emailResult.error
+            );
+          }
+        } catch (emailError) {
+          console.error("❌ Error sending welcome email:", emailError);
+          // Don't fail the employee creation if email fails
+        }
+      }
 
       res.status(201).json({
         success: true,

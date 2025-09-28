@@ -30,11 +30,13 @@
   import { useBranchStore } from '../../stores/branchStore.js';
   import { usePositionsStore } from '../../stores/positionsStore.js';
   import { apiConfig } from '../../config/api.js';
+  import { useCustomToast } from '../../composables/useCustomToast.js';
 
   const authStore = useAuthStore();
   const employeeStore = useEmployeeStore();
   const branchStore = useBranchStore();
   const positionsStore = usePositionsStore();
+  const { showSuccess, showError, showInfo, showWarning } = useCustomToast();
 
   // Reactive state
   const currentStep = ref(0);
@@ -449,7 +451,10 @@
   // Modal functions
   const openConfirmModal = () => {
     if (!validateForm() || !isFormValid.value) {
-      showToast('error', 'Please fill in all required fields correctly');
+      showError(
+        'Please fill in all required fields correctly',
+        'Form Validation Error'
+      );
       return;
     }
 
@@ -530,16 +535,19 @@
         newEmployee = await employeeStore.createEmployee(employeeForm.value);
       }
 
-      showToast('success', 'Employee added successfully!');
+      showSuccess(
+        'Employee added successfully! Welcome email has been sent to the employee.',
+        'Employee Created Successfully'
+      );
       openSuccessModal(newEmployee);
 
       // Reset form
       resetForm();
     } catch (error) {
       console.error('Error adding employee:', error);
-      showToast(
-        'error',
-        error.message || 'Failed to add employee. Please try again.'
+      showError(
+        error.message || 'Failed to add employee. Please try again.',
+        'Employee Creation Failed'
       );
     } finally {
       saving.value = false;
@@ -578,12 +586,6 @@
     currentStep.value = 0;
     photoFile.value = null;
     photoPreview.value = '';
-  };
-
-  // Toast notification
-  const showToast = (type, message) => {
-    // Implementation would depend on your toast system
-    console.log(`${type}: ${message}`);
   };
 
   const onPhotoSelected = (event) => {
@@ -636,7 +638,10 @@
       }
     } catch (error) {
       console.error('Error fetching departments with roles:', error);
-      showToast('error', 'Failed to load departments and roles');
+      showError(
+        'Failed to load departments and roles. Please refresh the page.',
+        'Data Loading Error'
+      );
     }
   };
 

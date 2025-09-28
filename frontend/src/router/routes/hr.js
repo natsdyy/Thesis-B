@@ -74,4 +74,10 @@ export default [
     component: () => import('../../views/hr/LeaveApprovals.vue'),
     meta: { title: 'Leave Approvals' },
   },
+  {
+    path: 'positions',
+    name: 'HRPositions',
+    component: () => import('../../views/hr/Positions.vue'),
+    meta: { title: 'Positions' },
+  },
 ];

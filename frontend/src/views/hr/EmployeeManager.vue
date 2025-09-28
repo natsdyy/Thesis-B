@@ -788,9 +788,7 @@
                   </div>
                 </td>
                 <td>
-                  <div
-                    class="badge bg-primaryColor text-white badge-sm border-none"
-                  >
+                  <div class="text-xs">
                     {{ emp.role || emp.job_title || '—' }}
                   </div>
                 </td>

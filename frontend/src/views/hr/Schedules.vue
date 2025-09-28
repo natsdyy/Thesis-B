@@ -551,29 +551,24 @@
       <div class="card-body p-4">
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <!-- Search -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Search Employees</span>
-            </label>
-            <div class="relative">
-              <Search
-                class="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-              />
-              <input
-                v-model="searchQuery"
-                type="text"
-                placeholder="Name, role, department..."
-                class="input input-bordered w-full pl-10"
-              />
-            </div>
+          <div class="relative">
+            <Search
+              class="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+            />
+            <input
+              v-model="searchQuery"
+              type="text"
+              placeholder="Search employees..."
+              class="input input-bordered w-full pl-10"
+            />
           </div>
 
           <!-- Department Filter -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Department</span>
-            </label>
-            <select v-model="departmentFilter" class="select select-bordered">
+          <div>
+            <select
+              v-model="departmentFilter"
+              class="select select-bordered w-full"
+            >
               <option value="">All Departments</option>
               <option v-for="dept in departments" :key="dept" :value="dept">
                 {{ dept }}
@@ -582,11 +577,11 @@
           </div>
 
           <!-- Items Per Page -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Per Page</span>
-            </label>
-            <select v-model="itemsPerPage" class="select select-bordered">
+          <div>
+            <select
+              v-model="itemsPerPage"
+              class="select select-bordered w-full"
+            >
               <option value="5">5 per page</option>
               <option value="10">10 per page</option>
               <option value="20">20 per page</option>
@@ -595,16 +590,13 @@
           </div>
 
           <!-- Results Count -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Results</span>
-            </label>
-            <div class="flex items-center h-12 px-3 bg-gray-50 rounded-lg">
-              <Users class="w-4 h-4 mr-2 text-gray-400" />
-              <span class="text-sm"
-                >{{ filteredEmployees.length }} employees</span
-              >
-            </div>
+          <div
+            class="flex items-center justify-between sm:justify-start bg-gray-50 rounded-lg px-3 py-2"
+          >
+            <Users class="w-4 h-4 mr-2 text-gray-400" />
+            <span class="text-sm font-medium text-gray-700">
+              {{ filteredEmployees.length }} employees
+            </span>
           </div>
         </div>
       </div>

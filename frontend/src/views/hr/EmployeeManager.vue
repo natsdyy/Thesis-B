@@ -810,7 +810,7 @@
                 <td class="text-sm">{{ emp.phone_number || '—' }}</td>
                 <td class="text-sm">{{ emp.address || '—' }}</td>
                 <td>
-                  <div class="badge badge-ghost badge-sm">
+                  <div class="text-xs">
                     {{ emp.department || '—' }}
                     <span
                       v-if="emp.branch_id && getBranchName(emp.branch_id)"
@@ -1831,3 +1831,8 @@
     </form>
   </dialog>
 </template>
+<style scoped>
+  .table-zebra tbody tr:nth-child(odd) {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+</style>

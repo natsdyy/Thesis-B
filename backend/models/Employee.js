@@ -1161,6 +1161,7 @@ class Employee {
         .whereNull("deleted_at")
         .where("is_active", true)
         .where("department", "!=", "System") // Exclude system roles
+        .where("department", "!=", "Admin") // Exclude admin roles
         .groupBy("department")
         .orderBy("department");
 

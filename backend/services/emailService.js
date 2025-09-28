@@ -1,13 +1,32 @@
 const nodemailer = require('nodemailer');
+const sgMail = require('@sendgrid/mail');
 require('dotenv').config();
+
+// Initialize SendGrid if API key is available
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  console.log('📧 SendGrid initialized for Railway deployment');
+}
+
+// Email configuration from environment variables
+const EMAIL_CONFIG = {
+  user: process.env.SMTP_USER || 'mailcountrysidesteakhouse@gmail.com',
+  pass: process.env.SMTP_PASS || 'hgne ityd ejzn dgnv',
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: parseInt(process.env.SMTP_PORT) || 587,
+  secure: process.env.SMTP_SECURE === 'true' || false
+};
+
+// Check if we're in Railway environment
+const isRailway = process.env.RAILWAY_ENVIRONMENT === 'production' || process.env.NODE_ENV === 'production';
 
 // Create multiple transporter configurations for fallback
 const createTransporter = (config) => {
   return nodemailer.createTransport({
     ...config,
     auth: {
-      user: 'mailcountrysidesteakhouse@gmail.com',
-      pass: 'hgne ityd ejzn dgnv' // Updated Gmail App Password
+      user: EMAIL_CONFIG.user,
+      pass: EMAIL_CONFIG.pass
     },
     // Optimized timeout settings for better reliability
     connectionTimeout: 60000,  // 60 seconds - increased for better connectivity
@@ -34,21 +53,21 @@ const createTransporter = (config) => {
 
 // Primary transporter (Port 587 - STARTTLS) - Better for cloud hosting
 const transporter = createTransporter({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false
+  host: EMAIL_CONFIG.host,
+  port: EMAIL_CONFIG.port,
+  secure: EMAIL_CONFIG.secure
 });
 
 // Fallback transporter (Port 465 - SSL)
 const fallbackTransporter = createTransporter({
-  host: 'smtp.gmail.com',
+  host: EMAIL_CONFIG.host,
   port: 465,
   secure: true
 });
 
 // Alternative transporter with different settings for extreme cases
 const alternativeTransporter = createTransporter({
-  host: 'smtp.gmail.com',
+  host: EMAIL_CONFIG.host,
   port: 587,
   secure: false,
   tls: {
@@ -60,6 +79,20 @@ const alternativeTransporter = createTransporter({
   greetingTimeout: 60000,     // 1 minute
   socketTimeout: 120000       // 2 minutes
 });
+
+// Railway-compatible transporter using alternative SMTP (if configured)
+let railwayTransporter = null;
+if (process.env.RAILWAY_SMTP_HOST) {
+  railwayTransporter = createTransporter({
+    host: process.env.RAILWAY_SMTP_HOST,
+    port: parseInt(process.env.RAILWAY_SMTP_PORT) || 2525,
+    secure: false,
+    auth: {
+      user: process.env.RAILWAY_SMTP_USER || EMAIL_CONFIG.user,
+      pass: process.env.RAILWAY_SMTP_PASS || EMAIL_CONFIG.pass
+    }
+  });
+}
 
 // Verify transporter configuration with retry
 let verificationAttempts = 0;
@@ -138,6 +171,39 @@ class EmailService {
     });
 
     return Promise.race([emailPromise, timeoutPromise]);
+  }
+
+  /**
+   * Send email using SendGrid (Railway-compatible)
+   * @param {Object} mailOptions - Email options
+   * @returns {Promise<Object>} Result object
+   */
+  static async sendWithSendGrid(mailOptions) {
+    if (!process.env.SENDGRID_API_KEY) {
+      throw new Error('SendGrid API key not configured');
+    }
+
+    const msg = {
+      to: mailOptions.to,
+      from: mailOptions.from,
+      subject: mailOptions.subject,
+      text: mailOptions.text,
+      html: mailOptions.html
+    };
+
+    try {
+      console.log('📧 Sending email via SendGrid...');
+      const response = await sgMail.send(msg);
+      console.log('✅ SendGrid email sent successfully');
+      return { 
+        success: true, 
+        messageId: response[0].headers['x-message-id'] || 'sendgrid-success',
+        provider: 'sendgrid'
+      };
+    } catch (error) {
+      console.error('❌ SendGrid error:', error.message);
+      throw error;
+    }
   }
 
   /**
@@ -409,30 +475,58 @@ class EmailService {
         `
       };
 
-        // Try all transporters in sequence
+        // Try different email methods based on environment
         let info;
         let lastTransporterError;
         
-        try {
-          console.log(`📧 Using primary transporter (port 587 STARTTLS)`);
-          info = await this.withTimeout(transporter.sendMail(mailOptions), 90000);
-        } catch (primaryError) {
-          console.log(`❌ Primary transporter failed: ${primaryError.message}`);
-          lastTransporterError = primaryError;
-          
+        // For Railway deployment, try SendGrid first if available
+        if (isRailway && process.env.SENDGRID_API_KEY) {
           try {
-            console.log(`📧 Trying fallback transporter (port 465 SSL)`);
-            info = await this.withTimeout(fallbackTransporter.sendMail(mailOptions), 90000);
-          } catch (fallbackError) {
-            console.log(`❌ Fallback transporter failed: ${fallbackError.message}`);
-            lastTransporterError = fallbackError;
+            console.log(`📧 Using SendGrid for Railway deployment`);
+            info = await this.sendWithSendGrid(mailOptions);
+          } catch (sendGridError) {
+            console.log(`❌ SendGrid failed: ${sendGridError.message}`);
+            lastTransporterError = sendGridError;
+            // Continue to SMTP fallbacks
+          }
+        }
+        
+        // If SendGrid failed or not available, try SMTP transporters
+        if (!info) {
+          try {
+            console.log(`📧 Using primary transporter (port ${EMAIL_CONFIG.port} ${EMAIL_CONFIG.secure ? 'SSL' : 'STARTTLS'})`);
+            info = await this.withTimeout(transporter.sendMail(mailOptions), 90000);
+          } catch (primaryError) {
+            console.log(`❌ Primary transporter failed: ${primaryError.message}`);
+            lastTransporterError = primaryError;
             
-            try {
-              console.log(`📧 Trying alternative transporter (extended timeout)`);
-              info = await this.withTimeout(alternativeTransporter.sendMail(mailOptions), 120000);
-            } catch (altError) {
-              console.log(`❌ Alternative transporter failed: ${altError.message}`);
-              throw altError; // Throw the last error to trigger retry
+            // Try Railway-specific transporter if configured
+            if (railwayTransporter) {
+              try {
+                console.log(`📧 Trying Railway-specific transporter`);
+                info = await this.withTimeout(railwayTransporter.sendMail(mailOptions), 90000);
+              } catch (railwayError) {
+                console.log(`❌ Railway transporter failed: ${railwayError.message}`);
+                lastTransporterError = railwayError;
+              }
+            }
+            
+            if (!info) {
+              try {
+                console.log(`📧 Trying fallback transporter (port 465 SSL)`);
+                info = await this.withTimeout(fallbackTransporter.sendMail(mailOptions), 90000);
+              } catch (fallbackError) {
+                console.log(`❌ Fallback transporter failed: ${fallbackError.message}`);
+                lastTransporterError = fallbackError;
+                
+                try {
+                  console.log(`📧 Trying alternative transporter (extended timeout)`);
+                  info = await this.withTimeout(alternativeTransporter.sendMail(mailOptions), 120000);
+                } catch (altError) {
+                  console.log(`❌ Alternative transporter failed: ${altError.message}`);
+                  throw altError; // Throw the last error to trigger retry
+                }
+              }
             }
           }
         }

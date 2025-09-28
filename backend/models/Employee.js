@@ -1140,7 +1140,7 @@ class Employee {
       }
 
       const roles = await db("user_roles")
-        .select("role_id", "role", "department", "description")
+        .select("role_id", "role", "department", "description", "rate_per_hour")
         .where("department", department)
         .whereNull("deleted_at")
         .where("is_active", true)

@@ -17,11 +17,13 @@
     AlertTriangle,
   } from 'lucide-vue-next';
   import { useEmployeeStore } from '../../stores/employeeStore.js';
+  import { usePositionsStore } from '../../stores/positionsStore.js';
   import { apiConfig } from '../../config/api.js';
   import { useBranchStore } from '../../stores/branchStore.js';
 
   const router = useRouter();
   const employeeStore = useEmployeeStore();
+  const positionsStore = usePositionsStore();
   const branchStore = useBranchStore();
 
   // UI state
@@ -347,6 +349,31 @@
     return branch ? branch.name : '';
   };
 
+  // Computed property for monthly rate calculation
+  const getEmployeeMonthlyRate = computed(() => {
+    return (employee) => {
+      if (!employee || !employee.role_id || !employee.employee_type) {
+        return '₱0.00';
+      }
+
+      // Find the role from positions store
+      const role = positionsStore.getPositionById(employee.role_id);
+
+      if (!role || !role.rate_per_hour) {
+        return '₱0.00';
+      }
+
+      const hourlyRate = parseFloat(role.rate_per_hour);
+      const hoursPerDay = employee.employee_type === 'Full-time' ? 8 : 4;
+      const workingDaysPerMonth = 26; // Company works 6 days per week (1 day off)
+
+      const dailyRate = hourlyRate * hoursPerDay;
+      const monthlyRate = dailyRate * workingDaysPerMonth;
+
+      return `₱${monthlyRate.toFixed(2)}`;
+    };
+  });
+
   const openEditModal = (emp) => {
     // Reset form first
     resetEmployeeForm();
@@ -608,6 +635,12 @@
       );
     }
     await fetchDepartmentsWithRoles();
+    // Load positions data for salary calculation
+    try {
+      await positionsStore.fetchPositions();
+    } catch (e) {
+      console.error('Failed to load positions', e);
+    }
     // Load active branches for branch assignment
     try {
       await branchStore.fetchActiveBranches();
@@ -1117,6 +1150,12 @@
                       ? 'Deleted'
                       : selectedEmployee.status || '—'
                   }}
+                </span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-600">Monthly Rate:</span>
+                <span class="font-medium text-primaryColor">
+                  {{ getEmployeeMonthlyRate(selectedEmployee) }}
                 </span>
               </div>
             </div>

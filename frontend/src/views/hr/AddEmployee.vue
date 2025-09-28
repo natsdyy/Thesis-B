@@ -28,11 +28,13 @@
   import { useAuthStore } from '../../stores/authStore.js';
   import { useEmployeeStore } from '../../stores/employeeStore.js';
   import { useBranchStore } from '../../stores/branchStore.js';
+  import { usePositionsStore } from '../../stores/positionsStore.js';
   import { apiConfig } from '../../config/api.js';
 
   const authStore = useAuthStore();
   const employeeStore = useEmployeeStore();
   const branchStore = useBranchStore();
+  const positionsStore = usePositionsStore();
 
   // Reactive state
   const currentStep = ref(0);
@@ -119,9 +121,9 @@
     },
     {
       id: 'salary',
-      title: 'Benefits Information',
+      title: 'Salary Information',
       icon: PhilippinePeso,
-      description: 'Government benefit information',
+      description: 'Salary and government benefit information',
     },
     {
       id: 'emergency',
@@ -182,6 +184,59 @@
 
   // Active branches for assignment (used when department is Branch)
   const activeBranches = computed(() => branchStore.activeBranches || []);
+
+  // Base salary calculation based on role and employee type
+  const baseSalary = computed(() => {
+    if (!employeeForm.value.role_id || !employeeForm.value.employee_type) {
+      return {
+        hourly: 0,
+        daily: 0,
+        monthly: 0,
+        formatted: {
+          hourly: '₱0.00',
+          daily: '₱0.00',
+          monthly: '₱0.00',
+        },
+      };
+    }
+
+    // Find the selected role from available roles
+    const selectedRole = availableRoles.value.find(
+      (role) => role.role_id == employeeForm.value.role_id
+    );
+
+    if (!selectedRole || !selectedRole.rate_per_hour) {
+      return {
+        hourly: 0,
+        daily: 0,
+        monthly: 0,
+        formatted: {
+          hourly: '₱0.00',
+          daily: '₱0.00',
+          monthly: '₱0.00',
+        },
+      };
+    }
+
+    const hourlyRate = parseFloat(selectedRole.rate_per_hour);
+    const hoursPerDay =
+      employeeForm.value.employee_type === 'Full-time' ? 8 : 4; // Part-time is typically 4 hours
+    const workingDaysPerMonth = 26; // Company works 6 days per week (1 day off)
+
+    const dailyRate = hourlyRate * hoursPerDay;
+    const monthlyRate = dailyRate * workingDaysPerMonth;
+
+    return {
+      hourly: hourlyRate,
+      daily: dailyRate,
+      monthly: monthlyRate,
+      formatted: {
+        hourly: `₱${hourlyRate.toFixed(2)}`,
+        daily: `₱${dailyRate.toFixed(2)}`,
+        monthly: `₱${monthlyRate.toFixed(2)}`,
+      },
+    };
+  });
 
   const isFormValid = computed(() => {
     const form = employeeForm.value;
@@ -591,6 +646,10 @@
     // Load branches for assignment
     branchStore.fetchActiveBranches().catch((e) => {
       console.error('Failed to load branches', e);
+    });
+    // Load positions data for salary calculation
+    positionsStore.fetchPositions().catch((e) => {
+      console.error('Failed to load positions', e);
     });
   });
 </script>
@@ -1176,6 +1235,54 @@
 
         <!-- Benefits Information Step -->
         <div v-if="currentStep === 1" class="space-y-6">
+          <!-- Base Salary Information -->
+          <div class="bg-white border border-black/10 p-4 rounded-xl">
+            <h3
+              class="text-lg font-semibold text-primaryColor mb-4 flex items-center"
+            >
+              <DollarSign class="w-5 h-5 mr-2" />
+              Base Salary Information
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div class="bg-gray-50 p-3 rounded-lg">
+                <div class="text-sm text-gray-600 mb-1">Hourly Rate</div>
+                <div class="text-lg font-semibold text-primaryColor">
+                  {{ baseSalary.formatted.hourly }}
+                </div>
+              </div>
+              <div class="bg-gray-50 p-3 rounded-lg">
+                <div class="text-sm text-gray-600 mb-1">Daily Rate</div>
+                <div class="text-lg font-semibold text-primaryColor">
+                  {{ baseSalary.formatted.daily }}
+                </div>
+                <div class="text-xs text-gray-500">
+                  {{
+                    employeeForm.employee_type === 'Full-time'
+                      ? '8 hours'
+                      : '4 hours'
+                  }}
+                  per day
+                </div>
+              </div>
+              <div class="bg-gray-50 p-3 rounded-lg">
+                <div class="text-sm text-gray-600 mb-1">Monthly Rate</div>
+                <div class="text-lg font-semibold text-primaryColor">
+                  {{ baseSalary.formatted.monthly }}
+                </div>
+                <div class="text-xs text-gray-500">26 working days</div>
+              </div>
+            </div>
+            <div
+              v-if="!employeeForm.role_id || !employeeForm.employee_type"
+              class="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg"
+            >
+              <div class="text-sm text-yellow-800">
+                <Info class="w-4 h-4 inline mr-1" />
+                Please select a role and employee type to calculate base salary
+              </div>
+            </div>
+          </div>
+
           <div
             class="grid grid-cols-1 lg:grid-cols-2 gap-4 bg-white border border-black/10 p-4 rounded-xl"
           >

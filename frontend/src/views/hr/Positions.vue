@@ -2,181 +2,15 @@
   import { ref, computed, onMounted } from 'vue';
   import { Building2, Users } from 'lucide-vue-next';
   import { useCustomToast } from '../../composables/useCustomToast';
+  import { usePositionsStore } from '../../stores/positionsStore.js';
 
   const { showSuccess, showError } = useCustomToast();
-
-  // Mock data based on the provided positions
-  const mockPositions = ref({
-    Branch: [
-      {
-        role_id: 15,
-        role: 'Cashier',
-        department: 'Branch',
-        description: 'Branch Cashier',
-        rate_per_hour: 18.5,
-        is_active: true,
-        created_at: '2024-01-15',
-        updated_at: '2024-01-15',
-      },
-      {
-        role_id: 13,
-        role: 'Cook',
-        department: 'Branch',
-        description: 'Branch Cook',
-        rate_per_hour: 22.0,
-        is_active: true,
-        created_at: '2024-01-15',
-        updated_at: '2024-01-15',
-      },
-      {
-        role_id: 14,
-        role: 'Kitchen Assistant',
-        department: 'Branch',
-        description: 'Branch Kitchen Assistant',
-        rate_per_hour: 16.0,
-        is_active: true,
-        created_at: '2024-01-15',
-        updated_at: '2024-01-15',
-      },
-      {
-        role_id: 12,
-        role: 'Manager',
-        department: 'Branch',
-        description: 'Branch Manager',
-        rate_per_hour: 35.0,
-        is_active: true,
-        created_at: '2024-01-15',
-        updated_at: '2024-01-15',
-      },
-      {
-        role_id: 16,
-        role: 'Waiter',
-        department: 'Branch',
-        description: 'Branch Waiter',
-        rate_per_hour: 17.5,
-        is_active: true,
-        created_at: '2024-01-15',
-        updated_at: '2024-01-15',
-      },
-    ],
-    'Customer Relationship': [
-      {
-        role_id: 10,
-        role: 'Manager',
-        department: 'Customer Relationship',
-        description: 'Customer Relationship Management Department Manager',
-        rate_per_hour: 40.0,
-        is_active: true,
-        created_at: '2024-01-15',
-        updated_at: '2024-01-15',
-      },
-      {
-        role_id: 11,
-        role: 'Staff',
-        department: 'Customer Relationship',
-        description: 'Customer Relationship Management Department Staff',
-        rate_per_hour: 25.0,
-        is_active: true,
-        created_at: '2024-01-15',
-        updated_at: '2024-01-15',
-      },
-    ],
-    Finance: [
-      {
-        role_id: 4,
-        role: 'Manager',
-        department: 'Finance',
-        description: 'Finance Department Manager',
-        rate_per_hour: 45.0,
-        is_active: true,
-        created_at: '2024-01-15',
-        updated_at: '2024-01-15',
-      },
-      {
-        role_id: 5,
-        role: 'Staff',
-        department: 'Finance',
-        description: 'Finance Department Staff',
-        rate_per_hour: 30.0,
-        is_active: true,
-        created_at: '2024-01-15',
-        updated_at: '2024-01-15',
-      },
-    ],
-    'Human Resource': [
-      {
-        role_id: 2,
-        role: 'Manager',
-        department: 'Human Resource',
-        description: 'HR Department Manager',
-        rate_per_hour: 38.0,
-        is_active: true,
-        created_at: '2024-01-15',
-        updated_at: '2024-01-15',
-      },
-      {
-        role_id: 3,
-        role: 'Staff',
-        department: 'Human Resource',
-        description: 'HR Department Staff',
-        rate_per_hour: 26.0,
-        is_active: true,
-        created_at: '2024-01-15',
-        updated_at: '2024-01-15',
-      },
-    ],
-    Production: [
-      {
-        role_id: 8,
-        role: 'Manager',
-        department: 'Production',
-        description: 'Production Department Manager',
-        rate_per_hour: 40.0,
-        is_active: true,
-        created_at: '2024-01-15',
-        updated_at: '2024-01-15',
-      },
-      {
-        role_id: 9,
-        role: 'Staff',
-        department: 'Production',
-        description: 'Production Department Staff',
-        rate_per_hour: 24.0,
-        is_active: true,
-        created_at: '2024-01-15',
-        updated_at: '2024-01-15',
-      },
-    ],
-    'Supply Chain': [
-      {
-        role_id: 6,
-        role: 'Manager',
-        department: 'Supply Chain',
-        description: 'Supply Chain Management Department Manager',
-        rate_per_hour: 42.0,
-        is_active: true,
-        created_at: '2024-01-15',
-        updated_at: '2024-01-15',
-      },
-      {
-        role_id: 7,
-        role: 'Staff',
-        department: 'Supply Chain',
-        description: 'Supply Chain Management Department Staff',
-        rate_per_hour: 28.0,
-        is_active: true,
-        created_at: '2024-01-15',
-        updated_at: '2024-01-15',
-      },
-    ],
-  });
+  const positionsStore = usePositionsStore();
 
   // Reactive data
-  const isLoading = ref(false);
-  const activeTab = ref('Branch');
+  const activeTab = ref('');
   const showEditModal = ref(false);
   const selectedPosition = ref(null);
-  const updatingPositionId = ref(null);
 
   // Form data for edit
   const positionForm = ref({
@@ -187,11 +21,14 @@
   });
 
   // Computed properties
-  const departments = computed(() => Object.keys(mockPositions.value));
+  const departments = computed(() => positionsStore.departments);
 
   const filteredPositions = computed(() => {
-    return mockPositions.value[activeTab.value] || [];
+    return positionsStore.getPositionsByDepartment(activeTab.value);
   });
+
+  const isLoading = computed(() => positionsStore.loading);
+  const updatingPositionId = computed(() => positionsStore.updatingPositionId);
 
   // Methods
   const setActiveTab = (tab) => {
@@ -212,34 +49,34 @@
   const closeModals = () => {
     showEditModal.value = false;
     selectedPosition.value = null;
-    updatingPositionId.value = null;
   };
 
-  const updatePosition = async () => {
+  const updatePositionRate = async () => {
     try {
-      isLoading.value = true;
-      updatingPositionId.value = selectedPosition.value.role_id;
-
-      const department = positionForm.value.department;
-      const index = mockPositions.value[department].findIndex(
-        (p) => p.role_id === selectedPosition.value.role_id
+      await positionsStore.updatePositionRate(
+        selectedPosition.value.role_id,
+        positionForm.value.rate_per_hour
       );
-
-      if (index !== -1) {
-        mockPositions.value[department][index] = {
-          ...mockPositions.value[department][index], // Preserve original data
-          rate_per_hour: positionForm.value.rate_per_hour, // Only update rate
-          updated_at: new Date().toISOString().split('T')[0],
-        };
-      }
 
       showSuccess('Rate per hour updated successfully');
       closeModals();
     } catch (error) {
-      showError('Failed to update rate per hour');
-    } finally {
-      isLoading.value = false;
-      updatingPositionId.value = null;
+      console.error('Error updating position rate:', error);
+      showError(error.message || 'Failed to update rate per hour');
+    }
+  };
+
+  const fetchPositions = async () => {
+    try {
+      await positionsStore.fetchPositions();
+
+      // Set the first department as active tab if none is selected
+      if (!activeTab.value && departments.value.length > 0) {
+        activeTab.value = departments.value[0];
+      }
+    } catch (error) {
+      console.error('Error fetching positions:', error);
+      showError('Failed to load positions data');
     }
   };
 
@@ -251,7 +88,7 @@
   };
 
   onMounted(() => {
-    // Initialize component
+    fetchPositions();
   });
 </script>
 
@@ -281,7 +118,7 @@
         <Building2 class="w-4 h-4 mr-2" />
         <span>{{ department }}</span>
         <span class="badge badge-ghost ml-2">
-          {{ mockPositions[department].length }}
+          {{ positionsStore.getPositionsByDepartment(department).length }}
         </span>
       </button>
     </div>
@@ -293,7 +130,9 @@
       <div
         v-for="position in filteredPositions"
         :key="position.role_id"
-        @click="openEditModal(position)"
+        @click="
+          updatingPositionId !== position.role_id && openEditModal(position)
+        "
         class="card bg-white shadow-md border border-black/10 hover:shadow-lg cursor-pointer hover:border-primaryColor/30"
         :class="{
           'opacity-60': !position.is_active,
@@ -357,7 +196,20 @@
 
           <!-- Click to Edit Indicator -->
           <div class="flex justify-end mt-2">
-            <span class="text-xs text-black/40"> Click to edit rate </span>
+            <span
+              class="text-xs transition-colors"
+              :class="
+                updatingPositionId === position.role_id
+                  ? 'text-black/20'
+                  : 'text-black/40'
+              "
+            >
+              {{
+                updatingPositionId === position.role_id
+                  ? 'Updating...'
+                  : 'Click to edit rate'
+              }}
+            </span>
           </div>
         </div>
       </div>
@@ -420,15 +272,19 @@
             Cancel
           </button>
           <button
-            @click="updatePosition"
+            @click="updatePositionRate"
             class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
-            :disabled="isLoading"
+            :disabled="updatingPositionId === selectedPosition?.role_id"
           >
             <span
-              v-if="isLoading"
+              v-if="updatingPositionId === selectedPosition?.role_id"
               class="loading loading-spinner loading-sm"
             ></span>
-            Update Rate
+            {{
+              updatingPositionId === selectedPosition?.role_id
+                ? 'Updating...'
+                : 'Update Rate'
+            }}
           </button>
         </div>
       </div>

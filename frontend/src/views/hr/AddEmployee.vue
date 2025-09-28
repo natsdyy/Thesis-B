@@ -716,25 +716,6 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <Building class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-info" />
-        </div>
-        <div class="stat-title text-black/50 !text-xs sm:text-sm">
-          Departments
-        </div>
-        <div
-          class="stat-value text-info text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ employeeStats.departments }}
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Active departments
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
           <Target class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-warning" />
         </div>
         <div class="stat-title text-black/50 !text-xs sm:text-sm">
@@ -1240,7 +1221,6 @@
             <h3
               class="text-lg font-semibold text-primaryColor mb-4 flex items-center"
             >
-              <DollarSign class="w-5 h-5 mr-2" />
               Base Salary Information
             </h3>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">

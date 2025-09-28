@@ -10,34 +10,55 @@ const createTransporter = (config) => {
       pass: 'hgne ityd ejzn dgnv' // Updated Gmail App Password
     },
     // Optimized timeout settings for better reliability
-    connectionTimeout: 30000,  // 30 seconds
-    greetingTimeout: 15000,    // 15 seconds
-    socketTimeout: 30000,      // 30 seconds
+    connectionTimeout: 60000,  // 60 seconds - increased for better connectivity
+    greetingTimeout: 30000,    // 30 seconds - increased
+    socketTimeout: 60000,      // 60 seconds - increased
     pool: false, // Disable connection pooling for Railway compatibility
     tls: {
       rejectUnauthorized: false,
-      secureProtocol: 'TLSv1_2_method'
+      secureProtocol: 'TLSv1_2_method',
+      ciphers: 'SSLv3'
     },
-    debug: false, // Reduced logging for production
+    debug: false, // Disable debug for production
     logger: false,
     // Additional reliability settings
     requireTLS: true,
-    ignoreTLS: false
+    ignoreTLS: false,
+    // Add more robust connection settings
+    maxConnections: 1,
+    maxMessages: 1,
+    rateDelta: 1000,
+    rateLimit: 1
   });
 };
 
-// Primary transporter (Port 465 - SSL) - Updated to use SSL as primary
+// Primary transporter (Port 587 - STARTTLS) - Better for cloud hosting
 const transporter = createTransporter({
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false
+});
+
+// Fallback transporter (Port 465 - SSL)
+const fallbackTransporter = createTransporter({
   host: 'smtp.gmail.com',
   port: 465,
   secure: true
 });
 
-// Fallback transporter (Port 587 - STARTTLS)
-const fallbackTransporter = createTransporter({
+// Alternative transporter with different settings for extreme cases
+const alternativeTransporter = createTransporter({
   host: 'smtp.gmail.com',
   port: 587,
-  secure: false
+  secure: false,
+  tls: {
+    rejectUnauthorized: false,
+    secureProtocol: 'TLSv1_method',
+    ciphers: 'ALL'
+  },
+  connectionTimeout: 120000,  // 2 minutes
+  greetingTimeout: 60000,     // 1 minute
+  socketTimeout: 120000       // 2 minutes
 });
 
 // Verify transporter configuration with retry
@@ -48,35 +69,51 @@ const verifyTransporter = () => {
   verificationAttempts++;
   console.log(`📧 Verifying email service (attempt ${verificationAttempts}/${maxVerificationAttempts})`);
   
-  // Try primary transporter first (Port 465 - SSL)
+  // Try primary transporter first (Port 587 - STARTTLS)
   transporter.verify((primaryError, primarySuccess) => {
     if (!primaryError) {
-      console.log('✅ Primary email service (port 465 SSL) ready to send messages');
+      console.log('✅ Primary email service (port 587 STARTTLS) ready to send messages');
       return;
     }
     
     console.log(`❌ Primary transporter failed: ${primaryError.message}`);
-    console.log(`📧 Trying fallback transporter (port 587)...`);
+    console.log(`📧 Trying fallback transporter (port 465 SSL)...`);
     
-    // Try fallback transporter (Port 587 - STARTTLS)
+    // Try fallback transporter (Port 465 - SSL)
     fallbackTransporter.verify((fallbackError, fallbackSuccess) => {
       if (!fallbackError) {
-        console.log('✅ Fallback email service (port 587 STARTTLS) ready to send messages');
+        console.log('✅ Fallback email service (port 465 SSL) ready to send messages');
         return;
       }
       
-      console.error(`❌ Both transporters failed on attempt ${verificationAttempts}`);
-      console.error(`Primary: ${primaryError.message}`);
-      console.error(`Fallback: ${fallbackError.message}`);
+      console.log(`❌ Fallback transporter failed: ${fallbackError.message}`);
+      console.log(`📧 Trying alternative transporter...`);
       
-      if (verificationAttempts < maxVerificationAttempts) {
-        console.log(`⏳ Retrying email service verification in 5 seconds...`);
-        setTimeout(verifyTransporter, 5000);
-      } else {
-        console.error('❌ Email service verification failed after all attempts');
-        console.error('⚠️  Email functionality may be limited');
-        console.error('💡 Check your internet connection and Gmail app password');
-      }
+      // Try alternative transporter
+      alternativeTransporter.verify((altError, altSuccess) => {
+        if (!altError) {
+          console.log('✅ Alternative email service ready to send messages');
+          return;
+        }
+        
+        console.error(`❌ All transporters failed on attempt ${verificationAttempts}`);
+        console.error(`Primary: ${primaryError.message}`);
+        console.error(`Fallback: ${fallbackError.message}`);
+        console.error(`Alternative: ${altError.message}`);
+        
+        if (verificationAttempts < maxVerificationAttempts) {
+          console.log(`⏳ Retrying email service verification in 10 seconds...`);
+          setTimeout(verifyTransporter, 10000);
+        } else {
+          console.error('❌ Email service verification failed after all attempts');
+          console.error('⚠️  Email functionality may be limited');
+          console.error('💡 Troubleshooting tips:');
+          console.error('   1. Check your internet connection');
+          console.error('   2. Verify Gmail app password is correct');
+          console.error('   3. Ensure 2FA is enabled on Gmail account');
+          console.error('   4. Check if Gmail is blocking the connection from your server IP');
+        }
+      });
     });
   });
 };
@@ -88,15 +125,19 @@ class EmailService {
   /**
    * Wrapper to add timeout to email operations
    * @param {Promise} emailPromise - The email promise
-   * @param {number} timeoutMs - Timeout in milliseconds (default: 15000)
+   * @param {number} timeoutMs - Timeout in milliseconds (default: 90000)
    */
-  static async withTimeout(emailPromise, timeoutMs = 45000) {
-    return Promise.race([
-      emailPromise,
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Email operation timed out')), timeoutMs)
-      )
-    ]);
+  static async withTimeout(emailPromise, timeoutMs = 90000) {
+    const timeoutPromise = new Promise((_, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(new Error(`Email operation timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      
+      // Clear timeout if promise resolves first
+      emailPromise.finally(() => clearTimeout(timeoutId));
+    });
+
+    return Promise.race([emailPromise, timeoutPromise]);
   }
 
   /**
@@ -262,10 +303,16 @@ class EmailService {
    * @param {number} rating - Customer's rating (if any)
    */
   static async sendFeedbackReplyEmail(customerEmail, customerName, originalMessage, replyMessage, rating = null) {
-    const maxRetries = 2;
+    const maxRetries = 3;
     let lastError;
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      // Add delay between attempts (except for first attempt)
+      if (attempt > 1) {
+        const delay = attempt * 2000; // 2s, 4s, 6s delays
+        console.log(`⏳ Waiting ${delay}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
       try {
         console.log(`📧 Attempt ${attempt}/${maxRetries} - Sending feedback reply to ${customerEmail}`);
         
@@ -362,15 +409,32 @@ class EmailService {
         `
       };
 
-        // Try primary transporter first (Port 465 SSL), then fallback (Port 587 STARTTLS)
+        // Try all transporters in sequence
         let info;
+        let lastTransporterError;
+        
         try {
-          console.log(`📧 Using primary transporter (port 465 SSL)`);
-          info = await this.withTimeout(transporter.sendMail(mailOptions), 45000);
+          console.log(`📧 Using primary transporter (port 587 STARTTLS)`);
+          info = await this.withTimeout(transporter.sendMail(mailOptions), 90000);
         } catch (primaryError) {
           console.log(`❌ Primary transporter failed: ${primaryError.message}`);
-          console.log(`📧 Trying fallback transporter (port 587 STARTTLS)`);
-          info = await this.withTimeout(fallbackTransporter.sendMail(mailOptions), 45000);
+          lastTransporterError = primaryError;
+          
+          try {
+            console.log(`📧 Trying fallback transporter (port 465 SSL)`);
+            info = await this.withTimeout(fallbackTransporter.sendMail(mailOptions), 90000);
+          } catch (fallbackError) {
+            console.log(`❌ Fallback transporter failed: ${fallbackError.message}`);
+            lastTransporterError = fallbackError;
+            
+            try {
+              console.log(`📧 Trying alternative transporter (extended timeout)`);
+              info = await this.withTimeout(alternativeTransporter.sendMail(mailOptions), 120000);
+            } catch (altError) {
+              console.log(`❌ Alternative transporter failed: ${altError.message}`);
+              throw altError; // Throw the last error to trigger retry
+            }
+          }
         }
         console.log(`✅ Feedback reply email sent (attempt ${attempt}):`, info.messageId);
         return { success: true, messageId: info.messageId };

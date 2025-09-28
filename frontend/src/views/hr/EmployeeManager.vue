@@ -20,6 +20,7 @@
   } from 'lucide-vue-next';
   import { useEmployeeStore } from '../../stores/employeeStore.js';
   import { usePositionsStore } from '../../stores/positionsStore.js';
+  import { useAttendanceStore } from '../../stores/attendanceStore.js';
   import { apiConfig } from '../../config/api.js';
   import { useBranchStore } from '../../stores/branchStore.js';
 
@@ -27,6 +28,7 @@
   const route = useRoute();
   const employeeStore = useEmployeeStore();
   const positionsStore = usePositionsStore();
+  const attendanceStore = useAttendanceStore();
   const branchStore = useBranchStore();
 
   // UI state
@@ -41,6 +43,9 @@
   const activeTab = ref('all');
   const selectedDepartment = ref('');
   const selectedBranch = ref('');
+
+  // Attendance data
+  const attendanceData = ref({});
 
   // Toast state (mirrors other views)
   const toast = ref({ show: false, type: 'success', message: '' });
@@ -181,6 +186,45 @@
     return Array.from(set).sort();
   });
 
+  // Fetch attendance data for employees
+  const fetchAttendanceData = async () => {
+    try {
+      // Use today's date for attendance checking (Philippines timezone UTC+8)
+      const now = new Date();
+      const philippinesTime = new Date(now.getTime() + 8 * 60 * 60 * 1000); // UTC+8
+      const today = philippinesTime.toISOString().split('T')[0];
+
+      if (activeTab.value === 'department' && selectedDepartment.value) {
+        const attendanceStatus =
+          await attendanceStore.fetchBulkAttendanceStatus({
+            department: selectedDepartment.value,
+            date: today,
+          });
+
+        // Convert array to object keyed by employee_id for easy lookup
+        attendanceData.value = {};
+        attendanceStatus.forEach((emp) => {
+          attendanceData.value[emp.employee_id] = emp;
+        });
+      } else if (activeTab.value === 'branch' && selectedBranch.value) {
+        const attendanceStatus =
+          await attendanceStore.fetchBulkAttendanceStatus({
+            branch_id: selectedBranch.value,
+            date: today,
+          });
+
+        // Convert array to object keyed by employee_id for easy lookup
+        attendanceData.value = {};
+        attendanceStatus.forEach((emp) => {
+          attendanceData.value[emp.employee_id] = emp;
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch attendance data:', error);
+      // Don't show error toast as this is secondary data
+    }
+  };
+
   // Tab switching logic
   const setActiveTab = (tab) => {
     activeTab.value = tab;
@@ -195,6 +239,9 @@
     selectedDepartment.value = '';
     selectedBranch.value = '';
     currentPage.value = 1;
+
+    // Clear attendance data when switching tabs
+    attendanceData.value = {};
   };
 
   // Watch for URL changes to sync tab
@@ -655,6 +702,26 @@
     () => employeeForm.value.department,
     () => {
       employeeForm.value.role_id = '';
+    }
+  );
+
+  // Watch for department selection changes to fetch attendance data
+  watch(
+    () => selectedDepartment.value,
+    () => {
+      if (activeTab.value === 'department') {
+        fetchAttendanceData();
+      }
+    }
+  );
+
+  // Watch for branch selection changes to fetch attendance data
+  watch(
+    () => selectedBranch.value,
+    () => {
+      if (activeTab.value === 'branch') {
+        fetchAttendanceData();
+      }
     }
   );
 
@@ -1149,6 +1216,7 @@
                 <th class="whitespace-nowrap">Phone</th>
                 <th class="whitespace-nowrap">Address</th>
                 <th class="whitespace-nowrap">Position</th>
+                <th class="whitespace-nowrap">Attendance</th>
                 <th class="whitespace-nowrap">Status</th>
                 <th class="whitespace-nowrap">Actions</th>
               </tr>
@@ -1187,6 +1255,40 @@
                 <td>
                   <div class="text-xs">
                     {{ emp.role || emp.job_title || '—' }}
+                  </div>
+                </td>
+                <td>
+                  <div class="flex items-center">
+                    <div
+                      :class="[
+                        'w-2 h-2 rounded-full mr-2',
+                        attendanceData[emp.id] &&
+                        attendanceData[emp.id].attendance_status === 'present'
+                          ? 'bg-success'
+                          : attendanceData[emp.id] &&
+                              attendanceData[emp.id].attendance_status ===
+                                'on_leave'
+                            ? 'bg-warning'
+                            : attendanceData[emp.id] &&
+                                attendanceData[emp.id].attendance_status ===
+                                  'late'
+                              ? 'bg-warning'
+                              : attendanceData[emp.id] &&
+                                  attendanceData[emp.id].attendance_status ===
+                                    'day_off'
+                                ? 'bg-gray-400'
+                                : 'bg-error',
+                      ]"
+                    ></div>
+                    <span class="text-sm">
+                      {{
+                        attendanceData[emp.id]
+                          ? attendanceData[emp.id].attendance_status
+                              .replace('_', ' ')
+                              .replace(/\b\w/g, (l) => l.toUpperCase())
+                          : 'Absent'
+                      }}
+                    </span>
                   </div>
                 </td>
                 <td>
@@ -1369,6 +1471,7 @@
                 <th class="whitespace-nowrap">Address</th>
                 <th class="whitespace-nowrap">Department</th>
                 <th class="whitespace-nowrap">Position</th>
+                <th class="whitespace-nowrap">Attendance</th>
                 <th class="whitespace-nowrap">Status</th>
                 <th class="whitespace-nowrap">Actions</th>
               </tr>
@@ -1412,6 +1515,40 @@
                 <td>
                   <div class="text-xs">
                     {{ emp.role || emp.job_title || '—' }}
+                  </div>
+                </td>
+                <td>
+                  <div class="flex items-center">
+                    <div
+                      :class="[
+                        'w-2 h-2 rounded-full mr-2',
+                        attendanceData[emp.id] &&
+                        attendanceData[emp.id].attendance_status === 'present'
+                          ? 'bg-success'
+                          : attendanceData[emp.id] &&
+                              attendanceData[emp.id].attendance_status ===
+                                'on_leave'
+                            ? 'bg-warning'
+                            : attendanceData[emp.id] &&
+                                attendanceData[emp.id].attendance_status ===
+                                  'late'
+                              ? 'bg-warning'
+                              : attendanceData[emp.id] &&
+                                  attendanceData[emp.id].attendance_status ===
+                                    'day_off'
+                                ? 'bg-gray-400'
+                                : 'bg-error',
+                      ]"
+                    ></div>
+                    <span class="text-sm">
+                      {{
+                        attendanceData[emp.id]
+                          ? attendanceData[emp.id].attendance_status
+                              .replace('_', ' ')
+                              .replace(/\b\w/g, (l) => l.toUpperCase())
+                          : 'Absent'
+                      }}
+                    </span>
                   </div>
                 </td>
                 <td>

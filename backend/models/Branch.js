@@ -40,13 +40,6 @@ class Branch {
       errors.push("Branch address must not exceed 500 characters");
     }
 
-    if (
-      data.manager_id &&
-      (typeof data.manager_id !== "number" || data.manager_id <= 0)
-    ) {
-      errors.push("Invalid manager ID");
-    }
-
     return {
       isValid: errors.length === 0,
       errors,
@@ -61,16 +54,7 @@ class Branch {
   // Get all branches
   static async getAll(includeStats = false, includeDeleted = false) {
     try {
-      let query = db("branches")
-        .leftJoin("employees", "branches.manager_id", "employees.id")
-        .select(
-          "branches.*",
-          db.raw(
-            "CONCAT(employees.first_name, ' ', employees.last_name) as manager_name"
-          ),
-          "employees.email as manager_email",
-          "employees.department as manager_department"
-        );
+      let query = db("branches").select("branches.*");
 
       // Only exclude soft-deleted branches if includeDeleted is false
       if (!includeDeleted) {
@@ -111,24 +95,6 @@ class Branch {
       if (!branch) {
         console.log("No branch found with ID:", id);
         return null;
-      }
-
-      // If branch has a manager_id, try to get manager details
-      if (branch.manager_id) {
-        try {
-          const manager = await db("employees")
-            .where("id", branch.manager_id)
-            .first();
-
-          if (manager) {
-            branch.manager_name = `${manager.first_name} ${manager.last_name}`;
-            branch.manager_email = manager.email;
-            branch.manager_department = manager.department;
-          }
-        } catch (managerError) {
-          console.log("Error fetching manager details:", managerError.message);
-          // Continue without manager details
-        }
       }
 
       // Add employee count
@@ -200,7 +166,6 @@ class Branch {
         address: branchData.address.trim(),
         phone: branchData.phone?.trim() || null,
         email: branchData.email?.trim() || null,
-        manager_id: branchData.manager_id || null,
         city: branchData.city?.trim() || null,
         state: branchData.state?.trim() || null,
         postal_code: branchData.postal_code?.trim() || null,
@@ -291,7 +256,6 @@ class Branch {
         address: branchData.address.trim(),
         phone: branchData.phone?.trim() || null,
         email: branchData.email?.trim() || null,
-        manager_id: branchData.manager_id || null,
         city: branchData.city?.trim() || null,
         state: branchData.state?.trim() || null,
         postal_code: branchData.postal_code?.trim() || null,
@@ -477,8 +441,8 @@ class Branch {
     }
   }
 
-  // Get users assigned to branch
-  static async getUsers(branchId) {
+  // Get employees assigned to branch
+  static async getEmployees(branchId) {
     try {
       if (!branchId || isNaN(branchId)) {
         throw new Error("Invalid branch ID provided");
@@ -490,16 +454,25 @@ class Branch {
         throw new Error("Branch not found");
       }
 
-      const users = await db("employees")
+      const employees = await db("employees")
         .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
-        .select("employees.*", "user_roles.role", "user_roles.department")
+        .select(
+          "employees.id",
+          "employees.employee_id",
+          "employees.first_name",
+          "employees.last_name",
+          "employees.email",
+          "employees.department",
+          "employees.status",
+          "user_roles.role"
+        )
         .where("employees.branch_id", branchId)
         .whereNull("employees.deleted_at")
         .orderBy("employees.first_name");
 
-      return users;
+      return employees;
     } catch (error) {
-      console.error("Error fetching branch users:", error);
+      console.error("Error fetching branch employees:", error);
 
       if (
         error.message.includes("Invalid") ||
@@ -508,68 +481,7 @@ class Branch {
         throw error;
       }
 
-      throw new Error("Failed to retrieve branch users");
-    }
-  }
-
-  // Get employees by department for manager selection
-  static async getEmployeesByDepartment(department) {
-    try {
-      if (!department) {
-        throw new Error("Department is required");
-      }
-
-      const employees = await db("employees")
-        .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
-        .select(
-          "employees.id",
-          "employees.employee_id",
-          "employees.first_name",
-          "employees.last_name",
-          "employees.email",
-          "employees.department",
-          "user_roles.role"
-        )
-        .where("employees.department", department)
-        .where("employees.status", "Active")
-        .whereNull("employees.deleted_at")
-        .whereNull("user_roles.deleted_at")
-        .where("user_roles.is_active", true)
-        .orderBy("employees.first_name");
-
-      return employees;
-    } catch (error) {
-      console.error("Error fetching employees by department:", error);
-      throw new Error("Failed to retrieve department employees");
-    }
-  }
-
-  // Get branch managers (employees from Branch department with Manager role)
-  static async getBranchManagers() {
-    try {
-      const employees = await db("employees")
-        .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
-        .select(
-          "employees.id",
-          "employees.employee_id",
-          "employees.first_name",
-          "employees.last_name",
-          "employees.email",
-          "employees.department",
-          "user_roles.role"
-        )
-        .where("employees.department", "Branch")
-        .where("user_roles.role", "Manager")
-        .where("employees.status", "Active")
-        .whereNull("employees.deleted_at")
-        .whereNull("user_roles.deleted_at")
-        .where("user_roles.is_active", true)
-        .orderBy("employees.first_name");
-
-      return employees;
-    } catch (error) {
-      console.error("Error fetching branch managers:", error);
-      throw new Error("Failed to retrieve branch managers");
+      throw new Error("Failed to retrieve branch employees");
     }
   }
 
@@ -583,6 +495,7 @@ class Branch {
         .first();
       const totalEmployeesInBranches = await db("employees")
         .whereNotNull("branch_id")
+        .whereNull("deleted_at")
         .count("id as count")
         .first();
 

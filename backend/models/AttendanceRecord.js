@@ -1,6 +1,54 @@
 const { db: knex } = require("../config/database");
 
 class AttendanceRecord {
+  // Valid attendance statuses
+  static VALID_STATUSES = {
+    PRESENT: "present",
+    LATE: "late",
+    ABSENT: "absent",
+    ON_LEAVE: "on_leave",
+    DAY_OFF: "day_off",
+  };
+
+  // Valid stored statuses (only these are stored in attendance_records table)
+  static STORED_STATUSES = {
+    PRESENT: "present",
+    LATE: "late",
+  };
+
+  // Computed statuses (determined by business logic, not stored in DB)
+  static COMPUTED_STATUSES = {
+    ABSENT: "absent",
+    ON_LEAVE: "on_leave",
+    DAY_OFF: "day_off",
+  };
+
+  /**
+   * Validate if a status is valid
+   * @param {string} status - Status to validate
+   * @returns {boolean} - True if valid
+   */
+  static isValidStatus(status) {
+    return Object.values(this.VALID_STATUSES).includes(status);
+  }
+
+  /**
+   * Check if status is a stored status (saved in attendance_records table)
+   * @param {string} status - Status to check
+   * @returns {boolean} - True if stored status
+   */
+  static isStoredStatus(status) {
+    return Object.values(this.STORED_STATUSES).includes(status);
+  }
+
+  /**
+   * Check if status is a computed status (determined by business logic)
+   * @param {string} status - Status to check
+   * @returns {boolean} - True if computed status
+   */
+  static isComputedStatus(status) {
+    return Object.values(this.COMPUTED_STATUSES).includes(status);
+  }
   static async create(data) {
     const [record] = await knex("attendance_records")
       .insert(data)
@@ -421,7 +469,15 @@ class AttendanceRecord {
 
   // Check if employee is on approved leave for a specific date
   static async isEmployeeOnLeave(employeeId, date = null) {
-    const targetDate = date ? new Date(date) : new Date();
+    let targetDate;
+    if (date) {
+      targetDate = new Date(date);
+    } else {
+      // Get current date in Philippines timezone (UTC+8)
+      const now = new Date();
+      const philippinesTime = new Date(now.getTime() + 8 * 60 * 60 * 1000); // UTC+8
+      targetDate = new Date(philippinesTime.toISOString().split("T")[0]);
+    }
     const dateStr = targetDate.toISOString().split("T")[0];
 
     const leaveRequest = await knex("leave_requests")
@@ -434,7 +490,28 @@ class AttendanceRecord {
     return !!leaveRequest;
   }
 
-  // Enhanced getTodayAttendance that includes leave status
+  // Check if employee is scheduled for day off on a specific date
+  static async isEmployeeOnDayOff(employeeId, date = null) {
+    let targetDate;
+    if (date) {
+      targetDate = new Date(date);
+    } else {
+      // Get current date in Philippines timezone (UTC+8)
+      const now = new Date();
+      const philippinesTime = new Date(now.getTime() + 8 * 60 * 60 * 1000); // UTC+8
+      targetDate = new Date(philippinesTime.toISOString().split("T")[0]);
+    }
+    const dateStr = targetDate.toISOString().split("T")[0];
+
+    const schedule = await knex("employee_schedules")
+      .where("employee_id", employeeId)
+      .where("schedule_date", dateStr)
+      .first();
+
+    return schedule && schedule.shift_name === "Day Off";
+  }
+
+  // Enhanced getTodayAttendance that includes leave status and day off detection
   static async getTodayAttendanceWithLeaveStatus(employeeId) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -447,17 +524,27 @@ class AttendanceRecord {
       .whereBetween("created_at", [today, endOfDay])
       .first();
 
-    // Check if employee is on leave
+    // Check if employee is on leave or day off
     const isOnLeave = await this.isEmployeeOnLeave(employeeId);
+    const isOnDayOff = await this.isEmployeeOnDayOff(employeeId);
+
+    // Determine attendance status with priority: day_off > on_leave > present/late > absent
+    let attendanceStatus;
+    if (isOnDayOff) {
+      attendanceStatus = "day_off";
+    } else if (isOnLeave) {
+      attendanceStatus = "on_leave";
+    } else if (attendanceRecord) {
+      attendanceStatus = attendanceRecord.status;
+    } else {
+      attendanceStatus = "absent";
+    }
 
     return {
       ...attendanceRecord,
       is_on_leave: isOnLeave,
-      attendance_status: isOnLeave
-        ? "on_leave"
-        : attendanceRecord
-          ? attendanceRecord.status
-          : "absent",
+      is_on_day_off: isOnDayOff,
+      attendance_status: attendanceStatus,
     };
   }
 }

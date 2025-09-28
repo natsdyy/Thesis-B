@@ -4,7 +4,7 @@ const AttendanceQRCode = require("../models/AttendanceQRCode");
 const AttendanceRecord = require("../models/AttendanceRecord");
 const EmployeeScheduleService = require("../services/EmployeeScheduleService");
 const { authenticateToken } = require("../middleware/rbac");
-const { db } = require("../config/database");
+const { db: knex } = require("../config/database");
 
 // QR Code Management Routes
 router.get("/qr-codes", authenticateToken, async (req, res) => {
@@ -613,6 +613,147 @@ router.get("/my-schedule", authenticateToken, async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch employee schedule",
+      error: error.message,
+    });
+  }
+});
+
+// Get attendance status for multiple employees (for department/branch views)
+router.get("/bulk-status", authenticateToken, async (req, res) => {
+  try {
+    const { employee_ids, department, branch_id, date } = req.query;
+
+    if (!employee_ids && !department && !branch_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Either employee_ids, department, or branch_id is required",
+      });
+    }
+
+    // Use provided date or default to today (Philippines timezone)
+    let targetDate;
+    if (date) {
+      targetDate = new Date(date);
+    } else {
+      // Get current date in Philippines timezone (UTC+8)
+      const now = new Date();
+      const philippinesTime = new Date(now.getTime() + 8 * 60 * 60 * 1000); // UTC+8
+      targetDate = new Date(philippinesTime.toISOString().split("T")[0]);
+    }
+    targetDate.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Build employee query based on provided filters
+    let employeeQuery = knex("employees as e")
+      .select(
+        "e.id",
+        "e.first_name",
+        "e.last_name",
+        "e.employee_id",
+        "e.department",
+        "e.branch_id"
+      )
+      .whereNull("e.deleted_at");
+
+    if (employee_ids) {
+      const ids = employee_ids.split(",").map((id) => parseInt(id.trim()));
+      employeeQuery = employeeQuery.whereIn("e.id", ids);
+    } else if (department) {
+      employeeQuery = employeeQuery.where("e.department", department);
+    } else if (branch_id) {
+      employeeQuery = employeeQuery.where("e.branch_id", branch_id);
+    }
+
+    const employees = await employeeQuery;
+
+    // Get attendance records for the target date for all employees
+    const employeeIds = employees.map((emp) => emp.id);
+    const attendanceRecords = await knex("attendance_records as ar")
+      .select(
+        "ar.employee_id",
+        "ar.status",
+        "ar.time_in",
+        "ar.time_out",
+        "ar.created_at"
+      )
+      .whereIn("ar.employee_id", employeeIds)
+      .whereBetween("ar.created_at", [targetDate, endOfDay]);
+
+    // Get leave requests for the target date
+    const leaveRequests = await knex("leave_requests as lr")
+      .select(
+        "lr.employee_id",
+        "lr.leave_type",
+        "lr.from_date",
+        "lr.to_date",
+        "lr.status"
+      )
+      .whereIn("lr.employee_id", employeeIds)
+      .whereIn("lr.status", ["approved_by_manager", "approved_by_hr"])
+      .where("lr.from_date", "<=", targetDate.toISOString().split("T")[0])
+      .where("lr.to_date", ">=", targetDate.toISOString().split("T")[0]);
+
+    // Get schedules for the target date to check for day off
+    const targetDateSchedules = await knex("employee_schedules as es")
+      .select("es.employee_id", "es.shift_name")
+      .whereIn("es.employee_id", employeeIds)
+      .where("es.schedule_date", targetDate.toISOString().split("T")[0]);
+
+    // Combine data
+    const result = employees.map((employee) => {
+      const attendance = attendanceRecords.find(
+        (ar) => ar.employee_id === employee.id
+      );
+      const leave = leaveRequests.find((lr) => lr.employee_id === employee.id);
+      const schedule = targetDateSchedules.find(
+        (s) => s.employee_id === employee.id
+      );
+
+      let attendance_status = "absent";
+      let attendance_icon = "🔴"; // Red dot for absent
+
+      // Check for day off first (highest priority)
+      if (schedule && schedule.shift_name === "Day Off") {
+        attendance_status = "day_off";
+        attendance_icon = "⚪"; // White dot for day off
+      } else if (leave) {
+        attendance_status = "on_leave";
+        attendance_icon = "🟡"; // Yellow dot for on leave
+      } else if (attendance) {
+        attendance_status = attendance.status;
+        if (attendance.status === "present") {
+          attendance_icon = "🟢"; // Green dot for present
+        } else if (attendance.status === "late") {
+          attendance_icon = "🟠"; // Orange dot for late
+        }
+      }
+
+      return {
+        employee_id: employee.id,
+        first_name: employee.first_name,
+        last_name: employee.last_name,
+        employee_code: employee.employee_id,
+        department: employee.department,
+        branch_id: employee.branch_id,
+        attendance_status,
+        attendance_icon,
+        time_in: attendance?.time_in || null,
+        time_out: attendance?.time_out || null,
+        leave_type: leave?.leave_type || null,
+        leave_dates: leave ? `${leave.from_date} to ${leave.to_date}` : null,
+      };
+    });
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error fetching bulk attendance status:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch attendance status",
       error: error.message,
     });
   }

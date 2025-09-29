@@ -174,12 +174,6 @@ export const menuItems = [
     route: '/crm/customers',
     department: 'CRM',
   },
-  {
-    name: 'Sales',
-    icon: BarChart3,
-    route: '/crm/sales',
-    department: 'CRM',
-  },
 
   // Admin Department (Super Admin only)
   {

@@ -225,6 +225,9 @@
     showDatePicker: false,
   });
 
+  // Pending requests quick date filter type
+  const pendingFilterType = ref('today'); // 'today' | 'week' | 'month'
+
   // Date dropdown state
   const showDateDropdown = ref(false);
 
@@ -238,20 +241,10 @@
 
   // Quick date filter buttons
   const getQuickDateOptions = () => {
-    const today = getPhilippineTime();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-
-    // Use toLocaleDateString with 'en-CA' and Asia/Manila to get YYYY-MM-DD
-    const toYMD = (date) =>
-      date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-
     return [
-      { label: 'Yesterday', date: toYMD(yesterday), count: 0 },
-      { label: 'Today', date: toYMD(today), count: 0 },
-      { label: 'Tomorrow', date: toYMD(tomorrow), count: 0 },
+      { label: 'Today', type: 'today', count: 0 },
+      { label: 'This Week', type: 'week', count: 0 },
+      { label: 'This Month', type: 'month', count: 0 },
     ];
   };
 
@@ -283,19 +276,43 @@
 
   // Update quick date options with counts (for pending requests)
   const updateQuickDateCounts = () => {
+    const now = getPhilippineTime();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(now);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const weekStart = getStartOfWeek(new Date(now));
+    const weekEnd = new Date(now);
+    weekEnd.setHours(23, 59, 59, 999);
+
+    const monthStart = getStartOfMonth(new Date(now));
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    monthEnd.setHours(23, 59, 59, 999);
+
     quickDateOptions.value.forEach((option) => {
-      option.count = pendingRequestsOnly.value.filter((request) => {
-        // Convert UTC to Asia/Manila and get YYYY-MM-DD
-        const manilaDate = new Date(
-          new Date(request.request_date).toLocaleString('en-US', {
-            timeZone: 'Asia/Manila',
-          })
-        );
-        const normalized = manilaDate.toLocaleDateString('en-CA', {
-          timeZone: 'Asia/Manila',
-        });
-        return normalized === option.date;
-      }).length;
+      let count = 0;
+      switch (option.type) {
+        case 'today':
+          count = pendingRequestsOnly.value.filter((request) => {
+            const d = new Date(request.request_date);
+            return isDateInRange(d, todayStart, todayEnd);
+          }).length;
+          break;
+        case 'week':
+          count = pendingRequestsOnly.value.filter((request) => {
+            const d = new Date(request.request_date);
+            return isDateInRange(d, weekStart, weekEnd);
+          }).length;
+          break;
+        case 'month':
+          count = pendingRequestsOnly.value.filter((request) => {
+            const d = new Date(request.request_date);
+            return isDateInRange(d, monthStart, monthEnd);
+          }).length;
+          break;
+      }
+      option.count = count;
     });
   };
 
@@ -303,7 +320,7 @@
   const filteredRequestsByDate = computed(() => {
     let filtered = pendingRequestsOnly.value;
 
-    // If custom month filter is active, filter by month/year
+    // If custom month filter is active, filter by chosen month/year
     if (
       isCustomMonthFilterActive.value &&
       customMonthPickerPending.value.month &&
@@ -323,20 +340,36 @@
 
       filtered = filtered.filter((request) => {
         const requestDate = new Date(request.request_date);
-        return requestDate >= startOfMonth && requestDate <= endOfMonth;
+        return isDateInRange(requestDate, startOfMonth, endOfMonth);
       });
     } else {
-      // Default behavior: filter by selected date
+      // Apply quick filter: today, this week, or this month
+      const now = getPhilippineTime();
+      const todayStart = new Date(now);
+      todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date(now);
+      todayEnd.setHours(23, 59, 59, 999);
+
+      const weekStart = getStartOfWeek(new Date(now));
+      const weekEnd = new Date(now);
+      weekEnd.setHours(23, 59, 59, 999);
+
+      const monthStart = getStartOfMonth(new Date(now));
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      monthEnd.setHours(23, 59, 59, 999);
+
       filtered = filtered.filter((request) => {
-        const manilaDate = new Date(
-          new Date(request.request_date).toLocaleString('en-US', {
-            timeZone: 'Asia/Manila',
-          })
-        );
-        const normalized = manilaDate.toLocaleDateString('en-CA', {
-          timeZone: 'Asia/Manila',
-        });
-        return normalized === requestListFilter.value.selectedDate;
+        const requestDate = new Date(request.request_date);
+        switch (pendingFilterType.value) {
+          case 'today':
+            return isDateInRange(requestDate, todayStart, todayEnd);
+          case 'week':
+            return isDateInRange(requestDate, weekStart, weekEnd);
+          case 'month':
+            return isDateInRange(requestDate, monthStart, monthEnd);
+          default:
+            return true;
+        }
       });
     }
 
@@ -482,21 +515,21 @@
         title: 'Approve Request',
         message: `Are you sure you want to approve request #${data?.request_id}?`,
         confirmText: 'Approve',
-        confirmClass: 'btn-success',
+        confirmClass: 'bg-primaryColor text-white hover:bg-primaryColor/80',
         onConfirm: () => handleApproveRequest(data.request_id),
       },
       reject: {
         title: 'Reject Request',
         message: `Are you sure you want to reject request #${data?.request_id}?`,
         confirmText: 'Reject',
-        confirmClass: 'btn-error',
+        confirmClass: 'bg-error text-white hover:bg-error/80',
         onConfirm: () => handleRejectRequest(data.request_id),
       },
       sendBack: {
         title: 'Send Back for Revision',
         message: `Are you sure you want to send request #${data?.request_id} back to SCM?`,
         confirmText: 'Send Back',
-        confirmClass: 'btn-info',
+        confirmClass: 'bg-info text-white hover:bg-info/80',
         onConfirm: () => handleSendBackRequest(data.request_id),
       },
     };
@@ -860,12 +893,44 @@
 
   // Date filter methods
   const selectQuickDate = (dateOption) => {
-    requestListFilter.value.selectedDate = dateOption.date;
+    pendingFilterType.value = dateOption.type;
     currentPage.value = 1;
     requestListFilter.value.showDatePicker = false;
     showDateDropdown.value = false; // Close dropdown after selection
     // Deactivate custom month filtering when selecting a quick date
     isCustomMonthFilterActive.value = false;
+  };
+
+  // Display text for current quick filter
+  const getPendingFilterDisplayText = () => {
+    if (
+      isCustomMonthFilterActive.value &&
+      customMonthPickerPending.value.month &&
+      customMonthPickerPending.value.year
+    ) {
+      const monthName = months.find(
+        (m) => m.value === customMonthPickerPending.value.month
+      )?.label;
+      return `${monthName} ${customMonthPickerPending.value.year}`;
+    }
+
+    const now = new Date();
+    switch (pendingFilterType.value) {
+      case 'today':
+        return formatPhilippineDate(getPhilippineDateString());
+      case 'week': {
+        const start = getStartOfWeek(now);
+        const end = new Date();
+        return `${formatDate(start)} - ${formatDate(end)}`;
+      }
+      case 'month': {
+        const start = getStartOfMonth(now);
+        const end = new Date();
+        return `${formatDate(start)} - ${formatDate(end)}`;
+      }
+      default:
+        return formatPhilippineDate(getPhilippineDateString());
+    }
   };
 
   // Date dropdown functions
@@ -1153,7 +1218,12 @@
 
   // Watch for changes and update counts
   watch(
-    [allRequests, requestListFilter],
+    [
+      allRequests,
+      pendingFilterType,
+      isCustomMonthFilterActive,
+      customMonthPickerPending,
+    ],
     () => {
       updateQuickDateCounts();
     },
@@ -1482,9 +1552,7 @@
                         {{ customMonthPickerPending.year }}
                       </span>
                       <span v-else>
-                        {{
-                          formatPhilippineDate(requestListFilter.selectedDate)
-                        }}
+                        {{ getPendingFilterDisplayText() }}
                       </span>
                     </h3>
                     <p class="text-sm text-black/60">
@@ -1515,13 +1583,12 @@
                       <div class="py-1">
                         <button
                           v-for="option in quickDateOptions"
-                          :key="option.date"
+                          :key="option.type"
                           class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center justify-between cursor-pointer"
                           :class="{
                             'bg-primaryColor/10 text-primaryColor font-medium':
-                              requestListFilter.selectedDate === option.date,
-                            'text-gray-700':
-                              requestListFilter.selectedDate !== option.date,
+                              pendingFilterType === option.type,
+                            'text-gray-700': pendingFilterType !== option.type,
                           }"
                           @click="selectQuickDate(option)"
                         >
@@ -1529,7 +1596,7 @@
                           <span
                             class="badge badge-xs bg-secondaryColor border-none"
                             :class="
-                              requestListFilter.selectedDate === option.date
+                              pendingFilterType === option.type
                                 ? 'badge-ghost'
                                 : 'badge-primaryColor/10 text-primaryColor'
                             "
@@ -1662,7 +1729,7 @@
                   {{ customMonthPickerPending.year }}
                 </span>
                 <span v-else>
-                  {{ formatPhilippineDate(requestListFilter.selectedDate) }}
+                  {{ getPendingFilterDisplayText() }}
                 </span>
               </h3>
               <p class="text-black/50 mb-4">
@@ -1802,7 +1869,7 @@
                   )
                 }}
                 of {{ filteredRequestsByDate.length }} requests for
-                {{ formatPhilippineDate(requestListFilter.selectedDate) }}
+                {{ getPendingFilterDisplayText() }}
               </div>
 
               <div class="join space-x-1">
@@ -2542,7 +2609,7 @@
           </button>
           <button
             type="button"
-            class="btn btn-success font-thin btn-sm"
+            class="btn bg-primaryColor text-white hover:bg-primaryColor/80 font-thin btn-sm"
             @click="openConfirmModal('approve', modal.request)"
             :disabled="loading"
           >
@@ -2710,7 +2777,7 @@
         <!-- Show warning for reject action -->
         <div
           v-if="confirmModal.type === 'reject'"
-          class="alert alert-warning mt-3"
+          class="alert bg-warning/10 text-warning shadow-none border-warning"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"

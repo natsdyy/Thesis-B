@@ -1045,7 +1045,7 @@
                     </div>
                   </td>
                   <td>
-                    <div class="badge badge-outline badge-sm">
+                    <div class="">
                       {{ request.request_type }}
                     </div>
                   </td>

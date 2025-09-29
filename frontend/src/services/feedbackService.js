@@ -35,6 +35,107 @@ class FeedbackService {
       return response.data;
     } catch (error) {
       console.error('Error submitting feedback:', error);
+      throw error;s
+    }
+  }
+
+  /**
+   * Submit order rating (QR flow)
+   * @param {Object} payload
+   * @param {Object} payload.orderData - Parsed order data from QR or API
+   * @param {string} payload.customerName
+   * @param {string} payload.customerEmail
+   * @param {number} [payload.overallRating] - 0.5 to 5 in 0.5 steps
+   * @param {Object} [payload.itemRatings] - Map of itemId -> { rating, comment }
+   * @param {string} [payload.comments]
+   * @param {File} [payload.image]
+   * @returns {Promise<Object>} API response
+   */
+  async submitOrderRating(payload) {
+    try {
+      const formData = new FormData();
+      formData.append('orderData', JSON.stringify(payload.orderData));
+      formData.append('customerName', payload.customerName);
+      formData.append('customerEmail', payload.customerEmail);
+      if (payload.overallRating != null) {
+        formData.append('overallRating', payload.overallRating);
+      }
+      if (payload.itemRatings) {
+        formData.append('itemRatings', JSON.stringify(payload.itemRatings));
+      }
+      if (payload.comments) {
+        formData.append('comments', payload.comments);
+      }
+      if (payload.image) {
+        formData.append('image', payload.image);
+      }
+
+      const response = await axios.post(
+        `${API_BASE_URL}/feedback/order-rating`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error submitting order rating:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get order ratings with filters
+   * @param {Object} filters
+   */
+  async getOrderRatings(filters = {}) {
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          params.append(key, value);
+        }
+      });
+      const response = await axios.get(
+        `${API_BASE_URL}/feedback/ratings?${params.toString()}`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching order ratings:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get aggregated stats for order ratings
+   */
+  async getOrderRatingStats(filters = {}) {
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          params.append(key, value);
+        }
+      });
+      const response = await axios.get(
+        `${API_BASE_URL}/feedback/ratings/stats?${params.toString()}`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching order rating stats:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get top rated items
+   */
+  async getTopRatedItems(limit = 10) {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/feedback/ratings/top-items?limit=${encodeURIComponent(limit)}`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching top rated items:', error);
       throw error;
     }
   }
@@ -51,21 +152,21 @@ class FeedbackService {
       console.log('Sending reply to feedback ID:', feedbackId);
       console.log('Reply message:', message);
       console.log('API URL:', `${API_BASE_URL}/feedback/${feedbackId}/reply`);
-      
+
       const response = await axios.post(
         `${API_BASE_URL}/feedback/${feedbackId}/reply`,
         {
           message,
-          internal_note: internalNote
+          internal_note: internalNote,
         },
         {
           headers: {
             'Content-Type': 'application/json',
           },
-          timeout: 15000 // 15 second timeout (reduced from 30s)
+          timeout: 15000, // 15 second timeout (reduced from 30s)
         }
       );
-      
+
       console.log('Reply sent successfully:', response.data);
       return response.data;
     } catch (error) {
@@ -74,7 +175,7 @@ class FeedbackService {
         message: error.message,
         status: error.response?.status,
         statusText: error.response?.statusText,
-        data: error.response?.data
+        data: error.response?.data,
       });
       throw error;
     }
@@ -87,7 +188,9 @@ class FeedbackService {
    */
   async markAsRead(feedbackId) {
     try {
-      const response = await axios.patch(`${API_BASE_URL}/feedback/${feedbackId}/mark-read`);
+      const response = await axios.patch(
+        `${API_BASE_URL}/feedback/${feedbackId}/mark-read`
+      );
       return response.data;
     } catch (error) {
       console.error('Error marking feedback as read:', error);
@@ -102,7 +205,9 @@ class FeedbackService {
    */
   async archiveFeedback(feedbackId) {
     try {
-      const response = await axios.patch(`${API_BASE_URL}/feedback/${feedbackId}/archive`);
+      const response = await axios.patch(
+        `${API_BASE_URL}/feedback/${feedbackId}/archive`
+      );
       return response.data;
     } catch (error) {
       console.error('Error archiving feedback:', error);
@@ -118,13 +223,15 @@ class FeedbackService {
   async getFeedback(filters = {}) {
     try {
       const params = new URLSearchParams();
-      Object.keys(filters).forEach(key => {
+      Object.keys(filters).forEach((key) => {
         if (filters[key]) {
           params.append(key, filters[key]);
         }
       });
 
-      const response = await axios.get(`${API_BASE_URL}/feedback?${params.toString()}`);
+      const response = await axios.get(
+        `${API_BASE_URL}/feedback?${params.toString()}`
+      );
       return response.data;
     } catch (error) {
       console.error('Error fetching feedback:', error);

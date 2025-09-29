@@ -19,6 +19,12 @@ export default [
     meta: { title: 'Budget Release' },
   },
   {
+    path: 'sales',
+    name: 'Sales',
+    component: () => import('../../views/finance/Sales.vue'),
+    meta: { title: 'Sales' },
+  },
+  {
     path: 'attendance',
     name: 'FinanceAttendance',
     component: () => import('../../views/common/DepartmentAttendance.vue'),

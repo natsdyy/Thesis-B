@@ -143,25 +143,50 @@
               <label class="label">
                 <span class="label-text">Overall Experience *</span>
               </label>
-              <div class="flex items-center space-x-2">
-                <button
+              <div class="flex items-center space-x-2 select-none">
+                <div
                   v-for="star in 5"
-                  :key="star"
-                  type="button"
-                  @click="form.overallRating = star"
-                  class="text-3xl transition-colors duration-200"
-                  :class="
-                    star <= form.overallRating
-                      ? 'text-yellow-400'
-                      : 'text-gray-300'
-                  "
+                  :key="`overall-star-${star}`"
+                  class="relative w-8 h-8 cursor-pointer"
+                  @mousemove="onOverallStarMove(star, $event)"
+                  @mouseleave="onOverallStarLeave"
+                  @click="onOverallStarClick(star, $event)"
                 >
-                  ⭐
-                </button>
-                <span class="ml-2 text-sm text-gray-600">
+                  <!-- Star with gradient fill for proper half-star -->
+                  <svg
+                    viewBox="0 0 24 24"
+                    class="absolute inset-0 w-full h-full"
+                  >
+                    <defs>
+                      <linearGradient
+                        :id="`overall-grad-${star}`"
+                        x1="0%"
+                        y1="0%"
+                        x2="100%"
+                        y2="0%"
+                      >
+                        <stop offset="0%" stop-color="#fbbf24" />
+                        <stop
+                          :offset="getOverallStarFill(star) + '%'"
+                          stop-color="#fbbf24"
+                        />
+                        <stop
+                          :offset="getOverallStarFill(star) + '%'"
+                          stop-color="#d1d5db"
+                        />
+                        <stop offset="100%" stop-color="#d1d5db" />
+                      </linearGradient>
+                    </defs>
+                    <path
+                      d="M12 17.27L18.18 21 16.54 13.97 22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
+                      :fill="`url(#overall-grad-${star})`"
+                    />
+                  </svg>
+                </div>
+                <span class="ml-2 text-sm text-gray-600 min-w-24">
                   {{
-                    form.overallRating
-                      ? `${form.overallRating} star${form.overallRating !== 1 ? 's' : ''}`
+                    displayOverallRating
+                      ? `${displayOverallRating} star${displayOverallRating !== 1 ? 's' : ''}`
                       : 'Select rating'
                   }}
                 </span>
@@ -181,21 +206,45 @@
                 >
                   <div class="flex items-center justify-between mb-2">
                     <span class="font-medium">{{ item.item_name }}</span>
-                    <div class="flex items-center space-x-1">
-                      <button
+                    <div class="flex items-center space-x-1 select-none">
+                      <div
                         v-for="star in 5"
-                        :key="star"
-                        type="button"
-                        @click="setItemRating(item.id, star)"
-                        class="text-lg transition-colors duration-200"
-                        :class="
-                          star <= getItemRating(item.id)
-                            ? 'text-yellow-400'
-                            : 'text-gray-300'
-                        "
+                        :key="`item-${item.id}-star-${star}`"
+                        class="relative w-6 h-6 cursor-pointer"
+                        @mousemove="onItemStarMove(item.id, star, $event)"
+                        @mouseleave="onItemStarLeave(item.id)"
+                        @click="onItemStarClick(item.id, star, $event)"
                       >
-                        ⭐
-                      </button>
+                        <svg
+                          viewBox="0 0 24 24"
+                          class="absolute inset-0 w-full h-full"
+                        >
+                          <defs>
+                            <linearGradient
+                              :id="`item-grad-${item.id}-${star}`"
+                              x1="0%"
+                              y1="0%"
+                              x2="100%"
+                              y2="0%"
+                            >
+                              <stop offset="0%" stop-color="#fbbf24" />
+                              <stop
+                                :offset="getItemStarFill(item.id, star) + '%'"
+                                stop-color="#fbbf24"
+                              />
+                              <stop
+                                :offset="getItemStarFill(item.id, star) + '%'"
+                                stop-color="#d1d5db"
+                              />
+                              <stop offset="100%" stop-color="#d1d5db" />
+                            </linearGradient>
+                          </defs>
+                          <path
+                            d="M12 17.27L18.18 21 16.54 13.97 22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
+                            :fill="`url(#item-grad-${item.id}-${star})`"
+                          />
+                        </svg>
+                      </div>
                     </div>
                   </div>
                   <textarea
@@ -245,7 +294,11 @@
 
             <!-- Submit Button -->
             <div class="flex justify-end space-x-3">
-              <button type="button" @click="goHome" class="btn btn-outline">
+              <button
+                type="button"
+                @click="goHome"
+                class="btn bg-gray-300 text-gray-700 font-thin hover:bg-gray-300/90"
+              >
                 Cancel
               </button>
               <button
@@ -256,7 +309,7 @@
                   !form.overallRating ||
                   submitting
                 "
-                class="btn btn-primary"
+                class="btn bg-primaryColor text-white font-thin hover:bg-primaryColor/90"
               >
                 <span
                   v-if="submitting"
@@ -273,9 +326,11 @@
 </template>
 
 <script setup>
-  import { ref, onMounted } from 'vue';
+  import { ref, onMounted, computed } from 'vue';
   import { useRoute, useRouter } from 'vue-router';
   import axios from 'axios';
+  import feedbackService from '../services/feedbackService.js';
+  import { useCustomToast } from '../composables/useCustomToast.js';
   import { apiConfig, formatImageUrl } from '../config/api.js';
 
   const route = useRoute();
@@ -286,6 +341,7 @@
   const error = ref(null);
   const orderData = ref(null);
   const submitting = ref(false);
+  const { showSuccess, showError } = useCustomToast();
 
   // Form data
   const form = ref({
@@ -299,6 +355,43 @@
   });
 
   // Methods
+  // Overall rating hover state (supports half-stars)
+  const overallHoverRating = ref(0);
+
+  const getActiveOverallRating = () => {
+    return overallHoverRating.value || form.value.overallRating || 0;
+  };
+
+  const getOverallStarFill = (star) => {
+    const rating = getActiveOverallRating();
+    if (rating >= star) return 100;
+    if (rating <= star - 1) return 0;
+    const fractional = rating - (star - 1);
+    return Math.max(0, Math.min(1, fractional)) * 100;
+  };
+
+  const onOverallStarMove = (star, event) => {
+    const target = event.currentTarget;
+    const rect = target.getBoundingClientRect();
+    const x = event.clientX - rect.left; // within star
+    const ratio = x / rect.width;
+    const halfStep = ratio < 0.5 ? 0.5 : 1;
+    overallHoverRating.value = star - 1 + halfStep;
+  };
+
+  const onOverallStarLeave = () => {
+    overallHoverRating.value = 0;
+  };
+
+  const onOverallStarClick = (star, event) => {
+    onOverallStarMove(star, event);
+    form.value.overallRating = overallHoverRating.value;
+  };
+
+  const displayOverallRating = computed(() => {
+    const value = getActiveOverallRating();
+    return value ? value : 0;
+  });
   const parseQRData = async () => {
     try {
       // Check if data is embedded in QR code (preferred method)
@@ -370,6 +463,43 @@
     form.value.itemRatings[itemId].comment = comment;
   };
 
+  // Item-level hover ratings (map itemId -> hover value)
+  const itemHoverRatings = ref({});
+
+  const getActiveItemRating = (itemId) => {
+    return (
+      itemHoverRatings.value[itemId] ||
+      form.value.itemRatings[itemId]?.rating ||
+      0
+    );
+  };
+
+  const getItemStarFill = (itemId, star) => {
+    const rating = getActiveItemRating(itemId);
+    if (rating >= star) return 100;
+    if (rating <= star - 1) return 0;
+    const fractional = rating - (star - 1);
+    return Math.max(0, Math.min(1, fractional)) * 100;
+  };
+
+  const onItemStarMove = (itemId, star, event) => {
+    const target = event.currentTarget;
+    const rect = target.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const ratio = x / rect.width;
+    const halfStep = ratio < 0.5 ? 0.5 : 1;
+    itemHoverRatings.value[itemId] = star - 1 + halfStep;
+  };
+
+  const onItemStarLeave = (itemId) => {
+    itemHoverRatings.value[itemId] = 0;
+  };
+
+  const onItemStarClick = (itemId, star, event) => {
+    onItemStarMove(itemId, star, event);
+    setItemRating(itemId, itemHoverRatings.value[itemId]);
+  };
+
   const handlePhotoUpload = (event) => {
     const file = event.target.files[0];
     if (file) {
@@ -386,38 +516,27 @@
     submitting.value = true;
 
     try {
-      const formData = new FormData();
-      formData.append('orderData', JSON.stringify(orderData.value));
-      formData.append('customerName', form.value.customerName);
-      formData.append('customerEmail', form.value.customerEmail);
-      formData.append('overallRating', form.value.overallRating);
-      formData.append('itemRatings', JSON.stringify(form.value.itemRatings));
-      formData.append('comments', form.value.comments);
+      const response = await feedbackService.submitOrderRating({
+        orderData: orderData.value,
+        customerName: form.value.customerName,
+        customerEmail: form.value.customerEmail,
+        overallRating: form.value.overallRating,
+        itemRatings: form.value.itemRatings,
+        comments: form.value.comments,
+        image: form.value.photo,
+      });
 
-      if (form.value.photo) {
-        formData.append('image', form.value.photo);
-      }
-
-      const response = await axios.post(
-        `${apiConfig.baseURL}/feedback/order-rating`,
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        }
-      );
-
-      if (response.data.success) {
-        alert('Thank you for your rating! We appreciate your feedback.');
+      if (response.success) {
+        showSuccess('Thank you for your rating! We appreciate your feedback.');
         goHome();
       } else {
-        throw new Error(response.data.message || 'Failed to submit rating');
+        throw new Error(response.message || 'Failed to submit rating');
       }
     } catch (err) {
       console.error('Error submitting rating:', err);
-      alert(
+      showError(
         err.response?.data?.message ||
+          err.message ||
           'Failed to submit rating. Please try again.'
       );
     } finally {

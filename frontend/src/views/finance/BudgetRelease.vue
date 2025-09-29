@@ -45,6 +45,7 @@
   const requestsPerPage = ref(10);
   const historyCurrentPage = ref(1);
   const historyPerPage = ref(10);
+  const activeTab = ref('awaiting');
 
   // Update computed properties to use real store data
   const approvedRequests = computed(() =>
@@ -407,7 +408,7 @@
         title: 'Release Budget',
         message: `Are you sure you want to release budget for request #${data?.request_id}?`,
         confirmText: 'Release Budget',
-        confirmClass: 'btn-success',
+        confirmClass: 'bg-primaryColor text-white hover:bg-primaryColor/80',
         onConfirm: () => handleBudgetRelease(data.request_id),
       },
     };
@@ -632,6 +633,12 @@
     showCustomMonthPicker.value = false;
   };
 
+  // Handle dropdown change for history date filter
+  const onHistoryFilterChange = () => {
+    historyCurrentPage.value = 1;
+    showCustomMonthPicker.value = historyFilterType.value === 'custom';
+  };
+
   // Display text for current filter
   const getHistoryFilterDisplayText = () => {
     switch (historyFilterType.value) {
@@ -797,7 +804,7 @@
           Approved requests pending budget release
         </div>
       </div>
-
+      <!-- 
       <div
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
@@ -835,721 +842,648 @@
           ₱{{ budgetReleaseStats.totalReleased.toLocaleString('en-PH') }}
         </div>
         <div class="stat-desc text-black/50">Total budget released</div>
-      </div>
+      </div> -->
     </div>
 
-    <!-- Approved Requests Awaiting Budget Release -->
+    <!-- Tab System -->
     <div
       class="card bg-accentColor shadow-xl mb-6 border border-black/10 mx-auto"
     >
-      <div class="card-body">
-        <div class="flex justify-between items-center mb-4">
-          <h2 class="card-title text-primaryColor">
-            Approved Requests - Awaiting Budget Release
-          </h2>
-          <div class="flex gap-2">
-            <button
-              class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
-              @click="fetchData"
-              :class="{ loading: loading }"
-              :disabled="loading"
-            >
-              <RefreshCcw
-                v-if="!loading"
-                class="w-4 h-4 mr-2 text-primaryColor"
-              />
-              <span
-                class="loading loading-spinner loading-xs"
-                v-if="loading"
-              ></span>
-              Refresh
-            </button>
-          </div>
-        </div>
-
-        <!-- Loading State -->
-        <div
-          v-if="loading && approvedRequests.length === 0"
-          class="flex justify-center py-8"
-        >
-          <span class="loading loading-spinner loading-xs"></span>
-        </div>
-
-        <!-- Empty State -->
-        <div
-          v-else-if="filteredApprovedRequests.length === 0"
-          class="text-center py-8"
-        >
-          <div class="mb-4 items-center justify-center flex">
-            <PhilippinePeso class="w-16 h-16 text-primaryColor" />
-          </div>
-          <h3 class="text-lg font-semibold mb-2 text-primaryColor">
-            No approved requests awaiting budget release
-          </h3>
-          <p class="text-black/50 mb-4">
-            All approved requests have been processed or no requests are
-            currently approved.
-          </p>
-        </div>
-
-        <!-- Table List -->
-        <div v-else class="overflow-x-auto bg-accentColor">
-          <table
-            class="table table-zebra text-black/50 border border-black/10 custom-zebra"
+      <div class="card-body p-0">
+        <!-- Tab Navigation -->
+        <div class="tabs tabs-boxed bg-white/5 p-2">
+          <button
+            class="tab tab-lg font-medium"
+            :class="{
+              'tab-active  text-black': activeTab === 'awaiting',
+              'text-black/70 hover:bg-white/10': activeTab !== 'awaiting',
+            }"
+            @click="activeTab = 'awaiting'"
           >
-            <thead class="text-secondaryColor">
-              <tr class="bg-primaryColor text-accentColor">
-                <th>Request ID</th>
-                <th>Department</th>
-                <th>Requested By</th>
-                <th>Priority</th>
-                <th class="w-1/4">Description</th>
-                <th>Amount</th>
-                <th>Approved Date</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="request in paginatedApprovedRequests"
-                :key="request.request_id"
-                class="hover:bg-success/5"
-              >
-                <td class="font-mono font-medium text-black">
-                  {{ request.request_id }}
-                </td>
-                <td>
-                  <div class="badge badge-outline badge-sm">
-                    {{ request.department }}
-                  </div>
-                </td>
-                <td>{{ request.requested_by }}</td>
-                <td>
-                  <div
-                    class="badge badge-sm border-none"
-                    :class="{
-                      'bg-error/20 text-error': request.priority === 'Urgent',
-                      'bg-warning/20 text-warning': request.priority === 'High',
-                      'bg-info/20 text-info': request.priority === 'Normal',
-                      'bg-success/20 text-success': request.priority === 'Low',
-                    }"
+            <ReceiptText class="w-4 h-4 mr-2" />
+            Pending Budget Release
+          </button>
+
+          <button
+            class="tab tab-lg font-medium"
+            :class="{
+              'tab-active text-black': activeTab === 'history',
+              'text-black/70 hover:bg-white/10': activeTab !== 'history',
+            }"
+            @click="activeTab = 'history'"
+          >
+            <History class="w-4 h-4 mr-2" />
+            Release History
+          </button>
+        </div>
+
+        <!-- Approved Requests Awaiting Budget Release -->
+        <div v-if="activeTab === 'awaiting'" class="px-6 py-2">
+          <div class="card bg-accentColor shadow-none mb-6 border-0 mx-auto">
+            <div class="card-body">
+              <div class="flex justify-between items-center mb-4">
+                <h2 class="card-title text-primaryColor">
+                  Approved Requests - Awaiting Budget Release
+                </h2>
+                <div class="flex gap-2">
+                  <button
+                    class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
+                    @click="fetchData"
+                    :class="{ loading: loading }"
+                    :disabled="loading"
                   >
-                    {{ request.priority }}
-                  </div>
-                </td>
-                <td class="text-wrap">{{ request.request_description }}</td>
-                <td class="font-semibold text-black">
-                  ₱{{
-                    request.total_amount.toLocaleString('en-PH', {
-                      minimumFractionDigits: 2,
-                    })
-                  }}
-                </td>
-                <td>
-                  <div class="flex flex-col">
-                    <span>{{
-                      new Date(request.approved_at).toLocaleDateString('en-PH')
-                    }}</span>
-                    <span class="text-xs text-black/40">
-                      {{
-                        new Date(request.approved_at).toLocaleTimeString(
-                          'en-PH',
-                          {
-                            timeZone: 'Asia/Manila',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          }
-                        )
-                      }}
-                    </span>
-                  </div>
-                </td>
-                <td>
-                  <div class="dropdown dropdown-left">
-                    <label
-                      tabindex="0"
-                      class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
-                    >
-                      <EllipsisVertical class="w-4 h-4" />
-                    </label>
-                    <ul
-                      tabindex="0"
-                      class="dropdown-content z-[1] menu p-2 shadow bg-accentColor rounded-box w-52 border border-black/10"
-                    >
-                      <li class="hover:bg-black/10">
-                        <a @click="viewRequest(request)" class="text-primary">
-                          View Details
-                        </a>
-                      </li>
-                      <li class="hover:bg-black/10">
-                        <a @click="releaseBudget(request)" class="text-success">
-                          Release Budget
-                        </a>
-                      </li>
-                    </ul>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Pagination -->
-        <div
-          class="flex flex-col sm:flex-row justify-between items-center mt-4"
-          v-if="totalPages > 1"
-        >
-          <div class="text-sm text-black/60 mb-2 sm:mb-0">
-            Showing {{ (currentPage - 1) * requestsPerPage + 1 }} to
-            {{
-              Math.min(
-                currentPage * requestsPerPage,
-                filteredApprovedRequests.length
-              )
-            }}
-            of {{ filteredApprovedRequests.length }} approved requests
-          </div>
-
-          <div class="join space-x-1">
-            <button
-              class="join-item btn font-thin !bg-gray-200 text-black/50 btn-sm border border-none hover:bg-gray-300"
-              :disabled="currentPage <= 1"
-              @click="currentPage--"
-            >
-              « Prev
-            </button>
-
-            <button
-              class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
-              v-for="page in totalPages"
-              :key="page"
-              :class="{
-                'btn-active !bg-primaryColor text-white': currentPage === page,
-              }"
-              @click="currentPage = page"
-            >
-              {{ page }}
-            </button>
-
-            <button
-              class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
-              :disabled="currentPage >= totalPages"
-              @click="currentPage++"
-            >
-              Next »
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Budget Release History -->
-    <div
-      class="card bg-accentColor shadow-xl mb-6 border border-black/10 mx-auto"
-    >
-      <div class="card-body">
-        <!-- Header with Stats -->
-        <div
-          class="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-6"
-        >
-          <div>
-            <h2 class="card-title text-primaryColor mb-2">
-              Budget Release History
-            </h2>
-            <div class="flex flex-wrap gap-4 text-sm text-black/60">
-              <span
-                >Total:
-                <strong class="text-primaryColor">{{
-                  budgetReleaseStats.total
-                }}</strong></span
-              >
-              <span
-                >Confirmed:
-                <strong class="text-success">{{
-                  budgetReleaseStats.confirmed
-                }}</strong></span
-              >
-              <span
-                >Pending:
-                <strong class="text-warning">{{
-                  budgetReleaseStats.pending
-                }}</strong></span
-              >
-            </div>
-          </div>
-
-          <div class="flex gap-2 mt-4 lg:mt-0">
-            <button
-              class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-              @click="exportToCSV"
-            >
-              <Download class="w-4 h-4 mr-2" />
-              Export CSV
-            </button>
-          </div>
-        </div>
-
-        <!-- Search and Filters -->
-        <div class="mb-6">
-          <!-- Search Bar with Sort -->
-          <div class="flex flex-col md:flex-row gap-4 mb-4">
-            <div class="flex-1 relative">
-              <Search
-                class="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 !text-black"
-              />
-              <input
-                v-model="historyFilter.searchQuery"
-                type="text"
-                placeholder="Search by description, request ID, or release ID..."
-                class="input input-sm input-bordered bg-white border-primaryColor/30 text-black/70 pl-10 w-full shadow-none"
-              />
-            </div>
-
-            <div class="flex gap-2">
-              <button
-                class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10"
-                @click="toggleSortOrder"
-                :title="`Sort ${historyFilter.sortOrder === 'asc' ? 'Descending' : 'Ascending'}`"
-              >
-                <TrendingUp
-                  v-if="historyFilter.sortOrder === 'asc'"
-                  class="w-4 h-4"
-                />
-                <TrendingDown v-else class="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          <!-- Receipt Status Quick Filters -->
-          <div class="flex flex-wrap gap-2 mb-4">
-            <button
-              class="btn btn-xs font-thin border border-primaryColor/30"
-              :class="{
-                'bg-primaryColor text-white':
-                  historyFilter.receiptStatus === '',
-                'bg-white text-primaryColor hover:bg-primaryColor/10':
-                  historyFilter.receiptStatus !== '',
-              }"
-              @click="historyFilter.receiptStatus = ''"
-            >
-              All
-              <span class="badge badge-xs ml-1 bg-secondaryColor border-none">
-                {{ budgetReleaseHistory?.length || 0 }}
-              </span>
-            </button>
-
-            <button
-              class="btn btn-xs font-thin border border-primaryColor/30"
-              :class="{
-                'bg-success text-white':
-                  historyFilter.receiptStatus === 'confirmed',
-                'bg-white text-success hover:bg-success/10':
-                  historyFilter.receiptStatus !== 'confirmed',
-              }"
-              @click="
-                historyFilter.receiptStatus =
-                  historyFilter.receiptStatus === 'confirmed' ? '' : 'confirmed'
-              "
-            >
-              Receipt Confirmed
-              <span class="badge badge-xs ml-1 bg-secondaryColor border-none">
-                {{ budgetReleaseStats.confirmed }}
-              </span>
-            </button>
-
-            <button
-              class="btn btn-xs font-thin border border-primaryColor/30"
-              :class="{
-                'bg-warning text-white':
-                  historyFilter.receiptStatus === 'pending',
-                'bg-white text-warning hover:bg-warning/10':
-                  historyFilter.receiptStatus !== 'pending',
-              }"
-              @click="
-                historyFilter.receiptStatus =
-                  historyFilter.receiptStatus === 'pending' ? '' : 'pending'
-              "
-            >
-              Receipt Pending
-              <span class="badge badge-xs ml-1 bg-secondaryColor border-none">
-                {{ budgetReleaseStats.pending }}
-              </span>
-            </button>
-          </div>
-
-          <!-- History Date Filter Section -->
-          <div
-            class="mb-6 p-4 bg-white/5 rounded-lg border border-primaryColor/20"
-          >
-            <div
-              class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
-            >
-              <!-- Current Filter Display -->
-              <div class="flex items-center gap-3">
-                <Calendar class="w-5 h-5 text-primaryColor" />
-                <div>
-                  <h3 class="font-semibold text-primaryColor">
-                    {{ getHistoryFilterDisplayText() }}
-                  </h3>
-                  <p class="text-sm text-black/60">
-                    Showing {{ filteredBudgetHistory.length }} release{{
-                      filteredBudgetHistory.length !== 1 ? 's' : ''
-                    }}
-                  </p>
+                    <RefreshCcw
+                      v-if="!loading"
+                      class="w-4 h-4 mr-2 text-primaryColor"
+                    />
+                    <span
+                      class="loading loading-spinner loading-xs"
+                      v-if="loading"
+                    ></span>
+                    Refresh
+                  </button>
                 </div>
               </div>
 
-              <!-- Filter Controls -->
-              <div class="flex flex-col sm:flex-row gap-3">
-                <!-- Quick Filter Buttons -->
-                <div class="flex gap-2 md:flex-row flex-col">
-                  <button
-                    v-for="option in historyFilterOptions"
-                    :key="option.type"
-                    class="btn btn-sm font-thin border border-primaryColor/30 hover:border-primaryColor shadow-none"
-                    :class="{
-                      'bg-primaryColor text-white':
-                        historyFilterType === option.type,
-                      'bg-white text-primaryColor hover:bg-primaryColor/10':
-                        historyFilterType !== option.type,
-                    }"
-                    @click="selectHistoryFilter(option)"
-                  >
-                    {{ option.label }}
-                    <span
-                      class="badge badge-xs ml-1 bg-secondaryColor border-none"
-                      :class="
-                        historyFilterType === option.type
-                          ? 'badge-ghost'
-                          : 'badge-primaryColor/10 text-primaryColor'
-                      "
+              <!-- Loading State -->
+              <div
+                v-if="loading && approvedRequests.length === 0"
+                class="flex justify-center py-8"
+              >
+                <span class="loading loading-spinner loading-xs"></span>
+              </div>
+
+              <!-- Empty State -->
+              <div
+                v-else-if="filteredApprovedRequests.length === 0"
+                class="text-center py-8"
+              >
+                <div class="mb-4 items-center justify-center flex">
+                  <PhilippinePeso class="w-16 h-16 text-primaryColor" />
+                </div>
+                <h3 class="text-lg font-semibold mb-2 text-primaryColor">
+                  No approved requests awaiting budget release
+                </h3>
+                <p class="text-black/50 mb-4">
+                  All approved requests have been processed or no requests are
+                  currently approved.
+                </p>
+              </div>
+
+              <!-- Table List -->
+              <div v-else class="overflow-x-auto bg-accentColor">
+                <table
+                  class="table table-zebra text-black/50 border border-black/10 custom-zebra"
+                >
+                  <thead class="text-secondaryColor">
+                    <tr class="bg-primaryColor text-accentColor">
+                      <th>Request ID</th>
+                      <th>Department</th>
+                      <th>Requested By</th>
+                      <th>Priority</th>
+                      <th class="w-1/4">Description</th>
+                      <th>Amount</th>
+                      <th>Approved Date</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="request in paginatedApprovedRequests"
+                      :key="request.request_id"
+                      class="hover:bg-success/5"
                     >
-                      {{ option.count }}
-                    </span>
-                  </button>
+                      <td class="font-mono font-medium text-black">
+                        {{ request.request_id }}
+                      </td>
+                      <td>
+                        <div class="badge badge-outline badge-sm">
+                          {{ request.department }}
+                        </div>
+                      </td>
+                      <td>{{ request.requested_by }}</td>
+                      <td>
+                        <div
+                          class="badge badge-sm border-none"
+                          :class="{
+                            'bg-error/20 text-error':
+                              request.priority === 'Urgent',
+                            'bg-warning/20 text-warning':
+                              request.priority === 'High',
+                            'bg-info/20 text-info':
+                              request.priority === 'Normal',
+                            'bg-success/20 text-success':
+                              request.priority === 'Low',
+                          }"
+                        >
+                          {{ request.priority }}
+                        </div>
+                      </td>
+                      <td class="text-wrap">
+                        {{ request.request_description }}
+                      </td>
+                      <td class="font-semibold text-black">
+                        ₱{{
+                          request.total_amount.toLocaleString('en-PH', {
+                            minimumFractionDigits: 2,
+                          })
+                        }}
+                      </td>
+                      <td>
+                        <div class="flex flex-col">
+                          <span>{{
+                            new Date(request.approved_at).toLocaleDateString(
+                              'en-PH'
+                            )
+                          }}</span>
+                          <span class="text-xs text-black/40">
+                            {{
+                              new Date(request.approved_at).toLocaleTimeString(
+                                'en-PH',
+                                {
+                                  timeZone: 'Asia/Manila',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                }
+                              )
+                            }}
+                          </span>
+                        </div>
+                      </td>
+                      <td>
+                        <div class="dropdown dropdown-left">
+                          <label
+                            tabindex="0"
+                            class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
+                          >
+                            <EllipsisVertical class="w-4 h-4" />
+                          </label>
+                          <ul
+                            tabindex="0"
+                            class="dropdown-content z-[1] menu p-2 shadow bg-accentColor rounded-box w-52 border border-black/10"
+                          >
+                            <li class="hover:bg-black/10">
+                              <a
+                                @click="viewRequest(request)"
+                                class="text-primary"
+                              >
+                                View Details
+                              </a>
+                            </li>
+                            <li class="hover:bg-black/10">
+                              <a
+                                @click="releaseBudget(request)"
+                                class="text-success"
+                              >
+                                Release Budget
+                              </a>
+                            </li>
+                          </ul>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Pagination -->
+              <div
+                class="flex flex-col sm:flex-row justify-between items-center mt-4"
+                v-if="totalPages > 1"
+              >
+                <div class="text-sm text-black/60 mb-2 sm:mb-0">
+                  Showing {{ (currentPage - 1) * requestsPerPage + 1 }} to
+                  {{
+                    Math.min(
+                      currentPage * requestsPerPage,
+                      filteredApprovedRequests.length
+                    )
+                  }}
+                  of {{ filteredApprovedRequests.length }} approved requests
                 </div>
 
-                <!-- Custom Month Selection -->
-                <div class="flex items-center gap-2">
-                  <div class="relative">
-                    <button
-                      class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                      @click="toggleCustomMonthPicker"
-                    >
-                      <Calendar class="w-4 h-4 mr-1" />
-                      Custom Month
-                    </button>
+                <div class="join space-x-1">
+                  <button
+                    class="join-item btn font-thin !bg-gray-200 text-black/50 btn-sm border border-none hover:bg-gray-300"
+                    :disabled="currentPage <= 1"
+                    @click="currentPage--"
+                  >
+                    « Prev
+                  </button>
 
-                    <!-- Custom Month Picker -->
+                  <button
+                    class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                    v-for="page in totalPages"
+                    :key="page"
+                    :class="{
+                      'btn-active !bg-primaryColor text-white':
+                        currentPage === page,
+                    }"
+                    @click="currentPage = page"
+                  >
+                    {{ page }}
+                  </button>
+
+                  <button
+                    class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                    :disabled="currentPage >= totalPages"
+                    @click="currentPage++"
+                  >
+                    Next »
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Budget Release History -->
+        <div v-if="activeTab === 'history'" class="px-6 py-2">
+          <div class="card bg-accentColor shadow-none mb-6 border-0 mx-auto">
+            <div class="card-body">
+              <!-- Header with Stats -->
+              <div
+                class="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-6"
+              >
+                <div>
+                  <h2 class="card-title text-primaryColor mb-2">
+                    Budget Release History
+                  </h2>
+                </div>
+              </div>
+
+              <!-- Search and Filters -->
+              <div class="mb-6">
+                <!-- Search Bar with Sort -->
+                <div class="flex flex-col md:flex-row gap-4 mb-4">
+                  <div class="flex-1 relative">
+                    <Search
+                      class="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 !text-black"
+                    />
+                    <input
+                      v-model="historyFilter.searchQuery"
+                      type="text"
+                      placeholder="Search by description, request ID, or release ID..."
+                      class="input input-sm input-bordered bg-white border-primaryColor/30 text-black/70 pl-10 w-full shadow-none"
+                    />
+                  </div>
+                </div>
+
+                <!-- Receipt Status Filter (Dropdown) -->
+                <div class="flex flex-wrap gap-2 mb-4 items-center">
+                  <span class="text-sm text-black/60">Receipt Status:</span>
+                  <select
+                    v-model="historyFilter.receiptStatus"
+                    class="select select-sm select-bordered bg-white border-primaryColor/30 text-black/70"
+                  >
+                    <option :value="''">
+                      All ({{ budgetReleaseHistory?.length || 0 }})
+                    </option>
+                    <option value="confirmed">
+                      Receipt Confirmed ({{ budgetReleaseStats.confirmed }})
+                    </option>
+                    <option value="pending">
+                      Receipt Pending ({{ budgetReleaseStats.pending }})
+                    </option>
+                  </select>
+                </div>
+
+                <!-- History Date Filter Section -->
+                <div
+                  class="mb-6 p-4 bg-white/5 rounded-lg border border-primaryColor/20"
+                >
+                  <div
+                    class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
+                  >
+                    <!-- Current Filter Display -->
+                    <div class="flex items-center gap-3">
+                      <Calendar class="w-5 h-5 text-primaryColor" />
+                      <div>
+                        <h3 class="font-semibold text-primaryColor">
+                          {{ getHistoryFilterDisplayText() }}
+                        </h3>
+                        <p class="text-sm text-black/60">
+                          Showing {{ filteredBudgetHistory.length }} release{{
+                            filteredBudgetHistory.length !== 1 ? 's' : ''
+                          }}
+                        </p>
+                      </div>
+                    </div>
+
+                    <!-- Filter Controls -->
                     <div
-                      v-if="showCustomMonthPicker"
-                      class="absolute top-full left-0 mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10 p-3 min-w-64"
+                      class="flex flex-col sm:flex-row gap-3 items-start sm:items-center"
                     >
-                      <div class="flex items-center justify-between mb-3">
-                        <h4 class="font-medium text-sm text-black">
-                          Select Month
-                        </h4>
-                        <button
-                          @click="showCustomMonthPicker = false"
-                          class="btn btn-ghost btn-xs"
-                        >
-                          <X class="w-3 h-3" />
-                        </button>
-                      </div>
-
-                      <!-- Month Selection -->
-                      <div class="grid grid-cols-3 gap-2 mb-3">
-                        <button
-                          v-for="month in months"
-                          :key="month.value"
-                          class="btn btn-xs font-thin"
-                          :class="{
-                            'bg-primaryColor text-white':
-                              customMonthPicker.month === month.value,
-                            'btn-ghost':
-                              customMonthPicker.month !== month.value,
-                          }"
-                          @click="customMonthPicker.month = month.value"
-                        >
-                          {{ month.label }}
-                        </button>
-                      </div>
-
-                      <!-- Year Selection -->
-                      <div class="flex items-center gap-2 mb-3">
-                        <span class="text-sm text-black/70">Year:</span>
+                      <!-- Dropdown for date filters -->
+                      <div class="flex items-center gap-2">
                         <select
-                          v-model="customMonthPicker.year"
-                          class="select select-xs select-bordered bg-white border-primaryColor/30 text-black/70"
+                          v-model="historyFilterType"
+                          @change="onHistoryFilterChange"
+                          class="select select-sm select-bordered bg-white border-primaryColor/30 text-black/70"
                         >
                           <option
-                            v-for="year in availableYears"
-                            :key="year"
-                            :value="year"
+                            v-for="option in historyFilterOptions"
+                            :key="option.type"
+                            :value="option.type"
                           >
-                            {{ year }}
+                            {{ option.label }} ({{ option.count }})
                           </option>
+                          <option value="custom">Custom Month</option>
                         </select>
                       </div>
 
-                      <!-- Apply Button -->
-                      <div class="flex gap-2">
+                      <!-- Inline Custom Month Picker (shown when Custom Month is selected) -->
+                      <div
+                        v-if="historyFilterType === 'custom'"
+                        class="flex items-center gap-3"
+                      >
+                        <!-- Month Selection -->
+                        <div class="grid grid-cols-3 gap-2">
+                          <button
+                            v-for="month in months"
+                            :key="month.value"
+                            class="btn btn-xs font-thin"
+                            :class="{
+                              'bg-primaryColor text-white':
+                                customMonthPicker.month === month.value,
+                              'btn-ghost':
+                                customMonthPicker.month !== month.value,
+                            }"
+                            @click="customMonthPicker.month = month.value"
+                          >
+                            {{ month.label }}
+                          </button>
+                        </div>
+
+                        <!-- Year Selection -->
+                        <div class="flex items-center gap-2">
+                          <span class="text-sm text-black/70">Year:</span>
+                          <select
+                            v-model="customMonthPicker.year"
+                            class="select select-xs select-bordered bg-white border-primaryColor/30 text-black/70"
+                          >
+                            <option
+                              v-for="year in availableYears"
+                              :key="year"
+                              :value="year"
+                            >
+                              {{ year }}
+                            </option>
+                          </select>
+                        </div>
+
+                        <div class="flex gap-2">
+                          <button
+                            @click="applyCustomMonthFilter"
+                            class="btn btn-xs bg-primaryColor text-white font-thin"
+                          >
+                            Apply
+                          </button>
+                          <button
+                            @click="clearAllFilters"
+                            class="btn btn-xs btn-ghost font-thin"
+                          >
+                            Reset
+                          </button>
+                        </div>
+                      </div>
+
+                      <!-- Clear Filters Button -->
+                      <div class="flex items-center">
                         <button
-                          @click="applyCustomMonthFilter"
-                          class="btn btn-xs bg-primaryColor text-white font-thin"
+                          class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                          @click="clearAllFilters"
                         >
-                          Apply
-                        </button>
-                        <button
-                          @click="showCustomMonthPicker = false"
-                          class="btn btn-xs btn-ghost font-thin"
-                        >
-                          Cancel
+                          <RefreshCcw class="w-4 h-4 mr-1" />
+                          Clear
                         </button>
                       </div>
                     </div>
                   </div>
+                </div>
+              </div>
 
-                  <!-- Clear Filters Button -->
+              <!-- Budget Release History Table -->
+              <div class="overflow-x-auto bg-accentColor">
+                <table
+                  class="table table-sm table-zebra text-black/50 border border-black/10 custom-zebra"
+                >
+                  <thead class="">
+                    <tr class="">
+                      <th class="w-16">No.</th>
+                      <th class="min-w-64">Description</th>
+                      <th class="w-32">Released Amount</th>
+                      <th class="w-28">Released Date</th>
+                      <th class="w-24">Released By</th>
+                      <th class="w-32">Receipt Status</th>
+                      <th class="w-28">Confirmed Date</th>
+                      <th class="w-24">Receipt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <!-- Empty State -->
+                    <tr
+                      v-if="
+                        filteredBudgetHistory &&
+                        filteredBudgetHistory.length === 0
+                      "
+                    >
+                      <td colspan="10" class="text-center py-12">
+                        <div class="flex flex-col items-center gap-3">
+                          <div
+                            class="w-16 h-16 bg-black/5 rounded-full flex items-center justify-center"
+                          >
+                            <Search class="w-8 h-8 text-black/30" />
+                          </div>
+                          <div>
+                            <h3 class="font-semibold text-black/70 mb-1">
+                              No budget releases found
+                            </h3>
+                            <p class="text-sm text-black/50 mb-3">
+                              No budget release history matches your current
+                              filters
+                            </p>
+                            <button
+                              class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                              @click="clearAllFilters"
+                            >
+                              Clear All Filters
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+
+                    <!-- Data Rows -->
+                    <tr
+                      v-for="(release, index) in paginatedBudgetHistory"
+                      :key="release.release_id"
+                      class="hover:bg-primaryColor/5"
+                    >
+                      <td class="font-medium text-center">
+                        {{
+                          (historyCurrentPage - 1) * historyPerPage + index + 1
+                        }}
+                      </td>
+
+                      <td class="max-w-xs">
+                        <div
+                          class="tooltip tooltip-top"
+                          :data-tip="release.request_description"
+                        >
+                          <p class="truncate font-medium">
+                            {{ release.request_description }}
+                          </p>
+                        </div>
+                      </td>
+
+                      <td class="font-semibold text-left">
+                        ₱{{
+                          release.released_amount.toLocaleString('en-PH', {
+                            minimumFractionDigits: 2,
+                          })
+                        }}
+                      </td>
+
+                      <td class="text-sm">
+                        <div>
+                          <span>{{
+                            formatManilaDate(release.released_at)
+                          }}</span>
+                          <br />
+                          <span class="text-xs text-black/50">
+                            {{ formatManilaTime(release.released_at) }}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td class="text-sm">{{ release.released_by }}</td>
+
+                      <td>
+                        <div
+                          class="badge badge-sm border-none font-medium"
+                          :class="{
+                            'bg-success/20 text-success':
+                              release.receipt_confirmed,
+                            'bg-warning/20 text-warning':
+                              !release.receipt_confirmed,
+                          }"
+                        >
+                          {{
+                            release.receipt_confirmed ? 'Confirmed' : 'Pending'
+                          }}
+                        </div>
+                      </td>
+
+                      <td class="text-sm">
+                        <div v-if="release.receipt_confirmed_at">
+                          <span>{{
+                            formatManilaDate(release.receipt_confirmed_at)
+                          }}</span>
+                          <br />
+                          <span class="text-xs text-black/50">
+                            {{ formatManilaTime(release.receipt_confirmed_at) }}
+                          </span>
+                        </div>
+                        <span v-else>N/A</span>
+                      </td>
+
+                      <td>
+                        <a
+                          v-if="release.receipt_confirmed"
+                          class="text-primaryColor cursor-pointer underline hover:text-primaryColor/80 text-sm font-medium"
+                          @click="showReceiptModal(release)"
+                        >
+                          View Receipt
+                        </a>
+                        <span v-else class="text-black/30 text-sm">N/A</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Smart Pagination -->
+              <div
+                class="flex flex-col lg:flex-row justify-between items-center mt-6 gap-4"
+                v-if="totalHistoryPages > 1"
+              >
+                <!-- Summary -->
+                <div class="text-sm text-black/60 flex flex-wrap gap-4">
+                  <span>
+                    Showing
+                    {{ (historyCurrentPage - 1) * historyPerPage + 1 }} to
+                    {{
+                      Math.min(
+                        historyCurrentPage * historyPerPage,
+                        filteredBudgetHistory.length
+                      )
+                    }}
+                    of {{ filteredBudgetHistory.length }} records for
+                    {{ getHistoryFilterDisplayText() }}
+                  </span>
+                </div>
+
+                <!-- Pagination -->
+                <div class="join space-x-1">
                   <button
-                    class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                    @click="clearAllFilters"
+                    class="join-item btn font-thin !bg-gray-200 text-black/50 btn-sm border border-none hover:bg-gray-300"
+                    :disabled="historyCurrentPage <= 1"
+                    @click="historyCurrentPage--"
                   >
-                    <RefreshCcw class="w-4 h-4 mr-1" />
-                    Clear
+                    « Prev
+                  </button>
+
+                  <button
+                    v-if="totalHistoryPages > 1"
+                    class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                    :class="{
+                      'btn-active !bg-primaryColor text-white':
+                        historyCurrentPage === 1,
+                    }"
+                    @click="historyCurrentPage = 1"
+                  >
+                    1
+                  </button>
+
+                  <button
+                    v-for="page in getPageRange()"
+                    :key="page"
+                    class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                    :class="{
+                      'btn-active !bg-primaryColor text-white':
+                        historyCurrentPage === page,
+                    }"
+                    @click="historyCurrentPage = page"
+                  >
+                    {{ page }}
+                  </button>
+
+                  <button
+                    v-if="
+                      totalHistoryPages > 1 &&
+                      historyCurrentPage < totalHistoryPages
+                    "
+                    class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                    :class="{
+                      'btn-active !bg-primaryColor text-white':
+                        historyCurrentPage === totalHistoryPages,
+                    }"
+                    @click="historyCurrentPage = totalHistoryPages"
+                  >
+                    {{ totalHistoryPages }}
+                  </button>
+
+                  <button
+                    class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                    :disabled="historyCurrentPage >= totalHistoryPages"
+                    @click="historyCurrentPage++"
+                  >
+                    Next »
                   </button>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-
-        <!-- Budget Release History Table -->
-        <div class="overflow-x-auto bg-accentColor">
-          <table
-            class="table table-sm table-zebra text-black/50 border border-black/10 custom-zebra"
-          >
-            <thead class="text-secondaryColor">
-              <tr class="bg-primaryColor text-accentColor">
-                <th class="w-16">No.</th>
-                <th class="w-32">Release ID</th>
-                <th class="w-32">Request ID</th>
-                <th class="min-w-64">Description</th>
-                <th class="w-32">Released Amount</th>
-                <th class="w-28">Released Date</th>
-                <th class="w-24">Released By</th>
-                <th class="w-32">Receipt Status</th>
-                <th class="w-28">Confirmed Date</th>
-                <th class="w-24">Receipt</th>
-              </tr>
-            </thead>
-            <tbody>
-              <!-- Empty State -->
-              <tr
-                v-if="
-                  filteredBudgetHistory && filteredBudgetHistory.length === 0
-                "
-              >
-                <td colspan="10" class="text-center py-12">
-                  <div class="flex flex-col items-center gap-3">
-                    <div
-                      class="w-16 h-16 bg-black/5 rounded-full flex items-center justify-center"
-                    >
-                      <Search class="w-8 h-8 text-black/30" />
-                    </div>
-                    <div>
-                      <h3 class="font-semibold text-black/70 mb-1">
-                        No budget releases found
-                      </h3>
-                      <p class="text-sm text-black/50 mb-3">
-                        No budget release history matches your current filters
-                      </p>
-                      <button
-                        class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                        @click="clearAllFilters"
-                      >
-                        Clear All Filters
-                      </button>
-                    </div>
-                  </div>
-                </td>
-              </tr>
-
-              <!-- Data Rows -->
-              <tr
-                v-for="(release, index) in paginatedBudgetHistory"
-                :key="release.release_id"
-                class="hover:bg-primaryColor/5"
-              >
-                <td class="font-medium text-center">
-                  {{ (historyCurrentPage - 1) * historyPerPage + index + 1 }}
-                </td>
-
-                <td>
-                  <div class="font-mono text-sm font-medium text-primaryColor">
-                    {{ release.release_id }}
-                  </div>
-                </td>
-
-                <td>
-                  <div class="font-mono text-sm font-medium text-success">
-                    {{ release.request_id }}
-                  </div>
-                </td>
-
-                <td class="max-w-xs">
-                  <div
-                    class="tooltip tooltip-top"
-                    :data-tip="release.request_description"
-                  >
-                    <p class="truncate font-medium">
-                      {{ release.request_description }}
-                    </p>
-                  </div>
-                </td>
-
-                <td class="font-semibold text-left">
-                  ₱{{
-                    release.released_amount.toLocaleString('en-PH', {
-                      minimumFractionDigits: 2,
-                    })
-                  }}
-                </td>
-
-                <td class="text-sm">
-                  <div>
-                    <span>{{ formatManilaDate(release.released_at) }}</span>
-                    <br />
-                    <span class="text-xs text-black/50">
-                      {{ formatManilaTime(release.released_at) }}
-                    </span>
-                  </div>
-                </td>
-
-                <td class="text-sm">{{ release.released_by }}</td>
-
-                <td>
-                  <div
-                    class="badge badge-sm border-none font-medium"
-                    :class="{
-                      'bg-success/20 text-success': release.receipt_confirmed,
-                      'bg-warning/20 text-warning': !release.receipt_confirmed,
-                    }"
-                  >
-                    {{ release.receipt_confirmed ? 'Confirmed' : 'Pending' }}
-                  </div>
-                </td>
-
-                <td class="text-sm">
-                  <div v-if="release.receipt_confirmed_at">
-                    <span>{{
-                      formatManilaDate(release.receipt_confirmed_at)
-                    }}</span>
-                    <br />
-                    <span class="text-xs text-black/50">
-                      {{ formatManilaTime(release.receipt_confirmed_at) }}
-                    </span>
-                  </div>
-                  <span v-else>N/A</span>
-                </td>
-
-                <td>
-                  <a
-                    v-if="release.receipt_confirmed"
-                    class="text-primaryColor cursor-pointer underline hover:text-primaryColor/80 text-sm font-medium"
-                    @click="showReceiptModal(release)"
-                  >
-                    View Receipt
-                  </a>
-                  <span v-else class="text-black/30 text-sm">N/A</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Smart Pagination -->
-        <div
-          class="flex flex-col lg:flex-row justify-between items-center mt-6 gap-4"
-          v-if="totalHistoryPages > 1"
-        >
-          <!-- Summary -->
-          <div class="text-sm text-black/60 flex flex-wrap gap-4">
-            <span>
-              Showing
-              {{ (historyCurrentPage - 1) * historyPerPage + 1 }} to
-              {{
-                Math.min(
-                  historyCurrentPage * historyPerPage,
-                  filteredBudgetHistory.length
-                )
-              }}
-              of {{ filteredBudgetHistory.length }} records for
-              {{ getHistoryFilterDisplayText() }}
-            </span>
-            <span class="font-semibold text-primaryColor">
-              Total Released: ₱{{
-                budgetReleaseStats.totalReleased.toLocaleString('en-PH')
-              }}
-            </span>
-          </div>
-
-          <!-- Pagination -->
-          <div class="join space-x-1">
-            <button
-              class="join-item btn font-thin !bg-gray-200 text-black/50 btn-sm border border-none hover:bg-gray-300"
-              :disabled="historyCurrentPage <= 1"
-              @click="historyCurrentPage--"
-            >
-              « Prev
-            </button>
-
-            <button
-              v-if="totalHistoryPages > 1"
-              class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
-              :class="{
-                'btn-active !bg-primaryColor text-white':
-                  historyCurrentPage === 1,
-              }"
-              @click="historyCurrentPage = 1"
-            >
-              1
-            </button>
-
-            <button
-              v-for="page in getPageRange()"
-              :key="page"
-              class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
-              :class="{
-                'btn-active !bg-primaryColor text-white':
-                  historyCurrentPage === page,
-              }"
-              @click="historyCurrentPage = page"
-            >
-              {{ page }}
-            </button>
-
-            <button
-              v-if="
-                totalHistoryPages > 1 && historyCurrentPage < totalHistoryPages
-              "
-              class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
-              :class="{
-                'btn-active !bg-primaryColor text-white':
-                  historyCurrentPage === totalHistoryPages,
-              }"
-              @click="historyCurrentPage = totalHistoryPages"
-            >
-              {{ totalHistoryPages }}
-            </button>
-
-            <button
-              class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
-              :disabled="historyCurrentPage >= totalHistoryPages"
-              @click="historyCurrentPage++"
-            >
-              Next »
-            </button>
           </div>
         </div>
       </div>
@@ -1670,35 +1604,62 @@
 
       <!-- Budget Release Modal Content -->
       <template v-if="modal.type === 'release'">
-        <h3 class="text-lg font-bold mb-4 text-success">Release Budget</h3>
+        <h3 class="text-lg font-bold mb-4 text-primaryColor">Release Budget</h3>
         <p>
           Are you sure you want to release budget for request
           <strong>#{{ modal.request?.request_id }}</strong
           >?
         </p>
-        <div class="bg-white/10 p-3 rounded mt-3">
-          <p><strong>Department:</strong> {{ modal.request?.department }}</p>
-          <p>
-            <strong>Requested By:</strong> {{ modal.request?.requested_by }}
-          </p>
-          <p>
-            <strong>Description:</strong>
-            {{ modal.request?.request_description }}
-          </p>
-          <p>
-            <strong>Total Amount:</strong> ₱{{
-              modal.request?.total_amount.toLocaleString('en-PH')
-            }}
-          </p>
-          <p>
-            <strong>Approved Date:</strong>
-            {{
-              new Date(modal.request?.approved_at).toLocaleDateString('en-PH')
-            }}
-          </p>
+        <div class="bg-white/10 p-3 rounded mt-3 space-y-3">
+          <!-- Department -->
+          <div class="flex justify-between pb-2">
+            <span class="text-sm text-black/60">Department</span>
+            <span class="font-medium text-black">
+              {{ modal.request?.department }}
+            </span>
+          </div>
+
+          <!-- Requested By -->
+          <div class="flex justify-between pb-2">
+            <span class="text-sm text-black/60">Requested By</span>
+            <span class="font-medium text-black">
+              {{ modal.request?.requested_by }}
+            </span>
+          </div>
+
+          <!-- Description -->
+          <div class="flex justify-between pb-2">
+            <span class="text-sm text-black/60">Description</span>
+            <span class="font-medium text-black">
+              {{ modal.request?.request_description }}
+            </span>
+          </div>
+
+          <!-- Total Amount -->
+          <div class="flex justify-between pb-2">
+            <span class="text-sm text-black/60">Total Amount</span>
+            <span class="font-semibold text-black">
+              ₱{{
+                Number(modal.request?.total_amount).toLocaleString('en-PH', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })
+              }}
+            </span>
+          </div>
+
+          <!-- Approved Date -->
+          <div class="flex justify-between">
+            <span class="text-sm text-black/60">Approved Date</span>
+            <span class="font-medium text-black">
+              {{
+                new Date(modal.request?.approved_at).toLocaleDateString('en-PH')
+              }}
+            </span>
+          </div>
         </div>
 
-        <div class="alert alert-info mt-4">
+        <div class="alert bg-info/10 text-info shadow-none border-info mt-4">
           <Info class="w-6 h-6" />
           <span
             >Once released, SCM will be notified and can confirm receipt of the
@@ -1731,7 +1692,7 @@
           </button>
           <button
             type="button"
-            class="btn btn-success font-thin btn-sm"
+            class="btn bg-primaryColor text-white hover:bg-primaryColor/80 font-thin btn-sm"
             @click="openConfirmModal('release', modal.request)"
             :disabled="loading"
           >

@@ -109,24 +109,24 @@ export const menuItems = [
     department: 'Finance',
   },
   {
-    name: 'Request Approval',
+    name: 'Approval Request',
     icon: ReceiptText,
     route: '/finance/request-approval',
     department: 'Finance',
   },
-  {
-    name: 'Accounting',
-    icon: BarChart3,
-    route: '/finance/accounting',
-    department: 'Finance',
-  },
+
   {
     name: 'Budget Release',
     icon: PhilippinePeso,
     route: '/finance/budget-release',
     department: 'Finance',
   },
-
+  {
+    name: 'Sales',
+    icon: BarChart3,
+    route: '/finance/sales',
+    department: 'Finance',
+  },
   // Production Department
   {
     name: 'Dashboard',

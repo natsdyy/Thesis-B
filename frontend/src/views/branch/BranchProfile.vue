@@ -666,7 +666,7 @@
             <div class="p-4 bg-gray-50 rounded-lg">
               <div class="flex items-center mb-2">
                 <Shield class="w-4 h-4 text-gray-400 mr-2" />
-                <span class="text-sm font-medium text-gray-600">Role</span>
+                <span class="text-sm font-medium text-gray-600">Position</span>
               </div>
               <p class="font-semibold">{{ profileData.role }}</p>
             </div>

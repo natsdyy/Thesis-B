@@ -3,21 +3,34 @@ const sgMail = require('@sendgrid/mail');
 require("dotenv").config();
 
 // Initialize SendGrid if API key is available
-if (process.env.SENDGRID_API_KEY) {
+if (process.env.SENDGRID_API_KEY && process.env.SENDGRID_API_KEY !== 'your-sendgrid-api-key-here') {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
   console.log('📧 SendGrid initialized for email delivery');
 } else {
-  console.log('⚠️  SendGrid API key not found, using SMTP fallback');
+  console.log('⚠️  SendGrid API key not found or not configured, using SMTP fallback');
 }
 
 // Email configuration from environment variables
 const EMAIL_CONFIG = {
   user: process.env.SMTP_USER || 'mailcountrysidesteakhouse@gmail.com',
-  pass: process.env.SMTP_PASS || 'hgne ityd ejzn dgnv',
+  pass: process.env.SMTP_PASS || 'sclg quvi fuyh dcfa', // Gmail App Password
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
   port: parseInt(process.env.SMTP_PORT) || 587,
   secure: process.env.SMTP_SECURE === 'true' || false
 };
+
+// Check if we have proper email configuration
+const hasValidEmailConfig = () => {
+  const hasSendGrid = process.env.SENDGRID_API_KEY && process.env.SENDGRID_API_KEY !== 'your-sendgrid-api-key-here';
+  const hasSMTP = process.env.SMTP_PASS && process.env.SMTP_PASS !== 'your-gmail-app-password-here';
+  return hasSendGrid || hasSMTP;
+};
+
+if (!hasValidEmailConfig()) {
+  console.error('❌ No valid email configuration found!');
+  console.error('   Please set up either SendGrid API key or Gmail SMTP password in Railway environment variables.');
+  console.error('   See RAILWAY_EMAIL_FIX_GUIDE.md for instructions.');
+}
 
 // Check if we're in Railway environment
 const isRailway = process.env.RAILWAY_ENVIRONMENT === 'production' || process.env.NODE_ENV === 'production';
@@ -27,8 +40,8 @@ const createTransporter = (config) => {
   return nodemailer.createTransport({
     ...config,
     auth: {
-      user: "mailcountrysidesteakhouse@gmail.com",
-      pass: "sclg quvi fuyh dcfa", // Gmail App Password
+      user: EMAIL_CONFIG.user,
+      pass: EMAIL_CONFIG.pass,
     },
     // Optimized timeout settings for better reliability
     connectionTimeout: 30000, // 30 seconds
@@ -41,6 +54,10 @@ const createTransporter = (config) => {
     },
     debug: false, // Reduced logging for production
     logger: false,
+    // Add DNS resolution options for Railway
+    dns: {
+      servers: ['8.8.8.8', '8.8.4.4'] // Use Google DNS
+    }
   });
 };
 
@@ -86,6 +103,31 @@ if (process.env.RAILWAY_SMTP_HOST) {
     }
   });
 }
+
+// Railway-optimized Gmail SMTP transporter with better DNS resolution
+const railwayGmailTransporter = nodemailer.createTransport({
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false,
+  auth: {
+    user: EMAIL_CONFIG.user,
+    pass: EMAIL_CONFIG.pass,
+  },
+  connectionTimeout: 30000,
+  greetingTimeout: 30000,
+  socketTimeout: 60000,
+  pool: false,
+  tls: {
+    rejectUnauthorized: false,
+    secureProtocol: "TLSv1_2_method",
+  },
+  // Use different DNS servers for Railway
+  dns: {
+    servers: ['1.1.1.1', '1.0.0.1'] // Cloudflare DNS
+  },
+  debug: false,
+  logger: false,
+});
 
 // Verify transporter configuration with retry
 let verificationAttempts = 0;
@@ -226,14 +268,26 @@ class EmailService {
           return { success: true, messageId: info.messageId };
         } catch (fallbackError) {
           console.log('❌ Fallback SMTP failed:', fallbackError.message);
-          console.log('📧 Trying alternative SMTP...');
+          console.log('📧 Trying Railway-optimized SMTP...');
           
-          const info = await this.withTimeout(
-            alternativeTransporter.sendMail(mailOptions),
-            60000
-          );
-          console.log('✅ SMTP email sent (alternative):', info.messageId);
-          return { success: true, messageId: info.messageId };
+          try {
+            const info = await this.withTimeout(
+              railwayGmailTransporter.sendMail(mailOptions),
+              60000
+            );
+            console.log('✅ SMTP email sent (Railway-optimized):', info.messageId);
+            return { success: true, messageId: info.messageId };
+          } catch (railwayError) {
+            console.log('❌ Railway-optimized SMTP failed:', railwayError.message);
+            console.log('📧 Trying alternative SMTP...');
+            
+            const info = await this.withTimeout(
+              alternativeTransporter.sendMail(mailOptions),
+              60000
+            );
+            console.log('✅ SMTP email sent (alternative):', info.messageId);
+            return { success: true, messageId: info.messageId };
+          }
         }
       }
     } catch (error) {

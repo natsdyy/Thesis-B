@@ -2,9 +2,13 @@
   import { computed, ref, onMounted, watch } from 'vue';
   import { useBranchContextStore } from '../../stores/branchContextStore';
   import SalesTrendsChart from '../../components/branch/SalesTrendsChart.vue';
+  import SalesTrendChart from '../../components/finance/SalesTrendChart.vue';
   import RemitOrderDetailsModal from '../../components/finance/RemitOrderDetailsModal.vue';
+  import RemittancesModal from '../../components/finance/RemittancesModal.vue';
+  import { usePOSStore } from '../../stores/posStore';
 
   const branchContext = useBranchContextStore();
+  const posStore = usePOSStore();
 
   const isSuperAdmin = computed(() => branchContext.isSuperAdmin);
   const availableBranches = computed(
@@ -17,12 +21,14 @@
   const selectedBranchId = ref(null);
   const activeTab = ref('overview'); // overview | branches | analytics
   const overallMetric = ref('remitted');
+  // Data source for loading entries: 'remittances' or 'salesTrends'
+  const dataSource = ref('remittances');
   const page = ref(1);
   const pageSize = 10;
   const overviewPage = ref(1);
   const overviewPageSize = 10;
 
-  // Mock remitted sales data
+  // Real remitted sales data (per-branch entries)
   const mockRemittances = ref([]);
   const loading = ref(false);
   // Inline details panel (appears under the branch table)
@@ -32,110 +38,399 @@
   const detailsSeries = ref([]);
   const detailsLoading = ref(false);
   const showRemitModal = ref(false);
+  const showFinanceRemittances = ref(false);
+  const selectedRemitBranchId = ref(null);
+  const realAnalytics = ref({
+    labels: [],
+    remitted: [],
+    refunds: [],
+    disposed: [],
+    net: [],
+  });
+
+  // Fallback branches for selector
+  const displayBranches = computed(() => {
+    const list = availableBranches.value || [];
+    if (Array.isArray(list) && list.length) return list;
+    return currentBranch.value ? [currentBranch.value] : [];
+  });
 
   const initialize = async () => {
     if (!currentBranch.value) {
       await branchContext.initializeBranchContext();
     }
     selectedBranchId.value = currentBranch.value?.id ?? null;
-    await loadMockRemits();
+    await loadRealRemits();
   };
 
-  const loadMockRemits = async () => {
+  const loadRealRemits = async () => {
     loading.value = true;
     try {
-      // Simple deterministic mock data
       const branches = (
         availableBranches.value && availableBranches.value.length
           ? availableBranches.value
-          : [
-              { id: 1, name: 'Main Branch' },
-              { id: 2, name: 'Downtown Branch' },
-              { id: 3, name: 'Uptown Branch' },
-            ]
+          : []
       ).map((b) => ({ id: b.id, name: b.name }));
 
-      const MANILA_TZ = 'Asia/Manila';
-      const MANILA_OFFSET = '+08:00';
+      // if none provided from store, fallback to current branch only
+      const effective = branches.length
+        ? branches
+        : currentBranch.value
+          ? [{ id: currentBranch.value.id, name: currentBranch.value.name }]
+          : [];
 
-      const toManilaYmd = (date) => {
-        const fmt = new Intl.DateTimeFormat('en-CA', {
-          timeZone: MANILA_TZ,
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
+      // posStore instantiated at top-level
+
+      const getDateRange = () => {
+        const now = new Date();
+        const build = (start, end, bucket) => ({
+          from: start.toISOString(),
+          to: end.toISOString(),
+          startMs: start.getTime(),
+          endMs: end.getTime(),
+          bucket,
         });
-        return fmt.format(date); // en-CA yields YYYY-MM-DD
+
+        if (period.value === 'today') {
+          const start = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate(),
+            0,
+            0,
+            0,
+            0
+          );
+          const end = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate(),
+            23,
+            59,
+            59,
+            999
+          );
+          return build(start, end, 'hour');
+        }
+        if (period.value === 'week') {
+          const start = new Date(now);
+          start.setDate(now.getDate() - now.getDay());
+          start.setHours(0, 0, 0, 0);
+          const end = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate(),
+            23,
+            59,
+            59,
+            999
+          );
+          return build(start, end, 'day');
+        }
+        if (period.value === 'month') {
+          const start = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            1,
+            0,
+            0,
+            0,
+            0
+          );
+          const end = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate(),
+            23,
+            59,
+            59,
+            999
+          );
+          return build(start, end, 'day');
+        }
+        // year
+        const start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+        const end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999
+        );
+        return build(start, end, 'month');
       };
 
-      const manilaEpochFromLabel = (label) => {
-        if (/^\d{4}-\d{2}-\d{2}$/.test(label)) {
-          return Date.parse(`${label}T00:00:00${MANILA_OFFSET}`);
-        }
-        if (/^\d{4}-\d{2}$/.test(label)) {
-          return Date.parse(`${label}-01T00:00:00${MANILA_OFFSET}`);
-        }
-        return Date.now();
-      };
+      const { from, to, bucket, startMs, endMs } = getDateRange();
+      const periodTypeMap = { today: 'today', week: 'week', month: 'month' };
+      const desiredType = periodTypeMap[period.value] || null;
 
-      const now = new Date();
-
-      const base =
-        period.value === 'today'
-          ? [0]
-          : period.value === 'week'
-            ? Array.from({ length: 7 }, (_, i) => i)
-            : period.value === 'month'
-              ? Array.from({ length: 30 }, (_, i) => i)
-              : Array.from({ length: 12 }, (_, i) => i);
-
-      const rows = [];
-      branches.forEach((br) => {
-        const entries = base.map((offset) => {
-          const d = new Date(now);
-          if (period.value === 'year') {
-            d.setMonth(d.getMonth() - (base.length - 1 - offset));
-            d.setDate(1);
-          } else {
-            d.setDate(d.getDate() - (base.length - 1 - offset));
-          }
-          const gross = Math.round(5000 + Math.random() * 20000);
-          const refunds = Math.round(Math.random() * 500);
-          const disposed = Math.round(Math.random() * 10);
-          const net = gross - refunds;
-          const remit = net; // for mock, remitted equals net sales
-          return {
-            id: `${br.id}-${offset}`,
+      const fetchers = {
+        remittances: async (br) => {
+          const { data: list } = await posStore.fetchRemittances({
+            branchId: br.id,
+            status: 'approved',
+            // Do not pass date range here; we'll filter by approved_at client-side
+            limit: 1000,
+          });
+          const filtered = (list || [])
+            .filter((r) => (desiredType ? r.period_type === desiredType : true))
+            .filter((r) => {
+              const fromMs = r.date_from
+                ? new Date(r.date_from).getTime()
+                : NaN;
+              const toMs = r.date_to ? new Date(r.date_to).getTime() : fromMs;
+              if (Number.isFinite(fromMs) && Number.isFinite(toMs)) {
+                // include if the remittance window overlaps the selected window
+                return toMs >= startMs && fromMs <= endMs;
+              }
+              // fallback: use approved_at if no window available
+              const t = new Date(
+                r.approved_at || r.created_at || r.date_to || r.date_from
+              ).getTime();
+              return Number.isFinite(t) ? t >= startMs && t <= endMs : true;
+            });
+          const entries = filtered
+            .map((r) => {
+              const df = r.date_from ? new Date(r.date_from) : null;
+              const ym = df
+                ? `${df.getFullYear()}-${String(df.getMonth() + 1).padStart(2, '0')}`
+                : String(r.date_from || '').slice(0, 7);
+              const ymd = df
+                ? `${df.getFullYear()}-${String(df.getMonth() + 1).padStart(2, '0')}-${String(
+                    df.getDate()
+                  ).padStart(2, '0')}`
+                : String(r.date_from || '').slice(0, 10);
+              const label = r.period_type === 'month' ? ym : ymd;
+              const derivedVoided = Math.max(
+                0,
+                Number(r.gross_sales || 0) -
+                  Number(r.refunded_amount || 0) -
+                  Number(r.net_sales || 0) || 0
+              );
+              S;
+              return {
+                id: String(r.id),
+                branch_id: r.branch_id || br.id,
+                branch_name: br.name,
+                period_label: label,
+                gross_sales: Number(r.gross_sales || 0),
+                refunds: Number(r.refunded_amount || 0),
+                disposed: Number(r.disposed || 0),
+                voided_amount:
+                  r.voided_amount !== undefined && r.voided_amount !== null
+                    ? Number(r.voided_amount)
+                    : derivedVoided,
+                net_sales: Number(r.net_sales || 0),
+                remitted_amount: Number(r.remitted_amount || 0),
+                cashier_count: 0,
+                submitted_by:
+                  `${r.submitted_first_name || ''} ${r.submitted_last_name || ''}`.trim(),
+                submitted_at: r.created_at || r.approved_at || '',
+                _ts: new Date(
+                  r.date_from || r.approved_at || r.created_at || Date.now()
+                ).getTime(),
+              };
+            })
+            .sort((a, b) => a._ts - b._ts);
+          return { branch_id: br.id, branch_name: br.name, entries };
+        },
+        salesTrends: async (br) => {
+          const data = await posStore.fetchSalesTrends(br.id, {
+            dateFrom: from,
+            dateTo: to,
+            period: period.value,
+            bucket: 'auto',
+          });
+          const labels = Array.isArray(data.labels) ? data.labels : [];
+          const grossArr = data.gross_sales || [];
+          const refundsArr = data.refunds || [];
+          const disposedArr = data.disposed || [];
+          const netArr = data.net_sales || [];
+          const remitArr = data.remitted_amount || [];
+          const entries = labels.map((label, idx) => ({
+            id: `${br.id}-${label}`,
             branch_id: br.id,
             branch_name: br.name,
-            period_label:
-              period.value === 'year'
-                ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-                : toManilaYmd(d),
-            gross_sales: gross,
-            refunds,
-            disposed,
-            net_sales: net,
-            remitted_amount: remit,
-            cashier_count: Math.ceil(1 + Math.random() * 4),
-            submitted_by: 'Manager',
-            submitted_at: d.toISOString(),
-          };
+            period_label: label,
+            gross_sales: Number(grossArr[idx] || 0),
+            refunds: Number(refundsArr[idx] || 0),
+            disposed: Number(disposedArr[idx] || 0),
+            net_sales: Number(netArr[idx] || 0),
+            remitted_amount: Number(remitArr[idx] || 0),
+            cashier_count: 0,
+            submitted_by: '',
+            submitted_at: '',
+          }));
+          return { branch_id: br.id, branch_name: br.name, entries };
+        },
+      };
+
+      const activeFetcher = fetchers[dataSource.value] || fetchers.remittances;
+      let rows = [];
+      if (effective.length > 0) {
+        rows = await Promise.all(effective.map((br) => activeFetcher(br)));
+      } else {
+        // Fallback: fetch all remittances and group by branch
+        const { data: allList } = await posStore.fetchRemittances({
+          status: 'approved',
+          limit: 1000,
         });
-        rows.push({ branch_id: br.id, branch_name: br.name, entries });
-      });
+        const grouped = {};
+        const list = Array.isArray(allList) ? allList : [];
+        const filtered = list
+          .filter((r) => (desiredType ? r.period_type === desiredType : true))
+          .filter((r) => {
+            const fromMsR = r.date_from ? new Date(r.date_from).getTime() : NaN;
+            const toMsR = r.date_to ? new Date(r.date_to).getTime() : fromMsR;
+            if (Number.isFinite(fromMsR) && Number.isFinite(toMsR)) {
+              return toMsR >= startMs && fromMsR <= endMs;
+            }
+            const t = new Date(
+              r.approved_at || r.created_at || r.date_to || r.date_from
+            ).getTime();
+            return Number.isFinite(t) ? t >= startMs && t <= endMs : true;
+          });
+        filtered.forEach((r) => {
+          const bid = r.branch_id;
+          if (!grouped[bid]) grouped[bid] = [];
+          grouped[bid].push(r);
+        });
+        rows = Object.entries(grouped).map(([bid, arr]) => ({
+          branch_id: Number(bid),
+          branch_name:
+            arr[0]?.branch_name ||
+            (availableBranches.value || []).find((b) => b.id === Number(bid))
+              ?.name ||
+            `Branch ${bid}`,
+          entries: arr
+            .map((r) => ({
+              id: String(r.id),
+              branch_id: r.branch_id,
+              branch_name:
+                r.branch_name ||
+                (availableBranches.value || []).find(
+                  (b) => b.id === Number(bid)
+                )?.name ||
+                `Branch ${bid}`,
+              period_label: (() => {
+                const df = r.date_from ? new Date(r.date_from) : null;
+                const ym = df
+                  ? `${df.getFullYear()}-${String(df.getMonth() + 1).padStart(2, '0')}`
+                  : String(r.date_from || '').slice(0, 7);
+                const ymd = df
+                  ? `${df.getFullYear()}-${String(df.getMonth() + 1).padStart(2, '0')}-${String(
+                      df.getDate()
+                    ).padStart(2, '0')}`
+                  : String(r.date_from || '').slice(0, 10);
+                return r.period_type === 'month' ? ym : ymd;
+              })(),
+              gross_sales: Number(r.gross_sales || 0),
+              refunds: Number(r.refunded_amount || 0),
+              disposed: Number(r.disposed || 0),
+              voided_amount:
+                r.voided_amount !== undefined && r.voided_amount !== null
+                  ? Number(r.voided_amount)
+                  : Math.max(
+                      0,
+                      Number(r.gross_sales || 0) -
+                        Number(r.refunded_amount || 0) -
+                        Number(r.net_sales || 0) || 0
+                    ),
+              net_sales: Number(r.net_sales || 0),
+              remitted_amount: Number(r.remitted_amount || 0),
+              cashier_count: 0,
+              submitted_by:
+                `${r.submitted_first_name || ''} ${r.submitted_last_name || ''}`.trim(),
+              submitted_at: r.created_at || r.approved_at || '',
+              _ts: new Date(
+                r.date_from || r.approved_at || r.created_at || Date.now()
+              ).getTime(),
+            }))
+            .sort((a, b) => a._ts - b._ts),
+        }));
+      }
 
       mockRemittances.value = rows;
 
-      // expose helpers for other computations
-      window.__manilaHelpers = { manilaEpochFromLabel };
+      // Auto-select latest entry for the current branch/period without requiring a click
+      const preferredBranchId =
+        branchIdToShow.value ?? rows[0]?.branch_id ?? null;
+      const targetRow =
+        rows.find((r) => r.branch_id === preferredBranchId) || rows[0];
+      if (targetRow && targetRow.entries && targetRow.entries.length) {
+        selectedEntry.value = targetRow.entries[targetRow.entries.length - 1];
+      } else {
+        selectedEntry.value = null;
+      }
+
+      // Build analytics from real sales trends across selected branches
+      try {
+        const branchesForAnalytics =
+          selectedBranchId.value && selectedBranchId.value !== 0
+            ? rows.filter((r) => r.branch_id === selectedBranchId.value)
+            : rows;
+        const trends = await Promise.all(
+          branchesForAnalytics.map((r) =>
+            posStore.fetchSalesTrends(r.branch_id, {
+              dateFrom: from,
+              dateTo: to,
+              period: period.value,
+              bucket: 'auto',
+            })
+          )
+        );
+        // Initialize with first labels
+        let labels = trends[0]?.labels || [];
+        let sum = {
+          remitted: new Array(labels.length).fill(0),
+          refunds: new Array(labels.length).fill(0),
+          disposed: new Array(labels.length).fill(0),
+          net: new Array(labels.length).fill(0),
+        };
+        trends.forEach((t) => {
+          const l = Array.isArray(t?.labels) ? t.labels : [];
+          if (l.length !== labels.length) {
+            // If labels differ, fall back to current labels length and best-effort sum by index
+            labels = l.length > 0 ? l : labels;
+            sum.remitted = new Array(labels.length).fill(0);
+            sum.refunds = new Array(labels.length).fill(0);
+            sum.disposed = new Array(labels.length).fill(0);
+            sum.net = new Array(labels.length).fill(0);
+          }
+          const add = (arr, src) =>
+            arr.map((v, i) => v + Number(src?.[i] || 0));
+          sum.remitted = add(sum.remitted, t?.remitted_amount);
+          sum.refunds = add(sum.refunds, t?.refunds);
+          sum.disposed = add(sum.disposed, t?.disposed);
+          sum.net = add(sum.net, t?.net_sales);
+        });
+        realAnalytics.value = {
+          labels,
+          remitted: sum.remitted.map((n) => Math.round(n)),
+          refunds: sum.refunds.map((n) => Math.round(n)),
+          disposed: sum.disposed.map((n) => Math.round(n)),
+          net: sum.net.map((n) => Math.round(n)),
+        };
+      } catch (err) {
+        console.warn('Analytics trend fetch failed', err);
+        realAnalytics.value = {
+          labels: [],
+          remitted: [],
+          refunds: [],
+          disposed: [],
+          net: [],
+        };
+      }
     } finally {
       loading.value = false;
     }
   };
 
-  const onSelectBranch = (e) => {
+  const onSelectBranch = async (e) => {
     selectedBranchId.value = Number(e.target.value);
+    await loadRealRemits();
   };
 
   // Aggregations across branches for Overview/Analytics
@@ -162,31 +457,18 @@
     return totals;
   });
 
-  const analyticsLabels = computed(() => {
-    const labels = Array.from(
-      new Set(flattenedEntries.value.map((e) => e.period_label))
-    );
-    // Sort YMD or YYYY-MM labels
-    return labels.sort();
-  });
+  const analyticsLabels = computed(() => realAnalytics.value.labels || []);
 
   const analyticsSeries = computed(() => {
-    const map = Object.create(null);
-    analyticsLabels.value.forEach((l) => (map[l] = 0));
-    flattenedEntries.value.forEach((e) => {
-      const key = e.period_label;
-      if (!(key in map)) map[key] = 0;
-      const metric =
-        overallMetric.value === 'refunds'
-          ? Number(e.refunds) || 0
-          : overallMetric.value === 'disposed'
-            ? Number(e.disposed) || 0
-            : overallMetric.value === 'net'
-              ? Number(e.net_sales) || 0
-              : Number(e.remitted_amount) || 0;
-      map[key] += metric;
-    });
-    return analyticsLabels.value.map((l) => Math.round(map[l] || 0));
+    const a = realAnalytics.value;
+    if (!a || !Array.isArray(a.labels)) return [];
+    return overallMetric.value === 'refunds'
+      ? a.refunds
+      : overallMetric.value === 'disposed'
+        ? a.disposed
+        : overallMetric.value === 'net'
+          ? a.net
+          : a.remitted;
   });
 
   // Recent activity for Overview (latest entries across branches)
@@ -243,6 +525,99 @@
     );
   });
 
+  // Rows to render in Branches tab: if "All" is selected (0/null), show all branches
+  const rowsToShow = computed(() => {
+    const all = mockRemittances.value || [];
+    if (!selectedBranchId.value || selectedBranchId.value === 0) return all;
+    return all.filter((r) => r.branch_id === selectedBranchId.value);
+  });
+
+  // Window for current period (for display)
+  const periodWindow = computed(() => {
+    const now = new Date();
+    let start = new Date(now),
+      end = new Date(now);
+    if (period.value === 'today') {
+      start = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        0,
+        0,
+        0,
+        0
+      );
+      end = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        23,
+        59,
+        59,
+        999
+      );
+    } else if (period.value === 'week') {
+      start = new Date(now);
+      start.setDate(now.getDate() - now.getDay());
+      start.setHours(0, 0, 0, 0);
+      end = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        23,
+        59,
+        59,
+        999
+      );
+    } else if (period.value === 'month') {
+      start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      end = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        23,
+        59,
+        59,
+        999
+      );
+    } else {
+      start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+      end = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        23,
+        59,
+        59,
+        999
+      );
+    }
+    const startLabel = start.toLocaleString();
+    const endLabel = end.toLocaleString();
+    return { start, end, startLabel, endLabel };
+  });
+
+  // Totals per branch row
+  const getRowTotals = (row) => {
+    const totals = {
+      gross: 0,
+      net: 0,
+      refunds: 0,
+      disposed: 0,
+      remitted: 0,
+      voidedAmount: 0,
+    };
+    (row?.entries || []).forEach((e) => {
+      totals.gross += Number(e.gross_sales) || 0;
+      totals.net += Number(e.net_sales) || 0;
+      totals.refunds += Number(e.refunds) || 0;
+      totals.disposed += Number(e.disposed) || 0;
+      totals.remitted += Number(e.remitted_amount) || 0;
+      totals.voidedAmount += Number(e.voided_amount) || 0;
+    });
+    return totals;
+  };
+
   const totalEntries = computed(
     () => (currentRow.value.entries && currentRow.value.entries.length) || 0
   );
@@ -261,67 +636,105 @@
     buildDetailsChart();
   };
 
-  const buildDetailsChart = () => {
+  const buildDetailsChart = async () => {
     if (!selectedEntry.value) return;
     detailsLoading.value = true;
     try {
-      const total =
-        detailsMetric.value === 'refunds'
-          ? Number(selectedEntry.value.refunds) || 0
-          : detailsMetric.value === 'disposed'
-            ? Number(selectedEntry.value.disposed) || 0
-            : detailsMetric.value === 'net'
-              ? Number(selectedEntry.value.net_sales) || 0
-              : Number(selectedEntry.value.remitted_amount) || 0;
-      const labels = [];
-      const points = [];
-      let n = 24;
+      // Compute date range for the selected period
+      const now = new Date();
+      let start,
+        end,
+        bucket = 'auto';
       if (period.value === 'today') {
-        n = 24;
-        for (let i = 0; i < n; i++) {
-          labels.push(`${String(i).padStart(2, '0')}:00`);
-        }
+        start = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          0,
+          0,
+          0,
+          0
+        );
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999
+        );
+        bucket = 'hour';
       } else if (period.value === 'week') {
-        n = 7;
-        for (let i = 0; i < n; i++) labels.push(`Day ${i + 1}`);
+        start = new Date(now);
+        start.setDate(now.getDate() - now.getDay());
+        start.setHours(0, 0, 0, 0);
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999
+        );
+        bucket = 'day';
       } else if (period.value === 'month') {
-        n = 30;
-        for (let i = 0; i < n; i++) labels.push(`${i + 1}`);
+        start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999
+        );
+        bucket = 'day';
       } else {
-        // year
-        n = 12;
-        const monthNames = [
-          'Jan',
-          'Feb',
-          'Mar',
-          'Apr',
-          'May',
-          'Jun',
-          'Jul',
-          'Aug',
-          'Sep',
-          'Oct',
-          'Nov',
-          'Dec',
-        ];
-        for (let i = 0; i < n; i++) labels.push(monthNames[i]);
+        start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999
+        );
+        bucket = 'month';
       }
-      let remaining = total;
-      for (let i = 0; i < n; i++) {
-        const base = total / n;
-        const variance = (Math.random() - 0.5) * base * 0.3;
-        let value = Math.max(0, base + variance);
-        if (detailsMetric.value === 'disposed') value = Math.round(value);
-        points.push(value);
-        remaining -= value;
-      }
-      if (points.length > 0) {
-        let v = Math.max(0, points[points.length - 1] + remaining);
-        points[points.length - 1] =
-          detailsMetric.value === 'disposed' ? Math.round(v) : v;
-      }
+
+      const data = await posStore.fetchSalesTrends(
+        selectedEntry.value.branch_id,
+        {
+          dateFrom: start.toISOString(),
+          dateTo: end.toISOString(),
+          period: period.value,
+          bucket,
+        }
+      );
+
+      const labels = Array.isArray(data.labels) ? data.labels : [];
+      const seriesMap = {
+        refunds: data.refunds || [],
+        disposed: data.disposed || [],
+        net: data.net_sales || [],
+        remitted: data.remitted_amount || [],
+      };
+      const key =
+        detailsMetric.value === 'refunds'
+          ? 'refunds'
+          : detailsMetric.value === 'disposed'
+            ? 'disposed'
+            : detailsMetric.value === 'net'
+              ? 'net'
+              : 'remitted';
+      const arr = seriesMap[key] || [];
       detailsLabels.value = labels;
-      detailsSeries.value = points.map((v) => Math.round(v));
+      detailsSeries.value = labels.map((_, i) =>
+        Math.round(Number(arr[i] || 0))
+      );
     } finally {
       detailsLoading.value = false;
     }
@@ -357,14 +770,17 @@
       ) {
         await branchContext.setCurrentBranch(row.branch_id);
       }
+      selectedRemitBranchId.value = row?.branch_id || null;
       showRemitModal.value = true;
     } catch (e) {
       console.error('Failed to open remit modal for branch', e);
+      selectedRemitBranchId.value = row?.branch_id || null;
       showRemitModal.value = true; // still open with current context as fallback
     }
   };
   const closeRemitModal = () => {
     showRemitModal.value = false;
+    selectedRemitBranchId.value = null;
   };
 
   onMounted(() => {
@@ -386,7 +802,7 @@
       <div class="flex flex-wrap gap-2 items-center">
         <select
           v-model="period"
-          @change="loadMockRemits"
+          @change="loadRealRemits"
           class="select select-bordered select-sm"
         >
           <option value="today">Today</option>
@@ -402,11 +818,18 @@
             @change="onSelectBranch"
           >
             <option :value="0">All</option>
-            <option v-for="b in availableBranches" :key="b.id" :value="b.id">
+            <option v-for="b in displayBranches" :key="b.id" :value="b.id">
               {{ b.name }}
             </option>
           </select>
         </div>
+        <button
+          class="btn btn-sm btn-outline"
+          @click="showFinanceRemittances = true"
+        >
+          <font-awesome-icon icon="fa-solid fa-file-invoice" class="mr-2" />
+          Review Remittances
+        </button>
       </div>
     </div>
 
@@ -574,9 +997,7 @@
       <!-- BRANCHES TAB -->
       <div v-show="activeTab === 'branches'" class="space-y-6">
         <div
-          v-for="row in mockRemittances.filter(
-            (r) => r.branch_id === branchIdToShow
-          )"
+          v-for="row in rowsToShow"
           :key="row.branch_id"
           class="card bg-white shadow border border-black/10"
         >
@@ -601,7 +1022,9 @@
                 </thead>
                 <tbody>
                   <tr
-                    v-for="entry in visibleEntries"
+                    v-for="entry in row.branch_id === branchIdToShow
+                      ? visibleEntries
+                      : row.entries || []"
                     :key="entry.id"
                     class="cursor-pointer hover:bg-gray-50"
                     @click="selectEntry(entry)"
@@ -660,53 +1083,77 @@
                 </button>
               </div>
             </div>
-            <!-- Inline reactive details -->
-            <div v-if="selectedEntry" class="mt-4 space-y-3">
+            <!-- Always show trend for current branch -->
+            <div class="mt-4 space-y-3">
               <div class="divider my-2"></div>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                 <div
                   class="bg-gray-50 rounded-lg p-3 border border-gray-200 space-y-2"
                 >
                   <div class="grid grid-cols-2">
+                    <span class="text-gray-600">Branch</span>
+                    <span class="text-right">{{ row.branch_name }}</span>
+                  </div>
+                  <div class="grid grid-cols-2">
                     <span class="text-gray-600">Period</span>
+                    <span class="text-right capitalize">{{ period }}</span>
+                  </div>
+                  <div class="grid grid-cols-2">
+                    <span class="text-gray-600">Date Range</span>
+                    <span class="text-right"
+                      >{{ periodWindow.startLabel }} —
+                      {{ periodWindow.endLabel }}</span
+                    >
+                  </div>
+                  <div class="grid grid-cols-2">
+                    <span class="text-gray-600">Latest Activity</span>
                     <span class="text-right">{{
-                      selectedEntry.period_label
+                      row.entries?.[row.entries.length - 1]?.period_label || '—'
+                    }}</span>
+                  </div>
+                  <div class="divider my-2"></div>
+                  <div class="grid grid-cols-2">
+                    <span class="text-gray-600">Total Entries</span>
+                    <span class="text-right">{{
+                      row.entries?.length || 0
                     }}</span>
                   </div>
                   <div class="grid grid-cols-2">
-                    <span class="text-gray-600">Gross Sales</span>
-                    <span class="text-right">
-                      <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                        selectedEntry.gross_sales.toLocaleString()
-                      }}
+                    <span class="text-gray-600">Gross</span>
+                    <span class="text-right text-primaryColor font-semibold">
+                      ₱{{ getRowTotals(row).gross.toLocaleString() }}
+                    </span>
+                  </div>
+                  <div class="grid grid-cols-2">
+                    <span class="text-gray-600">Net</span>
+                    <span class="text-right text-primaryColor">
+                      ₱{{ getRowTotals(row).net.toLocaleString() }}
                     </span>
                   </div>
                   <div class="grid grid-cols-2">
                     <span class="text-gray-600">Refunds</span>
-                    <span class="text-right">
-                      <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                        selectedEntry.refunds.toLocaleString()
-                      }}
-                    </span>
+                    <span class="text-right"
+                      >₱{{ getRowTotals(row).refunds.toLocaleString() }}</span
+                    >
                   </div>
                   <div class="grid grid-cols-2">
-                    <span class="text-gray-600">Net Sales</span>
-                    <span class="text-right">
-                      <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                        selectedEntry.net_sales.toLocaleString()
-                      }}
-                    </span>
+                    <span class="text-gray-600">Void (Count)</span>
+                    <span class="text-right">{{
+                      getRowTotals(row).disposed.toLocaleString()
+                    }}</span>
                   </div>
                   <div class="grid grid-cols-2">
-                    <span class="text-gray-600">Void Items</span>
-                    <span class="text-right">{{ selectedEntry.disposed }}</span>
+                    <span class="text-gray-600">Voided Amount</span>
+                    <span class="text-right"
+                      >₱{{
+                        getRowTotals(row).voidedAmount.toLocaleString()
+                      }}</span
+                    >
                   </div>
-                  <div class="grid grid-cols-2 font-semibold">
-                    <span class="text-gray-600">Remitted Amount</span>
-                    <span class="text-right text-primaryColor">
-                      <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                        selectedEntry.remitted_amount.toLocaleString()
-                      }}
+                  <div class="grid grid-cols-2">
+                    <span class="text-gray-600">Remitted</span>
+                    <span class="text-right text-primaryColor font-semibold">
+                      ₱{{ getRowTotals(row).remitted.toLocaleString() }}
                     </span>
                   </div>
                 </div>
@@ -717,7 +1164,6 @@
                     <select
                       class="select select-bordered select-xs"
                       v-model="detailsMetric"
-                      @change="buildDetailsChart"
                     >
                       <option value="remitted">Remitted</option>
                       <option value="refunds">Refunds</option>
@@ -725,36 +1171,41 @@
                       <option value="net">Net Sales</option>
                     </select>
                   </div>
-                  <div v-if="detailsLoading" class="flex justify-center py-8">
-                    <div
-                      class="loading loading-spinner loading-md text-primaryColor"
-                    ></div>
-                  </div>
-                  <div v-else>
-                    <SalesTrendsChart
-                      :labels="detailsLabels"
-                      :data="detailsSeries"
-                      :metric="
-                        detailsMetric === 'remitted' || detailsMetric === 'net'
-                          ? 'totalSales'
-                          : detailsMetric === 'refunds'
-                            ? 'refundedAmount'
-                            : 'totalDisposed'
-                      "
-                    />
-                  </div>
+                  <SalesTrendChart
+                    :branch-id="row.branch_id"
+                    :period="period"
+                    :metric="detailsMetric"
+                    :auto-load="true"
+                  >
+                    <template #default="{ labels, series, loading }">
+                      <div v-if="loading" class="flex justify-center py-8">
+                        <div
+                          class="loading loading-spinner loading-md text-primaryColor"
+                        ></div>
+                      </div>
+                      <div v-else>
+                        <SalesTrendsChart
+                          :labels="labels"
+                          :data="series"
+                          :metric="
+                            detailsMetric === 'remitted' ||
+                            detailsMetric === 'net'
+                              ? 'totalSales'
+                              : detailsMetric === 'refunds'
+                                ? 'refundedAmount'
+                                : 'totalDisposed'
+                          "
+                        />
+                      </div>
+                    </template>
+                  </SalesTrendChart>
                 </div>
-              </div>
-              <div class="flex justify-end">
-                <button class="btn btn-xs" @click="selectedEntry = null">
-                  Hide details
-                </button>
               </div>
             </div>
           </div>
         </div>
         <div
-          v-if="(!mockRemittances || mockRemittances.length === 0) && !loading"
+          v-if="(!rowsToShow || rowsToShow.length === 0) && !loading"
           class="text-center text-gray-500 py-12"
         >
           No remittances found.
@@ -796,7 +1247,13 @@
     <RemitOrderDetailsModal
       :show="showRemitModal"
       :period="period"
+      :branch-id="selectedRemitBranchId || branchIdToShow"
       @close="closeRemitModal"
+    />
+    <RemittancesModal
+      :show="showFinanceRemittances"
+      @close="showFinanceRemittances = false"
+      @updated="loadRealRemits()"
     />
   </div>
 </template>

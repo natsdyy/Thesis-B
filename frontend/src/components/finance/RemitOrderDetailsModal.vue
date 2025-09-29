@@ -6,6 +6,7 @@
   const props = defineProps({
     show: { type: Boolean, default: false },
     period: { type: String, default: 'today' }, // today | week | month | year
+    branchId: { type: [Number, String], default: null },
   });
 
   const emit = defineEmits(['close']);
@@ -15,6 +16,13 @@
 
   const orders = ref([]);
   const loading = ref(false);
+  const activeTab = ref('today'); // today | thisWeek | thisMonth
+
+  const tabs = [
+    { id: 'today', label: 'Today' },
+    { id: 'thisWeek', label: 'This Week' },
+    { id: 'thisMonth', label: 'This Month' },
+  ];
 
   // Pagination
   const page = ref(1);
@@ -65,6 +73,31 @@
       .join('\n');
   };
 
+  const summaryTotals = computed(() => {
+    const totals = {
+      totalSales: 0,
+      refunds: 0,
+      netSales: 0,
+      remitted: 0,
+      transactions: 0,
+      voidedCount: 0,
+    };
+    const list = orders.value || [];
+    totals.transactions = list.length;
+    list.forEach((o) => {
+      const amt = Number(o.total_amount) || 0;
+      if (o.status === 'completed') {
+        totals.totalSales += amt;
+        totals.netSales += amt;
+      } else if (o.status === 'void') {
+        totals.refunds += amt;
+        totals.voidedCount += 1;
+      }
+    });
+    totals.remitted = Math.max(0, totals.netSales - totals.refunds);
+    return totals;
+  });
+
   const getDateRange = (period) => {
     const now = new Date();
     let from, to;
@@ -103,18 +136,42 @@
   };
 
   const loadOrders = async () => {
-    if (!context.currentBranch?.id) return;
+    const branchId = Number(props.branchId || context.currentBranch?.id || 0);
+    if (!branchId) return;
     loading.value = true;
     try {
       page.value = 1;
-      const { dateFrom, dateTo } = getDateRange(props.period);
-      const resp = await posStore.fetchOrderHistory({
-        branch_id: context.currentBranch.id,
-        date_from: dateFrom,
-        date_to: dateTo,
-        limit: 1000,
-      });
-      orders.value = Array.isArray(resp?.data) ? resp.data : [];
+      const periodMap = {
+        today: 'today',
+        thisWeek: 'week',
+        thisMonth: 'month',
+      };
+      const effectivePeriod =
+        periodMap[activeTab.value] || props.period || 'today';
+      const { dateFrom, dateTo } = getDateRange(effectivePeriod);
+      // Some backends default to excluding completed orders unless status is set.
+      // Fetch both completed and void to reflect remit totals.
+      const [completedResp, voidResp] = await Promise.all([
+        posStore.fetchOrderHistory({
+          branch_id: branchId,
+          status: 'completed',
+          date_from: dateFrom,
+          date_to: dateTo,
+          limit: 1000,
+        }),
+        posStore.fetchOrderHistory({
+          branch_id: branchId,
+          status: 'void',
+          date_from: dateFrom,
+          date_to: dateTo,
+          limit: 1000,
+        }),
+      ]);
+      const a = Array.isArray(completedResp?.data) ? completedResp.data : [];
+      const b = Array.isArray(voidResp?.data) ? voidResp.data : [];
+      orders.value = [...a, ...b].sort(
+        (x, y) => new Date(x.created_at) - new Date(y.created_at)
+      );
     } catch (e) {
       console.error('Failed to load remit orders', e);
       orders.value = [];
@@ -135,6 +192,13 @@
       const dlg = document.getElementById('remit_order_details_modal');
       if (val) {
         if (dlg?.showModal) dlg.showModal();
+        // Initialize activeTab from incoming prop
+        activeTab.value =
+          props.period === 'week'
+            ? 'thisWeek'
+            : props.period === 'month'
+              ? 'thisMonth'
+              : 'today';
         await loadOrders();
       } else if (dlg?.close) {
         dlg.close();
@@ -172,6 +236,57 @@
       </div>
 
       <div v-else>
+        <!-- Period Tabs -->
+        <div class="tabs tabs-boxed mb-4">
+          <button
+            v-for="t in tabs"
+            :key="t.id"
+            class="tab"
+            :class="{ 'tab-active': activeTab === t.id }"
+            @click="
+              activeTab = t.id;
+              loadOrders();
+            "
+          >
+            {{ t.label }}
+          </button>
+        </div>
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+          <div class="card bg-white shadow border border-black/10">
+            <div class="card-body py-3">
+              <div class="text-xs text-gray-500">Gross Sales</div>
+              <div class="text-base font-semibold text-primaryColor">
+                ₱{{ summaryTotals.totalSales.toFixed(2) }}
+              </div>
+            </div>
+          </div>
+          <div class="card bg-white shadow border border-black/10">
+            <div class="card-body py-3">
+              <div class="text-xs text-gray-500">Refunds</div>
+              <div class="text-base font-semibold">
+                ₱{{ summaryTotals.refunds.toFixed(2) }}
+              </div>
+            </div>
+          </div>
+          <div class="card bg-white shadow border border-black/10">
+            <div class="card-body py-3">
+              <div class="text-xs text-gray-500">Net Sales</div>
+              <div class="text-base font-semibold text-primaryColor">
+                ₱{{ summaryTotals.netSales.toFixed(2) }}
+              </div>
+            </div>
+          </div>
+          <div class="card bg-white shadow border border-black/10">
+            <div class="card-body py-3">
+              <div class="text-xs text-gray-500">Remitted</div>
+              <div class="text-base font-semibold text-primaryColor">
+                ₱{{ summaryTotals.remitted.toFixed(2) }}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div v-if="orders && orders.length" class="overflow-x-auto">
           <table class="table table-zebra w-full">
             <thead>

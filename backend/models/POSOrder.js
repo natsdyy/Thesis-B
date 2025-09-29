@@ -112,6 +112,110 @@ class POSOrder {
     }
   }
 
+  // Aggregate sales trends by time bucket
+  static async getSalesTrends(
+    branchId,
+    dateFrom = null,
+    dateTo = null,
+    bucket = "day"
+  ) {
+    try {
+      const dateColCompleted = "pos_sales_orders.created_at";
+      const dateColVoided = "pos_sales_orders.voided_at";
+
+      const bucketExpr = (col) => {
+        if (bucket === "hour") return db.raw("to_char(??, 'HH24:00')", [col]);
+        if (bucket === "month") return db.raw("to_char(??, 'YYYY-MM')", [col]);
+        return db.raw("to_char(??, 'YYYY-MM-DD')", [col]);
+      };
+
+      // Completed (gross) sales by bucket
+      let grossQ = db("pos_sales_orders")
+        .where("pos_sales_orders.branch_id", branchId)
+        .where("pos_sales_orders.status", "completed");
+      if (dateFrom) grossQ = grossQ.where(dateColCompleted, ">=", dateFrom);
+      if (dateTo) grossQ = grossQ.where(dateColCompleted, "<=", dateTo);
+      const grossRows = await grossQ
+        .select({ label: bucketExpr(dateColCompleted) })
+        .sum({ value: "pos_sales_orders.total_amount" })
+        .groupBy("label");
+
+      // Refunded amount (subset of void) by bucket
+      const refundReasons = [
+        "customer_cancelled",
+        "wrong_order",
+        "duplicate_order",
+        "payment_issue",
+        "system_error",
+        "Customer Cancelled",
+        "Wrong Order",
+        "Duplicate Order",
+        "Payment Issue",
+        "System Error",
+      ];
+
+      let refundQ = db("pos_sales_orders")
+        .where("pos_sales_orders.branch_id", branchId)
+        .where("pos_sales_orders.status", "void")
+        .whereIn("pos_sales_orders.void_reason", refundReasons);
+      if (dateFrom) refundQ = refundQ.where(dateColVoided, ">=", dateFrom);
+      if (dateTo) refundQ = refundQ.where(dateColVoided, "<=", dateTo);
+      const refundRows = await refundQ
+        .select({ label: bucketExpr(dateColVoided) })
+        .sum({ value: "pos_sales_orders.total_amount" })
+        .groupBy("label");
+
+      // Disposed/void count by bucket (all voids)
+      let voidQ = db("pos_sales_orders")
+        .where("pos_sales_orders.branch_id", branchId)
+        .where("pos_sales_orders.status", "void");
+      if (dateFrom) voidQ = voidQ.where(dateColVoided, ">=", dateFrom);
+      if (dateTo) voidQ = voidQ.where(dateColVoided, "<=", dateTo);
+      const voidRows = await voidQ
+        .select({ label: bucketExpr(dateColVoided) })
+        .count({ value: "pos_sales_orders.id" })
+        .groupBy("label");
+
+      // Merge maps
+      const labelsSet = new Set();
+      const toMap = (rows) => {
+        const m = new Map();
+        rows.forEach((r) => {
+          const k = String(r.label);
+          labelsSet.add(k);
+          m.set(k, Number(r.value) || 0);
+        });
+        return m;
+      };
+
+      const grossMap = toMap(grossRows);
+      const refundMap = toMap(refundRows);
+      const voidMap = toMap(voidRows);
+
+      const labels = Array.from(labelsSet).sort();
+
+      const gross = labels.map((l) => Number(grossMap.get(l) || 0));
+      const refunds = labels.map((l) => Number(refundMap.get(l) || 0));
+      const disposed = labels.map((l) => Number(voidMap.get(l) || 0));
+      const net = labels.map((_, idx) =>
+        Math.max(0, gross[idx] - refunds[idx])
+      );
+      const remitted = net.slice();
+
+      return {
+        labels,
+        gross_sales: gross,
+        refunds,
+        disposed,
+        net_sales: net,
+        remitted_amount: remitted,
+      };
+    } catch (error) {
+      console.error("Error building sales trends:", error);
+      throw new Error("Failed to build sales trends");
+    }
+  }
+
   // Get order by ID with items
   static async getById(id) {
     try {

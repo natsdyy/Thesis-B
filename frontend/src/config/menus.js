@@ -126,6 +126,7 @@ export const menuItems = [
     route: '/finance/sales',
     department: 'Finance',
   },
+
   // Production Department
   {
     name: 'Dashboard',

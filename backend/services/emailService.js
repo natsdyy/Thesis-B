@@ -1,10 +1,13 @@
 const nodemailer = require("nodemailer");
+const sgMail = require('@sendgrid/mail');
 require("dotenv").config();
 
 // Initialize SendGrid if API key is available
 if (process.env.SENDGRID_API_KEY) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-  console.log('📧 SendGrid initialized for Railway deployment');
+  console.log('📧 SendGrid initialized for email delivery');
+} else {
+  console.log('⚠️  SendGrid API key not found, using SMTP fallback');
 }
 
 // Email configuration from environment variables
@@ -136,6 +139,97 @@ const verifyTransporter = () => {
 verifyTransporter();
 
 class EmailService {
+  /**
+   * Send email using SendGrid (primary method)
+   * @param {Object} emailData - Email data object
+   * @param {string} emailData.to - Recipient email
+   * @param {string} emailData.subject - Email subject
+   * @param {string} emailData.html - HTML content
+   * @param {string} emailData.text - Text content
+   * @param {string} emailData.from - Sender email
+   * @returns {Promise<Object>} SendGrid response
+   */
+  static async sendViaSendGrid(emailData) {
+    try {
+      const msg = {
+        to: emailData.to,
+        from: emailData.from || '"Countryside Steak House" <mailcountrysidesteakhouse@gmail.com>',
+        subject: emailData.subject,
+        text: emailData.text,
+        html: emailData.html,
+      };
+
+      console.log('📧 Sending email via SendGrid to:', emailData.to);
+      const response = await sgMail.send(msg);
+      console.log('✅ SendGrid email sent successfully:', response[0].statusCode);
+      return { success: true, messageId: response[0].headers['x-message-id'] };
+    } catch (error) {
+      console.error('❌ SendGrid email failed:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Send email with fallback (SendGrid first, then SMTP)
+   * @param {Object} emailData - Email data object
+   * @returns {Promise<Object>} Email response
+   */
+  static async sendEmailWithFallback(emailData) {
+    // Try SendGrid first if API key is available
+    if (process.env.SENDGRID_API_KEY) {
+      console.log('📧 Attempting to send via SendGrid...');
+      const sendGridResult = await this.sendViaSendGrid(emailData);
+      if (sendGridResult.success) {
+        return sendGridResult;
+      }
+      console.log('❌ SendGrid failed, falling back to SMTP...');
+    }
+
+    // Fallback to SMTP
+    console.log('📧 Sending via SMTP fallback...');
+    return await this.sendViaSMTP(emailData);
+  }
+
+  /**
+   * Send email using SMTP (fallback method)
+   * @param {Object} emailData - Email data object
+   * @returns {Promise<Object>} SMTP response
+   */
+  static async sendViaSMTP(emailData) {
+    try {
+      const mailOptions = {
+        from: emailData.from || '"Countryside Steak House" <mailcountrysidesteakhouse@gmail.com>',
+        to: emailData.to,
+        subject: emailData.subject,
+        html: emailData.html,
+        text: emailData.text,
+      };
+
+      // Try primary transporter first
+      try {
+        const info = await this.withTimeout(
+          transporter.sendMail(mailOptions),
+          120000
+        );
+        console.log('✅ SMTP email sent (primary):', info.messageId);
+        return { success: true, messageId: info.messageId };
+      } catch (primaryError) {
+        console.log('❌ Primary SMTP failed:', primaryError.message);
+        console.log('📧 Trying fallback SMTP...');
+        
+        const info = await this.withTimeout(
+          fallbackTransporter.sendMail(mailOptions),
+          120000
+        );
+        console.log('✅ SMTP email sent (fallback):', info.messageId);
+        return { success: true, messageId: info.messageId };
+      }
+    } catch (error) {
+      console.error('❌ All SMTP methods failed:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
   /**
    * Wrapper to add timeout to email operations
    * @param {Promise} emailPromise - The email promise
@@ -508,8 +602,7 @@ class EmailService {
 
         const ratingText = rating ? `${rating}/5 stars` : "No rating provided";
 
-        const mailOptions = {
-          from: '"Countryside Steak House" <mailcountrysidesteakhouse@gmail.com>',
+        const emailData = {
           to: customerEmail,
           subject: "Thank you for your feedback - Countryside Steak House",
           html: `
@@ -599,27 +692,18 @@ class EmailService {
         `,
         };
 
-        // Try different email methods based on environment
-        let info;
-        try {
-          console.log(`📧 Using primary transporter (port 587)`);
-          info = await this.withTimeout(
-            transporter.sendMail(mailOptions),
-            120000
+        // Use the new SendGrid-first approach with SMTP fallback
+        const result = await this.sendEmailWithFallback(emailData);
+        
+        if (result.success) {
+          console.log(
+            `✅ Feedback reply email sent (attempt ${attempt}):`,
+            result.messageId
           );
-        } catch (primaryError) {
-          console.log(`❌ Primary transporter failed: ${primaryError.message}`);
-          console.log(`📧 Trying fallback transporter (port 465)`);
-          info = await this.withTimeout(
-            fallbackTransporter.sendMail(mailOptions),
-            120000
-          );
+          return result;
+        } else {
+          throw new Error(result.error);
         }
-        console.log(
-          `✅ Feedback reply email sent (attempt ${attempt}):`,
-          info.messageId
-        );
-        return { success: true, messageId: info.messageId };
       } catch (error) {
         lastError = error;
         console.error(

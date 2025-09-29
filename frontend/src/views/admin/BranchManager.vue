@@ -7,7 +7,6 @@
   import { apiConfig } from '../../config/api.js';
   import {
     Plus,
-    Building2,
     CheckCircle,
     XCircle,
     Users,
@@ -35,7 +34,7 @@
   const statusFilter = ref('all');
   const editingBranch = ref(null);
   const selectedBranch = ref(null);
-  const branchUsers = ref([]);
+  const branchEmployees = ref([]);
   const grammarLoading = ref(false);
   const formLoading = ref(false);
   const showDeletedBranches = ref(false);
@@ -72,7 +71,7 @@
 
   // Modal refs
   const branchModal = ref(false);
-  const usersModal = ref(false);
+  const employeesModal = ref(false);
   const googleMapsModal = ref(false);
 
   // OpenStreetMap (Leaflet) related data
@@ -91,7 +90,6 @@
   const branchForm = ref({
     name: '',
     address: '',
-    manager_id: '',
     city: '',
     state: '',
     postal_code: '',
@@ -122,31 +120,7 @@
     return branches;
   });
 
-  // Employee-related computed properties
-  const availableEmployees = ref([]);
-  const selectedManager = computed(() => {
-    if (!branchForm.value.manager_id) return null;
-    return availableEmployees.value.find(
-      (employee) => employee.id == branchForm.value.manager_id
-    );
-  });
-
   // Methods
-  const updateManagerInfo = () => {
-    // This method is called when manager selection changes
-    // The selectedManager computed property will automatically update
-  };
-
-  const loadBranchManagers = async () => {
-    try {
-      const data = await branchStore.fetchBranchManagers();
-      availableEmployees.value = data;
-    } catch (error) {
-      console.error('Failed to load branch managers:', error);
-      availableEmployees.value = [];
-      showToast('error', 'Failed to load branch managers');
-    }
-  };
 
   const statusBadgeClass = (isActive, isDeleted = false) => {
     if (isDeleted) {
@@ -750,20 +724,8 @@
 
   const editBranch = (branch) => {
     editingBranch.value = branch;
-    // Copy branch data but ensure manager_id is properly set
+    // Copy branch data
     const branchData = { ...branch };
-    // If there's a manager_name but no manager_id, we need to find the employee ID
-    if (branchData.manager_name && !branchData.manager_id) {
-      const manager = availableEmployees.value.find(
-        (employee) =>
-          `${employee.first_name} ${employee.last_name}` ===
-            branchData.manager_name &&
-          employee.email === branchData.manager_email
-      );
-      if (manager) {
-        branchData.manager_id = manager.id;
-      }
-    }
     Object.assign(branchForm.value, branchData);
     branchModal.value = true;
   };
@@ -777,7 +739,6 @@
     branchForm.value = {
       name: '',
       address: '',
-      manager_id: '',
       city: '',
       state: '',
       postal_code: '',
@@ -915,21 +876,21 @@
     );
   };
 
-  const viewBranchUsers = async (branch) => {
+  const viewBranchEmployees = async (branch) => {
     selectedBranch.value = branch;
     try {
-      branchUsers.value = await branchStore.fetchBranchUsers(branch.id);
-      usersModal.value = true;
+      branchEmployees.value = await branchStore.fetchBranchEmployees(branch.id);
+      employeesModal.value = true;
     } catch (error) {
-      console.error('Failed to fetch branch users:', error);
-      showToast('error', error.message || 'Failed to fetch branch users');
+      console.error('Failed to fetch branch employees:', error);
+      showToast('error', error.message || 'Failed to fetch branch employees');
     }
   };
 
-  const closeUsersModal = () => {
-    usersModal.value = false;
+  const closeEmployeesModal = () => {
+    employeesModal.value = false;
     selectedBranch.value = null;
-    branchUsers.value = [];
+    branchEmployees.value = [];
   };
 
   const formatAddress = (branch) => {
@@ -941,7 +902,6 @@
   onMounted(async () => {
     try {
       await loadBranches();
-      await loadBranchManagers();
     } catch (error) {
       console.error('Failed to initialize component:', error);
     }
@@ -1006,12 +966,12 @@
       </div>
 
       <div class="stat">
-        <div class="stat-figure text-secondary">
+        <div class="stat-figure text-black/60">
           <Users class="w-8 h-8" />
         </div>
-        <div class="stat-title">Users</div>
-        <div class="stat-value text-secondary">
-          {{ branchStats.total_users_in_branches }}
+        <div class="stat-title">Employees</div>
+        <div class="stat-value text-black/60">
+          {{ branchStats.total_employees_in_branches }}
         </div>
         <div class="stat-desc">Assigned to branches</div>
       </div>
@@ -1089,8 +1049,6 @@
               <tr>
                 <th>Branch Info</th>
                 <th>Location</th>
-                <th>Manager</th>
-
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -1117,20 +1075,6 @@
                       <MapPin class="w-3 h-3" />
                       <span>{{ formatAddress(branch) }}</span>
                     </div>
-                  </div>
-                </td>
-                <td>
-                  <div v-if="branch.manager_name" class="text-sm">
-                    <div class="font-medium">{{ branch.manager_name }}</div>
-                    <div
-                      v-if="branch.manager_email"
-                      class="text-base-content/70"
-                    >
-                      {{ branch.manager_email }}
-                    </div>
-                  </div>
-                  <div v-else class="text-base-content/50 text-sm">
-                    No manager assigned
                   </div>
                 </td>
 
@@ -1165,8 +1109,8 @@
                       class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-44"
                     >
                       <li v-if="!branch.deleted_at">
-                        <a @click="viewBranchUsers(branch)">
-                          <Eye class="w-3 h-3" /> View Users
+                        <a @click="viewBranchEmployees(branch)">
+                          <Eye class="w-3 h-3" /> View Employees
                         </a>
                       </li>
                       <li v-if="!branch.deleted_at">
@@ -1397,94 +1341,6 @@
             </div>
           </div>
 
-          <!-- Manager Information Section -->
-          <div
-            class="grid grid-cols-1 lg:grid-cols-1 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
-          >
-            <div class="mb-4">
-              <h2 class="card-title text-primaryColor text-xl mb-2">
-                Manager Information
-              </h2>
-              <p class="text-sm text-gray-600">
-                Select a manager from the Branch department with Manager role.
-              </p>
-            </div>
-
-            <!-- Manager Selection -->
-            <div class="form-control">
-              <label class="label mb-1">
-                <span class="label-text">Select Manager</span>
-              </label>
-              <div class="relative">
-                <Building2
-                  class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"
-                />
-                <select
-                  v-model="branchForm.manager_id"
-                  @change="updateManagerInfo"
-                  class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor pl-10"
-                >
-                  <option value="">Choose a manager from employees</option>
-                  <option
-                    v-for="employee in availableEmployees"
-                    :key="employee.id"
-                    :value="employee.id"
-                  >
-                    {{ employee.first_name }} {{ employee.last_name }} - ({{
-                      employee.role || 'No Role'
-                    }})
-                  </option>
-                </select>
-              </div>
-              <span class="text-xs text-gray-500 mt-1"
-                >Only employees from Branch department with Manager role are
-                shown</span
-              >
-            </div>
-
-            <!-- Display Selected Manager Info (Read-only) -->
-            <div
-              v-if="selectedManager"
-              class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200"
-            >
-              <div class="form-control">
-                <label class="label mb-1">
-                  <span class="label-text font-medium">Manager Name</span>
-                </label>
-                <input
-                  :value="`${selectedManager.first_name} ${selectedManager.last_name}`"
-                  type="text"
-                  class="input input-sm input-bordered w-full bg-gray-100 text-gray-800"
-                  readonly
-                />
-              </div>
-
-              <div class="form-control">
-                <label class="label mb-1">
-                  <span class="label-text font-medium">Manager Email</span>
-                </label>
-                <input
-                  :value="selectedManager.email"
-                  type="email"
-                  class="input input-sm input-bordered w-full bg-gray-100 text-gray-800"
-                  readonly
-                />
-              </div>
-
-              <div class="form-control">
-                <label class="label mb-1">
-                  <span class="label-text font-medium">Role</span>
-                </label>
-                <input
-                  :value="selectedManager.role || 'No Role'"
-                  type="text"
-                  class="input input-sm input-bordered w-full bg-gray-100 text-gray-800"
-                  readonly
-                />
-              </div>
-            </div>
-          </div>
-
           <!-- Description Section -->
           <div
             class="grid grid-cols-1 lg:grid-cols-1 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
@@ -1594,8 +1450,8 @@
       <div class="modal-backdrop" @click="closeModal"></div>
     </div>
 
-    <!-- Users Modal -->
-    <div v-if="usersModal" class="modal modal-open">
+    <!-- Employees Modal -->
+    <div v-if="employeesModal" class="modal modal-open">
       <div
         :class="[
           'modal-box w-11/12 max-w-2xl transition-colors duration-300',
@@ -1603,35 +1459,43 @@
         ]"
       >
         <h3 class="font-bold text-lg mb-4">
-          Users in {{ selectedBranch?.name }}
+          Employees in {{ selectedBranch?.name }}
         </h3>
 
-        <div v-if="branchUsers.length > 0" class="space-y-2">
+        <div v-if="branchEmployees.length > 0" class="space-y-2">
           <div
-            v-for="user in branchUsers"
-            :key="user.id"
+            v-for="employee in branchEmployees"
+            :key="employee.id"
             class="flex items-center justify-between p-3 bg-base-200 rounded-lg"
           >
             <div>
-              <div class="font-medium">{{ user.name }}</div>
-              <div class="text-sm text-base-content/70">{{ user.email }}</div>
+              <div class="font-medium">
+                {{ employee.first_name }} {{ employee.last_name }}
+              </div>
+              <div class="text-sm text-base-content/70">
+                {{ employee.email }}
+              </div>
             </div>
-            <div class="badge badge-outline">
-              {{ user.role?.name || 'No Role' }}
+            <div class="text-right">
+              <div class="badge bg-primaryColor/10 text-primaryColor">
+                {{ employee.role || 'No Role' }}
+              </div>
             </div>
           </div>
         </div>
 
         <div v-else class="text-center py-8">
           <Users class="w-16 h-16 mx-auto text-base-content/30 mb-4" />
-          <p class="text-base-content/70">No users assigned to this branch</p>
+          <p class="text-base-content/70">
+            No employees assigned to this branch
+          </p>
         </div>
 
         <div class="modal-action">
-          <button @click="closeUsersModal" class="btn">Close</button>
+          <button @click="closeEmployeesModal" class="btn">Close</button>
         </div>
       </div>
-      <div class="modal-backdrop" @click="closeUsersModal"></div>
+      <div class="modal-backdrop" @click="closeEmployeesModal"></div>
     </div>
 
     <!-- Google Maps Modal -->

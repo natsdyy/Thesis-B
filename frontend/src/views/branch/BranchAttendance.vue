@@ -15,7 +15,7 @@
     <!-- Tabs (mirrors BranchSales style) -->
     <div class="tabs tabs-boxed mb-4 justify-start w-full">
       <button
-        @click="activeTab = 'add'"
+        @click="setActiveTab('add')"
         class="tab"
         :class="{ 'tab-active': activeTab === 'add' }"
       >
@@ -23,7 +23,7 @@
         <span>Add Attendance</span>
       </button>
       <button
-        @click="activeTab = 'ot'"
+        @click="setActiveTab('ot')"
         class="tab"
         :class="{ 'tab-active': activeTab === 'ot' }"
       >
@@ -31,7 +31,7 @@
         <span>Apply Overtime</span>
       </button>
       <button
-        @click="activeTab = 'leave'"
+        @click="setActiveTab('leave')"
         class="tab"
         :class="{ 'tab-active': activeTab === 'leave' }"
       >
@@ -69,9 +69,11 @@
             v-else
             class="alert"
             :class="
-              currentStatus === 'checked-in'
-                ? 'alert-success border-none'
-                : 'bg-success/5 text-success border-success'
+              currentStatus === 'on-leave'
+                ? '!bg-warning/5 !text-warning !border-warning'
+                : currentStatus === 'checked-in'
+                  ? '!bg-success/5 !text-success !border-success'
+                  : '!bg-info/5 !text-info !border-info'
             "
           >
             <Clock class="w-5 h-5" />
@@ -83,7 +85,46 @@
               >
                 Since: {{ formatTime(lastTimeIn) }}
               </div>
+              <div
+                v-if="isLateToday && tardinessMinutesToday > 0"
+                class="text-xs mt-1 text-neutral/50"
+              >
+                Late by {{ tardinessMinutesToday }} minute(s)
+              </div>
+              <div
+                v-if="overtimeMinutesToday > 0"
+                class="text-xs mt-1 text-neutral/50"
+              >
+                Overtime today: {{ overtimeMinutesToday }} minute(s)
+              </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Leave Status Notice -->
+      <div
+        v-if="currentStatus === 'on-leave'"
+        class="alert bg-primaryColor/5 border-primaryColor text-primaryColor font-thin"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          class="stroke-current shrink-0 w-6 h-6"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          ></path>
+        </svg>
+        <div>
+          <h3 class="font-bold">You are currently on approved leave</h3>
+          <div class="text-xs">
+            Attendance tracking is disabled during your leave period. You can
+            still view your attendance history below.
           </div>
         </div>
       </div>
@@ -100,9 +141,14 @@
             <button
               @click="openQRModal"
               class="btn bg-primaryColor text-white font-thin w-full hover:bg-primaryColor/80"
+              :disabled="currentStatus === 'on-leave'"
             >
               <Clock class="w-4 h-4 mr-2" />
-              Open QR Generator
+              {{
+                currentStatus === 'on-leave'
+                  ? 'Unavailable (On Leave)'
+                  : 'Open QR Generator'
+              }}
             </button>
           </div>
         </div>
@@ -125,27 +171,37 @@
                 {{ attendanceHistory.length }} records
               </span>
             </h3>
-            <button
-              @click="refreshAttendance"
-              class="btn btn-sm btn-outline font-thin"
-              :disabled="isHistoryLoading"
-            >
-              <svg
-                class="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                :class="{ 'animate-spin': isHistoryLoading }"
+            <div class="flex items-center gap-2">
+              <select
+                v-model="historyRange"
+                class="select select-bordered select-sm"
               >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                ></path>
-              </svg>
-              {{ isHistoryLoading ? 'Refreshing...' : 'Refresh' }}
-            </button>
+                <option value="today">Today</option>
+                <option value="week">This Week</option>
+                <option value="month">This Month</option>
+              </select>
+              <button
+                @click="refreshAttendance"
+                class="btn btn-sm btn-outline font-thin"
+                :disabled="isHistoryLoading"
+              >
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  :class="{ 'animate-spin': isHistoryLoading }"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  ></path>
+                </svg>
+                {{ isHistoryLoading ? 'Refreshing...' : 'Refresh' }}
+              </button>
+            </div>
           </div>
 
           <!-- Loading State for Table -->
@@ -173,7 +229,10 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in mergedHistory" :key="row.date">
+                <tr
+                  v-for="row in paginatedHistory"
+                  :key="row.date + '-' + row.timeIn + '-' + row.timeOut"
+                >
                   <td>{{ formatDate(row.date) }}</td>
                   <td class="font-mono text-sm">
                     {{ formatTime(row.timeIn) }}
@@ -192,7 +251,9 @@
                     <span v-if="row.overtime" class="font-mono text-sm">
                       {{ formatHoursWorked(row.overtime) }}
                     </span>
-                    <span v-else class="text-gray-400">-</span>
+                    <span v-else class="text-neutral font-mono text-sm"
+                      >N/A</span
+                    >
                   </td>
                   <td>
                     <span v-if="row.tardiness" class="font-mono text-sm">{{
@@ -226,13 +287,26 @@
           </div>
 
           <!-- Load More Button -->
-          <div
-            v-if="hasMoreRecords && !isHistoryLoading"
-            class="flex justify-center mt-4"
-          >
-            <button @click="loadMoreHistory" class="btn btn-outline btn-sm">
-              Load More Records
-            </button>
+          <div class="flex justify-center mt-4" v-if="totalPages > 1">
+            <div class="join">
+              <button
+                class="join-item btn btn-sm"
+                :disabled="currentPage === 1"
+                @click="currentPage = Math.max(1, currentPage - 1)"
+              >
+                «
+              </button>
+              <button class="join-item btn btn-sm">
+                Page {{ currentPage }} of {{ totalPages }}
+              </button>
+              <button
+                class="join-item btn btn-sm"
+                :disabled="currentPage === totalPages"
+                @click="currentPage = Math.min(totalPages, currentPage + 1)"
+              >
+                »
+              </button>
+            </div>
           </div>
 
           <!-- Loading More Indicator -->
@@ -250,95 +324,13 @@
     </div>
 
     <!-- Apply OT -->
-    <div v-if="activeTab === 'ot'" class="space-y-6">
-      <div class="card bg-base-100 shadow-xl">
-        <div class="card-body">
-          <h2 class="card-title text-2xl mb-4">Apply Overtime</h2>
-          <form class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control md:col-span-2">
-              <label class="label"><span class="label-text">Date</span></label>
-              <input type="date" class="input input-bordered w-full" />
-            </div>
-            <div class="form-control">
-              <label class="label"
-                ><span class="label-text">Start Time</span></label
-              >
-              <input type="time" class="input input-bordered w-full" />
-            </div>
-            <div class="form-control">
-              <label class="label"
-                ><span class="label-text">End Time</span></label
-              >
-              <input type="time" class="input input-bordered w-full" />
-            </div>
-            <div class="form-control md:col-span-2">
-              <label class="label"
-                ><span class="label-text">Reason</span></label
-              >
-              <textarea
-                class="textarea textarea-bordered w-full"
-                rows="3"
-                placeholder="Describe the reason"
-              ></textarea>
-            </div>
-            <div class="md:col-span-2 flex justify-end">
-              <button
-                type="button"
-                class="btn bg-primaryColor text-white font-thin hover:bg-primaryColor/80"
-              >
-                Submit OT Request
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
+    <div v-if="activeTab === 'ot'">
+      <OvertimeRequest />
     </div>
 
     <!-- Apply Leave -->
-    <div v-if="activeTab === 'leave'" class="space-y-6">
-      <div class="card bg-base-100 shadow-xl">
-        <div class="card-body">
-          <h2 class="card-title text-2xl mb-4">Apply Leave</h2>
-          <form class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label"><span class="label-text">From</span></label>
-              <input type="date" class="input input-bordered w-full" />
-            </div>
-            <div class="form-control">
-              <label class="label"><span class="label-text">To</span></label>
-              <input type="date" class="input input-bordered w-full" />
-            </div>
-            <div class="form-control">
-              <label class="label"
-                ><span class="label-text">Leave Type</span></label
-              >
-              <select class="select select-bordered w-full">
-                <option value="">Select type</option>
-                <option>Sick Leave</option>
-                <option>Vacation Leave</option>
-                <option>Emergency Leave</option>
-                <option>Maternity Leave</option>
-                <option>Other</option>
-              </select>
-            </div>
-            <div class="form-control md:col-span-2">
-              <label class="label"
-                ><span class="label-text">Reason</span></label
-              >
-              <textarea
-                class="textarea textarea-bordered w-full"
-                rows="3"
-                placeholder="Describe the reason"
-              ></textarea>
-            </div>
-            <div class="md:col-span-2 flex justify-end">
-              <button type="button" class="btn bg-primaryColor text-white">
-                Submit Leave Request
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
+    <div v-if="activeTab === 'leave'">
+      <LeaveRequest />
     </div>
 
     <!-- QR Attendance Modal -->
@@ -420,12 +412,15 @@
 </template>
 
 <script setup>
-  import { ref, onMounted, onUnmounted, computed } from 'vue';
+  import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+  import { useRoute, useRouter } from 'vue-router';
   import { useAuthStore } from '../../stores/authStore';
   import { useAttendanceStore } from '../../stores/attendanceStore';
   import { apiConfig } from '../../config/api';
   import axios from 'axios';
   import QRAttendanceModal from '../../components/QRAttendanceModal.vue';
+  import LeaveRequest from '../../components/LeaveRequest.vue';
+  import OvertimeRequest from '../../components/OvertimeRequest.vue';
   import { Clock, Timer, FileText } from 'lucide-vue-next';
 
   // Stores
@@ -440,6 +435,40 @@
   const showQRModal = ref(false);
   const showManualModal = ref(false);
   const activeTab = ref('add');
+  const route = useRoute();
+  const router = useRouter();
+  // Tab routing helpers (sync tab with URL query)
+  const validTabs = new Set(['add', 'ot', 'leave']);
+  const setActiveTab = (tab) => {
+    const nextTab = validTabs.has(tab) ? tab : 'add';
+    if (activeTab.value !== nextTab) {
+      activeTab.value = nextTab;
+    }
+    // Update URL query without reloading component
+    router.replace({
+      query: { ...route.query, tab: nextTab },
+    });
+  };
+
+  // Initialize tab from query on mount
+  const initTabFromRoute = () => {
+    const qTab = (route.query?.tab || '').toString();
+    if (validTabs.has(qTab)) {
+      activeTab.value = qTab;
+    }
+  };
+
+  // Watch route changes (e.g., when navigated from dropdown)
+  watch(
+    () => route.query.tab,
+    (newVal) => {
+      const qTab = (newVal || '').toString();
+      if (validTabs.has(qTab) && activeTab.value !== qTab) {
+        activeTab.value = qTab;
+      }
+    }
+  );
+
   const autoRefreshInterval = ref(null);
   const lastUpdated = ref(new Date());
 
@@ -448,15 +477,29 @@
   const itemsPerPage = ref(10);
   const totalRecords = ref(0);
   const hasMoreRecords = ref(false);
+  const historyRange = ref('today'); // today | week | month
   // Derive real-time status from attendance store
   const today = computed(() => attendanceStore.todayAttendance);
   const hasTimeIn = computed(() => Boolean(today.value?.time_in));
   const hasTimeOut = computed(() => Boolean(today.value?.time_out));
+  const isLateToday = computed(
+    () => (today.value?.status || '').toLowerCase() === 'late'
+  );
+  const tardinessMinutesToday = computed(() =>
+    Number(today.value?.tardiness_minutes || 0)
+  );
+  const overtimeMinutesToday = computed(() => {
+    const hours = Number(today.value?.overtime_hours || 0);
+    if (isNaN(hours)) return 0;
+    return Math.round(hours * 60);
+  });
   const currentStatus = computed(() => {
+    if (today.value?.is_on_leave) return 'on-leave';
     if (hasTimeIn.value && !hasTimeOut.value) return 'checked-in';
     return 'checked-out';
   });
   const statusText = computed(() => {
+    if (today.value?.is_on_leave) return 'On Leave';
     if (hasTimeIn.value && !hasTimeOut.value) return 'Currently Checked In';
     if (hasTimeIn.value && hasTimeOut.value) return 'Checked Out';
     return 'Ready to Check In';
@@ -518,7 +561,12 @@
       // Prefer latest known location if available
       if (rec.location_name) byDate[dateKey].location = rec.location_name;
       if (rec.duration) byDate[dateKey].duration = rec.duration;
-      if (rec.overtime_hours) byDate[dateKey].overtime = rec.overtime_hours;
+      if (rec.overtime_hours && parseFloat(rec.overtime_hours) > 0) {
+        byDate[dateKey].overtime = rec.overtime_hours;
+      }
+      if (typeof rec.tardiness_minutes !== 'undefined') {
+        byDate[dateKey].tardiness = rec.tardiness_minutes;
+      }
 
       // Map hours_worked to duration for display
       if (rec.hours_worked) {
@@ -526,17 +574,47 @@
       }
 
       // Map overtime_hours to overtime for display
-      if (rec.overtime_hours) {
+      if (rec.overtime_hours && parseFloat(rec.overtime_hours) > 0) {
         byDate[dateKey].overtime = rec.overtime_hours;
       }
     });
 
-    const result = Object.values(byDate).sort(
+    let result = Object.values(byDate).sort(
       (a, b) => new Date(b.date) - new Date(a.date)
     );
 
+    // Apply range filter
+    const now = new Date();
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    );
+    let start;
+    if (historyRange.value === 'today') {
+      start = startOfToday;
+    } else if (historyRange.value === 'week') {
+      const day = startOfToday.getDay();
+      const diff = (day + 6) % 7; // Monday as start (optional)
+      start = new Date(startOfToday);
+      start.setDate(start.getDate() - diff);
+    } else {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+
+    result = result.filter((r) => new Date(r.date) >= start);
+
     console.log('mergedHistory result:', result);
     return result;
+  });
+
+  const totalPages = computed(() =>
+    Math.max(1, Math.ceil(mergedHistory.value.length / itemsPerPage.value))
+  );
+  const paginatedHistory = computed(() => {
+    const start = (currentPage.value - 1) * itemsPerPage.value;
+    const end = start + itemsPerPage.value;
+    return mergedHistory.value.slice(start, end);
   });
 
   // Manual entry form
@@ -583,60 +661,56 @@
     try {
       isHistoryLoading.value = true;
 
-      if (!loadMore) {
-        currentPage.value = 1;
-        attendanceHistory.value = [];
-      }
-
-      // For now, let's use today's attendance data from the store
-      // This will show the current attendance record in the history table
-      const todayData = attendanceStore.todayAttendance;
-
-      if (todayData) {
-        // Convert today's attendance record to array format for display
-        const historyArray = [todayData];
-        console.log('Today data found:', todayData);
-        console.log('History array:', historyArray);
-
-        if (loadMore) {
-          attendanceHistory.value = [
-            ...attendanceHistory.value,
-            ...historyArray,
-          ];
-        } else {
-          attendanceHistory.value = historyArray;
-        }
-
-        console.log('Attendance history updated:', attendanceHistory.value);
-
-        // Update pagination info
-        totalRecords.value = historyArray.length;
-        hasMoreRecords.value = false; // For now, we only show today's record
-        lastUpdated.value = new Date();
+      // Determine date range
+      const now = new Date();
+      const end = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        23,
+        59,
+        59,
+        999
+      );
+      let start;
+      if (historyRange.value === 'today') {
+        start = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          0,
+          0,
+          0,
+          0
+        );
+      } else if (historyRange.value === 'week') {
+        const startOfToday = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate()
+        );
+        const day = startOfToday.getDay();
+        const diff = (day + 6) % 7; // Monday start
+        start = new Date(startOfToday);
+        start.setDate(start.getDate() - diff);
       } else {
-        // If no today's data, try to fetch from API directly
-        const today = new Date().toISOString().split('T')[0];
-        const response = await axios.get(`${API_BASE_URL}/attendance/today`, {
-          headers: authHeaders(),
-        });
-
-        if (response.data.success && response.data.data) {
-          const historyArray = [response.data.data];
-
-          if (loadMore) {
-            attendanceHistory.value = [
-              ...attendanceHistory.value,
-              ...historyArray,
-            ];
-          } else {
-            attendanceHistory.value = historyArray;
-          }
-
-          totalRecords.value = historyArray.length;
-          hasMoreRecords.value = false;
-          lastUpdated.value = new Date();
-        }
+        start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
       }
+
+      // Fetch report for current user over the selected range
+      const startIso = start.toISOString();
+      const endIso = end.toISOString();
+      const currentUserId =
+        authStore.user?.id || authStore.user?.employee_internal_id || null;
+      const report = await attendanceStore.getAttendanceReport(
+        currentUserId,
+        startIso,
+        endIso
+      );
+      attendanceHistory.value = Array.isArray(report) ? report : [];
+      totalRecords.value = attendanceHistory.value.length;
+      hasMoreRecords.value = false;
+      lastUpdated.value = new Date();
     } catch (error) {
       console.error('Error fetching attendance history:', error);
       if (!loadMore) {
@@ -687,6 +761,7 @@
   };
 
   const refreshAttendance = async () => {
+    currentPage.value = 1;
     await Promise.all([checkCurrentStatus(), fetchAttendanceHistory()]);
   };
 

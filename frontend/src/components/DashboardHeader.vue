@@ -129,7 +129,7 @@
         <ul
           tabindex="0"
           :class="[
-            'dropdown-content menu rounded-lg shadow-lg border w-64 p-2 mt-2 transition-colors duration-300',
+            'dropdown-content menu rounded-lg shadow-lg border w-72 p-2 mt-2 transition-colors duration-300',
             themeStore.themeClasses.cardBg,
             themeStore.themeClasses.border,
           ]"
@@ -155,13 +155,21 @@
                   {{ user?.name?.charAt(0) || 'J' }}
                 </span>
               </div>
-              <div>
+              <div class="min-w-0 flex-1">
                 <p
-                  :class="['font-medium', themeStore.themeClasses.textPrimary]"
+                  :class="[
+                    'font-medium truncate',
+                    themeStore.themeClasses.textPrimary,
+                  ]"
                 >
                   {{ user?.name || 'John Marco Paja' }}
                 </p>
-                <p :class="['text-sm', themeStore.themeClasses.textMuted]">
+                <p
+                  :class="[
+                    'text-sm break-all',
+                    themeStore.themeClasses.textMuted,
+                  ]"
+                >
                   {{ user?.email || 'john.paja@company.com' }}
                 </p>
               </div>
@@ -170,7 +178,8 @@
 
           <!-- Menu Items -->
           <li>
-            <a
+            <router-link
+              :to="getProfileRoute()"
               :class="[
                 'flex items-center space-x-3 px-3 py-2 rounded-md transition-colors',
                 themeStore.themeClasses.hoverBg,
@@ -180,7 +189,7 @@
               <span :class="['text-sm', themeStore.themeClasses.textSecondary]"
                 >Profile</span
               >
-            </a>
+            </router-link>
           </li>
 
           <li>
@@ -198,10 +207,10 @@
           </li>
 
           <li>
-            <a
-              @click="openAttendanceModal"
+            <router-link
+              :to="getAttendanceRoute()"
               :class="[
-                'flex items-center space-x-3 px-3 py-2 rounded-md transition-colors cursor-pointer',
+                'flex items-center space-x-3 px-3 py-2 rounded-md transition-colors',
                 themeStore.themeClasses.hoverBg,
               ]"
             >
@@ -209,7 +218,7 @@
               <span :class="['text-sm', themeStore.themeClasses.textSecondary]"
                 >Attendance</span
               >
-            </a>
+            </router-link>
           </li>
 
           <!-- Divider -->
@@ -230,13 +239,6 @@
       </div>
     </div>
   </header>
-
-  <!-- QR Attendance Modal -->
-  <QRAttendanceModal 
-    :isOpen="showAttendanceModal" 
-    @close="closeAttendanceModal"
-    @viewRecords="viewAttendanceRecords"
-  />
 
   <!-- Logout Confirmation Modal -->
   <div v-if="showLogoutModal" class="modal modal-open">
@@ -273,7 +275,6 @@
   import { useAuthStore } from '../stores/authStore';
   import { useThemeStore } from '../stores/themeStore';
   import { apiConfig } from '../config/api';
-  import QRAttendanceModal from './QRAttendanceModal.vue';
   import {
     Menu,
     X,
@@ -339,7 +340,6 @@
 
   // Methods
   const showLogoutModal = ref(false);
-  const showAttendanceModal = ref(false);
 
   const toggleSidebar = () => {
     emit('toggle-sidebar');
@@ -363,18 +363,34 @@
     router.push('/login');
   };
 
-  const openAttendanceModal = () => {
-    showAttendanceModal.value = true;
+  // Map Profile to department-specific /profile route via router link in template
+  const getProfileRoute = () => {
+    const dept = authStore.userDepartment;
+    const map = {
+      'Human Resource': '/hr/profile',
+      SCM: '/scm/profile',
+      Finance: '/finance/profile',
+      Production: '/production/profile',
+      CRM: '/crm/profile',
+      Branch: '/branch/profile',
+      System: '/admin/profile',
+    };
+    return map[dept] || '/hr/profile';
   };
 
-  const closeAttendanceModal = () => {
-    showAttendanceModal.value = false;
-  };
-
-  const viewAttendanceRecords = () => {
-    closeAttendanceModal();
-    // All users should access HR attendance records (which shows their own records)
-    router.push('/hr/attendance-records');
+  // Map Attendance to department-specific /attendance route
+  const getAttendanceRoute = () => {
+    const dept = authStore.userDepartment;
+    const map = {
+      'Human Resource': '/hr/attendance',
+      SCM: '/scm/attendance',
+      Finance: '/finance/attendance',
+      Production: '/production/attendance',
+      CRM: '/crm/attendance',
+      Branch: '/branch/attendance',
+      System: '/admin/attendance',
+    };
+    return map[dept] || '/hr/attendance';
   };
 </script>
 

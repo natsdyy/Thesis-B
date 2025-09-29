@@ -499,23 +499,11 @@
       const userDepartment = authStore.userDepartment;
       const userRole = authStore.userRole;
 
-      if (userRole === 'Super Admin' || userDepartment === 'Admin') {
-        router.push('/admin');
-      } else if (userDepartment === 'Human Resource') {
-        router.push('/hr');
-      } else if (userDepartment === 'Finance') {
-        router.push('/finance');
-      } else if (userDepartment === 'Supply Chain') {
-        router.push('/scm');
-      } else if (userDepartment === 'Production') {
-        router.push('/production');
-      } else if (userDepartment === 'Customer Relationship') {
-        router.push('/crm');
-      } else if (userDepartment === 'Branch') {
+      if (userDepartment === 'Branch') {
         // All Branch department users should go to branch dashboard
-        // Super Admin can switch branches, others will be handled by BranchLayout
         router.push('/branch/dashboard');
       } else {
+        // All other departments (HR, SCM, Finance, CRM, Admin) go to main dashboard (HomePage)
         router.push('/dashboard');
       }
     } catch (error) {

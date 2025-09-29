@@ -1,6 +1,6 @@
 <script setup>
   import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
-  import { useRouter } from 'vue-router';
+  import { useRouter, useRoute } from 'vue-router';
   import {
     Users,
     Search,
@@ -15,13 +15,20 @@
     UserCheck,
     Shield,
     AlertTriangle,
+    Building2,
+    MapPin,
   } from 'lucide-vue-next';
   import { useEmployeeStore } from '../../stores/employeeStore.js';
+  import { usePositionsStore } from '../../stores/positionsStore.js';
+  import { useAttendanceStore } from '../../stores/attendanceStore.js';
   import { apiConfig } from '../../config/api.js';
   import { useBranchStore } from '../../stores/branchStore.js';
 
   const router = useRouter();
+  const route = useRoute();
   const employeeStore = useEmployeeStore();
+  const positionsStore = usePositionsStore();
+  const attendanceStore = useAttendanceStore();
   const branchStore = useBranchStore();
 
   // UI state
@@ -31,7 +38,14 @@
   const currentPage = ref(1);
   const itemsPerPage = ref(10);
   const showDeletedEmployees = ref(false);
-  const loadingMore = ref(false);
+
+  // Tab state
+  const activeTab = ref('all');
+  const selectedDepartment = ref('');
+  const selectedBranch = ref('');
+
+  // Attendance data
+  const attendanceData = ref({});
 
   // Toast state (mirrors other views)
   const toast = ref({ show: false, type: 'success', message: '' });
@@ -159,8 +173,6 @@
   // Loading and error from store
   const loading = computed(() => employeeStore.loading);
   const error = computed(() => employeeStore.error);
-  const pagination = computed(() => employeeStore.pagination);
-  const hasMore = computed(() => employeeStore.hasMore);
 
   // Base employees list
   const employees = computed(() => employeeStore.employees || []);
@@ -174,10 +186,87 @@
     return Array.from(set).sort();
   });
 
+  // Fetch attendance data for employees
+  const fetchAttendanceData = async () => {
+    try {
+      // Use today's date for attendance checking (Philippines timezone UTC+8)
+      const now = new Date();
+      const philippinesTime = new Date(now.getTime() + 8 * 60 * 60 * 1000); // UTC+8
+      const today = philippinesTime.toISOString().split('T')[0];
+
+      if (activeTab.value === 'department' && selectedDepartment.value) {
+        const attendanceStatus =
+          await attendanceStore.fetchBulkAttendanceStatus({
+            department: selectedDepartment.value,
+            date: today,
+          });
+
+        // Convert array to object keyed by employee_id for easy lookup
+        attendanceData.value = {};
+        attendanceStatus.forEach((emp) => {
+          attendanceData.value[emp.employee_id] = emp;
+        });
+      } else if (activeTab.value === 'branch' && selectedBranch.value) {
+        const attendanceStatus =
+          await attendanceStore.fetchBulkAttendanceStatus({
+            branch_id: selectedBranch.value,
+            date: today,
+          });
+
+        // Convert array to object keyed by employee_id for easy lookup
+        attendanceData.value = {};
+        attendanceStatus.forEach((emp) => {
+          attendanceData.value[emp.employee_id] = emp;
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch attendance data:', error);
+      // Don't show error toast as this is secondary data
+    }
+  };
+
+  // Tab switching logic
+  const setActiveTab = (tab) => {
+    activeTab.value = tab;
+    // Update URL without triggering navigation
+    const newQuery = { ...route.query, tab };
+    router.replace({ query: newQuery });
+
+    // Reset filters when switching tabs
+    searchQuery.value = '';
+    departmentFilter.value = '';
+    statusFilter.value = '';
+    selectedDepartment.value = '';
+    selectedBranch.value = '';
+    currentPage.value = 1;
+
+    // Clear attendance data when switching tabs
+    attendanceData.value = {};
+  };
+
+  // Watch for URL changes to sync tab
+  watch(
+    () => route.query.tab,
+    (newTab) => {
+      if (newTab && ['all', 'department', 'branch'].includes(newTab)) {
+        activeTab.value = newTab;
+      }
+    },
+    { immediate: true }
+  );
+
   // Filters + search
   const filteredEmployees = computed(() => {
     let list = employees.value || [];
 
+    // Apply tab-specific filtering
+    if (activeTab.value === 'department' && selectedDepartment.value) {
+      list = list.filter((e) => e.department === selectedDepartment.value);
+    } else if (activeTab.value === 'branch' && selectedBranch.value) {
+      list = list.filter((e) => e.branch_id === selectedBranch.value);
+    }
+
+    // Apply general filters
     if (departmentFilter.value) {
       list = list.filter((e) => e.department === departmentFilter.value);
     }
@@ -209,8 +298,50 @@
     );
   });
 
-  // Use filtered employees directly since we're using server-side pagination
-  const paginatedEmployees = computed(() => filteredEmployees.value);
+  // Client-side pagination
+  const paginatedEmployees = computed(() => {
+    const start = (currentPage.value - 1) * itemsPerPage.value;
+    const end = start + itemsPerPage.value;
+    return filteredEmployees.value.slice(start, end);
+  });
+
+  // Total pages for pagination
+  const totalPages = computed(() => {
+    return Math.ceil(filteredEmployees.value.length / itemsPerPage.value);
+  });
+
+  // Pagination info
+  const paginationInfo = computed(() => {
+    const start = (currentPage.value - 1) * itemsPerPage.value + 1;
+    const end = Math.min(
+      currentPage.value * itemsPerPage.value,
+      filteredEmployees.value.length
+    );
+    return {
+      start,
+      end,
+      total: filteredEmployees.value.length,
+    };
+  });
+
+  // Pagination functions
+  const goToPage = (page) => {
+    if (page >= 1 && page <= totalPages.value) {
+      currentPage.value = page;
+    }
+  };
+
+  const goToNextPage = () => {
+    if (currentPage.value < totalPages.value) {
+      currentPage.value++;
+    }
+  };
+
+  const goToPreviousPage = () => {
+    if (currentPage.value > 1) {
+      currentPage.value--;
+    }
+  };
 
   // Keep current page in range when filters/data change
   watch([filteredEmployees, itemsPerPage], () => {
@@ -222,25 +353,11 @@
       await employeeStore.fetchEmployees(
         showDeletedEmployees.value,
         1,
-        itemsPerPage.value
+        1000 // Fetch all employees for client-side pagination
       );
       showToast('success', 'Employee list refreshed');
     } catch (e) {
       showToast('error', e.message || 'Failed to refresh employees');
-    }
-  };
-
-  // Load more employees for lazy loading
-  const loadMore = async () => {
-    if (loadingMore.value || !hasMore.value) return;
-
-    loadingMore.value = true;
-    try {
-      await employeeStore.loadMoreEmployees(showDeletedEmployees.value);
-    } catch (error) {
-      showToast('error', error.message || 'Failed to load more employees');
-    } finally {
-      loadingMore.value = false;
     }
   };
 
@@ -250,7 +367,7 @@
       await employeeStore.fetchEmployees(
         showDeletedEmployees.value,
         1,
-        itemsPerPage.value
+        1000 // Fetch all employees for client-side pagination
       );
       showToast(
         'success',
@@ -321,6 +438,31 @@
     const branch = activeBranches.value.find((b) => b.id === branchId);
     return branch ? branch.name : '';
   };
+
+  // Computed property for monthly rate calculation
+  const getEmployeeMonthlyRate = computed(() => {
+    return (employee) => {
+      if (!employee || !employee.role_id || !employee.employee_type) {
+        return '₱0.00';
+      }
+
+      // Find the role from positions store
+      const role = positionsStore.getPositionById(employee.role_id);
+
+      if (!role || !role.rate_per_hour) {
+        return '₱0.00';
+      }
+
+      const hourlyRate = parseFloat(role.rate_per_hour);
+      const hoursPerDay = employee.employee_type === 'Full-time' ? 8 : 4;
+      const workingDaysPerMonth = 26; // Company works 6 days per week (1 day off)
+
+      const dailyRate = hourlyRate * hoursPerDay;
+      const monthlyRate = dailyRate * workingDaysPerMonth;
+
+      return `₱${monthlyRate.toFixed(2)}`;
+    };
+  });
 
   const openEditModal = (emp) => {
     // Reset form first
@@ -563,6 +705,26 @@
     }
   );
 
+  // Watch for department selection changes to fetch attendance data
+  watch(
+    () => selectedDepartment.value,
+    () => {
+      if (activeTab.value === 'department') {
+        fetchAttendanceData();
+      }
+    }
+  );
+
+  // Watch for branch selection changes to fetch attendance data
+  watch(
+    () => selectedBranch.value,
+    () => {
+      if (activeTab.value === 'branch') {
+        fetchAttendanceData();
+      }
+    }
+  );
+
   // Fetch departments with roles
   const fetchDepartmentsWithRoles = async () => {
     try {
@@ -574,45 +736,35 @@
     }
   };
 
-  // Infinite scroll functionality
-  const handleScroll = () => {
-    const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
-    const scrollPercentage = (scrollTop + clientHeight) / scrollHeight;
-
-    // Load more when user scrolls to 80% of the page
-    if (
-      scrollPercentage > 0.8 &&
-      hasMore.value &&
-      !loadingMore.value &&
-      !loading.value
-    ) {
-      loadMore();
-    }
-  };
-
   onMounted(async () => {
+    // Initialize tab from URL
+    if (
+      route.query.tab &&
+      ['all', 'department', 'branch'].includes(route.query.tab)
+    ) {
+      activeTab.value = route.query.tab;
+    }
+
     if (!employees.value?.length) {
       await employeeStore.fetchEmployees(
         showDeletedEmployees.value,
         1,
-        itemsPerPage.value
+        1000 // Fetch all employees for client-side pagination
       );
     }
     await fetchDepartmentsWithRoles();
+    // Load positions data for salary calculation
+    try {
+      await positionsStore.fetchPositions();
+    } catch (e) {
+      console.error('Failed to load positions', e);
+    }
     // Load active branches for branch assignment
     try {
       await branchStore.fetchActiveBranches();
     } catch (e) {
       console.error('Failed to load branches', e);
     }
-
-    // Add scroll listener for infinite scroll
-    window.addEventListener('scroll', handleScroll);
-  });
-
-  // Cleanup scroll listener
-  onUnmounted(() => {
-    window.removeEventListener('scroll', handleScroll);
   });
 </script>
 
@@ -631,6 +783,98 @@
           <p class="text-sm text-black/50">
             Manage all employees with search, filters, and pagination.
           </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs tabs-boxed mb-4 justify-start w-full">
+      <button
+        @click="setActiveTab('all')"
+        class="tab"
+        :class="{ 'tab-active': activeTab === 'all' }"
+      >
+        <Users class="w-4 h-4 mr-2" />
+        <span>All Employees</span>
+      </button>
+      <button
+        @click="setActiveTab('department')"
+        class="tab"
+        :class="{ 'tab-active': activeTab === 'department' }"
+      >
+        <Building2 class="w-4 h-4 mr-2" />
+        <span>Department Employees</span>
+      </button>
+      <button
+        @click="setActiveTab('branch')"
+        class="tab"
+        :class="{ 'tab-active': activeTab === 'branch' }"
+      >
+        <MapPin class="w-4 h-4 mr-2" />
+        <span>Branch Employees</span>
+      </button>
+    </div>
+
+    <!-- Department Selection (Department Tab) -->
+    <div
+      v-if="activeTab === 'department'"
+      class="card bg-accentColor border border-black/10 shadow mb-4"
+    >
+      <div class="card-body p-3 sm:p-4">
+        <div
+          class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div class="flex flex-1 items-center gap-2">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text font-medium">Select Department:</span>
+              </label>
+              <select
+                v-model="selectedDepartment"
+                class="select select-sm sm:select-md select-bordered"
+              >
+                <option value="">Choose a department...</option>
+                <option v-for="d in departments" :key="d" :value="d">
+                  {{ d }}
+                </option>
+              </select>
+            </div>
+          </div>
+          <div class="text-sm text-black/60" v-if="selectedDepartment">
+            Showing employees from {{ selectedDepartment }} department
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Branch Selection (Branch Tab) -->
+    <div
+      v-if="activeTab === 'branch'"
+      class="card bg-accentColor border border-black/10 shadow mb-4"
+    >
+      <div class="card-body p-3 sm:p-4">
+        <div
+          class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div class="flex flex-1 items-center gap-2">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text font-medium">Select Branch:</span>
+              </label>
+              <select
+                v-model="selectedBranch"
+                class="select select-sm sm:select-md select-bordered"
+              >
+                <option value="">Choose a branch...</option>
+                <option v-for="b in activeBranches" :key="b.id" :value="b.id">
+                  {{ b.name }} ({{ b.code }})
+                </option>
+              </select>
+            </div>
+          </div>
+          <div class="text-sm text-black/60" v-if="selectedBranch">
+            Showing employees from {{ getBranchName(selectedBranch) }} branch
+          </div>
         </div>
       </div>
     </div>
@@ -677,6 +921,16 @@
           </div>
 
           <div class="flex items-center gap-2 justify-end">
+            <select
+              v-model="itemsPerPage"
+              class="select select-sm select-bordered"
+            >
+              <option value="5">5 per page</option>
+              <option value="10">10 per page</option>
+              <option value="20">20 per page</option>
+              <option value="50">50 per page</option>
+            </select>
+
             <button
               class="btn btn-outline btn-sm text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
               :disabled="loading"
@@ -703,8 +957,11 @@
       <span>{{ error }}</span>
     </div>
 
-    <!-- Table/List -->
-    <div class="card bg-accentColor border border-black/10 shadow">
+    <!-- All Employees Tab Content -->
+    <div
+      v-if="activeTab === 'all'"
+      class="card bg-accentColor border border-black/10 shadow"
+    >
       <div class="card-body p-0">
         <div
           v-if="loading && !employees.length"
@@ -766,7 +1023,7 @@
                 <td class="text-sm">{{ emp.phone_number || '—' }}</td>
                 <td class="text-sm">{{ emp.address || '—' }}</td>
                 <td>
-                  <div class="badge badge-ghost badge-sm">
+                  <div class="text-xs">
                     {{ emp.department || '—' }}
                     <span
                       v-if="emp.branch_id && getBranchName(emp.branch_id)"
@@ -777,9 +1034,7 @@
                   </div>
                 </td>
                 <td>
-                  <div
-                    class="badge bg-primaryColor text-white badge-sm border-none"
-                  >
+                  <div class="text-xs">
                     {{ emp.role || emp.job_title || '—' }}
                   </div>
                 </td>
@@ -795,6 +1050,15 @@
                       class="w-3 h-3 mr-1"
                     />
                     {{ emp.deleted_at ? 'Deleted' : emp.status || '—' }}
+                  </div>
+                  <div
+                    v-if="emp.status === 'On Leave' && emp.current_leave_type"
+                    class="text-xs text-gray-500 mt-1"
+                  >
+                    {{ emp.current_leave_type }} ({{
+                      formatDate(emp.leave_from_date)
+                    }}
+                    - {{ formatDate(emp.leave_to_date) }})
                   </div>
                 </td>
                 <td>
@@ -848,32 +1112,578 @@
         </div>
 
         <!-- Pagination -->
-        <!-- Load More Section -->
         <div
-          class="flex flex-col items-center p-4 gap-3 border-t-1 border-black/10"
-          v-if="employees.length > 0"
+          class="flex flex-col sm:flex-row items-center justify-between p-4 gap-3 border-t border-black/10"
+          v-if="filteredEmployees.length > 0"
         >
+          <!-- Pagination Info -->
           <div class="text-xs sm:text-sm text-black/60">
-            Showing {{ employees.length }} of {{ pagination.total }} employees
+            Showing {{ paginationInfo.start }} to {{ paginationInfo.end }} of
+            {{ paginationInfo.total }} employees
           </div>
 
-          <!-- Load More Button -->
-          <button
-            v-if="hasMore"
-            @click="loadMore"
-            :disabled="loadingMore"
-            class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/90 border-none"
-          >
-            <span
-              v-if="loadingMore"
-              class="loading loading-spinner loading-xs mr-2"
-            ></span>
-            {{ loadingMore ? 'Loading...' : 'Load More' }}
-          </button>
+          <!-- Pagination Controls -->
+          <div class="flex items-center gap-2">
+            <!-- Previous Button -->
+            <button
+              @click="goToPreviousPage"
+              :disabled="currentPage === 1"
+              class="btn btn-sm btn-outline"
+            >
+              Previous
+            </button>
 
-          <!-- No more data message -->
-          <div v-else-if="employees.length > 0" class="text-xs text-gray-500">
-            All employees loaded
+            <!-- Page Numbers -->
+            <div class="flex items-center gap-1">
+              <button
+                v-for="page in Math.min(5, totalPages)"
+                :key="page"
+                @click="goToPage(page)"
+                :class="[
+                  'btn btn-sm',
+                  page === currentPage
+                    ? ' border-none text-primaryColor'
+                    : 'border-none text-black/60 hover:bg-gray-200',
+                ]"
+              >
+                {{ page }}
+              </button>
+
+              <!-- Show ellipsis if there are more pages -->
+              <span v-if="totalPages > 5" class="px-2 text-gray-500">...</span>
+
+              <!-- Show last page if it's not in the visible range -->
+              <button
+                v-if="totalPages > 5 && currentPage < totalPages - 2"
+                @click="goToPage(totalPages)"
+                class="btn btn-sm btn-outline"
+              >
+                {{ totalPages }}
+              </button>
+            </div>
+
+            <!-- Next Button -->
+            <button
+              @click="goToNextPage"
+              :disabled="currentPage === totalPages"
+              class="btn btn-sm btn-outline"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Department Employees Tab Content -->
+    <div
+      v-if="activeTab === 'department'"
+      class="card bg-accentColor border border-black/10 shadow"
+    >
+      <div class="card-body p-0">
+        <div v-if="!selectedDepartment" class="p-6 text-center text-black/60">
+          <Building2 class="w-12 h-12 mx-auto mb-4 text-black/30" />
+          <p class="text-lg font-medium mb-2">Select a Department</p>
+          <p class="text-sm">
+            Choose a department from the dropdown above to view its employees.
+          </p>
+        </div>
+
+        <div
+          v-else-if="loading && !employees.length"
+          class="flex justify-center py-10"
+        >
+          <span class="loading loading-spinner loading-lg"></span>
+        </div>
+
+        <div
+          v-else-if="!filteredEmployees.length"
+          class="p-6 text-center text-black/60"
+        >
+          <Building2 class="w-12 h-12 mx-auto mb-4 text-black/30" />
+          <p class="text-lg font-medium mb-2">No employees found</p>
+          <p class="text-sm">
+            No employees found in the {{ selectedDepartment }} department.
+          </p>
+        </div>
+
+        <div v-else class="overflow-x-auto">
+          <table class="table table-zebra">
+            <thead>
+              <tr class="bg-primaryColor text-white">
+                <th class="whitespace-nowrap">Name</th>
+                <th class="whitespace-nowrap">Email</th>
+                <th class="whitespace-nowrap">Phone</th>
+                <th class="whitespace-nowrap">Address</th>
+                <th class="whitespace-nowrap">Position</th>
+                <th class="whitespace-nowrap">Attendance</th>
+                <th class="whitespace-nowrap">Status</th>
+                <th class="whitespace-nowrap">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="emp in paginatedEmployees" :key="emp.id">
+                <td>
+                  <div class="flex items-center gap-3">
+                    <div class="avatar">
+                      <div
+                        class="w-8 rounded-full overflow-hidden bg-primaryColor/10"
+                      >
+                        <img
+                          v-if="emp.photo_url"
+                          :src="getPhotoUrl(emp.photo_url)"
+                          alt="photo"
+                          class="w-full h-full object-cover"
+                          @error="(e) => (e.target.style.display = 'none')"
+                        />
+                        <div
+                          v-else
+                          class="w-8 h-8 flex items-center justify-center text-primaryColor text-xs"
+                        >
+                          {{ (emp.first_name || 'E').charAt(0) }}
+                        </div>
+                      </div>
+                    </div>
+                    <div class="font-semibold">
+                      {{ emp.first_name }} {{ emp.last_name }}
+                    </div>
+                  </div>
+                </td>
+                <td class="text-sm">{{ emp.email || '—' }}</td>
+                <td class="text-sm">{{ emp.phone_number || '—' }}</td>
+                <td class="text-sm">{{ emp.address || '—' }}</td>
+                <td>
+                  <div class="text-xs">
+                    {{ emp.role || emp.job_title || '—' }}
+                  </div>
+                </td>
+                <td>
+                  <div class="flex items-center">
+                    <div
+                      :class="[
+                        'w-2 h-2 rounded-full mr-2',
+                        attendanceData[emp.id] &&
+                        attendanceData[emp.id].attendance_status === 'present'
+                          ? 'bg-success'
+                          : attendanceData[emp.id] &&
+                              attendanceData[emp.id].attendance_status ===
+                                'on_leave'
+                            ? 'bg-warning'
+                            : attendanceData[emp.id] &&
+                                attendanceData[emp.id].attendance_status ===
+                                  'late'
+                              ? 'bg-warning'
+                              : attendanceData[emp.id] &&
+                                  attendanceData[emp.id].attendance_status ===
+                                    'day_off'
+                                ? 'bg-gray-400'
+                                : 'bg-error',
+                      ]"
+                    ></div>
+                    <span class="text-sm">
+                      {{
+                        attendanceData[emp.id]
+                          ? attendanceData[emp.id].attendance_status
+                              .replace('_', ' ')
+                              .replace(/\b\w/g, (l) => l.toUpperCase())
+                          : 'Absent'
+                      }}
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <div
+                    :class="[
+                      'badge badge-sm border-none',
+                      statusBadgeClass(emp.status, emp.deleted_at),
+                    ]"
+                  >
+                    <BadgeCheck
+                      v-if="emp.status === 'Active' && !emp.deleted_at"
+                      class="w-3 h-3 mr-1"
+                    />
+                    {{ emp.deleted_at ? 'Deleted' : emp.status || '—' }}
+                  </div>
+                  <div
+                    v-if="emp.status === 'On Leave' && emp.current_leave_type"
+                    class="text-xs text-gray-500 mt-1"
+                  >
+                    {{ emp.current_leave_type }} ({{
+                      formatDate(emp.leave_from_date)
+                    }}
+                    - {{ formatDate(emp.leave_to_date) }})
+                  </div>
+                </td>
+                <td>
+                  <div class="dropdown dropdown-left">
+                    <EllipsisVertical
+                      class="w-3 h-3 cursor-pointer"
+                      tabindex="0"
+                    />
+                    <ul
+                      tabindex="0"
+                      class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-44"
+                    >
+                      <li>
+                        <a @click="viewEmployee(emp)"
+                          ><Eye class="w-3 h-3" /> View</a
+                        >
+                      </li>
+                      <li v-if="emp.status !== 'Terminated' && !emp.deleted_at">
+                        <a @click="updateEmployee(emp)"
+                          ><Edit class="w-3 h-3" /> Update</a
+                        >
+                      </li>
+                      <li v-if="emp.status !== 'Terminated' && !emp.deleted_at">
+                        <a @click="terminateEmployee(emp)" class="text-warning"
+                          ><UserX class="w-3 h-3" /> Terminate</a
+                        >
+                      </li>
+                      <li v-if="emp.status === 'Terminated' && !emp.deleted_at">
+                        <a @click="restoreEmployee(emp)" class="text-success"
+                          ><UserCheck class="w-3 h-3" /> Restore</a
+                        >
+                      </li>
+                      <li v-if="emp.deleted_at">
+                        <a
+                          @click="restoreDeletedEmployee(emp)"
+                          class="text-success"
+                          ><UserCheck class="w-3 h-3" /> Restore Deleted</a
+                        >
+                      </li>
+                      <li v-if="!emp.deleted_at">
+                        <a @click="deleteEmployee(emp)" class="text-error"
+                          ><Trash2 class="w-3 h-3" /> Delete</a
+                        >
+                      </li>
+                    </ul>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination for Department Tab -->
+        <div
+          class="flex flex-col sm:flex-row items-center justify-between p-4 gap-3 border-t border-black/10"
+          v-if="filteredEmployees.length > 0"
+        >
+          <!-- Pagination Info -->
+          <div class="text-xs sm:text-sm text-black/60">
+            Showing {{ paginationInfo.start }} to {{ paginationInfo.end }} of
+            {{ paginationInfo.total }} employees in {{ selectedDepartment }}
+          </div>
+
+          <!-- Pagination Controls -->
+          <div class="flex items-center gap-2">
+            <!-- Previous Button -->
+            <button
+              @click="goToPreviousPage"
+              :disabled="currentPage === 1"
+              class="btn btn-sm btn-outline"
+            >
+              Previous
+            </button>
+
+            <!-- Page Numbers -->
+            <div class="flex items-center gap-1">
+              <button
+                v-for="page in Math.min(5, totalPages)"
+                :key="page"
+                @click="goToPage(page)"
+                :class="[
+                  'btn btn-sm',
+                  page === currentPage
+                    ? 'bg-primaryColor text-white border-primaryColor'
+                    : 'btn-outline',
+                ]"
+              >
+                {{ page }}
+              </button>
+
+              <!-- Show ellipsis if there are more pages -->
+              <span v-if="totalPages > 5" class="px-2 text-gray-500">...</span>
+
+              <!-- Show last page if it's not in the visible range -->
+              <button
+                v-if="totalPages > 5 && currentPage < totalPages - 2"
+                @click="goToPage(totalPages)"
+                class="btn btn-sm btn-outline"
+              >
+                {{ totalPages }}
+              </button>
+            </div>
+
+            <!-- Next Button -->
+            <button
+              @click="goToNextPage"
+              :disabled="currentPage === totalPages"
+              class="btn btn-sm btn-outline"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Branch Employees Tab Content -->
+    <div
+      v-if="activeTab === 'branch'"
+      class="card bg-accentColor border border-black/10 shadow"
+    >
+      <div class="card-body p-0">
+        <div v-if="!selectedBranch" class="p-6 text-center text-black/60">
+          <MapPin class="w-12 h-12 mx-auto mb-4 text-black/30" />
+          <p class="text-lg font-medium mb-2">Select a Branch</p>
+          <p class="text-sm">
+            Choose a branch from the dropdown above to view its employees.
+          </p>
+        </div>
+
+        <div
+          v-else-if="loading && !employees.length"
+          class="flex justify-center py-10"
+        >
+          <span class="loading loading-spinner loading-lg"></span>
+        </div>
+
+        <div
+          v-else-if="!filteredEmployees.length"
+          class="p-6 text-center text-black/60"
+        >
+          <MapPin class="w-12 h-12 mx-auto mb-4 text-black/30" />
+          <p class="text-lg font-medium mb-2">No employees found</p>
+          <p class="text-sm">
+            No employees found in the
+            {{ getBranchName(selectedBranch) }} branch.
+          </p>
+        </div>
+
+        <div v-else class="overflow-x-auto">
+          <table class="table table-zebra">
+            <thead>
+              <tr class="bg-primaryColor text-white">
+                <th class="whitespace-nowrap">Name</th>
+                <th class="whitespace-nowrap">Email</th>
+                <th class="whitespace-nowrap">Phone</th>
+                <th class="whitespace-nowrap">Address</th>
+                <th class="whitespace-nowrap">Department</th>
+                <th class="whitespace-nowrap">Position</th>
+                <th class="whitespace-nowrap">Attendance</th>
+                <th class="whitespace-nowrap">Status</th>
+                <th class="whitespace-nowrap">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="emp in paginatedEmployees" :key="emp.id">
+                <td>
+                  <div class="flex items-center gap-3">
+                    <div class="avatar">
+                      <div
+                        class="w-8 rounded-full overflow-hidden bg-primaryColor/10"
+                      >
+                        <img
+                          v-if="emp.photo_url"
+                          :src="getPhotoUrl(emp.photo_url)"
+                          alt="photo"
+                          class="w-full h-full object-cover"
+                          @error="(e) => (e.target.style.display = 'none')"
+                        />
+                        <div
+                          v-else
+                          class="w-8 h-8 flex items-center justify-center text-primaryColor text-xs"
+                        >
+                          {{ (emp.first_name || 'E').charAt(0) }}
+                        </div>
+                      </div>
+                    </div>
+                    <div class="font-semibold">
+                      {{ emp.first_name }} {{ emp.last_name }}
+                    </div>
+                  </div>
+                </td>
+                <td class="text-sm">{{ emp.email || '—' }}</td>
+                <td class="text-sm">{{ emp.phone_number || '—' }}</td>
+                <td class="text-sm">{{ emp.address || '—' }}</td>
+                <td>
+                  <div class="text-xs">
+                    {{ emp.department || '—' }}
+                  </div>
+                </td>
+                <td>
+                  <div class="text-xs">
+                    {{ emp.role || emp.job_title || '—' }}
+                  </div>
+                </td>
+                <td>
+                  <div class="flex items-center">
+                    <div
+                      :class="[
+                        'w-2 h-2 rounded-full mr-2',
+                        attendanceData[emp.id] &&
+                        attendanceData[emp.id].attendance_status === 'present'
+                          ? 'bg-success'
+                          : attendanceData[emp.id] &&
+                              attendanceData[emp.id].attendance_status ===
+                                'on_leave'
+                            ? 'bg-warning'
+                            : attendanceData[emp.id] &&
+                                attendanceData[emp.id].attendance_status ===
+                                  'late'
+                              ? 'bg-warning'
+                              : attendanceData[emp.id] &&
+                                  attendanceData[emp.id].attendance_status ===
+                                    'day_off'
+                                ? 'bg-gray-400'
+                                : 'bg-error',
+                      ]"
+                    ></div>
+                    <span class="text-sm">
+                      {{
+                        attendanceData[emp.id]
+                          ? attendanceData[emp.id].attendance_status
+                              .replace('_', ' ')
+                              .replace(/\b\w/g, (l) => l.toUpperCase())
+                          : 'Absent'
+                      }}
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <div
+                    :class="[
+                      'badge badge-sm border-none',
+                      statusBadgeClass(emp.status, emp.deleted_at),
+                    ]"
+                  >
+                    <BadgeCheck
+                      v-if="emp.status === 'Active' && !emp.deleted_at"
+                      class="w-3 h-3 mr-1"
+                    />
+                    {{ emp.deleted_at ? 'Deleted' : emp.status || '—' }}
+                  </div>
+                  <div
+                    v-if="emp.status === 'On Leave' && emp.current_leave_type"
+                    class="text-xs text-gray-500 mt-1"
+                  >
+                    {{ emp.current_leave_type }} ({{
+                      formatDate(emp.leave_from_date)
+                    }}
+                    - {{ formatDate(emp.leave_to_date) }})
+                  </div>
+                </td>
+                <td>
+                  <div class="dropdown dropdown-left">
+                    <EllipsisVertical
+                      class="w-3 h-3 cursor-pointer"
+                      tabindex="0"
+                    />
+                    <ul
+                      tabindex="0"
+                      class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-44"
+                    >
+                      <li>
+                        <a @click="viewEmployee(emp)"
+                          ><Eye class="w-3 h-3" /> View</a
+                        >
+                      </li>
+                      <li v-if="emp.status !== 'Terminated' && !emp.deleted_at">
+                        <a @click="updateEmployee(emp)"
+                          ><Edit class="w-3 h-3" /> Update</a
+                        >
+                      </li>
+                      <li v-if="emp.status !== 'Terminated' && !emp.deleted_at">
+                        <a @click="terminateEmployee(emp)" class="text-warning"
+                          ><UserX class="w-3 h-3" /> Terminate</a
+                        >
+                      </li>
+                      <li v-if="emp.status === 'Terminated' && !emp.deleted_at">
+                        <a @click="restoreEmployee(emp)" class="text-success"
+                          ><UserCheck class="w-3 h-3" /> Restore</a
+                        >
+                      </li>
+                      <li v-if="emp.deleted_at">
+                        <a
+                          @click="restoreDeletedEmployee(emp)"
+                          class="text-success"
+                          ><UserCheck class="w-3 h-3" /> Restore Deleted</a
+                        >
+                      </li>
+                      <li v-if="!emp.deleted_at">
+                        <a @click="deleteEmployee(emp)" class="text-error"
+                          ><Trash2 class="w-3 h-3" /> Delete</a
+                        >
+                      </li>
+                    </ul>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination for Branch Tab -->
+        <div
+          class="flex flex-col sm:flex-row items-center justify-between p-4 gap-3 border-t border-black/10"
+          v-if="filteredEmployees.length > 0"
+        >
+          <!-- Pagination Info -->
+          <div class="text-xs sm:text-sm text-black/60">
+            Showing {{ paginationInfo.start }} to {{ paginationInfo.end }} of
+            {{ paginationInfo.total }} employees in
+            {{ getBranchName(selectedBranch) }}
+          </div>
+
+          <!-- Pagination Controls -->
+          <div class="flex items-center gap-2">
+            <!-- Previous Button -->
+            <button
+              @click="goToPreviousPage"
+              :disabled="currentPage === 1"
+              class="btn btn-sm btn-outline"
+            >
+              Previous
+            </button>
+
+            <!-- Page Numbers -->
+            <div class="flex items-center gap-1">
+              <button
+                v-for="page in Math.min(5, totalPages)"
+                :key="page"
+                @click="goToPage(page)"
+                :class="[
+                  'btn btn-sm',
+                  page === currentPage
+                    ? 'bg-primaryColor text-white border-primaryColor'
+                    : 'btn-outline',
+                ]"
+              >
+                {{ page }}
+              </button>
+
+              <!-- Show ellipsis if there are more pages -->
+              <span v-if="totalPages > 5" class="px-2 text-gray-500">...</span>
+
+              <!-- Show last page if it's not in the visible range -->
+              <button
+                v-if="totalPages > 5 && currentPage < totalPages - 2"
+                @click="goToPage(totalPages)"
+                class="btn btn-sm btn-outline"
+              >
+                {{ totalPages }}
+              </button>
+            </div>
+
+            <!-- Next Button -->
+            <button
+              @click="goToNextPage"
+              :disabled="currentPage === totalPages"
+              class="btn btn-sm btn-outline"
+            >
+              Next
+            </button>
           </div>
         </div>
       </div>
@@ -1062,20 +1872,39 @@
               </div>
               <div class="flex justify-between">
                 <span class="text-gray-600">Status:</span>
-                <span
-                  :class="[
-                    'badge',
-                    statusBadgeClass(
-                      selectedEmployee.status,
+                <div class="text-right">
+                  <span
+                    :class="[
+                      'badge',
+                      statusBadgeClass(
+                        selectedEmployee.status,
+                        selectedEmployee.deleted_at
+                      ),
+                    ]"
+                  >
+                    {{
                       selectedEmployee.deleted_at
-                    ),
-                  ]"
-                >
-                  {{
-                    selectedEmployee.deleted_at
-                      ? 'Deleted'
-                      : selectedEmployee.status || '—'
-                  }}
+                        ? 'Deleted'
+                        : selectedEmployee.status || '—'
+                    }}
+                  </span>
+                  <div
+                    v-if="
+                      selectedEmployee.status === 'On Leave' &&
+                      selectedEmployee.current_leave_type
+                    "
+                    class="text-xs text-gray-500 mt-1"
+                  >
+                    {{ selectedEmployee.current_leave_type }}<br />
+                    {{ formatDate(selectedEmployee.leave_from_date) }} -
+                    {{ formatDate(selectedEmployee.leave_to_date) }}
+                  </div>
+                </div>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-600">Monthly Rate:</span>
+                <span class="font-medium text-primaryColor">
+                  {{ getEmployeeMonthlyRate(selectedEmployee) }}
                 </span>
               </div>
             </div>
@@ -1751,3 +2580,8 @@
     </form>
   </dialog>
 </template>
+<style scoped>
+  .table-zebra tbody tr:nth-child(odd) {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+</style>

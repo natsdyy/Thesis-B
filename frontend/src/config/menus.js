@@ -20,6 +20,7 @@ import {
   ClipboardList,
   Trash2,
   ChefHat,
+  UserCheck,
 } from 'lucide-vue-next';
 
 export const menuItems = [
@@ -36,30 +37,28 @@ export const menuItems = [
     route: '/hr/employees',
     department: 'Human Resource',
     subItems: [
-      { name: 'Employees', route: '/hr/employee-manager' },
-      { name: 'Manage Schedules', route: '/hr/schedules' },
-      { name: 'Add Schedules', route: '/hr/schedules/add' },
+      { name: 'Employee List', route: '/hr/employee-manager' },
+      { name: 'Schedules', route: '/hr/schedules' },
       { name: 'Positions', route: '/hr/positions' },
-      { name: 'Leave Management', route: '/hr/leave' },
-      { name: 'Add Employee', route: '/hr/add-employee' },
+      { name: 'Manage Employee', route: '/hr/add-employee' },
     ],
   },
+
   {
-    name: 'Attendance',
-    icon: Clock,
-    route: '/hr/attendance',
+    name: 'Approval Management',
+    icon: UserCheck,
+    route: '/hr/approval-management',
     department: 'Human Resource',
+    subItems: [
+      { name: 'Overtime Approvals', route: '/hr/overtime-approval' },
+      { name: 'Leave Approvals', route: '/hr/leave-approvals' },
+    ],
   },
+
   {
     name: 'Payroll',
     icon: PhilippinePeso,
     route: '/hr/payroll',
-    department: 'Human Resource',
-  },
-  {
-    name: 'User Role',
-    icon: UserCog,
-    route: '/hr/user-role',
     department: 'Human Resource',
   },
 
@@ -109,24 +108,24 @@ export const menuItems = [
     department: 'Finance',
   },
   {
-    name: 'Request Approval',
+    name: 'Approval Request',
     icon: ReceiptText,
     route: '/finance/request-approval',
     department: 'Finance',
   },
-  {
-    name: 'Accounting',
-    icon: BarChart3,
-    route: '/finance/accounting',
-    department: 'Finance',
-  },
+
   {
     name: 'Budget Release',
     icon: PhilippinePeso,
     route: '/finance/budget-release',
     department: 'Finance',
   },
-
+  {
+    name: 'Sales',
+    icon: BarChart3,
+    route: '/finance/sales',
+    department: 'Finance',
+  },
   // Production Department
   {
     name: 'Dashboard',
@@ -173,12 +172,6 @@ export const menuItems = [
     name: 'Customers',
     icon: Users,
     route: '/crm/customers',
-    department: 'CRM',
-  },
-  {
-    name: 'Sales',
-    icon: BarChart3,
-    route: '/crm/sales',
     department: 'CRM',
   },
 

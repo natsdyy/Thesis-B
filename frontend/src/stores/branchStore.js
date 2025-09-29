@@ -12,7 +12,7 @@ export const useBranchStore = defineStore('branch', {
       total_branches: 0,
       active_branches: 0,
       inactive_branches: 0,
-      total_users_in_branches: 0,
+      total_employees_in_branches: 0,
     },
   }),
 
@@ -223,21 +223,21 @@ export const useBranchStore = defineStore('branch', {
       }
     },
 
-    // Fetch branch users
-    async fetchBranchUsers(branchId) {
+    // Fetch branch employees
+    async fetchBranchEmployees(branchId) {
       this.setLoading(true);
       this.clearError();
 
       try {
         const response = await axios.get(
-          `${apiConfig.baseURL}/branches/${branchId}/users`,
+          `${apiConfig.baseURL}/branches/${branchId}/employees`,
           this.getAuthHeaders()
         );
 
         return response.data;
       } catch (error) {
         this.setError(
-          error.response?.data?.error || 'Failed to fetch branch users'
+          error.response?.data?.error || 'Failed to fetch branch employees'
         );
         throw error;
       } finally {
@@ -261,27 +261,6 @@ export const useBranchStore = defineStore('branch', {
       } catch (error) {
         this.setError(
           error.response?.data?.error || 'Failed to fetch branch statistics'
-        );
-        throw error;
-      } finally {
-        this.setLoading(false);
-      }
-    },
-
-    // Fetch branch managers
-    async fetchBranchManagers() {
-      this.setLoading(true);
-      this.clearError();
-
-      try {
-        const response = await axios.get(
-          `${apiConfig.baseURL}/branches/managers`,
-          this.getAuthHeaders()
-        );
-        return response.data;
-      } catch (error) {
-        this.setError(
-          error.response?.data?.error || 'Failed to fetch branch managers'
         );
         throw error;
       } finally {
@@ -340,8 +319,7 @@ export const useBranchStore = defineStore('branch', {
           branch.name.toLowerCase().includes(searchTerm) ||
           branch.code.toLowerCase().includes(searchTerm) ||
           branch.city?.toLowerCase().includes(searchTerm) ||
-          branch.state?.toLowerCase().includes(searchTerm) ||
-          branch.manager_name?.toLowerCase().includes(searchTerm)
+          branch.state?.toLowerCase().includes(searchTerm)
       );
     },
 
@@ -365,7 +343,7 @@ export const useBranchStore = defineStore('branch', {
         total_branches: 0,
         active_branches: 0,
         inactive_branches: 0,
-        total_users_in_branches: 0,
+        total_employees_in_branches: 0,
       };
     },
   },

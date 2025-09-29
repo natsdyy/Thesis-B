@@ -1,6 +1,54 @@
 const { db: knex } = require("../config/database");
 
 class AttendanceRecord {
+  // Valid attendance statuses
+  static VALID_STATUSES = {
+    PRESENT: "present",
+    LATE: "late",
+    ABSENT: "absent",
+    ON_LEAVE: "on_leave",
+    DAY_OFF: "day_off",
+  };
+
+  // Valid stored statuses (only these are stored in attendance_records table)
+  static STORED_STATUSES = {
+    PRESENT: "present",
+    LATE: "late",
+  };
+
+  // Computed statuses (determined by business logic, not stored in DB)
+  static COMPUTED_STATUSES = {
+    ABSENT: "absent",
+    ON_LEAVE: "on_leave",
+    DAY_OFF: "day_off",
+  };
+
+  /**
+   * Validate if a status is valid
+   * @param {string} status - Status to validate
+   * @returns {boolean} - True if valid
+   */
+  static isValidStatus(status) {
+    return Object.values(this.VALID_STATUSES).includes(status);
+  }
+
+  /**
+   * Check if status is a stored status (saved in attendance_records table)
+   * @param {string} status - Status to check
+   * @returns {boolean} - True if stored status
+   */
+  static isStoredStatus(status) {
+    return Object.values(this.STORED_STATUSES).includes(status);
+  }
+
+  /**
+   * Check if status is a computed status (determined by business logic)
+   * @param {string} status - Status to check
+   * @returns {boolean} - True if computed status
+   */
+  static isComputedStatus(status) {
+    return Object.values(this.COMPUTED_STATUSES).includes(status);
+  }
   static async create(data) {
     const [record] = await knex("attendance_records")
       .insert(data)
@@ -67,6 +115,14 @@ class AttendanceRecord {
       throw new Error("You have already timed in today");
     }
 
+    // Check if employee is on approved leave
+    const isOnLeave = await this.isEmployeeOnLeave(employeeId);
+    if (isOnLeave) {
+      throw new Error(
+        "You are currently on approved leave and cannot time in. Please contact HR if you need to return early."
+      );
+    }
+
     // Validate employee schedule for time-in
     const EmployeeScheduleService = require("../services/EmployeeScheduleService");
     const scheduleValidation =
@@ -79,6 +135,9 @@ class AttendanceRecord {
       if (scheduleValidation.reason === "NO_SCHEDULE") {
         errorMessage =
           "No work schedule assigned for today. Please contact your supervisor to set up your schedule.";
+      } else if (scheduleValidation.reason === "DAY_OFF") {
+        errorMessage =
+          "You are scheduled for Day Off today. You cannot time in on your scheduled day off.";
       } else if (scheduleValidation.reason === "OUTSIDE_SCHEDULE") {
         const { schedule, currentTime, timeDifference, direction } =
           scheduleValidation;
@@ -152,11 +211,41 @@ class AttendanceRecord {
       }
     }
 
+    // Determine attendance status with grace period based on schedule
+    const GRACE_PERIOD_MINUTES = 10;
+    let attendanceStatus = "present";
+    let tardinessMinutes = 0;
+
+    try {
+      const { schedule } = scheduleValidation || {};
+      if (schedule && schedule.start_time) {
+        // Build today's local date string to avoid timezone skew from DATE columns
+        const localDateStr = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
+        const scheduleStart = new Date(
+          `${localDateStr}T${schedule.start_time}`
+        );
+        const graceLimit = new Date(
+          scheduleStart.getTime() + GRACE_PERIOD_MINUTES * 60 * 1000
+        );
+        const now = new Date();
+        if (now > graceLimit) {
+          attendanceStatus = "late";
+          const diffMs = now - scheduleStart;
+          const mins = Math.floor(diffMs / (1000 * 60));
+          tardinessMinutes = Math.max(mins - GRACE_PERIOD_MINUTES, 0);
+        }
+      }
+    } catch (_) {
+      // Fallback to present if any parsing issue occurs
+      attendanceStatus = "present";
+    }
+
     const data = {
       employee_id: employeeId,
       qr_code_id: qrCodeId,
       time_in: knex.fn.now(),
-      status: "present",
+      status: attendanceStatus,
+      tardiness_minutes: tardinessMinutes,
     };
 
     if (existingRecord) {
@@ -165,7 +254,8 @@ class AttendanceRecord {
         .where("id", existingRecord.id)
         .update({
           time_in: knex.fn.now(),
-          status: "present",
+          status: attendanceStatus,
+          tardiness_minutes: tardinessMinutes,
           updated_at: knex.fn.now(),
         })
         .returning("*");
@@ -193,7 +283,37 @@ class AttendanceRecord {
 
     const timeOut = new Date();
     const timeIn = new Date(todayRecord.time_in);
-    const hoursWorked = (timeOut - timeIn) / (1000 * 60 * 60); // Convert to hours
+
+    // Default calculations without schedule
+    let hoursWorked = (timeOut - timeIn) / (1000 * 60 * 60);
+
+    try {
+      // Use today's local date to avoid timezone skew
+      const localDateStr = new Date().toLocaleDateString("en-CA");
+      const EmployeeScheduleService = require("../services/EmployeeScheduleService");
+      const schedule = await EmployeeScheduleService.getEmployeeScheduleForDate(
+        employeeId,
+        localDateStr
+      );
+
+      if (schedule && schedule.start_time && schedule.end_time) {
+        const scheduleStart = new Date(
+          `${localDateStr}T${schedule.start_time}`
+        );
+        let scheduleEnd = new Date(`${localDateStr}T${schedule.end_time}`);
+        if (scheduleEnd <= scheduleStart) {
+          scheduleEnd.setDate(scheduleEnd.getDate() + 1);
+        }
+
+        const endForWorkCalc = timeOut < scheduleEnd ? timeOut : scheduleEnd;
+        const workingMs = Math.max(0, endForWorkCalc - timeIn);
+        hoursWorked = workingMs / (1000 * 60 * 60);
+        // Per requirement: do not auto-calculate OT; approval flow handles OT separately
+      }
+    } catch (_) {
+      // Fallback to simple diff if schedule fetch fails
+      hoursWorked = (timeOut - timeIn) / (1000 * 60 * 60);
+    }
 
     const [updated] = await knex("attendance_records")
       .where("id", todayRecord.id)
@@ -227,7 +347,7 @@ class AttendanceRecord {
   }
 
   static async getAllAttendanceReport(startDate, endDate) {
-    return await knex("attendance_records")
+    const records = await knex("attendance_records")
       .select(
         "attendance_records.*",
         "attendance_qr_codes.location_name",
@@ -243,6 +363,23 @@ class AttendanceRecord {
       .leftJoin("employees", "attendance_records.employee_id", "employees.id")
       .whereBetween("attendance_records.created_at", [startDate, endDate])
       .orderBy("attendance_records.created_at", "desc");
+
+    // Add leave status to each record
+    const recordsWithLeaveStatus = await Promise.all(
+      records.map(async (record) => {
+        const isOnLeave = await this.isEmployeeOnLeave(
+          record.employee_id,
+          record.created_at
+        );
+        return {
+          ...record,
+          is_on_leave: isOnLeave,
+          attendance_status: isOnLeave ? "on_leave" : record.status || "absent",
+        };
+      })
+    );
+
+    return recordsWithLeaveStatus;
   }
 
   // Get detailed attendance history (individual time-in/time-out events)
@@ -328,6 +465,87 @@ class AttendanceRecord {
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
     return `${diffHours}h ${diffMinutes}m`;
+  }
+
+  // Check if employee is on approved leave for a specific date
+  static async isEmployeeOnLeave(employeeId, date = null) {
+    let targetDate;
+    if (date) {
+      targetDate = new Date(date);
+    } else {
+      // Get current date in Philippines timezone (UTC+8)
+      const now = new Date();
+      const philippinesTime = new Date(now.getTime() + 8 * 60 * 60 * 1000); // UTC+8
+      targetDate = new Date(philippinesTime.toISOString().split("T")[0]);
+    }
+    const dateStr = targetDate.toISOString().split("T")[0];
+
+    const leaveRequest = await knex("leave_requests")
+      .where("employee_id", employeeId)
+      .where("from_date", "<=", dateStr)
+      .where("to_date", ">=", dateStr)
+      .where("status", "approved_by_hr") // Only HR-approved requests count as actual leave
+      .first();
+
+    return !!leaveRequest;
+  }
+
+  // Check if employee is scheduled for day off on a specific date
+  static async isEmployeeOnDayOff(employeeId, date = null) {
+    let targetDate;
+    if (date) {
+      targetDate = new Date(date);
+    } else {
+      // Get current date in Philippines timezone (UTC+8)
+      const now = new Date();
+      const philippinesTime = new Date(now.getTime() + 8 * 60 * 60 * 1000); // UTC+8
+      targetDate = new Date(philippinesTime.toISOString().split("T")[0]);
+    }
+    const dateStr = targetDate.toISOString().split("T")[0];
+
+    const schedule = await knex("employee_schedules")
+      .where("employee_id", employeeId)
+      .where("schedule_date", dateStr)
+      .first();
+
+    return schedule && schedule.shift_name === "Day Off";
+  }
+
+  // Enhanced getTodayAttendance that includes leave status and day off detection
+  static async getTodayAttendanceWithLeaveStatus(employeeId) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Get attendance record
+    const attendanceRecord = await knex("attendance_records")
+      .where("employee_id", employeeId)
+      .whereBetween("created_at", [today, endOfDay])
+      .first();
+
+    // Check if employee is on leave or day off
+    const isOnLeave = await this.isEmployeeOnLeave(employeeId);
+    const isOnDayOff = await this.isEmployeeOnDayOff(employeeId);
+
+    // Determine attendance status with priority: day_off > on_leave > present/late > absent
+    let attendanceStatus;
+    if (isOnDayOff) {
+      attendanceStatus = "day_off";
+    } else if (isOnLeave) {
+      attendanceStatus = "on_leave";
+    } else if (attendanceRecord) {
+      attendanceStatus = attendanceRecord.status;
+    } else {
+      attendanceStatus = "absent";
+    }
+
+    return {
+      ...attendanceRecord,
+      is_on_leave: isOnLeave,
+      is_on_day_off: isOnDayOff,
+      attendance_status: attendanceStatus,
+    };
   }
 }
 

@@ -4020,7 +4020,7 @@
           Cancel
         </button>
         <button
-          class="btn btn-sm font-thin border border-none shadow-none text-white"
+          class="btn btn-sm font-thin border border-none shadow-none bg-primaryColor text-white hover:bg-primaryColor/90"
           :class="confirmModal.confirmClass"
           @click="handleConfirmAction"
           :disabled="loading"

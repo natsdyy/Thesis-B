@@ -19,11 +19,13 @@
   import { useCustomToast } from '../../composables/useCustomToast';
   import { useEmployeeScheduleStore } from '../../stores/employeeScheduleStore';
   import { useShiftTypesStore } from '../../stores/shiftTypesStore';
+  import { useLeaveStore } from '../../stores/leaveStore';
   import ShiftManagementModal from './ShiftManagementModal.vue';
 
   const { showSuccess, showError, showWarning, showInfo } = useCustomToast();
   const scheduleStore = useEmployeeScheduleStore();
   const shiftTypesStore = useShiftTypesStore();
+  const leaveStore = useLeaveStore();
 
   // Props
   const props = defineProps({
@@ -72,9 +74,15 @@
     for (let i = 0; i < 7; i++) {
       const day = new Date(startOfWeek);
       day.setDate(startOfWeek.getDate() + i);
+      // Format date as YYYY-MM-DD in local timezone to avoid UTC conversion issues
+      const year = day.getFullYear();
+      const month = String(day.getMonth() + 1).padStart(2, '0');
+      const dayOfMonth = String(day.getDate()).padStart(2, '0');
+      const dateString = `${year}-${month}-${dayOfMonth}`;
+
       days.push({
         date: day,
-        dateString: day.toISOString().split('T')[0],
+        dateString: dateString,
         dayName: day.toLocaleDateString('en-US', { weekday: 'short' }),
         dayNumber: day.getDate(),
         isToday: day.toDateString() === new Date().toDateString(),
@@ -131,6 +139,17 @@
       const startDate = weekDays.value[0].dateString;
       const endDate = weekDays.value[6].dateString;
 
+      // Load leave data for the current week
+      try {
+        await leaveStore.fetchAllLeaveRequests({
+          branch_id: props.branchId,
+          page: 1,
+          limit: 1000,
+        });
+      } catch (error) {
+        console.warn('Could not load leave data:', error);
+      }
+
       await scheduleStore.fetchSchedules(props.branchId, startDate, endDate);
     } catch (error) {
       console.error('Error loading schedules:', error);
@@ -148,12 +167,7 @@
   };
 
   const openAddShiftModal = (employee, date) => {
-    // Prevent scheduling on Sunday
-    if (date.date.getDay() === 0) {
-      showWarning('Sunday is a day off for all employees');
-      return;
-    }
-
+    // All days are working days - no restrictions
     selectedEmployee.value = employee;
     selectedDate.value = date;
     shiftForm.value = {
@@ -166,12 +180,7 @@
   };
 
   const openEditShiftModal = (employee, date, schedule) => {
-    // Prevent editing Sunday schedules (day off)
-    if (date.date.getDay() === 0) {
-      showWarning('Sunday is a day off for all employees');
-      return;
-    }
-
+    // All days are working days - no restrictions
     selectedEmployee.value = employee;
     selectedDate.value = date;
     editingShift.value = schedule;
@@ -230,13 +239,7 @@
   };
 
   const openDeleteConfirmModal = (employeeId, dateString) => {
-    // Prevent deleting Sunday schedules (day off)
-    const date = new Date(dateString);
-    if (date.getDay() === 0) {
-      showWarning('Sunday is a day off for all employees');
-      return;
-    }
-
+    // All days are working days - no restrictions
     shiftToDelete.value = { employeeId, dateString };
     showDeleteConfirmModal.value = true;
   };
@@ -277,41 +280,39 @@
   };
 
   const getShiftForEmployee = (employeeId, dateString) => {
-    // Check store first
+    // Check store first - all days are working days, no automatic day-off logic
     const storeSchedule =
       scheduleStore.schedules[`${employeeId}_${dateString}`];
     if (storeSchedule) {
       return storeSchedule;
     }
 
-    // Check for Sunday day off
-    const date = new Date(dateString);
-    if (date.getDay() === 0) {
-      return {
-        shift: {
-          id: 'day-off',
-          name: 'Day Off',
-          startTime: '',
-          endTime: '',
-          color: 'bg-gray-100 text-gray-600',
-        },
-        notes: 'Sunday - Day Off',
-        created_at: new Date().toISOString(),
-      };
-    }
-
     return null;
   };
 
+  const isEmployeeOnLeave = (employeeId, dateString) => {
+    // Check if employee has approved leave for this date
+    const date = new Date(dateString);
+    const leaveRequests = leaveStore.allLeaveRequests || [];
+
+    return leaveRequests.some(
+      (request) =>
+        request.employee_id === employeeId &&
+        (request.status === 'approved_by_hr' ||
+          request.status === 'approved_by_manager') &&
+        new Date(request.from_date) <= date &&
+        new Date(request.to_date) >= date
+    );
+  };
+
   const canEditSchedule = (date) => {
-    // Sunday is day 0, so it's always a day off
-    const isSunday = date.date.getDay() === 0;
-    return !date.isPast && !isSunday;
+    // All days are working days - no automatic day-off restrictions
+    return !date.isPast;
   };
 
   const isDayOff = (date) => {
-    // Sunday is always a day off
-    return date.date.getDay() === 0;
+    // No automatic day-off logic - Day Off is now a shift type that can be assigned
+    return false;
   };
 
   const getShiftColor = (shiftName) => {
@@ -319,6 +320,7 @@
       'Morning Shift': 'bg-blue-100 text-blue-800',
       'Afternoon Shift': 'bg-green-100 text-green-800',
       'Night Shift': 'bg-purple-100 text-purple-800',
+      'Day Off': 'bg-gray-100 text-gray-600',
     };
     return colorMap[shiftName] || 'bg-gray-100 text-gray-800';
   };
@@ -447,9 +449,22 @@
                   <div
                     class="min-h-[60px] flex flex-col items-center justify-center"
                   >
-                    <!-- Existing Shift -->
+                    <!-- Leave Status (Priority) -->
                     <template
-                      v-if="getShiftForEmployee(employee.id, day.dateString)"
+                      v-if="isEmployeeOnLeave(employee.id, day.dateString)"
+                    >
+                      <div
+                        class="badge badge-sm mb-1 bg-warning/10 text-warning"
+                      >
+                        On Leave
+                      </div>
+                    </template>
+
+                    <!-- Existing Shift (Only if not on leave) -->
+                    <template
+                      v-else-if="
+                        getShiftForEmployee(employee.id, day.dateString)
+                      "
                     >
                       <div
                         class="badge badge-sm mb-1"
@@ -463,7 +478,13 @@
                             .name
                         }}
                       </div>
-                      <div class="text-xs text-gray-600">
+                      <div
+                        v-if="
+                          getShiftForEmployee(employee.id, day.dateString).shift
+                            .name !== 'Day Off'
+                        "
+                        class="text-xs text-gray-600"
+                      >
                         {{
                           getShiftForEmployee(employee.id, day.dateString).shift
                             .startTime
@@ -505,29 +526,20 @@
                       </div>
                     </template>
 
-                    <!-- Add Shift Button or Day Off -->
+                    <!-- No Shift (Only if not on leave) -->
                     <template v-else>
-                      <!-- Sunday - Day Off -->
-                      <template v-if="isDayOff(day)">
-                        <div class="badge badge-sm bg-gray-100 text-gray-600">
-                          Day Off
-                        </div>
-                        <div class="text-xs text-gray-500 mt-1">Sunday</div>
-                      </template>
-                      <!-- Other days - Add shift button -->
-                      <template v-else>
-                        <button
-                          v-if="canEditSchedule(day)"
-                          @click="openAddShiftModal(employee, day)"
-                          class="btn btn-ghost btn-sm text-gray-400 hover:text-primaryColor"
-                          title="Add shift"
-                        >
-                          <Plus class="w-4 h-4" />
-                        </button>
-                        <div v-else class="text-gray-300">
-                          <X class="w-4 h-4 mx-auto" />
-                        </div>
-                      </template>
+                      <!-- Add Shift Button -->
+                      <button
+                        v-if="canEditSchedule(day)"
+                        @click="openAddShiftModal(employee, day)"
+                        class="btn btn-ghost btn-sm text-gray-400 hover:text-primaryColor"
+                        title="Add shift"
+                      >
+                        <Plus class="w-4 h-4" />
+                      </button>
+                      <div v-else class="text-gray-300">
+                        <X class="w-4 h-4 mx-auto" />
+                      </div>
                     </template>
                   </div>
                 </td>

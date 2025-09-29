@@ -15,16 +15,26 @@
     Mail,
     MapPin,
     BadgeCheck,
+    Check,
+    X,
+    FileText,
+    UserCheck2,
   } from 'lucide-vue-next';
   import { useBranchContextStore } from '../../stores/branchContextStore';
   import { useEmployeeStore } from '../../stores/employeeStore.js';
   import { useAttendanceStore } from '../../stores/attendanceStore';
   import { apiConfig } from '../../config/api';
+  import { useOvertimeStore } from '../../stores/overtimeStore';
+  import { useLeaveStore } from '../../stores/leaveStore';
+  import { useCustomToast } from '../../composables/useCustomToast';
   import EmployeeScheduleComponent from '../../components/branch/EmployeeScheduleComponent.vue';
 
   const branchContextStore = useBranchContextStore();
   const employeeStore = useEmployeeStore();
   const attendanceStore = useAttendanceStore();
+  const overtimeStore = useOvertimeStore();
+  const leaveStore = useLeaveStore();
+  const { showSuccess, showError } = useCustomToast();
 
   // Local state following EmployeeManager pattern
   const searchQuery = ref('');
@@ -42,6 +52,43 @@
     onDutyEmployees: 0,
     onLeaveEmployees: 0,
   });
+
+  // OT requests from API
+  const otRequests = ref([]);
+  const API_BASE_URL = apiConfig.baseURL;
+
+  const otStats = ref({
+    totalRequests: 0,
+    pendingRequests: 0,
+    approvedRequests: 0,
+    rejectedRequests: 0,
+    totalOvertimeHours: 0,
+  });
+
+  // Leave requests from API
+  const leaveRequests = ref([]);
+  const leaveStats = ref({
+    totalRequests: 0,
+    pendingRequests: 0,
+    managerApprovedRequests: 0,
+    hrApprovedRequests: 0,
+    rejectedRequests: 0,
+  });
+
+  // Modal states
+  const showApprovalModal = ref(false);
+  const showRejectionModal = ref(false);
+  const selectedRequest = ref(null);
+  const isProcessing = ref(false);
+  const rejectionNotes = ref('');
+
+  // Leave modal states
+  const showLeaveApprovalModal = ref(false);
+  const showLeaveRejectionModal = ref(false);
+  const selectedLeaveRequest = ref(null);
+  const isProcessingLeave = ref(false);
+  const leaveRejectionNotes = ref('');
+  const leaveApprovalNotes = ref('');
 
   // Computed
   const currentBranch = computed(() => branchContextStore.currentBranch);
@@ -81,6 +128,83 @@
 
   const totalPages = computed(() => {
     return Math.ceil(filteredEmployees.value.length / itemsPerPage.value);
+  });
+
+  // OT Approval computed properties
+  const filteredOtRequests = computed(() => {
+    let requests = otRequests.value;
+
+    // Filter by status if needed
+    if (statusFilter.value && statusFilter.value !== '') {
+      requests = requests.filter((req) => req.status === statusFilter.value);
+    }
+
+    // Filter by search query
+    if (searchQuery.value.trim()) {
+      const query = searchQuery.value.toLowerCase();
+      requests = requests.filter(
+        (req) =>
+          req.employee_name.toLowerCase().includes(query) ||
+          req.employee_role.toLowerCase().includes(query) ||
+          req.reason.toLowerCase().includes(query)
+      );
+    }
+
+    return requests;
+  });
+
+  const pendingOtRequests = computed(() => {
+    return otRequests.value.filter((req) => req.status === 'pending');
+  });
+
+  const approvedOtRequests = computed(() => {
+    return otRequests.value.filter((req) => req.status === 'approved');
+  });
+
+  const rejectedOtRequests = computed(() => {
+    return otRequests.value.filter((req) => req.status === 'rejected');
+  });
+
+  // Leave Approval computed properties
+  const filteredLeaveRequests = computed(() => {
+    let requests = leaveRequests.value;
+
+    // Filter by status if needed
+    if (statusFilter.value && statusFilter.value !== '') {
+      requests = requests.filter((req) => req.status === statusFilter.value);
+    }
+
+    // Filter by search query
+    if (searchQuery.value.trim()) {
+      const query = searchQuery.value.toLowerCase();
+      requests = requests.filter(
+        (req) =>
+          req.first_name.toLowerCase().includes(query) ||
+          req.last_name.toLowerCase().includes(query) ||
+          req.leave_type.toLowerCase().includes(query) ||
+          req.reason.toLowerCase().includes(query)
+      );
+    }
+
+    return requests;
+  });
+
+  const pendingLeaveRequests = computed(() => {
+    return leaveRequests.value.filter((req) => req.status === 'pending');
+  });
+
+  const managerApprovedLeaveRequests = computed(() => {
+    return leaveRequests.value.filter(
+      (req) => req.status === 'approved_by_manager'
+    );
+  });
+
+  const hrApprovedLeaveRequests = computed(() => {
+    return leaveRequests.value.filter((req) => req.status === 'approved_by_hr');
+  });
+
+  const rejectedLeaveRequests = computed(() => {
+    return leaveRequests.value.filter((req) => req.status === 'rejected');
   });
 
   // Methods
@@ -155,23 +279,37 @@
         }
       });
 
+      // Note: Leave status is now handled by the attendance system
+      // The attendance records will include leave status, so we don't need to fetch leave requests separately
+      // This avoids permission issues with leave management endpoints
+
       // Map to view model fields used in template and merge attendance
       const mapped = byBranch.map((e) => {
         const record =
           latestByEmployeeKey[String(e.id)] ||
           latestByEmployeeKey[String(e.employee_id)];
         const isOnLeave = (e.status || '').toLowerCase() === 'on leave';
+
         let attendanceToday = 'Absent';
         let isOnDuty = false;
-        if (isOnLeave) {
+
+        // Check if employee is on leave (from attendance record or employee status)
+        if (isOnLeave || (record && record.is_on_leave)) {
           attendanceToday = 'On Leave';
         } else if (record) {
-          // If timed in today, mark Present; if timed out exists, still Present but not on duty
+          // Mark Present/Late only if currently on duty today (time-in exists, no time-out, and same local date)
           const hasTimeIn = Boolean(record.time_in);
           const hasTimeOut = Boolean(record.time_out);
-          if (hasTimeIn) {
-            attendanceToday = 'Present';
-            isOnDuty = !hasTimeOut;
+          if (hasTimeIn && !hasTimeOut) {
+            const timeInLocalDate = new Date(record.time_in).toLocaleDateString(
+              'en-CA'
+            );
+            const todayLocalDate = new Date().toLocaleDateString('en-CA');
+            if (timeInLocalDate === todayLocalDate) {
+              const status = (record.status || '').toLowerCase();
+              attendanceToday = status === 'late' ? 'Late' : 'Present';
+              isOnDuty = true;
+            }
           }
         }
 
@@ -199,8 +337,9 @@
         totalEmployees: mapped.length,
         activeEmployees: mapped.filter((emp) => emp.status === 'Active').length,
         onDutyEmployees: mapped.filter((emp) => emp._on_duty).length,
-        onLeaveEmployees: mapped.filter((emp) => emp.status === 'On Leave')
-          .length,
+        onLeaveEmployees: mapped.filter(
+          (emp) => emp.attendance_today === 'On Leave'
+        ).length,
       };
     } catch (error) {
       console.error('Error loading branch employees:', error);
@@ -223,9 +362,270 @@
     console.log('Edit employee:', employee);
   };
 
+  // OT Approval methods
+  const updateOtStats = () => {
+    otStats.value = {
+      totalRequests: otRequests.value.length,
+      pendingRequests: pendingOtRequests.value.length,
+      approvedRequests: approvedOtRequests.value.length,
+      rejectedRequests: rejectedOtRequests.value.length,
+      totalOvertimeHours: approvedOtRequests.value.reduce(
+        (sum, req) => sum + req.total_hours,
+        0
+      ),
+    };
+  };
+
+  const loadOtRequests = async () => {
+    await overtimeStore.fetchRequests({
+      branch_id: currentBranch?.value?.id,
+      page: 1,
+      limit: 100,
+    });
+    otRequests.value = overtimeStore.requests;
+    updateOtStats();
+  };
+
+  const openApprovalModal = (requestId) => {
+    selectedRequest.value = otRequests.value.find(
+      (req) => req.id === requestId
+    );
+    showApprovalModal.value = true;
+  };
+
+  const openRejectionModal = (requestId) => {
+    selectedRequest.value = otRequests.value.find(
+      (req) => req.id === requestId
+    );
+    rejectionNotes.value = '';
+    showRejectionModal.value = true;
+  };
+
+  const approveOtRequest = async () => {
+    if (!selectedRequest.value) return;
+
+    try {
+      isProcessing.value = true;
+      await overtimeStore.approve(
+        selectedRequest.value.id,
+        selectedRequest.value.notes || ''
+      );
+      await loadOtRequests();
+
+      showSuccess(
+        `Overtime request for ${selectedRequest.value.employee_name} has been approved.`,
+        'Overtime Request Approved'
+      );
+
+      showApprovalModal.value = false;
+      selectedRequest.value = null;
+    } catch (error) {
+      console.error('Error approving OT request:', error);
+      showError(
+        'Failed to approve overtime request. Please try again.',
+        'Approval Failed'
+      );
+    } finally {
+      isProcessing.value = false;
+    }
+  };
+
+  const rejectOtRequest = async () => {
+    if (!selectedRequest.value) return;
+
+    try {
+      isProcessing.value = true;
+      await overtimeStore.reject(
+        selectedRequest.value.id,
+        rejectionNotes.value || ''
+      );
+      await loadOtRequests();
+
+      showSuccess(
+        `Overtime request for ${selectedRequest.value.employee_name} has been rejected.`,
+        'Overtime Request Rejected'
+      );
+
+      showRejectionModal.value = false;
+      selectedRequest.value = null;
+      rejectionNotes.value = '';
+    } catch (error) {
+      console.error('Error rejecting OT request:', error);
+      showError(
+        'Failed to reject overtime request. Please try again.',
+        'Rejection Failed'
+      );
+    } finally {
+      isProcessing.value = false;
+    }
+  };
+
+  const closeModals = () => {
+    showApprovalModal.value = false;
+    showRejectionModal.value = false;
+    selectedRequest.value = null;
+    rejectionNotes.value = '';
+    isProcessing.value = false;
+  };
+
+  const getStatusBadgeClass = (status) => {
+    const badges = {
+      pending: 'bg-warning/20 text-warning',
+      approved: 'bg-success/20 text-success',
+      rejected: 'bg-error/20 text-error',
+    };
+    return badges[status] || 'bg-gray-500/20 text-gray-500';
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const formatTime = (timeString) => {
+    if (!timeString) return 'N/A';
+    return new Date(`2000-01-01T${timeString}`).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  };
+
+  // Leave Approval methods
+  const updateLeaveStats = () => {
+    leaveStats.value = {
+      totalRequests: leaveRequests.value.length,
+      pendingRequests: pendingLeaveRequests.value.length,
+      managerApprovedRequests: managerApprovedLeaveRequests.value.length,
+      hrApprovedRequests: hrApprovedLeaveRequests.value.length,
+      rejectedRequests: rejectedLeaveRequests.value.length,
+    };
+  };
+
+  const loadLeaveRequests = async () => {
+    await leaveStore.fetchPendingManagerApprovals(currentBranch?.value?.id);
+    leaveRequests.value = leaveStore.pendingManagerApprovals;
+    updateLeaveStats();
+  };
+
+  const openLeaveApprovalModal = (requestId) => {
+    selectedLeaveRequest.value = leaveRequests.value.find(
+      (req) => req.id === requestId
+    );
+    leaveApprovalNotes.value = '';
+    showLeaveApprovalModal.value = true;
+  };
+
+  const openLeaveRejectionModal = (requestId) => {
+    selectedLeaveRequest.value = leaveRequests.value.find(
+      (req) => req.id === requestId
+    );
+    leaveRejectionNotes.value = '';
+    showLeaveRejectionModal.value = true;
+  };
+
+  const approveLeaveRequest = async () => {
+    if (!selectedLeaveRequest.value) return;
+
+    try {
+      isProcessingLeave.value = true;
+      await leaveStore.approveByManager(
+        selectedLeaveRequest.value.id,
+        leaveApprovalNotes.value || ''
+      );
+      await loadLeaveRequests();
+
+      showSuccess(
+        `Leave request for ${selectedLeaveRequest.value.first_name} ${selectedLeaveRequest.value.last_name} has been approved by manager.`,
+        'Leave Request Approved'
+      );
+
+      showLeaveApprovalModal.value = false;
+      selectedLeaveRequest.value = null;
+      leaveApprovalNotes.value = '';
+    } catch (error) {
+      console.error('Error approving leave request:', error);
+      showError(
+        'Failed to approve leave request. Please try again.',
+        'Approval Failed'
+      );
+    } finally {
+      isProcessingLeave.value = false;
+    }
+  };
+
+  const rejectLeaveRequest = async () => {
+    if (!selectedLeaveRequest.value) return;
+
+    try {
+      isProcessingLeave.value = true;
+      await leaveStore.rejectLeaveRequest(
+        selectedLeaveRequest.value.id,
+        leaveRejectionNotes.value || ''
+      );
+      await loadLeaveRequests();
+
+      showSuccess(
+        `Leave request for ${selectedLeaveRequest.value.first_name} ${selectedLeaveRequest.value.last_name} has been rejected.`,
+        'Leave Request Rejected'
+      );
+
+      showLeaveRejectionModal.value = false;
+      selectedLeaveRequest.value = null;
+      leaveRejectionNotes.value = '';
+    } catch (error) {
+      console.error('Error rejecting leave request:', error);
+      showError(
+        'Failed to reject leave request. Please try again.',
+        'Rejection Failed'
+      );
+    } finally {
+      isProcessingLeave.value = false;
+    }
+  };
+
+  const closeLeaveModals = () => {
+    showLeaveApprovalModal.value = false;
+    showLeaveRejectionModal.value = false;
+    selectedLeaveRequest.value = null;
+    leaveApprovalNotes.value = '';
+    leaveRejectionNotes.value = '';
+    isProcessingLeave.value = false;
+  };
+
+  const getLeaveStatusBadgeClass = (status) => {
+    const badges = {
+      pending: 'bg-warning/20 text-warning',
+      approved_by_manager: 'bg-info/20 text-info',
+      approved_by_hr: 'bg-success/20 text-success',
+      rejected: 'bg-error/20 text-error',
+    };
+    return badges[status] || 'bg-gray-500/20 text-gray-500';
+  };
+
+  const getLeaveStatusDisplayText = (status) => {
+    switch ((status || '').toLowerCase()) {
+      case 'approved_by_hr':
+        return 'Approved';
+      case 'approved_by_manager':
+        return 'Manager Approved';
+      case 'rejected':
+        return 'Rejected';
+      case 'pending':
+      default:
+        return 'Pending';
+    }
+  };
+
   // Initialize
   onMounted(() => {
     loadBranchEmployees();
+    loadOtRequests();
+    loadLeaveRequests();
   });
 </script>
 
@@ -293,6 +693,15 @@
           <BadgeCheck class="w-4 h-4 mr-1 sm:mr-2" />
           <span class="hidden xs:inline">Overtime Approvals</span>
           <span class="xs:hidden">Overtime</span>
+        </button>
+        <button
+          @click="activeTab = 'leave'"
+          class="tab flex-1 sm:flex-none"
+          :class="{ 'tab-active': activeTab === 'leave' }"
+        >
+          <FileText class="w-4 h-4 mr-1 sm:mr-2" />
+          <span class="hidden xs:inline">Leave Approvals</span>
+          <span class="xs:hidden">Leave</span>
         </button>
       </div>
 
@@ -480,7 +889,9 @@
                                 ? 'bg-success'
                                 : employee.attendance_today === 'On Leave'
                                   ? 'bg-warning'
-                                  : 'bg-error',
+                                  : employee.attendance_today === 'Late'
+                                    ? 'bg-warning'
+                                    : 'bg-error',
                             ]"
                           ></div>
                           <span class="text-sm">{{
@@ -549,20 +960,787 @@
       </template>
 
       <!-- Overtime Approvals Tab -->
-      <template v-else>
+      <template v-else-if="activeTab === 'overtime'">
+        <!-- OT Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div class="card bg-white shadow-lg">
+            <div class="card-body">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">Total Requests</p>
+                  <p class="text-2xl font-bold text-primaryColor">
+                    {{ otStats.totalRequests }}
+                  </p>
+                </div>
+                <div class="p-3 bg-primaryColor/10 rounded-full">
+                  <BadgeCheck class="w-6 h-6 text-primaryColor" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card bg-white shadow-lg">
+            <div class="card-body">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">Pending</p>
+                  <p class="text-2xl font-bold text-warning">
+                    {{ otStats.pendingRequests }}
+                  </p>
+                </div>
+                <div class="p-3 bg-warning/10 rounded-full">
+                  <Clock class="w-6 h-6 text-warning" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card bg-white shadow-lg">
+            <div class="card-body">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">Approved</p>
+                  <p class="text-2xl font-bold text-success">
+                    {{ otStats.approvedRequests }}
+                  </p>
+                </div>
+                <div class="p-3 bg-success/10 rounded-full">
+                  <UserCheck class="w-6 h-6 text-success" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card bg-white shadow-lg">
+            <div class="card-body">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">Total OT Hours</p>
+                  <p class="text-2xl font-bold text-gray-600">
+                    {{ otStats.totalOvertimeHours }}h
+                  </p>
+                </div>
+                <div class="p-3 bg-gray-600/10 rounded-full">
+                  <Calendar class="w-6 h-6 text-gray-600" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Search and Filters -->
         <div class="card bg-white shadow-lg">
           <div class="card-body">
-            <h2 class="card-title text-primaryColor mb-2">
+            <div class="flex flex-col md:flex-row gap-4">
+              <!-- Search -->
+              <div class="flex-1">
+                <div class="relative">
+                  <Search
+                    class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"
+                  />
+                  <input
+                    v-model="searchQuery"
+                    type="text"
+                    placeholder="Search OT requests..."
+                    class="input input-bordered w-full pl-10"
+                  />
+                </div>
+              </div>
+
+              <!-- Status Filter -->
+              <select v-model="statusFilter" class="select select-bordered">
+                <option value="">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- OT Requests Table -->
+        <div class="card bg-white shadow-lg">
+          <div class="card-body">
+            <h2 class="card-title text-primaryColor mb-4">
               <BadgeCheck class="w-5 h-5" />
-              Overtime Approvals
+              Overtime Requests
             </h2>
-            <p class="text-gray-600">
-              Review, approve, or reject overtime requests submitted by branch
-              staff.
-            </p>
+
+            <!-- Loading State -->
+            <div v-if="loading" class="flex justify-center items-center py-12">
+              <div
+                class="loading loading-spinner loading-lg text-primaryColor"
+              ></div>
+            </div>
+
+            <!-- OT Requests Table -->
+            <div
+              v-else-if="filteredOtRequests.length > 0"
+              class="overflow-x-auto"
+            >
+              <table class="table table-zebra w-full">
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Hours</th>
+                    <th>Reason</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="request in filteredOtRequests" :key="request.id">
+                    <td>
+                      <div>
+                        <div class="font-semibold">
+                          {{ request.employee_name }}
+                        </div>
+                        <div class="text-sm text-gray-500">
+                          {{ request.employee_role }}
+                        </div>
+                      </div>
+                    </td>
+                    <td>{{ formatDate(request.date) }}</td>
+                    <td>
+                      <div class="text-sm">
+                        <div>
+                          {{ formatTime(request.start_time) }} -
+                          {{ formatTime(request.end_time) }}
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span class="font-mono text-sm"
+                        >{{ request.total_hours }}h</span
+                      >
+                    </td>
+                    <td>
+                      <div class="max-w-xs truncate" :title="request.reason">
+                        {{ request.reason }}
+                      </div>
+                    </td>
+                    <td>
+                      <div
+                        :class="[
+                          'badge badge-sm border-none font-medium',
+                          getStatusBadgeClass(request.status),
+                        ]"
+                      >
+                        {{
+                          request.status.charAt(0).toUpperCase() +
+                          request.status.slice(1)
+                        }}
+                      </div>
+                    </td>
+                    <td>
+                      <div class="flex space-x-2">
+                        <button
+                          v-if="request.status === 'pending'"
+                          title="Approve"
+                          @click="openApprovalModal(request.id)"
+                          class="btn btn-xs bg-success/10 rounded-full font-thin shadow-none border border-none hover:bg-success/30 text-success"
+                        >
+                          <Check class="w-4 h-4" />
+                        </button>
+                        <button
+                          v-if="request.status === 'pending'"
+                          title="Reject"
+                          @click="openRejectionModal(request.id)"
+                          class="btn btn-xs bg-error/10 rounded-full font-thin shadow-none border border-none hover:bg-error/30 text-error"
+                        >
+                          <X class="w-4 h-4" />
+                        </button>
+                        <button
+                          v-if="request.status !== 'pending'"
+                          class="btn btn-sm btn-ghost"
+                          :title="request.notes || ''"
+                          disabled
+                        >
+                          {{ request.approved_by || '—' }}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Empty State -->
+            <div v-else class="text-center py-12">
+              <BadgeCheck class="w-16 h-16 mx-auto text-gray-400 mb-4" />
+              <h3 class="text-lg font-medium text-gray-900 mb-2">
+                No overtime requests found
+              </h3>
+              <p class="text-gray-600">Try adjusting your search criteria</p>
+            </div>
           </div>
         </div>
       </template>
+
+      <!-- Leave Approvals Tab -->
+      <template v-else-if="activeTab === 'leave'">
+        <!-- Leave Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div class="card bg-white shadow-lg">
+            <div class="card-body">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">Total Requests</p>
+                  <p class="text-2xl font-bold text-primaryColor">
+                    {{ leaveStats.totalRequests }}
+                  </p>
+                </div>
+                <div class="p-3 bg-primaryColor/10 rounded-full">
+                  <FileText class="w-6 h-6 text-primaryColor" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card bg-white shadow-lg">
+            <div class="card-body">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">Pending</p>
+                  <p class="text-2xl font-bold text-warning">
+                    {{ leaveStats.pendingRequests }}
+                  </p>
+                </div>
+                <div class="p-3 bg-warning/10 rounded-full">
+                  <Clock class="w-6 h-6 text-warning" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card bg-white shadow-lg">
+            <div class="card-body">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">Manager Approved</p>
+                  <p class="text-2xl font-bold text-info">
+                    {{ leaveStats.managerApprovedRequests }}
+                  </p>
+                </div>
+                <div class="p-3 bg-info/10 rounded-full">
+                  <UserCheck2 class="w-6 h-6 text-info" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card bg-white shadow-lg">
+            <div class="card-body">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-gray-600">HR Approved</p>
+                  <p class="text-2xl font-bold text-success">
+                    {{ leaveStats.hrApprovedRequests }}
+                  </p>
+                </div>
+                <div class="p-3 bg-success/10 rounded-full">
+                  <UserCheck class="w-6 h-6 text-success" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Search and Filters -->
+        <div class="card bg-white shadow-lg">
+          <div class="card-body">
+            <div class="flex flex-col md:flex-row gap-4">
+              <!-- Search -->
+              <div class="flex-1">
+                <div class="relative">
+                  <Search
+                    class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"
+                  />
+                  <input
+                    v-model="searchQuery"
+                    type="text"
+                    placeholder="Search leave requests..."
+                    class="input input-bordered w-full pl-10"
+                  />
+                </div>
+              </div>
+
+              <!-- Status Filter -->
+              <select v-model="statusFilter" class="select select-bordered">
+                <option value="">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="approved_by_manager">Manager Approved</option>
+                <option value="approved_by_hr">HR Approved</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Leave Requests Table -->
+        <div class="card bg-white shadow-lg">
+          <div class="card-body">
+            <h2 class="card-title text-primaryColor mb-4">
+              <FileText class="w-5 h-5" />
+              Leave Requests
+            </h2>
+
+            <!-- Loading State -->
+            <div v-if="loading" class="flex justify-center items-center py-12">
+              <div
+                class="loading loading-spinner loading-lg text-primaryColor"
+              ></div>
+            </div>
+
+            <!-- Leave Requests Table -->
+            <div
+              v-else-if="filteredLeaveRequests.length > 0"
+              class="overflow-x-auto"
+            >
+              <table class="table table-zebra w-full">
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>Leave Type</th>
+                    <th>From Date</th>
+                    <th>To Date</th>
+                    <th>Reason</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="request in filteredLeaveRequests"
+                    :key="request.id"
+                  >
+                    <td>
+                      <div>
+                        <div class="font-semibold">
+                          {{ request.first_name }} {{ request.last_name }}
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span
+                        class="badge badge-sm bg-primaryColor/10 text-primaryColor"
+                      >
+                        {{ request.leave_type }}
+                      </span>
+                    </td>
+                    <td>{{ formatDate(request.from_date) }}</td>
+                    <td>{{ formatDate(request.to_date) }}</td>
+                    <td>
+                      <div class="max-w-xs truncate" :title="request.reason">
+                        {{ request.reason }}
+                      </div>
+                    </td>
+                    <td>
+                      <div
+                        :class="[
+                          'badge badge-sm border-none font-medium',
+                          getLeaveStatusBadgeClass(request.status),
+                        ]"
+                      >
+                        {{ getLeaveStatusDisplayText(request.status) }}
+                      </div>
+                    </td>
+                    <td>
+                      <div class="flex space-x-2">
+                        <button
+                          v-if="request.status === 'pending'"
+                          title="Approve"
+                          @click="openLeaveApprovalModal(request.id)"
+                          class="btn btn-xs bg-success/10 rounded-full font-thin shadow-none border border-none hover:bg-success/30 text-success"
+                        >
+                          <Check class="w-4 h-4" />
+                        </button>
+                        <button
+                          v-if="request.status === 'pending'"
+                          title="Reject"
+                          @click="openLeaveRejectionModal(request.id)"
+                          class="btn btn-xs bg-error/10 rounded-full font-thin shadow-none border border-none hover:bg-error/30 text-error"
+                        >
+                          <X class="w-4 h-4" />
+                        </button>
+                        <button
+                          v-if="request.status !== 'pending'"
+                          class="btn btn-sm btn-ghost"
+                          :title="
+                            request.manager_notes || request.hr_notes || ''
+                          "
+                          disabled
+                        >
+                          {{ request.manager_first_name || '—' }}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Empty State -->
+            <div v-else class="text-center py-12">
+              <FileText class="w-16 h-16 mx-auto text-gray-400 mb-4" />
+              <h3 class="text-lg font-medium text-gray-900 mb-2">
+                No leave requests found
+              </h3>
+              <p class="text-gray-600">Try adjusting your search criteria</p>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Approval Confirmation Modal -->
+    <div v-if="showApprovalModal" class="modal modal-open">
+      <div class="modal-box max-w-md">
+        <h3 class="font-bold text-lg mb-4 text-primaryColor">
+          <UserCheck class="w-5 h-5 inline mr-2" />
+          Approve Overtime Request
+        </h3>
+
+        <div v-if="selectedRequest" class="space-y-4">
+          <div class="bg-gray-50 p-4 rounded-lg">
+            <div class="flex justify-between items-start mb-2">
+              <div>
+                <h4 class="font-semibold">
+                  {{ selectedRequest.employee_name }}
+                </h4>
+                <p class="text-sm text-gray-600">
+                  {{ selectedRequest.employee_role }}
+                </p>
+              </div>
+              <div class="text-right">
+                <p class="text-sm font-medium">
+                  {{ formatDate(selectedRequest.date) }}
+                </p>
+                <p class="text-sm text-gray-600">
+                  {{ formatTime(selectedRequest.start_time) }} -
+                  {{ formatTime(selectedRequest.end_time) }}
+                </p>
+              </div>
+            </div>
+            <div class="mt-2">
+              <span class="badge badge-sm bg-primaryColor/10 text-primaryColor"
+                >{{ selectedRequest.total_hours }} hours</span
+              >
+            </div>
+            <div class="mt-3">
+              <p class="text-sm text-gray-700">
+                <strong>Reason:</strong> {{ selectedRequest.reason }}
+              </p>
+            </div>
+          </div>
+
+          <div class="alert bg-primaryColor/10 text-primaryColor">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fill-rule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                clip-rule="evenodd"
+              ></path>
+            </svg>
+            <span class="text-sm"
+              >Are you sure you want to approve this overtime request?</span
+            >
+          </div>
+        </div>
+
+        <div class="modal-action">
+          <button
+            @click="closeModals"
+            class="btn btn-ghost btn-sm font-thin shadow-none border border-none hover:bg-primaryColor/10"
+            :disabled="isProcessing"
+          >
+            Cancel
+          </button>
+          <button
+            @click="approveOtRequest"
+            class="btn bg-primaryColor font-thin text-white btn-sm shadow-none border border-none hover:bg-primaryColor/80"
+            :disabled="isProcessing"
+          >
+            <span
+              v-if="isProcessing"
+              class="loading loading-spinner loading-sm mr-2"
+            ></span>
+            <UserCheck v-else class="w-4 h-4 mr-2" />
+            {{ isProcessing ? 'Approving...' : 'Approve Request' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rejection Confirmation Modal -->
+    <div v-if="showRejectionModal" class="modal modal-open">
+      <div class="modal-box max-w-md">
+        <h3 class="font-bold text-lg mb-4 text-error">
+          <UserX class="w-5 h-5 inline mr-2" />
+          Reject Overtime Request
+        </h3>
+
+        <div v-if="selectedRequest" class="space-y-4">
+          <div class="bg-gray-50 p-4 rounded-lg">
+            <div class="flex justify-between items-start mb-2">
+              <div>
+                <h4 class="font-semibold">
+                  {{ selectedRequest.employee_name }}
+                </h4>
+                <p class="text-sm text-gray-600">
+                  {{ selectedRequest.employee_role }}
+                </p>
+              </div>
+              <div class="text-right">
+                <p class="text-sm font-medium">
+                  {{ formatDate(selectedRequest.date) }}
+                </p>
+                <p class="text-sm text-gray-600">
+                  {{ formatTime(selectedRequest.start_time) }} -
+                  {{ formatTime(selectedRequest.end_time) }}
+                </p>
+              </div>
+            </div>
+            <div class="mt-2">
+              <span class="badge badge-sm bg-primaryColor/10 text-primaryColor"
+                >{{ selectedRequest.total_hours }} hours</span
+              >
+            </div>
+            <div class="mt-3">
+              <p class="text-sm text-gray-700">
+                <strong>Reason:</strong> {{ selectedRequest.reason }}
+              </p>
+            </div>
+          </div>
+
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">Rejection Notes (Optional)</span>
+            </label>
+            <textarea
+              v-model="rejectionNotes"
+              class="textarea textarea-bordered w-full"
+              rows="3"
+              placeholder="Provide feedback on why this request is being rejected..."
+            ></textarea>
+          </div>
+
+          <div class="alert bg-warning/10 text-warning">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fill-rule="evenodd"
+                d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                clip-rule="evenodd"
+              ></path>
+            </svg>
+            <span class="text-sm"
+              >Are you sure you want to reject this overtime request?</span
+            >
+          </div>
+        </div>
+
+        <div class="modal-action">
+          <button
+            @click="closeModals"
+            class="btn btn-ghost btn-sm font-thin shadow-none border border-none hover:bg-gray-100"
+            :disabled="isProcessing"
+          >
+            Cancel
+          </button>
+          <button
+            @click="rejectOtRequest"
+            class="btn btn-error text-white btn-sm shadow-none border border-none hover:bg-error/80 font-thin"
+            :disabled="isProcessing"
+          >
+            <span
+              v-if="isProcessing"
+              class="loading loading-spinner loading-sm mr-2"
+            ></span>
+            <UserX v-else class="w-4 h-4 mr-2" />
+            {{ isProcessing ? 'Rejecting...' : 'Reject Request' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Leave Approval Confirmation Modal -->
+    <div v-if="showLeaveApprovalModal" class="modal modal-open">
+      <div class="modal-box max-w-md">
+        <h3 class="font-bold text-lg mb-4 text-primaryColor">
+          <UserCheck class="w-5 h-5 inline mr-2" />
+          Approve Leave Request
+        </h3>
+
+        <div v-if="selectedLeaveRequest" class="space-y-4">
+          <div class="bg-gray-50 p-4 rounded-lg">
+            <div class="flex justify-between items-start mb-2">
+              <div>
+                <h4 class="font-semibold">
+                  {{ selectedLeaveRequest.first_name }}
+                  {{ selectedLeaveRequest.last_name }}
+                </h4>
+                <p class="text-sm text-gray-600">
+                  {{ selectedLeaveRequest.employee_code }}
+                </p>
+              </div>
+              <div class="text-right">
+                <p class="text-sm font-medium">
+                  {{ formatDate(selectedLeaveRequest.from_date) }} -
+                  {{ formatDate(selectedLeaveRequest.to_date) }}
+                </p>
+              </div>
+            </div>
+            <div class="mt-2">
+              <span class="badge badge-sm bg-primaryColor/10 text-primaryColor">
+                {{ selectedLeaveRequest.leave_type }}
+              </span>
+            </div>
+            <div class="mt-3">
+              <p class="text-sm text-gray-700">
+                <strong>Reason:</strong> {{ selectedLeaveRequest.reason }}
+              </p>
+            </div>
+          </div>
+
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">Approval Notes (Optional)</span>
+            </label>
+            <textarea
+              v-model="leaveApprovalNotes"
+              class="textarea textarea-bordered w-full"
+              rows="3"
+              placeholder="Add any notes about this approval..."
+            ></textarea>
+          </div>
+
+          <div class="alert bg-primaryColor/10 text-primaryColor">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fill-rule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                clip-rule="evenodd"
+              ></path>
+            </svg>
+            <span class="text-sm">
+              Are you sure you want to approve this leave request?
+            </span>
+          </div>
+        </div>
+
+        <div class="modal-action">
+          <button
+            @click="closeLeaveModals"
+            class="btn btn-ghost btn-sm font-thin shadow-none border border-none hover:bg-primaryColor/10"
+            :disabled="isProcessingLeave"
+          >
+            Cancel
+          </button>
+          <button
+            @click="approveLeaveRequest"
+            class="btn bg-primaryColor font-thin text-white btn-sm shadow-none border border-none hover:bg-primaryColor/80"
+            :disabled="isProcessingLeave"
+          >
+            <span
+              v-if="isProcessingLeave"
+              class="loading loading-spinner loading-sm mr-2"
+            ></span>
+            <UserCheck v-else class="w-4 h-4 mr-2" />
+            {{ isProcessingLeave ? 'Approving...' : 'Approve Request' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Leave Rejection Confirmation Modal -->
+    <div v-if="showLeaveRejectionModal" class="modal modal-open">
+      <div class="modal-box max-w-md">
+        <h3 class="font-bold text-lg mb-4 text-error">
+          <UserX class="w-5 h-5 inline mr-2" />
+          Reject Leave Request
+        </h3>
+
+        <div v-if="selectedLeaveRequest" class="space-y-4">
+          <div class="bg-gray-50 p-4 rounded-lg">
+            <div class="flex justify-between items-start mb-2">
+              <div>
+                <h4 class="font-semibold">
+                  {{ selectedLeaveRequest.first_name }}
+                  {{ selectedLeaveRequest.last_name }}
+                </h4>
+                <p class="text-sm text-gray-600">
+                  {{ selectedLeaveRequest.employee_code }}
+                </p>
+              </div>
+              <div class="text-right">
+                <p class="text-sm font-medium">
+                  {{ formatDate(selectedLeaveRequest.from_date) }} -
+                  {{ formatDate(selectedLeaveRequest.to_date) }}
+                </p>
+              </div>
+            </div>
+            <div class="mt-2">
+              <span class="badge badge-sm bg-primaryColor/10 text-primaryColor">
+                {{ selectedLeaveRequest.leave_type }}
+              </span>
+            </div>
+            <div class="mt-3">
+              <p class="text-sm text-gray-700">
+                <strong>Reason:</strong> {{ selectedLeaveRequest.reason }}
+              </p>
+            </div>
+          </div>
+
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">Rejection Reason (Required)</span>
+            </label>
+            <textarea
+              v-model="leaveRejectionNotes"
+              class="textarea textarea-bordered w-full"
+              rows="3"
+              placeholder="Provide feedback on why this request is being rejected..."
+            ></textarea>
+          </div>
+
+          <div class="alert bg-warning/10 text-warning">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fill-rule="evenodd"
+                d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                clip-rule="evenodd"
+              ></path>
+            </svg>
+            <span class="text-sm">
+              Are you sure you want to reject this leave request?
+            </span>
+          </div>
+        </div>
+
+        <div class="modal-action">
+          <button
+            @click="closeLeaveModals"
+            class="btn btn-ghost btn-sm font-thin shadow-none border border-none hover:bg-gray-100"
+            :disabled="isProcessingLeave"
+          >
+            Cancel
+          </button>
+          <button
+            @click="rejectLeaveRequest"
+            class="btn btn-error text-white btn-sm shadow-none border border-none hover:bg-error/80 font-thin"
+            :disabled="isProcessingLeave || !leaveRejectionNotes.trim()"
+          >
+            <span
+              v-if="isProcessingLeave"
+              class="loading loading-spinner loading-sm mr-2"
+            ></span>
+            <UserX v-else class="w-4 h-4 mr-2" />
+            {{ isProcessingLeave ? 'Rejecting...' : 'Reject Request' }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>

@@ -1,76 +1,265 @@
 <script setup>
+  import { ref, computed, onMounted } from 'vue';
+  import {
+    LayoutDashboard,
+    CreditCard,
+    Package,
+    Users,
+    BarChart3,
+    TrendingUp,
+    TrendingDown,
+    Clock,
+    CheckCircle,
+    AlertTriangle,
+    Eye,
+    ArrowRight,
+  } from 'lucide-vue-next';
+  import { useBranchContextStore } from '../stores/branchContextStore';
   import { useAuthStore } from '../stores/authStore';
-  import { LayoutDashboard, Users, TrendingUp, Package } from 'lucide-vue-next';
+  import { useEmployeeScheduleStore } from '../stores/employeeScheduleStore';
+  import EmployeeScheduleCalendar from '../components/branch/EmployeeScheduleCalendar.vue';
+  import { useRouter } from 'vue-router';
 
+  const branchContextStore = useBranchContextStore();
   const authStore = useAuthStore();
-  const { user, isSuperAdmin } = authStore;
+  const scheduleStore = useEmployeeScheduleStore();
+  const router = useRouter();
 
-  const stats = [
-    { title: 'Total Employees', value: '124', icon: Users, change: '+12%' },
-    { title: 'Revenue', value: '$52,341', icon: TrendingUp, change: '+23%' },
-    { title: 'Inventory Items', value: '1,234', icon: Package, change: '-3%' },
-    {
-      title: 'Active Projects',
-      value: '18',
-      icon: LayoutDashboard,
-      change: '+5%',
-    },
-  ];
+  // Local state
+  const loading = ref(false);
+  const dashboardStats = ref({
+    todaySales: 0,
+    todayTransactions: 0,
+    lowStockItems: 0,
+    activeEmployees: 0,
+    weeklyGrowth: 0,
+    monthlyGrowth: 0,
+  });
+
+  const recentActivity = ref([]);
+  const quickActions = ref([]);
+  const showScheduleModal = ref(false);
+
+  const me = computed(() => {
+    const u =
+      authStore.user || JSON.parse(localStorage.getItem('user') || 'null');
+    return u || {};
+  });
+
+  // Computed
+  const currentBranch = computed(() => branchContextStore.currentBranch);
+  const userRole = computed(() => branchContextStore.userRole);
+  const availableOperations = computed(
+    () => branchContextStore.availableOperations
+  );
+
+  // Quick actions based on role
+  const getQuickActions = () => {
+    const actions = [];
+
+    if (branchContextStore.canAccessPOS) {
+      actions.push({
+        title: 'Open POS',
+        description: 'Start processing transactions',
+        icon: CreditCard,
+        route: '/branch/pos',
+        color: 'bg-blue-500',
+      });
+    }
+
+    if (branchContextStore.canAccessInventory) {
+      actions.push({
+        title: 'Check Inventory',
+        description: 'View stock levels',
+        icon: Package,
+        route: '/branch/inventory',
+        color: 'bg-green-500',
+      });
+    }
+
+    if (branchContextStore.canAccessSales) {
+      actions.push({
+        title: 'Sales Report',
+        description: 'View sales analytics',
+        icon: BarChart3,
+        route: '/branch/sales',
+        color: 'bg-purple-500',
+      });
+    }
+
+    if (branchContextStore.canAccessEmployees) {
+      actions.push({
+        title: 'Manage Staff',
+        description: 'Employee management',
+        icon: Users,
+        route: '/branch/employees',
+        color: 'bg-orange-500',
+      });
+    }
+
+    actions.push({
+      title: 'My Profile',
+      description: 'Update personal info',
+      icon: Users,
+      route: '/branch/profile',
+      color: 'bg-gray-500',
+    });
+
+    return actions;
+  };
+
+  // Methods
+  const navigateTo = (route) => {
+    router.push(route);
+  };
+
+  const openMySchedule = async () => {
+    // Prefetch current month schedules for this branch or department
+    const branchId = currentBranch.value?.id;
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const toYMD = (d) => new Date(d).toISOString().split('T')[0];
+    try {
+      // For department employees (no branch), use department_employees=true
+      // For branch employees, use branchId
+      if (branchId) {
+        await scheduleStore.fetchSchedules(branchId, toYMD(start), toYMD(end));
+      } else {
+        // Department employee - fetch schedules without branch requirement
+        await scheduleStore.fetchSchedules(
+          null,
+          toYMD(start),
+          toYMD(end),
+          true
+        );
+      }
+    } catch (e) {
+      // non-blocking
+      console.warn('Failed to prefetch schedules', e);
+    }
+  };
+
+  // Prefetch schedules for inline calendar on load
+  const prefetchMySchedule = async () => {
+    const branchId = currentBranch.value?.id;
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const toYMD = (d) => new Date(d).toISOString().split('T')[0];
+    try {
+      // For department employees (no branch), use department_employees=true
+      // For branch employees, use branchId
+      if (branchId) {
+        await scheduleStore.fetchSchedules(branchId, toYMD(start), toYMD(end));
+      } else {
+        // Department employee - fetch schedules without branch requirement
+        await scheduleStore.fetchSchedules(
+          null,
+          toYMD(start),
+          toYMD(end),
+          true
+        );
+      }
+    } catch (e) {
+      console.warn('Failed to prefetch schedules', e);
+    }
+  };
+
+  const loadDashboardData = async () => {
+    loading.value = true;
+
+    try {
+      // TODO: Fetch real dashboard data from API
+      await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API call
+
+      dashboardStats.value = {
+        todaySales: 15420.5,
+        todayTransactions: 87,
+        lowStockItems: 3,
+        activeEmployees: 12,
+        weeklyGrowth: 8.5,
+        monthlyGrowth: 15.2,
+      };
+
+      recentActivity.value = [
+        {
+          id: 1,
+          type: 'sale',
+          message: 'New order completed - ₱850.00',
+          time: '2 minutes ago',
+          icon: CreditCard,
+          color: 'text-green-600',
+        },
+        {
+          id: 2,
+          type: 'inventory',
+          message: 'Low stock alert: Beef Steak',
+          time: '15 minutes ago',
+          icon: AlertTriangle,
+          color: 'text-orange-600',
+        },
+        {
+          id: 3,
+          type: 'employee',
+          message: 'John Doe checked in',
+          time: '1 hour ago',
+          icon: Users,
+          color: 'text-blue-600',
+        },
+      ];
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Initialize
+  onMounted(() => {
+    quickActions.value = getQuickActions();
+    loadDashboardData();
+    prefetchMySchedule();
+  });
 </script>
 
 <template>
-  <div class="container mx-auto p-6">
-    <!-- Add role testing section -->
-    <div class="alert alert-info mb-6">
+  <div class="space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
       <div>
-        <h3 class="font-bold">Current User:</h3>
-        <p>Role: {{ user?.role || 'Not set' }}</p>
-        <p>Department: {{ user?.department || 'None' }}</p>
-        <p>Is Super Admin: {{ isSuperAdmin ? 'Yes' : 'No' }}</p>
+        <h1 class="text-3xl font-bold text-primaryColor">Employee Dashboard</h1>
+        <p class="text-gray-600 mt-1">
+          {{ currentBranch?.name || 'Main Branch' }} - {{ userRole || 'Admin' }}
+        </p>
       </div>
     </div>
 
-    <!-- Test role switching buttons -->
-    <div class="card bg-base-100 shadow-xl mb-6">
-      <div class="card-body">
-        <h2 class="card-title">Test User Roles</h2>
-        <div class="flex gap-2 flex-wrap">
-          <button
-            @click="authStore.setMockUser('Super Admin')"
-            class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none btn-sm"
-          >
-            Set Super Admin
-          </button>
-                     <button
-             @click="authStore.setMockUser('HR Manager')"
-             class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none btn-sm"
-           >
-             Set HR Manager
-           </button>
-           <button
-             @click="authStore.setMockUser('SCM Staff')"
-             class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none btn-sm"
-           >
-             Set SCM Staff
-           </button>
-        </div>
+    <!-- Loading State -->
+    <div v-if="loading" class="flex justify-center items-center py-12">
+      <div class="text-center">
+        <div class="loading loading-spinner loading-lg text-primaryColor"></div>
+        <p class="mt-2 text-gray-600">Loading dashboard...</p>
       </div>
     </div>
 
-    <!-- Rest of your existing HomePage content -->
-    <div class="text-center mb-8">
-      <h1 class="text-4xl font-bold mb-2 text-secondaryColor">
-        Welcome to Dashboard
-      </h1>
-      <p class="text-base-content/70">
-        {{
-          isSuperAdmin
-            ? 'You have admin access to all departments.'
-            : `Welcome to the ${user?.department || 'company'} dashboard.`
-        }}
-      </p>
+    <div v-else class="space-y-6">
+      <!-- My Schedule Calendar (inline) -->
+      <EmployeeScheduleCalendar
+        :inline="true"
+        :employee="{
+          id: me?.id,
+          first_name: me?.first_name || me?.firstName || '',
+          last_name: me?.last_name || me?.lastName || '',
+        }"
+        :branch-id="currentBranch?.id || null"
+        :schedules="scheduleStore.schedules"
+        :show-shift-label="false"
+      />
     </div>
-
-    <!-- Your existing dashboard content here -->
   </div>
+
+  <!-- Calendar modal removed; shown inline above -->
 </template>
+
+<style scoped></style>

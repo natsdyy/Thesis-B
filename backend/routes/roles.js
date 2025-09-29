@@ -113,6 +113,445 @@ router.get("/", async (req, res) => {
   }
 });
 
+// ===== POSITIONS MANAGEMENT ROUTES =====
+
+/**
+ * @swagger
+ * /api/roles/positions:
+ *   get:
+ *     tags: [Positions]
+ *     summary: Get all positions grouped by department
+ *     description: Retrieve all positions (roles) grouped by department for positions management. Excludes system roles.
+ *     parameters:
+ *       - name: includeDeleted
+ *         in: query
+ *         description: Include soft deleted positions
+ *         required: false
+ *         schema:
+ *           type: boolean
+ *           example: false
+ *     responses:
+ *       200:
+ *         description: Positions retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   additionalProperties:
+ *                     type: array
+ *                     items:
+ *                       type: object
+ *                       properties:
+ *                         role_id:
+ *                           type: integer
+ *                           example: 1
+ *                         role:
+ *                           type: string
+ *                           example: "Manager"
+ *                         department:
+ *                           type: string
+ *                           example: "Human Resource"
+ *                         description:
+ *                           type: string
+ *                           example: "HR Department Manager"
+ *                         rate_per_hour:
+ *                           type: number
+ *                           example: 38.0
+ *                         is_active:
+ *                           type: boolean
+ *                           example: true
+ *                         created_at:
+ *                           type: string
+ *                           format: date-time
+ *                         updated_at:
+ *                           type: string
+ *                           format: date-time
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Error fetching positions"
+ *                 error:
+ *                   type: string
+ */
+// Get all positions grouped by department
+router.get("/positions", async (req, res) => {
+  try {
+    const includeDeleted = req.query.includeDeleted === "true";
+    const positions = await Roles.getAllPositions(includeDeleted);
+
+    res.json({
+      success: true,
+      data: positions,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching positions",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/roles/positions/{role_id}:
+ *   get:
+ *     tags: [Positions]
+ *     summary: Get position by ID
+ *     description: Retrieve a specific position by its ID for positions management
+ *     parameters:
+ *       - name: role_id
+ *         in: path
+ *         description: The ID of the position
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *     responses:
+ *       200:
+ *         description: Position retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     role_id:
+ *                       type: integer
+ *                       example: 1
+ *                     role:
+ *                       type: string
+ *                       example: "Manager"
+ *                     department:
+ *                       type: string
+ *                       example: "Human Resource"
+ *                     description:
+ *                       type: string
+ *                       example: "HR Department Manager"
+ *                     rate_per_hour:
+ *                       type: number
+ *                       example: 38.0
+ *                     is_active:
+ *                       type: boolean
+ *                       example: true
+ *                     created_at:
+ *                       type: string
+ *                       format: date-time
+ *                     updated_at:
+ *                       type: string
+ *                       format: date-time
+ *       404:
+ *         description: Position not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Position not found"
+ *       500:
+ *         description: Server error
+ */
+// Get position by ID
+router.get("/positions/:role_id", async (req, res) => {
+  try {
+    const { role_id } = req.params;
+    const position = await Roles.getPositionById(role_id);
+
+    if (!position) {
+      return res.status(404).json({
+        success: false,
+        message: "Position not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: position,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching position",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/roles/positions/{role_id}/rate:
+ *   put:
+ *     tags: [Positions]
+ *     summary: Update rate per hour for a position
+ *     description: Update the rate per hour for a specific position
+ *     parameters:
+ *       - name: role_id
+ *         in: path
+ *         description: The ID of the position to update
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - rate_per_hour
+ *             properties:
+ *               rate_per_hour:
+ *                 type: number
+ *                 description: The new rate per hour
+ *                 example: 40.5
+ *                 minimum: 0
+ *     responses:
+ *       200:
+ *         description: Rate per hour updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     role_id:
+ *                       type: integer
+ *                       example: 1
+ *                     role:
+ *                       type: string
+ *                       example: "Manager"
+ *                     department:
+ *                       type: string
+ *                       example: "Human Resource"
+ *                     description:
+ *                       type: string
+ *                       example: "HR Department Manager"
+ *                     rate_per_hour:
+ *                       type: number
+ *                       example: 40.5
+ *                     is_active:
+ *                       type: boolean
+ *                       example: true
+ *                     created_at:
+ *                       type: string
+ *                       format: date-time
+ *                     updated_at:
+ *                       type: string
+ *                       format: date-time
+ *                 message:
+ *                   type: string
+ *                   example: "Rate per hour updated successfully"
+ *       400:
+ *         description: Invalid rate per hour value
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Rate per hour must be a positive number"
+ *       404:
+ *         description: Position not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: "Position not found"
+ *       500:
+ *         description: Server error
+ */
+// Update rate per hour for a position
+router.put("/positions/:role_id/rate", async (req, res) => {
+  try {
+    const { role_id } = req.params;
+    const { rate_per_hour } = req.body;
+
+    // Validate required field
+    if (typeof rate_per_hour === "undefined" || rate_per_hour === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Rate per hour is required",
+        code: "MISSING_RATE",
+      });
+    }
+
+    // Validate rate_per_hour
+    if (typeof rate_per_hour !== "number" || rate_per_hour < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Rate per hour must be a positive number",
+        code: "INVALID_RATE",
+      });
+    }
+
+    const updatedPosition = await Roles.updateRatePerHour(
+      role_id,
+      rate_per_hour
+    );
+
+    res.json({
+      success: true,
+      data: updatedPosition,
+      message: "Rate per hour updated successfully",
+    });
+  } catch (error) {
+    if (error.code === "POSITION_NOT_FOUND") {
+      return res.status(404).json({
+        success: false,
+        message: error.message,
+        code: "POSITION_NOT_FOUND",
+      });
+    }
+
+    if (error.code === "INVALID_RATE") {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+        code: "INVALID_RATE",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Error updating rate per hour",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/roles/positions/department/{department}:
+ *   get:
+ *     tags: [Positions]
+ *     summary: Get positions by department
+ *     description: Retrieve all positions for a specific department
+ *     parameters:
+ *       - name: department
+ *         in: path
+ *         description: The department name
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: "Human Resource"
+ *       - name: includeDeleted
+ *         in: query
+ *         description: Include soft deleted positions
+ *         required: false
+ *         schema:
+ *           type: boolean
+ *           example: false
+ *     responses:
+ *       200:
+ *         description: Positions retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       role_id:
+ *                         type: integer
+ *                         example: 1
+ *                       role:
+ *                         type: string
+ *                         example: "Manager"
+ *                       department:
+ *                         type: string
+ *                         example: "Human Resource"
+ *                       description:
+ *                         type: string
+ *                         example: "HR Department Manager"
+ *                       rate_per_hour:
+ *                         type: number
+ *                         example: 38.0
+ *                       is_active:
+ *                         type: boolean
+ *                         example: true
+ *                       created_at:
+ *                         type: string
+ *                         format: date-time
+ *                       updated_at:
+ *                         type: string
+ *                         format: date-time
+ *                 count:
+ *                   type: integer
+ *                   example: 2
+ *       500:
+ *         description: Server error
+ */
+// Get positions by department
+router.get("/positions/department/:department", async (req, res) => {
+  try {
+    const { department } = req.params;
+    const includeDeleted = req.query.includeDeleted === "true";
+    const positions = await Roles.getPositionsByDepartment(
+      department,
+      includeDeleted
+    );
+
+    res.json({
+      success: true,
+      data: positions,
+      count: positions.length,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching positions by department",
+      error: error.message,
+    });
+  }
+});
+
 /**
  * @swagger
  * /api/roles/{role_id}:

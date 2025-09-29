@@ -22,18 +22,24 @@
     Activity,
     PhilippinePeso,
     PhoneCall,
+    ChevronLeft,
+    ChevronRight,
   } from 'lucide-vue-next';
   import { useAuthStore } from '../../stores/authStore.js';
   import { useEmployeeStore } from '../../stores/employeeStore.js';
   import { useBranchStore } from '../../stores/branchStore.js';
+  import { usePositionsStore } from '../../stores/positionsStore.js';
   import { apiConfig } from '../../config/api.js';
+  import { useCustomToast } from '../../composables/useCustomToast.js';
 
   const authStore = useAuthStore();
   const employeeStore = useEmployeeStore();
   const branchStore = useBranchStore();
+  const positionsStore = usePositionsStore();
+  const { showSuccess, showError, showInfo, showWarning } = useCustomToast();
 
   // Reactive state
-  const activeTab = ref('basic');
+  const currentStep = ref(0);
   const loading = ref(false);
   const saving = ref(false);
   // Photo upload state
@@ -107,6 +113,28 @@
   const sexOptions = ['Male', 'Female'];
   const employeeTypes = ['Full-time', 'Part-time'];
 
+  // Wizard steps
+  const steps = [
+    {
+      id: 'basic',
+      title: 'Basic Information',
+      icon: User,
+      description: 'Personal and professional information',
+    },
+    {
+      id: 'salary',
+      title: 'Salary Information',
+      icon: PhilippinePeso,
+      description: 'Salary and government benefit information',
+    },
+    {
+      id: 'emergency',
+      title: 'Emergency Contact',
+      icon: PhoneCall,
+      description: 'Emergency contact details',
+    },
+  ];
+
   // Computed properties
   const availableRoles = computed(() => {
     return employeeForm.value.department
@@ -114,8 +142,103 @@
       : [];
   });
 
+  // Wizard navigation computed properties
+  const currentStepData = computed(() => steps[currentStep.value]);
+  const isFirstStep = computed(() => currentStep.value === 0);
+  const isLastStep = computed(() => currentStep.value === steps.length - 1);
+  const canGoNext = computed(() => {
+    // Check if current step is valid
+    if (currentStep.value === 0) {
+      // Basic information validation
+      const form = employeeForm.value;
+      return (
+        form.first_name &&
+        form.last_name &&
+        form.phone_number &&
+        form.address &&
+        form.postal_code &&
+        form.civil_status &&
+        form.sex &&
+        form.birthday &&
+        form.age &&
+        form.citizenship &&
+        form.department &&
+        form.role_id &&
+        form.employee_type &&
+        (form.department !== 'Branch' ? true : !!form.branch_id)
+      );
+    } else if (currentStep.value === 1) {
+      // Benefits validation
+      const form = employeeForm.value;
+      return form.pagibig_number && form.sss_number && form.philhealth_number;
+    } else if (currentStep.value === 2) {
+      // Emergency contact validation
+      const form = employeeForm.value;
+      return (
+        form.emergency_contact_name &&
+        form.emergency_relationship &&
+        form.emergency_contact_number &&
+        form.emergency_contact_address
+      );
+    }
+    return true;
+  });
+
   // Active branches for assignment (used when department is Branch)
   const activeBranches = computed(() => branchStore.activeBranches || []);
+
+  // Base salary calculation based on role and employee type
+  const baseSalary = computed(() => {
+    if (!employeeForm.value.role_id || !employeeForm.value.employee_type) {
+      return {
+        hourly: 0,
+        daily: 0,
+        monthly: 0,
+        formatted: {
+          hourly: '₱0.00',
+          daily: '₱0.00',
+          monthly: '₱0.00',
+        },
+      };
+    }
+
+    // Find the selected role from available roles
+    const selectedRole = availableRoles.value.find(
+      (role) => role.role_id == employeeForm.value.role_id
+    );
+
+    if (!selectedRole || !selectedRole.rate_per_hour) {
+      return {
+        hourly: 0,
+        daily: 0,
+        monthly: 0,
+        formatted: {
+          hourly: '₱0.00',
+          daily: '₱0.00',
+          monthly: '₱0.00',
+        },
+      };
+    }
+
+    const hourlyRate = parseFloat(selectedRole.rate_per_hour);
+    const hoursPerDay =
+      employeeForm.value.employee_type === 'Full-time' ? 8 : 4; // Part-time is typically 4 hours
+    const workingDaysPerMonth = 26; // Company works 6 days per week (1 day off)
+
+    const dailyRate = hourlyRate * hoursPerDay;
+    const monthlyRate = dailyRate * workingDaysPerMonth;
+
+    return {
+      hourly: hourlyRate,
+      daily: dailyRate,
+      monthly: monthlyRate,
+      formatted: {
+        hourly: `₱${hourlyRate.toFixed(2)}`,
+        daily: `₱${dailyRate.toFixed(2)}`,
+        monthly: `₱${monthlyRate.toFixed(2)}`,
+      },
+    };
+  });
 
   const isFormValid = computed(() => {
     const form = employeeForm.value;
@@ -262,6 +385,25 @@
     return Object.keys(errors).length === 0;
   };
 
+  // Wizard navigation functions
+  const nextStep = () => {
+    if (canGoNext.value && !isLastStep.value) {
+      currentStep.value++;
+    }
+  };
+
+  const previousStep = () => {
+    if (!isFirstStep.value) {
+      currentStep.value--;
+    }
+  };
+
+  const goToStep = (stepIndex) => {
+    if (stepIndex >= 0 && stepIndex < steps.length) {
+      currentStep.value = stepIndex;
+    }
+  };
+
   // Philippine phone input handler: accepts only 09XXXXXXXXX or +639XXXXXXXXX
   const handlePHPhoneInput = (rawInput, field) => {
     const input = String(rawInput || '');
@@ -309,7 +451,10 @@
   // Modal functions
   const openConfirmModal = () => {
     if (!validateForm() || !isFormValid.value) {
-      showToast('error', 'Please fill in all required fields correctly');
+      showError(
+        'Please fill in all required fields correctly',
+        'Form Validation Error'
+      );
       return;
     }
 
@@ -390,16 +535,19 @@
         newEmployee = await employeeStore.createEmployee(employeeForm.value);
       }
 
-      showToast('success', 'Employee added successfully!');
+      showSuccess(
+        'Employee added successfully! Welcome email has been sent to the employee.',
+        'Employee Created Successfully'
+      );
       openSuccessModal(newEmployee);
 
       // Reset form
       resetForm();
     } catch (error) {
       console.error('Error adding employee:', error);
-      showToast(
-        'error',
-        error.message || 'Failed to add employee. Please try again.'
+      showError(
+        error.message || 'Failed to add employee. Please try again.',
+        'Employee Creation Failed'
       );
     } finally {
       saving.value = false;
@@ -435,15 +583,9 @@
       emergency_contact_email: '',
     };
     formErrors.value = {};
-    activeTab.value = 'basic';
+    currentStep.value = 0;
     photoFile.value = null;
     photoPreview.value = '';
-  };
-
-  // Toast notification
-  const showToast = (type, message) => {
-    // Implementation would depend on your toast system
-    console.log(`${type}: ${message}`);
   };
 
   const onPhotoSelected = (event) => {
@@ -496,7 +638,10 @@
       }
     } catch (error) {
       console.error('Error fetching departments with roles:', error);
-      showToast('error', 'Failed to load departments and roles');
+      showError(
+        'Failed to load departments and roles. Please refresh the page.',
+        'Data Loading Error'
+      );
     }
   };
 
@@ -506,6 +651,10 @@
     // Load branches for assignment
     branchStore.fetchActiveBranches().catch((e) => {
       console.error('Failed to load branches', e);
+    });
+    // Load positions data for salary calculation
+    positionsStore.fetchPositions().catch((e) => {
+      console.error('Failed to load positions', e);
     });
   });
 </script>
@@ -572,25 +721,6 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <Building class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-info" />
-        </div>
-        <div class="stat-title text-black/50 !text-xs sm:text-sm">
-          Departments
-        </div>
-        <div
-          class="stat-value text-info text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ employeeStats.departments }}
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Active departments
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
           <Target class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-warning" />
         </div>
         <div class="stat-title text-black/50 !text-xs sm:text-sm">
@@ -625,32 +755,62 @@
       </div>
     </div>
 
-    <!-- Tabs -->
-    <div class="tabs tabs-boxed mb-6 justify-center sm:justify-start">
-      <button
-        @click="activeTab = 'basic'"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'basic' }"
-      >
-        <User class="w-4 h-4 mr-1" />
-        Basic Information
-      </button>
-      <button
-        @click="activeTab = 'salary'"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'salary' }"
-      >
-        <PhilippinePeso class="w-4 h-4 mr-1" />
-        Benefits Information
-      </button>
-      <button
-        @click="activeTab = 'emergency'"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'emergency' }"
-      >
-        <PhoneCall class="w-4 h-4 mr-1" />
-        Emergency Contact
-      </button>
+    <!-- Wizard Progress -->
+    <div class="card bg-accentColor shadow-xl mb-6 border border-black/10">
+      <div class="card-body p-4">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-primaryColor">
+            Step {{ currentStep + 1 }} of {{ steps.length }}
+          </h3>
+          <span class="text-sm text-gray-600"
+            >{{ Math.round(((currentStep + 1) / steps.length) * 100) }}%
+            Complete</span
+          >
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="w-full bg-gray-200 rounded-full h-2 mb-4">
+          <div
+            class="bg-primaryColor h-2 rounded-full transition-all duration-300"
+            :style="{ width: ((currentStep + 1) / steps.length) * 100 + '%' }"
+          ></div>
+        </div>
+
+        <!-- Step Indicators -->
+        <div class="flex justify-between items-center">
+          <div
+            v-for="(step, index) in steps"
+            :key="step.id"
+            class="flex flex-col items-center flex-1 cursor-pointer"
+            @click="goToStep(index)"
+          >
+            <div
+              class="w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-all duration-200"
+              :class="{
+                'bg-primaryColor text-white': index <= currentStep,
+                'bg-gray-200 text-gray-500': index > currentStep,
+                'ring-4 ring-primaryColor/30': index === currentStep,
+              }"
+            >
+              <component :is="step.icon" class="w-5 h-5" />
+            </div>
+            <div class="text-center">
+              <div
+                class="text-xs font-medium"
+                :class="{
+                  'text-primaryColor': index <= currentStep,
+                  'text-gray-500': index > currentStep,
+                }"
+              >
+                {{ step.title }}
+              </div>
+              <div class="text-xs text-gray-400 mt-1 hidden sm:block">
+                {{ step.description }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Form Content -->
@@ -681,17 +841,21 @@
             />
           </div>
         </div>
-        <!-- Basic Information Tab -->
-        <div v-if="activeTab === 'basic'" class="space-y-6">
-          <div class="mb-6">
-            <h2 class="card-title text-primaryColor text-xl mb-2">
-              Basic Information
-            </h2>
-            <p class="text-sm text-gray-600">
-              Enter the employee's personal and professional information.
-            </p>
-          </div>
+        <!-- Current Step Header -->
+        <div class="mb-6">
+          <h2
+            class="card-title text-primaryColor text-xl mb-2 flex items-center"
+          >
+            <component :is="currentStepData.icon" class="w-6 h-6 mr-2" />
+            {{ currentStepData.title }}
+          </h2>
+          <p class="text-sm text-gray-600">
+            {{ currentStepData.description }}
+          </p>
+        </div>
 
+        <!-- Basic Information Step -->
+        <div v-if="currentStep === 0" class="space-y-6">
           <!-- Personal Information Section -->
           <div
             class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
@@ -1055,15 +1219,53 @@
           </div>
         </div>
 
-        <!-- Salary Information Tab -->
-        <div v-if="activeTab === 'salary'" class="space-y-6">
-          <div class="mb-6">
-            <h2 class="card-title text-primaryColor text-xl mb-2">
-              Benefits Information
-            </h2>
-            <p class="text-sm text-gray-600">
-              Enter the employee's government benefit information.
-            </p>
+        <!-- Benefits Information Step -->
+        <div v-if="currentStep === 1" class="space-y-6">
+          <!-- Base Salary Information -->
+          <div class="bg-white border border-black/10 p-4 rounded-xl">
+            <h3
+              class="text-lg font-semibold text-primaryColor mb-4 flex items-center"
+            >
+              Base Salary Information
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div class="bg-gray-50 p-3 rounded-lg">
+                <div class="text-sm text-gray-600 mb-1">Hourly Rate</div>
+                <div class="text-lg font-semibold text-primaryColor">
+                  {{ baseSalary.formatted.hourly }}
+                </div>
+              </div>
+              <div class="bg-gray-50 p-3 rounded-lg">
+                <div class="text-sm text-gray-600 mb-1">Daily Rate</div>
+                <div class="text-lg font-semibold text-primaryColor">
+                  {{ baseSalary.formatted.daily }}
+                </div>
+                <div class="text-xs text-gray-500">
+                  {{
+                    employeeForm.employee_type === 'Full-time'
+                      ? '8 hours'
+                      : '4 hours'
+                  }}
+                  per day
+                </div>
+              </div>
+              <div class="bg-gray-50 p-3 rounded-lg">
+                <div class="text-sm text-gray-600 mb-1">Monthly Rate</div>
+                <div class="text-lg font-semibold text-primaryColor">
+                  {{ baseSalary.formatted.monthly }}
+                </div>
+                <div class="text-xs text-gray-500">26 working days</div>
+              </div>
+            </div>
+            <div
+              v-if="!employeeForm.role_id || !employeeForm.employee_type"
+              class="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg"
+            >
+              <div class="text-sm text-yellow-800">
+                <Info class="w-4 h-4 inline mr-1" />
+                Please select a role and employee type to calculate base salary
+              </div>
+            </div>
           </div>
 
           <div
@@ -1163,17 +1365,8 @@
           </div>
         </div>
 
-        <!-- Emergency Contact Tab -->
-        <div v-if="activeTab === 'emergency'" class="space-y-6">
-          <div class="mb-6">
-            <h2 class="card-title text-primaryColor text-xl mb-2">
-              Emergency Contact Information
-            </h2>
-            <p class="text-sm text-gray-600">
-              Enter emergency contact details for the employee.
-            </p>
-          </div>
-
+        <!-- Emergency Contact Step -->
+        <div v-if="currentStep === 2" class="space-y-6">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- Emergency Contact Name -->
             <div class="form-control">
@@ -1349,7 +1542,7 @@
           </div>
         </div>
 
-        <!-- Action Buttons -->
+        <!-- Wizard Navigation Buttons -->
         <div
           class="flex flex-col sm:flex-row justify-between items-center gap-4 mt-8 pt-6 border-t border-gray-200"
         >
@@ -1359,16 +1552,31 @@
           </div>
 
           <div class="flex gap-3">
+            <!-- Previous Button -->
             <button
-              @click="resetForm"
+              v-if="!isFirstStep"
+              @click="previousStep"
               class="btn btn-outline btn-sm text-gray-600 hover:bg-gray-100 font-thin"
               :disabled="saving"
             >
-              <X class="w-4 h-4 mr-1" />
-              Reset Form
+              <ChevronLeft class="w-4 h-4 mr-1" />
+              Previous
             </button>
 
+            <!-- Next Button -->
             <button
+              v-if="!isLastStep"
+              @click="nextStep"
+              class="btn btn-primary btn-sm bg-primaryColor hover:bg-primaryColor/90 font-thin border-none shadow-none"
+              :disabled="!canGoNext || saving"
+            >
+              Next
+              <ChevronRight class="w-4 h-4 ml-1" />
+            </button>
+
+            <!-- Submit Button (only on last step) -->
+            <button
+              v-if="isLastStep"
               @click="openConfirmModal"
               class="btn btn-primary btn-sm bg-primaryColor hover:bg-primaryColor/90 font-thin border-none shadow-none"
               :disabled="!isFormValid || saving"
@@ -1379,6 +1587,16 @@
                 class="loading loading-spinner loading-sm"
               ></span>
               {{ saving ? 'Adding Employee...' : 'Add Employee' }}
+            </button>
+
+            <!-- Reset Button -->
+            <button
+              @click="resetForm"
+              class="btn btn-outline btn-sm text-gray-600 hover:bg-gray-100 font-thin"
+              :disabled="saving"
+            >
+              <X class="w-4 h-4 mr-1" />
+              Reset Form
             </button>
           </div>
         </div>

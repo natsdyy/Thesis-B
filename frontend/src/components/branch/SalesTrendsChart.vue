@@ -31,7 +31,7 @@
   });
 
   const colorMap = {
-    totalSales: '#2563eb',
+    totalSales: '#466114',
     totalTransactions: '#f59e0b',
     averageTransaction: '#6b7280',
     refundedAmount: '#10b981',

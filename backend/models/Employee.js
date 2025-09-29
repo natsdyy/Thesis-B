@@ -30,7 +30,22 @@ class Employee {
     try {
       let query = db("employees")
         .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
-        .select("employees.*", db.raw("user_roles.role as role"));
+        .leftJoin("leave_requests as lr", function () {
+          this.on("employees.id", "=", "lr.employee_id")
+            .andOn("lr.status", "=", db.raw("'approved_by_hr'"))
+            .andOn("lr.from_date", "<=", db.raw("CURRENT_DATE"))
+            .andOn("lr.to_date", ">=", db.raw("CURRENT_DATE"));
+        })
+        .select(
+          "employees.*",
+          db.raw("user_roles.role as role"),
+          db.raw(
+            "CASE WHEN lr.id IS NOT NULL THEN 'On Leave' ELSE employees.status END as status"
+          ),
+          db.raw("lr.leave_type as current_leave_type"),
+          db.raw("lr.from_date as leave_from_date"),
+          db.raw("lr.to_date as leave_to_date")
+        );
 
       if (!includeDeleted) {
         query = query.whereNull("employees.deleted_at");
@@ -143,7 +158,22 @@ class Employee {
 
       let query = db("employees")
         .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
-        .select("employees.*", db.raw("user_roles.role as role"))
+        .leftJoin("leave_requests as lr", function () {
+          this.on("employees.id", "=", "lr.employee_id")
+            .andOn("lr.status", "=", db.raw("'approved_by_hr'"))
+            .andOn("lr.from_date", "<=", db.raw("CURRENT_DATE"))
+            .andOn("lr.to_date", ">=", db.raw("CURRENT_DATE"));
+        })
+        .select(
+          "employees.*",
+          db.raw("user_roles.role as role"),
+          db.raw(
+            "CASE WHEN lr.id IS NOT NULL THEN 'On Leave' ELSE employees.status END as status"
+          ),
+          db.raw("lr.leave_type as current_leave_type"),
+          db.raw("lr.from_date as leave_from_date"),
+          db.raw("lr.to_date as leave_to_date")
+        )
         .where("employees.department", department);
 
       if (!includeDeleted) {
@@ -1140,7 +1170,7 @@ class Employee {
       }
 
       const roles = await db("user_roles")
-        .select("role_id", "role", "department", "description")
+        .select("role_id", "role", "department", "description", "rate_per_hour")
         .where("department", department)
         .whereNull("deleted_at")
         .where("is_active", true)
@@ -1161,6 +1191,7 @@ class Employee {
         .whereNull("deleted_at")
         .where("is_active", true)
         .where("department", "!=", "System") // Exclude system roles
+        .where("department", "!=", "Admin") // Exclude admin roles
         .groupBy("department")
         .orderBy("department");
 

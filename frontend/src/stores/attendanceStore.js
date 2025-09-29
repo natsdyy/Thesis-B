@@ -258,6 +258,30 @@ export const useAttendanceStore = defineStore('attendance', () => {
     }
   };
 
+  // Fetch attendance status for multiple employees
+  const fetchBulkAttendanceStatus = async (filters = {}) => {
+    try {
+      loading.value = true;
+      error.value = null;
+
+      const response = await axios.get(getApiUrl('/attendance/bulk-status'), {
+        ...getAuthHeaders(),
+        params: filters,
+      });
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (err) {
+      error.value = err.response?.data?.message || err.message;
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const validateQRCode = async (qrCode) => {
     try {
       const response = await axios.post(getApiUrl('/attendance/validate-qr'), {
@@ -403,6 +427,7 @@ export const useAttendanceStore = defineStore('attendance', () => {
     timeOut,
     fetchTodayAttendance,
     fetchMyAttendance,
+    fetchBulkAttendanceStatus,
     validateQRCode,
     scanQRCode,
     getAttendanceReport,

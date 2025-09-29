@@ -1,0 +1,20 @@
+# Ignore environment files with sensitive data
+.env
+.env.local
+.env.production
+
+# Ignore any files with hardcoded tokens
+*token*
+*secret*
+*key*
+
+# Ignore temporary files
+*.tmp
+*.temp
+*.log
+
+# Ignore Node.js files
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

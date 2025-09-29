@@ -430,6 +430,148 @@ class Roles {
       throw error;
     }
   }
+
+  // ===== POSITIONS MANAGEMENT METHODS =====
+
+  // Get all positions (roles) grouped by department for positions management
+  static async getAllPositions(includeDeleted = false) {
+    try {
+      let query = db("user_roles")
+        .select(
+          "role_id",
+          "role",
+          "department",
+          "description",
+          "rate_per_hour",
+          "is_active",
+          "created_at",
+          "updated_at"
+        )
+        .whereNotNull("department")
+        .where("department", "!=", "System") // Exclude system roles like Super Admin
+        .where("department", "!=", "Admin") // Exclude admin departments
+        .where("role", "!=", "Admin"); // Exclude admin roles
+
+      if (!includeDeleted) {
+        query = query.whereNull("deleted_at");
+      }
+
+      const positions = await query
+        .orderBy("department", "asc")
+        .orderBy("role", "asc");
+
+      // Group positions by department
+      const groupedPositions = {};
+      positions.forEach((position) => {
+        if (!groupedPositions[position.department]) {
+          groupedPositions[position.department] = [];
+        }
+        groupedPositions[position.department].push(position);
+      });
+
+      return groupedPositions;
+    } catch (error) {
+      console.error("Error fetching positions:", error);
+      throw error;
+    }
+  }
+
+  // Get positions by department
+  static async getPositionsByDepartment(department, includeDeleted = false) {
+    try {
+      let query = db("user_roles")
+        .select(
+          "role_id",
+          "role",
+          "department",
+          "description",
+          "rate_per_hour",
+          "is_active",
+          "created_at",
+          "updated_at"
+        )
+        .whereRaw("LOWER(department) = LOWER(?)", [department])
+        .where("department", "!=", "System"); // Exclude system roles
+
+      if (!includeDeleted) {
+        query = query.whereNull("deleted_at");
+      }
+
+      const positions = await query.orderBy("role", "asc");
+      return positions;
+    } catch (error) {
+      console.error("Error fetching positions by department:", error);
+      throw error;
+    }
+  }
+
+  // Update rate per hour for a position
+  static async updateRatePerHour(role_id, rate_per_hour) {
+    try {
+      // Check if role exists
+      const currentRole = await this.getById(role_id);
+      if (!currentRole) {
+        const error = new Error("Position not found");
+        error.code = "POSITION_NOT_FOUND";
+        throw error;
+      }
+
+      // Validate rate_per_hour
+      if (typeof rate_per_hour !== "number" || rate_per_hour < 0) {
+        const error = new Error("Rate per hour must be a positive number");
+        error.code = "INVALID_RATE";
+        throw error;
+      }
+
+      const [updatedPosition] = await db("user_roles")
+        .where("role_id", role_id)
+        .update({
+          rate_per_hour: parseFloat(rate_per_hour),
+          updated_at: db.fn.now(),
+        })
+        .returning([
+          "role_id",
+          "role",
+          "department",
+          "description",
+          "rate_per_hour",
+          "is_active",
+          "created_at",
+          "updated_at",
+        ]);
+
+      return updatedPosition;
+    } catch (error) {
+      console.error("Error updating rate per hour:", error);
+      throw error;
+    }
+  }
+
+  // Get position by ID (for positions management)
+  static async getPositionById(role_id) {
+    try {
+      const position = await db("user_roles")
+        .select(
+          "role_id",
+          "role",
+          "department",
+          "description",
+          "rate_per_hour",
+          "is_active",
+          "created_at",
+          "updated_at"
+        )
+        .where("role_id", role_id)
+        .whereNull("deleted_at")
+        .where("department", "!=", "System") // Exclude system roles
+        .first();
+
+      return position;
+    } catch (error) {
+      console.error("Error fetching position by ID:", error);
+      throw error;
+    }
+  }
 }
 
 module.exports = Roles;

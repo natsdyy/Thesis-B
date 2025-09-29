@@ -2,18 +2,30 @@
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-exports.up = function(knex) {
-  return knex.schema.alterTable('attendance_records', table => {
-    table.integer('tardiness_minutes').defaultTo(0).comment('Minutes late for time in');
-  });
+exports.up = async function (knex) {
+  const hasColumn = await knex.schema.hasColumn(
+    "attendance_records",
+    "tardiness_minutes"
+  );
+  if (!hasColumn) {
+    await knex.schema.alterTable("attendance_records", (table) => {
+      table.integer("tardiness_minutes").notNullable().defaultTo(0);
+    });
+  }
 };
 
 /**
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-exports.down = function(knex) {
-  return knex.schema.alterTable('attendance_records', table => {
-    table.dropColumn('tardiness_minutes');
-  });
+exports.down = async function (knex) {
+  const hasColumn = await knex.schema.hasColumn(
+    "attendance_records",
+    "tardiness_minutes"
+  );
+  if (hasColumn) {
+    await knex.schema.alterTable("attendance_records", (table) => {
+      table.dropColumn("tardiness_minutes");
+    });
+  }
 };

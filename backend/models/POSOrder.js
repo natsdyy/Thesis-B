@@ -384,38 +384,76 @@ class POSOrder {
       const orderItems = await trx("pos_order_items").where("order_id", id);
 
       for (const item of orderItems) {
-        // Find corresponding branch inventory item
-        const branchInventory = await trx("branch_inventory")
-          .where("branch_id", updatedOrder.branch_id)
-          .where("item_name", item.item_name)
-          .where("item_type", "production")
-          .whereNull("deleted_at")
-          .first();
-
-        if (branchInventory) {
-          // Create branch inventory transaction for consumption
-          await trx("branch_inventory_transactions").insert({
+        // Fetch eligible branch inventory rows for this item in this branch
+        // - item_type: production
+        // - not soft-deleted
+        // - status not disposed/expired
+        // Sort by expiry date ASC (earliest first), nulls last; then by updated_at DESC as tiebreaker
+        const eligibleRows = await trx("branch_inventory")
+          .where({
             branch_id: updatedOrder.branch_id,
-            inventory_item_id: item.menu_item_id,
             item_name: item.item_name,
             item_type: "production",
+          })
+          .whereNull("deleted_at")
+          .whereNotIn("status", ["disposed", "expired"]) // skip disposed/expired batches
+          .orderByRaw(
+            "CASE WHEN expiry_date IS NULL THEN 1 ELSE 0 END, expiry_date ASC"
+          )
+          .orderBy("updated_at", "desc");
+
+        let remainingToConsume = parseFloat(item.quantity || 0);
+
+        for (const row of eligibleRows) {
+          if (remainingToConsume <= 0) break;
+
+          const available = Math.max(0, parseFloat(row.quantity || 0));
+          if (available <= 0) continue;
+
+          const consumeQty = Math.min(available, remainingToConsume);
+
+          // Log consumption transaction against the actual branch_inventory row
+          await trx("branch_inventory_transactions").insert({
+            branch_id: updatedOrder.branch_id,
+            inventory_item_id: row.id, // link to branch_inventory row
+            item_name: row.item_name,
+            item_type: row.item_type,
             transaction_type: "consumption",
-            quantity: item.quantity,
-            unit_of_measure: branchInventory.unit || "pieces", // Dynamic unit from branch inventory
-            unit_cost: item.unit_price,
-            total_value: item.total_price,
+            quantity: consumeQty,
+            unit_of_measure: row.unit || "servings",
+            unit_cost: row.unit_cost, // use branch unit cost for accurate COGS
+            total_value: parseFloat(row.unit_cost || 0) * consumeQty,
             reference_number: updatedOrder.order_number,
             reason: "POS Sale",
             notes: `Sold via POS Order ${updatedOrder.order_number}`,
             performed_by: updatedOrder.cashier_id,
             transaction_date: new Date(),
+            created_at: new Date(),
+            updated_at: new Date(),
           });
 
-          // Update branch inventory quantity
+          // Decrement this batch
+          const newQty = available - consumeQty;
           await trx("branch_inventory")
-            .where("id", branchInventory.id)
-            .decrement("quantity", item.quantity);
+            .where("id", row.id)
+            .update({
+              quantity: newQty,
+              total_value: newQty * parseFloat(row.unit_cost || 0),
+              last_updated: new Date(),
+              updated_at: new Date(),
+              status:
+                newQty <= 0
+                  ? "out_of_stock"
+                  : newQty <= parseFloat(row.minimum_stock || 0)
+                    ? "low_stock"
+                    : "available",
+            });
+
+          remainingToConsume -= consumeQty;
         }
+
+        // If we couldn't consume the full requested quantity, we still allow completion
+        // but we have already deducted everything available from eligible batches.
       }
 
       // Get order items for the response

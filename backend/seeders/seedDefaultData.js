@@ -169,9 +169,12 @@ async function assignDefaultPermissions() {
       "Manager-Human Resource": [
         // HR Manager - Most operations, approvals, reports
         permissionMap["Manage HR Dashboard"],
+        permissionMap["Manage Employees"],
         permissionMap["View Employee Records"],
+        permissionMap["Manage Attendance"],
         permissionMap["Manage  Attendance"],
         permissionMap["View Attendance Reports"],
+        permissionMap["Manage Employee Leave"],
         permissionMap["Approve Leave Requests"],
         permissionMap["View Leave Reports"],
         permissionMap["View Payroll Reports"],
@@ -180,7 +183,9 @@ async function assignDefaultPermissions() {
       "Staff-Human Resource": [
         // HR Staff - Basic operations, limited access
         permissionMap["Manage HR Dashboard"],
+        permissionMap["Manage Employees"],
         permissionMap["View Employee Records"],
+        permissionMap["Manage Attendance"],
         permissionMap["Manage  Attendance"],
         permissionMap["Manage Employee Leave"],
       ].filter(Boolean),

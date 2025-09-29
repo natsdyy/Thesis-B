@@ -234,6 +234,7 @@
         }"
         :branch-id="currentBranch?.id"
         :schedules="scheduleStore.schedules"
+        :show-shift-label="true"
       />
     </div>
   </div>

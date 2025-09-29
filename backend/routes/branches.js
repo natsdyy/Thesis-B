@@ -42,15 +42,6 @@ const requirePermission = (permissionName) => {
  *         email:
  *           type: string
  *           description: Branch contact email
- *         manager_name:
- *           type: string
- *           description: Branch manager name
- *         manager_email:
- *           type: string
- *           description: Branch manager email
- *         manager_phone:
- *           type: string
- *           description: Branch manager phone
  *         city:
  *           type: string
  *           description: Branch city
@@ -127,6 +118,47 @@ router.get("/:id/coordinates", async (req, res) => {
   try {
     const { id } = req.params;
     const branchId = parseInt(id);
+
+    // If employee has no branch (department-only), use a specific fallback branch ID
+    if (!branchId || Number.isNaN(branchId)) {
+      try {
+        const fallbackBranchId = parseInt(
+          process.env.DEPARTMENT_FALLBACK_BRANCH_ID || "7"
+        );
+        if (!Number.isNaN(fallbackBranchId) && fallbackBranchId > 0) {
+          const fallback = await Branch.getById(fallbackBranchId);
+          if (fallback) {
+            return res.json({
+              success: true,
+              data: {
+                id: fallback.id,
+                name: fallback.name + " (For Department)",
+                latitude: fallback.latitude || null,
+                longitude: fallback.longitude || null,
+                radius_meters: fallback.radius_meters || null,
+                fallback_used: true,
+              },
+            });
+          }
+        }
+      } catch (fallbackErr) {
+        console.warn("Fallback branch lookup failed:", fallbackErr.message);
+      }
+
+      // Final fallback: explicit no-geofence
+      return res.json({
+        success: true,
+        data: {
+          id: null,
+          name: "Department Employee",
+          latitude: null,
+          longitude: null,
+          radius_meters: null,
+          no_geofence: true,
+        },
+      });
+    }
+
     const branch = await Branch.getById(branchId);
 
     if (!branch) {
@@ -178,55 +210,6 @@ router.get("/:id/coordinates", async (req, res) => {
 
 /**
  * @swagger
- * /api/branches/managers:
- *   get:
- *     summary: Get branch managers (employees from Branch department with Manager role)
- *     tags: [Branches]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: List of branch managers
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   id:
- *                     type: integer
- *                   employee_id:
- *                     type: string
- *                   first_name:
- *                     type: string
- *                   last_name:
- *                     type: string
- *                   email:
- *                     type: string
- *                   department:
- *                     type: string
- *                   role:
- *                     type: string
- *       500:
- *         description: Failed to fetch branch managers
- */
-router.get(
-  "/managers",
-  requirePermission("Manage Branch Management"),
-  async (req, res) => {
-    try {
-      const managers = await Branch.getBranchManagers();
-      res.json(managers);
-    } catch (error) {
-      console.error("Error fetching branch managers:", error);
-      res.status(500).json({ error: "Failed to fetch branch managers" });
-    }
-  }
-);
-
-/**
- * @swagger
  * /api/branches/stats/summary:
  *   get:
  *     summary: Get branch statistics summary
@@ -260,67 +243,6 @@ router.get(
     } catch (error) {
       console.error("Error fetching branch stats:", error);
       res.status(500).json({ error: "Failed to fetch branch statistics" });
-    }
-  }
-);
-
-/**
- * @swagger
- * /api/branches/employees/{department}:
- *   get:
- *     summary: Get employees by department for manager selection
- *     tags: [Branches]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: department
- *         required: true
- *         schema:
- *           type: string
- *         description: Department name
- *     responses:
- *       200:
- *         description: List of employees in department
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   id:
- *                     type: integer
- *                   employee_id:
- *                     type: string
- *                   first_name:
- *                     type: string
- *                   last_name:
- *                     type: string
- *                   email:
- *                     type: string
- *                   department:
- *                     type: string
- *                   role:
- *                     type: string
- *       400:
- *         description: Department is required
- */
-router.get(
-  "/employees/:department",
-  requirePermission("Manage Branch Management"),
-  async (req, res) => {
-    try {
-      const { department } = req.params;
-      const employees = await Branch.getEmployeesByDepartment(department);
-      res.json(employees);
-    } catch (error) {
-      console.error("Error fetching department employees:", error);
-      if (error.message.includes("Department is required")) {
-        res.status(400).json({ error: error.message });
-      } else {
-        res.status(500).json({ error: "Failed to fetch department employees" });
-      }
     }
   }
 );
@@ -441,9 +363,9 @@ router.post(
 
 /**
  * @swagger
- * /api/branches/{id}/users:
+ * /api/branches/{id}/employees:
  *   get:
- *     summary: Get users assigned to branch
+ *     summary: Get employees assigned to branch
  *     tags: [Branches]
  *     security:
  *       - bearerAuth: []
@@ -456,35 +378,52 @@ router.post(
  *         description: Branch ID
  *     responses:
  *       200:
- *         description: List of users in branch
+ *         description: List of employees in branch
  *         content:
  *           application/json:
  *             schema:
  *               type: array
  *               items:
- *                 $ref: '#/components/schemas/User'
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: integer
+ *                   employee_id:
+ *                     type: string
+ *                   first_name:
+ *                     type: string
+ *                   last_name:
+ *                     type: string
+ *                   email:
+ *                     type: string
+ *                   department:
+ *                     type: string
+ *                   status:
+ *                     type: string
+ *                   role:
+ *                     type: string
  *       404:
  *         description: Branch not found
  */
 router.get(
-  "/:id/users",
+  "/:id/employees",
   requirePermission("Manage Branch Management"),
   async (req, res) => {
     try {
       const { id } = req.params;
       const branchId = parseInt(id);
 
-      const users = await Branch.getUsers(branchId);
-      res.json(users);
+      const employees = await Branch.getEmployees(branchId);
+      res.json(employees);
     } catch (error) {
-      console.error("Error fetching branch users:", error);
+      console.error("Error fetching branch employees:", error);
       if (
         error.message.includes("not found") ||
         error.message.includes("Invalid")
       ) {
         res.status(404).json({ error: error.message });
       } else {
-        res.status(500).json({ error: "Failed to fetch branch users" });
+        res.status(500).json({ error: "Failed to fetch branch employees" });
       }
     }
   }

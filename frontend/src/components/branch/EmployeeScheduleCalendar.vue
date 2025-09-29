@@ -4,18 +4,22 @@
   import dayGridPlugin from '@fullcalendar/daygrid';
   import timeGridPlugin from '@fullcalendar/timegrid';
   import interactionPlugin from '@fullcalendar/interaction';
+  import { useLeaveStore } from '../../stores/leaveStore';
 
   const props = defineProps({
     employee: { type: Object, required: true },
-    branchId: { type: [String, Number], required: true },
+    branchId: { type: [String, Number], required: false }, // Made optional for department employees
     // schedules map from store: key `${employee_id}_${YYYY-MM-DD}` -> schedule obj
     schedules: { type: Object, required: true },
     isOpen: { type: Boolean, default: false },
     inline: { type: Boolean, default: false },
+    // When false, render only the time range (hide shift name like "Regular")
+    showShiftLabel: { type: Boolean, default: true },
   });
 
   const emit = defineEmits(['close']);
 
+  const leaveStore = useLeaveStore();
   const calendarRef = ref(null);
   const currentRange = ref({ startStr: '', endStr: '' });
   const currentViewType = ref('dayGridMonth');
@@ -33,8 +37,25 @@
       'Morning Shift': { bg: '#bfdbfe', text: '#1e40af', solid: '#3b82f6' },
       'Afternoon Shift': { bg: '#bbf7d0', text: '#065f46', solid: '#10b981' },
       'Night Shift': { bg: '#e9d5ff', text: '#6b21a8', solid: '#8b5cf6' },
+      'Day Off': { bg: '#f3f4f6', text: '#6b7280', solid: '#9ca3af' },
+      'On Leave': { bg: '#fed7aa', text: '#9a3412', solid: '#ea580c' },
     };
     return map[name] || { bg: '#e5e7eb', text: '#374151', solid: '#6b7280' };
+  };
+
+  const isEmployeeOnLeave = (employeeId, dateString) => {
+    // Check if employee has approved leave for this date
+    const date = new Date(dateString);
+    const leaveRequests = leaveStore.allLeaveRequests || [];
+
+    return leaveRequests.some(
+      (request) =>
+        request.employee_id === employeeId &&
+        (request.status === 'approved_by_hr' ||
+          request.status === 'approved_by_manager') &&
+        new Date(request.from_date) <= date &&
+        new Date(request.to_date) >= date
+    );
   };
 
   const calendarOptions = ref({
@@ -65,9 +86,21 @@
     buttonText: { today: 'today', month: 'month', week: 'week' },
     eventContent(arg) {
       const root = document.createElement('div');
-      root.className = 'cs-event-pill';
-      const label =
-        arg.event.extendedProps?.label || arg.timeText || arg.event.title || '';
+      const isDayOff = arg.event.title === 'Day Off';
+      root.className = `cs-event-pill${isDayOff ? ' day-off' : ''}`;
+      // Prefer custom label; otherwise show "time + title" instead of just time
+      const fallback = props.showShiftLabel
+        ? arg.timeText
+          ? `${arg.timeText} ${arg.event.title || ''}`.trim()
+          : arg.event.title || ''
+        : arg.timeText || '';
+      let label = arg.event.extendedProps?.label || fallback;
+      // Truncate label based on viewport so it never exceeds cell width
+      const maxLen =
+        viewportWidth.value < 640 ? 22 : viewportWidth.value < 1024 ? 28 : 36;
+      if (label.length > maxLen) {
+        label = label.slice(0, maxLen - 1) + '…';
+      }
       const span = document.createElement('span');
       span.className = 'cs-event-title';
       span.textContent = label;
@@ -162,6 +195,12 @@
       if (sched.employee_id !== empId) return;
 
       const dayKey = formatDateKey(sched.schedule_date);
+
+      // Check if employee is on leave for this date
+      if (isEmployeeOnLeave(empId, dayKey)) {
+        return; // Skip adding schedule events when employee is on leave
+      }
+
       const startClock = sched.shift?.startTime || sched.start_time || '00:00';
       const startIso = `${dayKey}T${startClock}`;
       const endTime = sched.shift?.endTime || sched.end_time || '00:00';
@@ -186,6 +225,12 @@
           // Month view: show only on the start day cell with full time range in label
           const endOfStart = new Date(startDate);
           endOfStart.setHours(23, 59, 59, 999);
+          const labelText =
+            (sched.shift?.name || sched.shift_name) === 'Day Off'
+              ? shortTitle(sched)
+              : props.showShiftLabel
+                ? `${formatClock(startDate)} - ${formatClock(endDate)} ${shortTitle(sched)}`
+                : `${formatClock(startDate)} - ${formatClock(endDate)}`;
           events.push({
             id: String(sched.id),
             title: sched.shift?.name || sched.shift_name,
@@ -198,11 +243,17 @@
             classNames: ['cs-event'],
             extendedProps: {
               notes: sched.notes || '',
-              label: `${formatClock(startDate)} - ${formatClock(endDate)} ${shortTitle(sched)}`,
+              label: labelText,
             },
           });
         } else {
           // Week/time views: show as one continuous event across days
+          const labelText =
+            (sched.shift?.name || sched.shift_name) === 'Day Off'
+              ? shortTitle(sched)
+              : props.showShiftLabel
+                ? `${formatClock(startDate)} - ${formatClock(endDate)} ${shortTitle(sched)}`
+                : `${formatClock(startDate)} - ${formatClock(endDate)}`;
           events.push({
             id: String(sched.id),
             title: sched.shift?.name || sched.shift_name,
@@ -215,11 +266,14 @@
             classNames: ['cs-event'],
             extendedProps: {
               notes: sched.notes || '',
-              label: `${formatClock(startDate)} - ${formatClock(endDate)} ${shortTitle(sched)}`,
+              label: labelText,
             },
           });
         }
       } else {
+        const labelText = props.showShiftLabel
+          ? `${formatClock(startDate)} - ${formatClock(endDate)} ${shortTitle(sched)}`
+          : `${formatClock(startDate)} - ${formatClock(endDate)}`;
         events.push({
           id: String(sched.id),
           title: sched.shift?.name || sched.shift_name,
@@ -232,11 +286,51 @@
           classNames: ['cs-event'],
           extendedProps: {
             notes: sched.notes || '',
-            label: `${formatClock(startDate)} - ${formatClock(endDate)} ${shortTitle(sched)}`,
+            label: labelText,
           },
         });
       }
     });
+
+    // Add leave events for days when employee is on leave
+    const leaveRequests = leaveStore.allLeaveRequests || [];
+    const employeeLeaveRequests = leaveRequests.filter(
+      (request) =>
+        request.employee_id === empId &&
+        (request.status === 'approved_by_hr' ||
+          request.status === 'approved_by_manager')
+    );
+
+    employeeLeaveRequests.forEach((leaveRequest) => {
+      const startDate = new Date(leaveRequest.from_date);
+      const endDate = new Date(leaveRequest.to_date);
+
+      // Create all-day leave events for each day in the leave period
+      const currentDate = new Date(startDate);
+      while (currentDate <= endDate) {
+        const dayKey = formatDateKey(currentDate);
+        const colors = shiftColorHex('On Leave');
+
+        events.push({
+          id: `leave-${leaveRequest.id}-${dayKey}`,
+          title: 'On Leave',
+          start: currentDate.toISOString(),
+          allDay: true,
+          backgroundColor: colors.bg,
+          borderColor: colors.solid,
+          textColor: colors.text,
+          classNames: ['cs-event', 'leave-event'],
+          extendedProps: {
+            leaveType: leaveRequest.leave_type,
+            reason: leaveRequest.reason,
+            label: `On Leave - ${leaveRequest.leave_type}`,
+          },
+        });
+
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+    });
+
     return events;
   }
 
@@ -253,7 +347,24 @@
     { deep: true }
   );
 
-  onMounted(() => {
+  watch(
+    () => leaveStore.allLeaveRequests,
+    () => refreshEvents(),
+    { deep: true }
+  );
+
+  onMounted(async () => {
+    // Load leave data for the employee
+    try {
+      // Fetch all leave requests to ensure we have the latest data
+      await leaveStore.fetchAllLeaveRequests({
+        page: 1,
+        limit: 1000,
+      });
+    } catch (error) {
+      console.warn('Could not load leave data:', error);
+    }
+
     // Ensure the initial events are loaded when modal opens
     setTimeout(refreshEvents, 0);
     // Track viewport and update calendar layout
@@ -365,6 +476,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .cs-event-pill.day-off {
+    justify-content: center !important;
+    text-align: center !important;
   }
   .cs-event-time {
     opacity: 0.9;

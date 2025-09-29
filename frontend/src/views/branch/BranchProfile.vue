@@ -30,6 +30,11 @@
   const imageLoadError = ref(false);
   const uploadingImage = ref(false);
   const imageInput = ref(null);
+  const showPasswordConfirmModal = ref(false);
+  const changingPassword = ref(false);
+  const showCurrentPassword = ref(false);
+  const showNewPassword = ref(false);
+  const showConfirmPassword = ref(false);
 
   // Profile data
   const profileData = ref({
@@ -237,8 +242,7 @@
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          first_name: editForm.value.first_name,
-          last_name: editForm.value.last_name,
+          // First and last name are intentionally immutable here
           phone_number: editForm.value.phone,
           address: editForm.value.address,
         }),
@@ -297,38 +301,19 @@
       return;
     }
 
-    loading.value = true;
+    // Show confirmation modal
+    showPasswordConfirmModal.value = true;
+  };
+
+  const confirmPasswordChange = async () => {
+    changingPassword.value = true;
 
     try {
-      // Change password via API
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/employees/me/change-password', {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          current_password: passwordForm.value.current_password,
-          new_password: passwordForm.value.new_password,
-        }),
-      });
+      await authStore.changeMyPassword(
+        passwordForm.value.current_password,
+        passwordForm.value.new_password
+      );
 
-      if (!response.ok) {
-        const errorResult = await response.json();
-        throw new Error(
-          errorResult.message ||
-            `Failed to change password: ${response.statusText}`
-        );
-      }
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.message || 'Failed to change password');
-      }
-
-      // Reset form
       passwordForm.value = {
         current_password: '',
         new_password: '',
@@ -336,13 +321,29 @@
       };
 
       showPasswordSection.value = false;
+      showPasswordConfirmModal.value = false;
       showToast('success', 'Password changed successfully');
     } catch (error) {
-      console.error('Error changing password:', error);
       showToast('error', error.message || 'Failed to change password');
     } finally {
-      loading.value = false;
+      changingPassword.value = false;
     }
+  };
+
+  const cancelPasswordChange = () => {
+    showPasswordConfirmModal.value = false;
+  };
+
+  const toggleCurrentPasswordVisibility = () => {
+    showCurrentPassword.value = !showCurrentPassword.value;
+  };
+
+  const toggleNewPasswordVisibility = () => {
+    showNewPassword.value = !showNewPassword.value;
+  };
+
+  const toggleConfirmPasswordVisibility = () => {
+    showConfirmPassword.value = !showConfirmPassword.value;
   };
 
   const formatDate = (dateString) => {
@@ -542,27 +543,17 @@
                 {{ profileData.first_name }} {{ profileData.last_name }}
               </h3>
               <p class="text-gray-600">{{ profileData.role }}</p>
-              <div class="badge badge-outline mt-2">
-                {{ profileData.employee_id }}
-              </div>
             </div>
 
             <!-- Personal Details -->
             <div class="lg:col-span-2 space-y-4">
-              <!-- Name Fields -->
+              <!-- Name Fields (read-only) -->
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="form-control">
                   <label class="label">
                     <span class="label-text font-medium">First Name</span>
                   </label>
-                  <input
-                    v-if="editMode"
-                    v-model="editForm.first_name"
-                    type="text"
-                    class="input input-bordered"
-                    required
-                  />
-                  <div v-else class="p-3 bg-gray-50 rounded-lg">
+                  <div class="p-3 bg-gray-50 rounded-lg">
                     {{ profileData.first_name }}
                   </div>
                 </div>
@@ -571,14 +562,7 @@
                   <label class="label">
                     <span class="label-text font-medium">Last Name</span>
                   </label>
-                  <input
-                    v-if="editMode"
-                    v-model="editForm.last_name"
-                    type="text"
-                    class="input input-bordered"
-                    required
-                  />
-                  <div v-else class="p-3 bg-gray-50 rounded-lg">
+                  <div class="p-3 bg-gray-50 rounded-lg">
                     {{ profileData.last_name }}
                   </div>
                 </div>
@@ -596,35 +580,44 @@
                 </div>
               </div>
 
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-medium">Phone Number</span>
-                </label>
-                <input
-                  v-if="editMode"
-                  v-model="editForm.phone"
-                  type="tel"
-                  class="input input-bordered"
-                />
-                <div v-else class="p-3 bg-gray-50 rounded-lg flex items-center">
-                  <Phone class="w-4 h-4 text-gray-400 mr-2" />
-                  {{ profileData.phone }}
+              <!-- Editable fields aligned in grid -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="form-control md:col-span-1">
+                  <label class="label">
+                    <span class="label-text font-medium">Phone Number</span>
+                  </label>
+                  <template v-if="editMode">
+                    <input
+                      v-model="editForm.phone"
+                      type="tel"
+                      class="input input-bordered"
+                    />
+                  </template>
+                  <template v-else>
+                    <div class="p-3 bg-gray-50 rounded-lg flex items-center">
+                      <Phone class="w-4 h-4 text-gray-400 mr-2" />
+                      {{ profileData.phone }}
+                    </div>
+                  </template>
                 </div>
-              </div>
 
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-medium">Address</span>
-                </label>
-                <textarea
-                  v-if="editMode"
-                  v-model="editForm.address"
-                  class="textarea textarea-bordered"
-                  rows="3"
-                ></textarea>
-                <div v-else class="p-3 bg-gray-50 rounded-lg flex items-start">
-                  <MapPin class="w-4 h-4 text-gray-400 mr-2 mt-0.5" />
-                  {{ profileData.address }}
+                <div class="form-control md:col-span-1">
+                  <label class="label">
+                    <span class="label-text font-medium">Address</span>
+                  </label>
+                  <template v-if="editMode">
+                    <textarea
+                      v-model="editForm.address"
+                      class="textarea textarea-bordered"
+                      rows="3"
+                    ></textarea>
+                  </template>
+                  <template v-else>
+                    <div class="p-3 bg-gray-50 rounded-lg flex items-start">
+                      <MapPin class="w-4 h-4 text-gray-400 mr-2 mt-0.5" />
+                      {{ profileData.address }}
+                    </div>
+                  </template>
                 </div>
               </div>
 
@@ -735,36 +728,66 @@
               <label class="label">
                 <span class="label-text font-medium">Current Password</span>
               </label>
-              <input
-                v-model="passwordForm.current_password"
-                type="password"
-                class="input input-bordered"
-                required
-              />
+              <div class="relative">
+                <input
+                  v-model="passwordForm.current_password"
+                  :type="showCurrentPassword ? 'text' : 'password'"
+                  class="input input-bordered w-full pr-10"
+                  required
+                />
+                <button
+                  type="button"
+                  @click="toggleCurrentPasswordVisibility"
+                  class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                >
+                  <Eye v-if="!showCurrentPassword" class="w-4 h-4" />
+                  <EyeOff v-else class="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             <div class="form-control">
               <label class="label">
                 <span class="label-text font-medium">New Password</span>
               </label>
-              <input
-                v-model="passwordForm.new_password"
-                type="password"
-                class="input input-bordered"
-                required
-              />
+              <div class="relative">
+                <input
+                  v-model="passwordForm.new_password"
+                  :type="showNewPassword ? 'text' : 'password'"
+                  class="input input-bordered w-full pr-10"
+                  required
+                />
+                <button
+                  type="button"
+                  @click="toggleNewPasswordVisibility"
+                  class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                >
+                  <Eye v-if="!showNewPassword" class="w-4 h-4" />
+                  <EyeOff v-else class="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             <div class="form-control">
               <label class="label">
                 <span class="label-text font-medium">Confirm New Password</span>
               </label>
-              <input
-                v-model="passwordForm.confirm_password"
-                type="password"
-                class="input input-bordered"
-                required
-              />
+              <div class="relative">
+                <input
+                  v-model="passwordForm.confirm_password"
+                  :type="showConfirmPassword ? 'text' : 'password'"
+                  class="input input-bordered w-full pr-10"
+                  required
+                />
+                <button
+                  type="button"
+                  @click="toggleConfirmPasswordVisibility"
+                  class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                >
+                  <Eye v-if="!showConfirmPassword" class="w-4 h-4" />
+                  <EyeOff v-else class="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             <div class="flex space-x-2 pt-2">
@@ -773,7 +796,7 @@
                 :disabled="loading"
                 class="btn bg-primaryColor text-white hover:bg-primaryColor/80"
               >
-                {{ loading ? 'Changing...' : 'Change Password' }}
+                Change Password
               </button>
               <button
                 @click="showPasswordSection = false"
@@ -810,6 +833,40 @@
         ]"
       >
         <span>{{ toast.message }}</span>
+      </div>
+    </div>
+
+    <!-- Password Change Confirmation Modal -->
+    <div v-if="showPasswordConfirmModal" class="modal modal-open">
+      <div class="modal-box">
+        <h3 class="font-bold text-lg text-primaryColor mb-4">
+          <Shield class="w-5 h-5 inline mr-2" />
+          Confirm Password Change
+        </h3>
+        <p class="py-4">
+          Are you sure you want to change your password? This action cannot be
+          undone.
+        </p>
+        <div class="modal-action">
+          <button
+            @click="confirmPasswordChange"
+            :disabled="changingPassword"
+            class="btn bg-primaryColor text-white hover:bg-primaryColor/80"
+          >
+            <div
+              v-if="changingPassword"
+              class="loading loading-spinner loading-sm mr-2"
+            ></div>
+            {{ changingPassword ? 'Changing Password...' : 'Confirm Change' }}
+          </button>
+          <button
+            @click="cancelPasswordChange"
+            :disabled="changingPassword"
+            class="btn btn-ghost"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   </div>

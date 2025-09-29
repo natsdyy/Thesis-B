@@ -10,16 +10,37 @@
 
       <!-- Current Status -->
       <div class="mb-6">
-        <div class="alert bg-success/10 border-success">
+        <div
+          class="alert"
+          :class="
+            currentStatus === 'on-leave'
+              ? 'bg-warning/10 border-warning'
+              : 'bg-success/10 border-success'
+          "
+        >
           <Clock class="w-5 h-5" />
           <div>
             <div class="font-medium">Current Status</div>
             <div class="text-sm opacity-80">
               {{
-                currentStatus === 'checked-out'
-                  ? 'Ready to Time In'
-                  : 'Ready to Time Out'
+                currentStatus === 'on-leave'
+                  ? 'On Leave'
+                  : currentStatus === 'checked-out'
+                    ? 'Ready to Time In'
+                    : 'Ready to Time Out'
               }}
+            </div>
+            <div
+              v-if="isLateToday && tardinessMinutesToday > 0"
+              class="text-xs mt-1 text-warning"
+            >
+              Late by {{ tardinessMinutesToday }} minute(s)
+            </div>
+            <div
+              v-if="currentStatus === 'on-leave'"
+              class="text-xs mt-1 text-warning"
+            >
+              Attendance tracking is disabled during your leave period
             </div>
           </div>
         </div>
@@ -314,9 +335,13 @@
                 class="mt-2 p-2 bg-orange-50 border border-orange-200 rounded text-orange-700"
               >
                 <p class="text-xs font-medium">
-                  ⚠️ Generated outside 2m radius
+                  ⚠️ Generated outside
+                  {{ locationStatus.requiredRadius || '2m' }} radius
                 </p>
-                <p class="text-xs">Scanning will require proper location</p>
+                <p class="text-xs">
+                  Scanning will require being within
+                  {{ locationStatus.requiredRadius || '2m' }}
+                </p>
               </div>
             </div>
           </div>
@@ -397,6 +422,7 @@
           @click="generateQRCode('time-in')"
           :disabled="
             qrCodeLoading ||
+            currentStatus === 'on-leave' ||
             currentStatus === 'checked-in' ||
             (scheduleValidation &&
               !scheduleValidation.isValid &&
@@ -404,24 +430,29 @@
           "
           :class="[
             'btn flex-1',
-            currentStatus === 'checked-out' &&
-            (!scheduleValidation || scheduleValidation.isValid)
-              ? 'bg-primaryColor hover:bg-primaryColor/80 text-white font-thin  border-none'
-              : 'btn-outline',
+            currentStatus === 'on-leave'
+              ? 'btn-outline opacity-50 cursor-not-allowed'
+              : currentStatus === 'checked-out' &&
+                  (!scheduleValidation || scheduleValidation.isValid)
+                ? 'bg-primaryColor hover:bg-primaryColor/80 text-white font-thin  border-none'
+                : 'btn-outline',
             scheduleValidation &&
             !scheduleValidation.isValid &&
-            scheduleValidation.reason !== 'NO_SCHEDULE'
+            scheduleValidation.reason !== 'NO_SCHEDULE' &&
+            currentStatus !== 'on-leave'
               ? 'opacity-50 cursor-not-allowed'
               : '',
           ]"
           :title="
-            currentStatus === 'checked-in'
-              ? 'You have already timed in today'
-              : scheduleValidation &&
-                  !scheduleValidation.isValid &&
-                  scheduleValidation.reason !== 'NO_SCHEDULE'
-                ? 'Time-in is outside scheduled hours'
-                : ''
+            currentStatus === 'on-leave'
+              ? 'Attendance tracking is disabled during leave'
+              : currentStatus === 'checked-in'
+                ? 'You have already timed in today'
+                : scheduleValidation &&
+                    !scheduleValidation.isValid &&
+                    scheduleValidation.reason !== 'NO_SCHEDULE'
+                  ? 'Time-in is outside scheduled hours'
+                  : ''
           "
         >
           <LogIn class="w-4 h-4 mr-2" />
@@ -430,17 +461,25 @@
 
         <button
           @click="generateQRCode('time-out')"
-          :disabled="qrCodeLoading || currentStatus === 'checked-out'"
+          :disabled="
+            qrCodeLoading ||
+            currentStatus === 'on-leave' ||
+            currentStatus === 'checked-out'
+          "
           :class="[
             'btn flex-1',
-            currentStatus === 'checked-in'
-              ? 'bg-primaryColor text-white font-thin  border-none hover:bg-primaryColor/80'
-              : 'btn-outline font-thin',
+            currentStatus === 'on-leave'
+              ? 'btn-outline opacity-50 cursor-not-allowed font-thin'
+              : currentStatus === 'checked-in'
+                ? 'bg-primaryColor text-white font-thin  border-none hover:bg-primaryColor/80'
+                : 'btn-outline font-thin',
           ]"
           :title="
-            currentStatus === 'checked-out'
-              ? 'You must time in before timing out'
-              : ''
+            currentStatus === 'on-leave'
+              ? 'Attendance tracking is disabled during leave'
+              : currentStatus === 'checked-out'
+                ? 'You must time in before timing out'
+                : ''
           "
         >
           <LogOut class="w-4 h-4 mr-2" />
@@ -487,12 +526,28 @@
       <div class="modal-box max-w-4xl">
         <div class="flex justify-between items-center mb-6">
           <h3 class="font-bold text-xl">My Attendance Records</h3>
-          <button
-            @click="closeAttendanceRecords"
-            class="btn btn-sm btn-circle btn-ghost"
-          >
-            <X class="w-4 h-4" />
-          </button>
+          <div class="flex items-center gap-2">
+            <select
+              v-model="recordsRange"
+              class="select select-bordered select-sm"
+            >
+              <option value="today">Today</option>
+              <option value="week">This Week</option>
+              <option value="month">This Month</option>
+            </select>
+            <button
+              @click="fetchAttendanceRecords"
+              class="btn btn-sm btn-outline"
+            >
+              Refresh
+            </button>
+            <button
+              @click="closeAttendanceRecords"
+              class="btn btn-sm btn-circle btn-ghost"
+            >
+              <X class="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <!-- Loading State -->
@@ -514,10 +569,11 @@
 
                 <th>Hours Worked</th>
                 <th>Status</th>
+                <th>Tardiness</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="record in attendanceRecords" :key="record.id">
+              <tr v-for="record in paginatedRecords" :key="record.id">
                 <td>{{ formatDate(record.created_at) }}</td>
                 <td>{{ formatTime(record.time_in) }}</td>
                 <td>{{ formatTime(record.time_out) }}</td>
@@ -541,9 +597,37 @@
                     {{ record.status || 'Present' }}
                   </span>
                 </td>
+                <td>
+                  <span class="font-mono text-xs">{{
+                    Number(record.tardiness_minutes || 0)
+                  }}</span>
+                </td>
               </tr>
             </tbody>
           </table>
+          <div class="flex justify-center mt-4" v-if="recordsTotalPages > 1">
+            <div class="join">
+              <button
+                class="join-item btn btn-sm"
+                :disabled="recordsPage === 1"
+                @click="recordsPage = Math.max(1, recordsPage - 1)"
+              >
+                «
+              </button>
+              <button class="join-item btn btn-sm">
+                Page {{ recordsPage }} of {{ recordsTotalPages }}
+              </button>
+              <button
+                class="join-item btn btn-sm"
+                :disabled="recordsPage === recordsTotalPages"
+                @click="
+                  recordsPage = Math.min(recordsTotalPages, recordsPage + 1)
+                "
+              >
+                »
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- Empty State -->
@@ -614,6 +698,17 @@
               <span class="font-medium">Location:</span>
               {{ successData.location }}
             </div>
+            <div v-if="successData.status" class="mb-2">
+              <span class="font-medium">Status:</span>
+              {{ successData.status.toUpperCase() }}
+            </div>
+            <div
+              v-if="Number(successData.tardiness_minutes || 0) > 0"
+              class="mb-2"
+            >
+              <span class="font-medium">Tardiness:</span>
+              {{ Number(successData.tardiness_minutes) }} minute(s)
+            </div>
           </div>
         </div>
 
@@ -673,13 +768,44 @@
   const locationStatus = ref(null);
   const branchInfo = ref(null);
 
+  // Helper: is the given timestamp on the same local day as now?
+  const isSameLocalDay = (timestamp) => {
+    if (!timestamp) return false;
+    const d = new Date(timestamp);
+    const now = new Date();
+    return (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+    );
+  };
+
   // Reactive computed property that automatically updates current status
   const currentStatusFromStore = computed(() => {
     const todayData = attendanceStore.todayAttendance;
     if (todayData) {
+      // Check if employee is on leave first
+      if (todayData.is_on_leave) {
+        return 'on-leave';
+      }
+
+      // If time_in exists but it's not for today (local), treat as not checked in
+      const hasTodayTimeIn = isSameLocalDay(todayData.time_in);
+      if (!hasTodayTimeIn) {
+        return 'checked-out';
+      }
       return todayData.time_out ? 'checked-out' : 'checked-in';
     }
     return 'checked-out';
+  });
+  const isLateToday = computed(() => {
+    const status = (
+      attendanceStore.todayAttendance?.status || ''
+    ).toLowerCase();
+    return status === 'late';
+  });
+  const tardinessMinutesToday = computed(() => {
+    return Number(attendanceStore.todayAttendance?.tardiness_minutes || 0);
   });
 
   // Watch for changes in the store and update local status
@@ -702,6 +828,20 @@
   const showAttendanceRecords = ref(false);
   const attendanceRecords = ref([]);
   const recordsLoading = ref(false);
+  const recordsRange = ref('today');
+  const recordsPage = ref(1);
+  const recordsPerPage = ref(10);
+  const recordsTotalPages = computed(() =>
+    Math.max(
+      1,
+      Math.ceil(attendanceRecords.value.length / recordsPerPage.value)
+    )
+  );
+  const paginatedRecords = computed(() => {
+    const start = (recordsPage.value - 1) * recordsPerPage.value;
+    const end = start + recordsPerPage.value;
+    return attendanceRecords.value.slice(start, end);
+  });
   const scheduleInfo = ref(null);
   const scheduleValidation = ref(null);
   const scheduleLoading = ref(false);
@@ -732,45 +872,54 @@
     try {
       recordsLoading.value = true;
 
-      // First, fetch today's attendance to ensure we have the latest data
-      await attendanceStore.fetchTodayAttendance();
-
-      // Get today's attendance data from the store
-      const todayData = attendanceStore.todayAttendance;
-      console.log(
-        'QRAttendanceModal - fetchAttendanceRecords - Today data:',
-        todayData
+      // Determine date range
+      const now = new Date();
+      const end = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        23,
+        59,
+        59,
+        999
       );
-
-      if (todayData) {
-        // Convert today's attendance record to array format for display
-        const recordsArray = [todayData];
-        attendanceRecords.value = recordsArray;
-        console.log(
-          'QRAttendanceModal - fetchAttendanceRecords - Records set:',
-          recordsArray
+      let start;
+      if (recordsRange.value === 'today') {
+        start = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          0,
+          0,
+          0,
+          0
         );
+      } else if (recordsRange.value === 'week') {
+        const startOfToday = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate()
+        );
+        const day = startOfToday.getDay();
+        const diff = (day + 6) % 7; // Monday start
+        start = new Date(startOfToday);
+        start.setDate(start.getDate() - diff);
       } else {
-        // If no today's data, try to fetch from API directly
-        const today = new Date().toISOString().split('T')[0];
-        const response = await axios.get(`${API_BASE_URL}/attendance/today`, {
-          headers: authHeaders(),
-        });
-
-        if (response.data.success && response.data.data) {
-          const recordsArray = [response.data.data];
-          attendanceRecords.value = recordsArray;
-          console.log(
-            'QRAttendanceModal - fetchAttendanceRecords - API Records set:',
-            recordsArray
-          );
-        } else {
-          attendanceRecords.value = [];
-          console.log(
-            'QRAttendanceModal - fetchAttendanceRecords - No records found'
-          );
-        }
+        start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
       }
+
+      // Fetch report (current user) via store
+      const startIso = start.toISOString();
+      const endIso = end.toISOString();
+      const currentUserId =
+        authStore.user?.id || authStore.user?.employee_internal_id || null;
+      const report = await attendanceStore.getAttendanceReport(
+        currentUserId,
+        startIso,
+        endIso
+      );
+      attendanceRecords.value = Array.isArray(report) ? report : [];
+      recordsPage.value = 1;
     } catch (error) {
       console.error('Error fetching attendance records:', error);
       attendanceRecords.value = [];
@@ -1122,8 +1271,18 @@
       console.log('QRAttendanceModal - Today data:', todayData);
 
       if (todayData) {
-        // Check if user has time_out (meaning they're checked out)
-        currentStatus.value = todayData.time_out ? 'checked-out' : 'checked-in';
+        // Check if employee is on leave first
+        if (todayData.is_on_leave) {
+          currentStatus.value = 'on-leave';
+        } else {
+          // Consider checked-in ONLY if there is a time_in for today and no time_out yet
+          const hasTodayTimeIn = isSameLocalDay(todayData.time_in);
+          if (hasTodayTimeIn && !todayData.time_out) {
+            currentStatus.value = 'checked-in';
+          } else {
+            currentStatus.value = 'checked-out';
+          }
+        }
         console.log(
           'QRAttendanceModal - Current status updated to:',
           currentStatus.value
@@ -1215,6 +1374,8 @@
             action: 'time-in',
             time: todayData.time_in,
             location: 'QR Code Scan',
+            status: todayData.status,
+            tardiness_minutes: todayData.tardiness_minutes,
           };
           showSuccessModal.value = true;
           lastShownRecordId.value = todayData.id;

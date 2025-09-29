@@ -395,7 +395,7 @@
         <!-- Current Stock Info / Expired Notice -->
         <div
           v-if="selectedStock"
-          :class="isExpiredItem ? 'alert alert-error' : 'alert alert-success'"
+          :class="isExpiredItem ? 'alert bg-error/20 text-error' : 'alert bg-success/20 text-success'"
           class="mb-6 w-full"
         >
           <div class="flex items-center w-full">

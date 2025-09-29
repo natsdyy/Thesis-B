@@ -39,6 +39,8 @@ const employeeScheduleRoutes = require("./routes/employeeSchedules");
 const shiftTypesRoutes = require("./routes/shiftTypes");
 const { serve, setup } = require("./config/swagger");
 const posRoutes = require("./routes/pos");
+const overtimeRoutes = require("./routes/overtime");
+const leaveRoutes = require("./routes/leave");
 
 const app = express();
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 5000;
@@ -151,6 +153,8 @@ app.use("/api/branch-schedules", branchScheduleRoutes);
 app.use("/api/employee-schedules", employeeScheduleRoutes);
 app.use("/api/shift-types", shiftTypesRoutes);
 app.use("/api/pos", posRoutes);
+app.use("/api/overtime", overtimeRoutes);
+app.use("/api/leave", leaveRoutes);
 
 // Auto-expire job
 async function autoExpireJob() {

@@ -21,8 +21,8 @@ const EMAIL_CONFIG = {
 
 // Check if we have proper email configuration
 const hasValidEmailConfig = () => {
-  const hasSendGrid = process.env.SENDGRID_API_KEY && process.env.SENDGRID_API_KEY !== 'your-sendgrid-api-key-here';
-  const hasSMTP = process.env.SMTP_PASS && process.env.SMTP_PASS !== 'your-gmail-app-password-here';
+  const hasSendGrid = process.env.SENDGRID_API_KEY && process.env.SENDGRID_API_KEY !== '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';
+  const hasSMTP = process.env.SMTP_PASS && process.env.SMTP_PASS !== 'sclg quvi fuyh dcfa';
   return hasSendGrid || hasSMTP;
 };
 

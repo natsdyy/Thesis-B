@@ -30,10 +30,10 @@ const createTransporter = (config) => {
       user: "mailcountrysidesteakhouse@gmail.com",
       pass: "sclg quvi fuyh dcfa", // Gmail App Password
     },
-    // Production-optimized timeout settings
-    connectionTimeout: 120000, // 2 minutes
-    greetingTimeout: 60000, // 1 minute
-    socketTimeout: 120000, // 2 minutes
+    // Optimized timeout settings for better reliability
+    connectionTimeout: 30000, // 30 seconds
+    greetingTimeout: 30000, // 30 seconds
+    socketTimeout: 60000, // 1 minute
     pool: false, // Disable connection pooling for Railway compatibility
     tls: {
       rejectUnauthorized: false,
@@ -68,9 +68,9 @@ const alternativeTransporter = createTransporter({
     secureProtocol: 'TLSv1_method',
     ciphers: 'ALL'
   },
-  connectionTimeout: 120000,  // 2 minutes
-  greetingTimeout: 60000,     // 1 minute
-  socketTimeout: 120000       // 2 minutes
+  connectionTimeout: 30000,   // 30 seconds
+  greetingTimeout: 30000,     // 30 seconds
+  socketTimeout: 60000        // 1 minute
 });
 
 // Railway-compatible transporter using alternative SMTP (if configured)
@@ -209,20 +209,32 @@ class EmailService {
       try {
         const info = await this.withTimeout(
           transporter.sendMail(mailOptions),
-          120000
+          60000
         );
         console.log('✅ SMTP email sent (primary):', info.messageId);
         return { success: true, messageId: info.messageId };
       } catch (primaryError) {
         console.log('❌ Primary SMTP failed:', primaryError.message);
-        console.log('📧 Trying fallback SMTP...');
+        console.log('📧 Trying fallback SMTP (port 465)...');
         
-        const info = await this.withTimeout(
-          fallbackTransporter.sendMail(mailOptions),
-          120000
-        );
-        console.log('✅ SMTP email sent (fallback):', info.messageId);
-        return { success: true, messageId: info.messageId };
+        try {
+          const info = await this.withTimeout(
+            fallbackTransporter.sendMail(mailOptions),
+            60000
+          );
+          console.log('✅ SMTP email sent (fallback):', info.messageId);
+          return { success: true, messageId: info.messageId };
+        } catch (fallbackError) {
+          console.log('❌ Fallback SMTP failed:', fallbackError.message);
+          console.log('📧 Trying alternative SMTP...');
+          
+          const info = await this.withTimeout(
+            alternativeTransporter.sendMail(mailOptions),
+            60000
+          );
+          console.log('✅ SMTP email sent (alternative):', info.messageId);
+          return { success: true, messageId: info.messageId };
+        }
       }
     } catch (error) {
       console.error('❌ All SMTP methods failed:', error.message);
@@ -235,7 +247,7 @@ class EmailService {
    * @param {Promise} emailPromise - The email promise
    * @param {number} timeoutMs - Timeout in milliseconds (default: 90000)
    */
-  static async withTimeout(emailPromise, timeoutMs = 150000) {
+  static async withTimeout(emailPromise, timeoutMs = 60000) {
     return Promise.race([
       emailPromise,
       new Promise((_, reject) =>

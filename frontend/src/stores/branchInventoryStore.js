@@ -13,6 +13,10 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
   const loading = ref(false);
   const error = ref(null);
 
+  // Cache for multiple branch inventory to avoid redundant API calls
+  const inventoryCache = ref({});
+  const cacheExpiry = ref({});
+
   // Getters
   const totalItems = computed(() => inventory.value.length);
   const totalValue = computed(() => {
@@ -43,6 +47,7 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
 
       if (response.data.success) {
         inventory.value = response.data.data;
+        return response.data.data; // Return the data for use in components
       } else {
         throw new Error(response.data.message || 'Failed to fetch inventory');
       }
@@ -55,9 +60,117 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
 
       // Don't throw the error to prevent redirects, just log it
       console.warn('Branch inventory fetch failed, but continuing...');
+      return []; // Return empty array on error
     } finally {
       loading.value = false;
     }
+  };
+
+  // Fetch inventory for multiple branches (optimized with backend endpoint)
+  const fetchMultipleBranchInventory = async (branchIds, filters = {}) => {
+    // Create cache key based on branch IDs and filters
+    const cacheKey = `${branchIds.sort().join(',')}_${JSON.stringify(filters)}`;
+    const now = Date.now();
+    const cacheTimeout = 30000; // 30 seconds cache
+
+    // Check if we have valid cached data
+    if (inventoryCache.value[cacheKey] && cacheExpiry.value[cacheKey] > now) {
+      return inventoryCache.value[cacheKey];
+    }
+
+    // If only one branch, use the single branch method
+    if (branchIds.length === 1) {
+      const branchId = branchIds[0];
+      try {
+        const data = await fetchInventory(branchId, filters);
+        const result = { [branchId]: data || [] };
+
+        // Cache the result
+        inventoryCache.value[cacheKey] = result;
+        cacheExpiry.value[cacheKey] = now + cacheTimeout;
+
+        return result;
+      } catch (error) {
+        console.warn(
+          `❌ Failed to fetch inventory for branch ${branchId}:`,
+          error
+        );
+        return { [branchId]: [] };
+      }
+    }
+
+    loading.value = true;
+    error.value = null;
+
+    try {
+      // Temporarily use fallback method until backend endpoint is used
+      return await fetchMultipleBranchInventoryFallback(branchIds, filters);
+    } catch (error) {
+      console.error('❌ Error fetching multiple branch inventory:', error);
+      return {};
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Fallback method using individual requests (for backwards compatibility)
+  const fetchMultipleBranchInventoryFallback = async (
+    branchIds,
+    filters = {}
+  ) => {
+    try {
+      // Use Promise.allSettled for graceful error handling
+      const inventoryPromises = branchIds.map(async (branchId) => {
+        try {
+          const data = await fetchInventory(branchId, filters);
+          return { branchId, data: data || [] };
+        } catch (error) {
+          console.error(
+            `❌ Failed to fetch inventory for branch ${branchId}:`,
+            error.response?.status,
+            error.response?.data || error.message
+          );
+          throw { branchId, error };
+        }
+      });
+
+      const results = await Promise.allSettled(inventoryPromises);
+
+      // Process results
+      const branchInventoryData = {};
+      let successCount = 0;
+      let failureCount = 0;
+
+      results.forEach((result, index) => {
+        const branchIdFromOrder = branchIds[index];
+        if (result.status === 'fulfilled') {
+          // Be defensive: some environments strip custom properties from fulfilled values
+          const resolvedBranchId =
+            result.value && result.value.branchId !== undefined
+              ? result.value.branchId
+              : branchIdFromOrder;
+
+          branchInventoryData[resolvedBranchId] = result.value?.data || [];
+          successCount++;
+        } else {
+          console.warn(`[WARN] Rejected result:`, result.reason);
+          branchInventoryData[branchIdFromOrder] = [];
+          failureCount++;
+        }
+      });
+
+      return branchInventoryData;
+    } catch (error) {
+      console.error('❌ Error in fallback method:', error);
+      return {};
+    }
+  };
+
+  // Clear inventory cache (useful when data is updated)
+  const clearInventoryCache = () => {
+    console.log('🗑️ Clearing inventory cache');
+    inventoryCache.value = {};
+    cacheExpiry.value = {};
   };
 
   const fetchStats = async (branchId) => {
@@ -413,6 +526,8 @@ export const useBranchInventoryStore = defineStore('branchInventory', () => {
 
     // Actions
     fetchInventory,
+    fetchMultipleBranchInventory,
+    clearInventoryCache,
     fetchStats,
     fetchLowStockItems,
     fetchExpiringItems,

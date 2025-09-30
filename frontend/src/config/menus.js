@@ -88,15 +88,15 @@ export const menuItems = [
     department: 'SCM',
   },
   {
-    name: 'Suppliers',
-    icon: Truck,
-    route: '/scm/suppliers',
-    department: 'SCM',
-  },
-  {
     name: 'Goods Receipt Notes',
     icon: ReceiptText,
     route: '/scm/grn',
+    department: 'SCM',
+  },
+  {
+    name: 'Suppliers',
+    icon: Truck,
+    route: '/scm/suppliers',
     department: 'SCM',
   },
 
@@ -126,6 +126,7 @@ export const menuItems = [
     route: '/finance/sales',
     department: 'Finance',
   },
+
   // Production Department
   {
     name: 'Dashboard',

@@ -21,8 +21,8 @@
   } from 'lucide-vue-next';
   import { usePOSStore } from '../../stores/posStore.js';
   import { useBranchContextStore } from '../../stores/branchContextStore.js';
-  import axios from 'axios';
   import { apiConfig, getApiUrl } from '../../config/api.js';
+  import { useCustomToast } from '../../composables/useCustomToast.js';
 
   const props = defineProps({
     show: { type: Boolean, default: false },
@@ -32,6 +32,14 @@
 
   const posStore = usePOSStore();
   const context = useBranchContextStore();
+  const {
+    showLoading,
+    showSuccess,
+    showError,
+    showWarning,
+    dismiss,
+    dismissAll,
+  } = useCustomToast();
 
   const activeTab = ref('today');
 
@@ -383,6 +391,127 @@
   const exportRemitData = () => {
     // TODO: Implement export functionality
     console.log('Export remit sales data');
+  };
+
+  // Confirmation modal + submit state
+  const showConfirmRemit = ref(false);
+  const submitting = ref(false);
+
+  // Ensure confirm dialog overlays the parent modal using native dialog.showModal()
+  watch(
+    showConfirmRemit,
+    (val) => {
+      const dlg = document.getElementById('confirm_remit_modal');
+      if (val) {
+        if (dlg?.showModal) dlg.showModal();
+      } else if (dlg?.close) {
+        dlg.close();
+      }
+    },
+    { flush: 'post' }
+  );
+
+  // Summary used by confirmation modal (aligns with what we submit)
+  const confirmSummary = computed(() => {
+    const orders = currentData.value?.ordersDetails || [];
+    const completed = orders.filter((o) => o.status === 'completed');
+    const voided = orders.filter((o) => o.status === 'void');
+
+    const gross =
+      completed.reduce((s, o) => s + (Number(o.total_amount) || 0), 0) +
+      voided.reduce((s, o) => s + (Number(o.total_amount) || 0), 0);
+    const refunds = 0; // No actual refunds in current system
+    const voidedAmount = voided.reduce(
+      (s, o) => s + (Number(o.total_amount) || 0),
+      0
+    );
+    const net = gross; // Gross includes both completed and voided
+    const remitted = Math.max(0, gross - refunds - voidedAmount);
+    return { gross, refunds, voidedAmount, net, remitted };
+  });
+
+  const remitToFinance = async () => {
+    try {
+      if (submitting.value) return;
+      const periodMap = {
+        today: 'today',
+        thisWeek: 'week',
+        thisMonth: 'month',
+      };
+      const periodType = periodMap[activeTab.value] || 'today';
+      const { dateFrom, dateTo } = getDateRange(activeTab.value);
+
+      // Prevent duplicate pending remittance for same branch + period range
+      try {
+        const pending = await posStore.hasPendingRemittance(
+          context.currentBranch.id,
+          dateFrom,
+          dateTo
+        );
+        if (pending) {
+          showWarning(
+            'A remittance for this period is already pending approval.'
+          );
+          showConfirmRemit.value = false;
+          return;
+        }
+      } catch (dupErr) {
+        console.warn('Failed to check existing remittance:', dupErr);
+      }
+
+      const totals = {
+        gross: 0,
+        net: 0,
+        refunds: 0,
+        disposed: 0,
+        voidedAmount: 0,
+      };
+
+      (currentData.value.ordersDetails || []).forEach((o) => {
+        if (o.status === 'completed') {
+          totals.gross += Number(o.total_amount) || 0;
+          totals.net += Number(o.total_amount) || 0; // VAT excluded per POS store
+        }
+        if (o.status === 'void') {
+          // Include voided orders in gross sales (they were actual sales before being voided)
+          totals.gross += Number(o.total_amount) || 0;
+          // Track voided amounts separately from refunds
+          totals.voidedAmount += Number(o.total_amount) || 0;
+          totals.disposed += 1;
+        }
+      });
+
+      // Net sales = Gross sales - Refunds - Voided amounts
+      // Remitted amount = Net sales
+      const remitted = Math.max(
+        0,
+        totals.gross - totals.refunds - totals.voidedAmount
+      );
+
+      submitting.value = true;
+      const toastId = showLoading('Submitting remittance...');
+      await posStore.submitRemittance({
+        branchId: context.currentBranch.id,
+        periodType,
+        dateFrom,
+        dateTo,
+        grossSales: totals.gross,
+        netSales: totals.net,
+        refundedAmount: totals.refunds,
+        voidedAmount: totals.voidedAmount,
+        disposed: totals.disposed,
+        remittedAmount: remitted,
+        notes: null,
+      });
+      dismiss(toastId);
+      showSuccess('Remittance submitted to Finance');
+      showConfirmRemit.value = false;
+    } catch (e) {
+      dismissAll();
+      showError(e?.response?.data?.message || 'Failed to submit remittance');
+    } finally {
+      submitting.value = false;
+    }
   };
 
   const currentData = computed(() => {
@@ -828,6 +957,14 @@
             <Download class="w-4 h-4 mr-1" />
             Export
           </button>
+          <button
+            class="btn bg-primaryColor text-white hover:bg-primaryColor/80 btn-sm font-thin"
+            @click="showConfirmRemit = true"
+            :disabled="posStore.loading || !currentData.ordersDetails?.length"
+          >
+            <CheckCircle class="w-4 h-4 mr-1" />
+            Remit to Finance
+          </button>
         </div>
       </div>
 
@@ -836,6 +973,69 @@
       </div>
     </div>
     <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+
+  <!-- Confirm Remit Modal -->
+  <dialog id="confirm_remit_modal" class="modal">
+    <div class="modal-box">
+      <h3 class="font-bold text-lg">Confirm Remittance</h3>
+      <p class="py-2 text-sm text-gray-600">
+        This will submit the
+        {{
+          activeTab === 'today'
+            ? 'Today'
+            : activeTab === 'thisWeek'
+              ? 'This Week'
+              : 'This Month'
+        }}
+        totals to Finance.
+      </p>
+      <div class="mt-2 text-sm">
+        <div class="flex justify-between">
+          <span>Gross Sales:</span>
+          <span>₱{{ confirmSummary.gross.toLocaleString() }}</span>
+        </div>
+        <div class="flex justify-between">
+          <span>Refunds:</span>
+          <span>₱{{ confirmSummary.refunds.toLocaleString() }}</span>
+        </div>
+        <div class="flex justify-between">
+          <span>Voided Amount:</span>
+          <span>₱{{ confirmSummary.voidedAmount.toLocaleString() }}</span>
+        </div>
+        <div class="flex justify-between">
+          <span>Net Sales:</span>
+          <span>₱{{ confirmSummary.net.toLocaleString() }}</span>
+        </div>
+        <div class="flex justify-between font-semibold border-t pt-2">
+          <span>Remitted Amount:</span>
+          <span>₱{{ confirmSummary.remitted.toLocaleString() }}</span>
+        </div>
+      </div>
+      <div class="modal-action">
+        <button
+          class="btn bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none btn-sm"
+          @click="showConfirmRemit = false"
+          :disabled="submitting"
+        >
+          Cancel
+        </button>
+        <button
+          class="btn bg-primaryColor text-white hover:bg-primaryColor/80 font-thin"
+          @click="remitToFinance"
+          :disabled="submitting"
+        >
+          <span
+            v-if="submitting"
+            class="loading loading-spinner loading-xs mr-2"
+          ></span>
+          <span>{{ submitting ? 'Remitting…' : 'Confirm' }}</span>
+        </button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button @click="showConfirmRemit = false">close</button>
+    </form>
   </dialog>
 </template>
 

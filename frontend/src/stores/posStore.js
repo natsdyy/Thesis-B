@@ -660,6 +660,175 @@ export const usePOSStore = defineStore('pos', () => {
     }
   };
 
+  // Fetch bucketed sales trends
+  const fetchSalesTrends = async (
+    branchId,
+    { dateFrom = null, dateTo = null, period = null, bucket = 'auto' } = {}
+  ) => {
+    try {
+      const url = getApiUrl('/pos/sales-trends');
+      const params = new URLSearchParams();
+      params.append('branch_id', branchId);
+      if (dateFrom) params.append('date_from', dateFrom);
+      if (dateTo) params.append('date_to', dateTo);
+      if (period) params.append('period', period);
+      if (bucket) params.append('bucket', bucket);
+
+      const { data: response } = await axios.get(
+        `${url}?${params.toString()}`,
+        {
+          baseURL: apiConfig.baseURL,
+          headers: { ...getAuthHeaders() },
+        }
+      );
+      if (response.success) return response.data;
+      return {
+        labels: [],
+        gross_sales: [],
+        refunds: [],
+        disposed: [],
+        net_sales: [],
+        remitted_amount: [],
+      };
+    } catch (err) {
+      console.error('Error fetching sales trends:', err);
+      return {
+        labels: [],
+        gross_sales: [],
+        refunds: [],
+        disposed: [],
+        net_sales: [],
+        remitted_amount: [],
+      };
+    }
+  };
+
+  // List remittances (finance)
+  const fetchRemittances = async ({
+    branchId = null,
+    status = null,
+    dateFrom = null,
+    dateTo = null,
+    limit = 100,
+    offset = 0,
+  } = {}) => {
+    try {
+      const url = getApiUrl('/finance/remittances');
+      const params = new URLSearchParams();
+      if (branchId) params.append('branch_id', String(branchId));
+      if (status) params.append('status', String(status));
+      if (dateFrom) params.append('date_from', String(dateFrom));
+      if (dateTo) params.append('date_to', String(dateTo));
+      if (limit) params.append('limit', String(limit));
+      if (offset) params.append('offset', String(offset));
+
+      const { data } = await axios.get(`${url}?${params.toString()}`, {
+        baseURL: apiConfig.baseURL,
+        headers: { ...getAuthHeaders() },
+      });
+      const list = Array.isArray(data?.data) ? data.data : [];
+      return { data: list, total: Number(data?.total || list.length) };
+    } catch (err) {
+      console.error('Error fetching remittances:', err);
+      return { data: [], total: 0 };
+    }
+  };
+
+  // Approve remittance (finance)
+  const approveRemittance = async (remittanceId) => {
+    try {
+      const url = getApiUrl(`/finance/remittances/${remittanceId}/approve`);
+      const { data: resp } = await axios.post(
+        url,
+        {},
+        { baseURL: apiConfig.baseURL, headers: { ...getAuthHeaders() } }
+      );
+      return resp?.data || null;
+    } catch (err) {
+      console.error('Error approving remittance:', err);
+      throw err;
+    }
+  };
+
+  // Reject remittance (finance)
+  const rejectRemittance = async (remittanceId, { notes = null } = {}) => {
+    try {
+      const url = getApiUrl(`/finance/remittances/${remittanceId}/reject`);
+      const { data: resp } = await axios.post(
+        url,
+        { notes },
+        { baseURL: apiConfig.baseURL, headers: { ...getAuthHeaders() } }
+      );
+      return resp?.data || null;
+    } catch (err) {
+      console.error('Error rejecting remittance:', err);
+      throw err;
+    }
+  };
+
+  // Submit a remittance to Finance
+  const submitRemittance = async ({
+    branchId,
+    periodType,
+    dateFrom,
+    dateTo,
+    grossSales,
+    netSales,
+    refundedAmount,
+    voidedAmount,
+    disposed,
+    remittedAmount,
+    notes,
+  }) => {
+    try {
+      const url = getApiUrl('/finance/remittances');
+      const payload = {
+        branch_id: branchId,
+        period_type: periodType,
+        date_from: dateFrom,
+        date_to: dateTo,
+        gross_sales: grossSales,
+        net_sales: netSales,
+        refunded_amount: refundedAmount,
+        voided_amount: voidedAmount,
+        disposed,
+        remitted_amount: remittedAmount,
+        notes: notes || null,
+      };
+      const { data: resp } = await axios.post(url, payload, {
+        baseURL: apiConfig.baseURL,
+        headers: { ...getAuthHeaders() },
+      });
+      return resp?.data || null;
+    } catch (err) {
+      console.error('Error submitting remittance:', err);
+      throw err;
+    }
+  };
+
+  // Check if there's already a pending remittance for the same period
+  const hasPendingRemittance = async (branchId, dateFrom, dateTo) => {
+    try {
+      const url = getApiUrl('/finance/remittances');
+      const params = new URLSearchParams();
+      params.append('branch_id', String(branchId));
+      params.append('status', 'pending');
+      if (dateFrom) params.append('date_from', dateFrom);
+      if (dateTo) params.append('date_to', dateTo);
+      params.append('limit', '1');
+
+      const { data } = await axios.get(`${url}?${params.toString()}`, {
+        baseURL: apiConfig.baseURL,
+        headers: { ...getAuthHeaders() },
+      });
+      const list = Array.isArray(data?.data) ? data.data : [];
+      return list.length > 0;
+    } catch (err) {
+      console.warn('Failed to check pending remittance:', err);
+      return false; // non-blocking
+    }
+  };
+
   // Fetch top selling items
   const fetchTopSellingItems = async (
     branchId,
@@ -845,6 +1014,12 @@ export const usePOSStore = defineStore('pos', () => {
     fetchSalesStats,
     fetchTopSellingItems,
     fetchBranchMenuItems,
+    fetchSalesTrends,
+    fetchRemittances,
+    approveRemittance,
+    rejectRemittance,
+    submitRemittance,
+    hasPendingRemittance,
     setSelectedCategory,
     initialize,
     getNextOrderNumber,

@@ -364,4 +364,54 @@ router.get("/loss-trends", authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/pos/sales-trends - bucketed sales aggregates
+router.get("/sales-trends", authenticateToken, async (req, res) => {
+  try {
+    const {
+      branch_id,
+      date_from,
+      date_to,
+      bucket = "auto",
+      period = null,
+    } = req.query;
+
+    if (!branch_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Branch ID is required",
+      });
+    }
+
+    // Auto bucket: hour for same-day; month for ~year; else day
+    let bucketType = bucket;
+    if (bucket === "auto") {
+      if (period === "year") bucketType = "month";
+      else if (date_from && date_to) {
+        const s = new Date(date_from);
+        const e = new Date(date_to);
+        const sameDay =
+          s.getFullYear() === e.getFullYear() &&
+          s.getMonth() === e.getMonth() &&
+          s.getDate() === e.getDate();
+        bucketType = sameDay ? "hour" : "day";
+      } else bucketType = "day";
+    }
+
+    const data = await POSOrder.getSalesTrends(
+      parseInt(branch_id),
+      date_from || null,
+      date_to || null,
+      bucketType
+    );
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error("Error fetching sales trends:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch sales trends",
+    });
+  }
+});
+
 module.exports = router;

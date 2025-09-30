@@ -2670,13 +2670,6 @@
                 ></span>
                 Refresh
               </button>
-              <button
-                class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
-                @click="openModal('create')"
-              >
-                <Plus class="w-4 h-4 mr-2 text-primaryColor" />
-                Add Request
-              </button>
             </div>
           </div>
 
@@ -4004,7 +3997,7 @@
           v-if="
             confirmModal.type === 'cancel' || confirmModal.type === 'delete'
           "
-          class="alert alert-warning mt-3 flex items-center gap-2"
+          class="alert bg-warning/10 border-warning text-warning mt-3 flex items-center gap-2"
         >
           <TriangleAlert class="w-6 h-6" />
           <span class="text-sm">This action cannot be undone!</span>
@@ -4590,8 +4583,8 @@
           <table
             class="table table-sm table-zebra text-black/50 border border-black/10 custom-zebra"
           >
-            <thead class="text-primaryColor">
-              <tr class="bg-primaryColor text-accentColor">
+            <thead class="">
+              <tr class="">
                 <th class="w-12">#</th>
                 <th class="w-48">Item Name</th>
                 <th class="w-20">Qty</th>
@@ -4711,7 +4704,7 @@
               </tr>
             </tbody>
             <tfoot>
-              <tr class="bg-primaryColor/10 font-semibold">
+              <tr class="font-semibold">
                 <td colspan="6" class="text-right text-black">Total Amount:</td>
                 <td class="text-right text-primaryColor">₱{{ totalAmount }}</td>
                 <td></td>

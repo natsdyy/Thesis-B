@@ -49,7 +49,7 @@
   // Reactive state
   const activeTab = ref('planning');
   const searchQuery = ref('');
-  const statusFilter = ref('');
+  const statusFilter = ref('In Progress');
   const dateFilter = ref('');
   const categoryFilter = ref('');
   const showCreateModal = ref(false);
@@ -1776,9 +1776,7 @@
                     >
                       {{ sample.menu_item_name }}
                     </h3>
-                    <p class="text-sm text-gray-600 mb-2">
-                      Batch #{{ sample.sample_batch_number }}
-                    </p>
+              
                     <div class="flex items-center gap-2 mb-3">
                       <component
                         :is="getStatusIcon(sample.status)"

@@ -306,7 +306,8 @@
   const activeTab = ref('overview');
   const alertTab = ref('expiring');
   const currentPage = ref(1);
-  const itemsPerPage = ref(12);
+
+  const itemsPerPage = ref(10);
   const searchQuery = ref('');
   const categoryFilter = ref('');
   const expandedItems = ref(new Set());
@@ -1349,6 +1350,13 @@
 
   // Open InventoryDetailsModal from low stock alert card by selecting a representative batch
   const viewItemDetailsFromAlert = (alertItem) => {
+    // Prefer the exact batch from the alert payload when available
+    if (alertItem && alertItem.id) {
+      // Open details by ID even if it's not in the current list (e.g., qty=0 hidden)
+      detailsModal.value = { show: true, inventoryItemId: alertItem.id };
+      return;
+    }
+    // Fallback: search by item_type and pick a sensible candidate
     const batches = (currentInventory.value || []).filter(
       (b) => b.item_type_id === alertItem.item_type_id
     );
@@ -1356,46 +1364,86 @@
       showToast('error', 'No batch found for this item');
       return;
     }
-    // Choose the batch with the lowest quantity to inspect
-    const target = [...batches].sort(
+    // Prefer the batch with quantity below threshold if present
+    const threshold = parseFloat(
+      alertItem.min_stock_level ?? alertItem.reorder_level ?? 0
+    );
+    const below = batches.filter(
+      (b) => parseFloat(b.quantity || 0) <= threshold
+    );
+    const target = (below.length ? below : batches).sort(
       (a, b) => parseFloat(a.quantity || 0) - parseFloat(b.quantity || 0)
     )[0];
     detailsModal.value = { show: true, inventoryItemId: target.id };
   };
 
-  // Navigate to RequestSupply and preload items derived from the alert
+  // Navigate to RequestSupply and preload items derived from related alerts
   const createSupplyRequestFromAlert = (alertItem) => {
-    // Build suggested items from underlying batches (grouped by item_name)
-    const batches = (currentInventory.value || []).filter(
-      (b) => b.item_type_id === alertItem.item_type_id
+    // Build items from all low-stock alerts in the same category as the clicked alert
+    const sameCategoryAlerts = (lowStockItems.value || []).filter(
+      (x) => x.category_name === alertItem.category_name
     );
-    const grouped = new Map();
-    batches.forEach((b) => {
-      const key = b.item_name || b.item_type_name;
-      const unit = b.unit_of_measure || '';
-      const prev = grouped.get(key) || { name: key, unit, quantity: 0 };
-      grouped.set(key, {
-        name: key,
+
+    // Helper to resolve unit
+    const resolveUnit = (it) => {
+      if (it.unit_of_measure) return it.unit_of_measure;
+      const m = (currentInventory.value || []).find(
+        (b) => b.id == it.id || b.item_type_id === it.item_type_id
+      );
+      return m?.unit_of_measure || '';
+    };
+
+    // Helper to resolve a fair unit price from existing batches
+    const resolveUnitPrice = (it) => {
+      try {
+        // Use provided unit_cost when available (per-batch alerts)
+        const direct = parseFloat(it.unit_cost || it.unit_price || 0);
+        if (!isNaN(direct) && direct > 0) return direct;
+
+        // Otherwise compute weighted-average from current inventory for the same item_type
+        const batches = (currentInventory.value || []).filter(
+          (b) => b.item_type_id === it.item_type_id
+        );
+        if (!batches.length) return 0;
+        const totals = batches.reduce(
+          (acc, b) => {
+            const q = parseFloat(b.quantity || 0) || 0;
+            const c = parseFloat(b.unit_cost || 0) || 0;
+            acc.qty += q;
+            acc.value += q * c;
+            return acc;
+          },
+          { qty: 0, value: 0 }
+        );
+        if (totals.qty > 0 && totals.value > 0)
+          return totals.value / totals.qty;
+        // Fallback to first available batch cost
+        const first = batches.find((b) => parseFloat(b.unit_cost || 0) > 0);
+        return first ? parseFloat(first.unit_cost) : 0;
+      } catch {
+        return 0;
+      }
+    };
+
+    const items = sameCategoryAlerts.map((it) => {
+      const unit = resolveUnit(it);
+      const deficit = Math.max(
+        1,
+        Math.ceil(
+          Math.max(
+            0,
+            parseFloat(it.min_stock_level || 0) -
+              parseFloat(it.current_stock || 0)
+          )
+        )
+      );
+      return {
+        name: it.item_name || it.item_type_name,
         unit,
-        quantity: prev.quantity + parseFloat(b.quantity || 0),
-      });
+        unit_price: resolveUnitPrice(it),
+        quantity: deficit,
+      };
     });
-    // Suggest quantity as deficit to min level, spread across names
-    const deficit = Math.max(
-      0,
-      parseFloat(alertItem.min_stock_level || 0) -
-        parseFloat(alertItem.current_stock || 0)
-    );
-    const names = Array.from(grouped.values());
-    const perItem = names.length
-      ? Math.max(deficit / names.length, 1)
-      : deficit;
-    const items = names.map((n) => ({
-      name: n.name,
-      unit: n.unit,
-      unit_price: 0,
-      quantity: Math.ceil(perItem),
-    }));
 
     // Pass preload via router state
     try {
@@ -1475,6 +1523,25 @@
       if (severity === 'warning')
         return 'badge-sm border-none font-medium bg-warning/20 text-warning';
     }
+    // Fallback: compute from available fields (e.g., reorder_level on batch)
+    const currentFallback = parseFloat(
+      item.current_stock ?? item.total_quantity ?? item.quantity ?? 0
+    );
+    const minLevelFallback = parseFloat(
+      item.min_stock_level ?? item.reorder_level ?? 0
+    );
+    if (
+      !isNaN(currentFallback) &&
+      !isNaN(minLevelFallback) &&
+      minLevelFallback > 0
+    ) {
+      if (currentFallback <= minLevelFallback) {
+        // Critical if 0 or extremely low (<= 20% of min level)
+        if (currentFallback === 0 || currentFallback <= minLevelFallback * 0.2)
+          return 'badge-sm border-none font-medium bg-error/20 text-error';
+        return 'badge-sm border-none font-medium bg-warning/20 text-warning';
+      }
+    }
     return 'badge-sm border-none font-medium bg-success/20 text-success';
   };
 
@@ -1487,7 +1554,62 @@
       if (severity === 'critical') return 'Critical';
       if (severity === 'warning') return 'Low';
     }
+    // Fallback using reorder/min levels present on the item/batch
+    const currentFallback = parseFloat(
+      item.current_stock ?? item.total_quantity ?? item.quantity ?? 0
+    );
+    const minLevelFallback = parseFloat(
+      item.min_stock_level ?? item.reorder_level ?? 0
+    );
+    if (
+      !isNaN(currentFallback) &&
+      !isNaN(minLevelFallback) &&
+      minLevelFallback > 0
+    ) {
+      if (currentFallback <= minLevelFallback) {
+        return currentFallback === 0 ||
+          currentFallback <= minLevelFallback * 0.2
+          ? 'Critical'
+          : 'Low';
+      }
+    }
     return 'Normal';
+  };
+
+  // Batch-level low stock evaluation (UI override for Status column)
+  const getBatchStockStatus = (batch) => {
+    try {
+      const qty = parseFloat(batch.quantity ?? 0);
+      const threshold = parseFloat(
+        batch.reorder_level ?? batch.min_stock_level ?? 0
+      );
+      if (!isNaN(qty) && !isNaN(threshold) && threshold > 0) {
+        if (qty <= threshold) {
+          // Show critical when qty is 0 or <= 20% of threshold
+          return qty === 0 || qty <= threshold * 0.2 ? 'critical' : 'low';
+        }
+      }
+      return 'normal';
+    } catch (_) {
+      return 'normal';
+    }
+  };
+
+  const getBatchStatusBadgeClass = (batch) => {
+    const state = getBatchStockStatus(batch);
+    if (state === 'critical')
+      return 'badge-sm border-none font-medium bg-error/20 text-error';
+    if (state === 'low')
+      return 'badge-sm border-none font-medium bg-warning/20 text-warning';
+    // Fall back to existing status color mapping
+    return getStatusColor(batch.status);
+  };
+
+  const getBatchStatusText = (batch) => {
+    const state = getBatchStockStatus(batch);
+    if (state === 'critical') return 'critical';
+    if (state === 'low') return 'low stock';
+    return batch.status || 'available';
   };
 
   const getForecastText = (item) => {
@@ -3351,10 +3473,10 @@
                         </td>
                         <td>
                           <span
-                            :class="getStatusColor(batch.status)"
+                            :class="getBatchStatusBadgeClass(batch)"
                             class="badge badge-xs"
                           >
-                            {{ batch.status }}
+                            {{ getBatchStatusText(batch) }}
                           </span>
                         </td>
                         <td>
@@ -3671,7 +3793,7 @@
           <div v-if="alertTab === 'lowstock'" class="space-y-3">
             <div
               v-for="item in lowStockItems"
-              :key="item.item_type_id"
+              :key="item.id || item.item_type_id"
               class="border border-gray-200 rounded-lg bg-base-100 p-3 flex items-start gap-3"
             >
               <div>
@@ -3690,10 +3812,13 @@
                 <div class="flex justify-between items-start">
                   <div>
                     <h3 class="font-semibold text-sm text-primaryColor">
-                      {{ item.item_type_name }}
+                      {{ item.item_name || item.item_type_name }}
                     </h3>
                     <div class="text-xs text-gray-600">
                       {{ item.category_name }}
+                      <span v-if="item.item_type_name">
+                        • {{ item.item_type_name }}</span
+                      >
                     </div>
                   </div>
                   <div>
@@ -3753,22 +3878,10 @@
                     View Item
                   </button>
                   <button
-                    v-if="item.current_stock > 0"
                     class="btn btn-ghost btn-xs"
                     @click="createSupplyRequestFromAlert(item)"
                   >
                     Create Supply Request
-                  </button>
-                  <button
-                    class="btn btn-outline btn-xs"
-                    :class="{
-                      'btn-disabled': acknowledgedLowStock.has(
-                        item.item_type_id
-                      ),
-                    }"
-                    @click="acknowledgeLowStock(item)"
-                  >
-                    Acknowledge
                   </button>
                 </div>
               </div>

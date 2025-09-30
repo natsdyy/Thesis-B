@@ -2,6 +2,10 @@ const express = require("express");
 const router = express.Router();
 const Inventory = require("../models/Inventory");
 const { db } = require("../config/database");
+const {
+  getCurrentPhilippineTime,
+  getCurrentPhilippineDate,
+} = require("../utils/timezoneUtils");
 
 // Get all inventory categories
 router.get("/categories", async (req, res) => {
@@ -210,7 +214,7 @@ router.post("/items", async (req, res) => {
       quantity: parseFloat(req.body.quantity),
       unit_cost: parseFloat(req.body.unit_cost),
       expiry_date: req.body.expiry_date || null,
-      received_date: req.body.received_date || new Date(),
+      received_date: req.body.received_date || getCurrentPhilippineTime(),
       notes: req.body.notes || null,
       received_by: req.body.received_by || "System",
       reference_number: req.body.reference_number || null,
@@ -276,7 +280,7 @@ router.patch("/items/:id/quantity", async (req, res) => {
       reason: req.body.reason || null,
       notes: req.body.notes || null,
       performed_by: req.body.performed_by || "System",
-      transaction_date: req.body.transaction_date || new Date(),
+      transaction_date: req.body.transaction_date || getCurrentPhilippineTime(),
     };
 
     // Validation
@@ -412,6 +416,19 @@ router.get("/alerts/low-stock", async (req, res) => {
   }
 });
 
+// Per-batch low stock alerts (excludes Equipment)
+router.get("/alerts/low-stock-batches", async (req, res) => {
+  try {
+    const lowStockBatches = await Inventory.getLowStockItemsPerBatch();
+    res.json({ success: true, data: lowStockBatches });
+  } catch (error) {
+    console.error("Error fetching per-batch low stock alerts:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch low stock batches" });
+  }
+});
+
 // Get disposed items
 router.get("/disposed", async (req, res) => {
   try {
@@ -472,7 +489,7 @@ router.post("/consumption/single", async (req, res) => {
 
     // Auto-block if expiry_date is today or earlier
     if (item.expiry_date) {
-      const today = new Date();
+      const today = getCurrentPhilippineTime();
       today.setHours(0, 0, 0, 0);
       const expiry = new Date(item.expiry_date);
       expiry.setHours(0, 0, 0, 0);
@@ -491,7 +508,7 @@ router.post("/consumption/single", async (req, res) => {
       reason: reason,
       notes: notes || null,
       performed_by: performed_by || "System",
-      transaction_date: new Date(),
+      transaction_date: getCurrentPhilippineTime(),
     };
 
     const updatedItem = await Inventory.updateInventoryQuantity(
@@ -547,7 +564,7 @@ router.post("/consumption/bulk", async (req, res) => {
 
           // Auto-block if expiry_date is today or earlier
           if (current.expiry_date) {
-            const today = new Date();
+            const today = getCurrentPhilippineTime();
             today.setHours(0, 0, 0, 0);
             const expiry = new Date(current.expiry_date);
             expiry.setHours(0, 0, 0, 0);
@@ -563,7 +580,7 @@ router.post("/consumption/bulk", async (req, res) => {
             reason: item.reason || "Kitchen usage",
             notes: notes || item.notes || null,
             performed_by: performed_by || "System",
-            transaction_date: new Date(),
+            transaction_date: getCurrentPhilippineTime(),
           };
 
           const updatedItem = await Inventory.updateInventoryQuantity(
@@ -696,7 +713,7 @@ router.post("/adjustment", async (req, res) => {
       reason: reason,
       notes: notes || null,
       performed_by: performed_by || "System",
-      transaction_date: new Date(),
+      transaction_date: getCurrentPhilippineTime(),
       adjustment_type: adjustment_type,
       new_expiry_date: new_expiry_date || null,
       disposal_cost:
@@ -750,7 +767,7 @@ router.post("/adjustment/bulk", async (req, res) => {
             reason: item.reason || "Bulk adjustment",
             notes: notes || item.notes || null,
             performed_by: performed_by || "System",
-            transaction_date: new Date(),
+            transaction_date: getCurrentPhilippineTime(),
             adjustment_type: item.adjustment_type,
           };
 
@@ -841,7 +858,7 @@ router.post("/adjustment/bulk-distribution", async (req, res) => {
             reason: item.reason || "Branch Distribution",
             notes: notes || item.notes || null,
             performed_by: performed_by || "System",
-            transaction_date: new Date(),
+            transaction_date: getCurrentPhilippineTime(),
             adjustment_type: "reduce_quantity",
             audit_action: "transfer_out",
           };

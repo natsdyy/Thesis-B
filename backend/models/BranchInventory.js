@@ -1,4 +1,9 @@
 const { db } = require("../config/database");
+const {
+  getCurrentPhilippineTime,
+  getCurrentPhilippineDate,
+  formatPhilippineTime,
+} = require("../utils/timezoneUtils");
 
 class BranchInventory {
   // Get branch inventory by branch ID
@@ -127,7 +132,7 @@ class BranchInventory {
       // If the new expiry date is today or earlier, mark as expired, else keep current status
       let newStatus = currentItem.status;
       if (newExpiryDate) {
-        const today = new Date();
+        const today = getCurrentPhilippineTime();
         today.setHours(0, 0, 0, 0);
         const expiry = new Date(newExpiryDate);
         expiry.setHours(0, 0, 0, 0);
@@ -141,8 +146,8 @@ class BranchInventory {
         .update({
           expiry_date: newExpiryDate || null,
           status: newStatus,
-          last_updated: new Date(),
-          updated_at: new Date(),
+          last_updated: getCurrentPhilippineTime(),
+          updated_at: getCurrentPhilippineTime(),
         })
         .returning("*");
 
@@ -210,7 +215,7 @@ class BranchInventory {
           expiry_date: itemData.expiry_date || null,
           supplier_name: itemData.supplier_name || null,
           distribution_reference: itemData.distribution_reference || null,
-          last_updated: new Date(),
+          last_updated: getCurrentPhilippineTime(),
         })
         .returning("*");
 
@@ -252,8 +257,8 @@ class BranchInventory {
           quantity: updatedQuantity,
           total_value: newTotalValue,
           status: newStatus,
-          last_updated: new Date(),
-          updated_at: new Date(),
+          last_updated: getCurrentPhilippineTime(),
+          updated_at: getCurrentPhilippineTime(),
         })
         .returning("*");
 
@@ -281,13 +286,13 @@ class BranchInventory {
   // Get expiring items for a branch
   static async getExpiringItems(branchId, days = 7) {
     try {
-      const futureDate = new Date();
+      const futureDate = getCurrentPhilippineTime();
       futureDate.setDate(futureDate.getDate() + days);
 
       return await db("branch_inventory")
         .where("branch_id", branchId)
         .whereNotNull("expiry_date")
-        .where("expiry_date", "<=", futureDate.toISOString().split("T")[0])
+        .where("expiry_date", "<=", formatPhilippineTime(futureDate, "date"))
         .where("status", "!=", "expired")
         .whereNull("deleted_at")
         .orderBy("expiry_date");
@@ -335,8 +340,8 @@ class BranchInventory {
   static async deleteItem(itemId) {
     try {
       await db("branch_inventory").where("id", itemId).update({
-        deleted_at: new Date(),
-        updated_at: new Date(),
+        deleted_at: getCurrentPhilippineTime(),
+        updated_at: getCurrentPhilippineTime(),
       });
 
       return true;
@@ -353,8 +358,8 @@ class BranchInventory {
         .where("id", itemId)
         .update({
           status: status,
-          last_updated: new Date(),
-          updated_at: new Date(),
+          last_updated: getCurrentPhilippineTime(),
+          updated_at: getCurrentPhilippineTime(),
         })
         .returning("*");
 

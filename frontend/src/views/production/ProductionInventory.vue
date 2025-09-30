@@ -1609,7 +1609,7 @@
                       {{ item.unit_of_measure }}
                     </div>
                     <div class="text-xs text-gray-500 mt-1">
-                      Reorder: {{ item.reorder_point || 0 }}
+                      Reproduce: {{ item.reorder_point || 0 }}
                     </div>
                   </div>
                 </div>
@@ -1696,20 +1696,6 @@
                       :class="{ 'animate-spin': loading }"
                     />
                     Configure Inventory
-                  </button>
-                  <button
-                    v-else
-                    @click.stop="openUpdateModal(item, 'stock')"
-                    class="btn btn-ghost btn-xs text-primaryColor hover:bg-primaryColor/10 flex-1"
-                  >
-                    <Package class="w-4 h-4 mr-1" />
-                    Update Stock
-                  </button>
-                  <button
-                    @click.stop="openDetailsModal(item)"
-                    class="btn btn-ghost btn-xs text-gray-600 hover:bg-gray-100"
-                  >
-                    <Eye class="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -1945,12 +1931,12 @@
               <div class="card-body p-4">
                 <div class="flex items-center justify-between">
                   <div>
-                    <div class="text-2xl font-bold text-info">
+                    <div class="text-2xl font-bold text-gray-500">
                       {{ productionInventoryStats.recent_distributions || 0 }}
                     </div>
                     <div class="text-sm text-gray-600">Recent (30 days)</div>
                   </div>
-                  <Activity class="w-8 h-8 text-info" />
+                  <Activity class="w-8 h-8 text-gray-500" />
                 </div>
               </div>
             </div>
@@ -2497,7 +2483,7 @@
                       :class="[
                         'btn btn-sm join-item',
                         page === distributionCurrentPage
-                          ? 'btn-primary'
+                          ? ''
                           : 'btn-outline',
                       ]"
                     >
@@ -3748,13 +3734,7 @@
           >
             Close
           </button>
-          <button
-            @click="openUpdateModal(selectedItem, 'stock')"
-            class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
-          >
-            <Package class="w-4 h-4 mr-2" />
-            Update Stock
-          </button>
+
         </div>
       </div>
       <form method="dialog" class="modal-backdrop">

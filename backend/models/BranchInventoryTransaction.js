@@ -1,4 +1,5 @@
 const { db } = require("../config/database");
+const { getCurrentPhilippineTime } = require("../utils/timezoneUtils");
 
 class BranchInventoryTransaction {
   static async create(tx) {
@@ -16,8 +17,8 @@ class BranchInventoryTransaction {
         performed_by: tx.performed_by || null,
         adjustment_type: tx.adjustment_type || null,
         new_expiry_date: tx.new_expiry_date || null,
-        created_at: new Date(),
-        updated_at: new Date(),
+        created_at: getCurrentPhilippineTime(),
+        updated_at: getCurrentPhilippineTime(),
       })
       .returning("*");
     return row;

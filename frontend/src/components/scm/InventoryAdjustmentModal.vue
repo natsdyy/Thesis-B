@@ -468,12 +468,14 @@
               class="select select-bordered w-full"
               required
               @change="onCategoryChange"
+              disabled
             >
               <option value="">Select Category</option>
               <option
                 v-for="category in categories"
                 :key="category.id"
                 :value="category.id"
+                
               >
                 {{ category.name }}
               </option>
@@ -486,11 +488,13 @@
               <span class="label-text-alt text-error">*</span>
             </label>
             <select
+              disabled
               v-model="adjustmentForm.item_type_id"
               class="select select-bordered w-full"
               required
               :disabled="!adjustmentForm.category_id"
               @change="onItemTypeChange"
+              
             >
               <option value="">Select Item Type</option>
               <option
@@ -529,7 +533,11 @@
         <!-- Current Stock Info -->
         <div
           v-if="selectedStock"
-          :class="isExpiredItem ? 'alert alert-error' : 'alert alert-success'"
+          :class="
+            isExpiredItem
+              ? 'alert bg-error/10 border-error'
+              : 'alert bg-success/10 border-success '
+          "
           class="mb-6 w-full"
         >
           <div class="flex items-center w-full">
@@ -739,10 +747,7 @@
         </div>
 
         <!-- Preview Section -->
-        <div
-          v-if="adjustmentPreview"
-          class="alert bg-secondaryColor/20 mb-6 w-full"
-        >
+        <div v-if="adjustmentPreview" class="alert mb-6 w-full">
           <div class="flex items-center w-full">
             <!-- Make sure the container is responsive and has a min-width for smaller screens -->
             <div class="w-full min-w-[300px] sm:min-w-[550px]">

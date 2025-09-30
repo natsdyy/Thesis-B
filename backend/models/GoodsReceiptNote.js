@@ -396,16 +396,64 @@ class GoodsReceiptNote {
 
       for (const item of grnItems) {
         if (item.received_quantity > 0 && item.item_type_id) {
-          // Use only the PO item name without the unit
-          const itemName = item.po_item_name;
+          const itemName = item.po_item_name; // PO item name only
 
+          // Check if item type requires batching
+          const itemType = await trx("inventory_item_types")
+            .where("id", item.item_type_id)
+            .first();
+
+          const requiresBatch = !!itemType?.requires_batch;
+
+          if (!requiresBatch) {
+            // Merge into existing available row for this item_type
+            const existing = await trx("inventory_items")
+              .where({ item_type_id: item.item_type_id })
+              .whereNull("deleted_at")
+              .where("status", "available")
+              .first();
+
+            if (existing) {
+              const incomingQty = parseFloat(item.received_quantity || 0);
+              const incomingValue =
+                parseFloat(item.unit_cost || 0) * incomingQty;
+              const newQty = parseFloat(existing.quantity || 0) + incomingQty;
+              const newTotalValue =
+                parseFloat(existing.total_value || 0) + incomingValue;
+              const newUnitCost =
+                newQty > 0 ? newTotalValue / newQty : existing.unit_cost;
+
+              await trx("inventory_items").where({ id: existing.id }).update({
+                quantity: newQty,
+                total_value: newTotalValue,
+                unit_cost: newUnitCost,
+                updated_at: new Date(),
+              });
+
+              await trx("inventory_transactions").insert({
+                inventory_item_id: existing.id,
+                transaction_type: "receipt",
+                quantity: incomingQty,
+                unit_cost: item.unit_cost,
+                total_value: incomingValue,
+                reference_number: `GRN-${grnId}`,
+                reason: "GRN completion",
+                performed_by: addedBy,
+                transaction_date: new Date(),
+                created_at: new Date(),
+                updated_at: new Date(),
+              });
+              continue; // proceed to next item
+            }
+          }
+
+          // Create a new batch when batching is required or no existing row
           const [inventoryItem] = await trx("inventory_items")
             .insert({
               item_type_id: item.item_type_id,
-              item_name: itemName, // Use only the item name from PO
+              item_name: itemName,
               supplier_id: item.supplier_id,
               purchase_order_id: item.purchase_order_id,
-              // Prefer the PO unit; fallback to item type default via later backfill
               unit_of_measure: item.po_unit || null,
               grn_id: grnId,
               grn_item_id: item.id,

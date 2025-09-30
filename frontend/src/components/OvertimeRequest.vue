@@ -436,20 +436,47 @@
   // Utility methods
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
+    try {
+      // If YYYY-MM-DD, interpret as PH midnight to avoid TZ drift
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(dateString))) {
+        const d = new Date(`${dateString}T00:00:00+08:00`);
+        return d.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          timeZone: 'Asia/Manila',
+        });
+      }
+      return new Date(String(dateString)).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        timeZone: 'Asia/Manila',
+      });
+    } catch (_) {
+      return String(dateString);
+    }
   };
 
   const formatTime = (timeString) => {
     if (!timeString) return 'N/A';
-    return new Date(timeString).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
+    try {
+      let input = String(timeString);
+      // If lacks timezone info, assume PH
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(input)) {
+        if (!/[Zz]|[\+\-]\d{2}:?\d{2}$/.test(input)) {
+          input = input.replace(/$/, ':00+08:00');
+        }
+      }
+      return new Date(input).toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Manila',
+      });
+    } catch (_) {
+      return String(timeString);
+    }
   };
 
   const getOtBadgeClass = (status) => {

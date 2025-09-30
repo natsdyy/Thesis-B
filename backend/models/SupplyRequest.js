@@ -1,6 +1,10 @@
 // backend/models/SupplyRequest.js
 const { db } = require("../config/database");
 const CategoryMappingService = require("../services/categoryMappingService");
+const {
+  getCurrentPhilippineTime,
+  formatForDatabase,
+} = require("../utils/timezoneUtils");
 
 class SupplyRequest {
   // Get all supply requests with optional filters
@@ -306,8 +310,8 @@ class SupplyRequest {
           request_status: "To Request",
           total_amount: 0,
           item_count: 0,
-          created_at: new Date(),
-          updated_at: new Date(),
+          created_at: getCurrentPhilippineTime(),
+          updated_at: getCurrentPhilippineTime(),
         })
         .returning("*");
 
@@ -336,8 +340,8 @@ class SupplyRequest {
           item_type: item.item_type,
           item_unit_price: item.item_unitPrice,
           item_amount: itemAmount,
-          created_at: new Date(),
-          updated_at: new Date(),
+          created_at: getCurrentPhilippineTime(),
+          updated_at: getCurrentPhilippineTime(),
         });
       }
 
@@ -345,7 +349,7 @@ class SupplyRequest {
       await trx("supply_requests").where("id", newRequest.id).update({
         total_amount: totalAmount,
         item_count: itemCount,
-        updated_at: new Date(),
+        updated_at: getCurrentPhilippineTime(),
       });
 
       await trx.commit();
@@ -426,28 +430,28 @@ class SupplyRequest {
     try {
       const updateData = {
         request_status: status,
-        updated_at: new Date(),
+        updated_at: getCurrentPhilippineTime(),
       };
 
       // Add status-specific fields
       switch (status) {
         case "Approved":
           updateData.approved_by = updatedBy;
-          updateData.approved_at = new Date();
+          updateData.approved_at = getCurrentPhilippineTime();
           if (remarks) updateData.finance_remarks = remarks;
           break;
         case "Rejected":
           updateData.rejected_by = updatedBy;
-          updateData.rejected_at = new Date();
+          updateData.rejected_at = getCurrentPhilippineTime();
           if (remarks) updateData.finance_remarks = remarks;
           break;
         case "Cancelled":
           updateData.cancelled_by = updatedBy;
-          updateData.cancelled_at = new Date();
+          updateData.cancelled_at = getCurrentPhilippineTime();
           break;
         case "Sent Back":
           updateData.sent_back_by = updatedBy;
-          updateData.sent_back_at = new Date();
+          updateData.sent_back_at = getCurrentPhilippineTime();
           updateData.revision_count = db.raw("revision_count + 1");
           if (remarks) updateData.finance_remarks = remarks;
           break;
@@ -471,8 +475,8 @@ class SupplyRequest {
       const [deletedRequest] = await db("supply_requests")
         .where("id", id)
         .update({
-          deleted_at: new Date(),
-          updated_at: new Date(),
+          deleted_at: getCurrentPhilippineTime(),
+          updated_at: getCurrentPhilippineTime(),
         })
         .returning("*");
 
@@ -588,7 +592,7 @@ class SupplyRequest {
           .where("id", item.supply_request_item_id)
           .update({
             inventory_item_type_id: item.inventory_item_type_id,
-            updated_at: new Date(),
+            updated_at: getCurrentPhilippineTime(),
           });
         updatedCount++;
       }
@@ -613,7 +617,7 @@ class SupplyRequest {
           .where("id", item.supply_request_item_id)
           .update({
             inventory_item_type_id: item.inventory_item_type_id,
-            updated_at: new Date(),
+            updated_at: getCurrentPhilippineTime(),
           });
         updatedCount++;
       }

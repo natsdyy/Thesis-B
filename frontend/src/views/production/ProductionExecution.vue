@@ -1102,7 +1102,7 @@
                   </td>
                   <td>
                     <button
-                      class="btn btn-xs btn-outline text-primaryColor hover:bg-primaryColor/10"
+                      class="cursor-pointer font-thin btn btn-sm btn-outline text-black/80 hover:bg-primaryColor/10 border border-none shadow-none"
                       @click="viewDetails(history, 'history')"
                     >
                       <Eye class="w-3 h-3" />

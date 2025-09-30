@@ -1,5 +1,6 @@
 // backend/models/BudgetRelease.js
 const { db } = require("../config/database");
+const { getCurrentPhilippineTime } = require("../utils/timezoneUtils");
 
 class BudgetRelease {
   // Get all budget releases with optional filters
@@ -110,7 +111,7 @@ class BudgetRelease {
 
     try {
       // Generate unique release_id
-      const year = new Date().getFullYear();
+      const year = getCurrentPhilippineTime().getFullYear();
       const count = await trx("budget_releases").count("* as total").first();
       const releaseId = `BR${year}${String(parseInt(count.total) + 1).padStart(3, "0")}`;
 
@@ -121,7 +122,7 @@ class BudgetRelease {
           supply_request_id: releaseData.supply_request_id,
           released_amount: releaseData.released_amount,
           released_by: releaseData.released_by,
-          released_at: new Date(),
+          released_at: getCurrentPhilippineTime(),
           release_remarks: releaseData.release_remarks || null,
         })
         .returning("*");
@@ -132,9 +133,9 @@ class BudgetRelease {
         .update({
           request_status: "Budget Released",
           released_by: releaseData.released_by,
-          released_at: new Date(),
+          released_at: getCurrentPhilippineTime(),
           release_id: releaseId,
-          updated_at: new Date(),
+          updated_at: getCurrentPhilippineTime(),
         });
 
       await trx.commit();
@@ -157,8 +158,8 @@ class BudgetRelease {
         .update({
           receipt_confirmed: true,
           receipt_confirmed_by: confirmedBy,
-          receipt_confirmed_at: new Date(),
-          updated_at: new Date(),
+          receipt_confirmed_at: getCurrentPhilippineTime(),
+          updated_at: getCurrentPhilippineTime(),
         })
         .returning("*");
 
@@ -173,8 +174,8 @@ class BudgetRelease {
           request_status: "Completed",
           receipt_confirmed: true,
           receipt_confirmed_by: confirmedBy,
-          receipt_confirmed_at: new Date(),
-          updated_at: new Date(),
+          receipt_confirmed_at: getCurrentPhilippineTime(),
+          updated_at: getCurrentPhilippineTime(),
         });
 
       await trx.commit();

@@ -55,6 +55,7 @@ const envOrigins = rawCorsOrigin
   .filter(Boolean);
 
 const defaultAllowedOrigins = [
+  "http://192.168.254.116:8080", // Wi-Fi 3 frontend
   "http://10.196.212.241:8080", // Wi-Fi 2 frontend
   "http://10.196.212.194:8080", // Wi-Fi frontend
   "http://192.168.56.1:8080", // Ethernet 3 frontend
@@ -67,7 +68,7 @@ const defaultAllowedOrigins = [
   "https://thesis-b-frontend-production.up.railway.app", // Railway frontend
   "https://thesis-b-backend-production.up.railway.app", // Railway backend
   "https://www.countryside-steakhouse.site", // Production domain
-  "http://www.countryside-steakhouse.site", // Production domain (HTTP fallback)
+  "http://www.countryside-steakhouse.site", // Production domain (HTTP fallback addons)
 ];
 
 const allowList = [...defaultAllowedOrigins, ...envOrigins];

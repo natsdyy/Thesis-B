@@ -2,13 +2,92 @@ const express = require("express");
 const router = express.Router();
 const BranchInventory = require("../models/BranchInventory");
 const BranchInventoryTransaction = require("../models/BranchInventoryTransaction");
-const { authenticateToken, requirePermission } = require("../middleware/rbac");
+const {
+  authenticateToken,
+  requirePermission,
+  requireAnyPermission,
+} = require("../middleware/rbac");
+
+// Get inventory for multiple branches (optimized endpoint)
+router.get(
+  "/multiple",
+  authenticateToken,
+  requireAnyPermission(["Manage Inventory", "View Inventory Reports"]),
+  async (req, res) => {
+    try {
+      const { branch_ids, item_type, category, status, search } = req.query;
+
+      // Parse branch_ids - can be comma-separated string or array
+      let branchIds = [];
+      if (branch_ids) {
+        if (typeof branch_ids === "string") {
+          branchIds = branch_ids
+            .split(",")
+            .map((id) => parseInt(id.trim()))
+            .filter((id) => !isNaN(id));
+        } else if (Array.isArray(branch_ids)) {
+          branchIds = branch_ids
+            .map((id) => parseInt(id))
+            .filter((id) => !isNaN(id));
+        }
+      }
+
+      if (branchIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "branch_ids parameter is required and must contain valid branch IDs",
+        });
+      }
+
+      const filters = {
+        item_type,
+        category,
+        status,
+        search,
+      };
+
+      // Remove undefined filters
+      Object.keys(filters).forEach((key) => {
+        if (filters[key] === undefined || filters[key] === "") {
+          delete filters[key];
+        }
+      });
+
+      console.log(
+        `📡 Fetching inventory for ${branchIds.length} branches:`,
+        branchIds
+      );
+
+      // Use the new optimized method
+      const inventoryData = await BranchInventory.getByMultipleBranches(
+        branchIds,
+        filters
+      );
+
+      res.json({
+        success: true,
+        data: inventoryData,
+        meta: {
+          branches_requested: branchIds.length,
+          branches_returned: Object.keys(inventoryData).length,
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching multiple branch inventory:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch multiple branch inventory",
+      });
+    }
+  }
+);
 
 // Get branch inventory
 router.get(
   "/:branchId",
   authenticateToken,
-  requirePermission("Manage Inventory"),
+  requireAnyPermission(["Manage Inventory", "View Inventory Reports"]),
   async (req, res) => {
     try {
       const { branchId } = req.params;
@@ -110,7 +189,7 @@ router.put(
 router.get(
   "/:branchId/stats",
   authenticateToken,
-  requirePermission("Manage Inventory"),
+  requireAnyPermission(["Manage Inventory", "View Inventory Reports"]),
   async (req, res) => {
     try {
       const { branchId } = req.params;
@@ -208,7 +287,7 @@ router.get(
 router.get(
   "/:branchId/transactions",
   authenticateToken,
-  requirePermission("Manage Inventory"),
+  requireAnyPermission(["Manage Inventory", "View Inventory Reports"]),
   async (req, res) => {
     try {
       const { branchId } = req.params;

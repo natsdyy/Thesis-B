@@ -44,6 +44,74 @@ class BranchInventory {
     }
   }
 
+  // Get inventory for multiple branches (optimized - single query)
+  static async getByMultipleBranches(branchIds, filters = {}) {
+    try {
+      console.log(
+        `📡 Fetching inventory for ${branchIds.length} branches in single query`
+      );
+
+      // Single query for all branches - much more efficient than N+1 queries
+      let query = db("branch_inventory as bi")
+        .whereIn("bi.branch_id", branchIds)
+        .whereNull("bi.deleted_at")
+        // Join to production inventory -> menu_items to enrich with selling_price and image_url
+        .leftJoin("menu_items as mi", function () {
+          this.on("bi.item_type", "=", db.raw("?", "production"))
+            .andOn("mi.menu_item_name", "=", "bi.item_name")
+            .andOnNull("mi.deleted_at");
+        })
+        .select(
+          "bi.*",
+          // Prefer branch stored selling_price if present; fallback to menu_items.selling_price
+          db.raw(
+            "COALESCE(bi.selling_price, mi.selling_price) as selling_price"
+          ),
+          "mi.image_url"
+        );
+
+      // Apply filters
+      if (filters.item_type) {
+        query = query.where("bi.item_type", filters.item_type);
+      }
+      if (filters.category) {
+        query = query.where("bi.category", filters.category);
+      }
+      if (filters.status) {
+        query = query.where("bi.status", filters.status);
+      }
+      if (filters.search) {
+        query = query.where("bi.item_name", "like", `%${filters.search}%`);
+      }
+
+      const allInventory = await query.orderBy([
+        "bi.branch_id",
+        "bi.item_type",
+        "bi.item_name",
+      ]);
+
+      // Group results by branch_id for easier frontend consumption
+      const inventoryByBranch = {};
+      branchIds.forEach((branchId) => {
+        inventoryByBranch[branchId] = [];
+      });
+
+      allInventory.forEach((item) => {
+        if (inventoryByBranch[item.branch_id]) {
+          inventoryByBranch[item.branch_id].push(item);
+        }
+      });
+
+      console.log(
+        `✅ Fetched inventory for ${Object.keys(inventoryByBranch).length} branches`
+      );
+      return inventoryByBranch;
+    } catch (error) {
+      console.error("Error fetching multiple branch inventory:", error);
+      throw error;
+    }
+  }
+
   // Update expiry date for an item
   static async updateExpiryDate(itemId, newExpiryDate) {
     try {

@@ -41,7 +41,7 @@
       window.location.hostname === '127.0.0.1'
     ) {
       // For local development, use the network IP so phones can access it
-      return `http://192.168.18.5:8080`;
+      return `http://192.168.254.116:8080`;
     }
     // In production, use the current origin
     return window.location.origin;
@@ -645,9 +645,7 @@
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text text-sm sm:text-base"
-                  >Manager PIN</span
-                >
+                <span class="label-text text-sm sm:text-base">Manager PIN</span>
               </label>
               <div class="relative">
                 <input

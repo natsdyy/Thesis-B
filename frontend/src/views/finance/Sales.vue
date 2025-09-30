@@ -3,6 +3,7 @@
   import { useBranchContextStore } from '../../stores/branchContextStore';
   import SalesTrendsChart from '../../components/branch/SalesTrendsChart.vue';
   import SalesTrendChart from '../../components/finance/SalesTrendChart.vue';
+  import SalesAnalytics from '../../components/finance/SalesAnalytics.vue';
   import RemitOrderDetailsModal from '../../components/finance/RemitOrderDetailsModal.vue';
   import RemittancesModal from '../../components/finance/RemittancesModal.vue';
   import { usePOSStore } from '../../stores/posStore';
@@ -20,7 +21,6 @@
   const period = ref('today');
   const selectedBranchId = ref(null);
   const activeTab = ref('overview'); // overview | branches | analytics
-  const overallMetric = ref('remitted');
   // Data source for loading entries: 'remittances' or 'salesTrends'
   const dataSource = ref('remittances');
   const page = ref(1);
@@ -455,20 +455,6 @@
       totals.remitted += Number(e.remitted_amount) || 0;
     });
     return totals;
-  });
-
-  const analyticsLabels = computed(() => realAnalytics.value.labels || []);
-
-  const analyticsSeries = computed(() => {
-    const a = realAnalytics.value;
-    if (!a || !Array.isArray(a.labels)) return [];
-    return overallMetric.value === 'refunds'
-      ? a.refunds
-      : overallMetric.value === 'disposed'
-        ? a.disposed
-        : overallMetric.value === 'net'
-          ? a.net
-          : a.remitted;
   });
 
   // Recent activity for Overview (latest entries across branches)
@@ -1212,35 +1198,9 @@
         </div>
       </div>
 
-      <!-- ANALYTICS TAB (duplicate trend selector for convenience) -->
-      <div v-show="activeTab === 'analytics'" class="space-y-4">
-        <div class="card bg-white shadow border border-black/10">
-          <div class="card-body">
-            <div class="flex items-center justify-between mb-2">
-              <h3 class="text-sm font-medium text-gray-700">Overall Trend</h3>
-              <select
-                class="select select-bordered select-xs"
-                v-model="overallMetric"
-              >
-                <option value="remitted">Remitted</option>
-                <option value="refunds">Refunds</option>
-                <option value="disposed">Void</option>
-                <option value="net">Net Sales</option>
-              </select>
-            </div>
-            <SalesTrendsChart
-              :labels="analyticsLabels"
-              :data="analyticsSeries"
-              :metric="
-                overallMetric === 'remitted' || overallMetric === 'net'
-                  ? 'totalSales'
-                  : overallMetric === 'refunds'
-                    ? 'refundedAmount'
-                    : 'totalDisposed'
-              "
-            />
-          </div>
-        </div>
+      <!-- ANALYTICS TAB -->
+      <div v-show="activeTab === 'analytics'">
+        <SalesAnalytics :analytics-data="realAnalytics" :loading="loading" />
       </div>
     </div>
 

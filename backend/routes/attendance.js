@@ -439,7 +439,7 @@ router.post("/scan", async (req, res) => {
     let branchRadius = 2.0;
 
     if (employee.branch_id) {
-      const branch = await db("branches")
+      const branch = await knex("branches")
         .where("id", employee.branch_id)
         .first();
       if (branch && branch.latitude && branch.longitude) {
@@ -537,7 +537,7 @@ router.post("/mobile-scan", async (req, res) => {
     let branchRadius = 2.0;
 
     if (employee.branch_id) {
-      const branch = await db("branches")
+      const branch = await knex("branches")
         .where("id", employee.branch_id)
         .first();
       if (branch && branch.latitude && branch.longitude) {

@@ -350,6 +350,15 @@
   const attendanceStore = useAttendanceStore();
   const { showSuccess, showError } = useCustomToast();
 
+  // Helpers for Asia/Manila timezone
+  const toPhYmd = (date) =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date(date));
+
   // Reactive data
   const isLoading = ref(false);
   const isStatusLoading = ref(false);
@@ -448,7 +457,12 @@
       }
 
       return {
-        date: record.date || record.attendance_date,
+        date: toPhYmd(
+          record.date ||
+            record.attendance_date ||
+            record.created_at ||
+            record.time_in
+        ),
         timeIn: timeIn,
         timeOut: timeOut,
         duration: duration,
@@ -502,7 +516,7 @@
 
       // Add range filter
       if (historyRange.value === 'today') {
-        const today = new Date().toISOString().split('T')[0];
+        const today = toPhYmd(new Date());
         params.append('start_date', today);
         params.append('end_date', today);
       } else if (historyRange.value === 'week') {
@@ -512,15 +526,15 @@
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekStart.getDate() + 6);
 
-        params.append('start_date', weekStart.toISOString().split('T')[0]);
-        params.append('end_date', weekEnd.toISOString().split('T')[0]);
+        params.append('start_date', toPhYmd(weekStart));
+        params.append('end_date', toPhYmd(weekEnd));
       } else if (historyRange.value === 'month') {
         const today = new Date();
         const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
         const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
 
-        params.append('start_date', monthStart.toISOString().split('T')[0]);
-        params.append('end_date', monthEnd.toISOString().split('T')[0]);
+        params.append('start_date', toPhYmd(monthStart));
+        params.append('end_date', toPhYmd(monthEnd));
       }
 
       const response = await axios.get(

@@ -768,16 +768,35 @@
   const locationStatus = ref(null);
   const branchInfo = ref(null);
 
-  // Helper: is the given timestamp on the same local day as now?
+  // Helpers for Asia/Manila time
+  const toPhYmd = (date) =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date(date));
+
+  const toPhIso = (date) => {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    })
+      .formatToParts(new Date(date))
+      .reduce((acc, p) => ((acc[p.type] = p.value), acc), {});
+    return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}+08:00`;
+  };
+
+  // Helper: is the given timestamp on the same PH day as now?
   const isSameLocalDay = (timestamp) => {
     if (!timestamp) return false;
-    const d = new Date(timestamp);
-    const now = new Date();
-    return (
-      d.getFullYear() === now.getFullYear() &&
-      d.getMonth() === now.getMonth() &&
-      d.getDate() === now.getDate()
-    );
+    return toPhYmd(timestamp) === toPhYmd(new Date());
   };
 
   // Reactive computed property that automatically updates current status
@@ -909,8 +928,9 @@
       }
 
       // Fetch report (current user) via store
-      const startIso = start.toISOString();
-      const endIso = end.toISOString();
+      // Use Asia/Manila boundaries
+      const startIso = toPhIso(start);
+      const endIso = toPhIso(end);
       const currentUserId =
         authStore.user?.id || authStore.user?.employee_internal_id || null;
       const report = await attendanceStore.getAttendanceReport(
@@ -1154,9 +1174,10 @@
         branch_id: employee?.branch_id,
         branch_name:
           branchInfo.value?.name || employee?.branch_name || 'Branch',
-        timestamp: new Date().toISOString(),
+        // Use PH time for backend alignment
+        timestamp: toPhIso(new Date()),
         location: 'Mobile App QR Code',
-        valid_until: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // 5 minutes from now
+        valid_until: toPhIso(new Date(Date.now() + 5 * 60 * 1000)), // 5 minutes from now
       };
 
       console.log('QR Data:', qrData);
@@ -1447,9 +1468,9 @@
         branch_id: employee?.branch_id,
         branch_name:
           branchInfo.value?.name || employee?.branch_name || 'Branch',
-        timestamp: new Date().toISOString(),
+        timestamp: toPhIso(new Date()),
         location: 'Direct Attendance Processing',
-        valid_until: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        valid_until: toPhIso(new Date(Date.now() + 5 * 60 * 1000)),
       };
 
       console.log('Processing direct attendance:', qrData);

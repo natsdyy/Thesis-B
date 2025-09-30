@@ -427,6 +427,31 @@
   const authStore = useAuthStore();
   const attendanceStore = useAttendanceStore();
 
+  // Helpers for Asia/Manila time handling
+  const toPhYmd = (date) =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date(date));
+
+  const toPhIso = (date) => {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    })
+      .formatToParts(new Date(date))
+      .reduce((acc, p) => ((acc[p.type] = p.value), acc), {});
+    return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}+08:00`;
+  };
+
   // Reactive data
   const isLoading = ref(false);
   const isStatusLoading = ref(false);
@@ -526,9 +551,7 @@
 
     const byDate = {};
     records.forEach((rec) => {
-      const dateKey = new Date(rec.created_at || rec.time_in)
-        .toISOString()
-        .split('T')[0];
+      const dateKey = toPhYmd(rec.created_at || rec.time_in);
       console.log('Processing record:', rec, 'Date key:', dateKey);
 
       if (!byDate[dateKey]) {
@@ -602,7 +625,9 @@
       start = new Date(now.getFullYear(), now.getMonth(), 1);
     }
 
-    result = result.filter((r) => new Date(r.date) >= start);
+    // Filter using PH date strings to avoid TZ drift
+    const startKey = toPhYmd(start);
+    result = result.filter((r) => r.date >= startKey);
 
     console.log('mergedHistory result:', result);
     return result;
@@ -698,8 +723,9 @@
       }
 
       // Fetch report for current user over the selected range
-      const startIso = start.toISOString();
-      const endIso = end.toISOString();
+      // Use PH ISO boundaries
+      const startIso = toPhIso(start);
+      const endIso = toPhIso(end);
       const currentUserId =
         authStore.user?.id || authStore.user?.employee_internal_id || null;
       const report = await attendanceStore.getAttendanceReport(

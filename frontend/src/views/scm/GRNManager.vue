@@ -14,42 +14,13 @@
     <div class="stats shadow w-full mb-6 lg:stats-horizontal stats-vertical">
       <div class="stat">
         <div class="stat-figure text-primaryColor">
-          <ReceiptText class="w-8 h-8" />
-        </div>
-        <div class="stat-title">Total GRNs</div>
-        <div class="stat-value text-primaryColor">{{ grnCount }}</div>
-        <div class="stat-desc">
-          {{ hasGRNs ? 'GRNs registered' : 'No GRNs yet' }}
-        </div>
-      </div>
-
-      <div class="stat">
-        <div class="stat-figure text-warning">
-          <GitPullRequestDraft class="w-8 h-8" />
-        </div>
-        <div class="stat-title">Draft</div>
-        <div class="stat-value text-warning">{{ draftGRNs }}</div>
-        <div class="stat-desc">Pending creation</div>
-      </div>
-
-      <div class="stat">
-        <div class="stat-figure text-info">
           <ClockFading class="w-8 h-8" />
         </div>
         <div class="stat-title">Pending Inspection</div>
-        <div class="stat-value text-info">
+        <div class="stat-value text-primaryColor">
           {{ pendingInspectionGRNs }}
         </div>
         <div class="stat-desc">Awaiting quality check</div>
-      </div>
-
-      <div class="stat">
-        <div class="stat-figure text-success">
-          <CheckCircle class="w-8 h-8" />
-        </div>
-        <div class="stat-title">Completed</div>
-        <div class="stat-value text-success">{{ completedGRNs }}</div>
-        <div class="stat-desc">Added to inventory</div>
       </div>
     </div>
 

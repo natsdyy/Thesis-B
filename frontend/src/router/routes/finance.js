@@ -24,6 +24,7 @@ export default [
     component: () => import('../../views/finance/Sales.vue'),
     meta: { title: 'Sales' },
   },
+
   {
     path: 'attendance',
     name: 'FinanceAttendance',

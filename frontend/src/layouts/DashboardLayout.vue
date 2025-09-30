@@ -45,7 +45,7 @@
       <!-- Page Content -->
       <main
         :class="[
-          'p-2 sm:p-4 md:p-6 transition-colors duration-300',
+          'p-2 sm:p-4  md:p-6 transition-colors duration-300',
           themeStore.themeClasses.textPrimary,
         ]"
       >

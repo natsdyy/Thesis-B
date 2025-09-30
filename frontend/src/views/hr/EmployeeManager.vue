@@ -189,10 +189,44 @@
   // Fetch attendance data for employees
   const fetchAttendanceData = async () => {
     try {
-      // Use today's date for attendance checking (Philippines timezone UTC+8)
-      const now = new Date();
-      const philippinesTime = new Date(now.getTime() + 8 * 60 * 60 * 1000); // UTC+8
-      const today = philippinesTime.toISOString().split('T')[0];
+      // Use Asia/Manila date for attendance checking
+      const today = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+
+      const normalizeStatus = (row) => {
+        // If API row has a time_in, force status to present to override day_off
+        if (row.time_in) return { ...row, attendance_status: 'present' };
+        return row;
+      };
+
+      const prioritize = (list) => {
+        const rank = {
+          present: 5,
+          late: 4,
+          on_leave: 3,
+          day_off: 2,
+          absent: 1,
+        };
+        const map = {};
+        list.forEach((raw) => {
+          const row = normalizeStatus(raw);
+          const id = row.employee_id;
+          const status = (row.attendance_status || '').toLowerCase();
+          const current = map[id];
+          if (
+            !current ||
+            (rank[status] || 0) >
+              (rank[(current.attendance_status || '').toLowerCase()] || 0)
+          ) {
+            map[id] = row;
+          }
+        });
+        return map;
+      };
 
       if (activeTab.value === 'department' && selectedDepartment.value) {
         const attendanceStatus =
@@ -200,24 +234,14 @@
             department: selectedDepartment.value,
             date: today,
           });
-
-        // Convert array to object keyed by employee_id for easy lookup
-        attendanceData.value = {};
-        attendanceStatus.forEach((emp) => {
-          attendanceData.value[emp.employee_id] = emp;
-        });
+        attendanceData.value = prioritize(attendanceStatus);
       } else if (activeTab.value === 'branch' && selectedBranch.value) {
         const attendanceStatus =
           await attendanceStore.fetchBulkAttendanceStatus({
             branch_id: selectedBranch.value,
             date: today,
           });
-
-        // Convert array to object keyed by employee_id for easy lookup
-        attendanceData.value = {};
-        attendanceStatus.forEach((emp) => {
-          attendanceData.value[emp.employee_id] = emp;
-        });
+        attendanceData.value = prioritize(attendanceStatus);
       }
     } catch (error) {
       console.error('Failed to fetch attendance data:', error);
@@ -356,6 +380,8 @@
         1000 // Fetch all employees for client-side pagination
       );
       showToast('success', 'Employee list refreshed');
+      // Also refresh today's attendance view
+      await fetchAttendanceData();
     } catch (e) {
       showToast('error', e.message || 'Failed to refresh employees');
     }
@@ -764,6 +790,13 @@
       await branchStore.fetchActiveBranches();
     } catch (e) {
       console.error('Failed to load branches', e);
+    }
+    // If a tab with a scope is already selected, fetch attendance immediately
+    if (
+      (activeTab.value === 'department' && selectedDepartment.value) ||
+      (activeTab.value === 'branch' && selectedBranch.value)
+    ) {
+      await fetchAttendanceData();
     }
   });
 </script>

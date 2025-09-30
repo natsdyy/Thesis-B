@@ -489,6 +489,20 @@ class AttendanceRecord {
 
   // Check if employee is on approved leave for a specific date
   static async isEmployeeOnLeave(employeeId, date = null) {
+    // Normalize: accept either numeric primary key or employee_code (e.g., "EMP000015")
+    let normalizedEmployeeId = employeeId;
+    if (
+      typeof normalizedEmployeeId === "string" &&
+      normalizedEmployeeId.trim().length > 0 &&
+      isNaN(Number(normalizedEmployeeId))
+    ) {
+      const empRow = await knex("employees")
+        .select("id")
+        .where("employee_id", normalizedEmployeeId.trim())
+        .first();
+      if (!empRow) return false;
+      normalizedEmployeeId = empRow.id;
+    }
     let targetDate;
     if (date) {
       targetDate = new Date(date);
@@ -499,7 +513,7 @@ class AttendanceRecord {
     const dateStr = targetDate.toISOString().split("T")[0];
 
     const leaveRequest = await knex("leave_requests")
-      .where("employee_id", employeeId)
+      .where("employee_id", normalizedEmployeeId)
       .where("from_date", "<=", dateStr)
       .where("to_date", ">=", dateStr)
       .where("status", "approved_by_hr") // Only HR-approved requests count as actual leave
@@ -510,6 +524,20 @@ class AttendanceRecord {
 
   // Check if employee is scheduled for day off on a specific date
   static async isEmployeeOnDayOff(employeeId, date = null) {
+    // Normalize: accept either numeric primary key or employee_code (e.g., "EMP000015")
+    let normalizedEmployeeId = employeeId;
+    if (
+      typeof normalizedEmployeeId === "string" &&
+      normalizedEmployeeId.trim().length > 0 &&
+      isNaN(Number(normalizedEmployeeId))
+    ) {
+      const empRow = await knex("employees")
+        .select("id")
+        .where("employee_id", normalizedEmployeeId.trim())
+        .first();
+      if (!empRow) return false;
+      normalizedEmployeeId = empRow.id;
+    }
     let targetDate;
     if (date) {
       targetDate = new Date(date);
@@ -520,7 +548,7 @@ class AttendanceRecord {
     const dateStr = targetDate.toISOString().split("T")[0];
 
     const schedule = await knex("employee_schedules")
-      .where("employee_id", employeeId)
+      .where("employee_id", normalizedEmployeeId)
       .where("schedule_date", dateStr)
       .first();
 

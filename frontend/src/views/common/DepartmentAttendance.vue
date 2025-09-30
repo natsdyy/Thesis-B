@@ -508,53 +508,81 @@
     try {
       isHistoryLoading.value = true;
 
-      const params = new URLSearchParams({
-        employee_id: authStore.user.id,
-        page: loadMore ? currentPage.value + 1 : 1,
-        limit: itemsPerPage.value,
-      });
-
-      // Add range filter
-      if (historyRange.value === 'today') {
-        const today = toPhYmd(new Date());
-        params.append('start_date', today);
-        params.append('end_date', today);
-      } else if (historyRange.value === 'week') {
-        const today = new Date();
-        const weekStart = new Date(today);
-        weekStart.setDate(today.getDate() - today.getDay());
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekStart.getDate() + 6);
-
-        params.append('start_date', toPhYmd(weekStart));
-        params.append('end_date', toPhYmd(weekEnd));
-      } else if (historyRange.value === 'month') {
-        const today = new Date();
-        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-        const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-
-        params.append('start_date', toPhYmd(monthStart));
-        params.append('end_date', toPhYmd(monthEnd));
-      }
-
-      const response = await axios.get(
-        `${apiConfig.baseURL}/attendance/history?${params.toString()}`
+      // Determine PH range boundaries
+      const now = new Date();
+      const end = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        23,
+        59,
+        59,
+        999
       );
-
-      if (response.data.success) {
-        const newRecords = response.data.data || [];
-
-        if (loadMore) {
-          attendanceHistory.value = [...attendanceHistory.value, ...newRecords];
-          currentPage.value += 1;
-        } else {
-          attendanceHistory.value = newRecords;
-          currentPage.value = 1;
-        }
-
-        hasMoreRecords.value = newRecords.length === itemsPerPage.value;
-        totalRecords.value = response.data.total || newRecords.length;
+      let start;
+      if (historyRange.value === 'today') {
+        start = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          0,
+          0,
+          0,
+          0
+        );
+      } else if (historyRange.value === 'week') {
+        const startOfToday = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate()
+        );
+        const day = startOfToday.getDay();
+        const diff = (day + 6) % 7; // Monday start
+        start = new Date(startOfToday);
+        start.setDate(start.getDate() - diff);
+      } else {
+        start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
       }
+
+      const startIso = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      })
+        .formatToParts(start)
+        .reduce((acc, p) => ((acc[p.type] = p.value), acc), {});
+      const endIsoParts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      })
+        .formatToParts(end)
+        .reduce((acc, p) => ((acc[p.type] = p.value), acc), {});
+      const startIsoStr = `${startIso.year}-${startIso.month}-${startIso.day}T${startIso.hour}:${startIso.minute}:${startIso.second}+08:00`;
+      const endIsoStr = `${endIsoParts.year}-${endIsoParts.month}-${endIsoParts.day}T${endIsoParts.hour}:${endIsoParts.minute}:${endIsoParts.second}+08:00`;
+
+      const currentUserId =
+        authStore.user?.id || authStore.user?.employee_internal_id || null;
+      const report = await attendanceStore.getAttendanceReport(
+        currentUserId,
+        startIsoStr,
+        endIsoStr
+      );
+      const newRecords = Array.isArray(report) ? report : [];
+      attendanceHistory.value = newRecords;
+      currentPage.value = 1;
+      hasMoreRecords.value = false;
+      totalRecords.value = newRecords.length;
     } catch (error) {
       console.error('Error fetching attendance history:', error);
       showError('Failed to load attendance history');

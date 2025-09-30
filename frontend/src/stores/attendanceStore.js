@@ -330,8 +330,12 @@ export const useAttendanceStore = defineStore('attendance', () => {
         end_date: endDate,
       };
 
-      if (userId) {
-        params.user_id = userId;
+      // Backend expects numeric employee_id; only include if numeric
+      if (userId !== null && userId !== undefined) {
+        const numericId = Number(userId);
+        if (!Number.isNaN(numericId) && Number.isFinite(numericId)) {
+          params.employee_id = numericId;
+        }
       }
 
       const response = await axios.get(getApiUrl('/attendance/report'), {

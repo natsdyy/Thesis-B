@@ -35,7 +35,7 @@ class FeedbackService {
       return response.data;
     } catch (error) {
       console.error('Error submitting feedback:', error);
-      throw error;s
+      throw error;
     }
   }
 

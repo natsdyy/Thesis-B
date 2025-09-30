@@ -175,7 +175,15 @@
   }
 
   function formatDateKey(date) {
-    return new Date(date).toISOString().split('T')[0];
+    const d = new Date(date);
+    // Normalize to Philippine date (Asia/Manila) to avoid off-by-one rendering
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    return formatter.format(d);
   }
 
   function toEventsFromSchedules() {
@@ -202,7 +210,8 @@
       }
 
       const startClock = sched.shift?.startTime || sched.start_time || '00:00';
-      const startIso = `${dayKey}T${startClock}`;
+      // Build explicit Philippine time to avoid local timezone skew
+      const startIso = `${dayKey}T${startClock}+08:00`;
       const endTime = sched.shift?.endTime || sched.end_time || '00:00';
 
       // Handle cross-midnight shifts: if end <= start, add one day
@@ -222,17 +231,17 @@
 
       if (crossesMidnight) {
         if (currentViewType.value === 'dayGridMonth') {
-          // Month view: show only on the start day cell with full time range in label
+          // Month view: split into two pills, one on start day (until 23:59) and a stub on next day (00:00 to end)
           const endOfStart = new Date(startDate);
           endOfStart.setHours(23, 59, 59, 999);
-          const labelText =
+          const startDayLabel =
             (sched.shift?.name || sched.shift_name) === 'Day Off'
               ? shortTitle(sched)
               : props.showShiftLabel
                 ? `${formatClock(startDate)} - ${formatClock(endDate)} ${shortTitle(sched)}`
                 : `${formatClock(startDate)} - ${formatClock(endDate)}`;
           events.push({
-            id: String(sched.id),
+            id: `${sched.id}-start`,
             title: sched.shift?.name || sched.shift_name,
             start: startDate.toISOString(),
             end: endOfStart.toISOString(),
@@ -243,7 +252,29 @@
             classNames: ['cs-event'],
             extendedProps: {
               notes: sched.notes || '',
-              label: labelText,
+              label: startDayLabel,
+            },
+          });
+
+          // Next day stub from 00:00 to actual end
+          const startOfNext = new Date(endDate);
+          startOfNext.setHours(0, 0, 0, 0);
+          const nextDayLabel = props.showShiftLabel
+            ? `${formatClock(startOfNext)} - ${formatClock(endDate)} ${shortTitle(sched)}`
+            : `${formatClock(startOfNext)} - ${formatClock(endDate)}`;
+          events.push({
+            id: `${sched.id}-spill`,
+            title: sched.shift?.name || sched.shift_name,
+            start: startOfNext.toISOString(),
+            end: endDate.toISOString(),
+            allDay: false,
+            backgroundColor: colors.bg,
+            borderColor: colors.solid,
+            textColor: colors.text,
+            classNames: ['cs-event'],
+            extendedProps: {
+              notes: sched.notes || '',
+              label: nextDayLabel,
             },
           });
         } else {

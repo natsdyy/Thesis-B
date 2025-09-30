@@ -4,6 +4,13 @@ const Inventory = require("./models/Inventory");
 const cors = require("cors");
 require("dotenv").config();
 
+// Set timezone to Philippine Time (Asia/Manila)
+process.env.TZ = process.env.TZ || "Asia/Manila";
+console.log(`🌍 Timezone set to: ${process.env.TZ}`);
+console.log(
+  `🕐 Current server time: ${new Date().toLocaleString("en-PH", { timeZone: "Asia/Manila" })}`
+);
+
 // Import database configuration and models
 const { testConnection, runMigrations } = require("./config/database");
 const Employee = require("./models/Employee");

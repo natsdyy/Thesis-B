@@ -5,6 +5,10 @@ const AttendanceRecord = require("../models/AttendanceRecord");
 const EmployeeScheduleService = require("../services/EmployeeScheduleService");
 const { authenticateToken } = require("../middleware/rbac");
 const { db: knex } = require("../config/database");
+const {
+  getCurrentPhilippineDate,
+  getCurrentPhilippineTime,
+} = require("../utils/timezoneUtils");
 
 // QR Code Management Routes
 router.get("/qr-codes", authenticateToken, async (req, res) => {
@@ -596,7 +600,7 @@ router.get("/my-schedule", authenticateToken, async (req, res) => {
   try {
     const employeeId = req.user.id;
     const requested = (req.query?.date || "").trim();
-    const today = new Date().toISOString().split("T")[0];
+    const today = getCurrentPhilippineDate(); // Use Philippine timezone
     const date = requested || today;
 
     const scheduleInfo = await EmployeeScheduleService.getScheduleDisplayInfo(
@@ -635,10 +639,8 @@ router.get("/bulk-status", authenticateToken, async (req, res) => {
     if (date) {
       targetDate = new Date(date);
     } else {
-      // Get current date in Philippines timezone (UTC+8)
-      const now = new Date();
-      const philippinesTime = new Date(now.getTime() + 8 * 60 * 60 * 1000); // UTC+8
-      targetDate = new Date(philippinesTime.toISOString().split("T")[0]);
+      // Get current date in Philippines timezone
+      targetDate = new Date(getCurrentPhilippineDate());
     }
     targetDate.setHours(0, 0, 0, 0);
     const endOfDay = new Date(targetDate);
@@ -765,8 +767,10 @@ router.post("/validate-schedule", authenticateToken, async (req, res) => {
     const employeeId = req.user.id;
     const { currentTime } = req.body;
 
-    // Use provided time or current time
-    const validationTime = currentTime ? new Date(currentTime) : new Date();
+    // Use provided time or current Philippine time
+    const validationTime = currentTime
+      ? new Date(currentTime)
+      : getCurrentPhilippineTime();
     const validation = await EmployeeScheduleService.validateTimeInSchedule(
       employeeId,
       validationTime

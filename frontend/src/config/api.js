@@ -18,7 +18,7 @@ function resolveBaseURL() {
     ) {
       // Use network IP for backend API so it's accessible from phones
       // Use the Wi-Fi network IP (192.168.18.5) as it has proper gateway
-      return 'http://192.168.254.116:5000/api';
+      return 'http://192.168.18.5:5000/api';
     }
     // For production domain, use the production backend
     if (window.location.origin.includes('countryside-steakhouse.site')) {

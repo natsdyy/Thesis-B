@@ -1,4 +1,8 @@
 const { db } = require("../config/database");
+const {
+  getCurrentPhilippineTime,
+  getCurrentPhilippineDate,
+} = require("../utils/timezoneUtils");
 
 class EmployeeScheduleService {
   /**
@@ -39,9 +43,12 @@ class EmployeeScheduleService {
    * @param {Date} currentTime - Current time (optional, defaults to now)
    * @returns {Object} - Validation result with details
    */
-  static async validateTimeInSchedule(employeeId, currentTime = new Date()) {
+  static async validateTimeInSchedule(
+    employeeId,
+    currentTime = getCurrentPhilippineTime()
+  ) {
     try {
-      const date = currentTime.toISOString().split("T")[0]; // YYYY-MM-DD format
+      const date = getCurrentPhilippineDate(); // YYYY-MM-DD format in Philippine timezone
       const schedule = await this.getEmployeeScheduleForDate(employeeId, date);
 
       // If no schedule found for today

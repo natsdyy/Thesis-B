@@ -603,10 +603,53 @@ router.get("/my-schedule", authenticateToken, async (req, res) => {
     const today = getCurrentPhilippineDate(); // Use Philippine timezone
     const date = requested || today;
 
-    const scheduleInfo = await EmployeeScheduleService.getScheduleDisplayInfo(
+    let scheduleInfo = await EmployeeScheduleService.getScheduleDisplayInfo(
       employeeId,
       date
     );
+
+    // If no schedule found for today and no specific date requested,
+    // check for Night Shift from yesterday that might still be active
+    if (!scheduleInfo.hasSchedule && !requested) {
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+      const yesterdaySchedule =
+        await EmployeeScheduleService.getScheduleDisplayInfo(
+          employeeId,
+          yesterdayStr
+        );
+
+      // Check if yesterday's schedule is a Night Shift that spans midnight
+      if (yesterdaySchedule.hasSchedule && yesterdaySchedule.schedule) {
+        const schedule = yesterdaySchedule.schedule;
+        const scheduleStart = new Date(
+          `${yesterdayStr}T${schedule.start_time}`
+        );
+        const scheduleEnd = new Date(`${yesterdayStr}T${schedule.end_time}`);
+
+        // If end time is before start time, it's an overnight shift
+        if (scheduleEnd <= scheduleStart) {
+          scheduleEnd.setDate(scheduleEnd.getDate() + 1);
+          const now = new Date();
+
+          // Check if current time is still within the Night Shift period
+          if (now >= scheduleStart && now <= scheduleEnd) {
+            // Return yesterday's schedule as it's still active
+            scheduleInfo = {
+              hasSchedule: true,
+              message: `Currently on ${schedule.shift_name} (started yesterday)`,
+              schedule: {
+                ...schedule,
+                date: yesterdayStr, // Show the original date
+                isOvernightShift: true,
+              },
+            };
+          }
+        }
+      }
+    }
 
     res.json({
       success: true,

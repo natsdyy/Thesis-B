@@ -114,10 +114,30 @@ class AttendanceRecord {
     const startOfDay = new Date(`${today}T00:00:00+08:00`); // Philippine timezone
     const endOfDay = new Date(`${today}T23:59:59.999+08:00`); // Philippine timezone
 
-    return await knex("attendance_records")
+    // First, try to find attendance record created today
+    let record = await knex("attendance_records")
       .where("employee_id", employeeId)
       .whereBetween("created_at", [startOfDay, endOfDay])
       .first();
+
+    // If no record found today, check for Night Shift records from yesterday
+    // that might still be active (time_in exists but no time_out)
+    if (!record) {
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split("T")[0];
+      const yesterdayStartOfDay = new Date(`${yesterdayStr}T00:00:00+08:00`);
+      const yesterdayEndOfDay = new Date(`${yesterdayStr}T23:59:59.999+08:00`);
+
+      record = await knex("attendance_records")
+        .where("employee_id", employeeId)
+        .whereBetween("created_at", [yesterdayStartOfDay, yesterdayEndOfDay])
+        .whereNotNull("time_in")
+        .whereNull("time_out") // Only get records that haven't been timed out yet
+        .first();
+    }
+
+    return record;
   }
 
   static async timeIn(
@@ -561,11 +581,8 @@ class AttendanceRecord {
     const startOfDay = new Date(`${today}T00:00:00+08:00`); // Philippine timezone
     const endOfDay = new Date(`${today}T23:59:59.999+08:00`); // Philippine timezone
 
-    // Get attendance record
-    const attendanceRecord = await knex("attendance_records")
-      .where("employee_id", employeeId)
-      .whereBetween("created_at", [startOfDay, endOfDay])
-      .first();
+    // Get attendance record (this will now check both today and yesterday for Night Shifts)
+    const attendanceRecord = await this.getTodayAttendance(employeeId);
 
     // Check if employee is on leave or day off
     const isOnLeave = await this.isEmployeeOnLeave(employeeId);

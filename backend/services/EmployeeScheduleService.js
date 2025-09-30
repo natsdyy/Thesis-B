@@ -49,9 +49,41 @@ class EmployeeScheduleService {
   ) {
     try {
       const date = getCurrentPhilippineDate(); // YYYY-MM-DD format in Philippine timezone
-      const schedule = await this.getEmployeeScheduleForDate(employeeId, date);
+      let schedule = await this.getEmployeeScheduleForDate(employeeId, date);
 
-      // If no schedule found for today
+      // If no schedule found for today, check for Night Shift from yesterday
+      if (!schedule) {
+        const yesterday = new Date(date);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+        const yesterdaySchedule = await this.getEmployeeScheduleForDate(
+          employeeId,
+          yesterdayStr
+        );
+
+        // Check if yesterday's schedule is a Night Shift that spans midnight
+        if (yesterdaySchedule) {
+          const scheduleStart = new Date(
+            `${yesterdayStr}T${yesterdaySchedule.start_time}`
+          );
+          const scheduleEnd = new Date(
+            `${yesterdayStr}T${yesterdaySchedule.end_time}`
+          );
+
+          // If end time is before start time, it's an overnight shift
+          if (scheduleEnd <= scheduleStart) {
+            scheduleEnd.setDate(scheduleEnd.getDate() + 1);
+
+            // Check if current time is still within the Night Shift period
+            if (currentTime >= scheduleStart && currentTime <= scheduleEnd) {
+              schedule = yesterdaySchedule; // Use yesterday's schedule
+            }
+          }
+        }
+      }
+
+      // If still no schedule found (including Night Shifts)
       if (!schedule) {
         return {
           isValid: false,
@@ -79,9 +111,10 @@ class EmployeeScheduleService {
         };
       }
 
-      // Parse schedule times
-      const scheduleStart = new Date(`${date}T${schedule.start_time}`);
-      const scheduleEnd = new Date(`${date}T${schedule.end_time}`);
+      // Parse schedule times using the schedule's actual date
+      const scheduleDate = schedule.schedule_date || date;
+      const scheduleStart = new Date(`${scheduleDate}T${schedule.start_time}`);
+      const scheduleEnd = new Date(`${scheduleDate}T${schedule.end_time}`);
 
       // Handle overnight shifts (e.g., 22:00 to 06:00)
       if (scheduleEnd <= scheduleStart) {

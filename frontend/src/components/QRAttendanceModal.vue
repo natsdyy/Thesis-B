@@ -808,12 +808,14 @@
         return 'on-leave';
       }
 
-      // If time_in exists but it's not for today (local), treat as not checked in
-      const hasTodayTimeIn = isSameLocalDay(todayData.time_in);
-      if (!hasTodayTimeIn) {
-        return 'checked-out';
+      // Check if employee has a time_in (regardless of which day it was created)
+      // For Night Shifts, time_in might be from yesterday but still active
+      if (todayData.time_in && !todayData.time_out) {
+        return 'checked-in';
       }
-      return todayData.time_out ? 'checked-out' : 'checked-in';
+
+      // If no time_in or already timed out, they're checked out
+      return 'checked-out';
     }
     return 'checked-out';
   });
@@ -924,7 +926,8 @@
         start = new Date(startOfToday);
         start.setDate(start.getDate() - diff);
       } else {
-        start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        // Expand date range to include previous month to show records near month boundaries
+        start = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
       }
 
       // Fetch report (current user) via store
@@ -1296,9 +1299,9 @@
         if (todayData.is_on_leave) {
           currentStatus.value = 'on-leave';
         } else {
-          // Consider checked-in ONLY if there is a time_in for today and no time_out yet
-          const hasTodayTimeIn = isSameLocalDay(todayData.time_in);
-          if (hasTodayTimeIn && !todayData.time_out) {
+          // Check if employee has a time_in (regardless of which day it was created)
+          // For Night Shifts, time_in might be from yesterday but still active
+          if (todayData.time_in && !todayData.time_out) {
             currentStatus.value = 'checked-in';
           } else {
             currentStatus.value = 'checked-out';

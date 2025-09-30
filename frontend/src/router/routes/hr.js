@@ -26,18 +26,7 @@ export default [
     component: () => import('../../views/hr/AddEmployee.vue'),
     meta: { title: 'Add Employee' },
   },
-  {
-    path: 'attendance',
-    name: 'HRAttendance',
-    component: () => import('../../views/hr/AttendanceManagement.vue'),
-    meta: { title: 'Attendance Management' },
-  },
-  {
-    path: 'employee-attendance',
-    name: 'HREmployeeAttendance',
-    component: () => import('../../views/hr/EmployeeAttendance.vue'),
-    meta: { title: 'Employee Attendance' },
-  },
+
   {
     path: 'attendance-records',
     name: 'HRAttendanceRecords',

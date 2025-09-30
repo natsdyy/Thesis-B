@@ -65,7 +65,7 @@ function getCurrentPhilippineDate() {
  * Get current time in HH:MM:SS format in Philippine timezone
  * @returns {string} Current time in HH:MM:SS format
  */
-function getCurrentPhilippineTime() {
+function getCurrentPhilippineTimeString() {
   return formatPhilippineTime(new Date(), "time");
 }
 
@@ -150,7 +150,7 @@ module.exports = {
   getCurrentPhilippineTime,
   formatPhilippineTime,
   getCurrentPhilippineDate,
-  getCurrentPhilippineTime,
+  getCurrentPhilippineTimeString,
   convertUTCToPhilippine,
   createPhilippineDate,
   getPhilippineTimezoneOffset,

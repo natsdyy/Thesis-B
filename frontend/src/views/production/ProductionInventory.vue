@@ -1556,13 +1556,7 @@
                       <span class="badge badge-sm bg-gray-100 text-gray-600">
                         {{ item.category }}
                       </span>
-                      <span
-                        v-if="item.is_featured || item.total_distributed >= 100"
-                        class="badge badge-sm bg-yellow-100 text-yellow-800"
-                      >
-                        <Star class="w-3 h-3 mr-1" />
-                        {{ item.is_featured ? 'Featured' : 'Popular' }}
-                      </span>
+               
                     </div>
                   </div>
                   <div class="text-right">
@@ -1598,14 +1592,7 @@
                             )
                       "
                     >
-                      {{
-                        calculateProfitMargin(
-                          item.selling_price,
-                          item.unit_cost
-                        ) === null
-                          ? 'Cost Data Needed'
-                          : `${calculateProfitMargin(item.selling_price, item.unit_cost)}% margin`
-                      }}
+                 
                     </div>
                   </div>
                   <div class="text-right text-sm text-gray-600">
@@ -2095,7 +2082,7 @@
                         </div>
                       </div>
                       <div class="text-right">
-                        <div class="font-bold text-success">
+                        <div class="font-bold text-primaryColor">
                           {{
                             formatCurrency(
                               branchPerformance.topBranch.total_value
@@ -2117,7 +2104,7 @@
                         </div>
                       </div>
                       <div class="text-right">
-                        <div class="font-bold text-info">
+                        <div class="font-bold text-gray-700">
                           {{ branchPerformance.averageDistributionSize }}
                           units
                         </div>

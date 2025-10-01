@@ -4,6 +4,7 @@
   import BarChartJS from './BarChartJS.vue';
   import SalesForecastChart from './SalesForecastChart.vue';
   import MenuInventoryDemand from './MenuInventoryDemand.vue';
+  import MenuRemittedInventory from './MenuRemittedInventory.vue';
   import { useBranchContextStore } from '../../stores/branchContextStore.js';
   import { useBranchStore } from '../../stores/branchStore.js';
   import { usePOSStore } from '../../stores/posStore.js';
@@ -37,8 +38,10 @@
   const selectedProduct = ref('all'); // 'all' | specific product id
   const productForecastMetric = ref('amount'); // 'amount' | 'orders'
   const forecastDays = ref(7); // Number of days to forecast
+  const forecastMethod = ref('linear'); // 'linear' | 'exponential'
   const forecastData = ref(null);
   const forecastLoading = ref(false);
+  const historicalDataArr = ref([]);
   // Cash flow & remittance forecast
   const cashFlowLoading = ref(false);
   const cashFlow = ref({
@@ -155,6 +158,25 @@
         : 'totalDisposed';
   });
 
+  // Dynamic display format for product forecast metrics
+  const displayFormat = computed(() => {
+    if (
+      forecastType.value === 'product' &&
+      productForecastMetric.value === 'orders'
+    ) {
+      return {
+        prefix: '',
+        suffix: ' orders',
+        formatter: (value) => Math.round(value).toLocaleString(),
+      };
+    }
+    return {
+      prefix: '₱',
+      suffix: '',
+      formatter: (value) => Math.round(value).toLocaleString(),
+    };
+  });
+
   // Branch remitted leaderboard (daily/weekly/monthly)
   const branchRankLoading = ref(false);
   const branchRankPeriod = ref('day'); // 'day' | 'week' | 'month'
@@ -260,7 +282,7 @@
     return { labels, data };
   };
 
-  // Simple linear regression for forecasting
+  // Enhanced linear regression with trend damping for forecasting
   const calculateLinearRegression = (data) => {
     const y = (Array.isArray(data) ? data : []).map((v) => Number(v) || 0);
     const n = y.length;
@@ -275,11 +297,55 @@
     const sumXX = x.reduce((sum, xi) => sum + xi * xi, 0);
 
     const denominator = n * sumXX - sumX * sumX;
-    const slope =
-      denominator === 0 ? 0 : (n * sumXY - sumX * sumY) / denominator;
+    let slope = denominator === 0 ? 0 : (n * sumXY - sumX * sumY) / denominator;
     const intercept = (sumY - slope * sumX) / n;
 
+    // Calculate average value for trend damping
+    const avgValue = sumY / n;
+
+    // Apply trend damping to prevent excessive extrapolation
+    // Limit slope to reasonable bounds (±20% of average value per period)
+    const maxSlope = avgValue * 0.2; // Maximum 20% change per period
+    const minSlope = -avgValue * 0.15; // Maximum 15% decline per period
+
+    // Apply damping factor based on data length (more data = less damping)
+    const dampingFactor = Math.min(1, Math.max(0.3, n / 20)); // 30% damping minimum, full by 20 points
+
+    slope = Math.max(minSlope, Math.min(maxSlope, slope * dampingFactor));
+
     return { slope, intercept };
+  };
+
+  // Exponential smoothing for more stable forecasts
+  const calculateExponentialSmoothing = (data, alpha = 0.3) => {
+    const y = (Array.isArray(data) ? data : []).map((v) => Number(v) || 0);
+    const n = y.length;
+    if (n === 0) return { forecast: 0, trend: 0 };
+    if (n === 1) return { forecast: y[0], trend: 0 };
+
+    // Simple exponential smoothing
+    let smoothed = y[0];
+    for (let i = 1; i < n; i++) {
+      smoothed = alpha * y[i] + (1 - alpha) * smoothed;
+    }
+
+    // Calculate trend using Holt's method
+    let trend = 0;
+    if (n >= 2) {
+      const firstHalf = y.slice(0, Math.floor(n / 2));
+      const secondHalf = y.slice(Math.floor(n / 2));
+      const firstAvg = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
+      const secondAvg =
+        secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
+      trend = (secondAvg - firstAvg) / Math.floor(n / 2);
+
+      // Apply trend damping
+      const avgValue = y.reduce((a, b) => a + b, 0) / n;
+      const maxTrend = avgValue * 0.1; // Max 10% trend per period
+      trend = Math.max(-maxTrend, Math.min(maxTrend, trend));
+    }
+
+    return { forecast: smoothed, trend };
   };
 
   // Estimate confidence from historical fit error (MAPE) with small-sample damping
@@ -335,12 +401,14 @@
     return out;
   };
 
-  // Compute weekly seasonality factors (0..6). Returns array of length 7.
+  // Enhanced weekly seasonality calculation with better validation
   const computeWeeklySeasonality = (labels, series) => {
     const y = (Array.isArray(series) ? series : []).map((v) => Number(v) || 0);
     const l = Array.isArray(labels) ? labels : [];
     const sums = new Array(7).fill(0);
     const counts = new Array(7).fill(0);
+
+    // Collect data by day of week
     for (let i = 0; i < y.length && i < l.length; i++) {
       const d = new Date(l[i]);
       if (isNaN(d)) continue;
@@ -348,22 +416,45 @@
       sums[wd] += y[i];
       counts[wd] += 1;
     }
+
     const overallAvg = y.length ? y.reduce((a, b) => a + b, 0) / y.length : 0;
     const factors = new Array(7).fill(1);
-    let have = 0;
+    let validDays = 0;
+
+    // Calculate factors with improved validation
     for (let i = 0; i < 7; i++) {
-      if (counts[i] > 0 && overallAvg > 0) {
-        factors[i] = Math.max(
-          0.2,
-          Math.min(3, sums[i] / counts[i] / overallAvg)
-        );
-        have++;
+      if (counts[i] >= 2 && overallAvg > 0) {
+        // Need at least 2 data points
+        const dayAvg = sums[i] / counts[i];
+        const factor = dayAvg / overallAvg;
+
+        // Apply reasonable bounds (0.3 to 2.5) to prevent extreme seasonality
+        factors[i] = Math.max(0.3, Math.min(2.5, factor));
+        validDays++;
+      } else if (counts[i] === 1 && overallAvg > 0) {
+        // Single data point - use conservative factor
+        const dayAvg = sums[i] / counts[i];
+        const factor = Math.max(0.5, Math.min(1.5, dayAvg / overallAvg));
+        factors[i] = factor;
+        validDays++;
       }
     }
-    if (have < 5) return new Array(7).fill(1); // not enough coverage
-    // Normalize factors to mean 1
+
+    // Need at least 4 valid days for reliable seasonality
+    if (validDays < 4) return new Array(7).fill(1); // not enough coverage
+
+    // Normalize factors to mean 1 to preserve overall level
     const mean = factors.reduce((a, b) => a + b, 0) / 7;
-    return factors.map((f) => (mean > 0 ? f / mean : 1));
+    const normalizedFactors = mean > 0 ? factors.map((f) => f / mean) : factors;
+
+    // Apply smoothing to reduce noise in seasonality
+    const smoothedFactors = normalizedFactors.map((factor, i) => {
+      const prevFactor = normalizedFactors[(i + 6) % 7];
+      const nextFactor = normalizedFactors[(i + 1) % 7];
+      return (prevFactor + factor + nextFactor) / 3;
+    });
+
+    return smoothedFactors;
   };
 
   // Generate forecast data (real data based)
@@ -411,7 +502,7 @@
 
       // Build historical series based on forecast type
       let labelsSorted = [];
-      let historicalDataArr = [];
+      let historicalDataArrLocal = [];
 
       if (forecastType.value === 'product') {
         // Per Product: aggregate REMITTED (approved) orders' item totals by day for the selected product
@@ -466,7 +557,7 @@
         });
 
         labelsSorted = Array.from(allLabelsSet).sort();
-        historicalDataArr = labelsSorted.map((lbl) =>
+        historicalDataArrLocal = labelsSorted.map((lbl) =>
           Math.round(Number(perDaySum.get(lbl) || 0))
         );
       } else {
@@ -496,7 +587,7 @@
         });
 
         labelsSorted = Array.from(allLabelsSet).sort();
-        historicalDataArr = labelsSorted.map((lbl) =>
+        historicalDataArrLocal = labelsSorted.map((lbl) =>
           Math.round(Number(perLabelSum.get(lbl) || 0))
         );
       }
@@ -517,8 +608,14 @@
         return;
       }
 
+      // Store historical data in reactive variable for template access
+      historicalDataArr.value = historicalDataArrLocal;
+
+      // Get dynamic forecast days for calculations
+      const forecastDaysForAvg = derivedForecastDays.value;
+
       // Seasonality-aware smoothing and regression
-      const smoothed = movingAverage(historicalDataArr, 3);
+      const smoothed = movingAverage(historicalDataArrLocal, 3);
       const seasonality = computeWeeklySeasonality(labelsSorted, smoothed);
       const deseasonalized = smoothed.map((v, i) => {
         const d = new Date(labelsSorted[i]);
@@ -526,9 +623,34 @@
         const f = seasonality[wd] || 1;
         return f > 0 ? v / f : v;
       });
-      const { slope, intercept } = calculateLinearRegression(deseasonalized);
 
-      // Forward forecast
+      // Choose forecasting method
+      let slope = 0,
+        intercept = 0,
+        expForecast = 0,
+        expTrend = 0;
+
+      if (forecastMethod.value === 'exponential') {
+        const expResult = calculateExponentialSmoothing(deseasonalized, 0.3);
+        expForecast = expResult.forecast;
+        expTrend = expResult.trend;
+      } else {
+        const linearResult = calculateLinearRegression(deseasonalized);
+        slope = linearResult.slope;
+        intercept = linearResult.intercept;
+      }
+
+      // Calculate baseline minimum from recent data
+      const recentData = historicalDataArrLocal.slice(-forecastDaysForAvg); // Last forecast days
+      const baselineMinimum =
+        recentData.length > 0
+          ? Math.max(
+              0,
+              (recentData.reduce((a, b) => a + b, 0) / recentData.length) * 0.6
+            ) // 60% of recent average
+          : 0;
+
+      // Forward forecast with minimum baseline protection
       const forecastLabels = [];
       const forecastValues = [];
       for (let i = 1; i <= Number(derivedForecastDays.value || 7); i++) {
@@ -536,25 +658,43 @@
         futureDate.setDate(today.getDate() + i);
         const label = futureDate.toISOString().split('T')[0];
         forecastLabels.push(label);
-        const x = deseasonalized.length + i - 1;
-        let predicted = slope * x + intercept;
+
+        let predicted;
+        if (forecastMethod.value === 'exponential') {
+          // Exponential smoothing forecast
+          predicted = expForecast + expTrend * i;
+        } else {
+          // Linear regression forecast
+          const x = deseasonalized.length + i - 1;
+          predicted = slope * x + intercept;
+        }
+
         const wd = futureDate.getDay();
         const f = seasonality[wd] || 1;
         predicted *= f;
-        if (!Number.isFinite(predicted)) predicted = avgRecent || 0;
-        predicted = Math.max(0, Math.round(predicted));
+        if (!Number.isFinite(predicted))
+          predicted = avgRecent || baselineMinimum;
+
+        // Apply minimum baseline to prevent unrealistic low predictions
+        predicted = Math.max(baselineMinimum, Math.round(predicted));
         forecastValues.push(predicted);
       }
 
-      // Trend analysis
-      const recent = historicalDataArr.slice(
-        -Math.min(7, historicalDataArr.length)
+      // Trend analysis - use dynamic forecast days
+      const recent = historicalDataArrLocal.slice(
+        -Math.min(forecastDaysForAvg, historicalDataArrLocal.length)
       );
       const older =
-        historicalDataArr.length > 7 ? historicalDataArr.slice(-14, -7) : [];
+        historicalDataArrLocal.length > forecastDaysForAvg
+          ? historicalDataArrLocal.slice(
+              -(forecastDaysForAvg * 2),
+              -forecastDaysForAvg
+            )
+          : [];
       const avgRecent = recent.length
         ? recent.reduce((a, b) => a + b, 0) / recent.length
         : 0;
+
       const avgOlder = older.length
         ? older.reduce((a, b) => a + b, 0) / older.length
         : avgRecent || 1;
@@ -569,19 +709,87 @@
         intercept
       );
 
+      // Apply confidence-based adjustments to forecast values
+      const confidenceAdjustment = confidence / 100; // Convert to 0-1 scale
+      const adjustedForecastValues = forecastValues.map((value, index) => {
+        // Blend forecast with recent average based on confidence
+        const blendFactor = Math.max(0.3, confidenceAdjustment); // Minimum 30% forecast weight
+        const blendedValue =
+          value * blendFactor + avgRecent * (1 - blendFactor);
+
+        // Apply additional smoothing for low confidence forecasts
+        if (confidence < 70) {
+          // For low confidence, pull forecast closer to recent average
+          const smoothingFactor = 0.7; // 70% weight to recent average
+          return Math.round(
+            blendedValue * (1 - smoothingFactor) + avgRecent * smoothingFactor
+          );
+        }
+
+        return Math.round(blendedValue);
+      });
+
+      const totalForecasted = Math.round(
+        adjustedForecastValues.length
+          ? adjustedForecastValues.reduce((a, b) => a + b, 0)
+          : 0
+      );
+
+      // Debug: Show detailed calculation steps
+      console.log('Detailed Forecast Calculation:', {
+        // Step 1: Linear Regression Parameters
+        slope: slope,
+        intercept: intercept,
+        deseasonalizedLength: deseasonalized.length,
+
+        // Step 2: Seasonality Factors (day of week)
+        seasonality: seasonality,
+
+        // Step 3: Baseline and Confidence
+        baselineMinimum: baselineMinimum,
+        confidence: confidence,
+        avgRecent: avgRecent,
+
+        // Step 4: Daily Calculations
+        dailyCalculations: forecastLabels.map((label, i) => {
+          const futureDate = new Date(label);
+          const wd = futureDate.getDay();
+          const x = deseasonalized.length + i;
+          const rawPredicted = slope * x + intercept;
+          const seasonalFactor = seasonality[wd] || 1;
+          const withSeasonality = rawPredicted * seasonalFactor;
+          const withBaseline = Math.max(baselineMinimum, withSeasonality);
+          const blendFactor = Math.max(0.3, confidence / 100);
+          const blended =
+            withBaseline * blendFactor + avgRecent * (1 - blendFactor);
+
+          return {
+            day: i + 1,
+            date: label,
+            dayOfWeek: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][wd],
+            x: x,
+            rawPredicted: Math.round(rawPredicted),
+            seasonalFactor: seasonalFactor.toFixed(2),
+            withSeasonality: Math.round(withSeasonality),
+            withBaseline: Math.round(withBaseline),
+            blendFactor: blendFactor.toFixed(2),
+            blended: Math.round(blended),
+            final: adjustedForecastValues[i],
+          };
+        }),
+
+        // Final Result
+        totalForecasted: totalForecasted,
+      });
+
       forecastData.value = {
-        historical: { labels: labelsSorted, data: historicalDataArr },
-        forecast: { labels: forecastLabels, data: forecastValues },
+        historical: { labels: labelsSorted, data: historicalDataArrLocal },
+        forecast: { labels: forecastLabels, data: adjustedForecastValues },
         analysis: {
           trendDirection,
           trendPercentage,
           averageHistorical: Math.round(avgRecent),
-          predictedAverage: Math.round(
-            forecastValues.length
-              ? forecastValues.reduce((a, b) => a + b, 0) /
-                  forecastValues.length
-              : 0
-          ),
+          predictedAverage: totalForecasted,
           confidence,
         },
       };
@@ -846,6 +1054,7 @@
       forecastPeriod,
       forecastDays,
       productForecastMetric,
+      forecastMethod,
     ],
     () => {
       setTimeout(() => {
@@ -1099,6 +1308,20 @@
                 @change="generateForecast"
               />
             </div>
+
+            <div>
+              <label class="label">
+                <span class="label-text text-xs">Forecast Method</span>
+              </label>
+              <select
+                class="select select-bordered select-sm w-full"
+                v-model="forecastMethod"
+                @change="generateForecast"
+              >
+                <option value="linear">Linear Regression</option>
+                <option value="exponential">Exponential Smoothing</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>
@@ -1160,17 +1383,34 @@
               <div class="stat bg-gray-50 rounded-lg p-4">
                 <div class="stat-title text-xs">Historical Average</div>
                 <div class="stat-value text-lg text-primaryColor">
-                  ₱{{
-                    forecastData.analysis.averageHistorical.toLocaleString()
-                  }}
+                  {{ displayFormat.prefix
+                  }}{{
+                    displayFormat.formatter(
+                      forecastData.analysis.averageHistorical
+                    )
+                  }}{{ displayFormat.suffix }}
                 </div>
-                <div class="stat-desc text-xs">Last 7 days</div>
+                <div class="stat-desc text-xs">
+                  Last
+                  {{
+                    Math.min(
+                      derivedForecastDays,
+                      historicalDataArr?.length || derivedForecastDays
+                    )
+                  }}
+                  days
+                </div>
               </div>
 
               <div class="stat bg-gray-50 rounded-lg p-4">
-                <div class="stat-title text-xs">Predicted Average</div>
+                <div class="stat-title text-xs">Predicted Total</div>
                 <div class="stat-value text-lg text-warning">
-                  ₱{{ forecastData.analysis.predictedAverage.toLocaleString() }}
+                  {{ displayFormat.prefix
+                  }}{{
+                    displayFormat.formatter(
+                      forecastData.analysis.predictedAverage
+                    )
+                  }}{{ displayFormat.suffix }}
                 </div>
                 <div class="stat-desc text-xs">
                   Next {{ derivedForecastDays }} days
@@ -1195,6 +1435,12 @@
                 :labels="forecastChartData.labels"
                 :historical="forecastChartData.historical"
                 :forecast="forecastChartData.forecast"
+                :formatTooltip="
+                  forecastType === 'product' &&
+                  productForecastMetric === 'orders'
+                    ? 'orders'
+                    : 'currency'
+                "
               />
             </div>
 
@@ -1208,7 +1454,14 @@
                   <thead>
                     <tr>
                       <th class="text-xs">Date</th>
-                      <th class="text-xs">Predicted Sales</th>
+                      <th class="text-xs">
+                        {{
+                          forecastType === 'product' &&
+                          productForecastMetric === 'orders'
+                            ? 'Predicted Orders'
+                            : 'Predicted Sales'
+                        }}
+                      </th>
                       <th class="text-xs">Confidence</th>
                       <th class="text-xs">Status</th>
                     </tr>
@@ -1217,7 +1470,9 @@
                     <tr v-for="row in pagedForecastRows" :key="row.date">
                       <td class="text-xs">{{ row.date }}</td>
                       <td class="text-xs font-semibold text-primaryColor">
-                        ₱{{ row.value.toLocaleString() }}
+                        {{ displayFormat.prefix
+                        }}{{ displayFormat.formatter(row.value)
+                        }}{{ displayFormat.suffix }}
                       </td>
                       <td class="text-xs">
                         <div class="">
@@ -1356,7 +1611,7 @@
     </div>
     <!-- Inventory Demand Forecasting Tab -->
     <div v-show="activeAnalyticsTab === 'inventory'" class="space-y-4">
-      <MenuInventoryDemand :loading="loading" />
+      <MenuRemittedInventory :loading="loading" />
     </div>
   </div>
 </template>

@@ -28,6 +28,7 @@
     datasetLabel: { type: String, default: 'Value' },
     color: { type: String, default: '#466114' },
     height: { type: [Number, String], default: 320 },
+    formatTooltip: { type: String, default: 'currency' }, // 'currency' or 'number'
   });
 
   const getCssVarHslStops = (varToken, chart) => {
@@ -125,8 +126,9 @@
   };
 
   const peso = (n) => `₱${Number(n || 0).toLocaleString()}`;
+  const formatNumber = (n) => Number(n || 0).toLocaleString();
 
-  const options = {
+  const options = computed(() => ({
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -139,7 +141,21 @@
         mode: 'index',
         intersect: false,
         callbacks: {
-          label: (ctx) => `${ctx.dataset.label}: ${peso(ctx.parsed.y)}`,
+          label: (ctx) => {
+            const value =
+              props.formatTooltip === 'currency'
+                ? peso(ctx.parsed.y)
+                : props.formatTooltip === 'enhanced-quantity'
+                  ? `${formatNumber(ctx.parsed.y)} items sold`
+                  : formatNumber(ctx.parsed.y);
+            return `${ctx.dataset.label}: ${value}`;
+          },
+          title: (ctx) => {
+            if (props.formatTooltip === 'enhanced-quantity') {
+              return `${ctx[0].label}`;
+            }
+            return ctx[0].label;
+          },
         },
       },
       title: { display: false },
@@ -162,7 +178,7 @@
         grid: { display: false },
       },
     },
-  };
+  }));
 </script>
 
 <template>

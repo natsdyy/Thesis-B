@@ -56,41 +56,47 @@
   const branchInventoryData = ref({});
   const branchInventoryLoading = ref(false);
 
-  // Real products fetched from branch inventory - filtered to show only available production-type items
-  const products = computed(() => {
-    const baseProducts = [{ id: 'all', name: 'All Products' }];
+  // Real menu products fetched from POS per branch context (not inventory-derived)
+  const products = ref([{ id: 'all', name: 'All Products' }]);
 
-    // Get unique production-type items from all branches' inventory (only available items)
-    const productionItems = new Map();
+  const loadProducts = async () => {
+    try {
+      const activeList = branchStore.activeBranches || [];
+      const ctxList = branchContext.availableBranches || [];
+      const baseList = activeList.length ? activeList : ctxList;
+      const ids =
+        selectedInventoryBranch.value === 'all'
+          ? baseList.length
+            ? baseList.map((b) => b.id)
+            : branchContext.currentBranch
+              ? [branchContext.currentBranch.id]
+              : []
+          : [parseInt(selectedInventoryBranch.value)];
 
-    Object.values(branchInventoryData.value).forEach((branchItems) => {
-      if (Array.isArray(branchItems)) {
-        branchItems.forEach((item) => {
-          // Only include production-type items (finished goods) that are available (not disposed/expired)
-          if (
-            item.item_type === 'production' &&
-            item.status === 'available' &&
-            parseFloat(item.quantity || 0) > 0
-          ) {
-            const itemId = item.inventory_item_id || item.id;
-            const itemName = item.item_name || `Item ${itemId}`;
-            if (!productionItems.has(itemId)) {
-              productionItems.set(itemId, {
-                id: itemId,
-                name: itemName,
-              });
-            }
-          }
-        });
+      const lists = await Promise.all(
+        ids.map((bid) =>
+          posStore.fetchBranchMenuItems(bid, { includeUnavailable: true })
+        )
+      );
+      const merged = new Map();
+      lists.flat().forEach((it) => {
+        if (!merged.has(it.id)) merged.set(it.id, { id: it.id, name: it.name });
+      });
+      const arr = Array.from(merged.values()).sort((a, b) =>
+        String(a.name).localeCompare(String(b.name))
+      );
+      products.value = [{ id: 'all', name: 'All Products' }, ...arr];
+      if (
+        !products.value.find((p) => p.id === selectedInventoryItem.value) &&
+        selectedInventoryItem.value !== 'all'
+      ) {
+        selectedInventoryItem.value = 'all';
       }
-    });
-
-    const uniqueItems = Array.from(productionItems.values()).sort((a, b) =>
-      String(a.name).localeCompare(String(b.name))
-    );
-
-    return [...baseProducts, ...uniqueItems];
-  });
+    } catch (e) {
+      products.value = [{ id: 'all', name: 'All Products' }];
+      selectedInventoryItem.value = 'all';
+    }
+  };
 
   // Load branch inventory data using store
   const loadBranchInventory = async () => {
@@ -139,9 +145,9 @@
     }
   };
 
-  // Calculate consumption from branch inventory transactions
-  const calculateConsumptionFromTransactions = async (
-    inventoryItemId,
+  // Calculate consumption STRICTLY from REMITTED orders (approved remittances) via POS order history
+  const calculateConsumptionFromRemittedOrders = async (
+    menuItemId,
     branchId,
     days = 30
   ) => {
@@ -150,48 +156,53 @@
       const startDate = new Date();
       startDate.setDate(endDate.getDate() - days);
 
-      // Fetch branch inventory transactions for consumption data using store
-      const transactions = await branchInventoryStore.fetchAllTransactions(
-        branchId,
-        {
-          date_range: 'custom',
-          date_from: startDate.toISOString(),
-          date_to: endDate.toISOString(),
-          item_type: 'production',
-          transaction_type: 'consumption',
-          page: 1,
-          limit: 1000,
-        }
-      );
+      const history = await posStore.fetchOrderHistory({
+        branch_id: branchId,
+        status: 'completed',
+        limit: 1000,
+        date_from: startDate.toISOString(),
+        date_to: endDate.toISOString(),
+      });
+      const orders = Array.isArray(history?.data) ? history.data : [];
+      const remittedOnly = orders.filter((o) => {
+        const hasRemit = o && o.remittance_id != null;
+        const status = String(o?.remittance_status || '').toLowerCase();
+        return hasRemit && status === 'approved';
+      });
 
-      const transactionData = transactions.data || [];
       let totalQuantity = 0;
-      let transactionCount = 0;
-
-      // Filter transactions for the specific inventory item
-      transactionData.forEach((transaction) => {
-        if (Number(transaction.inventory_item_id) === Number(inventoryItemId)) {
-          totalQuantity += Number(transaction.quantity || 0);
-          transactionCount++;
+      let orderCount = 0;
+      const remittanceIds = new Set();
+      remittedOnly.forEach((o) => {
+        const items = Array.isArray(o.items) ? o.items : [];
+        const matched = items.filter(
+          (it) => Number(it.menu_item_id) === Number(menuItemId)
+        );
+        if (matched.length > 0) {
+          orderCount += 1;
+          if (o.remittance_id != null) remittanceIds.add(o.remittance_id);
+          matched.forEach((it) => {
+            totalQuantity += Number(it.quantity || 0);
+          });
         }
       });
 
-      // Calculate daily average consumption
       const dailyConsumption = days > 0 ? totalQuantity / days : 0;
 
       return {
         totalQuantity,
-        orderCount: transactionCount,
+        orderCount,
         dailyConsumption: Math.round(dailyConsumption * 100) / 100,
         periodDays: days,
+        remittanceIds: Array.from(remittanceIds),
       };
     } catch (error) {
-      console.error('Error calculating consumption from transactions:', error);
       return {
         totalQuantity: 0,
         orderCount: 0,
         dailyConsumption: 0,
         periodDays: days,
+        remittanceIds: [],
       };
     }
   };
@@ -219,47 +230,44 @@
           branchList.find((b) => b.id === branchId)?.name ||
           `Branch ${branchId}`;
 
-        // Get branch inventory items (production-type only)
-        const branchItems = branchInventoryData.value[branchId] || [];
-
-        // Filter items based on selection - only process available items (not disposed/expired)
-        const itemsToProcess =
+        // Build list of menu items to process from POS products
+        const menuItemsAll = (
+          Array.isArray(products.value) ? products.value : []
+        ).filter((p) => p.id !== 'all');
+        const menuItemsToProcess =
           selectedInventoryItem.value === 'all'
-            ? branchItems.filter(
-                (item) =>
-                  item.item_type === 'production' &&
-                  item.status === 'available' &&
-                  parseFloat(item.quantity || 0) > 0
-              )
-            : branchItems.filter(
-                (item) =>
-                  item.item_type === 'production' &&
-                  item.status === 'available' &&
-                  parseFloat(item.quantity || 0) > 0 &&
-                  (item.inventory_item_id ===
-                    parseInt(selectedInventoryItem.value) ||
-                    item.id === parseInt(selectedInventoryItem.value))
+            ? menuItemsAll
+            : menuItemsAll.filter(
+                (p) => Number(p.id) === Number(selectedInventoryItem.value)
               );
 
-        for (const inventoryItem of itemsToProcess) {
-          // Skip if no inventory item
-          if (!inventoryItem) continue;
+        // Inventory list for stock lookup
+        const branchItems = branchInventoryData.value[branchId] || [];
 
-          const itemId = inventoryItem.inventory_item_id || inventoryItem.id;
-          const itemName = inventoryItem.item_name || `Item ${itemId}`;
+        for (const product of menuItemsToProcess) {
+          if (!product) continue;
 
-          // Get current stock from branch inventory
-          const currentStock = Number(inventoryItem.quantity || 0);
-          const reorderPoint = Number(inventoryItem.minimum_quantity || 5); // Default minimum
+          const itemId = Number(product.id);
+          const itemName = product.name || `Item ${itemId}`;
+
+          // Try to find matching inventory record for current stock by menu_item_id
+          const invMatch =
+            branchItems.find(
+              (bi) =>
+                Number(bi.menu_item_id || bi.menuItemId) === Number(itemId)
+            ) || {};
+
+          const currentStock = Number(invMatch.quantity || 0);
+          const reorderPoint = Number(invMatch.minimum_quantity || 5);
           const maxStock = Number(
-            inventoryItem.maximum_quantity || currentStock * 2
+            invMatch.maximum_quantity || currentStock * 2
           );
 
-          // Calculate consumption from branch inventory transactions
-          const consumptionData = await calculateConsumptionFromTransactions(
+          // Calculate consumption from REMITTED orders
+          const consumptionData = await calculateConsumptionFromRemittedOrders(
             itemId,
             branchId,
-            30 // Look back 30 days
+            30
           );
 
           const dailyConsumption = consumptionData.dailyConsumption || 0;
@@ -301,8 +309,8 @@
             branchName,
             itemId,
             itemName: itemName,
-            unit: inventoryItem.unit_of_measure || 'servings',
-            category: inventoryItem.category || 'Production',
+            unit: invMatch.unit_of_measure || 'servings',
+            category: invMatch.category || 'Production',
             currentStock,
             dailyConsumption,
             minStock: reorderPoint,
@@ -330,7 +338,8 @@
                     ? 'warning'
                     : 'good',
             })),
-            consumptionData,
+            // include remittance IDs used for this demand window for traceability
+            remittanceIds: consumptionData.remittanceIds || [],
           });
         }
       }
@@ -533,7 +542,7 @@
     try {
       await branchStore.fetchActiveBranches();
     } catch (e) {}
-
+    await loadProducts();
     // Only calculate inventory demand if we have branches
     if (branchStore.activeBranches && branchStore.activeBranches.length > 0) {
       await calculateInventoryDemand();
@@ -542,7 +551,7 @@
 
   // Watch for changes
   watch([selectedInventoryBranch], () => {
-    calculateInventoryDemand();
+    loadProducts().then(() => calculateInventoryDemand());
   });
 
   watch(

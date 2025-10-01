@@ -28,6 +28,7 @@
     labels: { type: Array, required: true },
     historical: { type: Array, required: true },
     forecast: { type: Array, required: true },
+    formatTooltip: { type: String, default: 'currency' }, // 'currency' or 'orders'
   });
 
   const chartData = computed(() => ({
@@ -77,7 +78,11 @@
         callbacks: {
           label: function (context) {
             const value = context.parsed.y;
-            return `${context.dataset.label}: ₱${value.toLocaleString()}`;
+            const formattedValue =
+              props.formatTooltip === 'orders'
+                ? `${value.toLocaleString()} orders`
+                : `₱${value.toLocaleString()}`;
+            return `${context.dataset.label}: ${formattedValue}`;
           },
         },
       },
@@ -90,7 +95,9 @@
         ticks: {
           precision: 0,
           callback: function (value) {
-            return '₱' + value.toLocaleString();
+            return props.formatTooltip === 'orders'
+              ? value.toLocaleString()
+              : '₱' + value.toLocaleString();
           },
         },
         grid: { color: 'rgba(0,0,0,0.06)' },

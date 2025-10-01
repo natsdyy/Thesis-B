@@ -309,8 +309,8 @@ p {
   #pos_receipt_modal > div {
     visibility: visible !important;
     display: block !important;
-    width: 80mm !important; /* 58mm thermal receipt */
-    max-width: 80mm !important;
+    width: 150mm !important; /* 58mm thermal receipt */
+    max-width: 150mm !important;
     background: #ffffff !important;
     color: #000000 !important;
     box-shadow: none !important;
@@ -330,7 +330,7 @@ p {
 
   /* Page size and margins optimized for 58mm thermal receipt */
   @page {
-    size: 80mm auto;
+    size: 150mm auto;
     margin: 2mm;
   }
 

@@ -7,6 +7,8 @@
     show: { type: Boolean, default: false },
     period: { type: String, default: 'today' }, // today | week | month | year
     branchId: { type: [Number, String], default: null },
+    // When period === 'customMonth', expects YYYY-MM
+    customMonth: { type: String, default: '' },
   });
 
   const emit = defineEmits(['close']);
@@ -16,13 +18,17 @@
 
   const orders = ref([]);
   const loading = ref(false);
-  const activeTab = ref('today'); // today | thisWeek | thisMonth
+  const activeTab = ref('today'); // today | thisWeek | thisMonth | customMonth
 
-  const tabs = [
-    { id: 'today', label: 'Today' },
-    { id: 'thisWeek', label: 'This Week' },
-    { id: 'thisMonth', label: 'This Month' },
-  ];
+  const tabs = computed(() =>
+    props.period === 'customMonth'
+      ? [{ id: 'customMonth', label: 'Custom Month' }]
+      : [
+          { id: 'today', label: 'Today' },
+          { id: 'thisWeek', label: 'This Week' },
+          { id: 'thisMonth', label: 'This Month' },
+        ]
+  );
 
   // Pagination
   const page = ref(1);
@@ -73,10 +79,29 @@
       .join('\n');
   };
 
+  const formatVoidReason = (reason) => {
+    if (!reason) return '—';
+    const normalized = String(reason).replace(/_/g, ' ').trim();
+    return normalized
+      .split(' ')
+      .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ''))
+      .join(' ');
+  };
+
+  const classifyImpact = (order) => {
+    if (order?.status !== 'void') return { label: '—', type: 'none' };
+    const reason = String(order?.void_reason || '').toLowerCase();
+    const isRefund = /customer/.test(reason) || /cancel/.test(reason);
+    return isRefund
+      ? { label: 'Refund', type: 'refund' }
+      : { label: 'Loss', type: 'loss' };
+  };
+
   const summaryTotals = computed(() => {
     const totals = {
       totalSales: 0,
       refunds: 0,
+      loss: 0,
       netSales: 0,
       remitted: 0,
       transactions: 0,
@@ -90,7 +115,10 @@
         totals.totalSales += amt;
         totals.netSales += amt;
       } else if (o.status === 'void') {
-        totals.refunds += amt;
+        const reason = String(o.void_reason || '').toLowerCase();
+        const isRefund = /customer/.test(reason) || /cancel/.test(reason);
+        if (isRefund) totals.refunds += amt;
+        else totals.loss += amt;
         totals.voidedCount += 1;
       }
     });
@@ -112,6 +140,22 @@
       start.setHours(0, 0, 0, 0);
       from = start;
       const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      end.setHours(23, 59, 59, 999);
+      to = end;
+    } else if (period === 'customMonth') {
+      const ym = String(props.customMonth || '').trim();
+      const [yStr, mStr] = ym.split('-');
+      const year = Number(yStr);
+      const monthIndex = Number(mStr) - 1;
+      from =
+        Number.isFinite(year) && Number.isFinite(monthIndex)
+          ? new Date(year, monthIndex, 1)
+          : new Date(now.getFullYear(), now.getMonth(), 1);
+      from.setHours(0, 0, 0, 0);
+      const end =
+        Number.isFinite(year) && Number.isFinite(monthIndex)
+          ? new Date(year, monthIndex + 1, 0)
+          : new Date(now.getFullYear(), now.getMonth() + 1, 0);
       end.setHours(23, 59, 59, 999);
       to = end;
     } else if (period === 'month') {
@@ -145,6 +189,7 @@
         today: 'today',
         thisWeek: 'week',
         thisMonth: 'month',
+        customMonth: 'customMonth',
       };
       const effectivePeriod =
         periodMap[activeTab.value] || props.period || 'today';
@@ -169,7 +214,54 @@
       ]);
       const a = Array.isArray(completedResp?.data) ? completedResp.data : [];
       const b = Array.isArray(voidResp?.data) ? voidResp.data : [];
-      orders.value = [...a, ...b].sort(
+
+      // Fetch approved remittance windows for stricter filtering: only show orders that
+      // were actually included in approved remittances for this branch/period
+      const desiredTypeMap = {
+        today: 'today',
+        week: 'week',
+        month: 'month',
+      };
+      // For customMonth, accept ANY period_type (daily/weekly/monthly) that overlaps
+      const desiredType =
+        effectivePeriod === 'customMonth'
+          ? null
+          : desiredTypeMap[effectivePeriod] || null;
+      const { data: remitList } = await posStore.fetchRemittances({
+        branchId,
+        status: 'approved',
+        limit: 1000,
+      });
+      const remitWindows = (Array.isArray(remitList) ? remitList : [])
+        .filter((r) => (desiredType ? r.period_type === desiredType : true))
+        .filter((r) => {
+          const fromMs = r.date_from ? new Date(r.date_from).getTime() : NaN;
+          const toMs = r.date_to ? new Date(r.date_to).getTime() : fromMs;
+          const selFrom = new Date(dateFrom).getTime();
+          const selTo = new Date(dateTo).getTime();
+          if (Number.isFinite(fromMs) && Number.isFinite(toMs)) {
+            // include only remittances overlapping the selected window
+            return toMs >= selFrom && fromMs <= selTo;
+          }
+          return false;
+        })
+        .map((r) => ({
+          fromMs: new Date(r.date_from).getTime(),
+          toMs: new Date(r.date_to || r.date_from).getTime(),
+        }));
+
+      const fallsInAnyWindow = (iso) => {
+        // Only show orders that fall into at least one approved remittance window
+        if (!remitWindows.length) return false;
+        const t = new Date(iso).getTime();
+        return remitWindows.some((w) => t >= w.fromMs && t <= w.toMs);
+      };
+
+      const merged = [...a, ...b].filter((o) =>
+        fallsInAnyWindow(o.completed_at || o.processed_at || o.created_at)
+      );
+
+      orders.value = merged.sort(
         (x, y) => new Date(x.created_at) - new Date(y.created_at)
       );
     } catch (e) {
@@ -252,7 +344,7 @@
           </button>
         </div>
         <!-- Summary Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+        <div class="grid grid-cols-1 md:grid-cols-6 gap-3 mb-4">
           <div class="card bg-white shadow border border-black/10">
             <div class="card-body py-3">
               <div class="text-xs text-gray-500">Gross Sales</div>
@@ -285,6 +377,22 @@
               </div>
             </div>
           </div>
+          <div class="card bg-white shadow border border-black/10">
+            <div class="card-body py-3">
+              <div class="text-xs text-gray-500">Voided Orders</div>
+              <div class="text-base font-semibold">
+                {{ summaryTotals.voidedCount.toLocaleString() }}
+              </div>
+            </div>
+          </div>
+          <div class="card bg-white shadow border border-black/10">
+            <div class="card-body py-3">
+              <div class="text-xs text-gray-500">Loss (Voids)</div>
+              <div class="text-base font-semibold">
+                ₱{{ summaryTotals.loss.toFixed(2) }}
+              </div>
+            </div>
+          </div>
         </div>
 
         <div v-if="orders && orders.length" class="overflow-x-auto">
@@ -298,6 +406,8 @@
                 <th class="text-xs">Items</th>
                 <th class="text-xs">Total</th>
                 <th class="text-xs">Cashier</th>
+                <th class="text-xs">Reason</th>
+                <th class="text-xs">Impact</th>
               </tr>
             </thead>
             <tbody>
@@ -332,6 +442,26 @@
                 </td>
                 <td class="text-xs">
                   {{ o.cashier_first_name }} {{ o.cashier_last_name }}
+                </td>
+                <td class="text-xs">
+                  <span v-if="o.status === 'void'">{{
+                    formatVoidReason(o.void_reason)
+                  }}</span>
+                  <span v-else>—</span>
+                </td>
+                <td class="text-xs">
+                  <span
+                    :class="[
+                      'badge badge-sm',
+                      classifyImpact(o).type === 'refund'
+                        ? 'bg-info/10 text-info border'
+                        : classifyImpact(o).type === 'loss'
+                          ? 'bg-warning/10 text-warning border'
+                          : 'border',
+                    ]"
+                  >
+                    {{ classifyImpact(o).label }}
+                  </span>
                 </td>
               </tr>
             </tbody>

@@ -1333,45 +1333,9 @@
         </div>
       </div>
 
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <TrendingUp
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-black/50"
-          />
-        </div>
-        <div class="stat-title text-black/50 !text-xs sm:text-sm">
-          Avg. Margin
-        </div>
-        <div
-          class="stat-value text-black/50 text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ Number(realTimeStats.average_margin || 0).toFixed(0) }}%
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Profit margin
-        </div>
-      </div>
 
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <Truck class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-warning" />
-        </div>
-        <div class="stat-title text-black/50 !text-xs sm:text-sm">
-          Distributed
-        </div>
-        <div
-          class="stat-value text-warning text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ realTimeStats.total_distributed_all_time || 0 }}
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Units distributed to branches
-        </div>
-      </div>
+
+ 
     </div>
 
     <!-- Action Buttons -->

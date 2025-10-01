@@ -359,6 +359,7 @@
             isLoss: isLoss,
             void_reason: order.void_reason,
             voided_at: order.voided_at,
+            remittance_id: order.remittance_id || null,
           };
         });
 
@@ -1007,8 +1008,9 @@
                     <!-- Void Order Button (requires manager PIN) -->
                     <button
                       v-if="
-                        transaction.status === 'pending' ||
-                        transaction.status === 'processing'
+                        (transaction.status === 'pending' ||
+                          transaction.status === 'processing') &&
+                        !transaction.remittance_id
                       "
                       @click="handleVoidOrder(transaction)"
                       class="btn btn-xs btn-error text-error font-thin bg-error/20 shadow-none border-none"
@@ -1019,7 +1021,10 @@
 
                     <!-- Refund Order Button (requires manager PIN) -->
                     <button
-                      v-if="transaction.status === 'completed'"
+                      v-if="
+                        transaction.status === 'completed' &&
+                        !transaction.remittance_id
+                      "
                       @click="handleRefundOrder(transaction)"
                       class="btn btn-xs btn-warning text-warning font-thin bg-warning/20 shadow-none border-none"
                       title="Refund Order (Manager Required)"

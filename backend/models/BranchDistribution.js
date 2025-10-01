@@ -1162,13 +1162,25 @@ class BranchDistribution {
                 "Debug - Updating existing branch inventory item:",
                 existingItem.id
               );
+              // Update selling price for SCM beverages if not already set
+              const updateData = {
+                quantity: db.raw(`quantity + ${item.qty}`),
+                total_value: db.raw(`total_value + ${item.amount}`),
+                updated_at: db.fn.now(),
+              };
+
+              // Set selling price for SCM beverages if not already set (use unit_cost as transfer price)
+              if (
+                item.source === "scm" &&
+                item.category === "Beverages" &&
+                !existingItem.selling_price
+              ) {
+                updateData.selling_price = item.unit_price; // This is the transfer price from distribution modal
+              }
+
               await trx("branch_inventory")
                 .where("id", existingItem.id)
-                .update({
-                  quantity: db.raw(`quantity + ${item.qty}`),
-                  total_value: db.raw(`total_value + ${item.amount}`),
-                  updated_at: db.fn.now(),
-                });
+                .update(updateData);
               console.log("Debug - Branch inventory item updated successfully");
             } else {
               // Create new branch inventory item
@@ -1186,7 +1198,9 @@ class BranchDistribution {
                 selling_price:
                   item.source === "production" && item.menu_selling_price
                     ? item.menu_selling_price
-                    : null,
+                    : item.source === "scm" && item.category === "Beverages"
+                      ? item.unit_price // Use unit_cost (transfer price) as selling price for SCM beverages
+                      : null,
                 total_value: item.amount,
                 minimum_stock: Math.ceil(item.qty * 0.15),
                 expiry_date: item.expiry_date || null,

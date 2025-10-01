@@ -35,6 +35,15 @@ export function useCustomToast() {
     });
   };
 
+  // Generic helper to keep legacy calls working: showToast(message, type)
+  const showToast = (message, type = 'info') => {
+    const t = String(type || 'info').toLowerCase();
+    if (t === 'success') return showSuccess(message);
+    if (t === 'error') return showError(message);
+    if (t === 'warning') return showWarning(message);
+    return showInfo(message);
+  };
+
   const showLoading = (message, title = 'Loading...') => {
     return toast.info(message, {
       title,
@@ -58,6 +67,7 @@ export function useCustomToast() {
     showError,
     showWarning,
     showInfo,
+    showToast,
     showLoading,
     dismiss,
     dismissAll,

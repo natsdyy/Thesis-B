@@ -3923,13 +3923,6 @@
                   </p>
                 </div>
                 <div class="text-right">
-                  <div class="text-2xl font-bold text-primaryColor">
-                    ₱{{
-                      parseFloat(
-                        selectedDistribution.total_amount
-                      ).toLocaleString()
-                    }}
-                  </div>
                   <div
                     class="badge badge-sm border-none font-medium bg-warning/20 text-warning"
                   >

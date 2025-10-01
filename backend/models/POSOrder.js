@@ -1,4 +1,5 @@
 const { db } = require("../config/database");
+const { PHILIPPINE_TIMEZONE } = require("../utils/timezoneUtils");
 
 class POSOrder {
   // Generate unique order number
@@ -30,6 +31,7 @@ class POSOrder {
         .leftJoin("employees as c", "pso.cashier_id", "c.id")
         .leftJoin("employees as m", "pso.manager_id", "m.id")
         .leftJoin("employees as v", "pso.voided_by", "v.id")
+        .leftJoin("branch_remittances as br", "pso.remittance_id", "br.id")
         .select(
           "pso.*",
           "b.name as branch_name",
@@ -38,7 +40,8 @@ class POSOrder {
           "m.first_name as manager_first_name",
           "m.last_name as manager_last_name",
           "v.first_name as voided_by_first_name",
-          "v.last_name as voided_by_last_name"
+          "v.last_name as voided_by_last_name",
+          db.raw("COALESCE(br.status, NULL) as remittance_status")
         );
 
       // Apply filters
@@ -82,9 +85,19 @@ class POSOrder {
       let items = [];
 
       if (orderIds.length > 0) {
+        // Return only fields used by the UI to keep payload small
         items = await db("pos_order_items as poi")
           .leftJoin("menu_items as mi", "poi.menu_item_id", "mi.id")
-          .select("poi.*", "mi.menu_item_name", "mi.image_url", "mi.category")
+          .select(
+            "poi.id",
+            "poi.order_id",
+            "poi.menu_item_id",
+            "poi.item_name",
+            "poi.quantity",
+            "poi.unit_price",
+            // fallback display name from menu_items when available
+            "mi.menu_item_name as menu_item_name"
+          )
           .whereIn("poi.order_id", orderIds)
           .orderBy("poi.order_id")
           .orderBy("poi.id");
@@ -112,6 +125,40 @@ class POSOrder {
     }
   }
 
+  // Mark completed, unremitted orders as remitted for a remittance
+  static async markOrdersRemitted({
+    branchId,
+    remittanceId,
+    dateFrom,
+    dateTo,
+  }) {
+    const trx = await db.transaction();
+    try {
+      const now = new Date();
+      // Update only completed orders in range that are not yet linked
+      await trx("pos_sales_orders")
+        .where("branch_id", branchId)
+        .where("status", "completed")
+        .whereNull("remittance_id")
+        .modify((qb) => {
+          if (dateFrom) qb.where("created_at", ">=", dateFrom);
+          if (dateTo) qb.where("created_at", "<=", dateTo);
+        })
+        .update({
+          remittance_id: remittanceId,
+          remitted_at: now,
+          updated_at: now,
+        });
+
+      await trx.commit();
+      return true;
+    } catch (error) {
+      await trx.rollback();
+      console.error("Error marking orders as remitted:", error);
+      throw new Error("Failed to mark orders as remitted");
+    }
+  }
+
   // Aggregate sales trends by time bucket
   static async getSalesTrends(
     branchId,
@@ -124,9 +171,13 @@ class POSOrder {
       const dateColVoided = "pos_sales_orders.voided_at";
 
       const bucketExpr = (col) => {
-        if (bucket === "hour") return db.raw("to_char(??, 'HH24:00')", [col]);
-        if (bucket === "month") return db.raw("to_char(??, 'YYYY-MM')", [col]);
-        return db.raw("to_char(??, 'YYYY-MM-DD')", [col]);
+        // Normalize to Philippine time for consistent bucket labels
+        const tzWrapped = db.raw("timezone(?, ??)", [PHILIPPINE_TIMEZONE, col]);
+        if (bucket === "hour")
+          return db.raw("to_char((" + tzWrapped + "), 'HH24:00')");
+        if (bucket === "month")
+          return db.raw("to_char((" + tzWrapped + "), 'YYYY-MM')");
+        return db.raw("to_char((" + tzWrapped + "), 'YYYY-MM-DD')");
       };
 
       // Completed (gross) sales by bucket
@@ -176,6 +227,21 @@ class POSOrder {
         .count({ value: "pos_sales_orders.id" })
         .groupBy("label");
 
+      // Actually remitted amount by bucket (only orders that are linked to approved remittances)
+      let remittedQ = db("pos_sales_orders as pso")
+        .leftJoin("branch_remittances as br", "pso.remittance_id", "br.id")
+        .where("pso.branch_id", branchId)
+        .where("pso.status", "completed")
+        .whereNotNull("pso.remittance_id")
+        .where("br.status", "approved");
+      if (dateFrom)
+        remittedQ = remittedQ.where("pso.created_at", ">=", dateFrom);
+      if (dateTo) remittedQ = remittedQ.where("pso.created_at", "<=", dateTo);
+      const remittedRows = await remittedQ
+        .select({ label: bucketExpr("pso.created_at") })
+        .sum({ value: "pso.total_amount" })
+        .groupBy("label");
+
       // Merge maps
       const labelsSet = new Set();
       const toMap = (rows) => {
@@ -191,16 +257,34 @@ class POSOrder {
       const grossMap = toMap(grossRows);
       const refundMap = toMap(refundRows);
       const voidMap = toMap(voidRows);
+      const remittedMap = toMap(remittedRows);
 
-      const labels = Array.from(labelsSet).sort();
+      const allLabels = Array.from(labelsSet).sort();
 
-      const gross = labels.map((l) => Number(grossMap.get(l) || 0));
-      const refunds = labels.map((l) => Number(refundMap.get(l) || 0));
-      const disposed = labels.map((l) => Number(voidMap.get(l) || 0));
-      const net = labels.map((_, idx) =>
+      const gross = allLabels.map((l) => Number(grossMap.get(l) || 0));
+      const refunds = allLabels.map((l) => Number(refundMap.get(l) || 0));
+      const disposed = allLabels.map((l) => Number(voidMap.get(l) || 0));
+      const net = allLabels.map((_, idx) =>
         Math.max(0, gross[idx] - refunds[idx])
       );
-      const remitted = net.slice();
+
+      // For remitted amounts, only include labels that have actual remitted orders (remittance_id not null)
+      const remittedLabels = [];
+      const remittedValues = [];
+
+      remittedRows.forEach((r) => {
+        if (Number(r.value) > 0) {
+          remittedLabels.push(String(r.label));
+          remittedValues.push(Number(r.value));
+        }
+      });
+
+      // Use remitted labels for remitted data, all labels for other metrics
+      const labels = remittedLabels.length > 0 ? remittedLabels : allLabels;
+      const remitted =
+        remittedLabels.length > 0
+          ? remittedValues
+          : allLabels.map((l) => Number(remittedMap.get(l) || 0));
 
       return {
         labels,
@@ -973,11 +1057,12 @@ class POSOrder {
 
       // Helper: build date bucket expression
       const bucketExpr = (col) => {
+        const tzWrapped = db.raw("timezone(?, ??)", [PHILIPPINE_TIMEZONE, col]);
         if (bucket === "hour") {
-          return db.raw("to_char(??, 'HH24:00')", [col]);
+          return db.raw("to_char((" + tzWrapped + "), 'HH24:00')");
         }
         // default day bucket
-        return db.raw("to_char(??, 'YYYY-MM-DD')", [col]);
+        return db.raw("to_char((" + tzWrapped + "), 'YYYY-MM-DD')");
       };
 
       // 1) Build time range array of labels

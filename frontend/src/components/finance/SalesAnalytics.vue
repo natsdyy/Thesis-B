@@ -1,6 +1,7 @@
 <script setup>
   import { ref, computed, watch, onMounted } from 'vue';
   import SalesTrendsChart from '../branch/SalesTrendsChart.vue';
+  import BarChartJS from './BarChartJS.vue';
   import SalesForecastChart from './SalesForecastChart.vue';
   import MenuInventoryDemand from './MenuInventoryDemand.vue';
   import { useBranchContextStore } from '../../stores/branchContextStore.js';
@@ -38,6 +39,12 @@
   const forecastDays = ref(7); // Number of days to forecast
   const forecastData = ref(null);
   const forecastLoading = ref(false);
+  // Cash flow & remittance forecast
+  const cashFlowLoading = ref(false);
+  const cashFlow = ref({
+    byBranch: [],
+    totals: { daily7: 0, weekly4: 0, monthly1: 0 },
+  });
 
   // Stores for real data
   const branchContext = useBranchContextStore();
@@ -115,6 +122,19 @@
 
   const analyticsLabels = computed(() => props.analyticsData.labels || []);
 
+  // Align forecast horizon to selected period unless user explicitly overrides to a larger value
+  const derivedForecastDays = computed(() => {
+    const base =
+      forecastPeriod.value === 'quarter'
+        ? 90
+        : forecastPeriod.value === 'month'
+          ? 30
+          : 7; // week
+    const user = Number(forecastDays.value || 0);
+    // If user entered a number, honor it when larger; otherwise use base
+    return Number.isFinite(user) && user > base ? user : base;
+  });
+
   const analyticsSeries = computed(() => {
     const a = props.analyticsData;
     if (!a || !Array.isArray(a.labels)) return [];
@@ -134,6 +154,78 @@
         ? 'refundedAmount'
         : 'totalDisposed';
   });
+
+  // Branch remitted leaderboard (daily/weekly/monthly)
+  const branchRankLoading = ref(false);
+  const branchRankPeriod = ref('day'); // 'day' | 'week' | 'month'
+  const branchRank = ref({ labels: [], data: [] });
+  const branchRankNet = ref([]);
+  const branchRankMax = computed(() => {
+    const arr = Array.isArray(branchRank.value?.data)
+      ? branchRank.value.data
+      : [];
+    return arr.reduce((m, v) => Math.max(m, Number(v || 0)), 0) || 1;
+  });
+
+  const generateBranchRemitRank = async () => {
+    try {
+      branchRankLoading.value = true;
+      // Determine rolling window
+      const now = new Date();
+      const days =
+        branchRankPeriod.value === 'month'
+          ? 30
+          : branchRankPeriod.value === 'week'
+            ? 7
+            : 1;
+      const start = new Date(now);
+      start.setDate(now.getDate() - days);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(now);
+      end.setHours(23, 59, 59, 999);
+
+      // Prepare branch list
+      const storeList = branchStore.activeBranches || [];
+      const ctxList = branchContext.availableBranches || [];
+      const list = (storeList.length ? storeList : ctxList) || [];
+      const ids = list.length
+        ? list.map((b) => b.id)
+        : branchContext.currentBranch
+          ? [branchContext.currentBranch.id]
+          : [];
+
+      const labels = [];
+      const data = [];
+      const dataNet = [];
+      for (const bid of ids) {
+        const res = await posStore.fetchSalesTrends(bid, {
+          dateFrom: start.toISOString(),
+          dateTo: end.toISOString(),
+          bucket: 'day',
+        });
+        const series = Array.isArray(res?.remitted_amount)
+          ? res.remitted_amount
+          : [];
+        const net = Array.isArray(res?.net_sales) ? res.net_sales : [];
+        const total = series.reduce((a, v) => a + Number(v || 0), 0);
+        const totalNet = net.reduce((a, v) => a + Number(v || 0), 0);
+        const name = list.find((b) => b.id === bid)?.name || `Branch ${bid}`;
+        labels.push(name);
+        data.push(Math.round(total));
+        dataNet.push(Math.round(totalNet));
+      }
+      // Sort by value desc while keeping label alignment
+      const pairs = labels.map((l, i) => ({ l, v: data[i], vn: dataNet[i] }));
+      pairs.sort((a, b) => b.v - a.v);
+      branchRank.value = {
+        labels: pairs.map((p) => p.l),
+        data: pairs.map((p) => p.v),
+      };
+      branchRankNet.value = pairs.map((p) => p.vn);
+    } finally {
+      branchRankLoading.value = false;
+    }
+  };
 
   // Generate mock historical data for forecasting
   const generateMockHistoricalData = (days = 30, baseAmount = 50000) => {
@@ -322,7 +414,7 @@
       let historicalDataArr = [];
 
       if (forecastType.value === 'product') {
-        // Per Product: aggregate completed orders' item totals by day for the selected product
+        // Per Product: aggregate REMITTED (approved) orders' item totals by day for the selected product
         const allLabelsSet = new Set();
         const perDaySum = new Map();
 
@@ -339,7 +431,13 @@
 
         histories.forEach((h) => {
           const orders = Array.isArray(h?.data) ? h.data : [];
-          orders.forEach((o) => {
+          // Only include orders that were actually remitted and linked to an APPROVED remittance
+          const remittedOnly = orders.filter((o) => {
+            const hasRemit = o && o.remittance_id != null;
+            const status = String(o?.remittance_status || '').toLowerCase();
+            return hasRemit && status === 'approved';
+          });
+          remittedOnly.forEach((o) => {
             const created = o.created_at || o.completed_at || o.processed_at;
             if (!created) return;
             const d = new Date(created);
@@ -433,7 +531,7 @@
       // Forward forecast
       const forecastLabels = [];
       const forecastValues = [];
-      for (let i = 1; i <= Number(forecastDays.value || 7); i++) {
+      for (let i = 1; i <= Number(derivedForecastDays.value || 7); i++) {
         const futureDate = new Date(today);
         futureDate.setDate(today.getDate() + i);
         const label = futureDate.toISOString().split('T')[0];
@@ -492,6 +590,142 @@
     }
   };
 
+  // Per-branch cash flow & remittance forecast (daily/weekly/monthly)
+  const generateCashFlowForecast = async () => {
+    try {
+      cashFlowLoading.value = true;
+
+      // Prepare branch list
+      let branchIds = [];
+      if (selectedBranch.value === 'all') {
+        const storeList = branchStore.activeBranches || [];
+        const ctxList = branchContext.availableBranches || [];
+        const list =
+          Array.isArray(storeList) && storeList.length ? storeList : ctxList;
+        branchIds =
+          Array.isArray(list) && list.length
+            ? list.map((b) => b.id)
+            : branchContext.currentBranch
+              ? [branchContext.currentBranch.id]
+              : [];
+      } else {
+        branchIds = [parseInt(selectedBranch.value)];
+      }
+
+      // Lookback window and forecast horizon
+      const today = new Date();
+      const lookbackDays =
+        forecastPeriod.value === 'quarter'
+          ? 120
+          : forecastPeriod.value === 'month'
+            ? 60
+            : 30;
+      const horizonDays = 30; // use 30 days to derive weekly/monthly aggregates reliably
+      const start = new Date(today);
+      start.setDate(today.getDate() - lookbackDays);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(today);
+      end.setHours(23, 59, 59, 999);
+
+      const byBranch = [];
+      for (const bid of branchIds) {
+        // Fetch daily remitted history for lookback
+        const result = await posStore.fetchSalesTrends(bid, {
+          dateFrom: start.toISOString(),
+          dateTo: end.toISOString(),
+          bucket: 'day',
+        });
+        const labels = Array.isArray(result?.labels) ? result.labels : [];
+        const series = Array.isArray(result?.remitted_amount)
+          ? result.remitted_amount.map((n) => Number(n) || 0)
+          : [];
+
+        // Smooth, deseasonalize, regress
+        const smoothed = movingAverage(series, 3);
+        const seasonality = computeWeeklySeasonality(labels, smoothed);
+        const deseasonalized = smoothed.map((v, i) => {
+          const d = new Date(labels[i]);
+          const wd = isNaN(d) ? 0 : d.getDay();
+          const f = seasonality[wd] || 1;
+          return f > 0 ? v / f : v;
+        });
+        const { slope, intercept } = calculateLinearRegression(deseasonalized);
+
+        // Forward daily forecast horizonDays
+        const daily = [];
+        for (let i = 1; i <= horizonDays; i++) {
+          const futureDate = new Date(today);
+          futureDate.setDate(today.getDate() + i);
+          const x = deseasonalized.length + i - 1;
+          let predicted = slope * x + intercept;
+          const f = seasonality[futureDate.getDay()] || 1;
+          predicted *= f;
+          predicted = Math.max(0, Math.round(predicted));
+          daily.push({
+            date: futureDate.toISOString().split('T')[0],
+            amount: predicted,
+          });
+        }
+
+        // Aggregate to weeks (next 4 weeks) and month (next 30 days)
+        const toWeekKey = (dStr) => {
+          const d = new Date(dStr);
+          const oneJan = new Date(d.getFullYear(), 0, 1);
+          const week = Math.ceil(
+            ((d - oneJan) / 86400000 + oneJan.getDay() + 1) / 7
+          );
+          return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`;
+        };
+        const weekMap = new Map();
+        daily.forEach((r) => {
+          const wk = toWeekKey(r.date);
+          weekMap.set(wk, (weekMap.get(wk) || 0) + r.amount);
+        });
+        const weekly = Array.from(weekMap.entries())
+          .slice(0, 4)
+          .map(([week, amount]) => ({ week, amount }));
+        const monthly = [
+          {
+            month: today.toISOString().slice(0, 7),
+            amount: daily.reduce((a, b) => a + b.amount, 0),
+          },
+        ];
+
+        const nameLookup = (branchStore.activeBranches || []).find(
+          (b) => b.id === bid
+        ) ||
+          (branchContext.availableBranches || []).find((b) => b.id === bid) || {
+            name: `Branch ${bid}`,
+          };
+        byBranch.push({
+          branch_id: bid,
+          branch_name: nameLookup.name,
+          daily,
+          weekly,
+          monthly,
+          totals: {
+            daily7: daily.slice(0, 7).reduce((a, b) => a + b.amount, 0),
+            weekly4: weekly.slice(0, 4).reduce((a, b) => a + b.amount, 0),
+            monthly1: monthly[0].amount,
+          },
+        });
+      }
+
+      const totals = byBranch.reduce(
+        (acc, b) => ({
+          daily7: acc.daily7 + b.totals.daily7,
+          weekly4: acc.weekly4 + b.totals.weekly4,
+          monthly1: acc.monthly1 + b.totals.monthly1,
+        }),
+        { daily7: 0, weekly4: 0, monthly1: 0 }
+      );
+
+      cashFlow.value = { byBranch, totals };
+    } finally {
+      cashFlowLoading.value = false;
+    }
+  };
+
   // Combined chart data for forecasting
   const forecastChartData = computed(() => {
     if (!forecastData.value)
@@ -519,6 +753,36 @@
     };
   });
 
+  // Detailed forecast pagination (10 per page)
+  const detailPage = ref(1);
+  const detailPageSize = 10;
+  const forecastRows = computed(() => {
+    const fd = forecastData.value;
+    if (!fd || !Array.isArray(fd.forecast?.labels)) return [];
+    const labels = fd.forecast.labels || [];
+    const data = fd.forecast.data || [];
+    return labels.map((label, i) => ({
+      date: label,
+      value: Number(data[i] || 0),
+    }));
+  });
+  const totalDetailPages = computed(() =>
+    Math.max(1, Math.ceil((forecastRows.value.length || 0) / detailPageSize))
+  );
+  const pagedForecastRows = computed(() => {
+    const start = (detailPage.value - 1) * detailPageSize;
+    return forecastRows.value.slice(start, start + detailPageSize);
+  });
+  watch(
+    () => [
+      forecastData.value?.forecast?.labels?.length || 0,
+      derivedForecastDays.value,
+    ],
+    () => {
+      detailPage.value = 1;
+    }
+  );
+
   // Watch for changes in analytics data to reset metric if needed
   watch(
     () => props.analyticsData,
@@ -544,13 +808,19 @@
     await loadProducts();
     setTimeout(() => {
       generateForecast();
+      generateCashFlowForecast();
+      generateBranchRemitRank();
     }, 0);
   });
 
   // Reactive refresh
   watch([selectedBranch], () => {
     loadProducts().then(() => {
-      setTimeout(() => generateForecast(), 0);
+      setTimeout(() => {
+        generateForecast();
+        generateCashFlowForecast();
+        generateBranchRemitRank();
+      }, 0);
     });
   });
   watch(
@@ -561,7 +831,11 @@
       ].join('|'),
     () => {
       loadProducts().then(() => {
-        setTimeout(() => generateForecast(), 0);
+        setTimeout(() => {
+          generateForecast();
+          generateCashFlowForecast();
+          generateBranchRemitRank();
+        }, 0);
       });
     }
   );
@@ -574,7 +848,11 @@
       productForecastMetric,
     ],
     () => {
-      setTimeout(() => generateForecast(), 0);
+      setTimeout(() => {
+        generateForecast();
+        generateCashFlowForecast();
+        generateBranchRemitRank();
+      }, 0);
     }
   );
 </script>
@@ -647,6 +925,74 @@
           :data="analyticsSeries"
           :metric="chartMetric"
         />
+      </div>
+    </div>
+
+    <!-- Branch Remitted Leaderboard -->
+    <div
+      v-show="activeAnalyticsTab === 'trends'"
+      class="card bg-white shadow border border-black/10"
+    >
+      <div class="card-body">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <div class="text-sm font-semibold text-gray-800">
+              Top Branches by Remitted Sales
+            </div>
+            <div
+              class="badge bg-primaryColor/10 text-primaryColor border-primaryColor/20"
+            >
+              Compact
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <select
+              class="select select-bordered select-xs"
+              v-model="branchRankPeriod"
+              @change="generateBranchRemitRank"
+            >
+              <option value="day">Daily</option>
+              <option value="week">Weekly</option>
+              <option value="month">Monthly</option>
+            </select>
+            <button
+              class="btn btn-xs btn-outline"
+              :disabled="branchRankLoading"
+              @click="generateBranchRemitRank"
+            >
+              <font-awesome-icon
+                icon="fa-solid fa-sync-alt"
+                :class="{ 'animate-spin': branchRankLoading }"
+              />
+            </button>
+          </div>
+        </div>
+
+        <div v-if="branchRankLoading" class="flex justify-center py-6">
+          <div
+            class="loading loading-spinner loading-md text-primaryColor"
+          ></div>
+        </div>
+        <div
+          v-else-if="branchRank.labels.length === 0"
+          class="text-center py-6 text-gray-500"
+        >
+          No remitted data
+        </div>
+        <div v-else>
+          <BarChartJS
+            :labels="branchRank.labels"
+            :datasets="[
+              { label: 'Remitted', data: branchRank.data, color: '#466114' },
+              {
+                label: 'Net Sales',
+                data: branchRankNet,
+                color: '#16a34a',
+              },
+            ]"
+            :height="320"
+          />
+        </div>
       </div>
     </div>
 
@@ -827,7 +1173,7 @@
                   ₱{{ forecastData.analysis.predictedAverage.toLocaleString() }}
                 </div>
                 <div class="stat-desc text-xs">
-                  Next {{ forecastDays }} days
+                  Next {{ derivedForecastDays }} days
                 </div>
               </div>
 
@@ -868,15 +1214,10 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr
-                      v-for="(value, index) in forecastData.forecast.data"
-                      :key="index"
-                    >
-                      <td class="text-xs">
-                        {{ forecastData.forecast.labels[index] }}
-                      </td>
+                    <tr v-for="row in pagedForecastRows" :key="row.date">
+                      <td class="text-xs">{{ row.date }}</td>
                       <td class="text-xs font-semibold text-primaryColor">
-                        ₱{{ value.toLocaleString() }}
+                        ₱{{ row.value.toLocaleString() }}
                       </td>
                       <td class="text-xs">
                         <div class="">
@@ -892,6 +1233,30 @@
                   </tbody>
                 </table>
               </div>
+              <!-- Pagination -->
+              <div class="mt-3 flex items-center justify-between text-sm">
+                <div class="text-gray-600">
+                  Page {{ detailPage }} of {{ totalDetailPages }}
+                </div>
+                <div class="join">
+                  <button
+                    class="btn btn-xs join-item"
+                    :disabled="detailPage <= 1"
+                    @click="detailPage = Math.max(1, detailPage - 1)"
+                  >
+                    Prev
+                  </button>
+                  <button
+                    class="btn btn-xs join-item"
+                    :disabled="detailPage >= totalDetailPages"
+                    @click="
+                      detailPage = Math.min(totalDetailPages, detailPage + 1)
+                    "
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -903,6 +1268,92 @@
       </div>
     </div>
 
+    <!-- Cash Flow & Remittance Forecast Tab (inline section below forecasting) -->
+    <div v-show="activeAnalyticsTab === 'forecasting'" class="space-y-4">
+      <div class="card bg-white shadow border border-black/10">
+        <div class="card-body">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-medium text-gray-700">
+              Cash Flow & Remittance Forecast
+            </h3>
+            <button
+              class="btn btn-sm btn-outline"
+              :disabled="cashFlowLoading"
+              @click="generateCashFlowForecast"
+            >
+              <font-awesome-icon
+                icon="fa-solid fa-sync-alt"
+                :class="{ 'animate-spin': cashFlowLoading }"
+                class="mr-2"
+              />
+              Refresh
+            </button>
+          </div>
+
+          <div v-if="cashFlowLoading" class="flex justify-center py-8">
+            <div
+              class="loading loading-spinner loading-md text-primaryColor"
+            ></div>
+          </div>
+
+          <div v-else class="space-y-4">
+            <!-- Summary cards -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div class="stat bg-gray-50 rounded-lg p-4">
+                <div class="stat-title text-xs">Next 7 Days (All Branches)</div>
+                <div class="stat-value text-lg text-primaryColor">
+                  ₱{{ (cashFlow.totals.daily7 || 0).toLocaleString() }}
+                </div>
+              </div>
+              <div class="stat bg-gray-50 rounded-lg p-4">
+                <div class="stat-title text-xs">
+                  Next 4 Weeks (All Branches)
+                </div>
+                <div class="stat-value text-lg text-primaryColor">
+                  ₱{{ (cashFlow.totals.weekly4 || 0).toLocaleString() }}
+                </div>
+              </div>
+              <div class="stat bg-gray-50 rounded-lg p-4">
+                <div class="stat-title text-xs">
+                  Next 30 Days (All Branches)
+                </div>
+                <div class="stat-value text-lg text-primaryColor">
+                  ₱{{ (cashFlow.totals.monthly1 || 0).toLocaleString() }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Per-branch table -->
+            <div class="overflow-x-auto">
+              <table class="table w-full">
+                <thead>
+                  <tr>
+                    <th class="text-xs">Branch</th>
+                    <th class="text-xs">Next 7 Days</th>
+                    <th class="text-xs">Next 4 Weeks</th>
+                    <th class="text-xs">Next 30 Days</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="b in cashFlow.byBranch" :key="b.branch_id">
+                    <td class="text-xs">{{ b.branch_name }}</td>
+                    <td class="text-xs font-medium">
+                      ₱{{ (b.totals.daily7 || 0).toLocaleString() }}
+                    </td>
+                    <td class="text-xs font-medium">
+                      ₱{{ (b.totals.weekly4 || 0).toLocaleString() }}
+                    </td>
+                    <td class="text-xs font-medium">
+                      ₱{{ (b.totals.monthly1 || 0).toLocaleString() }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <!-- Inventory Demand Forecasting Tab -->
     <div v-show="activeAnalyticsTab === 'inventory'" class="space-y-4">
       <MenuInventoryDemand :loading="loading" />

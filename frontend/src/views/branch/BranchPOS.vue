@@ -579,7 +579,7 @@
           <p class="text-sm sm:text-base text-primaryColor mb-4 text-center">
             {{
               userRole === 'Manager'
-                ? 'Please enter your Employee ID to start the POS session'
+                ? 'Please enter your PIN to start the POS session'
                 : 'A manager must enter their PIN to activate the POS system'
             }}
           </p>
@@ -588,14 +588,14 @@
             <div class="form-control">
               <label class="label">
                 <span class="label-text text-sm sm:text-base"
-                  >Manager Employee ID</span
+                  >Manager Pin:</span
                 >
               </label>
               <div class="relative">
                 <input
                   v-model="managerLoginForm.employeeId"
                   :type="showEmployeeId ? 'text' : 'password'"
-                  placeholder="Enter manager employee ID"
+                  placeholder="Enter your PIN"
                   class="input input-bordered w-full input-sm sm:input-md pr-10"
                   @keyup.enter="handleManagerLogin"
                 />
@@ -1474,6 +1474,7 @@
 
             <!-- QR Code -->
             <div class="border-t border-gray-300 pt-3 text-center">
+              <p class="text-xs text-gray-500">Tell us about your visit. Scan the QR code below and share your experience!</p>
               <div class="mb-2 flex justify-center">
                 <div class="w-32 h-32 flex items-center justify-center">
                   <QRCodeGenerator
@@ -1483,7 +1484,7 @@
                   />
                 </div>
               </div>
-              <p class="text-xs text-gray-500">Rate your order</p>
+              <p class="text-xs text-gray-500">Thank you, please come again!</p>
             </div>
           </div>
 

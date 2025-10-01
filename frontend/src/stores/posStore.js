@@ -57,6 +57,23 @@ export const usePOSStore = defineStore('pos', () => {
     return filteredMenuItems.value.filter((item) => item.is_expired);
   });
 
+  // Separate production and SCM items for better organization
+  const productionItems = computed(() => {
+    return filteredMenuItems.value.filter(
+      (item) => item.item_type === 'production'
+    );
+  });
+
+  const scmItems = computed(() => {
+    return filteredMenuItems.value.filter((item) => item.item_type === 'scm');
+  });
+
+  const beverageItems = computed(() => {
+    return filteredMenuItems.value.filter(
+      (item) => item.item_type === 'scm' && item.category === 'Beverages'
+    );
+  });
+
   const orderSubtotal = computed(() => {
     return currentOrder.value.items.reduce((total, item) => {
       return total + item.price * item.quantity;
@@ -152,6 +169,9 @@ export const usePOSStore = defineStore('pos', () => {
           expiry_date: it.branch_expiry_date,
           is_expired: isExpired,
           is_expiring_soon: isExpiringSoon,
+          item_type: it.item_type || 'production', // Track if it's production or scm
+          unit: it.unit || null, // For SCM items
+          preparation_time_minutes: it.preparation_time_minutes || 0, // SCM items have 0 prep time
         };
       });
 
@@ -988,6 +1008,9 @@ export const usePOSStore = defineStore('pos', () => {
     availableItems,
     outOfStockItems,
     expiredItems,
+    productionItems,
+    scmItems,
+    beverageItems,
     orderSubtotal,
     orderTax,
     orderTotal,

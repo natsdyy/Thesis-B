@@ -490,15 +490,32 @@ class POSOrder {
 
       // Create order items
       if (orderData.items && orderData.items.length > 0) {
-        const orderItems = orderData.items.map((item) => ({
-          order_id: order.id,
-          menu_item_id: item.menu_item_id,
-          item_name: item.item_name,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          total_price: item.total_price,
-          notes: item.notes || null,
-        }));
+        const orderItems = orderData.items.map((item) => {
+          // Handle SCM items that don't have a valid menu_item_id
+          let menuItemId = item.menu_item_id;
+
+          // If the item ID starts with 'scm_', it's an SCM item and shouldn't have a menu_item_id
+          if (typeof item.id === "string" && item.id.startsWith("scm_")) {
+            menuItemId = null;
+          }
+          // If menu_item_id is not a valid number, set it to null
+          else if (
+            !Number.isFinite(Number(menuItemId)) ||
+            Number(menuItemId) <= 0
+          ) {
+            menuItemId = null;
+          }
+
+          return {
+            order_id: order.id,
+            menu_item_id: menuItemId,
+            item_name: item.item_name || item.name,
+            quantity: item.quantity,
+            unit_price: item.unit_price || item.price,
+            total_price: item.total_price,
+            notes: item.notes || null,
+          };
+        });
 
         await trx("pos_order_items").insert(orderItems);
       }
@@ -572,8 +589,11 @@ class POSOrder {
       const orderItems = await trx("pos_order_items").where("order_id", id);
 
       for (const item of orderItems) {
+        // Determine item type based on whether menu_item_id exists
+        const itemType = item.menu_item_id ? "production" : "scm";
+
         // Fetch eligible branch inventory rows for this item in this branch
-        // - item_type: production
+        // - item_type: production or scm based on whether it has menu_item_id
         // - not soft-deleted
         // - status not disposed/expired
         // Sort by expiry date ASC (earliest first), nulls last; then by updated_at DESC as tiebreaker
@@ -581,7 +601,7 @@ class POSOrder {
           .where({
             branch_id: updatedOrder.branch_id,
             item_name: item.item_name,
-            item_type: "production",
+            item_type: itemType,
           })
           .whereNull("deleted_at")
           .whereNotIn("status", ["disposed", "expired"]) // skip disposed/expired batches

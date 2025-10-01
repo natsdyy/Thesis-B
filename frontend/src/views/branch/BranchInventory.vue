@@ -168,7 +168,7 @@
   );
   const recentActivity = ref([]);
   const alerts = ref([]);
-  const reports = ref([]);
+  // const reports = ref([]); // Reports tab removed
 
   // Helper sets for acknowledging alerts (UI-only)
   const acknowledgedExpiring = ref(new Set());
@@ -1436,12 +1436,13 @@
       const realAlerts = [];
       console.log('Branch inventory data for alerts:', branchInventory.value);
 
-      // Low stock alerts (exclude disposed items)
+      // Low stock alerts (exclude disposed items and Equipment category)
       const lowStockItems = branchInventory.value.filter(
         (item) =>
           item.status !== 'disposed' &&
           parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
-          parseFloat(item.quantity) > 0
+          parseFloat(item.quantity) > 0 &&
+          item.category !== 'Equipment'
       );
 
       lowStockItems.forEach((item, index) => {
@@ -1457,9 +1458,12 @@
         });
       });
 
-      // Out of stock alerts (exclude disposed items)
+      // Out of stock alerts (exclude disposed items and Equipment category)
       const outOfStockItems = branchInventory.value.filter(
-        (item) => item.status !== 'disposed' && parseFloat(item.quantity) === 0
+        (item) =>
+          item.status !== 'disposed' &&
+          parseFloat(item.quantity) === 0 &&
+          item.category !== 'Equipment'
       );
       outOfStockItems.forEach((item, index) => {
         realAlerts.push({
@@ -1473,11 +1477,12 @@
         });
       });
 
-      // Expiring items alerts (exclude disposed)
+      // Expiring items alerts (exclude disposed and Equipment category)
       const expiringItems = branchInventory.value.filter(
         (item) =>
           item.status !== 'disposed' &&
           item.expiry_date &&
+          item.category !== 'Equipment' &&
           new Date(item.expiry_date) <=
             new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
       );
@@ -1504,110 +1509,7 @@
         (item) => parseFloat(item.quantity) <= parseFloat(item.minimum_stock)
       );
 
-      // Generate real reports from branch inventory data
-      const realReports = [];
-
-      // Current inventory summary report
-      const totalItems = branchInventory.value.length;
-      const totalValue = branchInventory.value.reduce(
-        (sum, item) => sum + parseFloat(item.total_value || 0),
-        0
-      );
-      const lowStockCount = branchInventory.value.filter(
-        (item) =>
-          parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
-          parseFloat(item.quantity) > 0
-      ).length;
-      const outOfStockCount = branchInventory.value.filter(
-        (item) => parseFloat(item.quantity) === 0
-      ).length;
-
-      realReports.push({
-        id: 'current_summary',
-        title: 'Current Inventory Summary',
-        type: 'summary',
-        date: new Date().toISOString().split('T')[0],
-        status: 'completed',
-        data: {
-          totalItems,
-          totalValue,
-          lowStockCount,
-          outOfStockCount,
-          averageValue: totalItems > 0 ? totalValue / totalItems : 0,
-        },
-      });
-
-      // Low stock items report
-      if (lowStockCount > 0) {
-        realReports.push({
-          id: 'low_stock_report',
-          title: 'Low Stock Items Report',
-          type: 'low_stock',
-          date: new Date().toISOString().split('T')[0],
-          status: 'completed',
-          data: {
-            items: branchInventory.value.filter(
-              (item) =>
-                parseFloat(item.quantity) <= parseFloat(item.minimum_stock) &&
-                parseFloat(item.quantity) > 0
-            ),
-            count: lowStockCount,
-          },
-        });
-      }
-
-      // Out of stock items report
-      if (outOfStockCount > 0) {
-        realReports.push({
-          id: 'out_of_stock_report',
-          title: 'Out of Stock Items Report',
-          type: 'out_of_stock',
-          date: new Date().toISOString().split('T')[0],
-          status: 'completed',
-          data: {
-            items: branchInventory.value.filter(
-              (item) => parseFloat(item.quantity) === 0
-            ),
-            count: outOfStockCount,
-          },
-        });
-      }
-
-      // Inventory value analysis report
-      const scmItemsForReport = branchInventory.value.filter(
-        (item) => item.item_type === 'scm'
-      );
-      const productionItemsForReport = branchInventory.value.filter(
-        (item) => item.item_type === 'production'
-      );
-      const scmValue = scmItemsForReport.reduce(
-        (sum, item) => sum + parseFloat(item.total_value || 0),
-        0
-      );
-      const productionValue = productionItemsForReport.reduce(
-        (sum, item) => sum + parseFloat(item.total_value || 0),
-        0
-      );
-
-      realReports.push({
-        id: 'value_analysis',
-        title: 'Inventory Value Analysis',
-        type: 'analysis',
-        date: new Date().toISOString().split('T')[0],
-        status: 'completed',
-        data: {
-          scmItems: scmItems.length,
-          productionItems: productionItems.length,
-          scmValue,
-          productionValue,
-          totalValue,
-          scmPercentage: totalValue > 0 ? (scmValue / totalValue) * 100 : 0,
-          productionPercentage:
-            totalValue > 0 ? (productionValue / totalValue) * 100 : 0,
-        },
-      });
-
-      reports.value = realReports;
+      // Reports generation removed - Reports tab no longer available
     } catch (error) {
       console.error('Error loading branch inventory:', error);
     } finally {
@@ -2228,14 +2130,6 @@
         >
           {{ alerts.length }}
         </span>
-      </button>
-      <button
-        @click="activeTab = 'reports'"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'reports' }"
-      >
-        <TrendingDown class="w-4 h-4 mr-1" />
-        Reports
       </button>
       <button
         @click="activeTab = 'pending_distributions'"
@@ -2955,7 +2849,10 @@
           <div v-if="alertTab === 'expiring'" class="space-y-3">
             <div
               v-for="item in branchInventory.filter(
-                (i) => i.status !== 'disposed' && i.expiry_date
+                (i) =>
+                  i.status !== 'disposed' &&
+                  i.expiry_date &&
+                  i.category !== 'Equipment'
               )"
               :key="item.id"
               class="border border-gray-200 rounded-lg bg-base-100 p-3 flex items-start gap-3"
@@ -3047,7 +2944,10 @@
             <div
               v-if="
                 branchInventory.filter(
-                  (i) => i.status !== 'disposed' && i.expiry_date
+                  (i) =>
+                    i.status !== 'disposed' &&
+                    i.expiry_date &&
+                    i.category !== 'Equipment'
                 ).length === 0
               "
               class="text-center py-8"
@@ -3063,7 +2963,8 @@
               v-for="item in branchInventory.filter(
                 (i) =>
                   i.status !== 'disposed' &&
-                  parseFloat(i.quantity) <= parseFloat(i.minimum_stock)
+                  parseFloat(i.quantity) <= parseFloat(i.minimum_stock) &&
+                  i.category !== 'Equipment'
               )"
               :key="item.id"
               class="border border-gray-200 rounded-lg bg-base-100 p-3 flex items-start gap-3"
@@ -3168,59 +3069,6 @@
             >
               <CheckCircle class="w-12 h-12 mx-auto text-success mb-2" />
               <p class="text-gray-500">No low stock alerts!</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Reports Tab -->
-        <div v-if="activeTab === 'reports'" class="space-y-6">
-          <div
-            class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
-          >
-            <h2
-              class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl"
-            >
-              <FileText class="w-5 h-5 sm:w-6 sm:h-6" />
-              Inventory Reports
-            </h2>
-          </div>
-
-          <!-- Reports List -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div
-              v-for="report in reports"
-              :key="report.id"
-              class="card bg-white shadow-lg"
-            >
-              <div class="card-body">
-                <div class="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 class="font-semibold text-gray-900">
-                      {{ report.title }}
-                    </h3>
-                    <p class="text-sm text-gray-600">{{ report.date }}</p>
-                  </div>
-                  <div
-                    class="badge badge-sm border-none font-medium"
-                    :class="
-                      report.status === 'completed'
-                        ? 'bg-success/20 text-success'
-                        : 'bg-warning/20 text-warning'
-                    "
-                  >
-                    {{ report.status }}
-                  </div>
-                </div>
-                <div class="flex items-center justify-between">
-                  <span class="text-sm text-gray-500">{{ report.type }}</span>
-                  <button
-                    class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
-                  >
-                    <Eye class="w-4 h-4 mr-1" />
-                    View
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
         </div>

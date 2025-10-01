@@ -394,7 +394,12 @@ export const usePOSStore = defineStore('pos', () => {
         amount_paid: currentOrder.value.amountPaid,
         change_amount: orderChange.value,
         items: currentOrder.value.items.map((item) => ({
-          menu_item_id: item.id,
+          id: item.id, // Keep the original ID for reference
+          // Only set menu_item_id for production items; handle numeric IDs safely
+          menu_item_id:
+            typeof item.id === 'string' && item.id.startsWith('scm_')
+              ? null
+              : item.id,
           item_name: item.name,
           quantity: item.quantity,
           unit_price: item.price,

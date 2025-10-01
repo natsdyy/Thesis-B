@@ -45,7 +45,7 @@ class POSModel {
       // Query 2: SCM items (ONLY beverages) from branch inventory
       let scmQuery = db("branch_inventory as bi")
         .select(
-          "bi.id",
+          db.raw("CONCAT('scm_', bi.id) as id"), // Use prefixed ID to distinguish from menu_item_id
           "bi.item_name",
           "bi.category",
           "bi.selling_price",

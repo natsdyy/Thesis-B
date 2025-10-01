@@ -1249,22 +1249,13 @@
                             <p class="font-medium text-gray-900">
                               {{ item.name }}
                             </p>
-                            <p class="text-sm text-gray-600">
-                              {{ item.quantity }} sold
-                            </p>
+                        
                           </div>
                         </div>
                         <div class="text-right">
-                          <p
-                            class="font-thin text-primaryColor"
-                            :class="{
-                              'text-warning': showLeastSelling,
-                            }"
-                          >
-                            <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                              parseFloat(item.revenue).toFixed(2)
-                            }}
-                          </p>
+            <p class="text-sm text-gray-600">
+                              {{ item.quantity }} sold
+                            </p>
                         </div>
                       </div>
                     </div>

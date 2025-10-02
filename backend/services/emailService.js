@@ -98,10 +98,10 @@ const createTransporter = (config) => {
       user: EMAIL_CONFIG.user,
       pass: EMAIL_CONFIG.pass,
     },
-    // Optimized timeout settings for better reliability
-    connectionTimeout: 30000, // 30 seconds
-    greetingTimeout: 30000, // 30 seconds
-    socketTimeout: 60000, // 1 minute
+    // Reduced timeout settings for Railway compatibility
+    connectionTimeout: 15000, // 15 seconds (reduced from 30)
+    greetingTimeout: 15000, // 15 seconds (reduced from 30)
+    socketTimeout: 30000, // 30 seconds (reduced from 60)
     pool: false, // Disable connection pooling for Railway compatibility
     tls: {
       rejectUnauthorized: false,
@@ -112,7 +112,15 @@ const createTransporter = (config) => {
     // Add DNS resolution options for Railway
     dns: {
       servers: ['8.8.8.8', '8.8.4.4'] // Use Google DNS
-    }
+    },
+    // Add additional options for Railway
+    requireTLS: false,
+    ignoreTLS: false,
+    // Retry configuration
+    maxConnections: 1,
+    maxMessages: 1,
+    rateDelta: 20000,
+    rateLimit: 5
   });
 };
 
@@ -208,6 +216,7 @@ const railwayAlternativeTransporter = nodemailer.createTransport({
 // Verify transporter configuration with retry
 let verificationAttempts = 0;
 const maxVerificationAttempts = 3;
+let emailServiceReady = false;
 
 const verifyTransporter = () => {
   verificationAttempts++;
@@ -215,48 +224,81 @@ const verifyTransporter = () => {
     `📧 Verifying email service (attempt ${verificationAttempts}/${maxVerificationAttempts})`
   );
 
-  // Try primary transporter first
-  transporter.verify((primaryError, primarySuccess) => {
-    if (!primaryError) {
-      console.log("✅ Primary email service (port 587) ready to send messages");
-      return;
-    }
+  // Create a timeout promise for verification
+  const verificationTimeout = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error("Verification timeout")), 20000); // 20 second timeout
+  });
 
-    console.log(`❌ Primary transporter failed: ${primaryError.message}`);
-    console.log(`📧 Trying fallback transporter (port 465)...`);
-
-    // Try fallback transporter
-    fallbackTransporter.verify((fallbackError, fallbackSuccess) => {
-      if (!fallbackError) {
-        console.log(
-          "✅ Fallback email service (port 465) ready to send messages"
-        );
-        return;
-      }
-
-      console.error(
-        `❌ Both transporters failed on attempt ${verificationAttempts}`
-      );
-      console.error(`Primary: ${primaryError.message}`);
-      console.error(`Fallback: ${fallbackError.message}`);
-
-      if (verificationAttempts < maxVerificationAttempts) {
-        console.log(`⏳ Retrying email service verification in 10 seconds...`);
-        setTimeout(verifyTransporter, 10000);
-      } else {
-        console.error(
-          "❌ Email service verification failed after all attempts"
-        );
-        console.error("⚠️  Email functionality may be limited");
-      }
+  // Try primary transporter first with timeout
+  const primaryVerification = new Promise((resolve, reject) => {
+    transporter.verify((error, success) => {
+      if (error) reject(error);
+      else resolve(success);
     });
   });
+
+  Promise.race([primaryVerification, verificationTimeout])
+    .then(() => {
+      console.log("✅ Primary email service (port 587) ready to send messages");
+      emailServiceReady = true;
+    })
+    .catch((primaryError) => {
+      console.log(`❌ Primary transporter failed: ${primaryError.message}`);
+      console.log(`📧 Trying fallback transporter (port 465)...`);
+
+      // Try fallback transporter with timeout
+      const fallbackVerification = new Promise((resolve, reject) => {
+        fallbackTransporter.verify((error, success) => {
+          if (error) reject(error);
+          else resolve(success);
+        });
+      });
+
+      Promise.race([fallbackVerification, verificationTimeout])
+        .then(() => {
+          console.log("✅ Fallback email service (port 465) ready to send messages");
+          emailServiceReady = true;
+        })
+        .catch((fallbackError) => {
+          console.error(
+            `❌ Both transporters failed on attempt ${verificationAttempts}`
+          );
+          console.error(`Primary: ${primaryError.message}`);
+          console.error(`Fallback: ${fallbackError.message}`);
+
+          if (verificationAttempts < maxVerificationAttempts) {
+            console.log(`⏳ Retrying email service verification in 10 seconds...`);
+            setTimeout(verifyTransporter, 10000);
+          } else {
+            console.error(
+              "❌ Email service verification failed after all attempts"
+            );
+            console.error("⚠️  Email functionality may be limited");
+            console.log("📧 Email service will attempt to send emails when needed, but verification failed");
+            emailServiceReady = false;
+          }
+        });
+    });
 };
 
-// Start verification
-verifyTransporter();
+// Start verification only if not in Railway environment or if we have SMTP config
+if (isRailway && process.env.SENDGRID_API_KEY && !process.env.SMTP_PASS) {
+  console.log('🚂 Railway environment with SendGrid only - skipping SMTP verification');
+  emailServiceReady = true;
+} else {
+  // Start verification
+  verifyTransporter();
+}
 
 class EmailService {
+  /**
+   * Check if email service is ready
+   * @returns {boolean} True if email service is ready
+   */
+  static isEmailServiceReady() {
+    return emailServiceReady;
+  }
+
   /**
    * Send email using SendGrid (primary method)
    * @param {Object} emailData - Email data object
@@ -293,6 +335,11 @@ class EmailService {
    * @returns {Promise<Object>} Email response
    */
   static async sendEmailWithFallback(emailData) {
+    // Check if email service is ready, but don't fail if it's not
+    if (!this.isEmailServiceReady()) {
+      console.log('⚠️  Email service verification failed, but attempting to send anyway...');
+    }
+
     // Try SendGrid first if API key is available
     if (process.env.SENDGRID_API_KEY) {
       console.log('📧 Attempting to send via SendGrid...');

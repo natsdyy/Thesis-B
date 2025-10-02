@@ -232,6 +232,39 @@ app.get("/api/debug-env", (req, res) => {
   });
 });
 
+// Email test endpoint
+app.get("/api/test-email", async (req, res) => {
+  try {
+    const EmailService = require('./services/emailService');
+    
+    // Test email data
+    const testEmailData = {
+      to: 'test@example.com', // This will fail but we can see the error
+      subject: 'Test Email from Countryside Steak House',
+      html: '<h1>Test Email</h1><p>This is a test email to verify email service functionality.</p>',
+      text: 'Test Email - This is a test email to verify email service functionality.'
+    };
+
+    console.log('🧪 Testing email service...');
+    const result = await EmailService.sendEmailWithFallback(testEmailData);
+    
+    res.json({
+      success: true,
+      message: 'Email test completed',
+      emailServiceReady: EmailService.isEmailServiceReady(),
+      result: result
+    });
+  } catch (error) {
+    console.error('❌ Email test failed:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Email test failed',
+      error: error.message,
+      emailServiceReady: require('./services/emailService').isEmailServiceReady()
+    });
+  }
+});
+
 // Catch-all handler: send back React's index.html file for any non-API routes
 app.get("*", (req, res) => {
   res.sendFile(require("path").join(frontendPath, "index.html"));

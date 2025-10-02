@@ -790,6 +790,92 @@ class EmailService {
   }
 
   /**
+   * Send OTP code for password recovery
+   * @param {string} to - Recipient email address
+   * @param {string} otpCode - 6-digit OTP code
+   * @param {string} username - User's username/name
+   */
+  static async sendOTPEmail(to, otpCode, username = "User") {
+    try {
+      const mailOptions = {
+        from: '"Countryside Steak House" <mailcountrysidesteakhouse@gmail.com>',
+        to: to,
+        subject: "Password Recovery OTP - Countryside Steak House",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="text-align: center; margin-bottom: 30px;">
+              <h1 style="color: #2c3e50; margin-bottom: 10px;">Countryside Steak House</h1>
+              <h2 style="color: #e74c3c; margin: 0;">Ang Paborito ng Bayan</h2>
+            </div>
+            
+            <div style="background-color: #f8f9fa; padding: 30px; border-radius: 10px; margin-bottom: 20px;">
+              <h3 style="color: #2c3e50; margin-top: 0;">Password Recovery OTP</h3>
+              
+              <p style="color: #555; font-size: 16px; line-height: 1.6;">
+                Hello ${username},
+              </p>
+              
+              <p style="color: #555; font-size: 16px; line-height: 1.6;">
+                We received a request to reset your password for your Countryside Steak House account. 
+                Use the following One-Time Password (OTP) to verify your identity:
+              </p>
+              
+              <div style="text-align: center; margin: 30px 0;">
+                <div style="background-color: #e74c3c; color: white; padding: 20px; 
+                            border-radius: 10px; display: inline-block; font-size: 32px; 
+                            font-weight: bold; letter-spacing: 5px; font-family: monospace;">
+                  ${otpCode}
+                </div>
+              </div>
+              
+              <p style="color: #666; font-size: 14px; line-height: 1.5; text-align: center;">
+                This OTP will expire in 10 minutes for your security.
+              </p>
+              
+              <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; 
+                          padding: 15px; border-radius: 5px; margin-top: 20px;">
+                <p style="color: #856404; margin: 0; font-size: 14px;">
+                  <strong>Security Note:</strong> This OTP is valid for 10 minutes only. 
+                  If you didn't request this password reset, please ignore this email and 
+                  contact our support team immediately.
+                </p>
+              </div>
+            </div>
+            
+            <div style="text-align: center; color: #666; font-size: 12px; margin-top: 20px;">
+              <p>© 2025 Countryside Steak House. All rights reserved.</p>
+              <p>This is an automated message, please do not reply to this email.</p>
+            </div>
+          </div>
+        `,
+        text: `
+          Password Recovery OTP - Countryside Steak House
+          
+          Hello ${username},
+          
+          We received a request to reset your password for your Countryside Steak House account.
+          Use the following One-Time Password (OTP) to verify your identity:
+          
+          OTP Code: ${otpCode}
+          
+          This OTP will expire in 10 minutes for your security.
+          
+          If you didn't request this password reset, please ignore this email and contact our support team immediately.
+          
+          © 2025 Countryside Steak House. All rights reserved.
+        `,
+      };
+
+      const info = await transporter.sendMail(mailOptions);
+      console.log("✅ OTP email sent:", info.messageId);
+      return { success: true, messageId: info.messageId };
+    } catch (error) {
+      console.error("❌ Error sending OTP email:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Send notification email
    * @param {string} to - Recipient email address
    * @param {string} subject - Email subject

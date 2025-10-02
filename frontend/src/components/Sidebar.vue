@@ -262,9 +262,15 @@
       // Regular users see only their department, excluding super admin only items
       const filteredMenus = {};
       Object.keys(menusByDepartment).forEach((dept) => {
-        const departmentMenus = menusByDepartment[dept].filter(
-          (menu) => !menu.superAdminOnly
-        );
+        const departmentMenus = menusByDepartment[dept].filter((menu) => {
+          // Exclude super admin only items
+          if (menu.superAdminOnly) return false;
+
+          // Exclude manager-only items for non-managers
+          if (menu.managerOnly && user.role !== 'Manager') return false;
+
+          return true;
+        });
         if (departmentMenus.length > 0) {
           filteredMenus[dept] = departmentMenus;
         }

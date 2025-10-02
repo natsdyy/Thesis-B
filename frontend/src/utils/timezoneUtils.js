@@ -3,7 +3,7 @@
  * Ensures consistent timezone handling across the frontend application
  */
 
-const PHILIPPINE_TIMEZONE = 'Asia/Manila';
+export const PHILIPPINE_TIMEZONE = 'Asia/Manila';
 
 /**
  * Get current date and time in Philippine timezone

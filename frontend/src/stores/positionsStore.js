@@ -137,7 +137,10 @@ export const usePositionsStore = defineStore('positions', {
         );
 
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+          const errorData = await response.json().catch(() => ({}));
+          const errorMessage =
+            errorData.message || `HTTP error! status: ${response.status}`;
+          throw new Error(errorMessage);
         }
 
         const data = await response.json();

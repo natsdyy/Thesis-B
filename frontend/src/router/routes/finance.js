@@ -37,4 +37,5 @@ export default [
     component: () => import('../../views/common/DepartmentProfile.vue'),
     meta: { title: 'Finance Profile' },
   },
+
 ];

@@ -24,16 +24,24 @@
   import { useShiftTypesStore } from '../../stores/shiftTypesStore';
   import { useEmployeeStore } from '../../stores/employeeStore';
   import { useLeaveStore } from '../../stores/leaveStore';
+  import { useAuthStore } from '../../stores/authStore';
   import ShiftManagementModal from '../../components/branch/ShiftManagementModal.vue';
+  import {
+    getCurrentPhilippineTime,
+    formatPhilippineTime,
+    createPhilippineDate,
+    PHILIPPINE_TIMEZONE,
+  } from '../../utils/timezoneUtils.js';
 
   const { showSuccess, showError, showWarning, showInfo } = useCustomToast();
   const scheduleStore = useEmployeeScheduleStore();
   const shiftTypesStore = useShiftTypesStore();
   const employeeStore = useEmployeeStore();
   const leaveStore = useLeaveStore();
+  const authStore = useAuthStore();
 
-  // Local state
-  const currentWeek = ref(new Date());
+  // Local state - Initialize with Philippine time
+  const currentWeek = ref(getCurrentPhilippineTime());
   const showAddShiftModal = ref(false);
   const showEditShiftModal = ref(false);
   const showDeleteConfirmModal = ref(false);
@@ -62,6 +70,12 @@
     'Customer Relationship',
   ]);
 
+  // Get current user's department and role
+  const currentUserDepartment = computed(() => authStore.userDepartment);
+  const currentUserRole = computed(() => authStore.userRole);
+  const isManager = computed(() => currentUserRole.value === 'Manager');
+  const isHR = computed(() => currentUserDepartment.value === 'Human Resource');
+
   // Form data for adding/editing shifts
   const shiftForm = ref({
     employeeId: null,
@@ -77,29 +91,29 @@
   // Computed properties
   const weekDays = computed(() => {
     const days = [];
+    const currentPhilippineTime = getCurrentPhilippineTime();
     const startOfWeek = new Date(currentWeek.value);
     startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
 
     for (let i = 0; i < 7; i++) {
       const day = new Date(startOfWeek);
       day.setDate(startOfWeek.getDate() + i);
-      // Normalize to Philippine date (Asia/Manila) to match backend keys
-      const dateString = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Manila',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).format(day);
+
+      // Use timezone utility for consistent Philippine timezone formatting
+      const dateString = formatPhilippineTime(day, 'date').replace(/\//g, '-');
+
+      // Use Philippine time for accurate past/future comparison
+      const isPast =
+        day < currentPhilippineTime &&
+        day.toDateString() !== currentPhilippineTime.toDateString();
 
       days.push({
         date: day,
         dateString: dateString,
         dayName: day.toLocaleDateString('en-US', { weekday: 'short' }),
         dayNumber: day.getDate(),
-        isToday: day.toDateString() === new Date().toDateString(),
-        isPast:
-          day < new Date() &&
-          !day.toDateString().includes(new Date().toDateString()),
+        isToday: day.toDateString() === currentPhilippineTime.toDateString(),
+        isPast: isPast,
       });
     }
     return days;
@@ -197,7 +211,7 @@
   };
 
   const goToCurrentWeek = async () => {
-    currentWeek.value = new Date();
+    currentWeek.value = getCurrentPhilippineTime();
 
     // Load leave data for the current week
     const startDate = weekDays.value[0].dateString;
@@ -256,22 +270,31 @@
       await employeeStore.fetchEmployees(false, 1, 1000); // Large limit to get all employees
       const employees = employeeStore.employees || [];
 
-      // Filter out branch employees - only show department employees (HR, SCM, Finance, Production, CRM)
-      const departmentEmployees = employees.filter(
-        (emp) =>
-          emp.department &&
-          !emp.department.toLowerCase().includes('branch') &&
-          [
-            'Human Resource',
-            'HR',
-            'Supply Chain',
-            'SCM',
-            'Finance',
-            'Production',
-            'Customer Relationship',
-            'CRM',
-          ].includes(emp.department)
-      );
+      let departmentEmployees;
+
+      // If user is HR, they can only see employees from their own department
+      if (isHR.value) {
+        departmentEmployees = employees.filter(
+          (emp) =>
+            emp.department &&
+            !emp.department.toLowerCase().includes('branch') &&
+            emp.department === currentUserDepartment.value
+        );
+      }
+      // If user is a manager, they can only see employees from their department
+      else if (isManager.value && currentUserDepartment.value) {
+        departmentEmployees = employees.filter(
+          (emp) =>
+            emp.department &&
+            !emp.department.toLowerCase().includes('branch') &&
+            emp.department === currentUserDepartment.value
+        );
+      }
+      // Default fallback - no employees
+      else {
+        departmentEmployees = [];
+      }
+
       allEmployees.value = departmentEmployees;
     } catch (error) {
       console.error('Error loading employees:', error);
@@ -439,7 +462,11 @@
 
   const isEmployeeOnLeave = (employeeId, dateString) => {
     // Check if employee has approved leave for this date
-    const date = new Date(dateString);
+    const date = createPhilippineDate(
+      parseInt(dateString.split('-')[0]), // year
+      parseInt(dateString.split('-')[1]), // month
+      parseInt(dateString.split('-')[2]) // day
+    );
     const leaveRequests = leaveStore.allLeaveRequests || [];
 
     return leaveRequests.some(
@@ -474,6 +501,19 @@
 
   // Initialize
   onMounted(async () => {
+    // Check if user has permission to access schedule management
+    if (!isHR.value && !isManager.value) {
+      showError(
+        'Access denied. Only HR staff and Department Managers can access schedule management.',
+        'Access Denied'
+      );
+      // Redirect to dashboard or appropriate page
+      setTimeout(() => {
+        window.location.href = '/dashboard';
+      }, 2000);
+      return;
+    }
+
     // Clear any existing schedule data to start fresh
     scheduleStore.clearSchedules();
 
@@ -491,6 +531,12 @@
     }
 
     await Promise.all([loadEmployees(), loadShiftTypes(), loadSchedules()]);
+
+    // Show welcome message
+    showInfo(
+      `Managing schedules for ${currentUserDepartment.value || 'your department'} employees`,
+      'Department Schedule Management'
+    );
   });
 </script>
 
@@ -503,13 +549,15 @@
       <div>
         <h2 class="text-2xl font-bold text-primaryColor flex items-center">
           <Calendar class="w-6 h-6 mr-2" />
-          Employee Schedules
+          {{ `${currentUserDepartment.value || 'Department'} Schedules` }}
         </h2>
         <p class="text-gray-600 mt-1">
-          Manage shift assignments for department employees (HR, SCM, Finance,
-          Production, CRM)
+          {{
+            `Manage shift assignments for ${currentUserDepartment.value || 'your department'} employees`
+          }}
         </p>
         <button
+          v-if="isHR.value"
           @click="openShiftManagement"
           class="btn btn-outline btn-sm mt-2"
         >
@@ -570,10 +618,16 @@
             <select
               v-model="departmentFilter"
               class="select select-bordered w-full"
+              disabled
             >
-              <option value="">All Departments</option>
-              <option v-for="dept in departments" :key="dept" :value="dept">
-                {{ dept }}
+              <option value="">
+                {{ `${currentUserDepartment.value || 'Your Department'} Only` }}
+              </option>
+              <option
+                :value="currentUserDepartment.value || 'Your Department'"
+                :key="currentUserDepartment.value"
+              >
+                {{ currentUserDepartment.value || 'Your Department' }}
               </option>
             </select>
           </div>
@@ -832,8 +886,8 @@
                 :class="[
                   'btn btn-sm',
                   page === currentPage
-                    ? 'bg-primaryColor text-white border-primaryColor'
-                    : 'btn-outline',
+                    ? 'text-black bg-primaryColor/0 border-none'
+                    : 'text-gray-600 ',
                 ]"
               >
                 {{ page }}
@@ -869,11 +923,14 @@
     <div v-if="filteredEmployees.length === 0" class="text-center py-12">
       <Users class="w-16 h-16 mx-auto text-gray-400 mb-4" />
       <h3 class="text-lg font-medium text-gray-900 mb-2">
-        No department employees found
+        {{
+          `No ${currentUserDepartment.value || 'department'} employees found`
+        }}
       </h3>
       <p class="text-gray-600">
-        Try adjusting your search criteria. Only department employees (HR, SCM,
-        Finance, Production, CRM) are shown here.
+        {{
+          `Try adjusting your search criteria. Only ${currentUserDepartment.value || 'your department'} employees are shown here.`
+        }}
       </p>
     </div>
 

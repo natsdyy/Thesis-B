@@ -80,12 +80,46 @@
       );
       const merged = new Map();
       lists.flat().forEach((it) => {
-        if (!merged.has(it.id)) merged.set(it.id, { id: it.id, name: it.name });
+        // Filter for production items only - exclude beverages, SCM items, and Item 0
+        const isProductionItem =
+          it.item_type === 'production' &&
+          it.id !== 0 &&
+          it.id !== '0' &&
+          it.name !== 'Item 0' &&
+          it.name !== 'item 0' &&
+          it.name !== 'Item0' &&
+          it.name !== 'item0' &&
+          it.name !== '0' &&
+          it.item_type !== 'scm' &&
+          it.category !== 'SCM' &&
+          it.category !== 'scm' &&
+          it.category !== 'Beverage' &&
+          it.category !== 'beverage' &&
+          !it.category?.toLowerCase().includes('beverage') &&
+          !it.name?.toLowerCase().includes('drink') &&
+          !it.name?.toLowerCase().includes('juice') &&
+          !it.name?.toLowerCase().includes('water') &&
+          !it.name?.toLowerCase().includes('coffee') &&
+          !it.name?.toLowerCase().includes('tea') &&
+          !it.name?.toLowerCase().includes('soda') &&
+          !it.name?.toLowerCase().includes('coke') &&
+          !it.name?.toLowerCase().includes('pepsi') &&
+          !it.name?.toLowerCase().includes('sprite') &&
+          !it.name?.toLowerCase().includes('item 0') &&
+          !it.name?.toLowerCase().includes('item0');
+
+        if (isProductionItem && !merged.has(it.id)) {
+          merged.set(it.id, {
+            id: it.id,
+            name: it.name,
+            category: it.category,
+          });
+        }
       });
       const arr = Array.from(merged.values()).sort((a, b) =>
         String(a.name).localeCompare(String(b.name))
       );
-      products.value = [{ id: 'all', name: 'All Products' }, ...arr];
+      products.value = [{ id: 'all', name: 'All Production Items' }, ...arr];
       if (
         !products.value.find((p) => p.id === selectedInventoryItem.value) &&
         selectedInventoryItem.value !== 'all'
@@ -122,11 +156,14 @@
         return;
       }
 
-      // Use the store's multiple branch inventory method
+      // Use the store's multiple branch inventory method - focus on production items only, exclude SCM
       const result = await branchInventoryStore.fetchMultipleBranchInventory(
         branches,
         {
           item_type: 'production',
+          category: 'Production',
+          exclude_scm: true,
+          exclude_item_zero: true,
         }
       );
 
@@ -167,7 +204,8 @@
       const remittedOnly = orders.filter((o) => {
         const hasRemit = o && o.remittance_id != null;
         const status = String(o?.remittance_status || '').toLowerCase();
-        return hasRemit && status === 'approved';
+        const isApproved = status === 'approved';
+        return hasRemit && isApproved;
       });
 
       let totalQuantity = 0;
@@ -176,7 +214,30 @@
       remittedOnly.forEach((o) => {
         const items = Array.isArray(o.items) ? o.items : [];
         const matched = items.filter(
-          (it) => Number(it.menu_item_id) === Number(menuItemId)
+          (it) =>
+            Number(it.menu_item_id) === Number(menuItemId) &&
+            it.menu_item_id !== 0 &&
+            it.item_name !== 'Item 0' &&
+            it.item_name !== 'item 0' &&
+            it.item_name !== 'Item0' &&
+            it.item_name !== 'item0' &&
+            it.item_name !== '0' &&
+            it.item_type === 'production' &&
+            it.item_type !== 'scm' &&
+            it.category !== 'SCM' &&
+            it.category !== 'scm' &&
+            it.category !== 'Beverage' &&
+            it.category !== 'beverage' &&
+            !it.category?.toLowerCase().includes('beverage') &&
+            !it.name?.toLowerCase().includes('drink') &&
+            !it.name?.toLowerCase().includes('juice') &&
+            !it.name?.toLowerCase().includes('water') &&
+            !it.name?.toLowerCase().includes('coffee') &&
+            !it.name?.toLowerCase().includes('tea') &&
+            !it.name?.toLowerCase().includes('soda') &&
+            !it.name?.toLowerCase().includes('coke') &&
+            !it.name?.toLowerCase().includes('pepsi') &&
+            !it.name?.toLowerCase().includes('sprite')
         );
         if (matched.length > 0) {
           orderCount += 1;
@@ -230,14 +291,40 @@
           branchList.find((b) => b.id === branchId)?.name ||
           `Branch ${branchId}`;
 
-        // Build list of menu items to process from POS products
+        // Build list of menu items to process from POS products - production items only
         const menuItemsAll = (
           Array.isArray(products.value) ? products.value : []
         ).filter((p) => p.id !== 'all');
+
+        // Additional filter to ensure only production items are processed - exclude Item 0 and SCM items
+        const productionItemsOnly = menuItemsAll.filter((item) => {
+          return (
+            item.item_type === 'production' &&
+            item.id !== 0 &&
+            item.id !== '0' &&
+            item.name !== 'Item 0' &&
+            item.name !== 'item 0' &&
+            item.name !== 'Item0' &&
+            item.name !== 'item0' &&
+            item.name !== '0' &&
+            item.item_type !== 'scm' &&
+            item.category !== 'SCM' &&
+            item.category !== 'scm' &&
+            item.category !== 'Beverage' &&
+            item.category !== 'beverage' &&
+            !item.category?.toLowerCase().includes('beverage') &&
+            !item.name?.toLowerCase().includes('coke') &&
+            !item.name?.toLowerCase().includes('pepsi') &&
+            !item.name?.toLowerCase().includes('sprite') &&
+            !item.name?.toLowerCase().includes('item 0') &&
+            !item.name?.toLowerCase().includes('item0')
+          );
+        });
+
         const menuItemsToProcess =
           selectedInventoryItem.value === 'all'
-            ? menuItemsAll
-            : menuItemsAll.filter(
+            ? productionItemsOnly
+            : productionItemsOnly.filter(
                 (p) => Number(p.id) === Number(selectedInventoryItem.value)
               );
 
@@ -586,7 +673,7 @@
     <div class="card bg-white shadow border border-black/10">
       <div class="card-body">
         <h3 class="text-sm font-medium text-gray-700 mb-4">
-          Menu Inventory Forecasting Parameters
+          Production Menu Inventory Forecasting Parameters
         </h3>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
@@ -610,7 +697,7 @@
 
           <div>
             <label class="label">
-              <span class="label-text text-xs">Menu Item</span>
+              <span class="label-text text-xs">Production Menu Item</span>
             </label>
             <select
               class="select select-bordered select-sm w-full"
@@ -699,7 +786,7 @@
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-sm font-medium text-gray-700">
-              Menu Inventory Demand Forecast
+              Production Menu Inventory Demand Forecast
             </h3>
             <div class="flex items-center gap-2 flex-wrap">
               <label class="text-xs text-gray-600">Items per page:</label>
@@ -879,7 +966,7 @@
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-sm font-medium text-gray-700">
-              Menu Stock Level Projections
+              Production Menu Stock Level Projections
             </h3>
             <div class="flex items-center gap-2 flex-wrap">
               <label class="text-xs text-gray-600">Items per page:</label>

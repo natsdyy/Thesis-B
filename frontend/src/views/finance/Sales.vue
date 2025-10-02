@@ -868,9 +868,39 @@
         bucket = 'month';
       }
 
-      const data = await posStore.fetchSalesTrends(
-        selectedEntry.value.branch_id,
-        {
+      // Use remittance data when "Remitted" is selected, otherwise use sales trends
+      let data;
+      if (detailsMetric.value === 'remitted') {
+        // Fetch actual remittance data for accurate remitted amounts
+        const remittances = await posStore.fetchRemittances({
+          branchId: selectedEntry.value.branch_id,
+          status: 'approved',
+          limit: 1000,
+        });
+
+        // Group remittances by date and aggregate amounts
+        const dailyMap = new Map();
+        (remittances.data || []).forEach((r) => {
+          const approvedAt = new Date(
+            r.approved_at || r.created_at || r.date_to || r.date_from
+          );
+          if (approvedAt >= start && approvedAt <= end) {
+            const dateKey = approvedAt.toISOString().split('T')[0];
+            const prev = dailyMap.get(dateKey) || 0;
+            dailyMap.set(dateKey, prev + Number(r.remitted_amount || 0));
+          }
+        });
+
+        const labels = Array.from(dailyMap.keys()).sort();
+        const amounts = labels.map((date) => Number(dailyMap.get(date) || 0));
+
+        data = {
+          labels: labels,
+          remitted_amount: amounts,
+        };
+      } else {
+        // Use regular sales trends for other metrics
+        data = await posStore.fetchSalesTrends(selectedEntry.value.branch_id, {
           dateFrom:
             period.value === 'dateRange'
               ? formatForAPI(start)
@@ -886,8 +916,8 @@
                 ? 'month'
                 : period.value,
           bucket,
-        }
-      );
+        });
+      }
 
       const labels = Array.isArray(data.labels) ? data.labels : [];
       const seriesMap = {
@@ -1113,7 +1143,7 @@
         <!-- Review Button -->
         <div class="ml-auto">
           <button
-            class="btn btn-sm btn-outline"
+            class="btn btn-sm font-thin hovcer:bg-gray-100"
             @click="showFinanceRemittances = true"
           >
             <font-awesome-icon icon="fa-solid fa-file-invoice" class="mr-2" />

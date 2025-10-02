@@ -96,12 +96,43 @@
       list.forEach((it) => {
         const key = Number(it.menu_item_id || it.id);
         const name = it.menu_item_name || it.item_name || `Item ${key}`;
-        if (!unique.has(key)) unique.set(key, { id: key, name });
+
+        // Filter out Item 0 and SCM items from products list
+        const isProductionItem =
+          key !== 0 &&
+          key !== '0' &&
+          name !== 'Item 0' &&
+          name !== 'item 0' &&
+          name !== 'Item0' &&
+          name !== 'item0' &&
+          name !== '0' &&
+          it.item_type === 'production' &&
+          it.item_type !== 'scm' &&
+          it.category !== 'SCM' &&
+          it.category !== 'scm' &&
+          it.category !== 'Beverage' &&
+          it.category !== 'beverage' &&
+          !it.category?.toLowerCase().includes('beverage') &&
+          !name?.toLowerCase().includes('drink') &&
+          !name?.toLowerCase().includes('juice') &&
+          !name?.toLowerCase().includes('water') &&
+          !name?.toLowerCase().includes('coffee') &&
+          !name?.toLowerCase().includes('tea') &&
+          !name?.toLowerCase().includes('soda') &&
+          !name?.toLowerCase().includes('coke') &&
+          !name?.toLowerCase().includes('pepsi') &&
+          !name?.toLowerCase().includes('sprite') &&
+          !name?.toLowerCase().includes('item 0') &&
+          !name?.toLowerCase().includes('item0');
+
+        if (isProductionItem && !unique.has(key)) {
+          unique.set(key, { id: key, name });
+        }
       });
       const arr = Array.from(unique.values()).sort((a, b) =>
         String(a.name).localeCompare(String(b.name))
       );
-      products.value = [{ id: 'all', name: 'All Products' }, ...arr];
+      products.value = [{ id: 'all', name: 'All Production Items' }, ...arr];
       if (
         !products.value.find((p) => p.id === selectedProduct.value) &&
         selectedProduct.value !== 'all'
@@ -152,6 +183,7 @@
           date_to: endDate.toISOString(),
         });
         const orders = Array.isArray(hist?.data) ? hist.data : [];
+
         const remittedOnly = orders.filter((o) => {
           const hasRemit = o && o.remittance_id != null;
           const status = String(o?.remittance_status || '').toLowerCase();
@@ -162,11 +194,43 @@
         const byItem = new Map();
         remittedOnly.forEach((o) => {
           const items = Array.isArray(o.items) ? o.items : [];
-          const filtered = items.filter((it) =>
-            selectedProduct.value === 'all'
-              ? true
-              : Number(it.menu_item_id) === Number(selectedProduct.value)
-          );
+
+          const filtered = items.filter((it) => {
+            // First check if it matches the selected product filter
+            const matchesProduct =
+              selectedProduct.value === 'all'
+                ? true
+                : Number(it.menu_item_id) === Number(selectedProduct.value);
+
+            // Then apply production item filtering - exclude Item 0 and SCM items
+            // Note: POS order items don't have item_type/category fields, so we filter by name patterns
+            const isProductionItem =
+              it.menu_item_id !== 0 &&
+              it.menu_item_id !== '0' &&
+              it.item_name !== 'Item 0' &&
+              it.item_name !== 'item 0' &&
+              it.item_name !== 'Item0' &&
+              it.item_name !== 'item0' &&
+              it.item_name !== '0' &&
+              it.item_name !== null &&
+              it.item_name !== undefined &&
+              !it.item_name?.toLowerCase().includes('drink') &&
+              !it.item_name?.toLowerCase().includes('juice') &&
+              !it.item_name?.toLowerCase().includes('water') &&
+              !it.item_name?.toLowerCase().includes('coffee') &&
+              !it.item_name?.toLowerCase().includes('tea') &&
+              !it.item_name?.toLowerCase().includes('soda') &&
+              !it.item_name?.toLowerCase().includes('coke') &&
+              !it.item_name?.toLowerCase().includes('pepsi') &&
+              !it.item_name?.toLowerCase().includes('sprite') &&
+              !it.item_name?.toLowerCase().includes('mineral water') &&
+              !it.item_name?.toLowerCase().includes('bottles') &&
+              !it.item_name?.toLowerCase().includes('item 0') &&
+              !it.item_name?.toLowerCase().includes('item0');
+
+            return matchesProduct && isProductionItem;
+          });
+
           filtered.forEach((it) => {
             const key = Number(it.menu_item_id);
             if (!byItem.has(key))
@@ -841,7 +905,6 @@
             </div>
           </div>
 
-
           <div class="overflow-x-auto">
             <table class="table w-full">
               <thead>
@@ -925,8 +988,6 @@
           />
         </div>
         <div v-else>
-
-
           <BarChartJS
             :labels="perMenuLabels"
             :data="perMenuData"

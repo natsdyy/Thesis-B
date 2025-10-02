@@ -220,21 +220,35 @@
       const data = [];
       const dataNet = [];
       for (const bid of ids) {
-        const res = await posStore.fetchSalesTrends(bid, {
-          dateFrom: start.toISOString(),
-          dateTo: end.toISOString(),
-          bucket: 'day',
+        // Fetch actual remittances instead of sales trends
+        const remittances = await posStore.fetchRemittances({
+          branchId: bid,
+          status: 'approved',
+          limit: 1000,
         });
-        const series = Array.isArray(res?.remitted_amount)
-          ? res.remitted_amount
-          : [];
-        const net = Array.isArray(res?.net_sales) ? res.net_sales : [];
-        const total = series.reduce((a, v) => a + Number(v || 0), 0);
-        const totalNet = net.reduce((a, v) => a + Number(v || 0), 0);
+
+        // Filter remittances by date range
+        const filteredRemittances = (remittances.data || []).filter((r) => {
+          const approvedAt = new Date(
+            r.approved_at || r.created_at || r.date_to || r.date_from
+          );
+          return approvedAt >= start && approvedAt <= end;
+        });
+
+        // Calculate total remitted amount (only actual remittances)
+        const totalRemitted = filteredRemittances.reduce((sum, r) => {
+          return sum + Number(r.remitted_amount || 0);
+        }, 0);
+
+        // Calculate net sales from remittances only
+        const totalNetSales = filteredRemittances.reduce((sum, r) => {
+          return sum + Number(r.net_sales || 0);
+        }, 0);
+
         const name = list.find((b) => b.id === bid)?.name || `Branch ${bid}`;
         labels.push(name);
-        data.push(Math.round(total));
-        dataNet.push(Math.round(totalNet));
+        data.push(Math.round(totalRemitted));
+        dataNet.push(Math.round(totalNetSales));
       }
       // Sort by value desc while keeping label alignment
       const pairs = labels.map((l, i) => ({ l, v: data[i], vn: dataNet[i] }));
@@ -561,30 +575,31 @@
           Math.round(Number(perDaySum.get(lbl) || 0))
         );
       } else {
-        // Per Branch (default): aggregate remitted amounts by day across branches
+        // Per Branch (default): aggregate ONLY remitted amounts by day across branches
         const allLabelsSet = new Set();
         const perLabelSum = new Map();
-        const fetchPromises = branchIds.map((bid) =>
-          posStore.fetchSalesTrends(bid, {
-            dateFrom: start.toISOString(),
-            dateTo: end.toISOString(),
-            bucket: 'day',
-          })
-        );
-        const results = await Promise.all(fetchPromises);
 
-        results.forEach((r) => {
-          const labels = Array.isArray(r?.labels) ? r.labels : [];
-          const rem = Array.isArray(r?.remitted_amount)
-            ? r.remitted_amount
-            : [];
-          labels.forEach((lbl, idx) => {
-            const key = String(lbl);
-            allLabelsSet.add(key);
-            const prev = perLabelSum.get(key) || 0;
-            perLabelSum.set(key, prev + Number(rem[idx] || 0));
+        // Fetch actual remittances for each branch instead of sales trends
+        for (const bid of branchIds) {
+          const remittances = await posStore.fetchRemittances({
+            branchId: bid,
+            status: 'approved',
+            limit: 1000,
           });
-        });
+
+          // Group remittances by date
+          (remittances.data || []).forEach((r) => {
+            const approvedAt = new Date(
+              r.approved_at || r.created_at || r.date_to || r.date_from
+            );
+            if (approvedAt >= start && approvedAt <= end) {
+              const dateKey = approvedAt.toISOString().split('T')[0];
+              allLabelsSet.add(dateKey);
+              const prev = perLabelSum.get(dateKey) || 0;
+              perLabelSum.set(dateKey, prev + Number(r.remitted_amount || 0));
+            }
+          });
+        }
 
         labelsSorted = Array.from(allLabelsSet).sort();
         historicalDataArrLocal = labelsSorted.map((lbl) =>
@@ -837,16 +852,28 @@
 
       const byBranch = [];
       for (const bid of branchIds) {
-        // Fetch daily remitted history for lookback
-        const result = await posStore.fetchSalesTrends(bid, {
-          dateFrom: start.toISOString(),
-          dateTo: end.toISOString(),
-          bucket: 'day',
+        // Fetch actual remittances for lookback
+        const remittances = await posStore.fetchRemittances({
+          branchId: bid,
+          status: 'approved',
+          limit: 1000,
         });
-        const labels = Array.isArray(result?.labels) ? result.labels : [];
-        const series = Array.isArray(result?.remitted_amount)
-          ? result.remitted_amount.map((n) => Number(n) || 0)
-          : [];
+
+        // Group remittances by date
+        const dailyMap = new Map();
+        (remittances.data || []).forEach((r) => {
+          const approvedAt = new Date(
+            r.approved_at || r.created_at || r.date_to || r.date_from
+          );
+          if (approvedAt >= start && approvedAt <= end) {
+            const dateKey = approvedAt.toISOString().split('T')[0];
+            const prev = dailyMap.get(dateKey) || 0;
+            dailyMap.set(dateKey, prev + Number(r.remitted_amount || 0));
+          }
+        });
+
+        const labels = Array.from(dailyMap.keys()).sort();
+        const series = labels.map((date) => Number(dailyMap.get(date) || 0));
 
         // Smooth, deseasonalize, regress
         const smoothed = movingAverage(series, 3);

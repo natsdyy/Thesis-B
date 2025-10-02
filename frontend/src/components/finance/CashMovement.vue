@@ -23,7 +23,7 @@
   const error = computed(() => cashMovementStore.error);
 
   // Pagination (10 per page)
-  const currentPage = ref(1);
+  const currentPage = ref(10);
   const pageSize = ref(10);
   const totalPages = computed(() => {
     const total = movements.value?.length || 0;

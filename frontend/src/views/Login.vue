@@ -916,12 +916,12 @@
 
               <!-- Forgot Password Link -->
               <div class="mt-3 text-right">
-                <a
-                  href="#"
+                <router-link
+                  to="/forgot-password"
                   class="text-sm text-primaryColor hover:text-primaryColor/80 transition-colors font-poppins"
                 >
                   recover password
-                </a>
+                </router-link>
               </div>
             </div>
 
@@ -1032,12 +1032,12 @@
 
             <!-- Forgot Password Link -->
             <div class="mt-3 text-right">
-              <a
-                href="#"
+              <router-link
+                to="/forgot-password"
                 class="text-sm text-primaryColor hover:text-primaryColor/80 transition-colors font-poppins"
               >
                 recover password
-              </a>
+              </router-link>
             </div>
           </div>
 

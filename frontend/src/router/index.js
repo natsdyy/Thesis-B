@@ -18,6 +18,9 @@ import BranchLayout from '../layouts/BranchLayout.vue';
 import HomePage from '../views/HomePage.vue';
 import NotFound from '../views/NotFound.vue';
 import Login from '../views/Login.vue';
+import ForgotPassword from '../views/ForgotPassword.vue';
+import VerifyOTP from '../views/VerifyOTP.vue';
+import ResetPassword from '../views/ResetPassword.vue';
 
 // Import crm components
 import FullMenu from '../components/crm/FullMenu.vue';
@@ -51,6 +54,25 @@ const routes = [
     name: 'Login',
     component: Login,
     meta: { title: 'Login' },
+  },
+  // Password recovery routes
+  {
+    path: '/forgot-password',
+    name: 'ForgotPassword',
+    component: ForgotPassword,
+    meta: { title: 'Forgot Password' },
+  },
+  {
+    path: '/verify-otp',
+    name: 'VerifyOTP',
+    component: VerifyOTP,
+    meta: { title: 'Verify OTP' },
+  },
+  {
+    path: '/reset-password',
+    name: 'ResetPassword',
+    component: ResetPassword,
+    meta: { title: 'Reset Password' },
   },
   {
     path: '/dashboard',
@@ -214,6 +236,9 @@ router.beforeEach(async (to, from, next) => {
   const publicRoutes = [
     '/',
     '/login',
+    '/forgot-password',
+    '/verify-otp',
+    '/reset-password',
     '/home',
     '/menu',
     '/stores',

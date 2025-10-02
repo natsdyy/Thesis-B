@@ -779,67 +779,91 @@
         </button>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-6 gap-2 mb-3">
-        <label class="input input-bordered flex items-center gap-2 col-span-2">
-          <Search class="w-4 h-4" />
-          <input
-            v-model="filters.search"
-            @keyup.enter="fetchTransactions"
-            type="text"
-            class="grow"
-            placeholder="Search order number or items"
-          />
-        </label>
+      <div
+        class="mb-3 flex flex-col sm:flex-row items-center justify-between gap-2"
+      >
+        <!-- Search -->
+        <div class="w-full sm:w-1/3">
+          <label class="input input-bordered flex items-center gap-2 w-full">
+            <Search class="w-4 h-4" />
+            <input
+              v-model="filters.search"
+              @keyup.enter="fetchTransactions"
+              type="text"
+              class="grow"
+              placeholder="Search order number or items"
+            />
+          </label>
+        </div>
 
-        <select
-          v-model="filters.status"
-          class="select select-bordered select-sm sm:select-md"
-        >
-          <option
-            v-for="status in statusOptions"
-            :key="status.value"
-            :value="status.value"
+        <!-- Filters -->
+        <div class="flex flex-wrap sm:flex-nowrap items-center gap-2">
+          <select
+            v-model="filters.status"
+            class="select select-bordered select-sm sm:select-md"
           >
-            {{ status.label }}
-          </option>
-        </select>
+            <option
+              v-for="status in statusOptions"
+              :key="status.value"
+              :value="status.value"
+            >
+              {{ status.label }}
+            </option>
+          </select>
 
-        <select
-          v-model="filters.order_type"
-          class="select select-bordered select-sm sm:select-md"
-        >
-          <option
-            v-for="type in orderTypeOptions"
-            :key="type.value"
-            :value="type.value"
+          <select
+            v-model="filters.order_type"
+            class="select select-bordered select-sm sm:select-md"
           >
-            {{ type.label }}
-          </option>
-        </select>
+            <option
+              v-for="type in orderTypeOptions"
+              :key="type.value"
+              :value="type.value"
+            >
+              {{ type.label }}
+            </option>
+          </select>
 
-        <select
-          v-model="filters.date_range"
-          @change="
-            applyDateRange();
-            fetchTransactions();
-          "
-          class="select select-bordered select-sm sm:select-md"
-        >
-          <option value="today">Today</option>
-          <option value="this_week">This Week</option>
-          <option value="this_month">This Month</option>
-          <option value="custom_month">Custom Month</option>
-          <option value="custom">Custom Range</option>
-        </select>
+          <select
+            v-model="filters.date_range"
+            @change="
+              applyDateRange();
+              fetchTransactions();
+            "
+            class="select select-bordered select-sm sm:select-md"
+          >
+            <option value="today">Today</option>
+            <option value="this_week">This Week</option>
+            <option value="this_month">This Month</option>
+            <option value="custom_month">Custom Month</option>
+            <option value="custom">Custom Range</option>
+          </select>
 
-        <label class="input input-bordered flex items-center gap-2">
-          <Calendar class="w-4 h-4" />
-          <input v-model="filters.date_from" type="date" class="grow" />
-        </label>
-        <label class="input input-bordered flex items-center gap-2">
-          <Calendar class="w-4 h-4" />
-          <input v-model="filters.date_to" type="date" class="grow" />
-        </label>
+          <label
+            v-if="filters.date_range === 'custom'"
+            class="input input-bordered flex items-center gap-2"
+          >
+            <Calendar class="w-4 h-4" />
+            <input
+              v-model="filters.date_from"
+              type="date"
+              class="grow"
+              placeholder="From"
+            />
+          </label>
+          <label
+            v-if="filters.date_range === 'custom'"
+            class="input input-bordered flex items-center gap-2"
+          >
+            <Calendar class="w-4 h-4" />
+            <input
+              v-model="filters.date_to"
+              type="date"
+              class="grow"
+              placeholder="To"
+            />
+          </label>
+        </div>
       </div>
 
       <div class="flex justify-end gap-2 mb-3">
@@ -856,13 +880,6 @@
         >
           <Filter class="w-4 h-4 mr-1" />
           Apply
-        </button>
-        <button
-          class="btn btn-outline btn-sm font-thin"
-          @click="exportTransactions"
-        >
-          <Download class="w-4 h-4 mr-1" />
-          Export
         </button>
       </div>
 
@@ -1158,42 +1175,18 @@
 
       <!-- Transaction Details -->
       <div class="space-y-4 mb-6">
-        <div class="bg-gray-50 rounded-lg p-4">
-          <div class="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span class="font-medium text-gray-600">Order Number:</span>
-              <p class="font-semibold">
-                {{ selectedTransaction?.order_number }}
-              </p>
-            </div>
-            <div>
-              <span class="font-medium text-gray-600">Amount:</span>
-              <p class="font-semibold">
-                <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                {{ selectedTransaction?.amount?.toFixed(2) }}
-              </p>
-            </div>
-            <div>
-              <span class="font-medium text-gray-600">Action:</span>
-              <p class="font-semibold capitalize">{{ pendingAction }}</p>
-            </div>
-            <div>
-              <span class="font-medium text-gray-600">Status:</span>
-              <p class="font-semibold">{{ selectedTransaction?.status }}</p>
-            </div>
-          </div>
-        </div>
+ 
 
         <!-- Manager PIN Input -->
         <div class="space-y-2">
           <label class="text-sm font-medium text-gray-700">
-            Manager Employee ID:
+            Manager PIN:
           </label>
           <div class="relative">
             <input
               v-model="managerPinForm.employeeId"
               :type="showEmployeeId ? 'text' : 'password'"
-              placeholder="Enter manager employee ID"
+              placeholder="Enter your PIN"
               class="input input-bordered w-full input-sm sm:input-md pr-10"
               @keyup.enter="handleManagerPinVerification"
             />
@@ -1341,7 +1334,10 @@
                   {{ reason.label }}
                 </option>
               </optgroup>
-              <optgroup label="Loss Reasons ">
+              <optgroup
+                v-if="posStore.selectedTransaction?.status !== 'processing'"
+                label="Loss Reasons "
+              >
                 <option
                   v-for="reason in voidReasons.filter((r) => r.type === 'loss')"
                   :key="reason.value"
@@ -1604,14 +1600,14 @@
         <div class="flex gap-3 justify-end">
           <button
             @click="closeCompleteModal"
-            class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+            class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 cursor-pointer"
             :disabled="completeLoading"
           >
             Cancel
           </button>
           <button
             @click="confirmCompleteOrder"
-            class="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            class="px-4 py-2 text-sm font-medium text-white bg-primaryColor border border-transparent rounded-lg hover:bg-primaryColor/80 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primaryColor disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             :disabled="completeLoading"
           >
             <span

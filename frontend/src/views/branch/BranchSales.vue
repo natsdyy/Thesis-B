@@ -1249,13 +1249,12 @@
                             <p class="font-medium text-gray-900">
                               {{ item.name }}
                             </p>
-                        
                           </div>
                         </div>
                         <div class="text-right">
-            <p class="text-sm text-gray-600">
-                              {{ item.quantity }} sold
-                            </p>
+                          <p class="text-sm text-gray-600">
+                            {{ item.quantity }} sold
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -1580,7 +1579,7 @@
                 required
               >
                 <option value="">Select a reason...</option>
-                <optgroup label="Refund Reasons (No inventory deduction)">
+                <optgroup label="Refund Reasons">
                   <option
                     v-for="reason in voidReasons.filter(
                       (r) => r.type === 'refund'
@@ -1592,7 +1591,8 @@
                   </option>
                 </optgroup>
                 <optgroup
-                  label="Loss Reasons (Inventory deduction + Loss profit)"
+                  v-if="selectedOrder?.status !== 'processing'"
+                  label="Loss Reasons"
                 >
                   <option
                     v-for="reason in voidReasons.filter(
@@ -1665,7 +1665,9 @@
                   {{
                     voidReasons.find((r) => r.value === selectedVoidReason)
                       ?.type === 'refund'
-                      ? ' No inventory deduction • No loss profit recorded'
+                      ? selectedOrder?.status === 'completed'
+                        ? 'Inventory stays deducted • Loss profit will be recorded'
+                        : 'No inventory deduction • No loss profit recorded'
                       : 'Inventory will be deducted • Loss profit will be recorded'
                   }}
                 </p>

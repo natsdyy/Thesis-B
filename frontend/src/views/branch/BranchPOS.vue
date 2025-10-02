@@ -588,7 +588,7 @@
             <div class="form-control">
               <label class="label">
                 <span class="label-text text-sm sm:text-base"
-                  >Manager Pin:</span
+                  >Manager PIN:</span
                 >
               </label>
               <div class="relative">
@@ -800,7 +800,7 @@
 
           <!-- Menu Items Grid -->
           <div class="flex-1 p-6 overflow-y-auto max-h-[90vh]">
-            <div class="grid grid-cols-3 md:grid-cols-4 gap-4">
+            <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
               <div
                 v-for="item in posStore.filteredMenuItems"
                 :key="item.id"
@@ -1474,7 +1474,10 @@
 
             <!-- QR Code -->
             <div class="border-t border-gray-300 pt-3 text-center">
-              <p class="text-xs text-gray-500">Tell us about your visit. Scan the QR code below and share your experience!</p>
+              <p class="text-xs text-gray-500">
+                Tell us about your visit. Scan the QR code below and share your
+                experience!
+              </p>
               <div class="mb-2 flex justify-center">
                 <div class="w-32 h-32 flex items-center justify-center">
                   <QRCodeGenerator
@@ -1622,29 +1625,10 @@
   }
 
   /* Responsive grid adjustments */
-  @media (max-width: 640px) {
-    .grid-cols-2 {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-
-  @media (min-width: 640px) and (max-width: 1024px) {
-    .grid-cols-3 {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-  }
-
-  @media (min-width: 1024px) {
-    .grid-cols-2 {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-
-  @media (min-width: 1280px) {
-    .grid-cols-3 {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-  }
+  /*
+    Removed custom overrides for Tailwind's grid-cols utilities that caused
+    tablet/responsive issues. Use Tailwind responsive classes in markup instead.
+  */
 
   /* Mobile-specific adjustments */
   @media (max-width: 768px) {

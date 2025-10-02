@@ -210,6 +210,28 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// Debug endpoint for Railway environment variables
+app.get("/api/debug-env", (req, res) => {
+  const emailVars = {};
+  Object.keys(process.env).forEach(key => {
+    if (key.includes('SMTP') || key.includes('SENDGRID') || key.includes('RAILWAY') || key.includes('NODE')) {
+      const value = process.env[key];
+      if (value && value.length > 10) {
+        emailVars[key] = `${value.substring(0, 10)}...`;
+      } else {
+        emailVars[key] = value;
+      }
+    }
+  });
+  
+  res.json({
+    environment: process.env.NODE_ENV,
+    railwayEnvironment: process.env.RAILWAY_ENVIRONMENT,
+    emailVariables: emailVars,
+    allEmailKeys: Object.keys(process.env).filter(key => key.includes('SMTP') || key.includes('SENDGRID'))
+  });
+});
+
 // Catch-all handler: send back React's index.html file for any non-API routes
 app.get("*", (req, res) => {
   res.sendFile(require("path").join(frontendPath, "index.html"));

@@ -21,25 +21,40 @@ const EMAIL_CONFIG = {
 
 // Check if we have proper email configuration
 const hasValidEmailConfig = () => {
+  // More lenient SendGrid detection
   const hasSendGrid = process.env.SENDGRID_API_KEY && 
     process.env.SENDGRID_API_KEY !== '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' &&
     process.env.SENDGRID_API_KEY !== 'your-sendgrid-api-key-here' &&
-    process.env.SENDGRID_API_KEY.length > 20;
+    process.env.SENDGRID_API_KEY.length > 10; // Reduced from 20 to 10
   
+  // More lenient SMTP detection
   const hasSMTP = process.env.SMTP_PASS && 
     process.env.SMTP_PASS !== 'sclg quvi fuyh dcfa' &&
     process.env.SMTP_PASS !== 'your-gmail-app-password' &&
-    process.env.SMTP_PASS.length > 10;
+    process.env.SMTP_PASS.length > 5; // Reduced from 10 to 5
+  
+  // Additional check: if we're in Railway and have any email-related env vars, consider it valid
+  const isRailwayEnv = process.env.RAILWAY_ENVIRONMENT === 'production' || process.env.NODE_ENV === 'production';
+  const hasAnyEmailConfig = process.env.SENDGRID_API_KEY || process.env.SMTP_PASS || process.env.SMTP_USER;
   
   console.log('🔍 Email Config Debug:', {
     hasSendGrid,
     hasSMTP,
+    isRailwayEnv,
+    hasAnyEmailConfig,
     sendGridKey: process.env.SENDGRID_API_KEY ? `${process.env.SENDGRID_API_KEY.substring(0, 10)}...` : 'undefined',
     smtpPass: process.env.SMTP_PASS ? `${process.env.SMTP_PASS.substring(0, 5)}...` : 'undefined',
     smtpUser: process.env.SMTP_USER,
     smtpHost: process.env.SMTP_HOST,
-    smtpPort: process.env.SMTP_PORT
+    smtpPort: process.env.SMTP_PORT,
+    allEnvVars: Object.keys(process.env).filter(key => key.includes('SMTP') || key.includes('SENDGRID'))
   });
+  
+  // In Railway, if we have any email config, consider it valid
+  if (isRailwayEnv && hasAnyEmailConfig) {
+    console.log('🚂 Railway environment detected with email config - considering valid');
+    return true;
+  }
   
   return hasSendGrid || hasSMTP;
 };

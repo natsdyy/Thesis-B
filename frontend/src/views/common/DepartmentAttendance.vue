@@ -1,8 +1,10 @@
 <template>
   <div class="space-y-6">
     <!-- Header -->
-    <div class="flex justify-between items-center">
-      <h1 class="text-3xl font-bold">My Attendance</h1>
+    <div
+      class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2"
+    >
+      <h1 class="text-2xl sm:text-3xl font-bold">My Attendance</h1>
       <div class="text-sm text-base-content/70">
         Last updated: {{ lastUpdated.toLocaleTimeString() }}
         <span v-if="isStatusLoading || isHistoryLoading" class="ml-2">
@@ -13,31 +15,36 @@
     </div>
 
     <!-- Tabs -->
-    <div class="tabs tabs-boxed mb-4 justify-start w-full">
-      <button
-        @click="setActiveTab('add')"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'add' }"
-      >
-        <Clock class="w-4 h-4 mr-2" />
-        <span>Add Attendance</span>
-      </button>
-      <button
-        @click="setActiveTab('ot')"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'ot' }"
-      >
-        <Timer class="w-4 h-4 mr-2" />
-        <span>Apply Overtime</span>
-      </button>
-      <button
-        @click="setActiveTab('leave')"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'leave' }"
-      >
-        <FileText class="w-4 h-4 mr-2" />
-        <span>Apply Leave</span>
-      </button>
+    <div class="tabs tabs-boxed mb-4 justify-start w-full overflow-x-auto">
+      <div class="flex flex-nowrap min-w-max">
+        <button
+          @click="setActiveTab('add')"
+          class="tab whitespace-nowrap"
+          :class="{ 'tab-active': activeTab === 'add' }"
+        >
+          <Clock class="w-4 h-4 mr-2" />
+          <span class="hidden sm:inline">Add Attendance</span>
+          <span class="sm:hidden">Add</span>
+        </button>
+        <button
+          @click="setActiveTab('ot')"
+          class="tab whitespace-nowrap"
+          :class="{ 'tab-active': activeTab === 'ot' }"
+        >
+          <Timer class="w-4 h-4 mr-2" />
+          <span class="hidden sm:inline">Apply Overtime</span>
+          <span class="sm:hidden">OT</span>
+        </button>
+        <button
+          @click="setActiveTab('leave')"
+          class="tab whitespace-nowrap"
+          :class="{ 'tab-active': activeTab === 'leave' }"
+        >
+          <FileText class="w-4 h-4 mr-2" />
+          <span class="hidden sm:inline">Apply Leave</span>
+          <span class="sm:hidden">Leave</span>
+        </button>
+      </div>
     </div>
 
     <!-- Add Attendance -->
@@ -157,8 +164,11 @@
       <!-- My Attendance History -->
       <div class="card bg-base-100 shadow-xl">
         <div class="card-body">
-          <div class="flex justify-between items-center mb-4">
-            <h3 class="card-title">
+          <div
+            class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-4 "
+          >
+<div class="">
+              <h3 class="card-title text-lg sm:text-xl">
               My Attendance History
               <span
                 v-if="isHistoryLoading"
@@ -171,18 +181,53 @@
                 {{ attendanceHistory.length }} records
               </span>
             </h3>
-            <div class="flex items-center gap-2">
-              <select
-                v-model="historyRange"
-                class="select select-bordered select-sm"
+</div>
+            <div
+              class="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full justify-end"
+            >
+              <div
+                class="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full sm:w-auto "
               >
-                <option value="today">Today</option>
-                <option value="week">This Week</option>
-                <option value="month">This Month</option>
-              </select>
+                <select
+                  v-model="historyRange"
+                  class="select select-bordered select-sm w-full sm:w-auto"
+                  @change="onHistoryRangeChange"
+                >
+                  <option value="today">Today</option>
+                  <option value="week">This Week</option>
+                  <option value="month">This Month</option>
+                  <option value="custom">Custom Month</option>
+                </select>
+                <!-- Custom Month Picker -->
+                <div
+                  v-if="historyRange === 'custom'"
+                  class="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full sm:w-auto"
+                >
+                  <select
+                    v-model="customMonth"
+                    class="select select-bordered select-sm w-full sm:min-w-[120px]"
+                  >
+                    <option value="0">January</option>
+                    <option value="1">February</option>
+                    <option value="2">March</option>
+                    <option value="3">April</option>
+                    <option value="4">May</option>
+                    <option value="5">June</option>
+                    <option value="6">July</option>
+                    <option value="7">August</option>
+                    <option value="8">September</option>
+                    <option value="9">October</option>
+                    <option value="10">November</option>
+                    <option value="11">December</option>
+                  </select>
+                  <span class="text-sm text-gray-600 px-2 py-1">
+                    {{ customYear }}
+                  </span>
+                </div>
+              </div>
               <button
                 @click="refreshAttendance"
-                class="btn btn-sm btn-outline font-thin"
+                class="btn btn-sm btn-outline font-thin w-full sm:w-auto"
                 :disabled="isHistoryLoading"
               >
                 <svg
@@ -217,7 +262,7 @@
 
           <!-- Table Content -->
           <div v-else class="overflow-x-auto">
-            <table class="table table-zebra w-full">
+            <table class="table table-zebra w-full text-sm">
               <thead>
                 <tr>
                   <th>Date</th>
@@ -344,20 +389,27 @@
   import OvertimeRequest from '../../components/OvertimeRequest.vue';
   import { Clock, Timer, FileText } from 'lucide-vue-next';
   import { useCustomToast } from '../../composables/useCustomToast';
+  import {
+    getCurrentPhilippineTime,
+    createPhilippineDate,
+    formatForAPI,
+  } from '../../utils/timezoneUtils';
 
   // Stores
   const authStore = useAuthStore();
   const attendanceStore = useAttendanceStore();
   const { showSuccess, showError } = useCustomToast();
 
-  // Helpers for Asia/Manila timezone
-  const toPhYmd = (date) =>
-    new Intl.DateTimeFormat('en-CA', {
+  // Helpers for Asia/Manila timezone using timezone utilities
+  const toPhYmd = (date) => {
+    const phDate = new Date(date);
+    return phDate.toLocaleDateString('en-CA', {
       timeZone: 'Asia/Manila',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
-    }).format(new Date(date));
+    });
+  };
 
   // Reactive data
   const isLoading = ref(false);
@@ -390,14 +442,24 @@
   );
 
   const autoRefreshInterval = ref(null);
-  const lastUpdated = ref(new Date());
+  const lastUpdated = ref(getCurrentPhilippineTime());
 
   // Pagination for attendance history
   const currentPage = ref(1);
   const itemsPerPage = ref(10);
   const totalRecords = ref(0);
   const hasMoreRecords = ref(false);
-  const historyRange = ref('today'); // today | week | month
+  const historyRange = ref('today'); // today | week | month | custom
+  const customMonth = ref(new Date().getMonth());
+  const customYear = ref(new Date().getFullYear());
+
+  // Watch for custom month/year changes
+  watch([customMonth, customYear], () => {
+    if (historyRange.value === 'custom') {
+      currentPage.value = 1;
+      fetchAttendanceHistory();
+    }
+  });
 
   // Derive real-time status from attendance store
   const today = computed(() => attendanceStore.todayAttendance);
@@ -427,6 +489,16 @@
   });
   const lastTimeIn = computed(() => today.value?.time_in || null);
   const attendanceHistory = ref([]);
+
+  // Available years for custom month picker (current year ± 2 years)
+  const availableYears = computed(() => {
+    const currentYear = new Date().getFullYear();
+    const years = [];
+    for (let i = currentYear - 2; i <= currentYear + 2; i++) {
+      years.push(i);
+    }
+    return years;
+  });
   const mergedHistory = computed(() => {
     // Process attendance records for display
     console.log(
@@ -504,13 +576,20 @@
     showManualModal.value = false;
   };
 
+  const onHistoryRangeChange = () => {
+    // Reset to first page when changing range
+    currentPage.value = 1;
+    // Fetch new data based on selected range
+    fetchAttendanceHistory();
+  };
+
   const fetchAttendanceHistory = async (loadMore = false) => {
     try {
       isHistoryLoading.value = true;
 
-      // Determine PH range boundaries
-      const now = new Date();
-      const end = new Date(
+      // Determine PH range boundaries using timezone utilities
+      const now = getCurrentPhilippineTime();
+      let end = new Date(
         now.getFullYear(),
         now.getMonth(),
         now.getDate(),
@@ -520,6 +599,7 @@
         999
       );
       let start;
+
       if (historyRange.value === 'today') {
         start = new Date(
           now.getFullYear(),
@@ -538,46 +618,52 @@
         );
         const day = startOfToday.getDay();
         const diff = (day + 6) % 7; // Monday start
-        start = new Date(startOfToday);
-        start.setDate(start.getDate() - diff);
+        const weekStart = new Date(startOfToday);
+        weekStart.setDate(weekStart.getDate() - diff);
+        start = new Date(
+          weekStart.getFullYear(),
+          weekStart.getMonth(),
+          weekStart.getDate(),
+          0,
+          0,
+          0,
+          0
+        );
+      } else if (historyRange.value === 'custom') {
+        // Custom month selection - use native Date constructor for better control
+        start = new Date(customYear.value, customMonth.value, 1, 0, 0, 0, 0);
+        // Get the last day of the selected month
+        const lastDay = new Date(
+          customYear.value,
+          customMonth.value + 1,
+          0
+        ).getDate();
+        end = new Date(
+          customYear.value,
+          customMonth.value,
+          lastDay,
+          23,
+          59,
+          59,
+          999
+        );
       } else {
         start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
       }
 
-      const startIso = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Manila',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-      })
-        .formatToParts(start)
-        .reduce((acc, p) => ((acc[p.type] = p.value), acc), {});
-      const endIsoParts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Manila',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-      })
-        .formatToParts(end)
-        .reduce((acc, p) => ((acc[p.type] = p.value), acc), {});
-      const startIsoStr = `${startIso.year}-${startIso.month}-${startIso.day}T${startIso.hour}:${startIso.minute}:${startIso.second}+08:00`;
-      const endIsoStr = `${endIsoParts.year}-${endIsoParts.month}-${endIsoParts.day}T${endIsoParts.hour}:${endIsoParts.minute}:${endIsoParts.second}+08:00`;
+      // Format dates for API using timezone utilities
+      const startIsoStr = formatForAPI(start);
+      const endIsoStr = formatForAPI(end);
 
-      const currentUserId =
-        authStore.user?.id || authStore.user?.employee_internal_id || null;
+      // Use the numeric employee ID (primary key) for the attendance API
+      const currentUserId = authStore.user?.id || null;
+
       const report = await attendanceStore.getAttendanceReport(
         currentUserId,
         startIsoStr,
         endIsoStr
       );
+
       const newRecords = Array.isArray(report) ? report : [];
       attendanceHistory.value = newRecords;
       currentPage.value = 1;
@@ -601,7 +687,7 @@
     try {
       isStatusLoading.value = true;
       await attendanceStore.fetchTodayAttendance();
-      lastUpdated.value = new Date();
+      lastUpdated.value = getCurrentPhilippineTime();
     } catch (error) {
       console.error('Error checking current status:', error);
     } finally {

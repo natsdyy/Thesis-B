@@ -330,11 +330,11 @@ export const useAttendanceStore = defineStore('attendance', () => {
         end_date: endDate,
       };
 
-      // Backend expects numeric employee_id; only include if numeric
+      // Backend expects user_id parameter; only include if numeric
       if (userId !== null && userId !== undefined) {
         const numericId = Number(userId);
         if (!Number.isNaN(numericId) && Number.isFinite(numericId)) {
-          params.employee_id = numericId;
+          params.user_id = numericId;
         }
       }
 

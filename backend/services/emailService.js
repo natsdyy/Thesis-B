@@ -21,8 +21,26 @@ const EMAIL_CONFIG = {
 
 // Check if we have proper email configuration
 const hasValidEmailConfig = () => {
-  const hasSendGrid = process.env.SENDGRID_API_KEY && process.env.SENDGRID_API_KEY !== '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';
-  const hasSMTP = process.env.SMTP_PASS && process.env.SMTP_PASS !== 'sclg quvi fuyh dcfa';
+  const hasSendGrid = process.env.SENDGRID_API_KEY && 
+    process.env.SENDGRID_API_KEY !== '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' &&
+    process.env.SENDGRID_API_KEY !== 'your-sendgrid-api-key-here' &&
+    process.env.SENDGRID_API_KEY.length > 20;
+  
+  const hasSMTP = process.env.SMTP_PASS && 
+    process.env.SMTP_PASS !== 'sclg quvi fuyh dcfa' &&
+    process.env.SMTP_PASS !== 'your-gmail-app-password' &&
+    process.env.SMTP_PASS.length > 10;
+  
+  console.log('🔍 Email Config Debug:', {
+    hasSendGrid,
+    hasSMTP,
+    sendGridKey: process.env.SENDGRID_API_KEY ? `${process.env.SENDGRID_API_KEY.substring(0, 10)}...` : 'undefined',
+    smtpPass: process.env.SMTP_PASS ? `${process.env.SMTP_PASS.substring(0, 5)}...` : 'undefined',
+    smtpUser: process.env.SMTP_USER,
+    smtpHost: process.env.SMTP_HOST,
+    smtpPort: process.env.SMTP_PORT
+  });
+  
   return hasSendGrid || hasSMTP;
 };
 
@@ -34,6 +52,28 @@ if (!hasValidEmailConfig()) {
 
 // Check if we're in Railway environment
 const isRailway = process.env.RAILWAY_ENVIRONMENT === 'production' || process.env.NODE_ENV === 'production';
+
+// Railway-specific email configuration
+if (isRailway) {
+  console.log('🚂 Railway environment detected - using Railway-optimized email settings');
+  
+  // Override EMAIL_CONFIG for Railway
+  if (process.env.SMTP_USER) {
+    EMAIL_CONFIG.user = process.env.SMTP_USER;
+  }
+  if (process.env.SMTP_PASS) {
+    EMAIL_CONFIG.pass = process.env.SMTP_PASS;
+  }
+  if (process.env.SMTP_HOST) {
+    EMAIL_CONFIG.host = process.env.SMTP_HOST;
+  }
+  if (process.env.SMTP_PORT) {
+    EMAIL_CONFIG.port = parseInt(process.env.SMTP_PORT);
+  }
+  if (process.env.SMTP_SECURE) {
+    EMAIL_CONFIG.secure = process.env.SMTP_SECURE === 'true';
+  }
+}
 
 // Create multiple transporter configurations for fallback
 const createTransporter = (config) => {
@@ -124,6 +164,27 @@ const railwayGmailTransporter = nodemailer.createTransport({
   // Use different DNS servers for Railway
   dns: {
     servers: ['1.1.1.1', '1.0.0.1'] // Cloudflare DNS
+  },
+  debug: false,
+  logger: false,
+});
+
+// Railway-specific transporter using alternative ports
+const railwayAlternativeTransporter = nodemailer.createTransport({
+  host: "smtp.gmail.com",
+  port: 2525, // Alternative port that Railway might allow
+  secure: false,
+  auth: {
+    user: EMAIL_CONFIG.user,
+    pass: EMAIL_CONFIG.pass,
+  },
+  connectionTimeout: 30000,
+  greetingTimeout: 30000,
+  socketTimeout: 60000,
+  pool: false,
+  tls: {
+    rejectUnauthorized: false,
+    secureProtocol: "TLSv1_2_method",
   },
   debug: false,
   logger: false,
@@ -281,12 +342,24 @@ class EmailService {
             console.log('❌ Railway-optimized SMTP failed:', railwayError.message);
             console.log('📧 Trying alternative SMTP...');
             
-            const info = await this.withTimeout(
-              alternativeTransporter.sendMail(mailOptions),
-              60000
-            );
-            console.log('✅ SMTP email sent (alternative):', info.messageId);
-            return { success: true, messageId: info.messageId };
+            try {
+              const info = await this.withTimeout(
+                alternativeTransporter.sendMail(mailOptions),
+                60000
+              );
+              console.log('✅ SMTP email sent (alternative):', info.messageId);
+              return { success: true, messageId: info.messageId };
+            } catch (alternativeError) {
+              console.log('❌ Alternative SMTP failed:', alternativeError.message);
+              console.log('📧 Trying Railway alternative SMTP (port 2525)...');
+              
+              const info = await this.withTimeout(
+                railwayAlternativeTransporter.sendMail(mailOptions),
+                60000
+              );
+              console.log('✅ SMTP email sent (Railway alternative):', info.messageId);
+              return { success: true, messageId: info.messageId };
+            }
           }
         }
       }

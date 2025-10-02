@@ -8,43 +8,7 @@
         </button>
       </div>
 
-      <!-- Current Status -->
-      <div class="mb-6">
-        <div
-          class="alert"
-          :class="
-            currentStatus === 'on-leave'
-              ? 'bg-warning/10 border-warning'
-              : 'bg-success/10 border-success'
-          "
-        >
-          <Clock class="w-5 h-5" />
-          <div>
-            <div class="font-medium">Current Status</div>
-            <div class="text-sm opacity-80">
-              {{
-                currentStatus === 'on-leave'
-                  ? 'On Leave'
-                  : currentStatus === 'checked-out'
-                    ? 'Ready to Time In'
-                    : 'Ready to Time Out'
-              }}
-            </div>
-            <div
-              v-if="isLateToday && tardinessMinutesToday > 0"
-              class="text-xs mt-1 text-warning"
-            >
-              Late by {{ tardinessMinutesToday }} minute(s)
-            </div>
-            <div
-              v-if="currentStatus === 'on-leave'"
-              class="text-xs mt-1 text-warning"
-            >
-              Attendance tracking is disabled during your leave period
-            </div>
-          </div>
-        </div>
-      </div>
+
 
       <!-- Schedule Information -->
       <div class="mb-6">
@@ -831,6 +795,33 @@
   });
   const tardinessMinutesToday = computed(() => {
     return Number(attendanceStore.todayAttendance?.tardiness_minutes || 0);
+  });
+
+  // Derive detailed status text similar to BranchAttendance
+  const todayData = computed(() => attendanceStore.todayAttendance);
+  const hasTimeIn = computed(() => Boolean(todayData.value?.time_in));
+  const hasTimeOut = computed(() => Boolean(todayData.value?.time_out));
+  const statusText = computed(() => {
+    if (todayData.value?.is_on_leave) return 'On Leave';
+    if (hasTimeIn.value && !hasTimeOut.value) return 'Currently Checked In';
+    if (hasTimeIn.value && hasTimeOut.value) return 'Checked Out';
+    // If checked-out, respect schedule validation when present
+    if (
+      scheduleValidation.value &&
+      scheduleValidation.value.isValid === false &&
+      scheduleValidation.value.reason !== 'NO_SCHEDULE'
+    ) {
+      return (
+        scheduleValidation.value.message || 'Time-in outside scheduled hours'
+      );
+    }
+    if (
+      scheduleValidation.value &&
+      scheduleValidation.value.reason === 'NO_SCHEDULE'
+    ) {
+      return 'No Schedule Today';
+    }
+    return 'Ready to Check In';
   });
 
   // Watch for changes in the store and update local status

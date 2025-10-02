@@ -41,7 +41,7 @@
       window.location.hostname === '127.0.0.1'
     ) {
       // For local development, use the network IP so phones can access it
-      return `http://192.168.18.5:8080`;
+      return `http://192.168.68.111:8080`;
     }
     // In production, use the current origin
     return window.location.origin;

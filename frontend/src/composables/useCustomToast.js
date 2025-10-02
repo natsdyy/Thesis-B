@@ -7,7 +7,7 @@ export function useCustomToast() {
     return toast.success(message, {
       title,
       timeout: 4000,
-      icon: 'fas fa-check',
+      icon: false,
     });
   };
 
@@ -15,7 +15,7 @@ export function useCustomToast() {
     return toast.error(message, {
       title,
       timeout: 6000,
-      icon: 'fas fa-times',
+      icon: false,
     });
   };
 
@@ -23,7 +23,7 @@ export function useCustomToast() {
     return toast.warning(message, {
       title,
       timeout: 5000,
-      icon: 'fas fa-exclamation-triangle',
+      icon: false,
     });
   };
 
@@ -31,7 +31,7 @@ export function useCustomToast() {
     return toast.info(message, {
       title,
       timeout: 4000,
-      icon: 'fas fa-info',
+      icon: false,
     });
   };
 
@@ -48,7 +48,7 @@ export function useCustomToast() {
     return toast.info(message, {
       title,
       timeout: 0, // No auto-close for loading
-      icon: 'fas fa-spinner fa-spin',
+      icon: false,
       closeOnClick: false,
       draggable: false,
     });

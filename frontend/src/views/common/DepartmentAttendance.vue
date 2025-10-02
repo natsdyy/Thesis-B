@@ -165,28 +165,28 @@
       <div class="card bg-base-100 shadow-xl">
         <div class="card-body">
           <div
-            class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-4 "
+            class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-4"
           >
-<div class="">
+            <div class="">
               <h3 class="card-title text-lg sm:text-xl">
-              My Attendance History
-              <span
-                v-if="isHistoryLoading"
-                class="loading loading-spinner loading-sm ml-2"
-              ></span>
-              <span
-                v-if="!isHistoryLoading && attendanceHistory.length > 0"
-                class="badge badge-ghost ml-2"
-              >
-                {{ attendanceHistory.length }} records
-              </span>
-            </h3>
-</div>
+                My Attendance History
+                <span
+                  v-if="isHistoryLoading"
+                  class="loading loading-spinner loading-sm ml-2"
+                ></span>
+                <span
+                  v-if="!isHistoryLoading && attendanceHistory.length > 0"
+                  class="badge badge-ghost ml-2"
+                >
+                  {{ attendanceHistory.length }} records
+                </span>
+              </h3>
+            </div>
             <div
               class="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full justify-end"
             >
               <div
-                class="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full sm:w-auto "
+                class="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full sm:w-auto"
               >
                 <select
                   v-model="historyRange"
@@ -476,6 +476,7 @@
     if (isNaN(hours)) return 0;
     return Math.round(hours * 60);
   });
+  const scheduleValidation = ref(null);
   const currentStatus = computed(() => {
     if (today.value?.is_on_leave) return 'on-leave';
     if (hasTimeIn.value && !hasTimeOut.value) return 'checked-in';
@@ -485,6 +486,22 @@
     if (today.value?.is_on_leave) return 'On Leave';
     if (hasTimeIn.value && !hasTimeOut.value) return 'Currently Checked In';
     if (hasTimeIn.value && hasTimeOut.value) return 'Checked Out';
+    // Respect schedule validation when available
+    if (
+      scheduleValidation.value &&
+      scheduleValidation.value.isValid === false &&
+      scheduleValidation.value.reason !== 'NO_SCHEDULE'
+    ) {
+      return (
+        scheduleValidation.value.message || 'Time-in outside scheduled hours'
+      );
+    }
+    if (
+      scheduleValidation.value &&
+      scheduleValidation.value.reason === 'NO_SCHEDULE'
+    ) {
+      return 'No Schedule Today';
+    }
     return 'Ready to Check In';
   });
   const lastTimeIn = computed(() => today.value?.time_in || null);
@@ -687,6 +704,14 @@
     try {
       isStatusLoading.value = true;
       await attendanceStore.fetchTodayAttendance();
+      // Validate against current PH time for better messaging
+      try {
+        const nowPh = getCurrentPhilippineTime();
+        scheduleValidation.value =
+          await attendanceStore.validateSchedule(nowPh);
+      } catch (e) {
+        scheduleValidation.value = null;
+      }
       lastUpdated.value = getCurrentPhilippineTime();
     } catch (error) {
       console.error('Error checking current status:', error);

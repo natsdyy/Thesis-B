@@ -465,6 +465,7 @@
   import LeaveRequest from '../../components/LeaveRequest.vue';
   import OvertimeRequest from '../../components/OvertimeRequest.vue';
   import { Clock, Timer, FileText } from 'lucide-vue-next';
+  import { getCurrentPhilippineTime } from '../../utils/timezoneUtils';
 
   // Stores
   const authStore = useAuthStore();
@@ -571,6 +572,7 @@
     if (isNaN(hours)) return 0;
     return Math.round(hours * 60);
   });
+  const scheduleValidation = ref(null);
   const currentStatus = computed(() => {
     if (today.value?.is_on_leave) return 'on-leave';
     if (hasTimeIn.value && !hasTimeOut.value) return 'checked-in';
@@ -580,6 +582,22 @@
     if (today.value?.is_on_leave) return 'On Leave';
     if (hasTimeIn.value && !hasTimeOut.value) return 'Currently Checked In';
     if (hasTimeIn.value && hasTimeOut.value) return 'Checked Out';
+    // Respect schedule validation when available
+    if (
+      scheduleValidation.value &&
+      scheduleValidation.value.isValid === false &&
+      scheduleValidation.value.reason !== 'NO_SCHEDULE'
+    ) {
+      return (
+        scheduleValidation.value.message || 'Time-in outside scheduled hours'
+      );
+    }
+    if (
+      scheduleValidation.value &&
+      scheduleValidation.value.reason === 'NO_SCHEDULE'
+    ) {
+      return 'No Schedule Today';
+    }
     return 'Ready to Check In';
   });
   const lastTimeIn = computed(() => today.value?.time_in || null);
@@ -837,6 +855,14 @@
     try {
       isStatusLoading.value = true;
       await attendanceStore.fetchTodayAttendance();
+      // Also validate schedule to drive accurate status messaging
+      try {
+        const nowPh = getCurrentPhilippineTime();
+        scheduleValidation.value =
+          await attendanceStore.validateSchedule(nowPh);
+      } catch (e) {
+        scheduleValidation.value = null;
+      }
       lastUpdated.value = new Date();
     } catch (error) {
       console.error('Error checking attendance status:', error);

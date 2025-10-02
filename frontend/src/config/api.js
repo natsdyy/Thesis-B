@@ -14,11 +14,12 @@ function resolveBaseURL() {
       window.location.origin.includes('localhost:8080') ||
       window.location.origin.includes('192.168.56.1:8080') ||
       window.location.origin.includes('192.168.18.5:8080') ||
-      window.location.origin.includes('192.168.254.116:8080')
+      window.location.origin.includes('192.168.254.116:8080') ||
+      window.location.origin.includes('192.168.68.111:8080')
     ) {
       // Use network IP for backend API so it's accessible from phones
       // Use the Wi-Fi network IP (192.168.18.5) as it has proper gateway
-      return 'http://192.168.18.5:5000/api';
+      return 'http://192.168.68.111:5000/api';
     }
     // For production domain, use the production backend
     if (window.location.origin.includes('countryside-steakhouse.site')) {

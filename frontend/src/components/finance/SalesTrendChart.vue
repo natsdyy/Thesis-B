@@ -9,6 +9,8 @@
     autoLoad: { type: Boolean, default: true },
     // When period === 'customMonth', expect YYYY-MM (e.g., '2025-09')
     customMonth: { type: String, default: '' },
+    // When viewing a specific remittance, provide its date range
+    remittanceDateRange: { type: Object, default: null }, // { dateFrom, dateTo }
   });
 
   const posStore = usePOSStore();
@@ -17,6 +19,19 @@
   const series = ref([]);
 
   const getDateRange = (period) => {
+    // If we have a remittance date range, use it instead of calculating from period
+    if (
+      props.remittanceDateRange &&
+      props.remittanceDateRange.dateFrom &&
+      props.remittanceDateRange.dateTo
+    ) {
+      return {
+        dateFrom: props.remittanceDateRange.dateFrom,
+        dateTo: props.remittanceDateRange.dateTo,
+        bucket: 'day', // Use day bucket for remittance-specific ranges
+      };
+    }
+
     const now = new Date();
     let start,
       end,
@@ -151,7 +166,12 @@
 
   // Auto-load when component mounts or props change
   watch(
-    [() => props.branchId, () => props.period, () => props.metric],
+    [
+      () => props.branchId,
+      () => props.period,
+      () => props.metric,
+      () => props.remittanceDateRange,
+    ],
     () => {
       if (props.autoLoad) {
         loadTrendData();

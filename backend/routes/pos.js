@@ -104,6 +104,9 @@ router.get("/orders", authenticateToken, async (req, res) => {
       order_type: req.query.order_type || null,
       date_from: req.query.date_from || null,
       date_to: req.query.date_to || null,
+      remittance_id: req.query.remittance_id
+        ? parseInt(req.query.remittance_id)
+        : null,
       limit: req.query.limit ? parseInt(req.query.limit) : 20,
       offset: req.query.offset ? parseInt(req.query.offset) : 0,
     };

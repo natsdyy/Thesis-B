@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const { authenticateToken } = require("../middleware/rbac");
 const BranchRemittance = require("../models/BranchRemittance");
+const CashMovement = require("../models/CashMovement");
+const FinanceBalance = require("../models/FinanceBalance");
 const POSOrder = require("../models/POSOrder");
 const { formatForDatabase } = require("../utils/timezoneUtils");
 
@@ -101,6 +103,19 @@ router.post("/remittances/:id/approve", authenticateToken, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const row = await BranchRemittance.approve(id, req.user.id);
+
+    // Auto-record cash movement and update finance balance when remittance is approved
+    try {
+      await CashMovement.recordInflowFromRemittance(row);
+      await FinanceBalance.updateFromRemittance(row);
+    } catch (cashError) {
+      console.warn(
+        "Failed to record cash movement/balance for approved remittance:",
+        cashError?.message || cashError
+      );
+      // Non-blocking: remittance still approved; records can be added manually
+    }
+
     res.json({ success: true, data: row });
   } catch (error) {
     console.error("Approve remittance failed:", error);

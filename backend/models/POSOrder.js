@@ -22,6 +22,7 @@ class POSOrder {
         order_type = null,
         date_from = null,
         date_to = null,
+        remittance_id = null,
         limit = 20,
         offset = 0,
       } = filters;
@@ -67,6 +68,10 @@ class POSOrder {
 
       if (date_to) {
         query = query.where("pso.created_at", "<=", date_to);
+      }
+
+      if (remittance_id) {
+        query = query.where("pso.remittance_id", remittance_id);
       }
 
       // Get total count

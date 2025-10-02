@@ -1,10 +1,8 @@
 import {
   LayoutDashboard,
   Users,
-  Clock,
-  DollarSign,
+  PhilippinePeso,
   Package,
-  ShoppingCart,
   Truck,
   UserCog,
   Factory,
@@ -13,12 +11,9 @@ import {
   Settings,
   ReceiptText,
   Store,
-  PhilippinePeso,
   ShoppingBag,
   Calendar,
   BookOpen,
-  ClipboardList,
-  Trash2,
   ChefHat,
   UserCheck,
 } from 'lucide-vue-next';
@@ -114,18 +109,17 @@ export const menuItems = [
     route: '/finance/dashboard',
     department: 'Finance',
   },
-  {
-    name: 'Approval Request',
-    icon: ReceiptText,
-    route: '/finance/request-approval',
-    department: 'Finance',
-  },
 
   {
-    name: 'Budget Release',
+    name: 'Financial Management',
     icon: PhilippinePeso,
-    route: '/finance/budget-release',
+    route: '/finance/financial-management',
     department: 'Finance',
+    subItems: [
+      { name: 'Approval Request', route: '/finance/request-approval' },
+      { name: 'Budget Release', route: '/finance/budget-release' },
+      { name: 'Cash Management', route: '/finance/cash-management' },
+    ],
   },
   {
     name: 'Sales',

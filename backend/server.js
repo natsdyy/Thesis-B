@@ -49,6 +49,8 @@ const posRoutes = require("./routes/pos");
 const overtimeRoutes = require("./routes/overtime");
 const leaveRoutes = require("./routes/leave");
 const financeRoutes = require("./routes/finance");
+const cashMovementRoutes = require("./routes/cashMovements");
+const financeBalanceRoutes = require("./routes/financeBalances");
 
 const app = express();
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 5000;
@@ -167,6 +169,8 @@ app.use("/api/pos", posRoutes);
 app.use("/api/overtime", overtimeRoutes);
 app.use("/api/leave", leaveRoutes);
 app.use("/api/finance", financeRoutes);
+app.use("/api/cash-movements", cashMovementRoutes);
+app.use("/api/finance-balances", financeBalanceRoutes);
 
 // Auto-expire job
 async function autoExpireJob() {

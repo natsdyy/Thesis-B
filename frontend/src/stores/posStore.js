@@ -582,6 +582,7 @@ export const usePOSStore = defineStore('pos', () => {
         offset = 0,
         date_from = null,
         date_to = null,
+        remittance_id = null,
       } = filters;
 
       const url = getApiUrl('/pos/orders');
@@ -592,6 +593,7 @@ export const usePOSStore = defineStore('pos', () => {
       if (offset) params.append('offset', offset);
       if (date_from) params.append('date_from', date_from);
       if (date_to) params.append('date_to', date_to);
+      if (remittance_id) params.append('remittance_id', remittance_id);
 
       const { data: response } = await axios.get(
         `${url}?${params.toString()}`,

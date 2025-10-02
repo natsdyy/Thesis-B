@@ -51,6 +51,8 @@
   const editingShift = ref(null);
   const shiftToDelete = ref(null);
   const loading = ref(false);
+  const loadingEmployees = ref(false);
+  const lastLoadTime = ref(0);
 
   // Search and filters
   const searchQuery = ref('');
@@ -71,10 +73,14 @@
   ]);
 
   // Get current user's department and role
-  const currentUserDepartment = computed(() => authStore.userDepartment);
+  const currentUserDepartment = computed(() => {
+    const dept = authStore.userDepartment || 'Department';
+    console.log('currentUserDepartment computed:', dept, 'type:', typeof dept);
+    return dept;
+  });
   const currentUserRole = computed(() => authStore.userRole);
   const isManager = computed(() => currentUserRole.value === 'Manager');
-  const isHR = computed(() => currentUserDepartment.value === 'Human Resource');
+  const isHR = computed(() => currentUserDepartment === 'Human Resource');
 
   // Form data for adding/editing shifts
   const shiftForm = ref({
@@ -264,34 +270,86 @@
   };
 
   const loadEmployees = async () => {
+    const now = Date.now();
+
+    // Prevent multiple simultaneous calls and rapid successive calls
+    if (loadingEmployees.value || now - lastLoadTime.value < 1000) {
+      console.log(
+        'Employee loading already in progress or too recent, skipping...'
+      );
+      return;
+    }
+
     try {
       loading.value = true;
+      loadingEmployees.value = true;
+      lastLoadTime.value = now;
+
+      // Wait for user data to be available
+      if (!authStore.user || !authStore.user.department) {
+        console.warn('User data not available, skipping employee loading');
+        allEmployees.value = [];
+        return;
+      }
+
+      // Debug logging
+      console.log('Current user:', authStore.user);
+      console.log('Current user department:', authStore.user.department);
+      console.log('Current user role:', authStore.user.role);
+      console.log('isHR:', isHR.value);
+      console.log('isManager:', isManager.value);
+      console.log('currentUserDepartment:', currentUserDepartment);
+
       // Fetch all employees without pagination
       await employeeStore.fetchEmployees(false, 1, 1000); // Large limit to get all employees
       const employees = employeeStore.employees || [];
+      console.log('All employees fetched:', employees);
 
       let departmentEmployees;
 
       // If user is HR, they can only see employees from their own department
       if (isHR.value) {
-        departmentEmployees = employees.filter(
-          (emp) =>
+        console.log(
+          'User is HR, filtering for department:',
+          currentUserDepartment.value
+        );
+        departmentEmployees = employees.filter((emp) => {
+          const matches =
             emp.department &&
             !emp.department.toLowerCase().includes('branch') &&
-            emp.department === currentUserDepartment.value
-        );
+            emp.department === currentUserDepartment.value;
+          console.log(
+            `Employee ${emp.first_name} ${emp.last_name}: department=${emp.department}, matches=${matches}`
+          );
+          return matches;
+        });
+        console.log('HR filtered employees:', departmentEmployees);
       }
       // If user is a manager, they can only see employees from their department
       else if (isManager.value && currentUserDepartment.value) {
-        departmentEmployees = employees.filter(
-          (emp) =>
+        console.log(
+          'User is Manager, filtering for department:',
+          currentUserDepartment.value
+        );
+        departmentEmployees = employees.filter((emp) => {
+          const matches =
             emp.department &&
             !emp.department.toLowerCase().includes('branch') &&
-            emp.department === currentUserDepartment.value
-        );
+            emp.department === currentUserDepartment.value;
+          console.log(
+            `Employee ${emp.first_name} ${emp.last_name}: department=${emp.department}, matches=${matches}`
+          );
+          return matches;
+        });
+        console.log('Manager filtered employees:', departmentEmployees);
       }
       // Default fallback - no employees
       else {
+        console.log('User is neither HR nor Manager, or no department:', {
+          isHR: isHR.value,
+          isManager: isManager.value,
+          department: currentUserDepartment.value,
+        });
         departmentEmployees = [];
       }
 
@@ -301,6 +359,7 @@
       showError('Failed to load employees');
     } finally {
       loading.value = false;
+      loadingEmployees.value = false;
     }
   };
 
@@ -501,6 +560,21 @@
 
   // Initialize
   onMounted(async () => {
+    // Wait for auth store to be properly initialized
+    let attempts = 0;
+    while (!authStore.user && attempts < 10) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      attempts++;
+    }
+
+    if (!authStore.user) {
+      console.error('User data not available after waiting');
+      showError('Unable to load user data. Please refresh the page.');
+      return;
+    }
+
+    console.log('User data loaded:', authStore.user);
+
     // Check if user has permission to access schedule management
     if (!isHR.value && !isManager.value) {
       showError(
@@ -530,7 +604,10 @@
       console.warn('Could not load leave data:', error);
     }
 
-    await Promise.all([loadEmployees(), loadShiftTypes(), loadSchedules()]);
+    // Load data sequentially to avoid race conditions
+    await loadShiftTypes();
+    await loadEmployees();
+    await loadSchedules();
 
     // Show welcome message
     showInfo(
@@ -549,11 +626,11 @@
       <div>
         <h2 class="text-2xl font-bold text-primaryColor flex items-center">
           <Calendar class="w-6 h-6 mr-2" />
-          {{ `${currentUserDepartment.value || 'Department'} Schedules` }}
+          {{ `${currentUserDepartment || 'Department'} Schedules` }}
         </h2>
         <p class="text-gray-600 mt-1">
           {{
-            `Manage shift assignments for ${currentUserDepartment.value || 'your department'} employees`
+            `Manage shift assignments for ${currentUserDepartment || 'your department'} employees`
           }}
         </p>
         <button
@@ -621,13 +698,13 @@
               disabled
             >
               <option value="">
-                {{ `${currentUserDepartment.value || 'Your Department'} Only` }}
+                {{ `${currentUserDepartment || 'Your Department'} Only` }}
               </option>
               <option
-                :value="currentUserDepartment.value || 'Your Department'"
-                :key="currentUserDepartment.value"
+                :value="currentUserDepartment || 'Your Department'"
+                :key="currentUserDepartment"
               >
-                {{ currentUserDepartment.value || 'Your Department' }}
+                {{ currentUserDepartment || 'Your Department' }}
               </option>
             </select>
           </div>
@@ -923,13 +1000,11 @@
     <div v-if="filteredEmployees.length === 0" class="text-center py-12">
       <Users class="w-16 h-16 mx-auto text-gray-400 mb-4" />
       <h3 class="text-lg font-medium text-gray-900 mb-2">
-        {{
-          `No ${currentUserDepartment.value || 'department'} employees found`
-        }}
+        {{ `No ${currentUserDepartment || 'department'} employees found` }}
       </h3>
       <p class="text-gray-600">
         {{
-          `Try adjusting your search criteria. Only ${currentUserDepartment.value || 'your department'} employees are shown here.`
+          `Try adjusting your search criteria. Only ${currentUserDepartment || 'your department'} employees are shown here.`
         }}
       </p>
     </div>

@@ -56,7 +56,7 @@
                 Today's Schedule
               </h4>
               <button
-                @click="fetchScheduleInfo"
+                @click="refreshScheduleAndValidate"
                 :disabled="scheduleLoading"
                 class="btn btn-xs btn-outline"
               >
@@ -736,6 +736,10 @@
   import axios from 'axios';
   import QRCode from 'qrcode';
   import {
+    getCurrentPhilippineTime,
+    formatForAPI,
+  } from '../utils/timezoneUtils';
+  import {
     X,
     Clock,
     LogIn,
@@ -1178,9 +1182,9 @@
         branch_name:
           branchInfo.value?.name || employee?.branch_name || 'Branch',
         // Use PH time for backend alignment
-        timestamp: toPhIso(new Date()),
+        timestamp: formatForAPI(new Date()),
         location: 'Mobile App QR Code',
-        valid_until: toPhIso(new Date(Date.now() + 5 * 60 * 1000)), // 5 minutes from now
+        valid_until: formatForAPI(new Date(Date.now() + 5 * 60 * 1000)), // 5 minutes from now
       };
 
       console.log('QR Data:', qrData);
@@ -1338,10 +1342,27 @@
 
   const validateCurrentSchedule = async () => {
     try {
-      scheduleValidation.value = await attendanceStore.validateSchedule();
+      // Use Philippine timezone for consistent validation
+      const currentPhilippineTime = getCurrentPhilippineTime();
+      console.log('Validating schedule with time:', currentPhilippineTime);
+
+      const validationResult = await attendanceStore.validateSchedule(
+        currentPhilippineTime
+      );
+      console.log('Schedule validation result:', validationResult);
+      scheduleValidation.value = validationResult;
     } catch (error) {
       console.error('Error validating schedule:', error);
       scheduleValidation.value = null;
+    }
+  };
+
+  const refreshScheduleAndValidate = async () => {
+    try {
+      await fetchScheduleInfo();
+      await validateCurrentSchedule();
+    } catch (error) {
+      console.error('Error refreshing schedule and validation:', error);
     }
   };
 
@@ -1377,9 +1398,27 @@
         );
 
         // Check if this is a new attendance record (created in the last 60 seconds)
-        const recordTime = new Date(todayData.created_at);
-        const now = new Date();
-        const timeDiff = (now - recordTime) / 1000; // seconds
+        let timeDiff = NaN;
+        console.log('Today data object:', todayData);
+        console.log('Created at field:', todayData.created_at);
+
+        if (
+          todayData.created_at &&
+          todayData.created_at !== null &&
+          todayData.created_at !== undefined
+        ) {
+          const recordTime = new Date(todayData.created_at);
+          if (!isNaN(recordTime.getTime())) {
+            const now = new Date();
+            timeDiff = (now - recordTime) / 1000; // seconds
+            console.log('Record time:', recordTime);
+            console.log('Current time:', now);
+          } else {
+            console.log('Invalid created_at date:', todayData.created_at);
+          }
+        } else {
+          console.log('No valid created_at field found');
+        }
 
         console.log('Time difference:', timeDiff, 'seconds');
 
@@ -1471,9 +1510,9 @@
         branch_id: employee?.branch_id,
         branch_name:
           branchInfo.value?.name || employee?.branch_name || 'Branch',
-        timestamp: toPhIso(new Date()),
+        timestamp: formatForAPI(new Date()),
         location: 'Direct Attendance Processing',
-        valid_until: toPhIso(new Date(Date.now() + 5 * 60 * 1000)),
+        valid_until: formatForAPI(new Date(Date.now() + 5 * 60 * 1000)),
       };
 
       console.log('Processing direct attendance:', qrData);
@@ -1513,12 +1552,17 @@
   // Watch for modal open/close
   watch(
     () => props.isOpen,
-    (isOpen) => {
+    async (isOpen) => {
       if (isOpen) {
         console.log('Modal opened, checking status...');
         checkCurrentStatus();
-        fetchScheduleInfo();
-        validateCurrentSchedule();
+        // Fetch schedule info first, then validate
+        try {
+          await fetchScheduleInfo();
+          await validateCurrentSchedule();
+        } catch (error) {
+          console.error('Error initializing schedule:', error);
+        }
         startLocationWatching();
         startAttendancePolling(); // Start polling for new attendance records
         // Automatically check location when modal opens

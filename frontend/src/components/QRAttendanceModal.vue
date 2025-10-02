@@ -8,43 +8,7 @@
         </button>
       </div>
 
-      <!-- Current Status -->
-      <div class="mb-6">
-        <div
-          class="alert"
-          :class="
-            currentStatus === 'on-leave'
-              ? 'bg-warning/10 border-warning'
-              : 'bg-success/10 border-success'
-          "
-        >
-          <Clock class="w-5 h-5" />
-          <div>
-            <div class="font-medium">Current Status</div>
-            <div class="text-sm opacity-80">
-              {{
-                currentStatus === 'on-leave'
-                  ? 'On Leave'
-                  : currentStatus === 'checked-out'
-                    ? 'Ready to Time In'
-                    : 'Ready to Time Out'
-              }}
-            </div>
-            <div
-              v-if="isLateToday && tardinessMinutesToday > 0"
-              class="text-xs mt-1 text-warning"
-            >
-              Late by {{ tardinessMinutesToday }} minute(s)
-            </div>
-            <div
-              v-if="currentStatus === 'on-leave'"
-              class="text-xs mt-1 text-warning"
-            >
-              Attendance tracking is disabled during your leave period
-            </div>
-          </div>
-        </div>
-      </div>
+
 
       <!-- Schedule Information -->
       <div class="mb-6">
@@ -56,7 +20,7 @@
                 Today's Schedule
               </h4>
               <button
-                @click="fetchScheduleInfo"
+                @click="refreshScheduleAndValidate"
                 :disabled="scheduleLoading"
                 class="btn btn-xs btn-outline"
               >
@@ -736,6 +700,10 @@
   import axios from 'axios';
   import QRCode from 'qrcode';
   import {
+    getCurrentPhilippineTime,
+    formatForAPI,
+  } from '../utils/timezoneUtils';
+  import {
     X,
     Clock,
     LogIn,
@@ -768,16 +736,35 @@
   const locationStatus = ref(null);
   const branchInfo = ref(null);
 
-  // Helper: is the given timestamp on the same local day as now?
+  // Helpers for Asia/Manila time
+  const toPhYmd = (date) =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date(date));
+
+  const toPhIso = (date) => {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    })
+      .formatToParts(new Date(date))
+      .reduce((acc, p) => ((acc[p.type] = p.value), acc), {});
+    return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}+08:00`;
+  };
+
+  // Helper: is the given timestamp on the same PH day as now?
   const isSameLocalDay = (timestamp) => {
     if (!timestamp) return false;
-    const d = new Date(timestamp);
-    const now = new Date();
-    return (
-      d.getFullYear() === now.getFullYear() &&
-      d.getMonth() === now.getMonth() &&
-      d.getDate() === now.getDate()
-    );
+    return toPhYmd(timestamp) === toPhYmd(new Date());
   };
 
   // Reactive computed property that automatically updates current status
@@ -789,12 +776,14 @@
         return 'on-leave';
       }
 
-      // If time_in exists but it's not for today (local), treat as not checked in
-      const hasTodayTimeIn = isSameLocalDay(todayData.time_in);
-      if (!hasTodayTimeIn) {
-        return 'checked-out';
+      // Check if employee has a time_in (regardless of which day it was created)
+      // For Night Shifts, time_in might be from yesterday but still active
+      if (todayData.time_in && !todayData.time_out) {
+        return 'checked-in';
       }
-      return todayData.time_out ? 'checked-out' : 'checked-in';
+
+      // If no time_in or already timed out, they're checked out
+      return 'checked-out';
     }
     return 'checked-out';
   });
@@ -806,6 +795,33 @@
   });
   const tardinessMinutesToday = computed(() => {
     return Number(attendanceStore.todayAttendance?.tardiness_minutes || 0);
+  });
+
+  // Derive detailed status text similar to BranchAttendance
+  const todayData = computed(() => attendanceStore.todayAttendance);
+  const hasTimeIn = computed(() => Boolean(todayData.value?.time_in));
+  const hasTimeOut = computed(() => Boolean(todayData.value?.time_out));
+  const statusText = computed(() => {
+    if (todayData.value?.is_on_leave) return 'On Leave';
+    if (hasTimeIn.value && !hasTimeOut.value) return 'Currently Checked In';
+    if (hasTimeIn.value && hasTimeOut.value) return 'Checked Out';
+    // If checked-out, respect schedule validation when present
+    if (
+      scheduleValidation.value &&
+      scheduleValidation.value.isValid === false &&
+      scheduleValidation.value.reason !== 'NO_SCHEDULE'
+    ) {
+      return (
+        scheduleValidation.value.message || 'Time-in outside scheduled hours'
+      );
+    }
+    if (
+      scheduleValidation.value &&
+      scheduleValidation.value.reason === 'NO_SCHEDULE'
+    ) {
+      return 'No Schedule Today';
+    }
+    return 'Ready to Check In';
   });
 
   // Watch for changes in the store and update local status
@@ -905,12 +921,14 @@
         start = new Date(startOfToday);
         start.setDate(start.getDate() - diff);
       } else {
-        start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        // Expand date range to include previous month to show records near month boundaries
+        start = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
       }
 
       // Fetch report (current user) via store
-      const startIso = start.toISOString();
-      const endIso = end.toISOString();
+      // Use Asia/Manila boundaries
+      const startIso = toPhIso(start);
+      const endIso = toPhIso(end);
       const currentUserId =
         authStore.user?.id || authStore.user?.employee_internal_id || null;
       const report = await attendanceStore.getAttendanceReport(
@@ -1154,9 +1172,10 @@
         branch_id: employee?.branch_id,
         branch_name:
           branchInfo.value?.name || employee?.branch_name || 'Branch',
-        timestamp: new Date().toISOString(),
+        // Use PH time for backend alignment
+        timestamp: formatForAPI(new Date()),
         location: 'Mobile App QR Code',
-        valid_until: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // 5 minutes from now
+        valid_until: formatForAPI(new Date(Date.now() + 5 * 60 * 1000)), // 5 minutes from now
       };
 
       console.log('QR Data:', qrData);
@@ -1275,9 +1294,9 @@
         if (todayData.is_on_leave) {
           currentStatus.value = 'on-leave';
         } else {
-          // Consider checked-in ONLY if there is a time_in for today and no time_out yet
-          const hasTodayTimeIn = isSameLocalDay(todayData.time_in);
-          if (hasTodayTimeIn && !todayData.time_out) {
+          // Check if employee has a time_in (regardless of which day it was created)
+          // For Night Shifts, time_in might be from yesterday but still active
+          if (todayData.time_in && !todayData.time_out) {
             currentStatus.value = 'checked-in';
           } else {
             currentStatus.value = 'checked-out';
@@ -1314,10 +1333,27 @@
 
   const validateCurrentSchedule = async () => {
     try {
-      scheduleValidation.value = await attendanceStore.validateSchedule();
+      // Use Philippine timezone for consistent validation
+      const currentPhilippineTime = getCurrentPhilippineTime();
+      console.log('Validating schedule with time:', currentPhilippineTime);
+
+      const validationResult = await attendanceStore.validateSchedule(
+        currentPhilippineTime
+      );
+      console.log('Schedule validation result:', validationResult);
+      scheduleValidation.value = validationResult;
     } catch (error) {
       console.error('Error validating schedule:', error);
       scheduleValidation.value = null;
+    }
+  };
+
+  const refreshScheduleAndValidate = async () => {
+    try {
+      await fetchScheduleInfo();
+      await validateCurrentSchedule();
+    } catch (error) {
+      console.error('Error refreshing schedule and validation:', error);
     }
   };
 
@@ -1353,9 +1389,27 @@
         );
 
         // Check if this is a new attendance record (created in the last 60 seconds)
-        const recordTime = new Date(todayData.created_at);
-        const now = new Date();
-        const timeDiff = (now - recordTime) / 1000; // seconds
+        let timeDiff = NaN;
+        console.log('Today data object:', todayData);
+        console.log('Created at field:', todayData.created_at);
+
+        if (
+          todayData.created_at &&
+          todayData.created_at !== null &&
+          todayData.created_at !== undefined
+        ) {
+          const recordTime = new Date(todayData.created_at);
+          if (!isNaN(recordTime.getTime())) {
+            const now = new Date();
+            timeDiff = (now - recordTime) / 1000; // seconds
+            console.log('Record time:', recordTime);
+            console.log('Current time:', now);
+          } else {
+            console.log('Invalid created_at date:', todayData.created_at);
+          }
+        } else {
+          console.log('No valid created_at field found');
+        }
 
         console.log('Time difference:', timeDiff, 'seconds');
 
@@ -1447,9 +1501,9 @@
         branch_id: employee?.branch_id,
         branch_name:
           branchInfo.value?.name || employee?.branch_name || 'Branch',
-        timestamp: new Date().toISOString(),
+        timestamp: formatForAPI(new Date()),
         location: 'Direct Attendance Processing',
-        valid_until: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        valid_until: formatForAPI(new Date(Date.now() + 5 * 60 * 1000)),
       };
 
       console.log('Processing direct attendance:', qrData);
@@ -1489,12 +1543,17 @@
   // Watch for modal open/close
   watch(
     () => props.isOpen,
-    (isOpen) => {
+    async (isOpen) => {
       if (isOpen) {
         console.log('Modal opened, checking status...');
         checkCurrentStatus();
-        fetchScheduleInfo();
-        validateCurrentSchedule();
+        // Fetch schedule info first, then validate
+        try {
+          await fetchScheduleInfo();
+          await validateCurrentSchedule();
+        } catch (error) {
+          console.error('Error initializing schedule:', error);
+        }
         startLocationWatching();
         startAttendancePolling(); // Start polling for new attendance records
         // Automatically check location when modal opens

@@ -48,7 +48,10 @@ router.get("/", authenticateToken, async (req, res) => {
           message: "Branch ID is required for branch employees",
         });
       }
-      query = query.where("es.branch_id", branch_id);
+      // Include department-level schedules (es.branch_id IS NULL) so employees see assignments made at department scope
+      query = query.andWhere(function () {
+        this.where("es.branch_id", branch_id).orWhereNull("es.branch_id");
+      });
     }
 
     // Filter by date range if provided

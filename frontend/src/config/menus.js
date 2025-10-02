@@ -99,6 +99,13 @@ export const menuItems = [
     route: '/scm/suppliers',
     department: 'SCM',
   },
+  {
+    name: 'Employee Schedules',
+    icon: Calendar,
+    route: '/hr/schedules',
+    department: 'SCM',
+    managerOnly: true,
+  },
 
   // Finance Department
   {
@@ -125,6 +132,13 @@ export const menuItems = [
     icon: BarChart3,
     route: '/finance/sales',
     department: 'Finance',
+  },
+  {
+    name: 'Employee Schedules',
+    icon: Calendar,
+    route: '/hr/schedules',
+    department: 'Finance',
+    managerOnly: true,
   },
 
   // Production Department
@@ -161,6 +175,13 @@ export const menuItems = [
     route: '/production/production-inventory',
     department: 'Production',
   },
+  {
+    name: 'Employee Schedules',
+    icon: Calendar,
+    route: '/hr/schedules',
+    department: 'Production',
+    managerOnly: true,
+  },
 
   // Customer Relationship
   {
@@ -174,6 +195,13 @@ export const menuItems = [
     icon: Users,
     route: '/crm/customers',
     department: 'CRM',
+  },
+  {
+    name: 'Employee Schedules',
+    icon: Calendar,
+    route: '/hr/schedules',
+    department: 'CRM',
+    managerOnly: true,
   },
 
   // Admin Department (Super Admin only)

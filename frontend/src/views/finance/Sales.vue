@@ -3,12 +3,17 @@
   import { useBranchContextStore } from '../../stores/branchContextStore';
   import SalesTrendsChart from '../../components/branch/SalesTrendsChart.vue';
   import SalesTrendChart from '../../components/finance/SalesTrendChart.vue';
+  import SalesAnalytics from '../../components/finance/SalesAnalytics.vue';
   import RemitOrderDetailsModal from '../../components/finance/RemitOrderDetailsModal.vue';
   import RemittancesModal from '../../components/finance/RemittancesModal.vue';
   import { usePOSStore } from '../../stores/posStore';
+  import { useBranchStore } from '../../stores/branchStore';
+  import { useCustomToast } from '../../composables/useCustomToast.js';
 
   const branchContext = useBranchContextStore();
+  const branchStore = useBranchStore();
   const posStore = usePOSStore();
+  const { showToast } = useCustomToast();
 
   const isSuperAdmin = computed(() => branchContext.isSuperAdmin);
   const availableBranches = computed(
@@ -18,9 +23,12 @@
 
   // Filters
   const period = ref('today');
+  // Selected custom month in YYYY-MM when period === 'customMonth'
+  const customMonth = ref(
+    `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+  );
   const selectedBranchId = ref(null);
   const activeTab = ref('overview'); // overview | branches | analytics
-  const overallMetric = ref('remitted');
   // Data source for loading entries: 'remittances' or 'salesTrends'
   const dataSource = ref('remittances');
   const page = ref(1);
@@ -50,8 +58,10 @@
 
   // Fallback branches for selector
   const displayBranches = computed(() => {
-    const list = availableBranches.value || [];
-    if (Array.isArray(list) && list.length) return list;
+    const ctxList = availableBranches.value || [];
+    if (Array.isArray(ctxList) && ctxList.length) return ctxList;
+    const activeList = branchStore.activeBranches || [];
+    if (Array.isArray(activeList) && activeList.length) return activeList;
     return currentBranch.value ? [currentBranch.value] : [];
   });
 
@@ -60,6 +70,13 @@
       await branchContext.initializeBranchContext();
     }
     selectedBranchId.value = currentBranch.value?.id ?? null;
+    // Fallback for Super Admin: if no branches loaded, fetch active branches
+    if (
+      (availableBranches.value?.length || 0) === 0 &&
+      branchContext.isSuperAdmin
+    ) {
+      await branchStore.fetchActiveBranches();
+    }
     await loadRealRemits();
   };
 
@@ -127,6 +144,29 @@
           );
           return build(start, end, 'day');
         }
+        if (period.value === 'customMonth') {
+          const ym = String(customMonth.value || '').trim();
+          const [yStr, mStr] = ym.split('-');
+          const year = Number(yStr);
+          const monthIndex = Number(mStr) - 1;
+          const start =
+            Number.isFinite(year) && Number.isFinite(monthIndex)
+              ? new Date(year, monthIndex, 1, 0, 0, 0, 0)
+              : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+          const end =
+            Number.isFinite(year) && Number.isFinite(monthIndex)
+              ? new Date(year, monthIndex + 1, 0, 23, 59, 59, 999)
+              : new Date(
+                  now.getFullYear(),
+                  now.getMonth() + 1,
+                  0,
+                  23,
+                  59,
+                  59,
+                  999
+                );
+          return build(start, end, 'day');
+        }
         if (period.value === 'month') {
           const start = new Date(
             now.getFullYear(),
@@ -163,8 +203,18 @@
       };
 
       const { from, to, bucket, startMs, endMs } = getDateRange();
-      const periodTypeMap = { today: 'today', week: 'week', month: 'month' };
-      const desiredType = periodTypeMap[period.value] || null;
+      const periodTypeMap = {
+        today: 'today',
+        week: 'week',
+        month: 'month',
+        customMonth: 'month',
+      };
+      const desiredType =
+        period.value === 'customMonth'
+          ? null
+          : periodTypeMap[period.value] || null;
+      const normalizedPeriod =
+        period.value === 'customMonth' ? 'month' : period.value;
 
       const fetchers = {
         remittances: async (br) => {
@@ -209,7 +259,6 @@
                   Number(r.refunded_amount || 0) -
                   Number(r.net_sales || 0) || 0
               );
-              S;
               return {
                 id: String(r.id),
                 branch_id: r.branch_id || br.id,
@@ -240,12 +289,12 @@
           const data = await posStore.fetchSalesTrends(br.id, {
             dateFrom: from,
             dateTo: to,
-            period: period.value,
+            period: normalizedPeriod,
             bucket: 'auto',
           });
           const labels = Array.isArray(data.labels) ? data.labels : [];
           const grossArr = data.gross_sales || [];
-          const refundsArr = data.refunds || [];
+          const refundsArr = data.refunds || data.refunded_amount || [];
           const disposedArr = data.disposed || [];
           const netArr = data.net_sales || [];
           const remitArr = data.remitted_amount || [];
@@ -267,7 +316,10 @@
         },
       };
 
-      const activeFetcher = fetchers[dataSource.value] || fetchers.remittances;
+      const activeFetcher =
+        period.value === 'customMonth'
+          ? fetchers.salesTrends
+          : fetchers[dataSource.value] || fetchers.remittances;
       let rows = [];
       if (effective.length > 0) {
         rows = await Promise.all(effective.map((br) => activeFetcher(br)));
@@ -376,7 +428,7 @@
             posStore.fetchSalesTrends(r.branch_id, {
               dateFrom: from,
               dateTo: to,
-              period: period.value,
+              period: normalizedPeriod,
               bucket: 'auto',
             })
           )
@@ -402,7 +454,7 @@
           const add = (arr, src) =>
             arr.map((v, i) => v + Number(src?.[i] || 0));
           sum.remitted = add(sum.remitted, t?.remitted_amount);
-          sum.refunds = add(sum.refunds, t?.refunds);
+          sum.refunds = add(sum.refunds, t?.refunds || t?.refunded_amount);
           sum.disposed = add(sum.disposed, t?.disposed);
           sum.net = add(sum.net, t?.net_sales);
         });
@@ -423,6 +475,9 @@
           net: [],
         };
       }
+    } catch (error) {
+      console.error('Failed to load remittances:', error);
+      showToast('Failed to load sales data', 'error');
     } finally {
       loading.value = false;
     }
@@ -455,20 +510,6 @@
       totals.remitted += Number(e.remitted_amount) || 0;
     });
     return totals;
-  });
-
-  const analyticsLabels = computed(() => realAnalytics.value.labels || []);
-
-  const analyticsSeries = computed(() => {
-    const a = realAnalytics.value;
-    if (!a || !Array.isArray(a.labels)) return [];
-    return overallMetric.value === 'refunds'
-      ? a.refunds
-      : overallMetric.value === 'disposed'
-        ? a.disposed
-        : overallMetric.value === 'net'
-          ? a.net
-          : a.remitted;
   });
 
   // Recent activity for Overview (latest entries across branches)
@@ -569,6 +610,19 @@
         59,
         999
       );
+    } else if (period.value === 'customMonth') {
+      const ym = String(customMonth.value || '').trim();
+      const [yStr, mStr] = ym.split('-');
+      const year = Number(yStr);
+      const monthIndex = Number(mStr) - 1;
+      start =
+        Number.isFinite(year) && Number.isFinite(monthIndex)
+          ? new Date(year, monthIndex, 1, 0, 0, 0, 0)
+          : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      end =
+        Number.isFinite(year) && Number.isFinite(monthIndex)
+          ? new Date(year, monthIndex + 1, 0, 23, 59, 59, 999)
+          : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
     } else if (period.value === 'month') {
       start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
       end = new Date(
@@ -603,6 +657,7 @@
       gross: 0,
       net: 0,
       refunds: 0,
+      loss: 0,
       disposed: 0,
       remitted: 0,
       voidedAmount: 0,
@@ -614,6 +669,7 @@
       totals.disposed += Number(e.disposed) || 0;
       totals.remitted += Number(e.remitted_amount) || 0;
       totals.voidedAmount += Number(e.voided_amount) || 0;
+      totals.loss += Number(e.voided_amount) || 0;
     });
     return totals;
   };
@@ -679,6 +735,50 @@
           999
         );
         bucket = 'day';
+      } else if (period.value === 'customMonth') {
+        const ym = String(customMonth.value || '').trim();
+        const [yStr, mStr] = ym.split('-');
+        const year = Number(yStr);
+        const monthIndex = Number(mStr) - 1;
+        start =
+          Number.isFinite(year) && Number.isFinite(monthIndex)
+            ? new Date(year, monthIndex, 1, 0, 0, 0, 0)
+            : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        end =
+          Number.isFinite(year) && Number.isFinite(monthIndex)
+            ? new Date(year, monthIndex + 1, 0, 23, 59, 59, 999)
+            : new Date(
+                now.getFullYear(),
+                now.getMonth() + 1,
+                0,
+                23,
+                59,
+                59,
+                999
+              );
+        bucket = 'day';
+      } else if (period.value === 'customMonth') {
+        const ym = String(customMonth.value || '').trim();
+        const [yStr, mStr] = ym.split('-');
+        const year = Number(yStr);
+        const monthIndex = Number(mStr) - 1;
+        start =
+          Number.isFinite(year) && Number.isFinite(monthIndex)
+            ? new Date(year, monthIndex, 1, 0, 0, 0, 0)
+            : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        end =
+          Number.isFinite(year) && Number.isFinite(monthIndex)
+            ? new Date(year, monthIndex + 1, 0, 23, 59, 59, 999)
+            : new Date(
+                now.getFullYear(),
+                now.getMonth() + 1,
+                0,
+                23,
+                59,
+                59,
+                999
+              );
+        bucket = 'day';
       } else if (period.value === 'month') {
         start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
         end = new Date(
@@ -710,7 +810,7 @@
         {
           dateFrom: start.toISOString(),
           dateTo: end.toISOString(),
-          period: period.value,
+          period: period.value === 'customMonth' ? 'month' : period.value,
           bucket,
         }
       );
@@ -735,6 +835,9 @@
       detailsSeries.value = labels.map((_, i) =>
         Math.round(Number(arr[i] || 0))
       );
+    } catch (error) {
+      console.error('Failed to build details chart:', error);
+      showToast('Failed to load chart data', 'error');
     } finally {
       detailsLoading.value = false;
     }
@@ -769,11 +872,13 @@
         currentBranch.value?.id !== row.branch_id
       ) {
         await branchContext.setCurrentBranch(row.branch_id);
+        showToast('Branch context updated', 'success');
       }
       selectedRemitBranchId.value = row?.branch_id || null;
       showRemitModal.value = true;
     } catch (e) {
       console.error('Failed to open remit modal for branch', e);
+      showToast('Failed to open remittance modal', 'error');
       selectedRemitBranchId.value = row?.branch_id || null;
       showRemitModal.value = true; // still open with current context as fallback
     }
@@ -791,7 +896,7 @@
 <template>
   <div class="space-y-6">
     <div
-      class="flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+      class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 justify-between items-center"
     >
       <div>
         <h1 class="text-2xl font-bold text-primaryColor">Remitted Sales</h1>
@@ -799,19 +904,34 @@
           Finance view of per-branch remittances
         </p>
       </div>
-      <div class="flex flex-wrap gap-2 items-center">
-        <select
-          v-model="period"
-          @change="loadRealRemits"
-          class="select select-bordered select-sm"
-        >
-          <option value="today">Today</option>
-          <option value="week">This Week</option>
-          <option value="month">This Month</option>
-          <option value="year">This Year</option>
-        </select>
+      <div class="flex flex-wrap items-center gap-3">
+        <!-- Period Select -->
+        <div>
+          <select
+            v-model="period"
+            @change="loadRealRemits"
+            class="select select-bordered select-sm"
+          >
+            <option value="today">Today</option>
+            <option value="week">This Week</option>
+            <option value="customMonth">Custom Month</option>
+            <option value="month">This Month</option>
+            <option value="year">This Year</option>
+          </select>
+        </div>
+
+        <!-- Custom Month Input -->
+        <div v-if="period === 'customMonth'">
+          <input
+            type="month"
+            class="input input-bordered input-sm"
+            v-model="customMonth"
+            @change="loadRealRemits"
+          />
+        </div>
+
+        <!-- Branch Filter -->
         <div class="flex items-center gap-2">
-          <label class="text-sm text-gray-600">Branch</label>
           <select
             class="select select-bordered select-sm"
             :value="selectedBranchId"
@@ -823,13 +943,17 @@
             </option>
           </select>
         </div>
-        <button
-          class="btn btn-sm btn-outline"
-          @click="showFinanceRemittances = true"
-        >
-          <font-awesome-icon icon="fa-solid fa-file-invoice" class="mr-2" />
-          Review Remittances
-        </button>
+
+        <!-- Review Button -->
+        <div class="ml-auto">
+          <button
+            class="btn btn-sm btn-outline"
+            @click="showFinanceRemittances = true"
+          >
+            <font-awesome-icon icon="fa-solid fa-file-invoice" class="mr-2" />
+            Review Remittances
+          </button>
+        </div>
       </div>
     </div>
 
@@ -1015,6 +1139,7 @@
                     <th class="text-xs">Gross Sales</th>
                     <th class="text-xs">Net Sales</th>
                     <th class="text-xs">Refunds</th>
+                    <th class="text-xs">Loss (Voids)</th>
                     <th class="text-xs">Void</th>
                     <th class="text-xs">Remitted</th>
                     <th class="text-xs">Action</th>
@@ -1041,7 +1166,10 @@
                       }}
                     </td>
                     <td class="text-xs">
-                      {{ entry.refunds.toLocaleString() }}
+                      ₱{{ Number(entry.refunds || 0).toLocaleString() }}
+                    </td>
+                    <td class="text-xs">
+                      ₱{{ Number(entry.voided_amount || 0).toLocaleString() }}
                     </td>
                     <td class="text-xs">{{ entry.disposed }}</td>
                     <td class="text-xs font-semibold text-primaryColor">
@@ -1143,6 +1271,12 @@
                     }}</span>
                   </div>
                   <div class="grid grid-cols-2">
+                    <span class="text-gray-600">Loss (Voids)</span>
+                    <span class="text-right"
+                      >₱{{ getRowTotals(row).loss.toLocaleString() }}</span
+                    >
+                  </div>
+                  <div class="grid grid-cols-2">
                     <span class="text-gray-600">Voided Amount</span>
                     <span class="text-right"
                       >₱{{
@@ -1176,6 +1310,7 @@
                     :period="period"
                     :metric="detailsMetric"
                     :auto-load="true"
+                    :custom-month="customMonth"
                   >
                     <template #default="{ labels, series, loading }">
                       <div v-if="loading" class="flex justify-center py-8">
@@ -1212,35 +1347,9 @@
         </div>
       </div>
 
-      <!-- ANALYTICS TAB (duplicate trend selector for convenience) -->
-      <div v-show="activeTab === 'analytics'" class="space-y-4">
-        <div class="card bg-white shadow border border-black/10">
-          <div class="card-body">
-            <div class="flex items-center justify-between mb-2">
-              <h3 class="text-sm font-medium text-gray-700">Overall Trend</h3>
-              <select
-                class="select select-bordered select-xs"
-                v-model="overallMetric"
-              >
-                <option value="remitted">Remitted</option>
-                <option value="refunds">Refunds</option>
-                <option value="disposed">Void</option>
-                <option value="net">Net Sales</option>
-              </select>
-            </div>
-            <SalesTrendsChart
-              :labels="analyticsLabels"
-              :data="analyticsSeries"
-              :metric="
-                overallMetric === 'remitted' || overallMetric === 'net'
-                  ? 'totalSales'
-                  : overallMetric === 'refunds'
-                    ? 'refundedAmount'
-                    : 'totalDisposed'
-              "
-            />
-          </div>
-        </div>
+      <!-- ANALYTICS TAB -->
+      <div v-show="activeTab === 'analytics'">
+        <SalesAnalytics :analytics-data="realAnalytics" :loading="loading" />
       </div>
     </div>
 
@@ -1248,6 +1357,7 @@
       :show="showRemitModal"
       :period="period"
       :branch-id="selectedRemitBranchId || branchIdToShow"
+      :custom-month="customMonth"
       @close="closeRemitModal"
     />
     <RemittancesModal

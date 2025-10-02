@@ -352,6 +352,7 @@
                 <span class="label-text-alt text-error">*</span>
               </label>
               <select
+                disabled
                 v-model="singleItem.category_id"
                 class="select select-bordered w-full"
                 required
@@ -374,6 +375,7 @@
                 <span class="label-text-alt text-error">*</span>
               </label>
               <select
+                disabled
                 v-model="singleItem.item_type_id"
                 class="select select-bordered w-full"
                 required

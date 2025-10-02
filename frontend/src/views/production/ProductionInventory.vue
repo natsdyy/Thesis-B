@@ -1333,45 +1333,9 @@
         </div>
       </div>
 
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <TrendingUp
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-black/50"
-          />
-        </div>
-        <div class="stat-title text-black/50 !text-xs sm:text-sm">
-          Avg. Margin
-        </div>
-        <div
-          class="stat-value text-black/50 text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ Number(realTimeStats.average_margin || 0).toFixed(0) }}%
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Profit margin
-        </div>
-      </div>
 
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <Truck class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-warning" />
-        </div>
-        <div class="stat-title text-black/50 !text-xs sm:text-sm">
-          Distributed
-        </div>
-        <div
-          class="stat-value text-warning text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ realTimeStats.total_distributed_all_time || 0 }}
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Units distributed to branches
-        </div>
-      </div>
+
+ 
     </div>
 
     <!-- Action Buttons -->
@@ -1592,13 +1556,7 @@
                       <span class="badge badge-sm bg-gray-100 text-gray-600">
                         {{ item.category }}
                       </span>
-                      <span
-                        v-if="item.is_featured || item.total_distributed >= 100"
-                        class="badge badge-sm bg-yellow-100 text-yellow-800"
-                      >
-                        <Star class="w-3 h-3 mr-1" />
-                        {{ item.is_featured ? 'Featured' : 'Popular' }}
-                      </span>
+               
                     </div>
                   </div>
                   <div class="text-right">
@@ -1609,7 +1567,7 @@
                       {{ item.unit_of_measure }}
                     </div>
                     <div class="text-xs text-gray-500 mt-1">
-                      Reorder: {{ item.reorder_point || 0 }}
+                      Reproduce: {{ item.reorder_point || 0 }}
                     </div>
                   </div>
                 </div>
@@ -1634,14 +1592,7 @@
                             )
                       "
                     >
-                      {{
-                        calculateProfitMargin(
-                          item.selling_price,
-                          item.unit_cost
-                        ) === null
-                          ? 'Cost Data Needed'
-                          : `${calculateProfitMargin(item.selling_price, item.unit_cost)}% margin`
-                      }}
+                 
                     </div>
                   </div>
                   <div class="text-right text-sm text-gray-600">
@@ -1696,20 +1647,6 @@
                       :class="{ 'animate-spin': loading }"
                     />
                     Configure Inventory
-                  </button>
-                  <button
-                    v-else
-                    @click.stop="openUpdateModal(item, 'stock')"
-                    class="btn btn-ghost btn-xs text-primaryColor hover:bg-primaryColor/10 flex-1"
-                  >
-                    <Package class="w-4 h-4 mr-1" />
-                    Update Stock
-                  </button>
-                  <button
-                    @click.stop="openDetailsModal(item)"
-                    class="btn btn-ghost btn-xs text-gray-600 hover:bg-gray-100"
-                  >
-                    <Eye class="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -1945,12 +1882,12 @@
               <div class="card-body p-4">
                 <div class="flex items-center justify-between">
                   <div>
-                    <div class="text-2xl font-bold text-info">
+                    <div class="text-2xl font-bold text-gray-500">
                       {{ productionInventoryStats.recent_distributions || 0 }}
                     </div>
                     <div class="text-sm text-gray-600">Recent (30 days)</div>
                   </div>
-                  <Activity class="w-8 h-8 text-info" />
+                  <Activity class="w-8 h-8 text-gray-500" />
                 </div>
               </div>
             </div>
@@ -2145,7 +2082,7 @@
                         </div>
                       </div>
                       <div class="text-right">
-                        <div class="font-bold text-success">
+                        <div class="font-bold text-primaryColor">
                           {{
                             formatCurrency(
                               branchPerformance.topBranch.total_value
@@ -2167,7 +2104,7 @@
                         </div>
                       </div>
                       <div class="text-right">
-                        <div class="font-bold text-info">
+                        <div class="font-bold text-gray-700">
                           {{ branchPerformance.averageDistributionSize }}
                           units
                         </div>
@@ -2497,7 +2434,7 @@
                       :class="[
                         'btn btn-sm join-item',
                         page === distributionCurrentPage
-                          ? 'btn-primary'
+                          ? ''
                           : 'btn-outline',
                       ]"
                     >
@@ -3748,13 +3685,7 @@
           >
             Close
           </button>
-          <button
-            @click="openUpdateModal(selectedItem, 'stock')"
-            class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
-          >
-            <Package class="w-4 h-4 mr-2" />
-            Update Stock
-          </button>
+
         </div>
       </div>
       <form method="dialog" class="modal-backdrop">

@@ -353,7 +353,7 @@
                 placeholder="Enter transfer price"
                 class="input input-sm sm:input-md input-bordered w-full bg-white"
                 :class="{ 'input-error': formErrors.transfer_price }"
-                readonly
+                
               />
             </div>
             <label v-if="formErrors.transfer_price" class="label">

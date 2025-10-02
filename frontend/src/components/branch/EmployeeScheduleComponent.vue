@@ -74,11 +74,13 @@
     for (let i = 0; i < 7; i++) {
       const day = new Date(startOfWeek);
       day.setDate(startOfWeek.getDate() + i);
-      // Format date as YYYY-MM-DD in local timezone to avoid UTC conversion issues
-      const year = day.getFullYear();
-      const month = String(day.getMonth() + 1).padStart(2, '0');
-      const dayOfMonth = String(day.getDate()).padStart(2, '0');
-      const dateString = `${year}-${month}-${dayOfMonth}`;
+      // Normalize to Philippine date (Asia/Manila) for key matching with API
+      const dateString = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(day);
 
       days.push({
         date: day,

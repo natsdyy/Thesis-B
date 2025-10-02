@@ -1446,24 +1446,6 @@
           }}
         </div>
       </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <FileText class="w-8 h-8 text-black/50" />
-        </div>
-        <div class="stat-title text-black/50">Total Value Approved</div>
-        <div class="stat-value text-black/50">
-          ₱{{
-            (
-              requestStats.total_approved_amount ||
-              requestHistoryStats.totalAmount
-            ).toLocaleString('en-PH')
-          }}
-        </div>
-        <div class="stat-desc text-black/50">Finance approved amount</div>
-      </div>
     </div>
 
     <!-- Tab System -->
@@ -1764,7 +1746,7 @@
                       {{ request.request_id }}
                     </td>
                     <td>
-                      <div class="badge badge-outline badge-sm">
+                      <div class="">
                         {{ request.department }}
                       </div>
                     </td>
@@ -2285,17 +2267,17 @@
 
                     <td>
                       <div
-                        class="badge badge-sm border-none font-medium"
+                        class="badge badge-sm "
                         :class="{
-                          'bg-success/20 text-success':
+                          '!bg-success/10 !text-success':
                             request.request_status === 'Approved',
-                          'bg-error/20 text-error':
+                          '!bg-error/20 !text-error':
                             request.request_status === 'Rejected',
-                          'bg-info/20 text-info':
+                          '!bg-info/20 !text-info':
                             request.request_status === 'Sent Back',
-                          'bg-success/20 text-success':
+                          '!bg-success/20 !text-success':
                             request.request_status === 'Budget Released',
-                          'bg-primary/20 text-primary':
+                          '!bg-primary/20 !text-primary':
                             request.request_status === 'Completed',
                         }"
                       >
@@ -2562,26 +2544,46 @@
 
       <!-- Approve Modal Content -->
       <template v-if="modal.type === 'approve'">
-        <h3 class="text-lg font-bold mb-4 text-success">Approve Request</h3>
+        <h3 class="text-lg font-bold mb-4 text-primaryColor">
+          Approve Request
+        </h3>
         <p>
           Are you sure you want to approve request
           <strong>#{{ modal.request?.request_id }}</strong
           >?
         </p>
-        <div class="bg-white/10 p-3 rounded mt-3">
-          <p><strong>Department:</strong> {{ modal.request?.department }}</p>
-          <p>
-            <strong>Requested By:</strong> {{ modal.request?.requested_by }}
-          </p>
-          <p>
-            <strong>Description:</strong>
-            {{ modal.request?.request_description }}
-          </p>
-          <p>
-            <strong>Total Amount:</strong> ₱{{
-              modal.request?.total_amount.toLocaleString('en-PH')
-            }}
-          </p>
+        <div class="bg-white/10 p-3 rounded mt-3 space-y-2">
+          <div class="grid grid-cols-3 gap-2">
+            <span class="font-semibold">Department:</span>
+            <span class="col-span-2 text-right">{{
+              modal.request?.department
+            }}</span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            <span class="font-semibold">Requested By:</span>
+            <span class="col-span-2 text-right">{{
+              modal.request?.requested_by
+            }}</span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            <span class="font-semibold">Description:</span>
+            <span class="col-span-2 text-right">{{
+              modal.request?.request_description
+            }}</span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            <span class="font-semibold">Total Amount:</span>
+            <span class="col-span-2 text-right">
+              ₱{{
+                modal.request?.total_amount.toLocaleString('en-PH', {
+                  minimumFractionDigits: 2,
+                })
+              }}
+            </span>
+          </div>
         </div>
 
         <!-- Optional remarks for approval -->

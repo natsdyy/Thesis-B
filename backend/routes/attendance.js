@@ -5,6 +5,10 @@ const AttendanceRecord = require("../models/AttendanceRecord");
 const EmployeeScheduleService = require("../services/EmployeeScheduleService");
 const { authenticateToken } = require("../middleware/rbac");
 const { db: knex } = require("../config/database");
+const {
+  getCurrentPhilippineDate,
+  getCurrentPhilippineTime,
+} = require("../utils/timezoneUtils");
 
 // QR Code Management Routes
 router.get("/qr-codes", authenticateToken, async (req, res) => {
@@ -439,7 +443,7 @@ router.post("/scan", async (req, res) => {
     let branchRadius = 2.0;
 
     if (employee.branch_id) {
-      const branch = await db("branches")
+      const branch = await knex("branches")
         .where("id", employee.branch_id)
         .first();
       if (branch && branch.latitude && branch.longitude) {
@@ -537,7 +541,7 @@ router.post("/mobile-scan", async (req, res) => {
     let branchRadius = 2.0;
 
     if (employee.branch_id) {
-      const branch = await db("branches")
+      const branch = await knex("branches")
         .where("id", employee.branch_id)
         .first();
       if (branch && branch.latitude && branch.longitude) {
@@ -596,13 +600,56 @@ router.get("/my-schedule", authenticateToken, async (req, res) => {
   try {
     const employeeId = req.user.id;
     const requested = (req.query?.date || "").trim();
-    const today = new Date().toISOString().split("T")[0];
+    const today = getCurrentPhilippineDate(); // Use Philippine timezone
     const date = requested || today;
 
-    const scheduleInfo = await EmployeeScheduleService.getScheduleDisplayInfo(
+    let scheduleInfo = await EmployeeScheduleService.getScheduleDisplayInfo(
       employeeId,
       date
     );
+
+    // If no schedule found for today and no specific date requested,
+    // check for Night Shift from yesterday that might still be active
+    if (!scheduleInfo.hasSchedule && !requested) {
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+      const yesterdaySchedule =
+        await EmployeeScheduleService.getScheduleDisplayInfo(
+          employeeId,
+          yesterdayStr
+        );
+
+      // Check if yesterday's schedule is a Night Shift that spans midnight
+      if (yesterdaySchedule.hasSchedule && yesterdaySchedule.schedule) {
+        const schedule = yesterdaySchedule.schedule;
+        const scheduleStart = new Date(
+          `${yesterdayStr}T${schedule.start_time}`
+        );
+        const scheduleEnd = new Date(`${yesterdayStr}T${schedule.end_time}`);
+
+        // If end time is before start time, it's an overnight shift
+        if (scheduleEnd <= scheduleStart) {
+          scheduleEnd.setDate(scheduleEnd.getDate() + 1);
+          const now = new Date();
+
+          // Check if current time is still within the Night Shift period
+          if (now >= scheduleStart && now <= scheduleEnd) {
+            // Return yesterday's schedule as it's still active
+            scheduleInfo = {
+              hasSchedule: true,
+              message: `Currently on ${schedule.shift_name} (started yesterday)`,
+              schedule: {
+                ...schedule,
+                date: yesterdayStr, // Show the original date
+                isOvernightShift: true,
+              },
+            };
+          }
+        }
+      }
+    }
 
     res.json({
       success: true,
@@ -635,10 +682,8 @@ router.get("/bulk-status", authenticateToken, async (req, res) => {
     if (date) {
       targetDate = new Date(date);
     } else {
-      // Get current date in Philippines timezone (UTC+8)
-      const now = new Date();
-      const philippinesTime = new Date(now.getTime() + 8 * 60 * 60 * 1000); // UTC+8
-      targetDate = new Date(philippinesTime.toISOString().split("T")[0]);
+      // Get current date in Philippines timezone
+      targetDate = new Date(getCurrentPhilippineDate());
     }
     targetDate.setHours(0, 0, 0, 0);
     const endOfDay = new Date(targetDate);
@@ -765,8 +810,10 @@ router.post("/validate-schedule", authenticateToken, async (req, res) => {
     const employeeId = req.user.id;
     const { currentTime } = req.body;
 
-    // Use provided time or current time
-    const validationTime = currentTime ? new Date(currentTime) : new Date();
+    // Use provided time or current Philippine time
+    const validationTime = currentTime
+      ? new Date(currentTime)
+      : getCurrentPhilippineTime();
     const validation = await EmployeeScheduleService.validateTimeInSchedule(
       employeeId,
       validationTime

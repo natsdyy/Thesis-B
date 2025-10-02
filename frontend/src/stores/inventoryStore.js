@@ -507,7 +507,7 @@ export const useInventoryStore = defineStore('inventory', () => {
 
     try {
       const response = await axios.get(
-        `${apiConfig.baseURL}/inventory/alerts/low-stock`
+        `${apiConfig.baseURL}/inventory/alerts/low-stock-batches`
       );
       if (response.data.success) {
         lowStockItems.value = response.data.data;

@@ -98,7 +98,11 @@ export const useEmployeeScheduleStore = defineStore('employeeSchedule', () => {
         };
       });
 
-      schedules.value = processedSchedules;
+      // Merge into existing to avoid wiping locally created/upserted entries
+      schedules.value = {
+        ...schedules.value,
+        ...processedSchedules,
+      };
       return processedSchedules;
     } catch (err) {
       error.value = err.message;
@@ -155,17 +159,23 @@ export const useEmployeeScheduleStore = defineStore('employeeSchedule', () => {
         throw new Error(result.message || 'Failed to create schedule');
       }
 
-      // Add the new schedule to local state
+      // Add the new schedule to local state (upsert, normalized date)
       const newSchedule = result.data;
-      const key = `${newSchedule.employee_id}_${newSchedule.schedule_date}`;
+      const normalizedDate =
+        newSchedule.schedule_date instanceof Date
+          ? `${newSchedule.schedule_date.getFullYear()}-${String(newSchedule.schedule_date.getMonth() + 1).padStart(2, '0')}-${String(newSchedule.schedule_date.getDate()).padStart(2, '0')}`
+          : String(newSchedule.schedule_date).split(/T| /)[0];
+      const key = `${newSchedule.employee_id}_${normalizedDate}`;
       schedules.value[key] = {
         id: newSchedule.id,
         employee_id: newSchedule.employee_id,
-        employee_name: newSchedule.employee_name,
-        employee_role: newSchedule.role,
-        employee_email: newSchedule.email,
+        employee_name:
+          newSchedule.employee_name ||
+          `${newSchedule.first_name || ''} ${newSchedule.last_name || ''}`.trim(),
+        employee_role: newSchedule.employee_role || newSchedule.role,
+        employee_email: newSchedule.employee_email || newSchedule.email,
         branch_id: newSchedule.branch_id,
-        schedule_date: newSchedule.schedule_date,
+        schedule_date: normalizedDate,
         shift: {
           id: newSchedule.id,
           name: newSchedule.shift_name,
@@ -212,23 +222,35 @@ export const useEmployeeScheduleStore = defineStore('employeeSchedule', () => {
         throw new Error(result.message || 'Failed to update schedule');
       }
 
-      // Update the schedule in local state
+      // Update the schedule in local state (upsert, normalized date)
       const updatedSchedule = result.data;
-      const key = `${updatedSchedule.employee_id}_${updatedSchedule.schedule_date}`;
-      if (schedules.value[key]) {
-        schedules.value[key] = {
-          ...schedules.value[key],
-          shift: {
-            id: updatedSchedule.id,
-            name: updatedSchedule.shift_name,
-            startTime: updatedSchedule.start_time,
-            endTime: updatedSchedule.end_time,
-            color: getShiftColor(updatedSchedule.shift_name),
-          },
-          notes: updatedSchedule.notes || '',
-          updated_at: updatedSchedule.updated_at,
-        };
-      }
+      const normalizedDate =
+        updatedSchedule.schedule_date instanceof Date
+          ? `${updatedSchedule.schedule_date.getFullYear()}-${String(updatedSchedule.schedule_date.getMonth() + 1).padStart(2, '0')}-${String(updatedSchedule.schedule_date.getDate()).padStart(2, '0')}`
+          : String(updatedSchedule.schedule_date).split(/T| /)[0];
+      const key = `${updatedSchedule.employee_id}_${normalizedDate}`;
+      const existing = schedules.value[key] || {};
+      schedules.value[key] = {
+        id: updatedSchedule.id,
+        employee_id: updatedSchedule.employee_id,
+        employee_name: updatedSchedule.employee_name || existing.employee_name,
+        employee_role: updatedSchedule.employee_role || existing.employee_role,
+        employee_email:
+          updatedSchedule.employee_email || existing.employee_email,
+        branch_id: updatedSchedule.branch_id ?? existing.branch_id,
+        schedule_date: normalizedDate,
+        shift: {
+          id: updatedSchedule.id,
+          name: updatedSchedule.shift_name,
+          startTime: updatedSchedule.start_time,
+          endTime: updatedSchedule.end_time,
+          color: getShiftColor(updatedSchedule.shift_name),
+        },
+        notes: updatedSchedule.notes || existing.notes || '',
+        is_active: updatedSchedule.is_active ?? existing.is_active,
+        created_at: existing.created_at,
+        updated_at: updatedSchedule.updated_at,
+      };
 
       return updatedSchedule;
     } catch (err) {

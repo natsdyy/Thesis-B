@@ -9,6 +9,26 @@ export const useOvertimeStore = defineStore('overtime', {
     error: null,
   }),
   actions: {
+    // Format date to YYYY-MM-DD in Asia/Manila regardless of browser TZ
+    ymdPH(value) {
+      if (!value) return '';
+      try {
+        const str = String(value);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+        const d = new Date(str);
+        if (isNaN(d)) return this.ymdLocal(str);
+        const fmt = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Manila',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        });
+        // en-CA yields YYYY-MM-DD
+        return fmt.format(d);
+      } catch (_) {
+        return this.ymdLocal(String(value));
+      }
+    },
     ymdLocal(value) {
       if (!value) return '';
       try {
@@ -41,7 +61,7 @@ export const useOvertimeStore = defineStore('overtime', {
         const json = await res.json();
         const rows = Array.isArray(json?.data) ? json.data : [];
         this.myRequests = rows.map((r) => {
-          const datePart = this.ymdLocal(r.ot_date || '');
+          const datePart = this.ymdPH(r.ot_date || '');
           const startAt = `${datePart}T${r.start_time}`;
           // If end_time is <= start_time, treat as next day for display
           let endAt = `${datePart}T${r.end_time}`;
@@ -81,7 +101,7 @@ export const useOvertimeStore = defineStore('overtime', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...this.authHeaders() },
         body: JSON.stringify({
-          ot_date,
+          ot_date: this.ymdPH(ot_date),
           start_time,
           end_time,
           total_hours,
@@ -132,7 +152,7 @@ export const useOvertimeStore = defineStore('overtime', {
       const json = await res.json();
       const rows = Array.isArray(json?.data) ? json.data : [];
       this.requests = rows.map((r) => {
-        const datePart = this.ymdLocal(r.ot_date || '');
+        const datePart = this.ymdPH(r.ot_date || '');
         const approverName =
           r.approver_first_name || r.approver_last_name
             ? `${r.approver_first_name || ''} ${r.approver_last_name || ''}`.trim()

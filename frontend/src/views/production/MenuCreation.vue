@@ -94,6 +94,67 @@
     return productionStore.recipes.filter((recipe) => recipe.is_active);
   });
 
+  // Structured Tag Selection (for DSS readiness)
+  const tagGroups = [
+    {
+      label: 'Popularity',
+      tags: [
+        { key: 'popular', description: 'Best-selling items' },
+        { key: 'low-demand', description: 'Not frequently ordered' },
+        { key: 'new', description: 'Newly added item' },
+      ],
+    },
+    {
+      label: 'Seasonality',
+      tags: [
+        { key: 'summer', description: 'Preferred during hot months (Mar–May)' },
+        {
+          key: 'rainy',
+          description: 'Comfort food for rainy season (Jun–Oct)',
+        },
+        { key: 'christmas', description: 'Holiday items (Nov–Dec)' },
+        { key: 'all-season', description: 'Ordered consistently year-round' },
+      ],
+    },
+    {
+      label: 'Category / Protein',
+      tags: [
+        { key: 'pork' },
+        { key: 'beef' },
+        { key: 'chicken' },
+        { key: 'fish' },
+        { key: 'vegetarian' },
+      ],
+    },
+    {
+      label: 'Special',
+      tags: [
+        { key: 'signature', description: 'House specialty' },
+        { key: 'group-meal', description: 'Good for sharing / platters' },
+        { key: 'quick-serve', description: 'Fast prep (ready-to-serve)' },
+      ],
+    },
+  ];
+
+  const selectedTags = ref([]);
+
+  const parseTagsStringToArray = (value) => {
+    if (!value) return [];
+    return String(value)
+      .split(',')
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+  };
+
+  // Keep form tags string in sync with selected tags
+  watch(
+    selectedTags,
+    (newVal) => {
+      menuItemForm.value.tags = newVal.join(', ');
+    },
+    { deep: true }
+  );
+
   // Computed properties
   const menuStats = computed(() => productionStore.menuStats);
   const menuItemStats = computed(() => productionStore.menuItemStats);
@@ -224,6 +285,7 @@
     };
     menuAssignmentOption.value = 'auto'; // Reset to default
     availableMenus.value = []; // Clear available menus
+    selectedTags.value = [];
   };
 
   // Methods
@@ -271,6 +333,9 @@
     // Wait for dialog to mount before calling showModal to avoid double-click
     await nextTick();
     document.getElementById('menu_item_modal')?.showModal();
+
+    // Ensure selectedTags reflects any pre-filled tags when opening modal
+    selectedTags.value = parseTagsStringToArray(menuItemForm.value.tags);
   };
 
   const closeCreateModal = () => {
@@ -322,6 +387,9 @@
       tags: item.tags || '',
       image_url: imageUrl,
     };
+
+    // Initialize seasonal/standard tag selection from existing tags
+    selectedTags.value = parseTagsStringToArray(menuItemForm.value.tags);
 
     // Set editing mode
     menuItemForm.value.isEditing = true;
@@ -1366,14 +1434,6 @@
                     <div class="text-lg font-bold text-primaryColor">
                       {{ formatCurrency(item.selling_price) }}
                     </div>
-                    <div class="text-xs text-gray-500">
-                      {{
-                        calculateProfitMargin(
-                          item.selling_price,
-                          item.cost_price
-                        )
-                      }}% margin
-                    </div>
                   </div>
                 </div>
 
@@ -1971,22 +2031,55 @@
             ></textarea>
           </div>
 
-          <!-- Tags -->
+          <!-- Tags (Structured Selection) -->
           <div
             class="form-control bg-white border border-black/10 p-4 rounded-xl"
           >
-            <label class="label mb-1">
+            <label class="label mb-2">
               <span
                 class="label-text text-black/70 font-medium text-sm sm:text-base"
-                >Tags</span
               >
+                Tags
+                <span class="text-xs text-black/40 ml-1"
+                  >(select all that apply)</span
+                >
+              </span>
             </label>
-            <input
-              v-model="menuItemForm.tags"
-              type="text"
-              class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-              placeholder="e.g., popular, signature, seasonal"
-            />
+            <div class="space-y-4">
+              <div
+                v-for="group in tagGroups"
+                :key="group.label"
+                class="border border-black/5 rounded-lg p-3"
+              >
+                <div
+                  class="text-xs sm:text-sm font-medium text-primaryColor mb-2"
+                >
+                  {{ group.label }}
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <label
+                    v-for="tag in group.tags"
+                    :key="tag.key"
+                    class="cursor-pointer inline-flex items-center gap-2 px-2 py-1 rounded-md border border-primaryColor/20 bg-primaryColor/5 hover:bg-primaryColor/10 text-primaryColor text-xs"
+                    :title="tag.description || tag.key"
+                  >
+                    <input
+                      type="checkbox"
+                      class="checkbox checkbox-xs checked:bg-primaryColor checked:text-white"
+                      :value="tag.key"
+                      v-model="selectedTags"
+                    />
+                    <span class="capitalize">{{ tag.key }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <p class="mt-3 text-xs text-black/40">
+              Selected:
+              <span class="text-primaryColor">{{
+                selectedTags.join(', ') || 'None'
+              }}</span>
+            </p>
           </div>
 
           <!-- Image Upload -->
@@ -2359,26 +2452,6 @@
             </div>
           </div>
 
-          <!-- Recipe Ingredients Preview -->
-          <div>
-            <h4 class="font-semibold text-primaryColor mb-3">
-              Recipe Ingredients
-            </h4>
-            <div class="bg-gray-50 p-4 rounded-lg">
-              <p class="text-sm text-gray-600 mb-2">
-                This menu item is based on the "{{
-                  selectedMenuItem.recipe_name
-                }}" recipe. Full ingredient details available in Recipe
-                Management.
-              </p>
-              <button
-                @click="$router.push('/production/recipes')"
-                class="btn btn-outline btn-sm font-thin text-primaryColor hover:bg-primaryColor/10"
-              >
-                View Recipe Details
-              </button>
-            </div>
-          </div>
 
           <!-- Quality Inspection History -->
           <div>

@@ -1,4 +1,9 @@
 const { db } = require("../config/database");
+const {
+  getCurrentPhilippineTime,
+  getCurrentPhilippineDate,
+  formatPhilippineTime,
+} = require("../utils/timezoneUtils");
 
 class BranchInventory {
   // Get branch inventory by branch ID
@@ -44,6 +49,74 @@ class BranchInventory {
     }
   }
 
+  // Get inventory for multiple branches (optimized - single query)
+  static async getByMultipleBranches(branchIds, filters = {}) {
+    try {
+      console.log(
+        `📡 Fetching inventory for ${branchIds.length} branches in single query`
+      );
+
+      // Single query for all branches - much more efficient than N+1 queries
+      let query = db("branch_inventory as bi")
+        .whereIn("bi.branch_id", branchIds)
+        .whereNull("bi.deleted_at")
+        // Join to production inventory -> menu_items to enrich with selling_price and image_url
+        .leftJoin("menu_items as mi", function () {
+          this.on("bi.item_type", "=", db.raw("?", "production"))
+            .andOn("mi.menu_item_name", "=", "bi.item_name")
+            .andOnNull("mi.deleted_at");
+        })
+        .select(
+          "bi.*",
+          // Prefer branch stored selling_price if present; fallback to menu_items.selling_price
+          db.raw(
+            "COALESCE(bi.selling_price, mi.selling_price) as selling_price"
+          ),
+          "mi.image_url"
+        );
+
+      // Apply filters
+      if (filters.item_type) {
+        query = query.where("bi.item_type", filters.item_type);
+      }
+      if (filters.category) {
+        query = query.where("bi.category", filters.category);
+      }
+      if (filters.status) {
+        query = query.where("bi.status", filters.status);
+      }
+      if (filters.search) {
+        query = query.where("bi.item_name", "like", `%${filters.search}%`);
+      }
+
+      const allInventory = await query.orderBy([
+        "bi.branch_id",
+        "bi.item_type",
+        "bi.item_name",
+      ]);
+
+      // Group results by branch_id for easier frontend consumption
+      const inventoryByBranch = {};
+      branchIds.forEach((branchId) => {
+        inventoryByBranch[branchId] = [];
+      });
+
+      allInventory.forEach((item) => {
+        if (inventoryByBranch[item.branch_id]) {
+          inventoryByBranch[item.branch_id].push(item);
+        }
+      });
+
+      console.log(
+        `✅ Fetched inventory for ${Object.keys(inventoryByBranch).length} branches`
+      );
+      return inventoryByBranch;
+    } catch (error) {
+      console.error("Error fetching multiple branch inventory:", error);
+      throw error;
+    }
+  }
+
   // Update expiry date for an item
   static async updateExpiryDate(itemId, newExpiryDate) {
     try {
@@ -59,7 +132,7 @@ class BranchInventory {
       // If the new expiry date is today or earlier, mark as expired, else keep current status
       let newStatus = currentItem.status;
       if (newExpiryDate) {
-        const today = new Date();
+        const today = getCurrentPhilippineTime();
         today.setHours(0, 0, 0, 0);
         const expiry = new Date(newExpiryDate);
         expiry.setHours(0, 0, 0, 0);
@@ -73,8 +146,8 @@ class BranchInventory {
         .update({
           expiry_date: newExpiryDate || null,
           status: newStatus,
-          last_updated: new Date(),
-          updated_at: new Date(),
+          last_updated: getCurrentPhilippineTime(),
+          updated_at: getCurrentPhilippineTime(),
         })
         .returning("*");
 
@@ -142,7 +215,7 @@ class BranchInventory {
           expiry_date: itemData.expiry_date || null,
           supplier_name: itemData.supplier_name || null,
           distribution_reference: itemData.distribution_reference || null,
-          last_updated: new Date(),
+          last_updated: getCurrentPhilippineTime(),
         })
         .returning("*");
 
@@ -184,8 +257,8 @@ class BranchInventory {
           quantity: updatedQuantity,
           total_value: newTotalValue,
           status: newStatus,
-          last_updated: new Date(),
-          updated_at: new Date(),
+          last_updated: getCurrentPhilippineTime(),
+          updated_at: getCurrentPhilippineTime(),
         })
         .returning("*");
 
@@ -213,13 +286,13 @@ class BranchInventory {
   // Get expiring items for a branch
   static async getExpiringItems(branchId, days = 7) {
     try {
-      const futureDate = new Date();
+      const futureDate = getCurrentPhilippineTime();
       futureDate.setDate(futureDate.getDate() + days);
 
       return await db("branch_inventory")
         .where("branch_id", branchId)
         .whereNotNull("expiry_date")
-        .where("expiry_date", "<=", futureDate.toISOString().split("T")[0])
+        .where("expiry_date", "<=", formatPhilippineTime(futureDate, "date"))
         .where("status", "!=", "expired")
         .whereNull("deleted_at")
         .orderBy("expiry_date");
@@ -267,8 +340,8 @@ class BranchInventory {
   static async deleteItem(itemId) {
     try {
       await db("branch_inventory").where("id", itemId).update({
-        deleted_at: new Date(),
-        updated_at: new Date(),
+        deleted_at: getCurrentPhilippineTime(),
+        updated_at: getCurrentPhilippineTime(),
       });
 
       return true;
@@ -285,8 +358,8 @@ class BranchInventory {
         .where("id", itemId)
         .update({
           status: status,
-          last_updated: new Date(),
-          updated_at: new Date(),
+          last_updated: getCurrentPhilippineTime(),
+          updated_at: getCurrentPhilippineTime(),
         })
         .returning("*");
 

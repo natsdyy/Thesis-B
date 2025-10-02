@@ -23,6 +23,7 @@
   import BranchSalesTransactionsModal from '../../components/branch/BranchSalesTransactionsModal.vue';
   import BranchRemitSalesModal from '../../components/branch/BranchRemitSalesModal.vue';
   import SalesTrendsChart from '../../components/branch/SalesTrendsChart.vue';
+  import { convertUTCToPhilippine } from '../../utils/timezoneUtils.js';
 
   const branchContextStore = useBranchContextStore();
   const posStore = usePOSStore();
@@ -378,7 +379,14 @@
       });
 
       if (response && response.data && response.data.length > 0) {
-        recentTransactions.value = response.data.map((order) => {
+        // Ensure time is computed and (optionally) sorted using Philippine timezone
+        const sorted = [...response.data].sort((a, b) => {
+          const aPH = convertUTCToPhilippine(a.created_at).getTime();
+          const bPH = convertUTCToPhilippine(b.created_at).getTime();
+          return bPH - aPH; // newest first
+        });
+
+        recentTransactions.value = sorted.map((order) => {
           const isRefunded =
             order.status === 'void' &&
             [
@@ -424,12 +432,19 @@
           const finalIsLoss =
             isLoss || (order.status === 'void' && !isRefunded);
 
+          const createdPH = convertUTCToPhilippine(order.created_at);
+
           return {
             id: order.id,
             order_number: order.order_number,
-            time: new Date(order.created_at).toLocaleTimeString('en-US', {
+            time: createdPH.toLocaleString('en-PH', {
+              month: 'short',
+              day: '2-digit',
+              year: 'numeric',
               hour: '2-digit',
               minute: '2-digit',
+              hour12: true,
+              timeZone: 'Asia/Manila',
             }),
             amount: parseFloat(order.total_amount) || 0,
             amount_paid: parseFloat(order.amount_paid) || 0,
@@ -448,10 +463,12 @@
             status: order.status,
             order_type: order.order_type,
             created_at: order.created_at,
+            // Disable void/refund if already remitted (linked to a remittance)
             canVoid:
-              order.status === 'pending' ||
-              order.status === 'processing' ||
-              order.status === 'completed',
+              (order.status === 'pending' ||
+                order.status === 'processing' ||
+                order.status === 'completed') &&
+              !order.remittance_id,
             isRefunded: finalIsRefunded,
             isLoss: finalIsLoss,
             void_reason: order.void_reason,
@@ -724,9 +741,11 @@
       const dt = new Date(dateTo);
 
       const toYmd = (d) => {
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
+        // Ensure date is interpreted in Philippine time
+        const ph = convertUTCToPhilippine(d);
+        const y = ph.getFullYear();
+        const m = String(ph.getMonth() + 1).padStart(2, '0');
+        const day = String(ph.getDate()).padStart(2, '0');
         return `${y}-${m}-${day}`;
       };
 
@@ -751,19 +770,14 @@
 
       // Assign orders to buckets
       orders.forEach((o) => {
-        const created = new Date(o.created_at);
+        // Convert timestamps to Philippine time before bucketing
+        const created = convertUTCToPhilippine(o.created_at);
         let key;
         if (period === 'today') {
           const hour = created.getHours();
           key = `${String(hour).padStart(2, '0')}:00`;
         } else {
-          key = toYmd(
-            new Date(
-              created.getFullYear(),
-              created.getMonth(),
-              created.getDate()
-            )
-          );
+          key = toYmd(created);
         }
         if (buckets.has(key)) {
           buckets.get(key).push(o);
@@ -1235,21 +1249,11 @@
                             <p class="font-medium text-gray-900">
                               {{ item.name }}
                             </p>
-                            <p class="text-sm text-gray-600">
-                              {{ item.quantity }} sold
-                            </p>
                           </div>
                         </div>
                         <div class="text-right">
-                          <p
-                            class="font-thin text-primaryColor"
-                            :class="{
-                              'text-warning': showLeastSelling,
-                            }"
-                          >
-                            <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                              parseFloat(item.revenue).toFixed(2)
-                            }}
+                          <p class="text-sm text-gray-600">
+                            {{ item.quantity }} sold
                           </p>
                         </div>
                       </div>
@@ -1304,7 +1308,7 @@
         </div>
       </div>
 
-      <div class="overflow-x-auto -mx-4 sm:mx-0">
+      <div class="overflow-x-auto mx-4 sm:mx-0">
         <div class="min-w-full px-4 sm:px-0">
           <table class="table w-full table-zebra">
             <thead>
@@ -1360,7 +1364,7 @@
                   </div>
                 </td>
                 <td>
-                  <div class="text-xs sm:text-sm">
+                  <div class="!text-xs sm:text-sm">
                     {{ transaction.time }}
                   </div>
                 </td>
@@ -1575,7 +1579,7 @@
                 required
               >
                 <option value="">Select a reason...</option>
-                <optgroup label="Refund Reasons (No inventory deduction)">
+                <optgroup label="Refund Reasons">
                   <option
                     v-for="reason in voidReasons.filter(
                       (r) => r.type === 'refund'
@@ -1587,7 +1591,8 @@
                   </option>
                 </optgroup>
                 <optgroup
-                  label="Loss Reasons (Inventory deduction + Loss profit)"
+                  v-if="selectedOrder?.status !== 'processing'"
+                  label="Loss Reasons"
                 >
                   <option
                     v-for="reason in voidReasons.filter(
@@ -1660,7 +1665,9 @@
                   {{
                     voidReasons.find((r) => r.value === selectedVoidReason)
                       ?.type === 'refund'
-                      ? ' No inventory deduction • No loss profit recorded'
+                      ? selectedOrder?.status === 'completed'
+                        ? 'Inventory stays deducted • Loss profit will be recorded'
+                        : 'No inventory deduction • No loss profit recorded'
                       : 'Inventory will be deducted • Loss profit will be recorded'
                   }}
                 </p>

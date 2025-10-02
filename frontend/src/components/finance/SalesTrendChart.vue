@@ -7,6 +7,8 @@
     period: { type: String, default: 'today' }, // today | week | month | year
     metric: { type: String, default: 'remitted' }, // remitted | refunds | disposed | net
     autoLoad: { type: Boolean, default: true },
+    // When period === 'customMonth', expect YYYY-MM (e.g., '2025-09')
+    customMonth: { type: String, default: '' },
   });
 
   const posStore = usePOSStore();
@@ -54,6 +56,20 @@
         999
       );
       bucket = 'day';
+    } else if (period === 'customMonth') {
+      const ym = String(props.customMonth || '').trim();
+      const [yStr, mStr] = ym.split('-');
+      const year = Number(yStr);
+      const monthIndex = Number(mStr) - 1;
+      start =
+        Number.isFinite(year) && Number.isFinite(monthIndex)
+          ? new Date(year, monthIndex, 1, 0, 0, 0, 0)
+          : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      end =
+        Number.isFinite(year) && Number.isFinite(monthIndex)
+          ? new Date(year, monthIndex + 1, 0, 23, 59, 59, 999)
+          : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      bucket = 'day';
     } else if (period === 'month') {
       start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
       end = new Date(
@@ -97,13 +113,13 @@
       const data = await posStore.fetchSalesTrends(props.branchId, {
         dateFrom,
         dateTo,
-        period: props.period,
+        period: props.period === 'customMonth' ? 'month' : props.period,
         bucket,
       });
 
       const trendLabels = Array.isArray(data.labels) ? data.labels : [];
       const seriesMap = {
-        refunds: data.refunds || [],
+        refunds: data.refunds || data.refunded_amount || [],
         disposed: data.disposed || [],
         net: data.net_sales || [],
         remitted: data.remitted_amount || [],

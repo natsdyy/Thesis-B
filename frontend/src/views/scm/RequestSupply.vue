@@ -34,6 +34,13 @@
     PhilippinePeso,
   } from 'lucide-vue-next';
   import { useRouter } from 'vue-router';
+  import {
+    getCurrentPhilippineTime,
+    getCurrentPhilippineDate,
+    formatForDisplay,
+    formatTimeForDisplay,
+    parseFromAPI,
+  } from '../../utils/timezoneUtils.js';
 
   // Stores
   const supplyRequestStore = useSupplyRequestStore();
@@ -70,18 +77,9 @@
     receiptData.value = null;
   }
 
-  // Philippine Time helper functions
-  const getPhilippineTime = () => {
-    // Always get the current time in Asia/Manila
-    const now = new Date();
-    // Convert to Asia/Manila by using toLocaleString and then new Date
-    return new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-  };
-
-  const getPhilippineDateString = (date = null) => {
-    const targetDate = date || getPhilippineTime();
-    return targetDate.toISOString().split('T')[0];
-  };
+  // Philippine Time helper functions - now using centralized utilities
+  const getPhilippineTime = getCurrentPhilippineTime;
+  const getPhilippineDateString = getCurrentPhilippineDate;
 
   // Smart pagination helper
   const getPageRange = () => {
@@ -102,21 +100,17 @@
     return range;
   };
 
-  // Add helper functions for better date/time formatting
+  // Add helper functions for better date/time formatting - now using centralized utilities
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-PH', {
+    return formatForDisplay(dateString, 'en-PH', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
-      timeZone: 'Asia/Manila',
     });
   };
 
   const formatTime = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-PH', {
-      timeZone: 'Asia/Manila',
+    return formatTimeForDisplay(dateString, 'en-PH', {
       hour: '2-digit',
       minute: '2-digit',
     });
@@ -180,6 +174,8 @@
         item_quantity: r.item_quantity,
         item_unit: r.item_unit,
         item_type: r.item_type,
+        // preserve prefilled unit price when opening create modal
+        item_unit_price: r.item_unitPrice,
       }))
     );
   };
@@ -211,6 +207,8 @@
 
   // Add selected category for centralized inventory integration
   const selectedCategory = ref('');
+  // Lock category/type when arriving with preloaded items
+  const isPreloaded = ref(false);
 
   // Centralized inventory categories - computed from inventory store
   const requestCategories = computed(() => {
@@ -367,13 +365,11 @@
   };
 
   const formatPhilippineDate = (dateString) => {
-    const date = new Date(dateString + 'T00:00:00');
-    return date.toLocaleDateString('en-PH', {
+    return formatForDisplay(dateString + 'T00:00:00', 'en-PH', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
       day: 'numeric',
-      timeZone: 'Asia/Manila',
     });
   };
 
@@ -383,10 +379,9 @@
 
     if (isFirstDayOfMonth) {
       // Display as month and year
-      return date.toLocaleDateString('en-PH', {
+      return formatForDisplay(dateString + 'T00:00:00', 'en-PH', {
         year: 'numeric',
         month: 'long',
-        timeZone: 'Asia/Manila',
       });
     } else {
       // Display as full date
@@ -410,19 +405,32 @@
   // Quick date filter buttons
   const getQuickDateOptions = () => {
     const today = getPhilippineTime();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
 
-    // Use toLocaleDateString with 'en-CA' and Asia/Manila to get YYYY-MM-DD
+    // Helper function to get start of week (Monday)
+    const getStartOfWeek = (date) => {
+      const d = new Date(date);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday as first day
+      return new Date(d.setDate(diff));
+    };
+
+    // Helper function to get start of month
+    const getStartOfMonth = (date) => {
+      return new Date(date.getFullYear(), date.getMonth(), 1);
+    };
+
+    // Use centralized timezone utility to get YYYY-MM-DD format
     const toYMD = (date) =>
-      date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+      formatForDisplay(date, 'en-CA', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).replace(/\//g, '-');
 
     return [
-      { label: 'Yesterday', date: toYMD(yesterday), count: 0 },
       { label: 'Today', date: toYMD(today), count: 0 },
-      { label: 'Tomorrow', date: toYMD(tomorrow), count: 0 },
+      { label: 'This Week', date: toYMD(getStartOfWeek(today)), count: 0 },
+      { label: 'This Month', date: toYMD(getStartOfMonth(today)), count: 0 },
     ];
   };
 
@@ -458,21 +466,61 @@
 
   // Update quick date options with counts
   const updateQuickDateCounts = () => {
+    const today = getPhilippineTime();
+
+    // Helper functions for date ranges
+    const getStartOfWeek = (date) => {
+      const d = new Date(date);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday as first day
+      return new Date(d.setDate(diff));
+    };
+
+    const getStartOfMonth = (date) => {
+      return new Date(date.getFullYear(), date.getMonth(), 1);
+    };
+
+    const isDateInRange = (date, startDate, endDate) => {
+      const requestDate = new Date(date);
+      return requestDate >= startDate && requestDate <= endDate;
+    };
+
     quickDateOptions.value.forEach((option) => {
       option.count = allRequests.value.filter((request) => {
-        // Simple approach: convert to Philippine time using Intl.DateTimeFormat
         const requestDate = new Date(request.request_date);
-        const philippineDate = new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Asia/Manila',
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        }).format(requestDate);
 
-        return (
-          philippineDate === option.date &&
-          request.request_status !== 'Cancelled'
-        );
+        // Skip cancelled requests
+        if (request.request_status === 'Cancelled') return false;
+
+        switch (option.label) {
+          case 'Today':
+            const todayStart = new Date(today);
+            todayStart.setHours(0, 0, 0, 0);
+            const todayEnd = new Date(today);
+            todayEnd.setHours(23, 59, 59, 999);
+            return isDateInRange(requestDate, todayStart, todayEnd);
+
+          case 'This Week':
+            const weekStart = getStartOfWeek(today);
+            weekStart.setHours(0, 0, 0, 0);
+            const weekEnd = new Date(today);
+            weekEnd.setHours(23, 59, 59, 999);
+            return isDateInRange(requestDate, weekStart, weekEnd);
+
+          case 'This Month':
+            const monthStart = getStartOfMonth(today);
+            monthStart.setHours(0, 0, 0, 0);
+            const monthEnd = new Date(
+              today.getFullYear(),
+              today.getMonth() + 1,
+              0
+            );
+            monthEnd.setHours(23, 59, 59, 999);
+            return isDateInRange(requestDate, monthStart, monthEnd);
+
+          default:
+            return false;
+        }
       }).length;
     });
   };
@@ -488,58 +536,71 @@
       );
     }
 
+    const today = getPhilippineTime();
+    const selectedDateObj = new Date(selectedDate + 'T00:00:00');
+
+    // Helper functions for date ranges
+    const getStartOfWeek = (date) => {
+      const d = new Date(date);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday as first day
+      return new Date(d.setDate(diff));
+    };
+
+    const getStartOfMonth = (date) => {
+      return new Date(date.getFullYear(), date.getMonth(), 1);
+    };
+
+    const isDateInRange = (date, startDate, endDate) => {
+      const requestDate = new Date(date);
+      return requestDate >= startDate && requestDate <= endDate;
+    };
+
     return allRequests.value.filter((request) => {
       const requestDate = new Date(request.request_date);
 
+      // Skip cancelled requests
+      if (request.request_status === 'Cancelled') return false;
+
       // Check if we're filtering by month (when selectedDate is first day of month)
-      const selectedDateObj = new Date(selectedDate + 'T00:00:00');
       const isFirstDayOfMonth = selectedDateObj.getDate() === 1;
 
-      if (isFirstDayOfMonth) {
-        // Filter by month and year using Philippine timezone
-        const requestYear = new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Asia/Manila',
-          year: 'numeric',
-        }).format(requestDate);
+      // Check if we're filtering by week (when selectedDate is Monday)
+      const isMonday = selectedDateObj.getDay() === 1;
 
-        const requestMonth = new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Asia/Manila',
-          month: '2-digit',
-        }).format(requestDate);
+      // Check if we're filtering by today (when selectedDate is today)
+      const isToday = selectedDateObj.toDateString() === today.toDateString();
 
-        const selectedYear = selectedDateObj.getFullYear().toString();
-        const selectedMonth = (selectedDateObj.getMonth() + 1)
-          .toString()
-          .padStart(2, '0');
-
-        console.log('Month Filter Debug:', {
-          requestYear,
-          requestMonth,
-          selectedYear,
-          selectedMonth,
-          requestDate: requestDate.toISOString(),
-          selectedDate: selectedDate,
-          selectedDateObj: selectedDateObj.toISOString(),
-        });
-
-        return (
-          requestYear === selectedYear &&
-          requestMonth === selectedMonth &&
-          request.request_status !== 'Cancelled'
-        );
+      if (isToday) {
+        // Filter by today
+        const todayStart = new Date(today);
+        todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(today);
+        todayEnd.setHours(23, 59, 59, 999);
+        return isDateInRange(requestDate, todayStart, todayEnd);
+      } else if (isMonday) {
+        // Filter by this week (Monday to Sunday)
+        const weekStart = getStartOfWeek(today);
+        weekStart.setHours(0, 0, 0, 0);
+        const weekEnd = new Date(today);
+        weekEnd.setHours(23, 59, 59, 999);
+        return isDateInRange(requestDate, weekStart, weekEnd);
+      } else if (isFirstDayOfMonth) {
+        // Filter by this month
+        const monthStart = getStartOfMonth(today);
+        monthStart.setHours(0, 0, 0, 0);
+        const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        monthEnd.setHours(23, 59, 59, 999);
+        return isDateInRange(requestDate, monthStart, monthEnd);
       } else {
         // Filter by exact date (original behavior)
-        const philippineDate = new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Asia/Manila',
+        const philippineDate = formatForDisplay(requestDate, 'en-CA', {
           year: 'numeric',
           month: '2-digit',
           day: '2-digit',
-        }).format(requestDate);
+        }).replace(/\//g, '-');
 
-        return (
-          philippineDate === selectedDate &&
-          request.request_status !== 'Cancelled'
-        );
+        return philippineDate === selectedDate;
       }
     });
   });
@@ -1655,7 +1716,43 @@
 
   // Date filter methods
   const selectQuickDate = (dateOption) => {
-    requestListFilter.value.selectedDate = dateOption.date;
+    const today = getPhilippineTime();
+
+    // Helper functions for date ranges
+    const getStartOfWeek = (date) => {
+      const d = new Date(date);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday as first day
+      return new Date(d.setDate(diff));
+    };
+
+    const getStartOfMonth = (date) => {
+      return new Date(date.getFullYear(), date.getMonth(), 1);
+    };
+
+    // Use centralized timezone utility to get YYYY-MM-DD format
+    const toYMD = (date) =>
+      formatForDisplay(date, 'en-CA', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).replace(/\//g, '-');
+
+    // Set the appropriate date based on the option
+    switch (dateOption.label) {
+      case 'Today':
+        requestListFilter.value.selectedDate = toYMD(today);
+        break;
+      case 'This Week':
+        requestListFilter.value.selectedDate = toYMD(getStartOfWeek(today));
+        break;
+      case 'This Month':
+        requestListFilter.value.selectedDate = toYMD(getStartOfMonth(today));
+        break;
+      default:
+        requestListFilter.value.selectedDate = dateOption.date;
+    }
+
     currentPage.value = 1;
     requestListFilter.value.showDatePicker = false;
     showDateDropdown.value = false; // Close dropdown after selection
@@ -1703,12 +1800,11 @@
     );
 
     // Convert to Philippine timezone format
-    const philippineDate = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Manila',
+    const philippineDate = formatForDisplay(selectedDate, 'en-CA', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
-    }).format(selectedDate);
+    }).replace(/\//g, '-');
 
     requestListFilter.value.selectedDate = philippineDate;
     currentPage.value = 1;
@@ -1886,18 +1982,36 @@
             u.email ||
             'System';
         } catch (_) {}
+        // Set category and determine request type
         selectedCategory.value = preload.category || '';
-        requestForm.value.request_type = '';
+        // Determine request_type from preload (prefer explicit item_type),
+        // otherwise auto-pick the first available type for the selected category
+        const preloadTypeName =
+          preload.item_type_name ||
+          inventoryStore.itemTypes?.find((t) => t.id === preload.item_type_id)
+            ?.name ||
+          '';
+
+        if (preloadTypeName) {
+          requestForm.value.request_type = preloadTypeName;
+        } else {
+          const category = requestCategories.value.find(
+            (cat) => cat.category === selectedCategory.value
+          );
+          if (category && category.types.length > 0) {
+            requestForm.value.request_type = category.types[0];
+          } else {
+            requestForm.value.request_type = '';
+          }
+        }
+
+        // Build rows from preload
         rowRequest.value = preload.items.map((it, idx) => ({
           id: idx + 1,
           item_name: it.name,
           item_quantity: it.quantity || 0,
           item_unit: it.unit || '',
-          item_type:
-            preload.item_type_name ||
-            inventoryStore.itemTypes?.find((t) => t.id === preload.item_type_id)
-              ?.name ||
-            requestForm.value.request_type,
+          item_type: requestForm.value.request_type,
           item_unitPrice: it.unit_price || 0,
           item_amount: (it.unit_price || 0) * (it.quantity || 0),
           inventory_item_id: null,
@@ -1907,6 +2021,8 @@
         }));
         // Open the create modal immediately
         openCreateTab();
+        // Lock category/type so user doesn't accidentally change them for preloaded drafts
+        isPreloaded.value = true;
         // Clear state so reloads don't re-add
         try {
           const newState = { ...state };
@@ -2277,25 +2393,10 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <ReceiptText class="w-8 h-8 text-primaryColor" />
-        </div>
-        <div class="stat-title text-black/50">Total Requests</div>
-        <div class="stat-value text-primaryColor">
-          {{ requestStats.total_requests || allRequests.length }}
-        </div>
-        <div class="stat-desc text-black/50">
-          {{ hasRequests ? 'Requests configured' : 'No requests yet' }}
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <Send class="w-8 h-8 text-info" />
+          <Send class="w-8 h-8 text-gray-500" />
         </div>
         <div class="stat-title text-black/50">To Request</div>
-        <div class="stat-value text-info">
+        <div class="stat-value text-gray-600">
           {{
             requestStats.to_request ||
             allRequests.filter((r) => r.request_status === 'To Request').length
@@ -2949,13 +3050,15 @@
                     <div
                       class="badge badge-sm badge-soft border-none"
                       :class="{
-                        'bg-info/10 text-info':
+                        '!bg-primaryColor/10 !text-primaryColor':
+                          request.request_status === 'Completed',
+                        '!bg-info/10 !text-info':
                           request.request_status === 'To Request',
-                        'bg-success/10 text-success':
+                        '!bg-success/10 !text-success':
                           request.request_status === 'Approved',
-                        'bg-error/10 text-error':
+                        '!bg-error/10 !text-error':
                           request.request_status === 'Rejected',
-                        'bg-warning/10 text-warning':
+                        '!bg-warning/10 !text-warning':
                           request.request_status === 'Pending',
                       }"
                     >
@@ -4431,6 +4534,7 @@
             @change="onCategoryChange($event.target.value)"
             class="select select-bordered bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
             required
+            :disabled="isPreloaded"
           >
             <option value="" disabled>Select Inventory Category</option>
             <option
@@ -4601,10 +4705,11 @@
                 :key="row.id"
                 class="hover:bg-primaryColor/5"
               >
-                <td class="text-center font-medium">{{ row.id }}</td>
+                <td class="text-left font-medium">{{ row.id }}</td>
 
                 <td>
                   <input
+                    :disabled="isPreloaded"
                     type="text"
                     v-model="row.item_name"
                     placeholder="Enter item name..."
@@ -4658,6 +4763,7 @@
                     v-model="row.item_type"
                     @change="onItemTypeChange(row)"
                     class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor"
+                    :disabled="isPreloaded"
                   >
                     <option value="" disabled>Type</option>
                     <option
@@ -4687,7 +4793,10 @@
                     ₱{{
                       (
                         (row.item_quantity || 0) * (row.item_unitPrice || 0)
-                      ).toFixed(2)
+                      ).toLocaleString('en-PH', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
                     }}
                   </div>
                 </td>
@@ -4706,7 +4815,15 @@
             <tfoot>
               <tr class="font-semibold">
                 <td colspan="6" class="text-right text-black">Total Amount:</td>
-                <td class="text-right text-primaryColor">₱{{ totalAmount }}</td>
+                <td class="text-right text-primaryColor">
+                  ₱{{
+                    Number(totalAmount).toLocaleString('en-PH', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  }}
+                </td>
+
                 <td></td>
               </tr>
             </tfoot>

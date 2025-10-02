@@ -4,7 +4,7 @@
   import { useCustomToast } from '../../composables/useCustomToast';
   import { usePositionsStore } from '../../stores/positionsStore.js';
 
-  const { showSuccess, showError } = useCustomToast();
+  const { showSuccess, showError, showWarning, showInfo } = useCustomToast();
   const positionsStore = usePositionsStore();
 
   // Reactive data
@@ -44,25 +44,66 @@
       rate_per_hour: position.rate_per_hour,
     };
     showEditModal.value = true;
+
+    // Show info toast to guide user
+    showInfo(`Updating rate for ${position.role} position`, 'Edit Mode');
   };
 
   const closeModals = () => {
+    if (selectedPosition.value) {
+      showInfo('Rate update cancelled', 'Edit Cancelled');
+    }
     showEditModal.value = false;
     selectedPosition.value = null;
   };
 
   const updatePositionRate = async () => {
     try {
+      // Client-side validation
+      const rate = positionForm.value.rate_per_hour;
+
+      if (rate === null || rate === undefined || rate === '') {
+        showError('Rate per hour is required', 'Validation Error');
+        return;
+      }
+
+      if (typeof rate !== 'number' || isNaN(rate)) {
+        showError('Rate per hour must be a valid number', 'Validation Error');
+        return;
+      }
+
+      if (rate < 0) {
+        showError(
+          'Rate per hour must be a positive number',
+          'Validation Error'
+        );
+        return;
+      }
+
+      if (rate > 10000) {
+        showWarning(
+          'Rate per hour seems unusually high. Please verify this amount is correct.',
+          'High Rate Warning'
+        );
+        // Continue with the update but show warning
+      }
+
       await positionsStore.updatePositionRate(
         selectedPosition.value.role_id,
-        positionForm.value.rate_per_hour
+        rate
       );
 
-      showSuccess('Rate per hour updated successfully');
+      showSuccess(
+        `Rate per hour updated to ${formatCurrency(rate)} for ${selectedPosition.value.role}`,
+        'Rate Updated Successfully'
+      );
       closeModals();
     } catch (error) {
       console.error('Error updating position rate:', error);
-      showError(error.message || 'Failed to update rate per hour');
+      showError(
+        error.message || 'Failed to update rate per hour',
+        'Update Failed'
+      );
     }
   };
 
@@ -76,7 +117,10 @@
       }
     } catch (error) {
       console.error('Error fetching positions:', error);
-      showError('Failed to load positions data');
+      showError(
+        error.message || 'Failed to load positions data',
+        'Loading Error'
+      );
     }
   };
 
@@ -169,7 +213,7 @@
           <!-- Rate per Hour -->
           <div class="flex justify-between items-center mb-3">
             <span class="text-xs sm:text-sm text-black/70">Rate per Hour:</span>
-            <span class="font-bold text-sm sm:text-base text-success">
+            <span class="font-bold text-sm sm:text-base text-primaryColor">
               {{ formatCurrency(position.rate_per_hour) }}
             </span>
           </div>
@@ -247,18 +291,23 @@
           </p>
         </div>
 
-        <div class="space-y-4">
-          <div class="form-control">
+        <div class="grid grid-cols-1 sm:grid-cols-2 items-center">
+          <!-- Label -->
+          <div class="col-span-2">
             <label class="label">
-              <span class="label-text">Rate per Hour (₱)</span>
+              <span class="label-text font-medium">Rate per Hour</span>
             </label>
+          </div>
+
+          <!-- Input -->
+          <div class="col-span-2">
             <input
               v-model.number="positionForm.rate_per_hour"
               type="number"
               step="0.01"
               min="0"
               placeholder="0.00"
-              class="input input-bordered input-lg text-center"
+              class="input input-bordered input-lg text-center w-full"
               required
             />
           </div>

@@ -1,4 +1,9 @@
 const { db } = require("../config/database");
+const {
+  getCurrentPhilippineTime,
+  getCurrentPhilippineDate,
+  formatPhilippineTime,
+} = require("../utils/timezoneUtils");
 
 class Inventory {
   // Get all inventory categories
@@ -76,13 +81,13 @@ class Inventory {
   static async getCurrentInventory(filters = {}) {
     try {
       // First, automatically update status of expired items
-      const today = new Date().toISOString().split("T")[0];
+      const today = getCurrentPhilippineDate();
       await db("inventory_items")
         .where("expiry_date", "<=", today)
         .where("status", "available")
         .update({
           status: "expired",
-          updated_at: new Date(),
+          updated_at: getCurrentPhilippineTime(),
         });
 
       let query = db("inventory_items as ii")
@@ -115,13 +120,10 @@ class Inventory {
         query = query.where("ii.item_type_id", filters.item_type_id);
       }
       if (filters.expiry_within_days) {
-        const futureDate = new Date();
+        const futureDate = getCurrentPhilippineTime();
         futureDate.setDate(futureDate.getDate() + filters.expiry_within_days);
-        query = query.where(
-          "ii.expiry_date",
-          "<=",
-          futureDate.toISOString().split("T")[0]
-        );
+        const futureISO = formatPhilippineTime(futureDate, "date");
+        query = query.where("ii.expiry_date", "<=", futureISO);
       }
       if (filters.supplier_id) {
         query = query.where("ii.supplier_id", filters.supplier_id);
@@ -300,7 +302,11 @@ class Inventory {
     }
   }
 
-  static generateBatchNumber(itemTypeId, supplierId, date = new Date()) {
+  static generateBatchNumber(
+    itemTypeId,
+    supplierId,
+    date = getCurrentPhilippineTime()
+  ) {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
@@ -337,57 +343,112 @@ class Inventory {
         this.generateBatchNumber(
           itemData.item_type_id,
           itemData.supplier_id,
-          itemData.received_date ? new Date(itemData.received_date) : new Date()
+          itemData.received_date
+            ? new Date(itemData.received_date)
+            : getCurrentPhilippineTime()
         );
 
-      const [newItem] = await trx("inventory_items")
-        .insert({
-          item_type_id: itemData.item_type_id,
-          item_name: itemData.item_name, // Include item_name
-          supplier_id: itemData.supplier_id || null,
-          purchase_order_id: itemData.purchase_order_id || null,
-          unit_of_measure: itemData.unit_of_measure || null,
-          batch_number: batchNumber,
+      let targetItem;
+      // If the item type does not require batch tracking, merge into an existing row
+      if (itemType && itemType.requires_batch === false) {
+        // Find an existing available row for this item_type
+        targetItem = await trx("inventory_items")
+          .where({ item_type_id: itemData.item_type_id })
+          .whereNull("deleted_at")
+          .where("status", "available")
+          .first();
+
+        if (targetItem) {
+          // Weighted average unit cost
+          const existingQty = parseFloat(targetItem.quantity || 0);
+          const existingValue = parseFloat(targetItem.total_value || 0);
+          const incomingQty = parseFloat(itemData.quantity || 0);
+          const incomingValue =
+            parseFloat(itemData.unit_cost || 0) * incomingQty;
+          const newQty = existingQty + incomingQty;
+          const newTotalValue = existingValue + incomingValue;
+          const newUnitCost =
+            newQty > 0 ? newTotalValue / newQty : targetItem.unit_cost;
+
+          await trx("inventory_items").where({ id: targetItem.id }).update({
+            quantity: newQty,
+            total_value: newTotalValue,
+            unit_cost: newUnitCost,
+            updated_at: getCurrentPhilippineTime(),
+          });
+
+          // Log the transaction against the existing row
+          await trx("inventory_transactions").insert({
+            inventory_item_id: targetItem.id,
+            transaction_type: "receipt",
+            quantity: incomingQty,
+            unit_cost: itemData.unit_cost,
+            total_value: incomingValue,
+            reference_number: itemData.reference_number || null,
+            reason: isFirstReceipt
+              ? "First receipt for this item type"
+              : "Replenishment",
+            notes: itemData.notes || null,
+            performed_by: itemData.received_by,
+            transaction_date: getCurrentPhilippineTime(),
+            is_first_receipt: isFirstReceipt,
+            created_at: getCurrentPhilippineTime(),
+            updated_at: getCurrentPhilippineTime(),
+          });
+        }
+      }
+
+      // If batching is required or no existing row to merge, create a new batch
+      if (!targetItem) {
+        const [newItem] = await trx("inventory_items")
+          .insert({
+            item_type_id: itemData.item_type_id,
+            item_name: itemData.item_name, // Include item_name
+            supplier_id: itemData.supplier_id || null,
+            purchase_order_id: itemData.purchase_order_id || null,
+            unit_of_measure: itemData.unit_of_measure || null,
+            batch_number: batchNumber,
+            quantity: itemData.quantity,
+            unit_cost: itemData.unit_cost,
+            total_value: itemData.quantity * itemData.unit_cost,
+            expiry_date: itemData.expiry_date || null,
+            received_date: itemData.received_date || getCurrentPhilippineTime(),
+            status: "available",
+            notes: itemData.notes || null,
+            received_by: itemData.received_by || "System",
+            created_at: getCurrentPhilippineTime(),
+            updated_at: getCurrentPhilippineTime(),
+          })
+          .returning("*");
+
+        // Log the transaction
+        await trx("inventory_transactions").insert({
+          inventory_item_id: newItem.id,
+          transaction_type: "receipt",
           quantity: itemData.quantity,
           unit_cost: itemData.unit_cost,
           total_value: itemData.quantity * itemData.unit_cost,
-          expiry_date: itemData.expiry_date || null,
-          received_date: itemData.received_date || new Date(),
-          status: "available",
+          reference_number: itemData.reference_number || null,
+          reason: isFirstReceipt
+            ? "First receipt for this item type"
+            : "Replenishment",
           notes: itemData.notes || null,
-          received_by: itemData.received_by || "System",
-          created_at: new Date(),
-          updated_at: new Date(),
-        })
-        .returning("*");
-
-      // Log the transaction
-      await trx("inventory_transactions").insert({
-        inventory_item_id: newItem.id,
-        transaction_type: "receipt",
-        quantity: itemData.quantity,
-        unit_cost: itemData.unit_cost,
-        total_value: itemData.quantity * itemData.unit_cost,
-        reference_number: itemData.reference_number || null,
-        reason: isFirstReceipt
-          ? "First receipt for this item type"
-          : "Replenishment",
-        notes: itemData.notes || null,
-        performed_by: itemData.received_by,
-        transaction_date: new Date(),
-        is_first_receipt: isFirstReceipt,
-        created_at: new Date(),
-        updated_at: new Date(),
-      });
+          performed_by: itemData.received_by,
+          transaction_date: getCurrentPhilippineTime(),
+          is_first_receipt: isFirstReceipt,
+          created_at: getCurrentPhilippineTime(),
+          updated_at: getCurrentPhilippineTime(),
+        });
+      }
 
       // Update item type counters
       const newReceiptsCount = parseInt(itemType.receipts_count || 0, 10) + 1;
       const updates = {
         receipts_count: newReceiptsCount,
-        updated_at: new Date(),
+        updated_at: getCurrentPhilippineTime(),
       };
       if (isFirstReceipt) {
-        updates.first_received_at = new Date();
+        updates.first_received_at = getCurrentPhilippineTime();
       }
       await trx("inventory_item_types")
         .where("id", itemData.item_type_id)
@@ -474,7 +535,7 @@ class Inventory {
               break;
             case "disposal": {
               // Only allow disposal for expired items; keep status as 'expired' to satisfy enum
-              const todayIso = new Date().toISOString().split("T")[0];
+              const todayIso = getCurrentPhilippineDate();
               const isExpiredByDate =
                 currentItem.expiry_date && currentItem.expiry_date <= todayIso;
               const isAlreadyExpired = currentItem.status === "expired";
@@ -540,7 +601,7 @@ class Inventory {
             transactionData.adjustment_type === "set_expiry_date"
               ? transactionData.new_expiry_date
               : currentItem.expiry_date,
-          updated_at: new Date(),
+          updated_at: getCurrentPhilippineTime(),
         })
         .returning("*");
 
@@ -557,7 +618,8 @@ class Inventory {
         reason: transactionData.reason || null,
         notes: transactionData.notes || null,
         performed_by: transactionData.performed_by,
-        transaction_date: transactionData.transaction_date || new Date(),
+        transaction_date:
+          transactionData.transaction_date || getCurrentPhilippineTime(),
         adjustment_type: transactionData.adjustment_type || null,
         disposal_cost: transactionData.disposal_cost || null,
         audit_action:
@@ -567,8 +629,8 @@ class Inventory {
             : null),
         // For clarity in reporting, mark transaction_type as 'disposal' when disposing
         // but keep inventory_items.status as 'expired' due to enum constraint.
-        created_at: new Date(),
-        updated_at: new Date(),
+        created_at: getCurrentPhilippineTime(),
+        updated_at: getCurrentPhilippineTime(),
       });
 
       if (!trx) {
@@ -810,7 +872,7 @@ class Inventory {
     }
   }
 
-  // Get low stock items (this would need alert configuration)
+  // Get low stock items (GROUPED by item_type) — used by /alerts/low-stock
   static async getLowStockItems() {
     try {
       // Fallback rule: if no alert config exists, use the reorder_level stored on inventory_items
@@ -830,6 +892,8 @@ class Inventory {
         )
         .whereNull("ii.deleted_at")
         .where("ii.status", "available")
+        // Exclude Equipment category from alerts
+        .whereNot("ic.name", "Equipment")
         .modify((qb) => {
           // If alert exists but is deactivated, ignore it and rely on reorder_level
           qb.whereRaw("(ia.is_active = true OR ia.is_active IS NULL)");
@@ -842,6 +906,55 @@ class Inventory {
     } catch (error) {
       console.error("Error fetching low stock items:", error);
       throw new Error("Failed to fetch low stock items");
+    }
+  }
+
+  // Get low stock items PER BATCH — used by /alerts/low-stock-batches
+  static async getLowStockItemsPerBatch() {
+    try {
+      const SAFETY_MARGIN_FACTOR = 0.9; // 90%
+      return await db("inventory_items as ii")
+        .leftJoin("inventory_item_types as it", "ii.item_type_id", "it.id")
+        .leftJoin("inventory_categories as ic", "it.category_id", "ic.id")
+        .leftJoin("inventory_alerts as ia", "it.id", "ia.item_type_id")
+        .select(
+          "ii.id",
+          "ii.item_type_id",
+          "ii.item_name",
+          "ii.batch_number",
+          "ii.unit_of_measure",
+          "ii.unit_cost",
+          "ii.total_value",
+          "ii.quantity as current_stock",
+          db.raw(
+            "COALESCE(ia.min_stock_level, ii.reorder_level) as min_stock_level"
+          ),
+          "it.name as item_type_name",
+          "ic.name as category_name"
+        )
+        .whereNull("ii.deleted_at")
+        .where("ii.status", "available")
+        .whereNot("ic.name", "Equipment")
+        .modify((qb) => {
+          qb.whereRaw("(ia.is_active = true OR ia.is_active IS NULL)");
+        })
+        // Only flag when a positive threshold exists
+        .whereRaw(
+          "COALESCE(ia.min_stock_level, ii.reorder_level) IS NOT NULL AND COALESCE(ia.min_stock_level, ii.reorder_level) > 0"
+        )
+        // Quantity must be non-negative and at/below threshold
+        .whereRaw("ii.quantity >= 0")
+        .whereRaw(
+          `ii.quantity < COALESCE(ia.min_stock_level, ii.reorder_level) * ${SAFETY_MARGIN_FACTOR}`
+        )
+        .orderBy([
+          { column: "ic.name", order: "asc" },
+          { column: "it.name", order: "asc" },
+          { column: "ii.quantity", order: "asc" },
+        ]);
+    } catch (error) {
+      console.error("Error fetching low stock items per batch:", error);
+      throw new Error("Failed to fetch low stock items per batch");
     }
   }
 

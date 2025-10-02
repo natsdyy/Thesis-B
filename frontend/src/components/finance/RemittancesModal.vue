@@ -3,6 +3,8 @@
   import { getApiUrl } from '../../config/api.js';
   import { useBranchContextStore } from '../../stores/branchContextStore';
   import { usePOSStore } from '../../stores/posStore';
+  import { formatPhilippineTime } from '../../utils/timezoneUtils.js';
+  import { useCustomToast } from '../../composables/useCustomToast.js';
 
   const props = defineProps({ show: { type: Boolean, default: false } });
   const emit = defineEmits(['close', 'updated']);
@@ -21,6 +23,14 @@
   const confirmOpen = ref(false);
   const confirmAction = ref('approve'); // 'approve' | 'reject'
   const targetId = ref(null);
+  const { showToast } = useCustomToast();
+
+  // Helper function to format dates using timezone utilities
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return formatPhilippineTime(date, 'date');
+  };
 
   const fetchRemittances = async () => {
     loading.value = true;
@@ -33,6 +43,9 @@
       });
       items.value = Array.isArray(data) ? data : [];
       total.value = Number(t || 0);
+    } catch (e) {
+      console.error('Failed to fetch remittances:', e);
+      showToast('Failed to load remittances', 'error');
     } finally {
       loading.value = false;
     }
@@ -59,8 +72,10 @@
       await posStore.approveRemittance(id);
       await fetchRemittances();
       emit('updated');
+      showToast('Remittance approved successfully', 'success');
     } catch (e) {
       console.error('Approve failed', e);
+      showToast('Failed to approve remittance', 'error');
     } finally {
       submitting.value = false;
       submittingId.value = null;
@@ -74,8 +89,10 @@
       await posStore.rejectRemittance(id, { notes: null });
       await fetchRemittances();
       emit('updated');
+      showToast('Remittance rejected successfully', 'success');
     } catch (e) {
       console.error('Reject failed', e);
+      showToast('Failed to reject remittance', 'error');
     } finally {
       submitting.value = false;
       submittingId.value = null;
@@ -143,8 +160,6 @@
           "
         >
           <option value="pending">Pending</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
         </select>
         <select
           class="select select-bordered select-sm"
@@ -175,10 +190,11 @@
               <tr>
                 <th class="text-xs">Branch</th>
                 <th class="text-xs">Period</th>
-                <th class="text-xs">From</th>
-                <th class="text-xs">To</th>
+                <th class="text-xs">Date</th>
                 <th class="text-xs">Gross</th>
                 <th class="text-xs">Refunds</th>
+                <th class="text-xs">Loss (Voids)</th>
+                <th class="text-xs">Void</th>
                 <th class="text-xs">Net</th>
                 <th class="text-xs">Remitted</th>
                 <th class="text-xs">Status</th>
@@ -190,22 +206,51 @@
                 <td class="text-xs">{{ r.branch_name || r.branch_id }}</td>
                 <td class="text-xs">{{ r.period_type }}</td>
                 <td class="text-xs">
-                  {{ new Date(r.date_from).toLocaleString() }}
+                  {{ formatDate(r.date_from) }} - {{ formatDate(r.date_to) }}
+                </td>
+
+                <td class="text-xs font-semibold text-primaryColor">
+                  ₱{{
+                    Number(r.gross_sales || 0).toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  }}
                 </td>
                 <td class="text-xs">
-                  {{ new Date(r.date_to).toLocaleString() }}
+                  ₱{{
+                    Number(r.refunded_amount || 0).toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  }}
+                </td>
+                <td class="text-xs">
+                  ₱{{
+                    Number(r.voided_amount || 0).toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  }}
+                </td>
+                <td class="text-xs">
+                  {{ Number(r.disposed || 0).toLocaleString() }}
+                </td>
+                <td class="text-xs">
+                  ₱{{
+                    Number(r.net_sales || 0).toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  }}
                 </td>
                 <td class="text-xs font-semibold text-primaryColor">
-                  ₱{{ Number(r.gross_sales || 0).toLocaleString() }}
-                </td>
-                <td class="text-xs">
-                  ₱{{ Number(r.refunded_amount || 0).toLocaleString() }}
-                </td>
-                <td class="text-xs">
-                  ₱{{ Number(r.net_sales || 0).toLocaleString() }}
-                </td>
-                <td class="text-xs font-semibold text-primaryColor">
-                  ₱{{ Number(r.remitted_amount || 0).toLocaleString() }}
+                  ₱{{
+                    Number(r.remitted_amount || 0).toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  }}
                 </td>
                 <td class="text-xs">
                   <span
@@ -221,28 +266,17 @@
                   >
                 </td>
                 <td class="text-xs">
-                  <div class="join">
+                  <div class="">
                     <button
-                      class="btn btn-xs join-item"
+                      class="text-primaryColor btn btn-xs bg-success/0 rounded-full border-none hover:bg-success/10"
                       @click="openConfirm('approve', r.id)"
                       :disabled="r.status !== 'pending' || submitting"
+                      title="Approve"
                     >
-                      <span
-                        v-if="submitting && submittingId === r.id"
-                        class="loading loading-spinner loading-xs mr-1"
+                      <font-awesome-icon
+                        icon="fa-solid fa-check"
+                        class="!w-3 !h-3"
                       />
-                      Approve
-                    </button>
-                    <button
-                      class="btn btn-xs join-item"
-                      @click="openConfirm('reject', r.id)"
-                      :disabled="r.status !== 'pending' || submitting"
-                    >
-                      <span
-                        v-if="submitting && submittingId === r.id"
-                        class="loading loading-spinner loading-xs mr-1"
-                      />
-                      Reject
                     </button>
                   </div>
                 </td>
@@ -278,7 +312,7 @@
       </div>
 
       <div class="modal-action">
-        <button class="btn" @click="close">Close</button>
+        <button class="btn btn-sm font-thin" @click="close">Close</button>
       </div>
     </div>
     <form method="dialog" class="modal-backdrop"><button>close</button></form>
@@ -294,11 +328,15 @@
         Are you sure you want to {{ confirmAction }} this remittance?
       </p>
       <div class="modal-action">
-        <button class="btn" @click="closeConfirm" :disabled="submitting">
+        <button
+          class="btn btn-sm font-thin"
+          @click="closeConfirm"
+          :disabled="submitting"
+        >
           Cancel
         </button>
         <button
-          class="btn bg-primaryColor text-white"
+          class="btn bg-primaryColor text-white hover:bg-primaryColor/80 btn-sm font-thin"
           @click="confirmProceed"
           :disabled="submitting"
         >

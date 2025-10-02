@@ -1,4 +1,8 @@
 const { db } = require("../config/database");
+const {
+  formatForDatabase,
+  getCurrentPhilippineTime,
+} = require("../utils/timezoneUtils");
 
 class BranchRemittance {
   static async create(data) {
@@ -7,8 +11,13 @@ class BranchRemittance {
         branch_id: data.branch_id,
         submitted_by: data.submitted_by,
         period_type: data.period_type,
-        date_from: data.date_from,
-        date_to: data.date_to,
+        // Ensure stored ranges are in Philippine timezone
+        date_from: data.date_from
+          ? formatForDatabase(new Date(data.date_from))
+          : null,
+        date_to: data.date_to
+          ? formatForDatabase(new Date(data.date_to))
+          : null,
         gross_sales: data.gross_sales || 0,
         net_sales: data.net_sales || 0,
         refunded_amount: data.refunded_amount || 0,
@@ -69,7 +78,8 @@ class BranchRemittance {
       .update({
         status: "approved",
         approved_by: approvedBy,
-        approved_at: new Date(),
+        // Record approval time in Philippine timezone
+        approved_at: formatForDatabase(getCurrentPhilippineTime()),
       })
       .returning("*");
     return row;
@@ -82,7 +92,7 @@ class BranchRemittance {
       .update({
         status: "rejected",
         approved_by: approvedBy,
-        approved_at: new Date(),
+        approved_at: formatForDatabase(getCurrentPhilippineTime()),
         notes,
       })
       .returning("*");

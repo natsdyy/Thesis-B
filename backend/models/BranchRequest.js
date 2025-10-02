@@ -1,5 +1,6 @@
 // backend/models/BranchRequest.js
 const { db } = require("../config/database");
+const { getCurrentPhilippineTime } = require("../utils/timezoneUtils");
 
 class BranchRequest {
   // Get all branch requests with optional filters
@@ -158,7 +159,7 @@ class BranchRequest {
 
     try {
       // Generate unique request_id
-      const today = new Date();
+      const today = getCurrentPhilippineTime();
       const dateStr = today.toISOString().split("T")[0].replace(/-/g, "");
       const requestId = `BR-${dateStr}-${Date.now().toString().slice(-3)}`;
 
@@ -328,7 +329,7 @@ class BranchRequest {
     try {
       const updateData = {
         status: status,
-        updated_at: new Date(),
+        updated_at: getCurrentPhilippineTime(),
       };
 
       // Add status-specific fields
@@ -338,7 +339,7 @@ class BranchRequest {
           break;
         case "Acknowledged":
           updateData.acknowledged_by = updatedBy;
-          updateData.acknowledged_at = new Date();
+          updateData.acknowledged_at = getCurrentPhilippineTime();
           if (notes) updateData.main_office_notes = notes;
           break;
         case "In Progress":
@@ -346,12 +347,12 @@ class BranchRequest {
           break;
         case "Completed":
           updateData.completed_by = updatedBy;
-          updateData.completed_at = new Date();
+          updateData.completed_at = getCurrentPhilippineTime();
           if (notes) updateData.main_office_notes = notes;
           break;
         case "Cancelled":
           updateData.cancelled_by = updatedBy;
-          updateData.cancelled_at = new Date();
+          updateData.cancelled_at = getCurrentPhilippineTime();
           break;
       }
 
@@ -373,8 +374,8 @@ class BranchRequest {
       const [deletedRequest] = await db("branch_requests")
         .where("id", id)
         .update({
-          deleted_at: new Date(),
-          updated_at: new Date(),
+          deleted_at: getCurrentPhilippineTime(),
+          updated_at: getCurrentPhilippineTime(),
         })
         .returning("*");
 

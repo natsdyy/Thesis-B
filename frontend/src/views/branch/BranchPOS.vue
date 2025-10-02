@@ -41,7 +41,7 @@
       window.location.hostname === '127.0.0.1'
     ) {
       // For local development, use the network IP so phones can access it
-      return `http://192.168.18.5:8080`;
+      return `http://192.168.68.111:8080`;
     }
     // In production, use the current origin
     return window.location.origin;
@@ -579,7 +579,7 @@
           <p class="text-sm sm:text-base text-primaryColor mb-4 text-center">
             {{
               userRole === 'Manager'
-                ? 'Please enter your Employee ID to start the POS session'
+                ? 'Please enter your PIN to start the POS session'
                 : 'A manager must enter their PIN to activate the POS system'
             }}
           </p>
@@ -588,14 +588,14 @@
             <div class="form-control">
               <label class="label">
                 <span class="label-text text-sm sm:text-base"
-                  >Manager Employee ID</span
+                  >Manager PIN:</span
                 >
               </label>
               <div class="relative">
                 <input
                   v-model="managerLoginForm.employeeId"
                   :type="showEmployeeId ? 'text' : 'password'"
-                  placeholder="Enter manager employee ID"
+                  placeholder="Enter your PIN"
                   class="input input-bordered w-full input-sm sm:input-md pr-10"
                   @keyup.enter="handleManagerLogin"
                 />
@@ -645,9 +645,7 @@
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text text-sm sm:text-base"
-                  >Manager PIN</span
-                >
+                <span class="label-text text-sm sm:text-base">Manager PIN</span>
               </label>
               <div class="relative">
                 <input
@@ -802,7 +800,7 @@
 
           <!-- Menu Items Grid -->
           <div class="flex-1 p-6 overflow-y-auto max-h-[90vh]">
-            <div class="grid grid-cols-3 md:grid-cols-4 gap-4">
+            <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
               <div
                 v-for="item in posStore.filteredMenuItems"
                 :key="item.id"
@@ -1476,6 +1474,10 @@
 
             <!-- QR Code -->
             <div class="border-t border-gray-300 pt-3 text-center">
+              <p class="text-xs text-gray-500">
+                Tell us about your visit. Scan the QR code below and share your
+                experience!
+              </p>
               <div class="mb-2 flex justify-center">
                 <div class="w-32 h-32 flex items-center justify-center">
                   <QRCodeGenerator
@@ -1485,7 +1487,7 @@
                   />
                 </div>
               </div>
-              <p class="text-xs text-gray-500">Rate your order</p>
+              <p class="text-xs text-gray-500">Thank you, please come again!</p>
             </div>
           </div>
 
@@ -1623,29 +1625,10 @@
   }
 
   /* Responsive grid adjustments */
-  @media (max-width: 640px) {
-    .grid-cols-2 {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-
-  @media (min-width: 640px) and (max-width: 1024px) {
-    .grid-cols-3 {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-  }
-
-  @media (min-width: 1024px) {
-    .grid-cols-2 {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-
-  @media (min-width: 1280px) {
-    .grid-cols-3 {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-  }
+  /*
+    Removed custom overrides for Tailwind's grid-cols utilities that caused
+    tablet/responsive issues. Use Tailwind responsive classes in markup instead.
+  */
 
   /* Mobile-specific adjustments */
   @media (max-width: 768px) {

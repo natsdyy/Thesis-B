@@ -47,4 +47,5 @@ export default [
     component: () => import('../../views/common/DepartmentProfile.vue'),
     meta: { title: 'SCM Profile' },
   },
+
 ];

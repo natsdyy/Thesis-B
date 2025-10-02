@@ -4,6 +4,13 @@ const Inventory = require("./models/Inventory");
 const cors = require("cors");
 require("dotenv").config();
 
+// Set timezone to Philippine Time (Asia/Manila)
+process.env.TZ = process.env.TZ || "Asia/Manila";
+console.log(`🌍 Timezone set to: ${process.env.TZ}`);
+console.log(
+  `🕐 Current server time: ${new Date().toLocaleString("en-PH", { timeZone: "Asia/Manila" })}`
+);
+
 // Import database configuration and models
 const { testConnection, runMigrations } = require("./config/database");
 const Employee = require("./models/Employee");
@@ -55,6 +62,8 @@ const envOrigins = rawCorsOrigin
   .filter(Boolean);
 
 const defaultAllowedOrigins = [
+  "http://192.168.68.111:8080", // Wi-Fi 4 frontend
+  "http://192.168.254.116:8080", // Wi-Fi 3 frontend
   "http://10.196.212.241:8080", // Wi-Fi 2 frontend
   "http://10.196.212.194:8080", // Wi-Fi frontend
   "http://192.168.56.1:8080", // Ethernet 3 frontend
@@ -62,12 +71,13 @@ const defaultAllowedOrigins = [
   "http://localhost:80", //docker
   "http://localhost:8080", // Localhost frontend
   "http://192.168.18.5:8080", // Legacy network frontend
+  "http://192.168.68.111:5000", // Wi-Fi 4 backend
   "http://192.168.56.1:5000", // Ethernet 3 backend
   "https://countrysides.up.railway.app", // Railway deployment
   "https://thesis-b-frontend-production.up.railway.app", // Railway frontend
   "https://thesis-b-backend-production.up.railway.app", // Railway backend
   "https://www.countryside-steakhouse.site", // Production domain
-  "http://www.countryside-steakhouse.site", // Production domain (HTTP fallback)
+  "http://www.countryside-steakhouse.site", // Production domain (HTTP fallback addons)
 ];
 
 const allowList = [...defaultAllowedOrigins, ...envOrigins];

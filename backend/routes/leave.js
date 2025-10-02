@@ -1,6 +1,20 @@
 const express = require("express");
 const router = express.Router();
 const LeaveRequest = require("../models/LeaveRequest");
+const {
+  getCurrentPhilippineDate,
+  formatPhilippineTime,
+} = require("../utils/timezoneUtils");
+// Normalize YYYY-MM-DD in Asia/Manila
+function normalizePHDateString(input) {
+  if (!input) return input;
+  // If already in YYYY-MM-DD format, return as is
+  if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input;
+  const d = new Date(input);
+  // Fallback: if invalid date, return original
+  if (isNaN(d.getTime())) return input;
+  return formatPhilippineTime(d, "date").replace(/\//g, "-");
+}
 const { db } = require("../config/database");
 const { authenticateToken } = require("../middleware/rbac");
 const { requireAnyPermission } = require("../middleware/rbac");
@@ -244,10 +258,12 @@ router.post("/", authenticateToken, async (req, res) => {
       });
     }
 
-    // Validate date range
-    const fromDate = new Date(from_date);
-    const toDate = new Date(to_date);
-    if (fromDate > toDate) {
+    // Normalize to PH YYYY-MM-DD for storage
+    const normalizedFrom = normalizePHDateString(from_date);
+    const normalizedTo = normalizePHDateString(to_date);
+
+    // Validate date range (compare YYYY-MM-DD strings to avoid TZ issues)
+    if (normalizedFrom > normalizedTo) {
       return res.status(400).json({
         success: false,
         message: "From date cannot be later than To date",
@@ -257,8 +273,8 @@ router.post("/", authenticateToken, async (req, res) => {
     const leaveRequest = await LeaveRequest.create(
       {
         employee_id: employeeId,
-        from_date,
-        to_date,
+        from_date: normalizedFrom,
+        to_date: normalizedTo,
         leave_type,
         reason,
       },
@@ -819,7 +835,13 @@ router.post(
 router.put("/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const updateData = req.body;
+    const updateData = { ...req.body };
+    if (updateData.from_date) {
+      updateData.from_date = normalizePHDateString(updateData.from_date);
+    }
+    if (updateData.to_date) {
+      updateData.to_date = normalizePHDateString(updateData.to_date);
+    }
     const updatedBy = req.user.id;
 
     const updated = await LeaveRequest.update(id, updateData, updatedBy);
@@ -1036,7 +1058,7 @@ router.get(
       });
 
       const requests = result.data || [];
-      const today = new Date().toISOString().split("T")[0];
+      const today = getCurrentPhilippineDate();
 
       const stats = {
         total: requests.length,
@@ -1047,10 +1069,15 @@ router.get(
         rejected: requests.filter((r) => r.status === "rejected").length,
         approved_today: requests.filter((r) => {
           if (r.status !== "approved_by_hr") return false;
+          if (!r.hr_approved_at && !r.manager_approved_at) return false;
           const approvedDate = new Date(
             r.hr_approved_at || r.manager_approved_at
           );
-          return approvedDate.toISOString().split("T")[0] === today;
+          const approvedDatePH = formatPhilippineTime(
+            approvedDate,
+            "date"
+          ).replace(/\//g, "-");
+          return approvedDatePH === today;
         }).length,
         by_leave_type: {},
         by_department: {},

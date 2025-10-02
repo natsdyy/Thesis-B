@@ -2316,122 +2316,7 @@
       </p>
     </div>
 
-    <!-- Stats -->
-    <div
-      class="stats shadow w-full mb-4 sm:mb-6 bg-accentColor border border-black/10 stats-vertical lg:stats-horizontal xl:stats-horizontal rounded-lg"
-    >
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <FileText
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-primaryColor"
-          />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">
-          Total Orders
-        </div>
-        <div
-          class="stat-value text-primaryColor text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          <span v-if="orderStats.total !== undefined">{{
-            orderStats.total
-          }}</span>
-          <span v-else class="loading loading-spinner loading-sm"></span>
-        </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
-          All purchase orders
-        </div>
-      </div>
 
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <CheckCircle
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-success"
-          />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">Completed</div>
-        <div
-          class="stat-value text-success text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          <span v-if="orderStats.completed !== undefined">{{
-            orderStats.completed
-          }}</span>
-          <span v-else class="loading loading-spinner loading-sm"></span>
-        </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
-          Successfully delivered
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <Clock class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-warning" />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">Pending</div>
-        <div
-          class="stat-value text-warning text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          <span v-if="orderStats.pending !== undefined">{{
-            orderStats.pending
-          }}</span>
-          <span v-else class="loading loading-spinner loading-sm"></span>
-        </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
-          Awaiting delivery
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <AlertTriangle
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-error"
-          />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">Returns</div>
-        <div
-          class="stat-value text-error text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          <span v-if="orderStats.returns !== undefined">{{
-            orderStats.returns
-          }}</span>
-          <span v-else class="loading loading-spinner loading-sm"></span>
-        </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
-          Items returned
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <PhilippinePeso
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-black/80"
-          />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">
-          Total Value
-        </div>
-        <div
-          class="stat-value text-black/80 text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          <span v-if="orderStats.totalValue !== undefined"
-            >₱{{ orderStats.totalValue.toLocaleString() }}</span
-          >
-          <span v-else class="loading loading-spinner loading-sm"></span>
-        </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
-          All orders combined
-        </div>
-      </div>
-    </div>
 
     <!-- Purchase Order List -->
     <div
@@ -2496,7 +2381,7 @@
             class="tab font-medium"
             :class="
               activeTab === 'active'
-                ? 'tab-active bg-primaryColor text-white'
+                ? 'tab-active text-black'
                 : 'text-primaryColor'
             "
             @click="activeTab = 'active'"
@@ -2508,7 +2393,7 @@
             class="tab font-medium"
             :class="
               activeTab === 'history'
-                ? 'tab-active bg-primaryColor text-white'
+                ? 'tab-active  text-black'
                 : 'text-primaryColor'
             "
             @click="activeTab = 'history'"

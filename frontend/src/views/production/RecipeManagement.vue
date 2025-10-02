@@ -971,13 +971,13 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <BookOpen class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-info" />
+          <BookOpen class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-gray-600" />
         </div>
         <div class="stat-title text-black/50 text-xs sm:text-sm">
           Categories
         </div>
         <div
-          class="stat-value text-info text-lg sm:text-xl lg:text-2xl xl:text-3xl"
+          class="stat-value text-gray-600 text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
           <span
             v-if="!statsLoading && recipeStats?.total_categories !== undefined"

@@ -1,4 +1,8 @@
 const { db } = require("../config/database");
+const {
+  getCurrentPhilippineDate,
+  formatForDatabase,
+} = require("../utils/timezoneUtils");
 
 class LeaveRequest {
   // Create a new leave request
@@ -8,7 +12,7 @@ class LeaveRequest {
   ) {
     try {
       // Check for overlapping approved leave requests (only current/future ones)
-      const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD format
+      const today = getCurrentPhilippineDate(); // YYYY-MM-DD in Asia/Manila
       const overlappingRequest = await db("leave_requests")
         .where("employee_id", employee_id)
         .whereIn("status", ["approved_by_manager", "approved_by_hr"])
@@ -76,8 +80,8 @@ class LeaveRequest {
           reason,
           status: initialStatus,
           created_by: createdBy,
-          created_at: new Date(),
-          updated_at: new Date(),
+          created_at: formatForDatabase(),
+          updated_at: formatForDatabase(),
         })
         .returning("*");
 
@@ -296,9 +300,9 @@ class LeaveRequest {
         .update({
           status: "approved_by_manager",
           approved_by_manager: managerId,
-          manager_approved_at: new Date(),
+          manager_approved_at: formatForDatabase(),
           manager_notes: notes,
-          updated_at: new Date(),
+          updated_at: formatForDatabase(),
         })
         .returning("*");
 
@@ -342,9 +346,9 @@ class LeaveRequest {
         .update({
           status: "approved_by_hr",
           approved_by_hr: hrId,
-          hr_approved_at: new Date(),
+          hr_approved_at: formatForDatabase(),
           hr_notes: notes,
-          updated_at: new Date(),
+          updated_at: formatForDatabase(),
         })
         .returning("*");
 
@@ -377,9 +381,9 @@ class LeaveRequest {
         .update({
           status: "rejected",
           rejected_by: rejectedById,
-          rejected_at: new Date(),
+          rejected_at: formatForDatabase(),
           rejection_reason: rejectionReason,
-          updated_at: new Date(),
+          updated_at: formatForDatabase(),
         })
         .returning("*");
 
@@ -408,7 +412,7 @@ class LeaveRequest {
         .update({
           ...updateData,
           updated_by: updatedBy,
-          updated_at: new Date(),
+          updated_at: formatForDatabase(),
         })
         .returning("*");
 
@@ -432,8 +436,8 @@ class LeaveRequest {
       }
 
       await db("leave_requests").where("id", id).update({
-        deleted_at: new Date(),
-        updated_at: new Date(),
+        deleted_at: formatForDatabase(),
+        updated_at: formatForDatabase(),
       });
 
       return true;

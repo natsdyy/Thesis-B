@@ -957,7 +957,7 @@
                         {{ request.request_id }}
                       </td>
                       <td>
-                        <div class="badge badge-outline badge-sm">
+                        <div class="">
                           {{ request.department }}
                         </div>
                       </td>
@@ -1734,7 +1734,7 @@
         <!-- Show info for budget release -->
         <div
           v-if="confirmModal.type === 'release'"
-          class="alert alert-success mt-3"
+          class="alert bg-success/10 border-success text-success mt-3"
         >
           <CheckCircle class="w-6 h-6" />
           <span class="text-sm"

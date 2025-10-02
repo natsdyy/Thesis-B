@@ -114,12 +114,19 @@
   };
 
   const openMySchedule = async () => {
-    // Prefetch current month schedules for this branch or department
+    // Prefetch schedules for this branch or department (expanded range to include previous/next month)
     const branchId = currentBranch.value?.id;
     const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    const toYMD = (d) => new Date(d).toISOString().split('T')[0];
+    // Expand date range to include previous and next month to show schedules near month boundaries
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+    const toYMD = (d) =>
+      new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date(d));
     try {
       // For department employees (no branch), use department_employees=true
       // For branch employees, use branchId
@@ -144,9 +151,16 @@
   const prefetchMySchedule = async () => {
     const branchId = currentBranch.value?.id;
     const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    const toYMD = (d) => new Date(d).toISOString().split('T')[0];
+    // Expand date range to include previous and next month to show schedules near month boundaries
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+    const toYMD = (d) =>
+      new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date(d));
     try {
       // For department employees (no branch), use department_employees=true
       // For branch employees, use branchId

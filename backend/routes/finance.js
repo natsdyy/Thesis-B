@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const { authenticateToken } = require("../middleware/rbac");
 const BranchRemittance = require("../models/BranchRemittance");
+const POSOrder = require("../models/POSOrder");
+const { formatForDatabase } = require("../utils/timezoneUtils");
 
 // POST /api/finance/remittances - branch manager submits a remittance
 router.post("/remittances", authenticateToken, async (req, res) => {
@@ -34,8 +36,12 @@ router.post("/remittances", authenticateToken, async (req, res) => {
       branch_id: payload.branch_id,
       submitted_by: req.user.id,
       period_type: payload.period_type,
-      date_from: payload.date_from,
-      date_to: payload.date_to,
+      date_from: payload.date_from
+        ? formatForDatabase(new Date(payload.date_from))
+        : null,
+      date_to: payload.date_to
+        ? formatForDatabase(new Date(payload.date_to))
+        : null,
       gross_sales: payload.gross_sales,
       net_sales: payload.net_sales,
       refunded_amount: payload.refunded_amount,
@@ -44,6 +50,19 @@ router.post("/remittances", authenticateToken, async (req, res) => {
       remitted_amount: payload.remitted_amount,
       notes: payload.notes,
     });
+
+    // Link completed, unremitted POS orders to this remittance
+    try {
+      await POSOrder.markOrdersRemitted({
+        branchId: payload.branch_id,
+        remittanceId: data.id,
+        dateFrom: data.date_from,
+        dateTo: data.date_to,
+      });
+    } catch (e) {
+      console.warn("Failed to mark orders as remitted:", e?.message || e);
+      // Non-blocking: remittance still created; orders can be re-linked later
+    }
 
     res.status(201).json({ success: true, data });
   } catch (error) {
@@ -62,8 +81,8 @@ router.get("/remittances", authenticateToken, async (req, res) => {
     const result = await BranchRemittance.list({
       branch_id: branch_id ? parseInt(branch_id) : null,
       status: status || null,
-      date_from: date_from || null,
-      date_to: date_to || null,
+      date_from: date_from ? formatForDatabase(new Date(date_from)) : null,
+      date_to: date_to ? formatForDatabase(new Date(date_to)) : null,
       limit: limit ? parseInt(limit) : 20,
       offset: offset ? parseInt(offset) : 0,
     });

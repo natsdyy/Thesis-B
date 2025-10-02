@@ -1,4 +1,9 @@
 const { db } = require("../config/database");
+const {
+  getCurrentPhilippineTime,
+  getCurrentPhilippineDate,
+  createPhilippineDate,
+} = require("../utils/timezoneUtils");
 
 class EmployeeScheduleService {
   /**
@@ -9,6 +14,20 @@ class EmployeeScheduleService {
    */
   static async getEmployeeScheduleForDate(employeeId, date) {
     try {
+      console.log(
+        "Querying schedule for employee:",
+        employeeId,
+        "on date:",
+        date
+      );
+
+      // Convert the Philippine date to UTC for database query
+      const philippineDate = new Date(date + "T00:00:00+08:00"); // Philippine timezone
+      const utcDate = new Date(philippineDate.toISOString().split("T")[0]); // Convert to UTC date
+
+      console.log("Philippine date:", philippineDate);
+      console.log("UTC date for query:", utcDate);
+
       const schedule = await db("employee_schedules")
         .select(
           "id",
@@ -22,10 +41,11 @@ class EmployeeScheduleService {
           "is_active"
         )
         .where("employee_id", employeeId)
-        .where("schedule_date", date)
+        .whereRaw("DATE(schedule_date) = ?", [date]) // Use DATE() function to match date part only
         .where("is_active", true)
         .first();
 
+      console.log("Query result:", schedule);
       return schedule;
     } catch (error) {
       console.error("Error fetching employee schedule:", error);
@@ -35,16 +55,80 @@ class EmployeeScheduleService {
 
   /**
    * Validate if current time is within employee's scheduled hours
+   *
+   * CRITICAL TIMEZONE HANDLING:
+   * - Database stores schedule_date as UTC timestamps
+   * - For Philippine timezone validation, we must convert UTC to PH timezone
+   * - This ensures schedule day matches actual Philippine day
+   * - Prevents false "outside scheduled hours" rejections
+   *
    * @param {number} employeeId - Employee ID
    * @param {Date} currentTime - Current time (optional, defaults to now)
    * @returns {Object} - Validation result with details
    */
-  static async validateTimeInSchedule(employeeId, currentTime = new Date()) {
+  static async validateTimeInSchedule(
+    employeeId,
+    currentTime = getCurrentPhilippineTime()
+  ) {
     try {
-      const date = currentTime.toISOString().split("T")[0]; // YYYY-MM-DD format
-      const schedule = await this.getEmployeeScheduleForDate(employeeId, date);
+      const date = getCurrentPhilippineDate(); // YYYY-MM-DD format in Philippine timezone
+      console.log("Looking for schedule on date:", date);
+      let schedule = await this.getEmployeeScheduleForDate(employeeId, date);
+      console.log("Found schedule for today:", schedule);
 
-      // If no schedule found for today
+      // If no schedule found for today, check for Night Shift from yesterday
+      if (!schedule) {
+        const yesterday = new Date(date);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+        const yesterdaySchedule = await this.getEmployeeScheduleForDate(
+          employeeId,
+          yesterdayStr
+        );
+
+        // Check if yesterday's schedule is a Night Shift that spans midnight
+        if (yesterdaySchedule) {
+          const [yesterdayYear, yesterdayMonth, yesterdayDay] = yesterdayStr
+            .split("-")
+            .map(Number);
+          const [startHour, startMin, startSec] = yesterdaySchedule.start_time
+            .split(":")
+            .map(Number);
+          const [endHour, endMin, endSec] = yesterdaySchedule.end_time
+            .split(":")
+            .map(Number);
+
+          const scheduleStart = createPhilippineDate(
+            yesterdayYear,
+            yesterdayMonth,
+            yesterdayDay,
+            startHour,
+            startMin,
+            startSec
+          );
+          const scheduleEnd = createPhilippineDate(
+            yesterdayYear,
+            yesterdayMonth,
+            yesterdayDay,
+            endHour,
+            endMin,
+            endSec
+          );
+
+          // If end time is before start time, it's an overnight shift
+          if (scheduleEnd <= scheduleStart) {
+            scheduleEnd.setDate(scheduleEnd.getDate() + 1);
+
+            // Check if current time is still within the Night Shift period
+            if (currentTime >= scheduleStart && currentTime <= scheduleEnd) {
+              schedule = yesterdaySchedule; // Use yesterday's schedule
+            }
+          }
+        }
+      }
+
+      // If still no schedule found (including Night Shifts)
       if (!schedule) {
         return {
           isValid: false,
@@ -72,14 +156,75 @@ class EmployeeScheduleService {
         };
       }
 
-      // Parse schedule times
-      const scheduleStart = new Date(`${date}T${schedule.start_time}`);
-      const scheduleEnd = new Date(`${date}T${schedule.end_time}`);
+      // Parse schedule times using the schedule's actual date in Philippine timezone
+      //
+      // TIMEZONE CONVERSION FIX:
+      // The `schedule_date` from database is stored as UTC timestamp (e.g., "2025-10-01T16:00:00.000Z").
+      // If we extract the date portion directly, we get UTC day ("2025-10-01").
+      // However, for Philippine timezone validation, we need the PH day (UTC+8).
+      // In the example above, the PH day would be "2025-10-02" (16:00 UTC = 00:00 next day in PH).
+      //
+      // SOLUTION: Convert UTC timestamp to Philippine timezone, then extract date components
+      // This ensures schedule validation uses the correct Philippine day.
+      const scheduleDatePh =
+        require("../utils/timezoneUtils").convertUTCToPhilippine(
+          schedule.schedule_date || date
+        );
+
+      // Extract date components from Philippine timezone date
+      const scheduleYear = scheduleDatePh.getFullYear();
+      const scheduleMonth = scheduleDatePh.getMonth() + 1; // JavaScript months are 0-based
+      const scheduleDay = scheduleDatePh.getDate();
+      const [startHour, startMin, startSec] = schedule.start_time
+        .split(":")
+        .map(Number);
+      const [endHour, endMin, endSec] = schedule.end_time
+        .split(":")
+        .map(Number);
+
+      // Create schedule times in Philippine timezone
+      const scheduleStart = createPhilippineDate(
+        scheduleYear,
+        scheduleMonth,
+        scheduleDay,
+        startHour,
+        startMin,
+        startSec
+      );
+      const scheduleEnd = createPhilippineDate(
+        scheduleYear,
+        scheduleMonth,
+        scheduleDay,
+        endHour,
+        endMin,
+        endSec
+      );
 
       // Handle overnight shifts (e.g., 22:00 to 06:00)
       if (scheduleEnd <= scheduleStart) {
         scheduleEnd.setDate(scheduleEnd.getDate() + 1);
       }
+
+      // Debug logging for timezone validation (can be removed in production)
+      console.log("Schedule validation debug:");
+      console.log(
+        "Current time:",
+        currentTime.toISOString(),
+        currentTime.toTimeString()
+      );
+      console.log(
+        "Schedule start:",
+        scheduleStart.toISOString(),
+        scheduleStart.toTimeString()
+      );
+      console.log(
+        "Schedule end:",
+        scheduleEnd.toISOString(),
+        scheduleEnd.toTimeString()
+      );
+      console.log("Current >= Start:", currentTime >= scheduleStart);
+      console.log("Current <= End:", currentTime <= scheduleEnd);
+      console.log("Timezone fix applied: Using PH timezone for schedule date");
 
       const isValid =
         currentTime >= scheduleStart && currentTime <= scheduleEnd;

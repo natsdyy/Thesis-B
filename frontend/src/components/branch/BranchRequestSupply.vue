@@ -59,7 +59,7 @@
   const currentPage = ref(1);
   const requestsPerPage = ref(10);
   const searchQuery = ref('');
-  const statusFilter = ref('');
+  const statusFilter = ref('Draft');
   const showCreateModal = ref(false);
   const showEditModal = ref(false);
   const showViewModal = ref(false);

@@ -627,26 +627,7 @@
         </div>
       </div>
 
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <CheckCircle
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-success"
-          />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">
-          Completed Today
-        </div>
-        <div
-          class="stat-value text-success text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ productionHistory.length }}
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Finished productions
-        </div>
-      </div>
+
     </div>
 
     <!-- Action Buttons -->
@@ -820,13 +801,10 @@
                     >
                       {{ item.menu_item_name }}
                     </h3>
-                    <p class="text-sm text-gray-600 mb-2">
-                      {{ item.recipe_name }}
-                    </p>
-                    <p class="text-xs text-gray-500 mb-3">
-                      {{ item.item_code }}
-                    </p>
-                    <div class="flex items-center gap-2 mb-3">
+
+                    <div
+                      class="flex items-center justify-start gap-2 text-sm text-gray-600 mb-1"
+                    >
                       <span :class="getStatusColor(item.quality_status)">
                         {{ item.quality_status }}
                       </span>
@@ -838,10 +816,6 @@
                   <div class="text-right">
                     <div class="text-lg font-bold text-primaryColor">
                       ₱{{ item.selling_price || 0 }}
-                    </div>
-                    <div class="text-xs text-gray-500">
-                      {{ item.recipe_batch_size || 'N/A' }}
-                      {{ item.recipe_batch_unit || 'servings' }}
                     </div>
                   </div>
                 </div>
@@ -1102,7 +1076,7 @@
                   </td>
                   <td>
                     <button
-                      class="btn btn-xs btn-outline text-primaryColor hover:bg-primaryColor/10"
+                      class="cursor-pointer font-thin btn btn-sm btn-outline text-black/80 hover:bg-primaryColor/10 border border-none shadow-none"
                       @click="viewDetails(history, 'history')"
                     >
                       <Eye class="w-3 h-3" />
@@ -1337,9 +1311,8 @@
                   class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
                 >
                   <option value="In Progress">In Progress</option>
-                  <option value="Quality Check">Quality Check</option>
+
                   <option value="Completed">Completed</option>
-                  <option value="Failed">Failed</option>
                 </select>
               </div>
 
@@ -1354,10 +1327,11 @@
                   >
                 </label>
                 <input
+                disabled
                   v-model="batchStatusForm.quantity_produced"
                   type="number"
                   :min="0"
-                  class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor "
                 />
               </div>
 
@@ -1380,19 +1354,20 @@
             <!-- Modal Actions -->
             <div class="modal-action border-t border-black/10 pt-4 mt-6">
               <button
-                type="submit"
-                class="btn btn-sm font-thin border border-none shadow-none text-white bg-primaryColor hover:bg-primaryColor/90"
-                :disabled="!batchStatusForm.status || loading"
-              >
-                {{ loading ? 'Updating...' : 'Update Status' }}
-              </button>
-              <button
                 type="button"
                 @click="closeBatchModal"
                 class="btn btn-sm font-thin border border-none shadow-none text-black/70"
               >
                 Cancel
               </button>
+              <button
+                type="submit"
+                class="btn btn-sm font-thin border border-none shadow-none text-white bg-primaryColor hover:bg-primaryColor/90"
+                :disabled="!batchStatusForm.status || loading"
+              >
+                {{ loading ? 'Updating...' : 'Update Status' }}
+              </button>
+
             </div>
           </form>
         </div>

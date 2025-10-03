@@ -68,9 +68,22 @@ export const formatImageUrl = (imageUrl) => {
 
   console.log('formatImageUrl input:', imageUrl);
 
-  // If it's already a full URL, return as is
+  // If it's already a full URL, handle HTTP to HTTPS conversion for production
   if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
     console.log('Already full URL:', imageUrl);
+
+    // In production environment, convert HTTP URLs to HTTPS
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      if (
+        window.location.origin.includes('countryside-steakhouse.site') &&
+        imageUrl.startsWith('http://')
+      ) {
+        const httpsUrl = imageUrl.replace('http://', 'https://');
+        console.log('Converted HTTP to HTTPS:', httpsUrl);
+        return httpsUrl;
+      }
+    }
+
     return imageUrl;
   }
 

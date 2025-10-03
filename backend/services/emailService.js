@@ -118,7 +118,7 @@ class EmailService {
       const frontendUrl =
         process.env.FRONTEND_URL ||
         (process.env.NODE_ENV === "production"
-          ? "https://your-frontend-domain.railway.app"
+          ? "https://www.countryside-steakhouse.site"
           : "http://localhost:8080");
       const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
 
@@ -288,7 +288,7 @@ class EmailService {
       const frontendUrl =
         process.env.FRONTEND_URL ||
         (process.env.NODE_ENV === "production"
-          ? "https://your-frontend-domain.railway.app"
+          ? "https://www.countryside-steakhouse.site"
           : "http://localhost:8080");
       const defaultLoginUrl = `${frontendUrl}/login`;
       const loginLink = loginUrl || defaultLoginUrl;

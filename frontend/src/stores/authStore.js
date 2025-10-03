@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import axios from 'axios';
-import { apiConfig } from '../config/api.js';
+import { apiConfig, formatImageUrl } from '../config/api.js';
 
 // Set up axios interceptors for authentication
 const setupAxiosInterceptors = () => {
@@ -202,7 +202,9 @@ export const useAuthStore = defineStore('auth', () => {
           role: employeeData.role,
           department: employeeData.department,
           branch_id: employeeData.branch_id,
-          photo_url: employeeData.photo_url || null,
+          photo_url: employeeData.photo_url
+            ? formatImageUrl(employeeData.photo_url)
+            : null,
         };
 
         user.value = userData;

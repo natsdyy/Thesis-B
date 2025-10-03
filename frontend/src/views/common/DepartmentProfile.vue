@@ -18,6 +18,7 @@
     EyeOff,
   } from 'lucide-vue-next';
   import { useAuthStore } from '../../stores/authStore';
+  import { formatImageUrl } from '../../config/api.js';
 
   const authStore = useAuthStore();
 
@@ -86,9 +87,8 @@
       profileData.value.profile_picture || user.value?.photo_url || null;
     if (!url) return null;
     if (/^https?:\/\//i.test(url)) return url;
-    const backendOrigin = 'http://localhost:5000';
-    const path = url.startsWith('/') ? url : `/${url}`;
-    return `${backendOrigin}${path}`;
+    // Use formatImageUrl for production compatibility
+    return formatImageUrl(url);
   });
 
   const defaultProfileImageUrl = `${import.meta.env.BASE_URL}profile.jpg`;

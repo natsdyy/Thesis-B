@@ -863,7 +863,13 @@ export const useProductionStore = defineStore('production', () => {
       console.log('API Response:', response.data);
 
       if (response.data.success) {
-        menuItems.value = response.data.data;
+        // Format image URLs for production
+        menuItems.value = response.data.data.map((item) => ({
+          ...item,
+          image_url: item.image_url
+            ? formatImageUrl(item.image_url)
+            : item.image_url,
+        }));
         console.log('Menu items loaded:', menuItems.value.length, 'items');
       } else {
         throw new Error(response.data.message || 'Failed to fetch menu items');
@@ -1627,6 +1633,9 @@ export const useProductionStore = defineStore('production', () => {
           ...item,
           item_name: item.menu_item_name, // Map menu_item_name to item_name for frontend compatibility
           selling_price: item.menu_selling_price || item.selling_price, // Use menu_selling_price if available
+          image_url: item.image_url
+            ? formatImageUrl(item.image_url)
+            : item.image_url, // Format image URL for production
         }));
       } else {
         throw new Error(

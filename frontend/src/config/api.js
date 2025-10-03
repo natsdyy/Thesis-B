@@ -72,15 +72,30 @@ export const formatImageUrl = (imageUrl) => {
   if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
     console.log('Already full URL:', imageUrl);
 
-    // In production environment, convert HTTP URLs to HTTPS
+    // In production environment, replace local IP URLs with production domain
     if (typeof window !== 'undefined' && window.location?.origin) {
-      if (
-        window.location.origin.includes('countryside-steakhouse.site') &&
-        imageUrl.startsWith('http://')
-      ) {
-        const httpsUrl = imageUrl.replace('http://', 'https://');
-        console.log('Converted HTTP to HTTPS:', httpsUrl);
-        return httpsUrl;
+      if (window.location.origin.includes('countryside-steakhouse.site')) {
+        // Replace local IP URLs with production domain
+        if (
+          imageUrl.includes('192.168.18.5:5000') ||
+          imageUrl.includes('localhost:5000')
+        ) {
+          const pathMatch = imageUrl.match(/\/uploads\/.*$/);
+          if (pathMatch) {
+            const productionUrl = `https://www.countryside-steakhouse.site${pathMatch[0]}`;
+            console.log(
+              'Replaced local IP with production domain:',
+              productionUrl
+            );
+            return productionUrl;
+          }
+        }
+        // Convert HTTP URLs to HTTPS
+        else if (imageUrl.startsWith('http://')) {
+          const httpsUrl = imageUrl.replace('http://', 'https://');
+          console.log('Converted HTTP to HTTPS:', httpsUrl);
+          return httpsUrl;
+        }
       }
     }
 

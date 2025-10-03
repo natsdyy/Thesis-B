@@ -29,6 +29,10 @@ function resolveBaseURL() {
     if (window.location.origin.includes('railway.app')) {
       return `${window.location.origin}/api`;
     }
+    // For production environment, use the production backend
+    if (window.location.origin.includes('countrysides.up.railway.app')) {
+      return 'https://www.countryside-steakhouse.site/api';
+    }
     // For other environments, use window origin
     return `${window.location.origin.replace(/\/$/, '')}/api`;
   }
@@ -77,13 +81,17 @@ export const formatImageUrl = (imageUrl) => {
 
     // Special handling for production environments
     if (typeof window !== 'undefined' && window.location?.origin) {
-      // For Railway production deployment, use the current origin
-      if (window.location.origin.includes('railway.app')) {
-        backendUrl = window.location.origin;
-      }
       // For countryside-steakhouse.site domain
-      else if (window.location.origin.includes('countryside-steakhouse.site')) {
+      if (window.location.origin.includes('countryside-steakhouse.site')) {
         backendUrl = 'https://www.countryside-steakhouse.site';
+      }
+      // For Railway production deployment, use the production domain
+      else if (window.location.origin.includes('countrysides.up.railway.app')) {
+        backendUrl = 'https://www.countryside-steakhouse.site';
+      }
+      // For other Railway deployments, use the current origin
+      else if (window.location.origin.includes('railway.app')) {
+        backendUrl = window.location.origin;
       }
     }
 

@@ -321,6 +321,19 @@
     };
   });
 
+  // Format image URLs to full URLs
+  const formattedInventory = computed(() => {
+    return productionInventory.value.map((item) => {
+      if (item.image_url) {
+        return {
+          ...item,
+          image_url: formatImageUrl(item.image_url),
+        };
+      }
+      return item;
+    });
+  });
+
   const filteredInventory = computed(() => {
     let filtered = formattedInventory.value;
 
@@ -571,19 +584,6 @@
       averageDistributionSize: Math.round(averageDistributionSize) || 0,
       totalDistributions,
     };
-  });
-
-  // Format image URLs to full URLs
-  const formattedInventory = computed(() => {
-    return productionInventory.value.map((item) => {
-      if (item.image_url) {
-        return {
-          ...item,
-          image_url: formatImageUrl(item.image_url),
-        };
-      }
-      return item;
-    });
   });
 
   // Helper functions
@@ -1332,10 +1332,6 @@
           Items below reorder point
         </div>
       </div>
-
-
-
- 
     </div>
 
     <!-- Action Buttons -->
@@ -1556,7 +1552,6 @@
                       <span class="badge badge-sm bg-gray-100 text-gray-600">
                         {{ item.category }}
                       </span>
-               
                     </div>
                   </div>
                   <div class="text-right">
@@ -1591,9 +1586,7 @@
                               )
                             )
                       "
-                    >
-                 
-                    </div>
+                    ></div>
                   </div>
                   <div class="text-right text-sm text-gray-600">
                     <div>Last produced:</div>
@@ -2433,9 +2426,7 @@
                       @click="distributionCurrentPage = page"
                       :class="[
                         'btn btn-sm join-item',
-                        page === distributionCurrentPage
-                          ? ''
-                          : 'btn-outline',
+                        page === distributionCurrentPage ? '' : 'btn-outline',
                       ]"
                     >
                       {{ page }}
@@ -3685,7 +3676,6 @@
           >
             Close
           </button>
-
         </div>
       </div>
       <form method="dialog" class="modal-backdrop">

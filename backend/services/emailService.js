@@ -114,7 +114,13 @@ class EmailService {
    */
   static async sendPasswordRecoveryEmail(to, resetToken, username = "User") {
     try {
-      const resetUrl = `${process.env.FRONTEND_URL || "http://localhost:8080"}/reset-password?token=${resetToken}`;
+      // Get the correct frontend URL based on environment
+      const frontendUrl =
+        process.env.FRONTEND_URL ||
+        (process.env.NODE_ENV === "production"
+          ? "https://your-frontend-domain.railway.app"
+          : "http://localhost:8080");
+      const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
 
       const mailOptions = {
         from: '"Countryside Steak House" <mailcountrysidesteakhouse@gmail.com>',
@@ -278,7 +284,13 @@ class EmailService {
     loginUrl = null
   ) {
     try {
-      const defaultLoginUrl = `${process.env.FRONTEND_URL || "http://localhost:8080"}/login`;
+      // Get the correct frontend URL based on environment
+      const frontendUrl =
+        process.env.FRONTEND_URL ||
+        (process.env.NODE_ENV === "production"
+          ? "https://your-frontend-domain.railway.app"
+          : "http://localhost:8080");
+      const defaultLoginUrl = `${frontendUrl}/login`;
       const loginLink = loginUrl || defaultLoginUrl;
 
       const mailOptions = {
@@ -294,7 +306,7 @@ class EmailService {
               <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #466114;">
                 <!-- Logo -->
                 <div style="margin-bottom: 15px;">
-                  <img src="${process.env.FRONTEND_URL || "http://localhost:8080"}/logo1.png" 
+                  <img src="${frontendUrl}/logo1.png" 
                        alt="Countryside Steakhouse Logo" 
                        style="max-height: 60px; width: auto; margin: 0 auto; display: block;" />
                 </div>

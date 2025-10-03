@@ -561,7 +561,7 @@
 
 <template>
   <dialog id="branch_remit_sales_modal" class="modal">
-    <div class="modal-box max-w-6xl">
+    <div class="modal-box max-w-6xl max-h-[90vh] overflow-y-auto">
       <div class="flex items-center justify-between mb-4">
         <h3 class="card-title text-primaryColor">
           <font-awesome-icon icon="fa-solid fa-receipt" class="!w-5 !h-5" />

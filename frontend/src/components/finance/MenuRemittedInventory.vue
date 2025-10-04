@@ -327,7 +327,10 @@
       currentPage.value = 1;
 
       // Build trend arrays (oldest -> newest)
-      const labelsSorted = Array.from(perDayTotals.keys()).sort();
+      const labelsSorted = Array.from(perDayTotals.keys()).sort((a, b) => {
+        // Sort dates chronologically, not alphabetically
+        return new Date(a) - new Date(b);
+      });
       trendLabels.value = labelsSorted;
       trendData.value = labelsSorted.map((d) =>
         Math.round(Number(perDayTotals.get(d) || 0))
@@ -638,13 +641,13 @@
         return Math.max(0, Math.round((now - last) / (1000 * 60 * 60 * 24)));
       })();
 
-      // Tunable thresholds
+      // Comprehensive analysis thresholds
       const isPopularAllSeason =
-        tags.includes('popular') &&
-        tags.includes('all-season') &&
-        dailyAvg >= 0.5;
+        dailyAvg >= 2.0 && // High daily average (top 20% of items)
+        dailyAvg >= globalAvg * 1.5; // Significantly above global average
       const isPopularSeason =
-        tags.includes('popular') && tags.includes(season) && dailyAvg >= 0.4;
+        dailyAvg >= 1.5 && // Good daily average
+        dailyAvg >= globalAvg * 1.2; // Above global average
       const isSignature = tags.includes('signature');
       const isLowDemand = dailyAvg < Math.max(0.3, 0.5 * globalAvg);
       const isOverstock =
@@ -653,7 +656,61 @@
         dailyAvg < 1 &&
         daysSinceActivity >= 3;
 
+      // Additional comprehensive analysis using actual available tags
+      const isHighGrowth = dailyAvg >= globalAvg * 1.3 && dailyAvg >= 1.0;
+      const isDeclining = dailyAvg < globalAvg * 0.7 && dailyAvg > 0;
+      const isStagnant = dailyAvg >= 0.1 && dailyAvg <= globalAvg * 0.8;
+      const isOutOfStock = availableQty <= 0 && dailyAvg > 0;
+      const isUnderstocked = availableQty > 0 && availableQty < dailyAvg * 3;
+      const isWellStocked = availableQty >= dailyAvg * 7;
+      const isNewItem =
+        tags.includes('new') || (daysSinceActivity <= 7 && dailyAvg > 0);
+      const isLowDemandTag = tags.includes('low-demand');
+      const isPopularTag = tags.includes('popular');
+
+      // Seasonality tags
+      const isSummer = tags.includes('summer');
+      const isRainy = tags.includes('rainy');
+      const isChristmas = tags.includes('christmas');
+      const isAllSeason = tags.includes('all-season');
+      const isSeasonalPeak =
+        (isSummer || isRainy || isChristmas) && dailyAvg >= globalAvg;
+
+      // Protein/Category tags
+      const isPork = tags.includes('pork');
+      const isBeef = tags.includes('beef');
+      const isChicken = tags.includes('chicken');
+      const isFish = tags.includes('fish');
+      const isVegetarian = tags.includes('vegetarian');
+
+      // Special tags
+      const isGroupMeal = tags.includes('group-meal');
+      const isQuickServe = tags.includes('quick-serve');
+
+      // Meal time detection based on name patterns
+      const isBreakfast =
+        name.toLowerCase().includes('silog') ||
+        name.toLowerCase().includes('breakfast');
+      const isLunch =
+        name.toLowerCase().includes('lunch') ||
+        name.toLowerCase().includes('main');
+      const isDinner =
+        name.toLowerCase().includes('dinner') ||
+        name.toLowerCase().includes('heavy');
+
       const best = chooseBest([
+        // Critical Issues (Priority 1-3)
+        isOutOfStock
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Out of Stock',
+              action: 'URGENT: Restock immediately',
+              note: `Item is out of stock but has demand (${dailyAvg.toFixed(1)} avg/day). Lost sales opportunity.`,
+              priority: 1,
+            }
+          : null,
         isOverstock
           ? {
               itemId,
@@ -662,7 +719,31 @@
               rule: 'Overstock Risk',
               action: 'Run promo to clear stock',
               note: `Available ${availableQty} > 40% of produced ${totalProduced} with slow sales; last activity ${daysSinceActivity} day(s) ago.`,
-              priority: 1,
+              priority: 2,
+            }
+          : null,
+        isUnderstocked
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Understocked',
+              action: 'Increase production to meet demand',
+              note: `Only ${availableQty} units available for ${dailyAvg.toFixed(1)} daily demand. Risk of stockout in ${Math.ceil(availableQty / dailyAvg)} days.`,
+              priority: 3,
+            }
+          : null,
+
+        // Performance Issues (Priority 4-6)
+        isDeclining
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Declining Performance',
+              action: 'Investigate and revitalize',
+              note: `Sales declining (${dailyAvg.toFixed(1)} avg/day vs ${globalAvg.toFixed(1)} global avg). Check quality, pricing, or marketing.`,
+              priority: 4,
             }
           : null,
         isLowDemand
@@ -672,8 +753,229 @@
               branchName: branchLabel,
               rule: 'Low-Demand',
               action: 'Consider promo/rebranding or phase-out',
-              note: 'Low sales in recent period; evaluate marketing or removal.',
-              priority: 2,
+              note: `Very low sales (${dailyAvg.toFixed(1)} avg/day). Evaluate marketing strategy or consider removal.`,
+              priority: 5,
+            }
+          : null,
+        isStagnant
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Stagnant Sales',
+              action: 'Boost marketing or adjust strategy',
+              note: `Consistent but low sales (${dailyAvg.toFixed(1)} avg/day). Consider promotional campaigns or menu positioning.`,
+              priority: 6,
+            }
+          : null,
+
+        // Growth Opportunities (Priority 7-9)
+        isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'High Growth Potential',
+              action: 'Scale up production and marketing',
+              note: `Strong performance (${dailyAvg.toFixed(1)} avg/day). Consider increasing production capacity and marketing investment.`,
+              priority: 7,
+            }
+          : null,
+        isNewItem
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'New Item Launch',
+              action: 'Monitor and promote actively',
+              note: `New item showing promise (${dailyAvg.toFixed(1)} avg/day). Focus on customer feedback and marketing.`,
+              priority: 8,
+            }
+          : null,
+        isSeasonalPeak
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: `Seasonal Peak (${season})`,
+              action: 'Maximize seasonal opportunity',
+              note: `Peak season performance (${dailyAvg.toFixed(1)} avg/day). Increase production and marketing during this period.`,
+              priority: 9,
+            }
+          : null,
+
+        // Category-Specific Recommendations (Priority 10-15)
+        isBreakfast && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Breakfast Champion',
+              action: 'Expand breakfast menu presence',
+              note: `Top breakfast performer (${dailyAvg.toFixed(1)} avg/day). Consider breakfast combo deals or early bird promotions.`,
+              priority: 10,
+            }
+          : null,
+        isLunch && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Lunch Leader',
+              action: 'Optimize lunch service',
+              note: `Strong lunch performance (${dailyAvg.toFixed(1)} avg/day). Focus on quick service and lunch combos.`,
+              priority: 11,
+            }
+          : null,
+        isDinner && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Dinner Star',
+              action: 'Enhance dinner experience',
+              note: `Excellent dinner performance (${dailyAvg.toFixed(1)} avg/day). Consider premium presentation and dinner specials.`,
+              priority: 12,
+            }
+          : null,
+
+        // Protein-Specific Recommendations (Priority 13-17)
+        isPork && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Pork Powerhouse',
+              action: 'Leverage pork popularity',
+              note: `Strong pork item performance (${dailyAvg.toFixed(1)} avg/day). Consider pork combo meals and family packs.`,
+              priority: 13,
+            }
+          : null,
+        isBeef && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Beef Champion',
+              action: 'Premium beef positioning',
+              note: `Excellent beef item performance (${dailyAvg.toFixed(1)} avg/day). Focus on quality and premium pricing.`,
+              priority: 14,
+            }
+          : null,
+        isChicken && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Chicken Star',
+              action: 'Expand chicken offerings',
+              note: `Top chicken performer (${dailyAvg.toFixed(1)} avg/day). Consider chicken variations and healthy options.`,
+              priority: 15,
+            }
+          : null,
+        isFish && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Fish Favorite',
+              action: 'Promote healthy fish options',
+              note: `Strong fish item performance (${dailyAvg.toFixed(1)} avg/day). Emphasize health benefits and freshness.`,
+              priority: 16,
+            }
+          : null,
+        isVegetarian && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Vegetarian Victory',
+              action: 'Cater to health-conscious customers',
+              note: `Growing vegetarian demand (${dailyAvg.toFixed(1)} avg/day). Expand plant-based menu options.`,
+              priority: 17,
+            }
+          : null,
+
+        // Special Category Recommendations (Priority 18-22)
+        isGroupMeal && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Group Meal Success',
+              action: 'Promote family/group dining',
+              note: `Popular group meal option (${dailyAvg.toFixed(1)} avg/day). Focus on family deals and bulk orders.`,
+              priority: 18,
+            }
+          : null,
+        isQuickServe && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Quick-Serve Winner',
+              action: 'Streamline operations',
+              note: `Fast-moving quick-serve item (${dailyAvg.toFixed(1)} avg/day). Optimize preparation time and service efficiency.`,
+              priority: 19,
+            }
+          : null,
+        isWellStocked && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Well-Managed Stock',
+              action: 'Maintain current strategy',
+              note: `Good stock levels (${availableQty} units) with strong demand (${dailyAvg.toFixed(1)} avg/day). Current strategy is working well.`,
+              priority: 20,
+            }
+          : null,
+
+        // Tag-Based Performance Analysis (Priority 21-25)
+        isLowDemandTag && isLowDemand
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Tagged Low-Demand Confirmed',
+              action: 'Consider removal or major rebranding',
+              note: `Item correctly tagged as low-demand (${dailyAvg.toFixed(1)} avg/day). Consider phase-out or complete menu redesign.`,
+              priority: 21,
+            }
+          : null,
+        isPopularTag && !isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Popular Tag Mismatch',
+              action: 'Review and update tags',
+              note: `Tagged as popular but underperforming (${dailyAvg.toFixed(1)} avg/day). Update tags to reflect actual performance.`,
+              priority: 22,
+            }
+          : null,
+        isNewItem && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'New Item Success',
+              action: 'Scale up and promote',
+              note: `New item exceeding expectations (${dailyAvg.toFixed(1)} avg/day). Increase production and marketing investment.`,
+              priority: 23,
+            }
+          : null,
+
+        // Legacy Categories (Priority 24-26)
+        isPopularAllSeason
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Popular & All-Season',
+              action: 'Always stock high',
+              note: `Top seller all year (${dailyAvg.toFixed(1)} avg/day) — maintain strong stock levels.`,
+              priority: 24,
             }
           : null,
         isPopularSeason
@@ -683,19 +985,8 @@
               branchName: branchLabel,
               rule: `Popular in ${season}`,
               action: 'Boost production (seasonal peak)',
-              note: `Increase output during ${season} season to meet demand.`,
-              priority: 3,
-            }
-          : null,
-        isPopularAllSeason
-          ? {
-              itemId,
-              name,
-              branchName: branchLabel,
-              rule: 'Popular & All-Season',
-              action: 'Always stock high',
-              note: 'Top seller all year — maintain strong stock levels.',
-              priority: 4,
+              note: `Seasonal favorite (${dailyAvg.toFixed(1)} avg/day). Increase output during ${season} season.`,
+              priority: 25,
             }
           : null,
         isSignature
@@ -703,10 +994,10 @@
               itemId,
               name,
               branchName: branchLabel,
-              rule: 'Signature',
+              rule: 'Signature Item',
               action: 'Always available; keep minimum stock',
-              note: 'Do not remove from menu; ensure baseline inventory.',
-              priority: 5,
+              note: `Brand signature item. Do not remove from menu; ensure baseline inventory.`,
+              priority: 26,
             }
           : null,
       ]);

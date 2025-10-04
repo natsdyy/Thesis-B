@@ -180,9 +180,34 @@
           return build(start, end, 'hour');
         }
         if (period.value === 'week') {
-          const start = new Date(now);
-          start.setDate(now.getDate() - now.getDay());
-          start.setHours(0, 0, 0, 0);
+          // For "This Week", show from Monday of current week to today
+          // or from the start of the month if we're in the first week
+          const currentDate = new Date(now);
+          const dayOfWeek = currentDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
+          const dayOfMonth = currentDate.getDate();
+
+          // If we're in the first week of the month (days 1-7), start from the 1st
+          // Otherwise, start from Monday of current week
+          let start;
+          if (dayOfMonth <= 7) {
+            // First week of month - start from 1st
+            start = new Date(
+              currentDate.getFullYear(),
+              currentDate.getMonth(),
+              1,
+              0,
+              0,
+              0,
+              0
+            );
+          } else {
+            // Regular week - start from Monday
+            const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Handle Sunday as 6 days from Monday
+            start = new Date(currentDate);
+            start.setDate(currentDate.getDate() - daysFromMonday);
+            start.setHours(0, 0, 0, 0);
+          }
+
           const end = new Date(
             now.getFullYear(),
             now.getMonth(),
@@ -445,53 +470,83 @@
         selectedEntry.value = null;
       }
 
-      // Build analytics from real sales trends across selected branches
+      // Build analytics from actual remittance data across selected branches
+      // Since this is the "Remitted Sales" page, ALL data should come from remittances
       try {
         const branchesForAnalytics =
           selectedBranchId.value && selectedBranchId.value !== 0
             ? rows.filter((r) => r.branch_id === selectedBranchId.value)
             : rows;
-        const trends = await Promise.all(
-          branchesForAnalytics.map((r) =>
-            posStore.fetchSalesTrends(r.branch_id, {
-              dateFrom: from,
-              dateTo: to,
-              period: normalizedPeriod,
-              bucket: 'auto',
-            })
-          )
+
+        // Fetch remittances for all branches in the analytics scope
+        const remittancePromises = branchesForAnalytics.map((r) =>
+          posStore.fetchRemittances({
+            branchId: r.branch_id,
+            status: 'approved',
+            limit: 1000,
+          })
         );
-        // Initialize with first labels
-        let labels = trends[0]?.labels || [];
-        let sum = {
-          remitted: new Array(labels.length).fill(0),
-          refunds: new Array(labels.length).fill(0),
-          disposed: new Array(labels.length).fill(0),
-          net: new Array(labels.length).fill(0),
-        };
-        trends.forEach((t) => {
-          const l = Array.isArray(t?.labels) ? t.labels : [];
-          if (l.length !== labels.length) {
-            // If labels differ, fall back to current labels length and best-effort sum by index
-            labels = l.length > 0 ? l : labels;
-            sum.remitted = new Array(labels.length).fill(0);
-            sum.refunds = new Array(labels.length).fill(0);
-            sum.disposed = new Array(labels.length).fill(0);
-            sum.net = new Array(labels.length).fill(0);
-          }
-          const add = (arr, src) =>
-            arr.map((v, i) => v + Number(src?.[i] || 0));
-          sum.remitted = add(sum.remitted, t?.remitted_amount);
-          sum.refunds = add(sum.refunds, t?.refunds || t?.refunded_amount);
-          sum.disposed = add(sum.disposed, t?.disposed);
-          sum.net = add(sum.net, t?.net_sales);
+        const remittanceResults = await Promise.all(remittancePromises);
+
+        // Aggregate remittance data by date across all branches
+        const dailyMap = new Map();
+
+        remittanceResults.forEach((result) => {
+          const remittances = result.data || [];
+          remittances.forEach((r) => {
+            const approvedAt = new Date(
+              r.approved_at || r.created_at || r.date_to || r.date_from
+            );
+            const startDate = new Date(from);
+            const endDate = new Date(to);
+
+            if (approvedAt >= startDate && approvedAt <= endDate) {
+              // Convert to Philippine timezone for date key
+              const phDate = new Date(
+                approvedAt.toLocaleString('en-US', { timeZone: 'Asia/Manila' })
+              );
+              const dateKey = phDate.toISOString().split('T')[0];
+
+              // Get current totals for this date or initialize
+              const current = dailyMap.get(dateKey) || {
+                remitted: 0,
+                refunds: 0,
+                disposed: 0,
+                net: 0,
+              };
+
+              // Add the remittance amounts
+              current.remitted += Number(r.remitted_amount || 0);
+              current.refunds += Number(r.refunded_amount || 0);
+              current.disposed += Number(r.disposed || 0);
+              current.net += Number(r.net_sales || 0);
+
+              dailyMap.set(dateKey, current);
+            }
+          });
         });
+
+        // Sort dates chronologically
+        const sortedDates = Array.from(dailyMap.keys()).sort((a, b) => {
+          // Sort dates chronologically, not alphabetically
+          return new Date(a) - new Date(b);
+        });
+
+        // Build the analytics data arrays
         realAnalytics.value = {
-          labels,
-          remitted: sum.remitted.map((n) => Math.round(n)),
-          refunds: sum.refunds.map((n) => Math.round(n)),
-          disposed: sum.disposed.map((n) => Math.round(n)),
-          net: sum.net.map((n) => Math.round(n)),
+          labels: sortedDates,
+          remitted: sortedDates.map((date) =>
+            Math.round(dailyMap.get(date)?.remitted || 0)
+          ),
+          refunds: sortedDates.map((date) =>
+            Math.round(dailyMap.get(date)?.refunds || 0)
+          ),
+          disposed: sortedDates.map((date) =>
+            Math.round(dailyMap.get(date)?.disposed || 0)
+          ),
+          net: sortedDates.map((date) =>
+            Math.round(dailyMap.get(date)?.net || 0)
+          ),
         };
       } catch (err) {
         console.warn('Analytics trend fetch failed', err);
@@ -891,7 +946,10 @@
           }
         });
 
-        const labels = Array.from(dailyMap.keys()).sort();
+        const labels = Array.from(dailyMap.keys()).sort((a, b) => {
+          // Sort dates chronologically, not alphabetically
+          return new Date(a) - new Date(b);
+        });
         const amounts = labels.map((date) => Number(dailyMap.get(date) || 0));
 
         data = {
@@ -968,7 +1026,7 @@
     overviewPage.value = 1;
   });
 
-  const openRemitForBranch = async (row) => {
+  const openRemitForBranch = async (row, specificEntry = null) => {
     try {
       if (
         isSuperAdmin.value &&
@@ -980,73 +1038,15 @@
       }
       selectedRemitBranchId.value = row?.branch_id || null;
 
-      // Get the actual remittance ID from the real remittance data
-      // The row.entries contains synthetic entries, but we need to find the real remittance
-      const latest = (row?.entries || [])[row?.entries?.length - 1];
-      if (latest && latest.period_label) {
-        // Find the real remittance that matches this period
-        const { data: remittances } = await posStore.fetchRemittances({
-          branchId: row.branch_id,
-          status: 'approved',
-          limit: 1000,
-        });
-
-        // Find the remittance that matches the period
-        const matchingRemittance = remittances?.find((r) => {
-          // For month periods, check if the remittance covers the target month
-          if (
-            latest.period_label &&
-            latest.period_label.match(/^\d{4}-\d{2}$/)
-          ) {
-            const [targetYear, targetMonth] = latest.period_label
-              .split('-')
-              .map(Number);
-            const remittanceStart = new Date(r.date_from);
-            const remittanceEnd = new Date(r.date_to);
-
-            // Check if the remittance covers the target month
-            const targetMonthStart = new Date(targetYear, targetMonth - 1, 1);
-            const targetMonthEnd = new Date(
-              targetYear,
-              targetMonth,
-              0,
-              23,
-              59,
-              59,
-              999
-            );
-
-            return (
-              remittanceStart <= targetMonthEnd &&
-              remittanceEnd >= targetMonthStart
-            );
-          }
-
-          // Fallback to original logic for other period types
-          const df = r.date_from ? new Date(r.date_from) : null;
-          const ym = df
-            ? `${df.getFullYear()}-${String(df.getMonth() + 1).padStart(2, '0')}`
-            : String(r.date_from || '').slice(0, 7);
-          const ymd = df
-            ? `${df.getFullYear()}-${String(df.getMonth() + 1).padStart(2, '0')}-${String(
-                df.getDate()
-              ).padStart(2, '0')}`
-            : String(r.date_from || '').slice(0, 10);
-          const label = r.period_type === 'month' ? ym : ymd;
-          return label === latest.period_label;
-        });
-
-        selectedRemittanceId.value = matchingRemittance?.id || null;
+      // Use the specific entry if provided, otherwise fall back to the latest
+      const targetEntry =
+        specificEntry || (row?.entries || [])[row?.entries?.length - 1];
+      if (targetEntry && targetEntry.id) {
+        // The entry.id should be the actual remittance ID
+        selectedRemittanceId.value = Number(targetEntry.id);
 
         // Set the remittance date range for the chart
-        if (matchingRemittance) {
-          remittanceDateRange.value = {
-            dateFrom: matchingRemittance.date_from,
-            dateTo: matchingRemittance.date_to,
-          };
-        } else {
-          remittanceDateRange.value = null;
-        }
+        remittanceDateRange.value = null; // Let the modal handle its own date range
       } else {
         selectedRemittanceId.value = null;
         remittanceDateRange.value = null;
@@ -1376,7 +1376,7 @@
                     <td class="text-xs">
                       <button
                         class="btn btn-xs btn-outline text-primaryColor"
-                        @click.stop="openRemitForBranch(row)"
+                        @click.stop="openRemitForBranch(row, entry)"
                       >
                         View Remit
                       </button>

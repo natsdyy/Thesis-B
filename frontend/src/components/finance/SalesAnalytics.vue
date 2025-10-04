@@ -3,11 +3,11 @@
   import SalesTrendsChart from '../branch/SalesTrendsChart.vue';
   import BarChartJS from './BarChartJS.vue';
   import SalesForecastChart from './SalesForecastChart.vue';
-  import MenuInventoryDemand from './MenuInventoryDemand.vue';
   import MenuRemittedInventory from './MenuRemittedInventory.vue';
   import { useBranchContextStore } from '../../stores/branchContextStore.js';
   import { useBranchStore } from '../../stores/branchStore.js';
   import { usePOSStore } from '../../stores/posStore.js';
+  import { getCurrentPhilippineTime } from '../../utils/timezoneUtils.js';
 
   const props = defineProps({
     analyticsData: {
@@ -192,8 +192,8 @@
   const generateBranchRemitRank = async () => {
     try {
       branchRankLoading.value = true;
-      // Determine rolling window
-      const now = new Date();
+      // Determine rolling window using Philippine timezone
+      const now = getCurrentPhilippineTime();
       const days =
         branchRankPeriod.value === 'month'
           ? 30
@@ -227,11 +227,9 @@
           limit: 1000,
         });
 
-        // Filter remittances by date range
+        // Filter remittances by date range (now properly stored in Philippine timezone)
         const filteredRemittances = (remittances.data || []).filter((r) => {
-          const approvedAt = new Date(
-            r.approved_at || r.created_at || r.date_to || r.date_from
-          );
+          const approvedAt = new Date(r.approved_at || r.created_at);
           return approvedAt >= start && approvedAt <= end;
         });
 
@@ -267,7 +265,7 @@
   const generateMockHistoricalData = (days = 30, baseAmount = 50000) => {
     const data = [];
     const labels = [];
-    const today = new Date();
+    const today = getCurrentPhilippineTime();
 
     for (let i = days - 1; i >= 0; i--) {
       const date = new Date(today);
@@ -483,8 +481,8 @@
         } catch (e) {}
       }
 
-      // Determine lookback window based on selected period
-      const today = new Date();
+      // Determine lookback window based on selected period using Philippine timezone
+      const today = getCurrentPhilippineTime();
       const lookbackDays =
         forecastPeriod.value === 'quarter'
           ? 120
@@ -570,7 +568,10 @@
           });
         });
 
-        labelsSorted = Array.from(allLabelsSet).sort();
+        labelsSorted = Array.from(allLabelsSet).sort((a, b) => {
+          // Sort dates chronologically, not alphabetically
+          return new Date(a) - new Date(b);
+        });
         historicalDataArrLocal = labelsSorted.map((lbl) =>
           Math.round(Number(perDaySum.get(lbl) || 0))
         );
@@ -587,11 +588,10 @@
             limit: 1000,
           });
 
-          // Group remittances by date
+          // Group remittances by approval date (now properly stored in Philippine timezone)
           (remittances.data || []).forEach((r) => {
-            const approvedAt = new Date(
-              r.approved_at || r.created_at || r.date_to || r.date_from
-            );
+            const approvedAt = new Date(r.approved_at);
+
             if (approvedAt >= start && approvedAt <= end) {
               const dateKey = approvedAt.toISOString().split('T')[0];
               allLabelsSet.add(dateKey);
@@ -601,7 +601,10 @@
           });
         }
 
-        labelsSorted = Array.from(allLabelsSet).sort();
+        labelsSorted = Array.from(allLabelsSet).sort((a, b) => {
+          // Sort dates chronologically, not alphabetically
+          return new Date(a) - new Date(b);
+        });
         historicalDataArrLocal = labelsSorted.map((lbl) =>
           Math.round(Number(perLabelSum.get(lbl) || 0))
         );
@@ -835,8 +838,8 @@
         branchIds = [parseInt(selectedBranch.value)];
       }
 
-      // Lookback window and forecast horizon
-      const today = new Date();
+      // Lookback window and forecast horizon using Philippine timezone
+      const today = getCurrentPhilippineTime();
       const lookbackDays =
         forecastPeriod.value === 'quarter'
           ? 120
@@ -859,12 +862,10 @@
           limit: 1000,
         });
 
-        // Group remittances by date
+        // Group remittances by date (now properly stored in Philippine timezone)
         const dailyMap = new Map();
         (remittances.data || []).forEach((r) => {
-          const approvedAt = new Date(
-            r.approved_at || r.created_at || r.date_to || r.date_from
-          );
+          const approvedAt = new Date(r.approved_at || r.created_at);
           if (approvedAt >= start && approvedAt <= end) {
             const dateKey = approvedAt.toISOString().split('T')[0];
             const prev = dailyMap.get(dateKey) || 0;
@@ -872,7 +873,10 @@
           }
         });
 
-        const labels = Array.from(dailyMap.keys()).sort();
+        const labels = Array.from(dailyMap.keys()).sort((a, b) => {
+          // Sort dates chronologically, not alphabetically
+          return new Date(a) - new Date(b);
+        });
         const series = labels.map((date) => Number(dailyMap.get(date) || 0));
 
         // Smooth, deseasonalize, regress

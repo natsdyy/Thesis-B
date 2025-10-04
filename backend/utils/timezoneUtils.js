@@ -127,10 +127,39 @@ function isInPhilippineTimezone(date) {
  * @returns {string} ISO string in Philippine timezone
  */
 function formatForDatabase(date = new Date()) {
+  // Convert to Philippine timezone and return as ISO string with timezone info
   const philippineDate = new Date(
     date.toLocaleString("en-US", { timeZone: PHILIPPINE_TIMEZONE })
   );
-  return philippineDate.toISOString();
+  // Use formatForDatabaseWithTimezone for consistency
+  return formatForDatabaseWithTimezone(philippineDate);
+}
+
+/**
+ * Format date for database storage with Philippine timezone offset
+ * @param {Date} date - Date to format
+ * @returns {string} ISO string with Philippine timezone offset (+08:00)
+ */
+function formatForDatabaseWithTimezone(date = new Date()) {
+  // Create a new Date object representing the same moment in Philippine timezone
+  const philippineDate = new Date(
+    date.toLocaleString("en-US", { timeZone: PHILIPPINE_TIMEZONE })
+  );
+
+  // Format the date components
+  const year = philippineDate.getFullYear();
+  const month = String(philippineDate.getMonth() + 1).padStart(2, "0");
+  const day = String(philippineDate.getDate()).padStart(2, "0");
+  const hours = String(philippineDate.getHours()).padStart(2, "0");
+  const minutes = String(philippineDate.getMinutes()).padStart(2, "0");
+  const seconds = String(philippineDate.getSeconds()).padStart(2, "0");
+  const milliseconds = String(philippineDate.getMilliseconds()).padStart(
+    3,
+    "0"
+  );
+
+  // Return ISO string with explicit Philippine timezone offset
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${milliseconds}+08:00`;
 }
 
 /**
@@ -139,6 +168,22 @@ function formatForDatabase(date = new Date()) {
  * @returns {Date} Date parsed as Philippine timezone
  */
 function parseFromDatabase(dateString) {
+  if (!dateString) return new Date();
+
+  // If the date string already has timezone info (+08:00), parse it directly
+  if (dateString.includes("+08:00") || dateString.includes("+0800")) {
+    return new Date(dateString);
+  }
+
+  // For UTC dates (ending with Z), convert to Philippine timezone
+  if (dateString.endsWith("Z")) {
+    const utcDate = new Date(dateString);
+    return new Date(
+      utcDate.toLocaleString("en-US", { timeZone: PHILIPPINE_TIMEZONE })
+    );
+  }
+
+  // Default parsing
   const date = new Date(dateString);
   return new Date(
     date.toLocaleString("en-US", { timeZone: PHILIPPINE_TIMEZONE })
@@ -156,5 +201,6 @@ module.exports = {
   getPhilippineTimezoneOffset,
   isInPhilippineTimezone,
   formatForDatabase,
+  formatForDatabaseWithTimezone,
   parseFromDatabase,
 };

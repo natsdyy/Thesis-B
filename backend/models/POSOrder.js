@@ -140,10 +140,11 @@ class POSOrder {
     const trx = await db.transaction();
     try {
       const now = new Date();
-      // Update only completed orders in range that are not yet linked
+      // Update completed and void orders in range that are not yet linked
+      // Include void orders for complete record-keeping
       await trx("pos_sales_orders")
         .where("branch_id", branchId)
-        .where("status", "completed")
+        .whereIn("status", ["completed", "void"])
         .whereNull("remittance_id")
         .modify((qb) => {
           if (dateFrom) qb.where("created_at", ">=", dateFrom);
@@ -264,7 +265,10 @@ class POSOrder {
       const voidMap = toMap(voidRows);
       const remittedMap = toMap(remittedRows);
 
-      const allLabels = Array.from(labelsSet).sort();
+      const allLabels = Array.from(labelsSet).sort((a, b) => {
+        // Sort dates chronologically, not alphabetically
+        return new Date(a) - new Date(b);
+      });
 
       const gross = allLabels.map((l) => Number(grossMap.get(l) || 0));
       const refunds = allLabels.map((l) => Number(refundMap.get(l) || 0));
@@ -1159,7 +1163,10 @@ class POSOrder {
       // 5) Build aligned arrays using labels; if labels empty (no range), fall back to rows' labels
       if (labels.length === 0) {
         const unique = new Set([...disposedMap.keys(), ...lossMap.keys()]);
-        labels = Array.from(unique).sort();
+        labels = Array.from(unique).sort((a, b) => {
+          // Sort dates chronologically, not alphabetically
+          return new Date(a) - new Date(b);
+        });
       }
 
       const disposed = labels.map((l) => disposedMap.get(l) || 0);

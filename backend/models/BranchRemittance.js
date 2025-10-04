@@ -1,7 +1,9 @@
 const { db } = require("../config/database");
 const {
   formatForDatabase,
+  formatForDatabaseWithTimezone,
   getCurrentPhilippineTime,
+  parseFromDatabase,
 } = require("../utils/timezoneUtils");
 
 class BranchRemittance {
@@ -68,7 +70,28 @@ class BranchRemittance {
       .orderBy("br.created_at", "desc")
       .limit(limit)
       .offset(offset);
-    return { data, total };
+
+    // Format timestamps to Philippine timezone for response
+    const formattedData = data.map((record) => ({
+      ...record,
+      created_at: record.created_at
+        ? formatForDatabaseWithTimezone(new Date(record.created_at))
+        : null,
+      updated_at: record.updated_at
+        ? formatForDatabaseWithTimezone(new Date(record.updated_at))
+        : null,
+      approved_at: record.approved_at
+        ? formatForDatabaseWithTimezone(new Date(record.approved_at))
+        : null,
+      date_from: record.date_from
+        ? formatForDatabaseWithTimezone(new Date(record.date_from))
+        : null,
+      date_to: record.date_to
+        ? formatForDatabaseWithTimezone(new Date(record.date_to))
+        : null,
+    }));
+
+    return { data: formattedData, total };
   }
 
   static async approve(id, approvedBy) {
@@ -78,10 +101,30 @@ class BranchRemittance {
       .update({
         status: "approved",
         approved_by: approvedBy,
-        // Record approval time in Philippine timezone
-        approved_at: formatForDatabase(getCurrentPhilippineTime()),
+        // Record approval time in Philippine timezone with proper offset
+        approved_at: formatForDatabaseWithTimezone(getCurrentPhilippineTime()),
       })
       .returning("*");
+
+    // Format the returned timestamps
+    if (row) {
+      row.created_at = row.created_at
+        ? formatForDatabaseWithTimezone(new Date(row.created_at))
+        : null;
+      row.updated_at = row.updated_at
+        ? formatForDatabaseWithTimezone(new Date(row.updated_at))
+        : null;
+      row.approved_at = row.approved_at
+        ? formatForDatabaseWithTimezone(new Date(row.approved_at))
+        : null;
+      row.date_from = row.date_from
+        ? formatForDatabaseWithTimezone(new Date(row.date_from))
+        : null;
+      row.date_to = row.date_to
+        ? formatForDatabaseWithTimezone(new Date(row.date_to))
+        : null;
+    }
+
     return row;
   }
 
@@ -92,10 +135,31 @@ class BranchRemittance {
       .update({
         status: "rejected",
         approved_by: approvedBy,
-        approved_at: formatForDatabase(getCurrentPhilippineTime()),
+        // Record rejection time in Philippine timezone with proper offset
+        approved_at: formatForDatabaseWithTimezone(getCurrentPhilippineTime()),
         notes,
       })
       .returning("*");
+
+    // Format the returned timestamps
+    if (row) {
+      row.created_at = row.created_at
+        ? formatForDatabaseWithTimezone(new Date(row.created_at))
+        : null;
+      row.updated_at = row.updated_at
+        ? formatForDatabaseWithTimezone(new Date(row.updated_at))
+        : null;
+      row.approved_at = row.approved_at
+        ? formatForDatabaseWithTimezone(new Date(row.approved_at))
+        : null;
+      row.date_from = row.date_from
+        ? formatForDatabaseWithTimezone(new Date(row.date_from))
+        : null;
+      row.date_to = row.date_to
+        ? formatForDatabaseWithTimezone(new Date(row.date_to))
+        : null;
+    }
+
     return row;
   }
 }

@@ -28,6 +28,7 @@
   const orders = ref([]);
   const loading = ref(false);
   const activeTab = ref('today'); // today | thisWeek | thisMonth | customMonth
+  const remittanceDetails = ref(null); // Store actual remittance record data
 
   const tabs = computed(() => {
     if (props.remittanceId !== null && props.remittanceId !== undefined) {
@@ -114,6 +115,21 @@
   };
 
   const summaryTotals = computed(() => {
+    // If we have specific remittance details, use those for accurate totals
+    if (props.remittanceId && remittanceDetails.value) {
+      const remittance = remittanceDetails.value;
+      return {
+        totalSales: Number(remittance.gross_sales) || 0,
+        refunds: Number(remittance.refunded_amount) || 0,
+        loss: Number(remittance.voided_amount) || 0,
+        netSales: Number(remittance.net_sales) || 0,
+        remitted: Number(remittance.remitted_amount) || 0,
+        transactions: orders.value?.length || 0,
+        voidedCount: Number(remittance.disposed) || 0,
+      };
+    }
+
+    // Fallback to calculating from individual orders
     const totals = {
       totalSales: 0,
       refunds: 0,
@@ -237,6 +253,25 @@
     loading.value = true;
     try {
       page.value = 1;
+
+      // If targeting a specific remittance, fetch the remittance details first
+      if (props.remittanceId !== null && props.remittanceId !== undefined) {
+        try {
+          const { data: remittances } = await posStore.fetchRemittances({
+            branchId: branchId,
+            limit: 1000, // Get enough to find our specific remittance
+          });
+          const targetRemittance = remittances.find(
+            (r) => r.id == props.remittanceId
+          );
+          if (targetRemittance) {
+            remittanceDetails.value = targetRemittance;
+          }
+        } catch (error) {
+          console.error('Failed to fetch remittance details:', error);
+        }
+      }
+
       const periodMap = {
         today: 'today',
         thisWeek: 'week',
@@ -355,7 +390,7 @@
 
 <template>
   <dialog id="remit_order_details_modal" class="modal">
-    <div class="modal-box max-w-5xl">
+    <div class="modal-box max-w-5xl max-h-[90vh] overflow-y-auto">
       <div class="flex items-center justify-between mb-4">
         <h3 class="card-title text-primaryColor">
           <font-awesome-icon icon="fa-solid fa-receipt" class="!w-5 !h-5" />

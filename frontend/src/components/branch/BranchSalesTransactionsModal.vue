@@ -16,16 +16,19 @@
     CheckCircle,
     XCircle,
     Clock,
+    Receipt,
+    Printer,
   } from 'lucide-vue-next';
   import { usePOSStore } from '../../stores/posStore.js';
   import { useBranchContextStore } from '../../stores/branchContextStore.js';
+  import QRCodeGenerator from '../common/QRCodeGenerator.vue';
 
   const props = defineProps({
     show: { type: Boolean, default: false },
     initialFilter: { type: Object, default: () => ({}) },
   });
 
-  const emit = defineEmits(['close']);
+  const emit = defineEmits(['close', 'reopen']);
 
   const posStore = usePOSStore();
   const context = useBranchContextStore();
@@ -37,10 +40,15 @@
   const totalPages = ref(1);
   const totalTransactions = ref(0);
 
+  // Receipt modal state
+  const showReceiptModal = ref(false);
+  const selectedReceiptOrder = ref(null);
+  const receiptQRData = ref('');
+  const shouldReopenModal = ref(false);
+
   const filters = ref({
     search: '',
     status: '', // pending | processing | completed | void
-    order_type: '', // dine_in | take_out
     date_from: '',
     date_to: '',
     date_range: 'this_week',
@@ -52,12 +60,6 @@
     { value: 'processing', label: 'Processing' },
     { value: 'completed', label: 'Completed' },
     { value: 'void', label: 'Void/Refunded' },
-  ];
-
-  const orderTypeOptions = [
-    { value: '', label: 'All Types' },
-    { value: 'dine_in', label: 'Dine In' },
-    { value: 'take_out', label: 'Take Out' },
   ];
 
   const getStatusInfo = (status, voidReason) => {
@@ -277,7 +279,6 @@
     filters.value = {
       search: '',
       status: '',
-      order_type: '',
       date_from: '',
       date_to: '',
       date_range: 'this_week',
@@ -353,14 +354,294 @@
       const end = new Date(base.getFullYear(), base.getMonth() + 1, 0);
       filters.value.date_from = toYmd(start);
       filters.value.date_to = toYmd(end);
-    } else {
-      // custom: keep inputs
     }
   };
 
   const exportTransactions = () => {
     // TODO: Implement export functionality
     console.log('Export sales transactions');
+  };
+
+  // Function to get the correct base URL for QR codes
+  const getQRBaseUrl = () => {
+    // In development, use the network IP so phones can access it
+    if (
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1'
+    ) {
+      // For local development, use the network IP so phones can access it
+      return `http://192.168.18.5:8080`;
+    }
+    // In production, use the current origin
+    return window.location.origin;
+  };
+
+  // Receipt functionality
+  const showReceipt = (order) => {
+    selectedReceiptOrder.value = order;
+    // Generate QR data for rating the order
+    receiptQRData.value = `${getQRBaseUrl()}/rate-order?order=${encodeURIComponent(order.order_number)}`;
+
+    // Close the Sales Transactions modal and mark for reopening
+    shouldReopenModal.value = true;
+    closeModal();
+
+    // Show receipt modal after a short delay
+    setTimeout(() => {
+      showReceiptModal.value = true;
+    }, 100);
+  };
+
+  const closeReceiptModal = () => {
+    showReceiptModal.value = false;
+    selectedReceiptOrder.value = null;
+    receiptQRData.value = '';
+
+    // Reopen the Sales Transactions modal if it was closed for the receipt
+    if (shouldReopenModal.value) {
+      shouldReopenModal.value = false;
+      setTimeout(() => {
+        // Emit event to parent to reopen the modal
+        emit('reopen');
+      }, 100);
+    }
+  };
+
+  const printReceipt = async (order) => {
+    // Create a new window for printing
+    const printWindow = window.open('', '_blank');
+
+    // Get the receipt content with QR code
+    const receiptContent = await generateReceiptHTMLWithQR(order);
+
+    printWindow.document.write(receiptContent);
+    printWindow.document.close();
+
+    // Wait for content to load then print
+    printWindow.onload = () => {
+      printWindow.print();
+      printWindow.close();
+    };
+  };
+
+  const generateReceiptHTMLWithQR = async (order) => {
+    const branchName = context.currentBranch?.name || 'Branch';
+    const currentDate = new Date().toLocaleString('en-PH', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+
+    // Generate QR data for the order
+    const qrData = `${getQRBaseUrl()}/rate-order?order=${encodeURIComponent(order.order_number)}`;
+
+    // Generate QR code as data URL
+    let qrCodeDataURL = '';
+    try {
+      const QRCode = await import('qrcode');
+      qrCodeDataURL = await QRCode.toDataURL(qrData, {
+        width: 80,
+        margin: 1,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF',
+        },
+      });
+    } catch (error) {
+      console.error('Error generating QR code for print:', error);
+    }
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Receipt - ${order.order_number}</title>
+        <style>
+          body {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+            margin: 0;
+            padding: 20px;
+            max-width: 300px;
+            margin: 0 auto;
+          }
+          .header {
+            text-align: center;
+            border-bottom: 1px dashed #000;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+          }
+          .company-name {
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 5px;
+          }
+          .branch-name {
+            font-size: 14px;
+            margin-bottom: 5px;
+          }
+          .order-info {
+            margin-bottom: 15px;
+          }
+          .order-info div {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 3px;
+          }
+          .items {
+            border-bottom: 1px dashed #000;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+          }
+          .item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+          }
+          .item-name {
+            flex: 1;
+          }
+          .item-qty {
+            margin: 0 10px;
+          }
+          .item-price {
+            text-align: right;
+            min-width: 60px;
+          }
+          .totals {
+            text-align: right;
+          }
+          .total-line {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+          }
+          .grand-total {
+            border-top: 1px solid #000;
+            padding-top: 5px;
+            font-weight: bold;
+            font-size: 14px;
+          }
+          .footer {
+            text-align: center;
+            margin-top: 20px;
+            border-top: 1px dashed #000;
+            padding-top: 10px;
+            font-size: 10px;
+          }
+          .qr-section {
+            text-align: center;
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 1px dashed #000;
+          }
+          .qr-text {
+            font-size: 9px;
+            margin-bottom: 5px;
+            color: #666;
+          }
+          .qr-code {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 5px;
+            display: block;
+          }
+          @media print {
+            body { margin: 0; padding: 10px; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="company-name">Countryside Steakhouse</div>
+          <div class="branch-name">${branchName}</div>
+          <div>Receipt</div>
+        </div>
+        
+        <div class="order-info">
+          <div>
+            <span>Order #:</span>
+            <span>${order.order_number}</span>
+          </div>
+          <div>
+            <span>Date:</span>
+            <span>${currentDate}</span>
+          </div>
+          <div>
+            <span>Cashier:</span>
+            <span>${order.cashier}</span>
+          </div>
+          <div>
+            <span>Status:</span>
+            <span style="color: ${order.status === 'void' ? '#dc2626' : '#000'}; font-weight: ${order.status === 'void' ? 'bold' : 'normal'};">${order.status}</span>
+          </div>
+          ${
+            order.status === 'void' && order.void_reason
+              ? `
+          <div>
+            <span>Reason:</span>
+            <span style="color: #dc2626; font-weight: bold; font-size: 11px;">${order.void_reason}</span>
+          </div>
+          `
+              : ''
+          }
+        </div>
+        
+        <div class="items">
+          ${
+            order.items
+              ? order.items
+                  .map(
+                    (item) => `
+            <div class="item">
+              <div class="item-name">${item.menu_item_name || item.item_name}</div>
+              <div class="item-qty">${item.quantity}x</div>
+              <div class="item-price">₱${(parseFloat(item.price) || 0).toFixed(2)}</div>
+            </div>
+           `
+                  )
+                  .join('')
+              : '<div>No items</div>'
+          }
+        </div>
+        
+        <div class="totals">
+          <div class="total-line">
+            <span>Subtotal:</span>
+            <span>₱${(order.amount || 0).toFixed(2)}</span>
+          </div>
+          <div class="total-line">
+            <span>Amount Paid:</span>
+            <span>₱${(order.amount_paid || 0).toFixed(2)}</span>
+          </div>
+          <div class="total-line">
+            <span>Change:</span>
+            <span>₱${(order.change_amount || 0).toFixed(2)}</span>
+          </div>
+          <div class="total-line grand-total">
+            <span>Total:</span>
+            <span>₱${(order.amount || 0).toFixed(2)}</span>
+          </div>
+        </div>
+        
+        <div class="footer">
+          <div>Thank you for your business!</div>
+          <div>Generated on ${currentDate}</div>
+        </div>
+        
+        <div class="qr-section">
+          <div class="qr-text">Rate your experience</div>
+          ${qrCodeDataURL ? `<img src="${qrCodeDataURL}" alt="QR Code" class="qr-code" />` : '<div class="qr-placeholder">QR Code</div>'}
+          <div class="qr-text">Scan to rate your order</div>
+        </div>
+      </body>
+      </html>
+    `;
   };
 </script>
 
@@ -403,19 +684,6 @@
         </select>
 
         <select
-          v-model="filters.order_type"
-          class="select select-bordered select-sm sm:select-md"
-        >
-          <option
-            v-for="type in orderTypeOptions"
-            :key="type.value"
-            :value="type.value"
-          >
-            {{ type.label }}
-          </option>
-        </select>
-
-        <select
           v-model="filters.date_range"
           @change="
             applyDateRange();
@@ -427,7 +695,6 @@
           <option value="this_week">This Week</option>
           <option value="this_month">This Month</option>
           <option value="custom_month">Custom Month</option>
-          <option value="custom">Custom Range</option>
         </select>
 
         <label class="input input-bordered flex items-center gap-2">
@@ -487,6 +754,7 @@
                 <th>Cashier</th>
                 <th>Type</th>
                 <th>Status</th>
+                <th>Receipt</th>
               </tr>
             </thead>
             <tbody>
@@ -596,6 +864,27 @@
                     </div>
                   </div>
                 </td>
+                <td>
+                  <div class="flex space-x-1">
+                    <button
+                      @click="showReceipt(transaction)"
+                      class="btn btn-xs btn-info text-info font-thin bg-info/20 shadow-none border-none"
+                      title="View Receipt"
+                    >
+                      <font-awesome-icon
+                        icon="fa-solid fa-receipt"
+                        class="w-3 h-3"
+                      />
+                    </button>
+                    <button
+                      @click="printReceipt(transaction)"
+                      class="btn btn-xs btn-secondary text-secondary font-thin bg-secondary/20 shadow-none border-none"
+                      title="Print Receipt"
+                    >
+                      <Printer class="w-3 h-3" />
+                    </button>
+                  </div>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -685,6 +974,179 @@
     </div>
     <form method="dialog" class="modal-backdrop"><button>close</button></form>
   </dialog>
+
+  <!-- Receipt Modal -->
+  <div
+    v-if="showReceiptModal"
+    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4 backdrop-blur-sm"
+  >
+    <div
+      class="bg-white rounded-lg shadow-xl w-full max-w-md mx-auto transform transition-all p-3 sm:p-4 lg:p-6 max-h-[95vh] overflow-y-auto"
+    >
+      <!-- Receipt Content -->
+      <div class="receipt-content bg-gray-50 rounded-lg p-4 mb-4">
+        <div
+          class="text-center border-b border-dashed border-gray-400 pb-3 mb-4"
+        >
+          <div class="font-bold text-lg mb-1">Countryside Steakhouse</div>
+          <div class="text-sm text-gray-600">
+            {{ context.currentBranch?.name }}
+          </div>
+          <div class="text-xs text-gray-500">Receipt</div>
+        </div>
+
+        <div class="space-y-2 mb-4 text-sm">
+          <div class="flex justify-between">
+            <span class="text-gray-600">Order #:</span>
+            <span class="font-mono">{{
+              selectedReceiptOrder?.order_number
+            }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-600">Date:</span>
+            <span
+              >{{ selectedReceiptOrder?.date }}
+              {{ selectedReceiptOrder?.time }}</span
+            >
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-600">Cashier:</span>
+            <span>{{ selectedReceiptOrder?.cashier }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-600">Status:</span>
+            <span
+              class="capitalize font-medium"
+              :class="{
+                'text-red-600': selectedReceiptOrder?.status === 'void',
+                'text-gray-900': selectedReceiptOrder?.status !== 'void',
+              }"
+            >
+              {{ selectedReceiptOrder?.status }}
+            </span>
+          </div>
+          <div
+            v-if="
+              selectedReceiptOrder?.status === 'void' &&
+              selectedReceiptOrder?.void_reason
+            "
+            class="flex justify-between"
+          >
+            <span class="text-gray-600">Reason:</span>
+            <span class="text-red-600 font-medium text-sm">
+              {{ selectedReceiptOrder.void_reason }}
+            </span>
+          </div>
+        </div>
+
+        <div class="border-b border-dashed border-gray-400 pb-3 mb-4">
+          <div class="text-sm font-medium mb-2">Items:</div>
+          <div
+            v-if="
+              selectedReceiptOrder?.items &&
+              selectedReceiptOrder.items.length > 0
+            "
+            class="space-y-1"
+          >
+            <div
+              v-for="item in selectedReceiptOrder.items"
+              :key="item.id || item.menu_item_id"
+              class="flex justify-between text-sm"
+            >
+              <div class="flex-1">
+                <span>{{ item.menu_item_name || item.item_name }}</span>
+                <span class="text-gray-500 ml-2">x{{ item.quantity }}</span>
+              </div>
+              <div class="text-right">
+                ₱{{ (parseFloat(item.price) || 0).toFixed(2) }}
+              </div>
+            </div>
+          </div>
+          <div v-else class="text-sm text-gray-500">No items</div>
+        </div>
+
+        <div class="text-right space-y-1 text-sm">
+          <div class="flex justify-between">
+            <span>Subtotal:</span>
+            <span>₱{{ (selectedReceiptOrder?.amount || 0).toFixed(2) }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span>Amount Paid:</span>
+            <span
+              >₱{{ (selectedReceiptOrder?.amount_paid || 0).toFixed(2) }}</span
+            >
+          </div>
+          <div class="flex justify-between">
+            <span>Change:</span>
+            <span
+              >₱{{
+                (selectedReceiptOrder?.change_amount || 0).toFixed(2)
+              }}</span
+            >
+          </div>
+          <div
+            class="flex justify-between border-t border-gray-400 pt-2 font-bold"
+          >
+            <span>Total:</span>
+            <span>₱{{ (selectedReceiptOrder?.amount || 0).toFixed(2) }}</span>
+          </div>
+        </div>
+
+        <div
+          class="text-center mt-4 pt-3 border-t border-dashed border-gray-400"
+        >
+          <div class="text-xs text-gray-500">Thank you for your business!</div>
+          <div class="text-xs text-gray-400 mt-1">
+            Generated on
+            {{
+              new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' })
+            }}
+          </div>
+        </div>
+
+        <!-- QR Code Section -->
+        <div
+          class="text-center mt-4 pt-3 border-t border-dashed border-gray-400"
+        >
+          <div class="text-xs text-gray-500 mb-2">Rate your experience</div>
+          <div class="flex justify-center mb-2">
+            <div class="w-24 h-24 flex items-center justify-center">
+              <QRCodeGenerator
+                v-if="receiptQRData"
+                :data="receiptQRData"
+                :size="96"
+                class="max-w-full max-h-full"
+              />
+              <div
+                v-else
+                class="w-24 h-24 border border-dashed border-gray-300 rounded flex items-center justify-center text-xs text-gray-400"
+              >
+                QR Code
+              </div>
+            </div>
+          </div>
+          <div class="text-xs text-gray-500">Scan to rate your order</div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex space-x-3">
+        <button
+          @click="closeReceiptModal"
+          class="flex-1 btn btn-outline btn-sm font-thin"
+        >
+          Close
+        </button>
+        <button
+          @click="printReceipt(selectedReceiptOrder)"
+          class="flex-1 btn bg-primaryColor text-white btn-sm font-thin hover:bg-primaryColor/80 flex items-center justify-center gap-2"
+        >
+          <Printer class="w-4 h-4" />
+          Print Receipt
+        </button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped></style>

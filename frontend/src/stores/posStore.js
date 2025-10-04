@@ -238,8 +238,8 @@ export const usePOSStore = defineStore('pos', () => {
     }
   };
 
-  const addItemToOrder = (menuItem) => {
-    if (menuItem.stock_quantity <= 0) {
+  const addItemToOrder = (menuItem, quantity = 1) => {
+    if (menuItem.stock_quantity < quantity || quantity <= 0) {
       return false;
     }
 
@@ -248,13 +248,13 @@ export const usePOSStore = defineStore('pos', () => {
     );
 
     if (existingItem) {
-      existingItem.quantity += 1;
+      existingItem.quantity += quantity;
     } else {
       currentOrder.value.items.push({
         id: menuItem.id,
         name: menuItem.name,
         price: parseFloat(menuItem.price),
-        quantity: 1,
+        quantity: quantity,
         image: menuItem.image_url,
         category: menuItem.category,
         stock_quantity: menuItem.stock_quantity,
@@ -262,7 +262,7 @@ export const usePOSStore = defineStore('pos', () => {
     }
 
     // Update stock quantity
-    menuItem.stock_quantity -= 1;
+    menuItem.stock_quantity -= quantity;
 
     return true;
   };

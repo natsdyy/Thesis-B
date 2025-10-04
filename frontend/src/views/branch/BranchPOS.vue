@@ -69,7 +69,6 @@
   const showOrderConfirmationModal = ref(false);
   const showReceiptModal = ref(false);
   const showVoidOrderModal = ref(false);
-  const hasPrintedReceipt = ref(false);
   const orderCompleteData = ref(null);
   const orderConfirmationData = ref(null);
   const confirmationOrderType = ref('Dine In');
@@ -79,6 +78,9 @@
   const voidOrderData = ref(null);
   const voidReason = ref('');
   const showTransactionModal = ref(false);
+  const showItemConfirmationModal = ref(false);
+  const selectedMenuItem = ref(null);
+  const itemQuantity = ref(1);
 
   // Computed
   const currentBranch = computed(() => branchContextStore.currentBranch);
@@ -208,10 +210,58 @@
 
   // POS Methods
   const handleAddToOrder = (menuItem) => {
-    const success = posStore.addItemToOrder(menuItem);
+    // Check if item is available
+    if (menuItem.stock_quantity <= 0 || menuItem.is_expired) {
+      console.warn('Item is out of stock or expired');
+      return;
+    }
+
+    // Show confirmation modal
+    selectedMenuItem.value = menuItem;
+    itemQuantity.value = 1;
+    showItemConfirmationModal.value = true;
+  };
+
+  const confirmAddToOrder = () => {
+    if (!selectedMenuItem.value || itemQuantity.value <= 0) {
+      return;
+    }
+
+    // Add item with specified quantity
+    const success = posStore.addItemToOrder(
+      selectedMenuItem.value,
+      itemQuantity.value
+    );
     if (!success) {
-      // Show error message for out of stock items
-      console.warn('Item is out of stock');
+      console.warn('Failed to add item to order');
+    }
+
+    // Close modal and reset
+    closeItemConfirmationModal();
+  };
+
+  const closeItemConfirmationModal = () => {
+    showItemConfirmationModal.value = false;
+    selectedMenuItem.value = null;
+    itemQuantity.value = 1;
+  };
+
+  const updateItemQuantity = (change) => {
+    const newQuantity = itemQuantity.value + change;
+    if (
+      newQuantity > 0 &&
+      newQuantity <= (selectedMenuItem.value?.stock_quantity || 999)
+    ) {
+      itemQuantity.value = newQuantity;
+    }
+  };
+
+  const validateQuantity = () => {
+    const maxStock = selectedMenuItem.value?.stock_quantity || 999;
+    if (itemQuantity.value < 1) {
+      itemQuantity.value = 1;
+    } else if (itemQuantity.value > maxStock) {
+      itemQuantity.value = maxStock;
     }
   };
 
@@ -232,26 +282,9 @@
     posStore.setAmountPaid(value);
   };
 
-  const handleKeypadInput = (value) => {
-    if (value === 'backspace') {
-      paymentInput.value = paymentInput.value.slice(0, -1);
-    } else if (value === 'clear') {
-      paymentInput.value = '';
-    } else if (value === 'ok') {
-      // Deprecated - keypad ok no longer used
-    } else {
-      paymentInput.value += value;
-    }
-
-    // Keep store in sync so isOrderValid updates immediately
-    posStore.setAmountPaid(paymentInput.value);
-  };
-
   const processOrder = async () => {
-    if (!posStore.isOrderValid) {
-      alert(
-        'Please ensure all items are added and payment amount is sufficient'
-      );
+    if (posStore.currentOrder.items.length === 0) {
+      alert('Please add items to the order');
       return;
     }
 
@@ -261,18 +294,36 @@
       orderType: posStore.currentOrder.orderType,
       items: posStore.currentOrder.items,
       subtotal: posStore.orderTotal,
-      amountPaid: parseFloat(paymentInput.value) || 0,
-      change: (parseFloat(paymentInput.value) || 0) - posStore.orderTotal,
+      amountPaid: 0, // Will be set by user in modal
+      change: 0, // Will be calculated in modal
       cashierInfo: { name: user.value?.name },
       timestamp: new Date().toLocaleString(),
     };
     confirmationOrderType.value = posStore.currentOrder.orderType;
+    paymentInput.value = ''; // Reset payment input
     showOrderConfirmationModal.value = true;
   };
 
   const confirmOrder = async () => {
+    // Validate payment amount
+    const amountPaid = parseFloat(paymentInput.value) || 0;
+    const subtotal = parseFloat(orderConfirmationData.value?.subtotal || 0);
+
+    if (amountPaid <= 0) {
+      alert('Please enter the amount paid');
+      return;
+    }
+
+    if (amountPaid < subtotal) {
+      alert('Amount paid cannot be less than the total amount');
+      return;
+    }
+
     isProcessingOrder.value = true;
     try {
+      // Set the payment amount in the store
+      posStore.setAmountPaid(amountPaid);
+
       // Ensure selected order type in confirmation is applied
       if (
         confirmationOrderType.value &&
@@ -312,7 +363,6 @@
 
   const showReceipt = () => {
     if (orderCompleteData.value) {
-      hasPrintedReceipt.value = false;
       receiptData.value = {
         ...orderCompleteData.value,
         cashierName: user.value?.name,
@@ -336,18 +386,15 @@
     try {
       if (typeof window !== 'undefined' && window.print) {
         window.print();
-        hasPrintedReceipt.value = true;
         closeReceiptModal();
       } else {
         console.warn('Print function not available');
-        // Fallback: just mark as printed
-        hasPrintedReceipt.value = true;
+        // Fallback: just close modal
         closeReceiptModal();
       }
     } catch (error) {
       console.error('Error printing receipt:', error);
-      // Fallback: just mark as printed
-      hasPrintedReceipt.value = true;
+      // Fallback: just close modal
       closeReceiptModal();
     }
   };
@@ -999,126 +1046,15 @@
                 >
               </div>
 
-              <!-- Payment Input -->
-              <div class="space-y-1 sm:space-y-2">
-                <label class="text-xs sm:text-sm font-medium text-gray-700"
-                  >Amount Paid:</label
-                >
-                <input
-                  v-model="paymentInput"
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  class="w-full px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primaryColor focus:border-transparent text-sm sm:text-base"
-                  @input="handlePaymentInput($event.target.value)"
-                />
-              </div>
-
-              <!-- Order Type Selection moved to confirmation modal -->
-            </div>
-          </div>
-
-          <!-- Numeric Keypad -->
-          <div class="p-6 border-t border-gray-200">
-            <div class="grid grid-cols-4 gap-2">
-              <!-- Row 1 -->
-              <button
-                @click="handleKeypadInput('7')"
-                class="btn btn-outline btn-sm"
-              >
-                7
-              </button>
-              <button
-                @click="handleKeypadInput('8')"
-                class="btn btn-outline btn-sm"
-              >
-                8
-              </button>
-              <button
-                @click="handleKeypadInput('9')"
-                class="btn btn-outline btn-sm"
-              >
-                9
-              </button>
-              <button
-                @click="handleKeypadInput('backspace')"
-                class="btn btn-error btn-sm"
-              >
-                <X class="w-4 h-4" />
-              </button>
-
-              <!-- Row 2 -->
-              <button
-                @click="handleKeypadInput('4')"
-                class="btn btn-outline btn-xs sm:btn-sm touch-manipulation"
-              >
-                4
-              </button>
-              <button
-                @click="handleKeypadInput('5')"
-                class="btn btn-outline btn-xs sm:btn-sm touch-manipulation"
-              >
-                5
-              </button>
-              <button
-                @click="handleKeypadInput('6')"
-                class="btn btn-outline btn-xs sm:btn-sm touch-manipulation"
-              >
-                6
-              </button>
-              <button
-                @click="handleKeypadInput('clear')"
-                class="btn btn-error btn-xs sm:btn-sm touch-manipulation"
-              >
-                clr
-              </button>
-
-              <!-- Row 3 -->
-              <button
-                @click="handleKeypadInput('1')"
-                class="btn btn-outline btn-xs sm:btn-sm touch-manipulation"
-              >
-                1
-              </button>
-              <button
-                @click="handleKeypadInput('2')"
-                class="btn btn-outline btn-xs sm:btn-sm touch-manipulation"
-              >
-                2
-              </button>
-              <button
-                @click="handleKeypadInput('3')"
-                class="btn btn-outline btn-xs sm:btn-sm touch-manipulation"
-              >
-                3
-              </button>
-
-              <button
-                @click="resetOrder"
-                class="btn btn-warning btn-xs sm:btn-sm touch-manipulation"
-              >
-                Reset
-              </button>
-              <!-- Row 4 -->
-              <button
-                @click="handleKeypadInput('0')"
-                class="btn btn-outline btn-xs sm:btn-sm touch-manipulation"
-              >
-                0
-              </button>
-              <button
-                @click="handleKeypadInput('00')"
-                class="btn btn-outline btn-xs sm:btn-sm touch-manipulation"
-              >
-                00
-              </button>
-
+              <!-- Process Order Button -->
               <button
                 @click="processOrder"
-                :disabled="!posStore.isOrderValid || isProcessingOrder"
-                class="btn btn-success btn-xs sm:btn-sm touch-manipulation border-none shadow-none col-span-2"
+                :disabled="
+                  posStore.currentOrder.items.length === 0 || isProcessingOrder
+                "
+                class="btn w-full btn-sm touch-manipulation border-none shadow-none"
                 :class="
-                  posStore.isOrderValid
+                  posStore.currentOrder.items.length > 0
                     ? 'bg-primaryColor hover:bg-primaryColor/80 active:bg-primaryColor/90 text-white font-thin'
                     : 'bg-gray-400'
                 "
@@ -1239,7 +1175,7 @@
 
             <!-- Payment Summary -->
             <div class="bg-gray-50 rounded-lg p-4">
-              <div class="space-y-2">
+              <div class="space-y-4">
                 <div class="flex justify-between text-sm">
                   <span class="text-gray-600">Subtotal:</span>
                   <span class="font-semibold">
@@ -1251,17 +1187,23 @@
                     }}
                   </span>
                 </div>
-                <div class="flex justify-between text-sm">
-                  <span class="text-gray-600">Amount Paid:</span>
-                  <span class="font-semibold">
-                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                    {{
-                      parseFloat(
-                        orderConfirmationData?.amountPaid || 0
-                      ).toFixed(2)
-                    }}
-                  </span>
+
+                <!-- Amount Paid Input -->
+                <div class="space-y-2">
+                  <label class="text-sm font-medium text-gray-700">
+                    Amount to Pay:
+                  </label>
+                  <input
+                    v-model.number="paymentInput"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primaryColor focus:border-transparent text-sm"
+                    @input="handlePaymentInput($event.target.value)"
+                  />
                 </div>
+
                 <div
                   class="flex justify-between text-sm font-semibold text-primaryColor border-t border-gray-200 pt-2"
                 >
@@ -1269,7 +1211,10 @@
                   <span>
                     <font-awesome-icon icon="fa-solid fa-peso-sign" />
                     {{
-                      parseFloat(orderConfirmationData?.change || 0).toFixed(2)
+                      (
+                        (parseFloat(paymentInput) || 0) -
+                        parseFloat(orderConfirmationData?.subtotal || 0)
+                      ).toFixed(2)
                     }}
                   </span>
                 </div>
@@ -1289,10 +1234,29 @@
             </button>
             <button
               @click="confirmOrder"
-              :disabled="isProcessingOrder"
-              class="flex-1 btn bg-primaryColor text-white btn-sm sm:btn-md touch-manipulation font-thin hover:bg-primaryColor/80"
+              :disabled="
+                isProcessingOrder ||
+                (parseFloat(paymentInput) || 0) <
+                  parseFloat(orderConfirmationData?.subtotal || 0)
+              "
+              class="flex-1 btn btn-sm sm:btn-md touch-manipulation font-thin"
+              :class="
+                isProcessingOrder ||
+                (parseFloat(paymentInput) || 0) <
+                  parseFloat(orderConfirmationData?.subtotal || 0)
+                  ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                  : 'bg-primaryColor text-white hover:bg-primaryColor/80'
+              "
             >
               <span v-if="isProcessingOrder">Processing...</span>
+              <span
+                v-else-if="
+                  (parseFloat(paymentInput) || 0) <
+                  parseFloat(orderConfirmationData?.subtotal || 0)
+                "
+              >
+                Enter Payment Amount
+              </span>
               <span v-else>Confirm & Finalize Order</span>
             </button>
           </div>
@@ -1351,6 +1315,13 @@
             <div
               class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3"
             >
+            
+              <button
+                @click="closeOrderCompleteModal"
+                class="flex-1 btn btn-outline btn-sm sm:btn-md touch-manipulation font-thin hover:bg-gray-50"
+              >
+                New Order
+              </button>
               <button
                 @click="showReceipt"
                 class="flex-1 btn bg-primaryColor text-white btn-sm sm:btn-md touch-manipulation font-thin hover:bg-primaryColor/80"
@@ -1358,13 +1329,6 @@
                 Print Receipt
               </button>
 
-              <button
-                @click="closeOrderCompleteModal"
-                :disabled="!hasPrintedReceipt"
-                class="flex-1 btn btn-outline btn-sm sm:btn-md touch-manipulation font-thin"
-              >
-                New Order
-              </button>
             </div>
           </div>
         </div>
@@ -1588,6 +1552,130 @@
       </div>
     </div>
     <!-- Close POS Interface div -->
+
+    <!-- Item Confirmation Modal -->
+    <div
+      v-if="showItemConfirmationModal"
+      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
+    >
+      <div
+        class="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
+      >
+        <div class="text-center mb-6">
+          <Package
+            class="w-12 h-12 sm:w-16 sm:h-16 text-primaryColor mx-auto mb-3 sm:mb-4"
+          />
+          <h3 class="text-lg sm:text-xl font-semibold text-gray-900 mb-2">
+            Add to Order
+          </h3>
+          <p class="text-sm sm:text-base text-gray-600">
+            Confirm the quantity for this item
+          </p>
+        </div>
+
+        <!-- Item Details -->
+        <div class="space-y-4 mb-6">
+          <div class="bg-gray-50 rounded-lg p-4">
+            <div class="flex items-center space-x-4">
+              <!-- Item Image -->
+              <div class="w-16 h-16 bg-gray-100 rounded-lg flex-shrink-0">
+                <img
+                  v-if="selectedMenuItem?.image_url"
+                  :src="selectedMenuItem.image_url"
+                  :alt="selectedMenuItem.name"
+                  class="w-full h-full object-cover rounded-lg"
+                />
+                <div
+                  v-else
+                  class="w-full h-full flex items-center justify-center text-gray-400"
+                >
+                  <Package class="w-8 h-8" />
+                </div>
+              </div>
+
+              <!-- Item Info -->
+              <div class="flex-1 min-w-0">
+                <h4 class="font-semibold text-gray-900 text-lg">
+                  {{ selectedMenuItem?.name }}
+                </h4>
+                <p class="text-sm text-gray-600 mb-1">
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                  {{ parseFloat(selectedMenuItem?.price || 0).toFixed(2) }}
+                </p>
+                <p class="text-xs text-gray-500">
+                  Stock: {{ selectedMenuItem?.stock_quantity || 0 }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quantity Selection -->
+          <div class="bg-white border border-gray-200 rounded-lg p-4">
+            <h4 class="font-semibold text-gray-900 mb-3">Quantity</h4>
+            <div class="flex items-center justify-center space-x-4">
+              <button
+                @click="updateItemQuantity(-1)"
+                :disabled="itemQuantity <= 1"
+                class="btn btn-circle btn-sm bg-error text-white disabled:bg-gray-300"
+              >
+                <Minus class="w-4 h-4" />
+              </button>
+
+              <input
+                v-model.number="itemQuantity"
+                type="number"
+                min="1"
+                :max="selectedMenuItem?.stock_quantity || 999"
+                class="w-20 text-center text-lg font-semibold border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primaryColor focus:border-transparent"
+                @input="validateQuantity"
+              />
+
+              <button
+                @click="updateItemQuantity(1)"
+                :disabled="
+                  itemQuantity >= (selectedMenuItem?.stock_quantity || 999)
+                "
+                class="btn btn-circle btn-sm bg-primaryColor text-white disabled:bg-gray-300"
+              >
+                <Plus class="w-4 h-4" />
+              </button>
+            </div>
+            <p class="text-xs text-gray-500 text-center mt-2">
+              Available: {{ selectedMenuItem?.stock_quantity || 0 }}
+            </p>
+          </div>
+
+          <!-- Total Price -->
+          <div class="bg-primaryColor/10 rounded-lg p-4">
+            <div class="flex justify-between items-center">
+              <span class="font-semibold text-gray-900">Total:</span>
+              <span class="text-xl font-bold text-primaryColor">
+                <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                {{ ((selectedMenuItem?.price || 0) * itemQuantity).toFixed(2) }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div
+          class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3"
+        >
+          <button
+            @click="closeItemConfirmationModal"
+            class="flex-1 btn btn-outline btn-sm sm:btn-md touch-manipulation font-thin"
+          >
+            Cancel
+          </button>
+          <button
+            @click="confirmAddToOrder"
+            class="flex-1 btn bg-primaryColor text-white btn-sm sm:btn-md touch-manipulation font-thin hover:bg-primaryColor/80"
+          >
+            Add to Order
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- POS Transaction Modal -->
     <POSTransactionModal

@@ -207,7 +207,7 @@
   <div class="min-h-screen bg-base-100">
     <!-- Branch Header -->
     <div class="bg-primaryColor text-white shadow-lg">
-      <div class="container mx-auto px-4 py-3">
+      <div class="w-full px-4 py-3">
         <div class="flex flex-row items-center justify-between gap-2 sm:gap-4">
           <!-- Branch Info -->
           <div class="flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0">
@@ -521,7 +521,7 @@
 
     <!-- Branch Navigation -->
     <div class="bg-white border-b border-gray-200 shadow-sm">
-      <div class="container mx-auto px-4">
+      <div class="w-full px-4">
         <nav class="flex justify-between items-center">
           <!-- Desktop Navigation -->
           <div class="hidden lg:flex space-x-8">
@@ -608,7 +608,7 @@
     </div>
 
     <!-- Main Content -->
-    <main class="container mx-auto px-4 py-4 lg:py-6">
+    <main class="w-full px-4 py-4 lg:py-6">
       <!-- Loading State -->
       <div v-if="loading" class="flex justify-center items-center py-12">
         <div class="text-center">
@@ -732,9 +732,7 @@
 
 <style scoped>
   /* Custom styles for branch layout */
-  .container {
-    max-width: 1200px;
-  }
+  /* Removed max-width constraint to utilize full screen width */
 
   /* Toast positioning */
   .toast {
@@ -773,8 +771,6 @@
 
   /* Ensure proper spacing on mobile */
   @media (max-width: 1024px) {
-    .container {
-      max-width: 100%;
-    }
+    /* Full width layout maintained for all screen sizes */
   }
 </style>

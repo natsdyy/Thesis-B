@@ -2558,7 +2558,7 @@
           </div>
 
           <!-- Inventory Type Toggle -->
-          <div class="flex justify-center mb-6 sm:mb-4 lg:mb-6">
+          <div class="flex justify-start mb-6 sm:mb-4 lg:mb-6">
             <div class="join gap-1">
               <button
                 @click="switchInventoryType('scm')"

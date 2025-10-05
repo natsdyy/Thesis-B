@@ -1070,7 +1070,7 @@
                   >Age <span class="text-red-500">*</span></span
                 >
                 <span class="text-xs text-gray-500 ml-2"
-                  >(Auto-calculated from birthday)</span
+                  >(Auto-calculated)</span
                 >
               </label>
               <input

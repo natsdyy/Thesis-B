@@ -1,4 +1,5 @@
 const nodemailer = require("nodemailer");
+const SendGridService = require("./sendGridService");
 require("dotenv").config();
 
 // Create multiple transporter configurations for fallback
@@ -131,6 +132,34 @@ class EmailService {
    * @param {string} username - User's username/name
    */
   static async sendPasswordRecoveryEmail(to, resetToken, username = "User") {
+    // Try SendGrid first (recommended for production)
+    if (SendGridService.isConfigured()) {
+      console.log(
+        "📧 [EMAIL SERVICE] Using SendGrid for password recovery email"
+      );
+      const sendGridResult = await SendGridService.sendPasswordRecoveryEmail(
+        to,
+        resetToken,
+        username
+      );
+
+      if (sendGridResult.success) {
+        return sendGridResult;
+      } else {
+        console.log(
+          `⚠️ SendGrid failed, falling back to Gmail SMTP: ${sendGridResult.error}`
+        );
+      }
+    } else {
+      console.log(
+        "📧 [EMAIL SERVICE] SendGrid not configured, using Gmail SMTP"
+      );
+    }
+
+    // Fallback to Gmail SMTP
+    console.log(
+      "📧 [EMAIL SERVICE] Using Gmail SMTP fallback for password recovery email"
+    );
     try {
       // Get the correct frontend URL based on environment
       const frontendUrl =
@@ -301,6 +330,36 @@ class EmailService {
     password,
     loginUrl = null
   ) {
+    // Try SendGrid first (recommended for production)
+    if (SendGridService.isConfigured()) {
+      console.log(
+        "📧 [EMAIL SERVICE] Using SendGrid for employee welcome email"
+      );
+      const sendGridResult = await SendGridService.sendEmployeeWelcomeEmail(
+        to,
+        employeeName,
+        email,
+        password,
+        loginUrl
+      );
+
+      if (sendGridResult.success) {
+        return sendGridResult;
+      } else {
+        console.log(
+          `⚠️ SendGrid failed, falling back to Gmail SMTP: ${sendGridResult.error}`
+        );
+      }
+    } else {
+      console.log(
+        "📧 [EMAIL SERVICE] SendGrid not configured, using Gmail SMTP"
+      );
+    }
+
+    // Fallback to Gmail SMTP
+    console.log(
+      "📧 [EMAIL SERVICE] Using Gmail SMTP fallback for employee welcome email"
+    );
     try {
       // Get the correct frontend URL based on environment
       const frontendUrl =

@@ -15,12 +15,23 @@ class SendGridService {
   static isConfigured() {
     const apiKey =
       process.env.SENDGRID_API_KEY_2 || process.env.SENDGRID_API_KEY;
-    return (
-      apiKey &&
-      apiKey !==
-        "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" &&
-      apiKey.length > 20
+    const isConfigured =
+      apiKey && apiKey !== "your-sendgrid-api-key-here" && apiKey.length > 20;
+
+    // Debug logging
+    console.log(`🔍 [SENDGRID DEBUG] Checking configuration:`);
+    console.log(
+      `🔍 [SENDGRID DEBUG] SENDGRID_API_KEY_2: ${process.env.SENDGRID_API_KEY_2 ? "EXISTS" : "NOT_FOUND"}`
     );
+    console.log(
+      `🔍 [SENDGRID DEBUG] SENDGRID_API_KEY: ${process.env.SENDGRID_API_KEY ? "EXISTS" : "NOT_FOUND"}`
+    );
+    console.log(
+      `🔍 [SENDGRID DEBUG] API Key length: ${apiKey ? apiKey.length : 0}`
+    );
+    console.log(`🔍 [SENDGRID DEBUG] Is configured: ${isConfigured}`);
+
+    return isConfigured;
   }
 
   /**

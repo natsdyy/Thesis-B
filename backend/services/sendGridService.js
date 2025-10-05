@@ -80,17 +80,11 @@ class SendGridService {
             <!-- Main Email Container -->
             <div style="background-color: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
               
-              <!-- Header -->
-              <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #466114;">
-                <!-- Logo -->
-                <div style="margin-bottom: 15px;">
-                  <img src="${frontendUrl}/logo1.png" 
-                       alt="Countryside Steakhouse Logo" 
-                       style="max-height: 60px; width: auto; margin: 0 auto; display: block;" />
-                </div>
-                <h1 style="color: #2c3e50; margin: 0; font-size: 28px; font-weight: bold;">Countryside Steakhouse</h1>
-                <p style="color: #466114; margin: 5px 0 0 0; font-size: 16px; font-weight: 500;">Ang Paborito ng Bayan</p>
-              </div>
+               <!-- Header -->
+               <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #466114;">
+                 <h1 style="color: #2c3e50; margin: 0; font-size: 28px; font-weight: bold;">Countryside Steakhouse</h1>
+                 <p style="color: #466114; margin: 5px 0 0 0; font-size: 16px; font-weight: 500;">Ang Paborito ng Bayan</p>
+               </div>
               
               <!-- Main Content -->
               <div style="margin-bottom: 30px;">

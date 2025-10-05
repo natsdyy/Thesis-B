@@ -121,7 +121,7 @@ class SendGridService {
                 <!-- Login Button -->
                 <div style="text-align: center; margin: 30px 0;">
                   <a href="${loginLink}" 
-                     style="background-color: #466114; color: white; padding: 15px 30px; 
+                     style="background-color: #466114; color: white; padding: 8px 16px; 
                             text-decoration: none; border-radius: 5px; font-weight: bold; 
                             display: inline-block; font-size: 16px; box-shadow: 0 2px 5px rgba(70,97,20,0.3);
                             transition: background-color 0.3s ease;"

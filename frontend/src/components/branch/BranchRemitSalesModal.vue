@@ -234,7 +234,7 @@
       console.log(`Fetching orders for ${period}:`, { dateFrom, dateTo });
 
       // Use store methods for data fetching
-      const [stats, response] = await Promise.all([
+      const [stats, response, allOrdersResponse] = await Promise.all([
         posStore.fetchSalesStats(context.currentBranch.id, dateFrom, dateTo),
         posStore.fetchOrderHistory({
           branch_id: context.currentBranch.id,
@@ -243,13 +243,34 @@
           limit: itemsPerPage.value,
           offset: (currentPage.value - 1) * itemsPerPage.value,
         }),
+        // Fetch all orders to get accurate unremitted count
+        posStore.fetchOrderHistory({
+          branch_id: context.currentBranch.id,
+          date_from: dateFrom,
+          date_to: dateTo,
+          limit: 1000, // Get all orders
+          offset: 0,
+        }),
       ]);
 
       // Show all orders (both remitted and unremitted) for transparency
       const allOrders = response.data || [];
+      const allOrdersInPeriod = allOrdersResponse.data || [];
+
+      // Store all orders for the period for accurate calculations
+      allOrdersForPeriod.value = allOrdersInPeriod;
+
+      // Calculate total unremitted orders across entire period
+      allUnremittedOrdersCount.value = allOrdersInPeriod.filter(
+        (order) => !order.remittance_id
+      ).length;
 
       // Debug: Log sales stats
       console.log(`Sales stats for ${period}:`, stats);
+      console.log(
+        `Total unremitted orders in period:`,
+        allUnremittedOrdersCount.value
+      );
 
       // Use all orders for the table
       totalServerOrders.value = response.pagination?.total || allOrders.length;
@@ -389,9 +410,126 @@
     currentPage.value = 1;
   });
 
-  const exportRemitData = () => {
-    // TODO: Implement export functionality
-    console.log('Export remit sales data');
+  const exportRemitData = async () => {
+    if (isExporting.value) return;
+
+    isExporting.value = true;
+    try {
+      // Get current period data
+      const currentPeriodData = currentData.value;
+      const allOrders = allOrdersForPeriod.value || [];
+      const unremittedOrders = allOrders.filter(
+        (order) => !order.remittance_id
+      );
+
+      // Create CSV content
+      const headers = [
+        'Order Number',
+        'Date',
+        'Type',
+        'Items',
+        'Total Amount',
+        'Cashier',
+        'Status',
+        'Remitted',
+      ];
+
+      // Format data for CSV
+      const csvData = allOrders.map((order) => {
+        const items =
+          order.items
+            ?.map(
+              (item) =>
+                `${item.quantity}x ${item.item_name || item.menu_item_name}`
+            )
+            .join(', ') || 'No items';
+
+        return [
+          order.order_number || '',
+          order.created_at ? formatDate(order.created_at) : 'N/A',
+          order.order_type || '',
+          items,
+          `P${Number(order.total_amount || 0).toFixed(2)}`,
+          `${order.cashier_first_name || ''} ${order.cashier_last_name || ''}`.trim(),
+          order.status || '',
+          order.remittance_id ? 'Yes' : 'No',
+        ];
+      });
+
+      // Calculate summary data with proper error handling
+      const totalOrdersCount = totalOrders.value || 0;
+      const unremittedCount = allUnremittedOrdersCount.value || 0;
+      const summary = confirmSummary.value || {
+        gross: 0,
+        refunds: 0,
+        voidedAmount: 0,
+        net: 0,
+        remitted: 0,
+      };
+
+      // Debug logging
+      console.log('Export Debug:', {
+        totalOrdersCount,
+        unremittedCount,
+        summary,
+        allOrdersLength: allOrders.length,
+        currentPeriodData,
+      });
+
+      // Add summary rows
+      const summaryRows = [
+        [],
+        ['SUMMARY'],
+        ['Total Orders in Period', totalOrdersCount],
+        ['Already Remitted', totalOrdersCount - unremittedCount],
+        ['To be Remitted', unremittedCount],
+        [],
+        ['FINANCIAL SUMMARY (UNREMITTER ORDERS ONLY)'],
+        ['Gross Sales', `P${Number(summary.gross || 0).toFixed(2)}`],
+        ['Refunds', `P${Number(summary.refunds || 0).toFixed(2)}`],
+        ['Voided Amount', `P${Number(summary.voidedAmount || 0).toFixed(2)}`],
+        ['Net Sales', `P${Number(summary.net || 0).toFixed(2)}`],
+        ['Amount to Remit', `P${Number(summary.remitted || 0).toFixed(2)}`],
+      ];
+
+      // Combine headers, data, and summary
+      const csvContent = [headers, ...csvData, ...summaryRows]
+        .map((row) =>
+          row.map((field) => `"${String(field).replace(/"/g, '""')}"`).join(',')
+        )
+        .join('\n');
+
+      // Create and download file
+      const periodName =
+        activeTab.value === 'today'
+          ? 'Today'
+          : activeTab.value === 'thisWeek'
+            ? 'This Week'
+            : activeTab.value === 'thisMonth'
+              ? 'This Month'
+              : activeTab.value === 'customMonth'
+                ? customMonth.value
+                : 'Period';
+
+      const filename = `Remit_Sales_${periodName}_${new Date().toISOString().split('T')[0]}.csv`;
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      showSuccess(`Remittance data exported as ${filename}`);
+    } catch (error) {
+      console.error('Error exporting data:', error);
+      showError('Failed to export data. Please try again.');
+    } finally {
+      isExporting.value = false;
+    }
   };
 
   // Normalize remittance badge (Yes/Pending/No)
@@ -426,18 +564,38 @@
     { flush: 'post' }
   );
 
-  // Summary used by confirmation modal (uses complete sales statistics)
-  const confirmSummary = computed(() => {
-    const currentPeriodData = currentData.value;
+  // Calculate statistics from unremitted orders only
+  // This ensures we only remit amounts from orders that haven't been remitted yet
+  const calculateUnremittedStats = (orders) => {
+    const unremittedOrders = orders.filter((order) => !order.remittance_id);
 
-    // Use the complete sales statistics from the current period
-    const gross = Number(currentPeriodData?.totalSales) || 0;
-    const refunds = Number(currentPeriodData?.refundedAmount) || 0;
-    const voidedAmount = Number(currentPeriodData?.voidedAmount) || 0;
-    const net = Math.max(0, gross - refunds - voidedAmount); // Net = Gross - Refunds - Voided
+    let gross = 0;
+    let refunds = 0;
+    let voidedAmount = 0;
+
+    unremittedOrders.forEach((order) => {
+      if (order.status === 'completed') {
+        gross += Number(order.total_amount || 0);
+      } else if (order.status === 'void') {
+        voidedAmount += Number(order.total_amount || 0);
+      }
+      // Note: Refunds are not typically stored in individual orders
+      // They would come from a separate refunds table if available
+    });
+
+    const net = Math.max(0, gross - refunds - voidedAmount);
     const remitted = net; // Remitted amount equals net sales
 
     return { gross, refunds, voidedAmount, net, remitted };
+  };
+
+  // Store all orders for the period for accurate financial calculation
+  const allOrdersForPeriod = ref([]);
+
+  // Summary used by confirmation modal (uses all orders in period, filtered to unremitted)
+  const confirmSummary = computed(() => {
+    // Use all orders for the period, not just current page
+    return calculateUnremittedStats(allOrdersForPeriod.value);
   });
 
   const remitToFinance = async () => {
@@ -476,24 +634,40 @@
         // Continue with submission even if duplicate check fails
       }
 
-      // Use sales statistics instead of calculating from paginated orders
-      const currentStats = await posStore.fetchSalesStats(
-        context.currentBranch.id,
-        dateFrom,
-        dateTo
-      );
+      // Get all orders for the period to calculate unremitted totals
+      // This replaces the previous approach of using fetchSalesStats which included all orders
+      const allOrdersResponse = await posStore.fetchOrderHistory({
+        branch_id: context.currentBranch.id,
+        date_from: dateFrom,
+        date_to: dateTo,
+        limit: 1000, // Get all orders, not just paginated ones
+        offset: 0,
+      });
 
-      const gross = Number(currentStats?.total_sales) || 0;
-      const refunds = Number(currentStats?.refunded_amount) || 0;
-      const voidedAmount = Number(currentStats?.loss_profit) || 0;
-      const net = Math.max(0, gross - refunds - voidedAmount); // Net = Gross - Refunds - Voided
-      const remitted = net; // Remitted amount equals net sales
+      const allOrders = allOrdersResponse.data || [];
+
+      // Calculate totals only from unremitted orders
+      const unremittedStats = calculateUnremittedStats(allOrders);
+
+      const gross = unremittedStats.gross;
+      const refunds = unremittedStats.refunds;
+      const voidedAmount = unremittedStats.voidedAmount;
+      const net = unremittedStats.net;
+      const remitted = unremittedStats.remitted;
+
+      // Count unremitted orders for disposed count
+      const unremittedOrders = allOrders.filter(
+        (order) => !order.remittance_id
+      );
+      const disposed = unremittedOrders.filter(
+        (order) => order.status === 'void'
+      ).length;
 
       const totals = {
         gross,
         net,
         refunds,
-        disposed: Number(currentStats?.total_disposed) || 0,
+        disposed,
         voidedAmount,
       };
       // Add timeout to prevent hanging
@@ -543,13 +717,18 @@
     );
   });
 
-  // Only unremitted orders are used for summaries and submission
+  // Store for all unremitted orders count across the entire period
+  const allUnremittedOrdersCount = ref(0);
+  const isExporting = ref(false);
+
+  // Only unremitted orders from current page are used for display
   const unremittedOrders = computed(() => {
     const all = currentData.value?.ordersDetails || [];
     return all.filter((o) => !o.remittance_id);
   });
 
-  // For server-side pagination, table simply shows current page orders
+  // For server-side pagination, table shows ALL orders (both remitted and unremitted) for transparency
+  // But remittance calculation will only use unremitted orders
   const paginatedOrders = computed(() => currentData.value.ordersDetails || []);
 
   const totalPages = computed(() => {
@@ -747,6 +926,20 @@
                 <div class="text-sm text-gray-500">
                   Page {{ currentPage }} of {{ totalPages }}
                 </div>
+                <div class="flex items-center gap-4 text-xs">
+                  <div class="flex items-center gap-1">
+                    <div
+                      class="w-3 h-3 bg-blue-50 border border-blue-200 rounded"
+                    ></div>
+                    <span>Unremitted ({{ allUnremittedOrdersCount }})</span>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <div
+                      class="w-3 h-3 bg-gray-50 border border-gray-200 rounded"
+                    ></div>
+                    <span>Already Remitted</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -775,6 +968,10 @@
                     v-for="order in paginatedOrders"
                     :key="order.id"
                     class="hover:bg-gray-50"
+                    :class="{
+                      'bg-blue-50': !order.remittance_id,
+                      'bg-gray-50': order.remittance_id,
+                    }"
                   >
                     <td class="font-mono text-xs">
                       {{ order.order_number }}
@@ -928,30 +1125,60 @@
         </div>
 
         <!-- Action Buttons -->
-        <div class="flex justify-end gap-2">
-          <button
-            class="btn btn-outline btn-sm font-thin"
-            @click="refreshData"
-            :disabled="posStore.loading"
+        <div class="flex justify-between items-center">
+          <div
+            v-if="allUnremittedOrdersCount === 0"
+            class="text-sm text-gray-500 flex items-center gap-2"
           >
-            <RefreshCcw class="w-4 h-4 mr-1" />
-            Refresh
-          </button>
-          <button
-            class="btn btn-outline btn-sm font-thin"
-            @click="exportRemitData"
-          >
-            <Download class="w-4 h-4 mr-1" />
-            Export
-          </button>
-          <button
-            class="btn bg-primaryColor text-white hover:bg-primaryColor/80 btn-sm font-thin"
-            @click="showConfirmRemit = true"
-            :disabled="posStore.loading || !unremittedOrders.length"
-          >
-            <CheckCircle class="w-4 h-4 mr-1" />
-            Remit to Finance
-          </button>
+            <AlertCircle class="w-4 h-4" />
+            <span>All orders in this period have already been remitted</span>
+          </div>
+          <div v-else class="text-sm text-gray-600 flex items-center gap-2">
+            <CheckCircle class="w-4 h-4" />
+            <span
+              >{{ allUnremittedOrdersCount }} unremitted order{{
+                allUnremittedOrdersCount !== 1 ? 's' : ''
+              }}
+              ready for remittance</span
+            >
+          </div>
+
+          <div class="flex gap-2">
+            <button
+              class="btn btn-outline btn-sm font-thin"
+              @click="refreshData"
+              :disabled="posStore.loading"
+            >
+              <RefreshCcw class="w-4 h-4 mr-1" />
+              Refresh
+            </button>
+            <button
+              class="btn btn-outline btn-sm font-thin"
+              @click="exportRemitData"
+              :disabled="isExporting || posStore.loading"
+            >
+              <span
+                v-if="isExporting"
+                class="loading loading-spinner loading-xs mr-1"
+              ></span>
+              <Download v-else class="w-4 h-4 mr-1" />
+              {{ isExporting ? 'Exporting...' : 'Export' }}
+            </button>
+            <button
+              class="btn bg-primaryColor text-white hover:bg-primaryColor/80 btn-sm font-thin"
+              @click="showConfirmRemit = true"
+              :disabled="posStore.loading || allUnremittedOrdersCount === 0"
+            >
+              <CheckCircle class="w-4 h-4 mr-1" />
+              Remit to Finance
+              <span
+                v-if="allUnremittedOrdersCount > 0"
+                class="badge badge-xs ml-1 bg-white/80 text-primaryColor font-thin"
+              >
+                {{ allUnremittedOrdersCount }}
+              </span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -967,7 +1194,7 @@
     <div class="modal-box">
       <h3 class="font-bold text-lg">Confirm Remittance</h3>
       <p class="py-2 text-sm text-gray-600">
-        This will submit the
+        This will submit the unremitted orders from
         {{
           activeTab === 'today'
             ? 'Today'
@@ -979,9 +1206,34 @@
                   ? customMonth
                   : 'This Month'
         }}
-        totals to Finance.
+        to Finance. Only orders that haven't been remitted yet will be included.
       </p>
-      <div class="mt-2 text-sm">
+      <!-- Order Summary -->
+      <div class="mt-3 p-3 bg-gray-50 rounded-lg">
+        <div class="text-sm text-gray-600 mb-2">
+          <strong>Order Summary:</strong>
+        </div>
+        <div class="text-sm">
+          <div class="flex justify-between">
+            <span>Total Orders in Period:</span>
+            <span>{{ totalOrders }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span>Already Remitted:</span>
+            <span>{{ totalOrders - allUnremittedOrdersCount }}</span>
+          </div>
+          <div class="flex justify-between font-semibold text-primaryColor">
+            <span>To be Remitted:</span>
+            <span>{{ allUnremittedOrdersCount }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Financial Summary -->
+      <div class="mt-3 text-sm">
+        <div class="text-sm text-gray-600 mb-2">
+          <strong>Financial Summary (Unremitted Orders Only):</strong>
+        </div>
         <div class="flex justify-between">
           <span>Gross Sales:</span>
           <span>₱{{ confirmSummary.gross.toLocaleString() }}</span>
@@ -998,8 +1250,10 @@
           <span>Net Sales:</span>
           <span>₱{{ confirmSummary.net.toLocaleString() }}</span>
         </div>
-        <div class="flex justify-between font-semibold border-t pt-2">
-          <span>Remitted Amount:</span>
+        <div
+          class="flex justify-between font-semibold border-t pt-2 text-primaryColor"
+        >
+          <span>Amount to Remit:</span>
           <span>₱{{ confirmSummary.remitted.toLocaleString() }}</span>
         </div>
       </div>

@@ -217,10 +217,7 @@
                 <h1 class="text-sm sm:text-lg font-semibold truncate">
                   {{ currentBranch?.name || user?.name || 'Branch Operations' }}
                 </h1>
-                <p class="text-xs sm:text-sm opacity-80 truncate">
-                  {{ currentBranch?.code || 'No Branch Assigned' }} •
-                  {{ userRole }}
-                </p>
+     
               </div>
             </div>
           </div>

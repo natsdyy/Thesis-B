@@ -9,17 +9,17 @@ const createTransporter = (config) => {
       user: "mailcountrysidesteakhouse@gmail.com",
       pass: "sclg quvi fuyh dcfa", // Gmail App Password
     },
-    // Production-optimized timeout settings
-    connectionTimeout: 120000, // 2 minutes
-    greetingTimeout: 60000, // 1 minute
-    socketTimeout: 120000, // 2 minutes
+    // Production-optimized timeout settings for Railway
+    connectionTimeout: 30000, // 30 seconds - reduced for Railway
+    greetingTimeout: 30000, // 30 seconds - reduced for Railway
+    socketTimeout: 30000, // 30 seconds - reduced for Railway
     pool: false, // Disable connection pooling for Railway compatibility
     tls: {
       rejectUnauthorized: false,
       secureProtocol: "TLSv1_2_method",
     },
-    debug: false, // Reduced logging for production
-    logger: false,
+    debug: process.env.NODE_ENV === "development", // Enable debug in development only
+    logger: process.env.NODE_ENV === "development",
   });
 };
 
@@ -92,9 +92,9 @@ class EmailService {
   /**
    * Wrapper to add timeout to email operations
    * @param {Promise} emailPromise - The email promise
-   * @param {number} timeoutMs - Timeout in milliseconds (default: 15000)
+   * @param {number} timeoutMs - Timeout in milliseconds (default: 30000 for production)
    */
-  static async withTimeout(emailPromise, timeoutMs = 150000) {
+  static async withTimeout(emailPromise, timeoutMs = 30000) {
     return Promise.race([
       emailPromise,
       new Promise((_, reject) =>
@@ -104,6 +104,24 @@ class EmailService {
         )
       ),
     ]);
+  }
+
+  /**
+   * Check if we're in production environment
+   */
+  static isProduction() {
+    return process.env.NODE_ENV === "production";
+  }
+
+  /**
+   * Log email attempt with environment context
+   */
+  static logEmailAttempt(operation, email, environment = null) {
+    const env =
+      environment || (this.isProduction() ? "PRODUCTION" : "DEVELOPMENT");
+    console.log(
+      `📧 [${env}] ${operation} - Attempting to send email to: ${email}`
+    );
   }
 
   /**
@@ -416,21 +434,48 @@ class EmailService {
 
       // Try primary transporter first, then fallback
       let info;
+      this.logEmailAttempt("Employee Welcome Email", email);
+
       try {
-        console.log(`📧 Sending employee welcome email to ${email}`);
         info = await this.withTimeout(
           transporter.sendMail(mailOptions),
-          120000
+          25000 // Reduced timeout for Railway
         );
       } catch (primaryError) {
         console.log(`❌ Primary transporter failed: ${primaryError.message}`);
+        if (this.isProduction()) {
+          console.log(
+            `🌐 [PRODUCTION] SMTP connection may be blocked by Railway`
+          );
+        }
         console.log(
           `📧 Trying fallback transporter for employee welcome email`
         );
-        info = await this.withTimeout(
-          fallbackTransporter.sendMail(mailOptions),
-          120000
-        );
+        try {
+          info = await this.withTimeout(
+            fallbackTransporter.sendMail(mailOptions),
+            25000 // Reduced timeout for Railway
+          );
+        } catch (fallbackError) {
+          console.error(
+            `❌ Both transporters failed in ${this.isProduction() ? "PRODUCTION" : "DEVELOPMENT"}`
+          );
+          console.error(`Primary error: ${primaryError.message}`);
+          console.error(`Fallback error: ${fallbackError.message}`);
+
+          // In production, if both fail, we should still return success for employee creation
+          if (this.isProduction()) {
+            console.log(
+              `⚠️ [PRODUCTION] Email sending failed but continuing with employee creation`
+            );
+            return {
+              success: false,
+              error: `Email sending failed in production: ${fallbackError.message}`,
+              productionWarning: true,
+            };
+          }
+          throw fallbackError;
+        }
       }
 
       console.log("✅ Employee welcome email sent:", info.messageId);

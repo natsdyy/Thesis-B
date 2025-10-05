@@ -1951,13 +1951,7 @@
                         class="w-3 h-3"
                       />
                     </button>
-                    <button
-                      @click="printReceipt(transaction)"
-                      class="btn btn-xs sm:btn-sm btn-secondary text-secondary font-thin bg-secondary/20 shadow-none border-none"
-                      title="Print Receipt"
-                    >
-                      <Printer class="w-3 h-3" />
-                    </button>
+      
                   </div>
                 </td>
 

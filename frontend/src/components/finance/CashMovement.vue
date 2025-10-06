@@ -23,7 +23,7 @@
   const error = computed(() => cashMovementStore.error);
 
   // Pagination (10 per page)
-  const currentPage = ref(10);
+  const currentPage = ref(1);
   const pageSize = ref(10);
   const totalPages = computed(() => {
     const total = movements.value?.length || 0;
@@ -148,6 +148,7 @@
         date_to: end.toISOString(),
         limit: 50,
         offset: 0,
+        include_non_branch: true, // Include HQ/SCM budget release movements
       };
 
       await cashMovementStore.fetchMovements(filters);
@@ -175,7 +176,31 @@
   const getMovementTypeClass = (type) => {
     return type === 'in'
       ? 'badge badge-sm bg-success/20 text-success'
-      : 'badge badge-sm bg-warning/20 text-warning';
+      : 'badge badge-sm bg-error/20 text-error';
+  };
+
+  const formatBranchName = (branchName) => {
+    if (!branchName) {
+      return 'HQ/SCM';
+    }
+    return branchName;
+  };
+
+  const formatSource = (source) => {
+    if (!source) return '—';
+
+    const sourceMap = {
+      remittance: 'Branch Remittance',
+      budget_release: 'Budget Release',
+      manual: 'Manual Entry',
+      loan: 'Loan',
+      expense: 'Expense',
+    };
+
+    return (
+      sourceMap[source] ||
+      source.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
+    );
   };
 
   onMounted(() => {
@@ -222,15 +247,15 @@
         <div class="loading loading-spinner loading-md text-primaryColor"></div>
       </div>
       <div v-else class="overflow-x-auto">
-        <table class="table w-full text-sm">
+        <table class="table w-full text-sm table-zebra">
           <thead>
             <tr>
               <th>Date</th>
               <th>Branch</th>
-      
+
               <th>Amount</th>
               <th>Source</th>
-        <th>Type</th>
+              <th>Type</th>
               <th>Notes</th>
             </tr>
           </thead>
@@ -240,9 +265,21 @@
             </tr>
             <tr v-for="movement in pagedMovements" :key="movement.id">
               <td>{{ formatDate(movement.occurred_at) }}</td>
-              <td>{{ movement.branch_name || '—' }}</td>
- 
               <td>
+                <span
+                  :class="{ 'text-gray-500 italic': !movement.branch_name }"
+                >
+                  {{ formatBranchName(movement.branch_name) }}
+                </span>
+              </td>
+              <td
+                :class="{
+                  'text-error font-semibold text-xs':
+                    movement.movement_type === 'out',
+                  'text-success font-semibold text-xs':
+                    movement.movement_type === 'in',
+                }"
+              >
                 <font-awesome-icon
                   icon="fa-solid fa-peso-sign"
                   class="!w-3 !h-3"
@@ -254,13 +291,19 @@
                   })
                 }}
               </td>
-              <td>{{ movement.source || '—' }}</td>
-                 <td>
+              <td>
+                <span class="text-xs">{{ formatSource(movement.source) }}</span>
+              </td>
+              <td>
                 <span :class="getMovementTypeClass(movement.movement_type)">
                   {{ getMovementTypeLabel(movement.movement_type) }}
                 </span>
               </td>
-              <td>{{ movement.notes || '—' }}</td>
+              <td class="max-w-xs">
+                <div class="truncate" :title="movement.notes || ''">
+                  {{ movement.notes || '—' }}
+                </div>
+              </td>
             </tr>
           </tbody>
         </table>

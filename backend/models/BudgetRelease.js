@@ -1,6 +1,8 @@
 // backend/models/BudgetRelease.js
 const { db } = require("../config/database");
 const { getCurrentPhilippineTime } = require("../utils/timezoneUtils");
+const FinanceBalance = require("./FinanceBalance");
+const CashMovement = require("./CashMovement");
 
 class BudgetRelease {
   // Get all budget releases with optional filters
@@ -115,6 +117,11 @@ class BudgetRelease {
       const count = await trx("budget_releases").count("* as total").first();
       const releaseId = `BR${year}${String(parseInt(count.total) + 1).padStart(3, "0")}`;
 
+      // Get supply request details for cash movement notes
+      const supplyRequest = await trx("supply_requests")
+        .where("id", releaseData.supply_request_id)
+        .first();
+
       // Create budget release
       const [budgetRelease] = await trx("budget_releases")
         .insert({
@@ -137,6 +144,43 @@ class BudgetRelease {
           release_id: releaseId,
           updated_at: getCurrentPhilippineTime(),
         });
+
+      // Deduct from finance balance (capital)
+      const currentBalance = await trx("finance_balances")
+        .whereNull("deleted_at")
+        .orderBy("balance_date", "desc")
+        .first();
+
+      const releasedAmount = Number(releaseData.released_amount);
+      const newCapital = Number(currentBalance?.capital || 0) - releasedAmount;
+
+      // Create new finance balance snapshot with deducted amount
+      await trx("finance_balances").insert({
+        capital: newCapital,
+        profit: Number(currentBalance?.profit || 0),
+        sales_remittances: Number(currentBalance?.sales_remittances || 0),
+        total_balance:
+          newCapital +
+          Number(currentBalance?.profit || 0) +
+          Number(currentBalance?.sales_remittances || 0),
+        balance_date: getCurrentPhilippineTime(),
+        created_at: getCurrentPhilippineTime(),
+        updated_at: getCurrentPhilippineTime(),
+      });
+
+      // Create cash movement record for outflow
+      await trx("cash_movements").insert({
+        branch_id: supplyRequest?.branch_id || null,
+        movement_type: "out",
+        amount: releasedAmount,
+        source: "budget_release",
+        reference_id: budgetRelease.id,
+        reference_type: "budget_release",
+        notes: `Budget released for ${supplyRequest?.branch_id ? "Branch" : "SCM"}`,
+        occurred_at: getCurrentPhilippineTime(),
+        created_at: getCurrentPhilippineTime(),
+        updated_at: getCurrentPhilippineTime(),
+      });
 
       await trx.commit();
       return budgetRelease;

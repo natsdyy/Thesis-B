@@ -3,6 +3,8 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import axios from 'axios';
 import { apiConfig } from '../config/api.js';
+import { useFinanceBalanceStore } from './financeBalanceStore.js';
+import { useCashMovementStore } from './cashMovementStore.js';
 
 export const useBudgetReleaseStore = defineStore('budgetRelease', () => {
   // State
@@ -121,7 +123,21 @@ export const useBudgetReleaseStore = defineStore('budgetRelease', () => {
       if (response.data.success) {
         // Add to local state
         releases.value.unshift(response.data.data);
-        await fetchStats(); // Refresh stats
+
+        // Refresh stats
+        await fetchStats();
+
+        // Refresh finance balance and cash movements
+        const financeBalanceStore = useFinanceBalanceStore();
+        const cashMovementStore = useCashMovementStore();
+
+        await financeBalanceStore.fetchTotals();
+        await cashMovementStore.fetchMovements({
+          limit: 50,
+          offset: 0,
+          include_non_branch: true, // Include HQ/SCM budget release movements
+        });
+
         return response.data.data;
       } else {
         throw new Error(
@@ -255,7 +271,21 @@ export const useBudgetReleaseStore = defineStore('budgetRelease', () => {
       if (response.data.success) {
         // Add to local state
         releases.value.unshift(response.data.data);
-        await fetchStats(); // Refresh stats
+
+        // Refresh stats
+        await fetchStats();
+
+        // Refresh finance balance and cash movements
+        const financeBalanceStore = useFinanceBalanceStore();
+        const cashMovementStore = useCashMovementStore();
+
+        await financeBalanceStore.fetchTotals();
+        await cashMovementStore.fetchMovements({
+          limit: 50,
+          offset: 0,
+          include_non_branch: true, // Include HQ/SCM budget release movements
+        });
+
         return response.data.data;
       } else {
         throw new Error(response.data.message || 'Failed to release budget');

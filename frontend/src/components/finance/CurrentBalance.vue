@@ -3,6 +3,7 @@
   import { useFinanceBalanceStore } from '../../stores/financeBalanceStore.js';
   import { useBranchContextStore } from '../../stores/branchContextStore.js';
   import { usePOSStore } from '../../stores/posStore.js';
+  import { useCashMovementStore } from '../../stores/cashMovementStore.js';
   import { useCustomToast } from '../../composables/useCustomToast.js';
   import {
     getCurrentPhilippineTime,
@@ -13,11 +14,13 @@
   const financeBalanceStore = useFinanceBalanceStore();
   const branchContext = useBranchContextStore();
   const posStore = usePOSStore();
+  const cashMovementStore = useCashMovementStore();
   const { showToast } = useCustomToast();
 
   const loading = ref(false);
   const balances = computed(() => financeBalanceStore.totals);
   const branchBreakdown = ref([]);
+  const totalExpenses = ref(0); // Total outflows from cash movements
   const currentPage = ref(1);
   const pageSize = ref(10);
   const totalPages = computed(() => {
@@ -40,6 +43,13 @@
     () => branchContext.availableBranches || []
   );
   const currentBranch = computed(() => branchContext.currentBranch);
+
+  // Total loss across branches (sum of voided_amount from remittances)
+  const totalLoss = computed(() => {
+    return (branchBreakdown.value || []).reduce((acc, row) => {
+      return acc + Number(row.loss || 0);
+    }, 0);
+  });
 
   const getDateRange = () => {
     const now = getCurrentPhilippineTime();
@@ -192,8 +202,30 @@
       // Fetch company-wide totals
       await financeBalanceStore.fetchTotals();
 
-      // Fetch branch breakdown from remittances
+      // Fetch total expenses (cash outflows) for the period
       const { start, end } = getDateRange();
+      try {
+        await cashMovementStore.fetchMovements({
+          movement_type: 'out',
+          date_from: start.toISOString(),
+          date_to: end.toISOString(),
+          include_non_branch: true,
+          limit: 9999,
+        });
+
+        // Calculate total from outflow movements
+        totalExpenses.value = cashMovementStore.outflowMovements.reduce(
+          (sum, movement) => {
+            return sum + Number(movement.amount || 0);
+          },
+          0
+        );
+      } catch (err) {
+        console.error('Failed to fetch expenses:', err);
+        totalExpenses.value = 0;
+      }
+
+      // Fetch branch breakdown from remittances
       const { data: remittances } = await posStore.fetchRemittances({
         dateFrom: start.toISOString(),
         dateTo: end.toISOString(),
@@ -212,6 +244,7 @@
             branch_name: branch.name,
             profit: 0,
             sales_remittances: 0,
+            loss: 0,
           };
         });
       }
@@ -226,6 +259,7 @@
               branch_name: remittance.branch_name || `Branch ${branchId}`,
               profit: 0,
               sales_remittances: 0,
+              loss: 0,
             };
           }
           aggregatedBreakdown[branchId].profit += Number(
@@ -233,6 +267,10 @@
           );
           aggregatedBreakdown[branchId].sales_remittances += Number(
             remittance.remitted_amount || 0
+          );
+          // Capture voids as loss impact
+          aggregatedBreakdown[branchId].loss += Number(
+            remittance.voided_amount || 0
           );
         });
       }
@@ -263,7 +301,7 @@
 </script>
 
 <template>
-  <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+  <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
     <div class="card bg-white shadow border border-black/10">
       <div class="card-body py-4">
         <div class="text-xs text-gray-500">Capital</div>
@@ -320,6 +358,34 @@
         </div>
       </div>
     </div>
+        <div class="card bg-white shadow border border-black/10">
+      <div class="card-body py-4">
+        <div class="text-xs text-gray-500">Total Expenses</div>
+        <div class="text-lg font-semibold text-warning">
+          <font-awesome-icon icon="fa-solid fa-peso-sign" class="!w-4 !h-4" />
+          {{
+            Number(totalExpenses || 0).toLocaleString('en-PH', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })
+          }}
+        </div>
+      </div>
+    </div>
+    <div class="card bg-white shadow border border-black/10">
+      <div class="card-body py-4">
+        <div class="text-xs text-gray-500">Total Loss</div>
+        <div class="text-lg font-semibold text-error">
+          <font-awesome-icon icon="fa-solid fa-peso-sign" class="!w-4 !h-4" />
+          {{
+            Number(totalLoss || 0).toLocaleString('en-PH', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })
+          }}
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="card mt-4 bg-white shadow border border-black/10">
@@ -348,17 +414,18 @@
         <div class="loading loading-spinner loading-md text-primaryColor"></div>
       </div>
       <div v-else class="overflow-x-auto">
-        <table class="table w-full text-sm">
+        <table class="table w-full text-sm table-zebra">
           <thead>
             <tr>
               <th>Branch</th>
               <th>Profit</th>
               <th>Sales Remittances</th>
+              <th>Loss</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="!branchBreakdown.length">
-              <td colspan="3" class="text-center text-gray-500">No data</td>
+              <td colspan="4" class="text-center text-gray-500">No data</td>
             </tr>
             <tr v-for="row in pagedBreakdown" :key="row.branch_id">
               <td>{{ row.branch_name }}</td>
@@ -381,6 +448,18 @@
                 />
                 {{
                   Number(row.sales_remittances || 0).toLocaleString('en-PH', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })
+                }}
+              </td>
+              <td :class="{ 'text-error': row.loss > 0 }">
+                <font-awesome-icon
+                  icon="fa-solid fa-peso-sign"
+                  class="!w-3 !h-3"
+                />
+                {{
+                  Number(row.loss || 0).toLocaleString('en-PH', {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   })

@@ -13,6 +13,7 @@ router.get("/", authenticateToken, async (req, res) => {
       date_to,
       limit = 20,
       offset = 0,
+      include_non_branch, // Optional: include movements without branch_id (HQ/SCM)
     } = req.query;
 
     const filters = {
@@ -22,6 +23,7 @@ router.get("/", authenticateToken, async (req, res) => {
       date_to: date_to || null,
       limit: parseInt(limit),
       offset: parseInt(offset),
+      include_non_branch: include_non_branch === "true",
     };
 
     const result = await CashMovement.list(filters);
@@ -60,10 +62,11 @@ router.post("/", authenticateToken, async (req, res) => {
       occurred_at,
     } = req.body;
 
-    if (!branch_id || !movement_type || !amount) {
+    // Validate required fields (branch_id is optional for HQ/SCM movements)
+    if (!movement_type || amount === undefined || amount === null) {
       return res.status(400).json({
         success: false,
-        message: "branch_id, movement_type, and amount are required",
+        message: "movement_type and amount are required",
       });
     }
 
@@ -75,7 +78,7 @@ router.post("/", authenticateToken, async (req, res) => {
     }
 
     const data = await CashMovement.create({
-      branch_id: parseInt(branch_id),
+      branch_id: branch_id ? parseInt(branch_id) : null,
       movement_type,
       amount: parseFloat(amount),
       source: source || null,

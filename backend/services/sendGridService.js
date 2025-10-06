@@ -19,17 +19,17 @@ class SendGridService {
       apiKey && apiKey !== "your-sendgrid-api-key-here" && apiKey.length > 20;
 
     // Debug logging
-    console.log(`🔍 [SENDGRID DEBUG] Checking configuration:`);
-    console.log(
-      `🔍 [SENDGRID DEBUG] SENDGRID_API_KEY_2: ${process.env.SENDGRID_API_KEY_2 ? "EXISTS" : "NOT_FOUND"}`
-    );
-    console.log(
-      `🔍 [SENDGRID DEBUG] SENDGRID_API_KEY: ${process.env.SENDGRID_API_KEY ? "EXISTS" : "NOT_FOUND"}`
-    );
-    console.log(
-      `🔍 [SENDGRID DEBUG] API Key length: ${apiKey ? apiKey.length : 0}`
-    );
-    console.log(`🔍 [SENDGRID DEBUG] Is configured: ${isConfigured}`);
+    // console.log(`🔍 [SENDGRID DEBUG] Checking configuration:`);
+    // console.log(
+    //   `🔍 [SENDGRID DEBUG] SENDGRID_API_KEY_2: ${process.env.SENDGRID_API_KEY_2 ? "EXISTS" : "NOT_FOUND"}`
+    // );
+    // console.log(
+    //   `🔍 [SENDGRID DEBUG] SENDGRID_API_KEY: ${process.env.SENDGRID_API_KEY ? "EXISTS" : "NOT_FOUND"}`
+    // );
+    // console.log(
+    //   `🔍 [SENDGRID DEBUG] API Key length: ${apiKey ? apiKey.length : 0}`
+    // );
+    // console.log(`🔍 [SENDGRID DEBUG] Is configured: ${isConfigured}`);
 
     return isConfigured;
   }
@@ -109,7 +109,7 @@ class SendGridService {
                     <a href="mailto:${email}" style="color: #007bff; text-decoration: none; font-weight: 500; font-size: 16px;">${email}</a>
                   </div>
                   <div>
-                    <strong style="color: #2c3e50; display: block; margin-bottom: 5px;">Password:</strong>
+                    <strong style="color: #2c3e50; display: block; margin-bottom: 5px;">Default Password:</strong>
                     <span style="color: #2c3e50; font-weight: bold; font-size: 16px; background-color: #e9ecef; padding: 5px 10px; border-radius: 4px; font-family: monospace;">${password}</span>
                   </div>
                 </div>

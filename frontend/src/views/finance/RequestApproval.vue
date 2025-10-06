@@ -1392,58 +1392,14 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <ReceiptText class="w-8 h-8 text-primaryColor" />
+          <ReceiptText class="w-8 h-8 text-warning" />
         </div>
         <div class="stat-title text-black/50">Pending Requests</div>
-        <div class="stat-value text-primaryColor">
+        <div class="stat-value text-warning">
           {{ pendingRequestsOnly.length }}
         </div>
         <div class="stat-desc text-black/50">
           {{ hasPendingRequests ? 'Awaiting review' : 'No pending requests' }}
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <CheckCircle class="w-8 h-8 text-success" />
-        </div>
-        <div class="stat-title text-black/50">Total Approved</div>
-        <div class="stat-value text-success">
-          {{
-            requestStats.approved ||
-            allRequests.filter((r) => r.request_status === 'Approved').length
-          }}
-        </div>
-        <div class="stat-desc text-black/50">
-          {{
-            hasApprovedRequests
-              ? 'Approved requests'
-              : 'No approved requests yet'
-          }}
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <XCircle class="w-8 h-8 text-error" />
-        </div>
-        <div class="stat-title text-black/50">Total Rejected</div>
-        <div class="stat-value text-error">
-          {{
-            requestStats.rejected ||
-            allRequests.filter((r) => r.request_status === 'Rejected').length
-          }}
-        </div>
-        <div class="stat-desc text-black/50">
-          {{
-            hasRejectedRequests
-              ? 'Rejected requests'
-              : 'No rejected requests yet'
-          }}
         </div>
       </div>
     </div>
@@ -1724,10 +1680,8 @@
               <table
                 class="table table-zebra text-black/50 border border-black/10 custom-zebra"
               >
-                <thead class="text-secondaryColor">
-                  <tr class="bg-primaryColor text-accentColor">
-                    <th>Request ID</th>
-                    <th>Department</th>
+                <thead class="text-black/70 bg-white/5">
+                  <tr class="">
                     <th>Requested By</th>
                     <th>Priority</th>
                     <th class="w-1/4">Request Description</th>
@@ -1742,14 +1696,7 @@
                     :key="request.request_id"
                     class="hover:bg-secondaryColor/10"
                   >
-                    <td class="font-mono font-medium text-primaryColor">
-                      {{ request.request_id }}
-                    </td>
-                    <td>
-                      <div class="">
-                        {{ request.department }}
-                      </div>
-                    </td>
+
                     <td>{{ request.requested_by }}</td>
                     <td>
                       <div
@@ -1768,29 +1715,30 @@
                       </div>
                     </td>
                     <td class="text-wrap">{{ request.request_description }}</td>
-                    <td class="font-semibold">
-                      ₱{{
-                        parseFloat(request.total_amount || 0).toLocaleString(
-                          'en-PH',
-                          {
-                            minimumFractionDigits: 2,
-                          }
-                        )
-                      }}
-                    </td>
+ <td class="font-semibold text-black/80">
+  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+  {{
+    Number(
+      String(request.total_amount).replace(/,/g, '')
+    ).toLocaleString('en-PH', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })
+  }}
+</td>
+
                     <td>
                       <div class="flex flex-col">
                         <span>{{
                           formatManilaDate(request.request_date)
                         }}</span>
                         <span class="text-xs text-black/40">
-                          Sent:
                           {{ formatManilaTime(request.created_at) }}
                         </span>
                       </div>
                     </td>
                     <td>
-                      <div class="dropdown dropdown-left">
+                      <div class="dropdown dropdown-left dropdown-end">
                         <label
                           tabindex="0"
                           class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
@@ -2180,14 +2128,15 @@
               <table
                 class="table table-sm table-zebra text-black/50 border border-black/10 custom-zebra"
               >
-                <thead class="text-secondaryColor">
-                  <tr class="bg-primaryColor text-accentColor">
+                <thead class="text-black/70 bg-white/5">
+                  <tr class="">
                     <th class="w-16">No.</th>
-                    <th class="w-32">Request ID</th>
+
                     <th class="min-w-64">Description</th>
                     <th class="w-28">Date</th>
-                    <th class="w-24">Status</th>
+
                     <th class="w-32">Amount</th>
+                                        <th class="w-24">Status</th>
                     <th class="min-w-48">Remarks</th>
                   </tr>
                 </thead>
@@ -2234,13 +2183,7 @@
                       }}
                     </td>
 
-                    <td>
-                      <div
-                        class="font-mono text-sm font-medium text-primaryColor"
-                      >
-                        {{ request.request_id }}
-                      </div>
-                    </td>
+
 
                     <td class="max-w-xs">
                       <div
@@ -2265,6 +2208,19 @@
                       </div>
                     </td>
 
+
+<td class="font-semibold text-left">
+  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+  {{
+    Number(request.total_amount || 0).toLocaleString('en-PH', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })
+  }}
+</td>
+
+
+                    
                     <td>
                       <div
                         class="badge badge-sm "
@@ -2284,15 +2240,6 @@
                         {{ request.request_status }}
                       </div>
                     </td>
-
-                    <td class="font-semibold text-left">
-                      ₱{{
-                        request.total_amount.toLocaleString('en-PH', {
-                          minimumFractionDigits: 2,
-                        })
-                      }}
-                    </td>
-
                     <td
                       class="!whitespace-normal !sm:max-w-sm !md:max-w-md !break-words"
                     >

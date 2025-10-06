@@ -406,7 +406,7 @@
     const configs = {
       release: {
         title: 'Release Budget',
-        message: `Are you sure you want to release budget for request #${data?.request_id}?`,
+        message: `Are you sure you want to release budget?`,
         confirmText: 'Release Budget',
         confirmClass: 'bg-primaryColor text-white hover:bg-primaryColor/80',
         onConfirm: () => handleBudgetRelease(data.request_id),
@@ -935,10 +935,8 @@
                 <table
                   class="table table-zebra text-black/50 border border-black/10 custom-zebra"
                 >
-                  <thead class="text-secondaryColor">
-                    <tr class="bg-primaryColor text-accentColor">
-                      <th>Request ID</th>
-                      <th>Department</th>
+                  <thead class="text-black/60 bg-white/5">
+                    <tr class="">
                       <th>Requested By</th>
                       <th>Priority</th>
                       <th class="w-1/4">Description</th>
@@ -953,14 +951,7 @@
                       :key="request.request_id"
                       class="hover:bg-success/5"
                     >
-                      <td class="font-mono font-medium text-black">
-                        {{ request.request_id }}
-                      </td>
-                      <td>
-                        <div class="">
-                          {{ request.department }}
-                        </div>
-                      </td>
+  
                       <td>{{ request.requested_by }}</td>
                       <td>
                         <div
@@ -982,13 +973,15 @@
                       <td class="text-wrap">
                         {{ request.request_description }}
                       </td>
-                      <td class="font-semibold text-black">
-                        ₱{{
-                          request.total_amount.toLocaleString('en-PH', {
-                            minimumFractionDigits: 2,
-                          })
-                        }}
-                      </td>
+    <td class="font-semibold text-black/80">
+  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+  {{
+    Number(request.total_amount).toLocaleString('en-PH', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })
+  }}
+</td>
                       <td>
                         <div class="flex flex-col">
                           <span>{{
@@ -1011,7 +1004,7 @@
                         </div>
                       </td>
                       <td>
-                        <div class="dropdown dropdown-left">
+                        <div class="dropdown dropdown-left dropdown-end ">
                           <label
                             tabindex="0"
                             class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"

@@ -54,6 +54,7 @@ class CashMovement {
    * @param {string|Date} [filters.date_to]
    * @param {number} [filters.limit=20]
    * @param {number} [filters.offset=0]
+   * @param {boolean} [filters.include_non_branch=false] - Include movements without branch_id (HQ/SCM)
    */
   static async list(filters = {}) {
     const {
@@ -63,6 +64,7 @@ class CashMovement {
       date_to = null,
       limit = 20,
       offset = 0,
+      include_non_branch = false,
     } = filters;
 
     let q = db("cash_movements as cm")
@@ -70,7 +72,15 @@ class CashMovement {
       .select("cm.*", "b.name as branch_name")
       .whereNull("cm.deleted_at");
 
-    if (branch_id) q.where("cm.branch_id", branch_id);
+    // Handle branch_id filtering with support for non-branch movements
+    if (branch_id) {
+      q.where("cm.branch_id", branch_id);
+    } else if (!include_non_branch) {
+      // If no branch_id specified and not including non-branch, show all with branches
+      q.whereNotNull("cm.branch_id");
+    }
+    // If include_non_branch is true and no branch_id, show all movements (branch and non-branch)
+
     if (movement_type) q.where("cm.movement_type", movement_type);
     if (date_from) q.where("cm.occurred_at", ">=", date_from);
     if (date_to) q.where("cm.occurred_at", "<=", date_to);

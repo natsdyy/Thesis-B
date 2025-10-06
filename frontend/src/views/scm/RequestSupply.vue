@@ -2407,27 +2407,6 @@
         </div>
       </div>
 
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <CheckCircle class="w-8 h-8 text-success" />
-        </div>
-        <div class="stat-title text-black/50">Total Approved Requests</div>
-        <div class="stat-value text-success">
-          {{
-            requestStats.approved ||
-            allRequests.filter((r) => r.request_status === 'Approved').length
-          }}
-        </div>
-        <div class="stat-desc text-black/50">
-          {{
-            hasApprovedRequests
-              ? 'Approved requests configured'
-              : 'No approved requests yet'
-          }}
-        </div>
-      </div>
 
       <div
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
@@ -2451,27 +2430,6 @@
         </div>
       </div>
 
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <XCircle class="w-8 h-8 text-error" />
-        </div>
-        <div class="stat-title text-black/50">Total Rejected Requests</div>
-        <div class="stat-value text-error">
-          {{
-            requestStats.rejected ||
-            allRequests.filter((r) => r.request_status === 'Rejected').length
-          }}
-        </div>
-        <div class="stat-desc text-black/50">
-          {{
-            hasRejectedRequests
-              ? 'Rejected requests configured'
-              : 'No rejected requests yet'
-          }}
-        </div>
-      </div>
 
       <div
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
@@ -2490,10 +2448,10 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-0 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <Send class="w-8 h-8 text-primary" />
+          <Send class="w-8 h-8 text-gray-600" />
         </div>
         <div class="stat-title text-black/50">Branch Requests</div>
-        <div class="stat-value text-primary">
+        <div class="stat-value text-gray-600">
           {{ pendingBranchRequests.length }}
         </div>
         <div class="stat-desc text-black/50">Awaiting acknowledgment</div>
@@ -2519,7 +2477,7 @@
           </div>
         </div>
 
-        <div class="alert alert-info mb-4">
+        <div class="alert bg-success/10 border-success/20 text-success mb-4">
           <Info class="w-6 h-6 mr-2" />
           <span
             >Finance has released the budget for the following requests. Please
@@ -2529,11 +2487,10 @@
 
         <div class="overflow-x-auto">
           <table
-            class="table table-zebra text-black/50 border border-success/20 custom-zebra"
+            class="table table-zebra text-black/50 border border-success/10 custom-zebra"
           >
-            <thead class="text-accentColor">
-              <tr class="bg-success text-accentColor">
-                <th>Request ID</th>
+            <thead class="">
+              <tr class="">
                 <th>Description</th>
                 <th>Released Amount</th>
                 <th>Released Date</th>
@@ -2547,17 +2504,20 @@
                 :key="release.request_id"
                 class="hover:bg-success/10"
               >
-                <td class="font-mono font-medium text-success">
-                  {{ release.request_id }}
-                </td>
                 <td class="text-wrap">{{ release.request_description }}</td>
-                <td class="font-semibold text-success">
-                  ₱{{
-                    release.released_amount.toLocaleString('en-PH', {
-                      minimumFractionDigits: 2,
-                    })
-                  }}
-                </td>
+<td class="font-semibold text-success">
+  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+  {{
+    Number(String(release.released_amount).replace(/,/g, '')).toLocaleString(
+      'en-PH',
+      {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }
+    )
+  }}
+</td>
+
                 <td>
                   <div>
                     <span>{{ formatManilaDate(release.released_at) }}</span>
@@ -2976,9 +2936,8 @@
             <table
               class="table table-zebra text-black/50 border border-black/10 custom-zebra"
             >
-              <thead class="text-secondaryColor">
-                <tr class="bg-primaryColor text-accentColor">
-                  <th>Request ID</th>
+              <thead class="">
+                <tr class="">
                   <th>Request Date</th>
                   <th class="w-1/4">Request Description</th>
                   <th>Total Amount</th>
@@ -2994,9 +2953,7 @@
                   :key="request.request_id"
                   class="hover:bg-secondaryColor/10"
                 >
-                  <td class="font-mono font-medium">
-                    {{ request.request_id }}
-                  </td>
+ 
                   <td>
                     <div class="flex flex-col">
                       <span>{{ formatManilaDate(request.request_date) }}</span>
@@ -3011,7 +2968,8 @@
                   </td>
                   <!-- Add total amount column -->
                   <td class="font-semibold text-primaryColor">
-                    ₱{{
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{
                       parseFloat(request.total_amount || 0).toLocaleString(
                         'en-PH',
                         {
@@ -3023,7 +2981,7 @@
                   <!-- Add item count -->
                   <td class="text-center">
                     <span
-                      class="badge badge-sm bg-primaryColor/10 text-primaryColor"
+                      class="text-sm font-medium text-black/70"
                     >
                       {{ request.item_count }} item{{
                         request.item_count !== '1' ? 's' : ''
@@ -3033,15 +2991,8 @@
                   <!-- Add priority -->
                   <td>
                     <div
-                      class="badge badge-sm border-none"
-                      :class="{
-                        'bg-error/10 text-error': request.priority === 'Urgent',
-                        'bg-warning/10 text-warning':
-                          request.priority === 'High',
-                        'bg-info/10 text-info': request.priority === 'Normal',
-                        'bg-success/10 text-success':
-                          request.priority === 'Low',
-                      }"
+                      class="text-xs"
+
                     >
                       {{ request.priority }}
                     </div>
@@ -3066,7 +3017,7 @@
                     </div>
                   </td>
                   <td>
-                    <div class="dropdown dropdown-left">
+                    <div class="dropdown dropdown-left dropdown-center">
                       <label
                         tabindex="0"
                         class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
@@ -3249,14 +3200,15 @@
               <table class="table w-full table-xs table-zebra">
                 <thead>
                   <tr>
-                    <th>Request ID</th>
+
                     <th>Branch</th>
                     <th>Type</th>
                     <th>Description</th>
-                    <th>Priority</th>
-                    <th>Status</th>
+
                     <th>Requested By</th>
                     <th>Date</th>
+                                        <th>Priority</th>
+                    <th>Status</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -3265,16 +3217,14 @@
                     v-for="request in paginatedBranchRequests"
                     :key="request.id"
                   >
-                    <td>
-                      <div class="font-semibold">{{ request.request_id }}</div>
-                    </td>
+   
                     <td>
                       <div class="">
                         {{ request.branch_name || 'Unknown Branch' }}
                       </div>
                     </td>
                     <td>
-                      <div class="badge badge-outline badge-sm">
+                      <div class="">
                         {{ request.request_type }}
                       </div>
                     </td>
@@ -3283,7 +3233,17 @@
                         {{ request.request_description }}
                       </div>
                     </td>
-                    <td>
+  
+                    <td>{{ request.requested_by }}</td>
+                    <td class="w-40 text-right whitespace-nowrap">
+                      <div class="text-sm font-medium text-gray-900">
+                        {{ formatDate(request.request_date) }}
+                      </div>
+                      <div class="text-xs text-gray-500">
+                        {{ formatTime(request.created_at) }}
+                      </div>
+                    </td>
+                  <td>
                       <div
                         class="badge badge-sm border-none"
                         :class="{
@@ -3298,7 +3258,7 @@
                     </td>
                     <td>
                       <div
-                        class="badge"
+                        class="badge badge-sm"
                         :class="
                           getBranchRequestStatusBadge(request.status).class
                         "
@@ -3306,16 +3266,6 @@
                         {{ getBranchRequestStatusBadge(request.status).text }}
                       </div>
                     </td>
-                    <td>{{ request.requested_by }}</td>
-                    <td class="w-40 text-right whitespace-nowrap">
-                      <div class="text-sm font-medium text-gray-900">
-                        {{ formatDate(request.request_date) }}
-                      </div>
-                      <div class="text-xs text-gray-500">
-                        {{ formatTime(request.created_at) }}
-                      </div>
-                    </td>
-
                     <td>
                       <div class="dropdown dropdown-left">
                         <label
@@ -3811,10 +3761,9 @@
                 <table
                   class="table table-sm table-zebra text-black/50 border border-black/10 custom-zebra"
                 >
-                  <thead class="text-secondaryColor">
-                    <tr class="bg-primaryColor text-accentColor">
+                  <thead class="bg-accentColor/50">
+                    <tr class="">
                       <th class="w-16">No.</th>
-                      <th class="w-32">Request ID</th>
                       <th class="min-w-64">Description</th>
                       <th class="w-28">Date</th>
                       <th class="w-24">Status</th>
@@ -3863,14 +3812,6 @@
                           index +
                           1
                         }}
-                      </td>
-
-                      <td>
-                        <div
-                          class="font-mono text-sm font-medium text-primaryColor"
-                        >
-                          {{ request.request_id }}
-                        </div>
                       </td>
 
                       <td class="max-w-xs">
@@ -4073,27 +4014,6 @@
       <div class="py-4">
         <p class="mb-4">{{ confirmModal.message }}</p>
 
-        <!-- Show additional details for certain actions -->
-        <div
-          v-if="
-            confirmModal.data &&
-            (confirmModal.type === 'send' ||
-              confirmModal.type === 'cancel' ||
-              confirmModal.type === 'delete')
-          "
-          class="bg-white/10 p-3 rounded mt-3"
-        >
-          <p class="text-sm">
-            <strong>Description:</strong>
-            {{ confirmModal.data.request_description }}
-          </p>
-          <p class="text-sm">
-            <strong>Status:</strong> {{ confirmModal.data.request_status }}
-          </p>
-          <p class="text-sm">
-            <strong>Date:</strong> {{ confirmModal.data.request_date }}
-          </p>
-        </div>
 
         <!-- Show warning for destructive actions -->
         <div
@@ -4176,9 +4096,16 @@
                 <td class="text-black border border-black/50">
                   {{ row.item_unitPrice }}
                 </td>
-                <td class="text-black border border-black/50">
-                  {{ row.item_amount }}
-                </td>
+<td class="text-black border border-black/50">
+  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+  {{
+    Number(String(row.item_amount).replace(/,/g, '')).toLocaleString('en-PH', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })
+  }}
+</td>
+
               </tr>
               <tr class="text-black border border-black/50">
                 <td
@@ -4187,15 +4114,19 @@
                 >
                   Total
                 </td>
-                <td class="font-semibold">₱ {{ totalAmount }}</td>
+                <td class="font-semibold">
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                  {{
+                    modal.request
+                      ? modal.request.total_amount.toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                        })
+                      : '0.00'
+                  }}
+                </td>
               </tr>
             </tbody>
           </table>
-          <div class="mt-4">
-            <p class="text-sm text-black/50">
-              Description: {{ modal.request?.request_description }}
-            </p>
-          </div>
         </div>
         <div class="modal-action">
           <button
@@ -4790,7 +4721,8 @@
 
                 <td>
                   <div class="text-right font-medium">
-                    ₱{{
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{
                       (
                         (row.item_quantity || 0) * (row.item_unitPrice || 0)
                       ).toLocaleString('en-PH', {
@@ -4814,9 +4746,10 @@
             </tbody>
             <tfoot>
               <tr class="font-semibold">
-                <td colspan="6" class="text-right text-black">Total Amount:</td>
+                <td colspan="6" class="text-right text-black/50">Total Amount:</td>
                 <td class="text-right text-primaryColor">
-                  ₱{{
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                  {{
                     Number(totalAmount).toLocaleString('en-PH', {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,

@@ -1,4 +1,5 @@
 const { db } = require("../config/database");
+const bcrypt = require("bcryptjs");
 
 class Supplier {
   // Get all suppliers (optimized)
@@ -331,6 +332,194 @@ class Supplier {
         .whereNotNull("deleted_at")
         .orderBy("deleted_at", "desc");
     } catch (error) {
+      throw error;
+    }
+  }
+
+  // ==================== AUTHENTICATION METHODS ====================
+
+  // Hash password
+  static async hashPassword(password) {
+    try {
+      const salt = await bcrypt.genSalt(10);
+      return await bcrypt.hash(password, salt);
+    } catch (error) {
+      console.error("Error hashing password:", error);
+      throw new Error("Failed to secure password");
+    }
+  }
+
+  // Verify password
+  static async verifyPassword(plainPassword, hashedPassword) {
+    try {
+      return await bcrypt.compare(plainPassword, hashedPassword);
+    } catch (error) {
+      console.error("Error verifying password:", error);
+      throw new Error("Password verification failed");
+    }
+  }
+
+  // Email validation
+  static isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  }
+
+  // Find supplier by email for authentication
+  static async findByEmail(email) {
+    try {
+      if (!email || !this.isValidEmail(email)) {
+        throw new Error("Invalid email address");
+      }
+
+      const supplier = await db("suppliers")
+        .where("email", email.toLowerCase().trim())
+        .whereNull("deleted_at")
+        .where("is_active", true)
+        .where("status", "Active")
+        .first();
+
+      return supplier;
+    } catch (error) {
+      console.error("Error finding supplier by email:", error);
+      throw error;
+    }
+  }
+
+  // Authenticate supplier
+  static async authenticate(email, password) {
+    try {
+      if (!email || !password) {
+        return {
+          success: false,
+          message: "Email and password are required",
+          code: "MISSING_CREDENTIALS",
+        };
+      }
+
+      const supplier = await this.findByEmail(email);
+
+      if (!supplier) {
+        return {
+          success: false,
+          message: "Invalid email or password",
+          code: "INVALID_CREDENTIALS",
+        };
+      }
+
+      // Check if supplier has a password set
+      if (!supplier.password) {
+        return {
+          success: false,
+          message:
+            "Account not set up for login. Please contact administrator.",
+          code: "NO_PASSWORD",
+        };
+      }
+
+      // Verify password
+      const isValidPassword = await this.verifyPassword(
+        password,
+        supplier.password
+      );
+
+      if (!isValidPassword) {
+        return {
+          success: false,
+          message: "Invalid email or password",
+          code: "INVALID_CREDENTIALS",
+        };
+      }
+
+      // Update last login timestamp
+      await db("suppliers")
+        .where("id", supplier.id)
+        .update({ last_login_at: new Date() });
+
+      // Remove password from returned object
+      const { password: _, ...supplierWithoutPassword } = supplier;
+
+      return {
+        success: true,
+        supplier: supplierWithoutPassword,
+        message: "Login successful",
+        code: "LOGIN_SUCCESS",
+      };
+    } catch (error) {
+      console.error("Error authenticating supplier:", error);
+      return {
+        success: false,
+        message:
+          "Authentication service is temporarily unavailable. Please try again.",
+        code: "AUTHENTICATION_ERROR",
+      };
+    }
+  }
+
+  // Set default password for supplier
+  static async setDefaultPassword(supplierId, password = "supplier123") {
+    try {
+      const hashedPassword = await this.hashPassword(password);
+
+      const [supplier] = await db("suppliers")
+        .where("id", supplierId)
+        .update({
+          password: hashedPassword,
+          updated_at: new Date(),
+        })
+        .returning("*");
+
+      return supplier;
+    } catch (error) {
+      console.error("Error setting default password:", error);
+      throw new Error("Failed to set default password");
+    }
+  }
+
+  // Update supplier password
+  static async updatePassword(supplierId, newPassword) {
+    try {
+      if (!newPassword || newPassword.length < 6) {
+        throw new Error("Password must be at least 6 characters long");
+      }
+
+      const hashedPassword = await this.hashPassword(newPassword);
+
+      const [supplier] = await db("suppliers")
+        .where("id", supplierId)
+        .update({
+          password: hashedPassword,
+          updated_at: new Date(),
+        })
+        .returning("*");
+
+      return supplier;
+    } catch (error) {
+      console.error("Error updating supplier password:", error);
+      throw error;
+    }
+  }
+
+  // Create supplier with authentication
+  static async createWithAuth(supplierData, password = "supplier123") {
+    try {
+      const hashedPassword = await this.hashPassword(password);
+
+      const [supplier] = await db("suppliers")
+        .insert({
+          ...supplierData,
+          password: hashedPassword,
+          is_active: true,
+          created_at: new Date(),
+          updated_at: new Date(),
+        })
+        .returning("*");
+
+      // Remove password from returned object
+      const { password: _, ...supplierWithoutPassword } = supplier;
+      return supplierWithoutPassword;
+    } catch (error) {
+      console.error("Error creating supplier with auth:", error);
       throw error;
     }
   }

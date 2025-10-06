@@ -951,6 +951,19 @@
                 </template>
               </button>
             </div>
+
+            <!-- Supplier Login Link -->
+            <div class="mt-6 text-center">
+              <p class="text-sm text-gray-600 font-poppins">
+                Are you a supplier?
+                <router-link
+                  to="/supplier/login"
+                  class="text-primaryColor hover:text-primaryColor/80 font-medium transition-colors ml-1"
+                >
+                  Login here
+                </router-link>
+              </p>
+            </div>
           </form>
         </div>
       </div>
@@ -1066,6 +1079,19 @@
                 <span class="font-poppins">Login</span>
               </template>
             </button>
+          </div>
+
+          <!-- Supplier Login Link -->
+          <div class="mt-6 text-center">
+            <p class="text-sm text-gray-600 font-poppins">
+              Are you a supplier?
+              <router-link
+                to="/supplier/login"
+                class="text-primaryColor hover:text-primaryColor/80 font-medium transition-colors ml-1"
+              >
+                Login here
+              </router-link>
+            </p>
           </div>
         </form>
       </div>

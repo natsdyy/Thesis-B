@@ -4,7 +4,7 @@ const Inventory = require("./Inventory");
 
 class PurchaseOrder {
   // Get all purchase orders with related data (optimized)
-  static async getAll(includeDeleted = false) {
+  static async getAll(includeDeleted = false, filters = {}) {
     try {
       // Main query with basic PO data and supplier info
       let query = db("purchase_orders as po")
@@ -21,6 +21,11 @@ class PurchaseOrder {
 
       if (!includeDeleted) {
         query = query.whereNull("po.deleted_at");
+      }
+
+      // Optional filters
+      if (filters && filters.supplierId) {
+        query = query.where("po.supplier_id", filters.supplierId);
       }
 
       const purchaseOrders = await query.orderBy("po.created_at", "desc");

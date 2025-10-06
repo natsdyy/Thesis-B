@@ -2407,7 +2407,6 @@
         </div>
       </div>
 
-
       <div
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
@@ -2429,7 +2428,6 @@
           }}
         </div>
       </div>
-
 
       <div
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
@@ -2505,18 +2503,17 @@
                 class="hover:bg-success/10"
               >
                 <td class="text-wrap">{{ release.request_description }}</td>
-<td class="font-semibold text-success">
-  <font-awesome-icon icon="fa-solid fa-peso-sign" />
-  {{
-    Number(String(release.released_amount).replace(/,/g, '')).toLocaleString(
-      'en-PH',
-      {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      }
-    )
-  }}
-</td>
+                <td class="font-semibold text-success">
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                  {{
+                    Number(
+                      String(release.released_amount).replace(/,/g, '')
+                    ).toLocaleString('en-PH', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  }}
+                </td>
 
                 <td>
                   <div>
@@ -2953,7 +2950,6 @@
                   :key="request.request_id"
                   class="hover:bg-secondaryColor/10"
                 >
- 
                   <td>
                     <div class="flex flex-col">
                       <span>{{ formatManilaDate(request.request_date) }}</span>
@@ -2980,9 +2976,7 @@
                   </td>
                   <!-- Add item count -->
                   <td class="text-center">
-                    <span
-                      class="text-sm font-medium text-black/70"
-                    >
+                    <span class="text-sm font-medium text-black/70">
                       {{ request.item_count }} item{{
                         request.item_count !== '1' ? 's' : ''
                       }}
@@ -2990,10 +2984,7 @@
                   </td>
                   <!-- Add priority -->
                   <td>
-                    <div
-                      class="text-xs"
-
-                    >
+                    <div class="text-xs">
                       {{ request.priority }}
                     </div>
                   </td>
@@ -3200,14 +3191,13 @@
               <table class="table w-full table-xs table-zebra">
                 <thead>
                   <tr>
-
                     <th>Branch</th>
                     <th>Type</th>
                     <th>Description</th>
 
                     <th>Requested By</th>
                     <th>Date</th>
-                                        <th>Priority</th>
+                    <th>Priority</th>
                     <th>Status</th>
                     <th>Actions</th>
                   </tr>
@@ -3217,7 +3207,6 @@
                     v-for="request in paginatedBranchRequests"
                     :key="request.id"
                   >
-   
                     <td>
                       <div class="">
                         {{ request.branch_name || 'Unknown Branch' }}
@@ -3233,7 +3222,7 @@
                         {{ request.request_description }}
                       </div>
                     </td>
-  
+
                     <td>{{ request.requested_by }}</td>
                     <td class="w-40 text-right whitespace-nowrap">
                       <div class="text-sm font-medium text-gray-900">
@@ -3243,7 +3232,7 @@
                         {{ formatTime(request.created_at) }}
                       </div>
                     </td>
-                  <td>
+                    <td>
                       <div
                         class="badge badge-sm border-none"
                         :class="{
@@ -4014,7 +4003,6 @@
       <div class="py-4">
         <p class="mb-4">{{ confirmModal.message }}</p>
 
-
         <!-- Show warning for destructive actions -->
         <div
           v-if="
@@ -4096,16 +4084,17 @@
                 <td class="text-black border border-black/50">
                   {{ row.item_unitPrice }}
                 </td>
-<td class="text-black border border-black/50">
-  <font-awesome-icon icon="fa-solid fa-peso-sign" />
-  {{
-    Number(String(row.item_amount).replace(/,/g, '')).toLocaleString('en-PH', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })
-  }}
-</td>
-
+                <td class="text-black border border-black/50">
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                  {{
+                    Number(
+                      String(row.item_amount).replace(/,/g, '')
+                    ).toLocaleString('en-PH', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  }}
+                </td>
               </tr>
               <tr class="text-black border border-black/50">
                 <td
@@ -4451,7 +4440,7 @@
 
       <!-- Request Information Form with Centralized Categories -->
       <div
-        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start mb-6 p-4 bg-white/5 rounded-lg"
+        class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6 items-start mb-6 p-2 sm:p-4 bg-white/5 rounded-lg"
       >
         <!-- Inventory Category Selection -->
         <div class="form-control">
@@ -4746,7 +4735,9 @@
             </tbody>
             <tfoot>
               <tr class="font-semibold">
-                <td colspan="6" class="text-right text-black/50">Total Amount:</td>
+                <td colspan="6" class="text-right text-black/50">
+                  Total Amount:
+                </td>
                 <td class="text-right text-primaryColor">
                   <font-awesome-icon icon="fa-solid fa-peso-sign" />
                   {{

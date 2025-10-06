@@ -4,11 +4,17 @@ const PurchaseOrder = require("../models/PurchaseOrder");
 const Supplier = require("../models/Supplier");
 const { db } = require("../config/database");
 
-// GET /api/purchase-orders - Get all purchase orders
+// GET /api/purchase-orders - Get all purchase orders (supports supplier_id filter)
 router.get("/", async (req, res) => {
   try {
     const includeDeleted = req.query.includeDeleted === "true";
-    const purchaseOrders = await PurchaseOrder.getAll(includeDeleted);
+    const supplierId = req.query.supplier_id
+      ? Number(req.query.supplier_id)
+      : null;
+
+    const purchaseOrders = await PurchaseOrder.getAll(includeDeleted, {
+      supplierId,
+    });
 
     res.json({
       success: true,

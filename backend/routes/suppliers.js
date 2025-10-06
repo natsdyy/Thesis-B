@@ -108,8 +108,16 @@ router.get("/:id", async (req, res) => {
 // POST /api/suppliers - Create supplier
 router.post("/", async (req, res) => {
   try {
-    const { name, contact_person, email, phone, address, category, status } =
-      req.body;
+    const {
+      name,
+      contact_person,
+      email,
+      phone,
+      address,
+      category,
+      status,
+      notes,
+    } = req.body;
 
     if (!name) {
       return res.status(400).json({
@@ -126,15 +134,24 @@ router.post("/", async (req, res) => {
       address,
       category,
       status: status || "Active",
+      notes,
     };
 
-    const supplierId = await Supplier.create(supplierData);
-    const supplier = await Supplier.getById(supplierId);
+    // Create supplier with authentication (default password: supplier123)
+    const supplier = await Supplier.createWithAuth(supplierData);
 
     res.status(201).json({
       success: true,
-      message: "Supplier created successfully",
-      data: supplier,
+      message: "Supplier created successfully with default login credentials",
+      data: {
+        ...supplier,
+        // Include a note about default credentials (for admin reference)
+        login_info: {
+          email: email,
+          default_password: "supplier123",
+          note: "Supplier should change password on first login",
+        },
+      },
     });
   } catch (error) {
     res.status(500).json({

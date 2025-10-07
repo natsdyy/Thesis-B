@@ -31,13 +31,12 @@ const hasValidEmailConfig = () => {
   // More lenient SendGrid detection
   const hasSendGrid = process.env.SENDGRID_API_KEY && 
     process.env.SENDGRID_API_KEY !== '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' &&
-    process.env.SENDGRID_API_KEY !== 'your-sendgrid-api-key-here' &&
+    process.env.SENDGRID_API_KEY_2 !== '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' &&
     process.env.SENDGRID_API_KEY.length > 10; // Reduced from 20 to 10
   
   // More lenient SMTP detection
   const hasSMTP = process.env.SMTP_PASS && 
     process.env.SMTP_PASS !== 'sclg quvi fuyh dcfa' &&
-    process.env.SMTP_PASS !== 'your-gmail-app-password' &&
     process.env.SMTP_PASS.length > 5; // Reduced from 10 to 5
   
   // Additional check: if we're in Railway and have any email-related env vars, consider it valid

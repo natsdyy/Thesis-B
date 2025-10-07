@@ -192,6 +192,7 @@
     const sourceMap = {
       remittance: 'Branch Remittance',
       budget_release: 'Budget Release',
+      budget_return: 'Budget Return',
       manual: 'Manual Entry',
       loan: 'Loan',
       expense: 'Expense',

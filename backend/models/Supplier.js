@@ -145,7 +145,7 @@ class Supplier {
     }
   }
 
-  // Get supplier statistics
+  // Get supplier statistics (enhanced with product and fulfillment data)
   static async getSupplierStats(supplierId) {
     try {
       // Get total orders (completed purchase orders)
@@ -174,19 +174,87 @@ class Supplier {
         .select("order_date")
         .first();
 
+      // Get total items ordered vs received
+      const orderItemStats = await db("purchase_order_items as poi")
+        .join("purchase_orders as po", "poi.purchase_order_id", "po.id")
+        .where("po.supplier_id", supplierId)
+        .whereIn("po.status", ["Completed", "Received"])
+        .select(
+          db.raw("SUM(poi.quantity) as total_ordered"),
+          db.raw("SUM(COALESCE(poi.received_quantity, 0)) as total_received")
+        )
+        .first();
+
+      // Get return statistics
+      const returnStats = await db("item_returns as ir")
+        .join(
+          "purchase_order_items as poi",
+          "ir.purchase_order_item_id",
+          "poi.id"
+        )
+        .join("purchase_orders as po", "poi.purchase_order_id", "po.id")
+        .where("po.supplier_id", supplierId)
+        .select(
+          db.raw("COUNT(*) as total_returns"),
+          db.raw("SUM(ir.return_quantity) as total_returned_quantity"),
+          db.raw(
+            "COUNT(CASE WHEN ir.status = 'Completed' THEN 1 END) as completed_returns"
+          )
+        )
+        .first();
+
+      // Get product statistics
+      const productStats = await db("supplier_products")
+        .where("supplier_id", supplierId)
+        .whereNull("deleted_at")
+        .select(
+          db.raw("COUNT(*) as total_products"),
+          db.raw(
+            "COUNT(CASE WHEN is_available = true THEN 1 END) as available_products"
+          )
+        )
+        .first();
+
+      // Calculate fulfillment rate
+      const totalOrdered = parseFloat(orderItemStats?.total_ordered || 0);
+      const totalReceived = parseFloat(orderItemStats?.total_received || 0);
+      const fulfillmentRate =
+        totalOrdered > 0
+          ? ((totalReceived / totalOrdered) * 100).toFixed(2)
+          : 0;
+
       return {
         total_orders: parseInt(totalOrders.count) || 0,
         avg_rating: avgRating.avg_rating
           ? parseFloat(avgRating.avg_rating).toFixed(1)
           : 0,
         last_order_date: lastOrder ? lastOrder.order_date : null,
+        total_ordered_items: totalOrdered,
+        total_received_items: totalReceived,
+        fulfillment_rate: parseFloat(fulfillmentRate),
+        total_returns: parseInt(returnStats?.total_returns || 0),
+        total_returned_quantity: parseFloat(
+          returnStats?.total_returned_quantity || 0
+        ),
+        completed_returns: parseInt(returnStats?.completed_returns || 0),
+        total_products: parseInt(productStats?.total_products || 0),
+        available_products: parseInt(productStats?.available_products || 0),
       };
     } catch (error) {
+      console.error("Error getting supplier stats:", error);
       // Return default stats if there's an error
       return {
         total_orders: 0,
         avg_rating: 0,
         last_order_date: null,
+        total_ordered_items: 0,
+        total_received_items: 0,
+        fulfillment_rate: 0,
+        total_returns: 0,
+        total_returned_quantity: 0,
+        completed_returns: 0,
+        total_products: 0,
+        available_products: 0,
       };
     }
   }
@@ -591,6 +659,129 @@ class Supplier {
       return supplierWithoutPassword;
     } catch (error) {
       console.error("Error creating supplier with auth:", error);
+      throw error;
+    }
+  }
+
+  // Get detailed product performance for a supplier
+  static async getProductPerformance(supplierId) {
+    try {
+      const products = await db("supplier_products as sp")
+        .leftJoin(
+          "purchase_order_items as poi",
+          "sp.id",
+          "poi.supplier_product_id"
+        )
+        .leftJoin("purchase_orders as po", "poi.purchase_order_id", "po.id")
+        .where("sp.supplier_id", supplierId)
+        .whereNull("sp.deleted_at")
+        .groupBy(
+          "sp.id",
+          "sp.product_name",
+          "sp.sku",
+          "sp.unit",
+          "sp.unit_price",
+          "sp.is_available"
+        )
+        .select(
+          "sp.id as product_id",
+          "sp.product_name",
+          "sp.sku",
+          "sp.unit",
+          "sp.unit_price",
+          "sp.is_available",
+          db.raw(
+            "COUNT(DISTINCT CASE WHEN po.status IN ('Completed', 'Received') THEN po.id END) as order_count"
+          ),
+          db.raw(
+            "COALESCE(SUM(CASE WHEN po.status IN ('Completed', 'Received') THEN poi.quantity ELSE 0 END), 0) as total_ordered"
+          ),
+          db.raw(
+            "COALESCE(SUM(CASE WHEN po.status IN ('Completed', 'Received') THEN poi.received_quantity ELSE 0 END), 0) as total_received"
+          ),
+          db.raw(
+            "COALESCE(SUM(CASE WHEN po.status IN ('Completed', 'Received') THEN poi.total_price ELSE 0 END), 0) as total_revenue"
+          )
+        )
+        .orderBy("order_count", "desc");
+
+      return products.map((product) => {
+        const totalOrdered = parseFloat(product.total_ordered || 0);
+        const totalReceived = parseFloat(product.total_received || 0);
+        const fulfillmentRate =
+          totalOrdered > 0
+            ? ((totalReceived / totalOrdered) * 100).toFixed(2)
+            : 0;
+
+        return {
+          ...product,
+          order_count: parseInt(product.order_count || 0),
+          total_ordered: totalOrdered,
+          total_received: totalReceived,
+          total_revenue: parseFloat(product.total_revenue || 0),
+          fulfillment_rate: parseFloat(fulfillmentRate),
+        };
+      });
+    } catch (error) {
+      console.error("Error getting product performance:", error);
+      throw error;
+    }
+  }
+
+  // Get supplier order history with received vs ordered breakdown
+  static async getOrderHistory(supplierId, limit = 10) {
+    try {
+      const orders = await db("purchase_orders as po")
+        .where("po.supplier_id", supplierId)
+        .whereNull("po.deleted_at")
+        .select(
+          "po.id",
+          "po.po_number",
+          "po.status",
+          "po.total_amount",
+          "po.order_date",
+          "po.expected_delivery",
+          "po.completed_at"
+        )
+        .orderBy("po.order_date", "desc")
+        .limit(limit);
+
+      const ordersWithDetails = await Promise.all(
+        orders.map(async (order) => {
+          const itemStats = await db("purchase_order_items")
+            .where("purchase_order_id", order.id)
+            .select(
+              db.raw("COUNT(*) as item_count"),
+              db.raw("SUM(quantity) as total_ordered"),
+              db.raw("SUM(COALESCE(received_quantity, 0)) as total_received"),
+              db.raw("SUM(total_price) as order_value")
+            )
+            .first();
+
+          const returnCount = await db("item_returns as ir")
+            .join(
+              "purchase_order_items as poi",
+              "ir.purchase_order_item_id",
+              "poi.id"
+            )
+            .where("poi.purchase_order_id", order.id)
+            .count("* as count")
+            .first();
+
+          return {
+            ...order,
+            item_count: parseInt(itemStats?.item_count || 0),
+            total_ordered: parseFloat(itemStats?.total_ordered || 0),
+            total_received: parseFloat(itemStats?.total_received || 0),
+            order_value: parseFloat(itemStats?.order_value || 0),
+            return_count: parseInt(returnCount?.count || 0),
+          };
+        })
+      );
+
+      return ordersWithDetails;
+    } catch (error) {
+      console.error("Error getting order history:", error);
       throw error;
     }
   }

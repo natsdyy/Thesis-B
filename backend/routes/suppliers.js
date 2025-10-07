@@ -431,4 +431,67 @@ router.get("/:id/transactions", async (req, res) => {
   }
 });
 
+// GET /api/suppliers/:id/product-performance - Get product performance metrics
+router.get("/:id/product-performance", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify supplier exists
+    const supplier = await Supplier.getById(id);
+    if (!supplier) {
+      return res.status(404).json({
+        success: false,
+        message: "Supplier not found",
+      });
+    }
+
+    const performance = await Supplier.getProductPerformance(id);
+
+    res.json({
+      success: true,
+      data: performance,
+      count: performance.length,
+    });
+  } catch (error) {
+    console.error("Error fetching product performance:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching product performance",
+      error: error.message,
+    });
+  }
+});
+
+// GET /api/suppliers/:id/order-history - Get order history with received vs ordered
+router.get("/:id/order-history", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { limit = 10 } = req.query;
+
+    // Verify supplier exists
+    const supplier = await Supplier.getById(id);
+    if (!supplier) {
+      return res.status(404).json({
+        success: false,
+        message: "Supplier not found",
+      });
+    }
+
+    const orderHistory = await Supplier.getOrderHistory(id, parseInt(limit));
+
+    res.json({
+      success: true,
+      data: orderHistory,
+      count: orderHistory.length,
+    });
+  } catch (error) {
+    console.error("Error fetching order history:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching order history",
+      error: error.message,
+    });
+  }
+});
+
 module.exports = router;

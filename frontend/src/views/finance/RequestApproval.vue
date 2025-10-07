@@ -3,6 +3,7 @@
   import { useSupplyRequestStore } from '../../stores/supplyRequestStore.js';
   import { useBudgetReleaseStore } from '../../stores/budgetReleaseStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
+  import { useSupplierStore } from '../../stores/supplierStore.js';
   import cashRequestReceiptModal from '../../components/scm/cashRequestReceiptModal.vue';
   import PikaDay from 'pikaday';
   import 'pikaday/css/pikaday.css';
@@ -34,6 +35,7 @@
   const supplyRequestStore = useSupplyRequestStore();
   const budgetReleaseStore = useBudgetReleaseStore();
   const authStore = useAuthStore();
+  const supplierStore = useSupplierStore();
 
   // Local state
   const loading = ref(false);
@@ -1302,6 +1304,13 @@
     await fetchRequests();
     await fetchPendingReceipts();
 
+    // Ensure suppliers are available for name resolution
+    try {
+      if (!supplierStore.suppliers?.length) {
+        await supplierStore.fetchActiveSuppliers();
+      }
+    } catch (_) {}
+
     // Update filter counts
     updateHistoryFilterCounts();
 
@@ -1350,6 +1359,22 @@
       timeZone: 'Asia/Manila',
     });
   };
+
+  // Resolve supplier name for the modal from request fields, first item, or supplier list
+  const modalSupplierName = computed(() => {
+    const request = modal.value?.request;
+    if (!request) return 'N/A';
+    if (request.supplier_name) return request.supplier_name;
+    const itemName = request.items?.[0]?.supplier_name;
+    if (itemName) return itemName;
+    if (request.supplier_id && supplierStore?.suppliers?.length) {
+      const supplier = supplierStore.suppliers.find(
+        (s) => s.id === request.supplier_id
+      );
+      if (supplier?.name) return supplier.name;
+    }
+    return 'N/A';
+  });
 
   // Get the appropriate date based on request status
   const getStatusDate = (request) => {
@@ -1696,7 +1721,6 @@
                     :key="request.request_id"
                     class="hover:bg-secondaryColor/10"
                   >
-
                     <td>{{ request.requested_by }}</td>
                     <td>
                       <div
@@ -1715,17 +1739,17 @@
                       </div>
                     </td>
                     <td class="text-wrap">{{ request.request_description }}</td>
- <td class="font-semibold text-black/80">
-  <font-awesome-icon icon="fa-solid fa-peso-sign" />
-  {{
-    Number(
-      String(request.total_amount).replace(/,/g, '')
-    ).toLocaleString('en-PH', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })
-  }}
-</td>
+                    <td class="font-semibold text-black/80">
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{
+                        Number(
+                          String(request.total_amount).replace(/,/g, '')
+                        ).toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })
+                      }}
+                    </td>
 
                     <td>
                       <div class="flex flex-col">
@@ -1738,7 +1762,7 @@
                       </div>
                     </td>
                     <td>
-                      <div class="dropdown dropdown-left dropdown-end">
+                      <div class="dropdown dropdown-left dropdown-center">
                         <label
                           tabindex="0"
                           class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
@@ -2136,7 +2160,7 @@
                     <th class="w-28">Date</th>
 
                     <th class="w-32">Amount</th>
-                                        <th class="w-24">Status</th>
+                    <th class="w-24">Status</th>
                     <th class="min-w-48">Remarks</th>
                   </tr>
                 </thead>
@@ -2183,8 +2207,6 @@
                       }}
                     </td>
 
-
-
                     <td class="max-w-xs">
                       <div
                         class="tooltip tooltip-top"
@@ -2208,22 +2230,22 @@
                       </div>
                     </td>
 
+                    <td class="font-semibold text-left">
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{
+                        Number(request.total_amount || 0).toLocaleString(
+                          'en-PH',
+                          {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          }
+                        )
+                      }}
+                    </td>
 
-<td class="font-semibold text-left">
-  <font-awesome-icon icon="fa-solid fa-peso-sign" />
-  {{
-    Number(request.total_amount || 0).toLocaleString('en-PH', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })
-  }}
-</td>
-
-
-                    
                     <td>
                       <div
-                        class="badge badge-sm "
+                        class="badge badge-sm"
                         :class="{
                           '!bg-success/10 !text-success':
                             request.request_status === 'Approved',
@@ -2387,18 +2409,16 @@
           class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 p-4 bg-white/5 rounded-lg"
         >
           <div>
-            <span class="text-sm text-black/60">Request ID:</span>
-            <p class="font-mono font-medium text-primaryColor">
-              {{ modal.request?.request_id }}
-            </p>
-          </div>
-          <div>
             <span class="text-sm text-black/60">Department:</span>
             <p class="font-medium">{{ modal.request?.department }}</p>
           </div>
           <div>
             <span class="text-sm text-black/60">Requested By:</span>
             <p class="font-medium">{{ modal.request?.requested_by }}</p>
+          </div>
+          <div>
+            <span class="text-sm text-black/60">Supplier:</span>
+            <p class="font-medium">{{ modalSupplierName }}</p>
           </div>
           <div class="flex flex-col gap-2">
             <span class="text-sm text-black/60">Priority:</span>
@@ -2512,6 +2532,11 @@
             <span class="col-span-2 text-right">{{
               modal.request?.requested_by
             }}</span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            <span class="font-semibold">Supplier:</span>
+            <span class="col-span-2 text-right">{{ modalSupplierName }}</span>
           </div>
 
           <div class="grid grid-cols-3 gap-2">

@@ -275,6 +275,13 @@ router.beforeEach(async (to, from, next) => {
     }
   }
 
+  // If navigating to any supplier route, skip employee auth guard logic below.
+  // Supplier routes have their own auth (via requiresSupplierAuth meta) and login page.
+  if (to.path.startsWith('/supplier')) {
+    next();
+    return;
+  }
+
   const authStore = useAuthStore();
 
   // Routes that don't require authentication
@@ -285,6 +292,7 @@ router.beforeEach(async (to, from, next) => {
     '/menu',
     '/stores',
     '/rate-order',
+    '/supplier/login',
   ];
 
   if (publicRoutes.includes(to.path)) {

@@ -98,6 +98,41 @@ router.post("/", async (req, res) => {
   }
 });
 
+// PUT /api/item-returns/:id/process - Process item return (for suppliers to accept)
+router.put("/:id/process", async (req, res) => {
+  try {
+    const requestBody = req.body || {};
+    const processedBy =
+      requestBody.processed_by || req.user?.username || "Supplier";
+
+    // Update status to "Processed"
+    const itemReturn = await ItemReturn.update(req.params.id, {
+      status: "Processed",
+      processed_at: new Date(),
+      processed_by: processedBy,
+    });
+
+    if (!itemReturn) {
+      return res.status(404).json({
+        success: false,
+        message: "Item return not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Return processed successfully",
+      data: itemReturn,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error processing item return",
+      error: error.message,
+    });
+  }
+});
+
 // PUT /api/item-returns/:id/complete - Complete item return
 router.put("/:id/complete", async (req, res) => {
   try {

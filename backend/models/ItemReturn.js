@@ -188,12 +188,16 @@ class ItemReturn {
   // Update item return
   static async update(id, updateData) {
     try {
-      const [itemReturn] = await db("item_returns")
+      const result = await db("item_returns")
         .where("id", id)
         .update(updateData)
         .returning("*");
 
-      return itemReturn;
+      if (result && result.length > 0) {
+        return result[0];
+      }
+
+      return null;
     } catch (error) {
       throw error;
     }

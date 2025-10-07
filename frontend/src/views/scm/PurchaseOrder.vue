@@ -248,6 +248,28 @@
     'Completed',
     'Cancelled',
   ];
+  // Edit-modal specific status behavior: suppliers drive Sent/Confirmed/In Progress
+  const modalStatusOptions = computed(() => {
+    const m = modal.value;
+    // Restrict create modal to Draft and Sent only
+    if (m?.type === 'create') return ['Draft', 'Sent'];
+    if (m?.type !== 'edit' || !m?.order) return orderStatuses;
+    const current = m.order.status;
+    if (current === 'In Progress') return ['In Progress', 'Completed'];
+    if (['Sent', 'Confirmed', 'Completed', 'Cancelled'].includes(current)) {
+      return [current];
+    }
+    return orderStatuses;
+  });
+
+  const isStatusDisabled = computed(() => {
+    const m = modal.value;
+    if (m?.type === 'view') return true;
+    if (m?.type !== 'edit' || !m?.order) return false;
+    const current = m.order.status;
+    // Disable when supplier controls status, except allow transition from In Progress → Completed
+    return ['Sent', 'Confirmed', 'Completed', 'Cancelled'].includes(current);
+  });
   const activeOrderStatuses = ['Draft', 'Sent', 'Confirmed', 'In Progress'];
   const historyOrderStatuses = ['Completed', 'Cancelled'];
   const months = [
@@ -1266,6 +1288,21 @@
 
     modal.value.show = true;
   };
+  // Helper: generate a unique PO number based on a base string
+  const generateUniquePONumber = (base) => {
+    const existing = (purchaseOrderStore.purchaseOrders || []).map((o) =>
+      String(o.po_number)
+    );
+    if (!existing.includes(base)) return base;
+    // Try numeric suffixes -001, -002, ... up to 999
+    for (let i = 1; i < 1000; i++) {
+      const candidate = `${base}-${String(i).padStart(3, '0')}`;
+      if (!existing.includes(candidate)) return candidate;
+    }
+    // Fallback with timestamp tail
+    const tail = String(Date.now()).slice(-4);
+    return `${base}-${tail}`;
+  };
 
   const closeModal = () => {
     modal.value = { type: null, show: false, order: null };
@@ -1378,6 +1415,7 @@
     // Store the request ID and selected items count before clearing
     const requestId = supplyRequestModal.value.selectedRequest.request_id;
     const selectedItemsCount = supplyRequestModal.value.selectedItems.length;
+    const supplierId = supplyRequestModal.value.selectedRequest.supplier_id;
 
     // Calculate total amount from selected items
     const totalAmount = supplyRequestModal.value.selectedItems.reduce(
@@ -1390,8 +1428,14 @@
       supplyRequestModal.value.selectedRequest.id;
     orderForm.value.total_amount = totalAmount;
 
-    // Auto-generate PO number with PO-{request_id} format
-    orderForm.value.po_number = `PO-${requestId}`;
+    // Auto-generate PO number with PO-{request_id}[ -suffix ] ensuring uniqueness
+    const basePo = `PO-${requestId}`;
+    orderForm.value.po_number = generateUniquePONumber(basePo);
+
+    // Auto-populate supplier if available from supply request
+    if (supplierId) {
+      orderForm.value.supplier_id = String(supplierId);
+    }
 
     // Update the supply request display in the form
     orderForm.value.supply_request_display = `${supplyRequestModal.value.selectedRequest.request_id} - ${supplyRequestModal.value.selectedRequest.request_description}`;
@@ -1430,6 +1474,7 @@
     orderForm.value.selected_items = [];
     orderForm.value.total_amount = 0;
     orderForm.value.po_number = ''; // Clear auto-generated PO number
+    orderForm.value.supplier_id = ''; // Clear auto-populated supplier
   };
 
   // Receipt methods
@@ -1933,6 +1978,11 @@
     showToast('success', 'Return cancelled successfully');
   };
 
+  const handleReturnSentToSupplier = (returnItem) => {
+    purchaseOrderStore.fetchPurchaseOrders();
+    showToast('success', 'Return marked for supplier pickup');
+  };
+
   const viewReturnDetails = (returnItem) => {
     console.log('View return details:', returnItem);
   };
@@ -2039,7 +2089,12 @@
         );
     } catch (error) {
       console.error('Error creating GRN:', error);
-      showToast('error', error.message || 'Failed to create GRN');
+      const serverMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message ||
+        'Failed to create GRN';
+      showToast('error', serverMessage);
     } finally {
       // Always ensure loading state is reset
       grnConfirmModal.value.loading = false;
@@ -2061,6 +2116,15 @@
   const openCompletionModal = async (order) => {
     if (order.status === 'Completed') {
       showToast('error', 'Purchase order is already completed');
+      return;
+    }
+
+    // Enforce supplier progress before completion
+    if (!['In Progress', 'Confirmed'].includes(order.status)) {
+      showToast(
+        'error',
+        'Order must be Confirmed or In Progress by the supplier before completion.'
+      );
       return;
     }
 
@@ -2316,8 +2380,6 @@
       </p>
     </div>
 
-
-
     <!-- Purchase Order List -->
     <div
       class="card bg-accentColor shadow-xl mb-4 sm:mb-6 border border-black/10 mx-auto"
@@ -2417,7 +2479,7 @@
                   v-model="searchQuery"
                   type="text"
                   placeholder="Search purchase orders..."
-                  class="input input-sm sm:input-md input-bordered bg-white border-primaryColor/30 text-black/70 pl-10 w-full shadow-none text-sm sm:text-base"
+                  class="input input-sm sm:input-md input-bordered bg-white !border-primaryColor/30 text-black/70 pl-10 w-full shadow-none text-sm sm:text-base"
                 />
               </div>
             </div>
@@ -2923,7 +2985,7 @@
                   v-model="historySearchQuery"
                   type="text"
                   placeholder="Search order history..."
-                  class="input input-sm sm:input-md input-bordered bg-white border-primaryColor/30 text-black/70 pl-10 w-full shadow-none text-sm sm:text-base"
+                  class="input input-sm sm:input-md input-bordered bg-white !border-primaryColor/30 text-black/70 pl-10 w-full shadow-none text-sm sm:text-base"
                 />
               </div>
             </div>
@@ -3170,7 +3232,7 @@
                 >
                 <select
                   v-model="historySupplierFilter"
-                  class="select select-xs sm:select-sm select-bordered bg-white border-primaryColor/30 text-black/70 text-xs sm:text-sm"
+                  class="select select-xs sm:select-sm select-bordered bg-white !border-primaryColor/30 text-black/70 text-xs sm:text-sm"
                 >
                   <option value="">All Suppliers</option>
                   <option
@@ -3559,6 +3621,15 @@
                 <Link class="w-4 h-4 mr-1" />
                 Select Request
               </button>
+              <button
+                v-if="orderForm.supply_request_id"
+                type="button"
+                class="btn btn-outline btn-error font-thin"
+                @click="clearSupplyRequestSelection"
+                title="Clear supply request selection"
+              >
+                <X class="w-4 h-4" />
+              </button>
             </div>
           </div>
         </div>
@@ -3593,12 +3664,18 @@
             <label class="label">
               <span class="label-text font-medium">Supplier</span>
               <span class="label-text-alt text-error">*</span>
+              <span
+                v-if="orderForm.supply_request_id && orderForm.supplier_id"
+                class="label-text-alt text-info text-xs"
+              >
+                Auto-populated from supply request
+              </span>
             </label>
             <select
               v-model="orderForm.supplier_id"
               class="select select-bordered w-full"
               required
-              :disabled="modal.type === 'view'"
+              :disabled="modal.type === 'view' || orderForm.supply_request_id"
             >
               <option value="">Select Supplier</option>
               <option
@@ -3691,7 +3768,7 @@
             <select
               v-model="orderForm.status"
               class="select select-bordered w-full"
-              :disabled="modal.type === 'view'"
+              :disabled="isStatusDisabled"
               @change="handleFieldChange('status', $event.target.value)"
               :class="{
                 'border-warning bg-warning/5':
@@ -3700,11 +3777,9 @@
                   orderForm.status !== modal.order.status,
               }"
             >
-              <option value="Draft">Draft</option>
-              <option value="Sent">Sent</option>
-              <option value="Confirmed">Confirmed</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Completed">Completed</option>
+              <option v-for="s in modalStatusOptions" :key="s" :value="s">
+                {{ s }}
+              </option>
             </select>
           </div>
 
@@ -3719,6 +3794,7 @@
               class="input input-bordered w-full"
               placeholder="0.00"
               :disabled="modal.type === 'view'"
+              readonly
             />
           </div>
         </div>
@@ -4333,14 +4409,24 @@
                   }}
                 </td>
                 <td class="border border-black">
-                  ₱{{
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                  {{
                     receiptModal.order.status === 'Completed' &&
                     item.received_total_price
-                      ? Number(item.received_total_price).toFixed(2)
+                      ? Number(item.received_total_price).toLocaleString(
+                          'en-PH',
+                          {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          }
+                        )
                       : Number(
                           item.total_price ||
                             (item.quantity || 0) * (item.unit_price || 0)
-                        ).toFixed(2)
+                        ).toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })
                   }}
                 </td>
               </tr>
@@ -4352,7 +4438,8 @@
                   Total
                 </td>
                 <td class="font-semibold border border-black">
-                  ₱{{
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                  {{
                     receiptModal.order.status === 'Completed'
                       ? Number(
                           receiptModal.order.items?.reduce(
@@ -4365,8 +4452,16 @@
                               ),
                             0
                           ) || 0
-                        ).toFixed(2)
-                      : Number(receiptModal.order.total_amount || 0).toFixed(2)
+                        ).toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })
+                      : Number(
+                          receiptModal.order.total_amount || 0
+                        ).toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })
                   }}
                 </td>
               </tr>
@@ -4456,7 +4551,8 @@
           <div class="flex justify-between items-center">
             <span class="text-sm text-black/70">Total Amount:</span>
             <span class="font-semibold text-black">
-              ₱{{
+              <font-awesome-icon icon="fa-solid fa-peso-sign" />
+              {{
                 receiptModal.order.status === 'Completed'
                   ? Number(
                       receiptModal.order.items?.reduce(
@@ -4469,20 +4565,18 @@
                           ),
                         0
                       ) || 0
-                    ).toLocaleString()
-                  : Number(
-                      receiptModal.order.total_amount || 0
-                    ).toLocaleString()
+                    ).toLocaleString('en-PH', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  : Number(receiptModal.order.total_amount || 0).toLocaleString(
+                      'en-PH',
+                      {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }
+                    )
               }}
-            </span>
-          </div>
-          <div
-            v-if="receiptModal.order.supply_request_number"
-            class="flex justify-between items-center"
-          >
-            <span class="text-sm text-black/70">Supply Request:</span>
-            <span class="text-info font-medium">
-              {{ receiptModal.order.supply_request_number }}
             </span>
           </div>
         </div>
@@ -4491,10 +4585,20 @@
         <div class="flex justify-between mt-8 w-full">
           <div class="flex flex-col items-start">
             <div class="border-b border-black w-[280px] mb-1"></div>
+            <div class="text-xs font-medium text-black mt-1">
+              {{ receiptModal.order.supplier_name || 'N/A' }}
+            </div>
             <div class="text-xs text-gray-600">Supplier Signature</div>
           </div>
           <div class="flex flex-col items-end">
             <div class="border-b border-black w-[280px] mb-1"></div>
+            <div class="text-xs font-medium text-black mt-1">
+              {{
+                receiptModal.order.completed_by ||
+                receiptModal.order.received_by ||
+                getCurrentUserName()
+              }}
+            </div>
             <div class="text-xs text-gray-600">Received by</div>
           </div>
         </div>
@@ -4736,6 +4840,7 @@
     :on-close="closeAuditTrailModal"
     @return-processed="handleReturnProcessed"
     @return-cancelled="handleReturnCancelled"
+    @return-sent-to-supplier="handleReturnSentToSupplier"
     @view-return-details="viewReturnDetails"
   />
 

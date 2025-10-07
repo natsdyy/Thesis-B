@@ -328,6 +328,64 @@ export const useSupplierStore = defineStore('supplier', () => {
     }
   };
 
+  // NEW: Get supplier product performance metrics
+  const fetchProductPerformance = async (supplierId) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.get(
+        `${apiConfig.baseURL}/suppliers/${supplierId}/product-performance`
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch product performance'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to fetch product performance';
+      console.error('Error fetching product performance:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // NEW: Get supplier order history with received vs ordered breakdown
+  const fetchOrderHistory = async (supplierId, limit = 10) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.get(
+        `${apiConfig.baseURL}/suppliers/${supplierId}/order-history?limit=${limit}`
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch order history'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to fetch order history';
+      console.error('Error fetching order history:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   return {
     // State
     suppliers,
@@ -352,5 +410,7 @@ export const useSupplierStore = defineStore('supplier', () => {
     restoreSupplier, // Make sure this is included
     fetchSuppliersWithStats,
     fetchSupplierTransactions, // NEW: Transaction method
+    fetchProductPerformance, // NEW: Product performance metrics
+    fetchOrderHistory, // NEW: Order history with received vs ordered
   };
 });

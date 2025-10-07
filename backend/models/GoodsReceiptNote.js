@@ -262,10 +262,31 @@ class GoodsReceiptNote {
           .whereNull("poi.deleted_at");
       }
 
+      // Calculate completed returns per PO item to adjust GRN received quantities
+      const returnRows = await trx("item_returns")
+        .where("purchase_order_id", purchaseOrderId)
+        .where("status", "Completed")
+        .whereNull("deleted_at")
+        .groupBy("purchase_order_item_id")
+        .select("purchase_order_item_id")
+        .sum({ total_returned: "return_quantity" });
+      const returnedByItemId = new Map(
+        returnRows.map((r) => [
+          r.purchase_order_item_id,
+          Number(r.total_returned) || 0,
+        ])
+      );
+
       const grnItems = poItemsWithInventoryData.map((item) => {
         // Use actual received quantity if available, otherwise fall back to ordered quantity
-        const actualReceivedQuantity = item.received_quantity || item.quantity;
-        const receivedQty = grnData.is_partial ? 0 : actualReceivedQuantity;
+        const baseReceivedQuantity = item.received_quantity || item.quantity;
+        // Subtract completed returns for this PO item (cannot go below zero)
+        const returnedQty = returnedByItemId.get(item.id) || 0;
+        const adjustedReceivedQuantity = Math.max(
+          (Number(baseReceivedQuantity) || 0) - (Number(returnedQty) || 0),
+          0
+        );
+        const receivedQty = grnData.is_partial ? 0 : adjustedReceivedQuantity;
 
         return {
           grn_id: grn.id,
@@ -281,6 +302,19 @@ class GoodsReceiptNote {
           quality_status: "pending",
         };
       });
+
+      // Prevent creating GRN with zero receivable quantities (non-partial)
+      if (!grnData.is_partial) {
+        const totalAdjustedReceived = grnItems.reduce(
+          (sum, gi) => sum + Number(gi.received_quantity || 0),
+          0
+        );
+        if (totalAdjustedReceived <= 0) {
+          throw new Error(
+            "Cannot create GRN: all items have zero receivable quantity after returns."
+          );
+        }
+      }
 
       await trx("grn_items").insert(grnItems);
 

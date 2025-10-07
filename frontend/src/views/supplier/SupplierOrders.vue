@@ -128,20 +128,263 @@
                 <thead>
                   <tr>
                     <th>Item Name</th>
-                    <th>Quantity</th>
+                    <th>Ordered Qty</th>
+                    <th v-if="order.status === 'Completed'">Received Qty</th>
                     <th>Unit Price</th>
                     <th>Total</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="item in order.items" :key="item.id">
-                    <td>{{ item.item_name }}</td>
+                    <td>
+                      {{ item.item_name }}
+                      <span
+                        v-if="item.supplier_sku"
+                        class="badge badge-xs bg-blue-100 text-blue-800 ml-2"
+                      >
+                        SKU: {{ item.supplier_sku }}
+                      </span>
+                    </td>
                     <td>{{ item.quantity }} {{ item.unit }}</td>
+                    <td v-if="order.status === 'Completed'">
+                      <span
+                        :class="{
+                          'text-success':
+                            item.received_quantity >= item.quantity,
+                          'text-warning':
+                            item.received_quantity > 0 &&
+                            item.received_quantity < item.quantity,
+                          'text-error':
+                            !item.received_quantity ||
+                            item.received_quantity === 0,
+                        }"
+                      >
+                        {{ item.received_quantity || 0 }} {{ item.unit }}
+                      </span>
+                    </td>
                     <td>₱{{ formatCurrency(item.unit_price) }}</td>
-                    <td>₱{{ formatCurrency(item.total_price) }}</td>
+                    <td>
+                      ₱{{
+                        order.status === 'Completed' &&
+                        item.received_total_price
+                          ? formatCurrency(item.received_total_price)
+                          : formatCurrency(item.total_price)
+                      }}
+                    </td>
                   </tr>
                 </tbody>
               </table>
+            </div>
+
+            <!-- Delivery Summary for Completed Orders -->
+            <div
+              v-if="order.status === 'Completed'"
+              class="mt-3 p-3 bg-blue-50 rounded-lg"
+            >
+              <h4 class="text-xs font-semibold text-gray-700 mb-2">
+                <font-awesome-icon icon="fa-solid fa-box-open" />
+                Delivery Summary
+              </h4>
+              <div class="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span class="text-gray-600">Total Ordered:</span>
+                  <span class="ml-1 font-medium">
+                    {{
+                      order.items?.reduce(
+                        (sum, item) => sum + Number(item.quantity || 0),
+                        0
+                      ) || 'N/A'
+                    }}
+                    units
+                  </span>
+                </div>
+                <div>
+                  <span class="text-gray-600">Total Received:</span>
+                  <span class="ml-1 font-medium">
+                    {{
+                      order.items?.reduce(
+                        (sum, item) =>
+                          sum + Number(item.received_quantity || 0),
+                        0
+                      ) || 'N/A'
+                    }}
+                    units
+                  </span>
+                </div>
+              </div>
+
+              <!-- Fulfillment rate -->
+              <div v-if="order.items && order.items.length > 0" class="mt-2">
+                <div class="flex justify-between items-center mb-1">
+                  <span class="text-xs text-gray-600">Fulfillment Rate:</span>
+                  <span class="text-xs font-medium">
+                    {{ calculateFulfillmentRate(order.items) }}%
+                  </span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    class="h-2 rounded-full transition-all"
+                    :class="
+                      getFulfillmentRateClass(
+                        calculateFulfillmentRate(order.items)
+                      )
+                    "
+                    :style="{
+                      width: `${Math.min(calculateFulfillmentRate(order.items), 100)}%`,
+                    }"
+                  ></div>
+                </div>
+              </div>
+
+              <!-- Return info if applicable -->
+              <div
+                v-if="order.pending_returns_count > 0"
+                class="mt-2 text-xs text-orange-600"
+              >
+                ⚠️ {{ order.pending_returns_count }} return(s) pending for this
+                order
+              </div>
+            </div>
+
+            <!-- Returns Section -->
+            <div
+              v-if="
+                order.status === 'Completed' &&
+                orderReturns[order.id] &&
+                orderReturns[order.id].length > 0
+              "
+              class="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg"
+            >
+              <div class="flex items-center justify-between mb-3">
+                <h5 class="font-thin text-warning flex items-center gap-2">
+                  <font-awesome-icon icon="fa-solid fa-triangle-exclamation" />
+                  Item Returns
+                </h5>
+                <button
+                  @click="loadOrderReturns(order.id)"
+                  class="btn btn-xs btn-ghost"
+                >
+                  <RefreshCw class="w-3 h-3" />
+                  Refresh
+                </button>
+              </div>
+
+              <div v-if="loadingReturns[order.id]" class="text-center py-4">
+                <span
+                  class="loading loading-spinner loading-sm text-primaryColor"
+                ></span>
+                <p class="text-xs text-gray-500 mt-1">Loading returns...</p>
+              </div>
+
+              <div v-else class="space-y-3">
+                <div
+                  v-for="returnItem in orderReturns[order.id]"
+                  :key="returnItem.id"
+                  class="p-3 bg-white rounded-lg border border-gray-200"
+                >
+                  <div class="flex items-start justify-between mb-2">
+                    <div class="flex-1">
+                      <p class="font-medium text-sm text-black">
+                        {{ returnItem.item_name }}
+                      </p>
+                      <p class="text-xs text-gray-600">
+                        Return Qty: {{ returnItem.return_quantity }}
+                        {{ returnItem.unit }}
+                      </p>
+                    </div>
+                    <span
+                      class="badge badge-sm"
+                      :class="{
+                        'bg-warning/10 text-warning':
+                          returnItem.status === 'Pending',
+                        'bg-info/10 text-info':
+                          returnItem.status === 'Processed',
+                        'bg-success/10 text-success':
+                          returnItem.status === 'Completed',
+                      }"
+                    >
+                      {{ returnItem.status }}
+                    </span>
+                  </div>
+
+                  <div class="text-xs text-gray-700 mb-2">
+                    <span class="font-medium">Reason:</span>
+                    {{ returnItem.return_reason }}
+                  </div>
+
+                  <div
+                    v-if="returnItem.notes"
+                    class="text-xs text-gray-600 mb-2 italic"
+                  >
+                    "{{ returnItem.notes }}"
+                  </div>
+
+                  <div class="text-xs text-gray-500">
+                    Logged by: {{ returnItem.logged_by }} on
+                    {{ formatDate(returnItem.created_at) }}
+                  </div>
+
+                  <!-- Supplier Action Buttons -->
+                  <div
+                    v-if="returnItem.status === 'Pending'"
+                    class="mt-3 flex gap-2"
+                  >
+                    <button
+                      @click="acceptReturn(returnItem)"
+                      class="btn btn-xs bg-success text-white hover:bg-success/80 font-thin"
+                      :disabled="processingReturn === returnItem.id"
+                    >
+                      <span
+                        v-if="processingReturn === returnItem.id"
+                        class="loading loading-spinner loading-xs"
+                      ></span>
+                      {{
+                        processingReturn === returnItem.id
+                          ? 'Processing...'
+                          : 'Accept Return'
+                      }}
+                    </button>
+                    <button
+                      @click="showReturnDetails(returnItem)"
+                      class="btn btn-xs btn-outline btn-info font-thin"
+                    >
+                      View Details
+                    </button>
+                  </div>
+
+                  <div
+                    v-else-if="returnItem.status === 'Processed'"
+                    class="mt-3 flex gap-2 items-center justify-between"
+                  >
+                    <span class="text-xs text-info">
+                      ✓ Return processed on
+                      {{ formatDate(returnItem.processed_at) }}
+                    </span>
+                    <button
+                      @click="completeReturn(returnItem)"
+                      class="btn btn-xs bg-primaryColor text-white hover:bg-primaryColor/80 font-thin"
+                      :disabled="processingReturn === returnItem.id"
+                    >
+                      <span
+                        v-if="processingReturn === returnItem.id"
+                        class="loading loading-spinner loading-xs"
+                      ></span>
+                      {{
+                        processingReturn === returnItem.id
+                          ? 'Processing...'
+                          : 'Complete Return'
+                      }}
+                    </button>
+                  </div>
+
+                  <div
+                    v-else-if="returnItem.status === 'Completed'"
+                    class="mt-3 text-xs text-success"
+                  >
+                    ✓ Return completed
+                  </div>
+                </div>
+              </div>
             </div>
 
             <!-- Notes -->
@@ -152,14 +395,54 @@
           </div>
 
           <!-- Actions -->
-          <div class="flex justify-end gap-2 mt-4">
+          <div class="flex justify-end gap-2 mt-4 flex-wrap">
+            <!-- Confirm Order (Only for Sent status) -->
             <button
+              v-if="order.status === 'Sent'"
+              @click="confirmOrder(order)"
+              class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/90 border-none font-thin flex items-center gap-1"
+              :disabled="processingOrder === order.id"
+            >
+              <span
+                v-if="processingOrder === order.id"
+                class="loading loading-spinner loading-xs"
+              ></span>
+              <CheckCircle v-else class="w-4 h-4" />
+              {{
+                processingOrder === order.id ? 'Processing...' : 'Confirm Order'
+              }}
+            </button>
+
+            <!-- Mark In Progress (Only for Confirmed status) -->
+            <button
+              v-if="order.status === 'Confirmed'"
+              @click="markInProgress(order)"
+              class="btn btn-sm bg-info text-white hover:bg-info/90 border-none font-thin flex items-center gap-1"
+              :disabled="processingOrder === order.id"
+            >
+              <span
+                v-if="processingOrder === order.id"
+                class="loading loading-spinner loading-xs"
+              ></span>
+              <Clock v-else class="w-4 h-4" />
+              {{
+                processingOrder === order.id
+                  ? 'Processing...'
+                  : 'Mark In Progress'
+              }}
+            </button>
+
+            <!-- View Receipt (Only for Completed status) -->
+            <button
+              v-if="order.status === 'Completed'"
               @click="openReceiptModal(order)"
               class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/90 border-none font-thin flex items-center gap-1"
             >
               <font-awesome-icon icon="fa-solid fa-receipt" />
               View Receipt
             </button>
+
+            <!-- Show/Hide Details -->
             <button
               @click="toggleOrderExpand(order.id)"
               class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10"
@@ -530,7 +813,6 @@
                 }}
               </span>
             </div>
-
           </div>
 
           <!-- Signature Section -->
@@ -593,6 +875,105 @@
         <button @click="closeReceiptModal">close</button>
       </form>
     </dialog>
+
+    <!-- Return Details Modal -->
+    <dialog
+      id="return_details_modal"
+      class="modal"
+      v-if="returnDetailsModal.show"
+      open
+      style="z-index: 10000"
+    >
+      <div class="modal-box bg-accentColor text-black/60 shadow-lg max-w-md">
+        <h3 class="font-bold text-lg text-black mb-2">Return Details</h3>
+        <div v-if="returnDetailsModal.item" class="text-sm space-y-2">
+          <div>
+            <span class="font-medium">Item:</span>
+            {{ returnDetailsModal.item.item_name }}
+          </div>
+          <div>
+            <span class="font-medium">Quantity:</span>
+            {{ returnDetailsModal.item.return_quantity }}
+            {{ returnDetailsModal.item.unit }}
+          </div>
+          <div>
+            <span class="font-medium">Reason:</span>
+            {{ returnDetailsModal.item.return_reason }}
+          </div>
+          <div v-if="returnDetailsModal.item.notes">
+            <span class="font-medium">Notes:</span>
+            <span class="italic">{{ returnDetailsModal.item.notes }}</span>
+          </div>
+          <div>
+            <span class="font-medium">Logged by:</span>
+            {{ returnDetailsModal.item.logged_by }} on
+            {{ formatDate(returnDetailsModal.item.created_at) }}
+          </div>
+          <div v-if="returnDetailsModal.item.processed_at">
+            <span class="font-medium">Processed:</span>
+            {{ formatDate(returnDetailsModal.item.processed_at) }}
+          </div>
+        </div>
+        <div class="modal-action">
+          <button
+            class="btn btn-sm bg-gray-200 text-black/60 font-thin border-none hover:bg-gray-300"
+            @click="closeReturnDetails"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="closeReturnDetails">close</button>
+      </form>
+    </dialog>
+
+    <!-- Confirmation Modal -->
+    <dialog
+      id="confirmation_modal"
+      class="modal"
+      v-if="confirmationModal.show"
+      open
+      style="z-index: 10000"
+    >
+      <div class="modal-box bg-white shadow-lg max-w-md">
+        <h3 class="font-bold text-lg text-black mb-4">
+          {{ confirmationModal.title }}
+        </h3>
+
+        <p class="text-black/70 whitespace-pre-line mb-6">
+          {{ confirmationModal.message }}
+        </p>
+
+        <div class="modal-action">
+          <button
+            @click="closeConfirmationModal"
+            class="btn text-black/70 hover:bg-black/5 font-thin btn-sm"
+            :disabled="processingOrder !== null"
+          >
+            Cancel
+          </button>
+          <button
+            @click="handleConfirmation"
+            class="btn bg-primaryColor text-white hover:bg-primaryColor/90 border-none font-thin btn-sm"
+            :disabled="processingOrder !== null"
+          >
+            <span
+              v-if="processingOrder !== null"
+              class="loading loading-spinner loading-xs"
+            ></span>
+            {{
+              processingOrder !== null
+                ? 'Processing...'
+                : confirmationModal.confirmText
+            }}
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="closeConfirmationModal">close</button>
+      </form>
+    </dialog>
   </div>
 </template>
 
@@ -605,11 +986,16 @@
     ChevronDown,
     ChevronUp,
     Receipt,
+    AlertTriangle,
+    CheckCircle,
+    Clock,
   } from 'lucide-vue-next';
   import axios from 'axios';
   import { apiConfig } from '../../config/api.js';
+  import { useCustomToast } from '../../composables/useCustomToast';
 
   const supplierAuthStore = useSupplierAuthStore();
+  const { showSuccess, showError } = useCustomToast();
 
   // State
   const loading = ref(false);
@@ -619,6 +1005,18 @@
   const currentPage = ref(1);
   const itemsPerPage = ref(5);
   const receiptModal = ref({ show: false, order: null });
+  const orderReturns = ref({});
+  const loadingReturns = ref({});
+  const processingReturn = ref(null);
+  const processingOrder = ref(null); // NEW: For confirm/in-progress actions
+  const confirmationModal = ref({
+    show: false,
+    title: '',
+    message: '',
+    confirmText: '',
+    confirmAction: null,
+    order: null,
+  });
 
   // Computed
   const statuses = computed(() => {
@@ -691,6 +1089,8 @@
 
   const getStatusClass = (status) => {
     const statusMap = {
+      Sent: 'bg-info/10 text-info',
+      Confirmed: 'bg-info/10 text-info',
       Pending: 'bg-warning/10 text-warning',
       Completed: 'bg-success/10 text-success',
       Cancelled: 'bg-error/10 text-error',
@@ -765,6 +1165,13 @@
 
       if (response.data.success) {
         orders.value = response.data.data || [];
+
+        // Auto-load returns for completed orders
+        orders.value.forEach((order) => {
+          if (order.status === 'Completed') {
+            loadOrderReturns(order.id);
+          }
+        });
       }
     } catch (error) {
       console.error('Failed to load orders:', error);
@@ -774,9 +1181,265 @@
     }
   };
 
+  const loadOrderReturns = async (orderId) => {
+    loadingReturns.value[orderId] = true;
+    try {
+      const token = localStorage.getItem('supplierToken');
+      const response = await axios.get(
+        `${apiConfig.baseURL}/item-returns?purchase_order_id=${orderId}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (response.data.success) {
+        orderReturns.value[orderId] = response.data.data || [];
+      }
+    } catch (error) {
+      console.error('Failed to load returns:', error);
+      orderReturns.value[orderId] = [];
+    } finally {
+      loadingReturns.value[orderId] = false;
+    }
+  };
+
+  const calculateFulfillmentRate = (items) => {
+    if (!items || items.length === 0) return 0;
+
+    const totalOrdered = items.reduce(
+      (sum, item) => sum + Number(item.quantity || 0),
+      0
+    );
+    const totalReceived = items.reduce(
+      (sum, item) => sum + Number(item.received_quantity || 0),
+      0
+    );
+
+    if (totalOrdered === 0) return 0;
+    return ((totalReceived / totalOrdered) * 100).toFixed(1);
+  };
+
+  const getFulfillmentRateClass = (rate) => {
+    const numRate = parseFloat(rate);
+    if (numRate >= 95) return 'bg-success';
+    if (numRate >= 80) return 'bg-warning';
+    return 'bg-error';
+  };
+
+  const acceptReturn = async (returnItem) => {
+    showConfirmationModal(
+      'Accept Return',
+      `Are you sure you want to accept this return?\n\nItem: ${returnItem.item_name}\nQuantity: ${returnItem.return_quantity} ${returnItem.unit}\nReason: ${returnItem.return_reason}`,
+      'Accept Return',
+      performAcceptReturn,
+      returnItem
+    );
+  };
+
+  const performAcceptReturn = async (returnItem) => {
+    processingReturn.value = returnItem.id;
+    try {
+      const token = localStorage.getItem('supplierToken');
+      const response = await axios.put(
+        `${apiConfig.baseURL}/item-returns/${returnItem.id}/process`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.data.success) {
+        showSuccess('Return accepted successfully');
+        await loadOrderReturns(returnItem.purchase_order_id);
+        await loadOrders();
+      }
+    } catch (error) {
+      console.error('Failed to accept return:', error);
+      showError(error.response?.data?.message || 'Failed to accept return');
+    } finally {
+      processingReturn.value = null;
+    }
+  };
+
+  // NEW: Complete a processed return
+  const completeReturn = async (returnItem) => {
+    if (!returnItem || returnItem.status !== 'Processed') return;
+    showConfirmationModal(
+      'Complete Return',
+      `Mark this return as completed?\n\nItem: ${returnItem.item_name}\nQuantity: ${returnItem.return_quantity} ${returnItem.unit}`,
+      'Complete Return',
+      performCompleteReturn,
+      returnItem
+    );
+  };
+
+  const performCompleteReturn = async (returnItem) => {
+    processingReturn.value = returnItem.id;
+    try {
+      const token = localStorage.getItem('supplierToken');
+      const response = await axios.put(
+        `${apiConfig.baseURL}/item-returns/${returnItem.id}/complete`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (response.data.success) {
+        showSuccess('Return completed successfully');
+        // Refresh both returns and orders
+        await loadOrderReturns(returnItem.purchase_order_id);
+        await loadOrders();
+      }
+    } catch (error) {
+      console.error('Failed to complete return:', error);
+      showError(error.response?.data?.message || 'Failed to complete return');
+    } finally {
+      processingReturn.value = null;
+    }
+  };
+
+  // Return details modal state
+  const returnDetailsModal = ref({ show: false, item: null });
+
+  const showReturnDetails = (returnItem) => {
+    returnDetailsModal.value = { show: true, item: returnItem };
+  };
+
+  const closeReturnDetails = () => {
+    returnDetailsModal.value = { show: false, item: null };
+  };
+
+  // NEW: Show confirmation modal
+  const showConfirmationModal = (
+    title,
+    message,
+    confirmText,
+    action,
+    order
+  ) => {
+    confirmationModal.value = {
+      show: true,
+      title,
+      message,
+      confirmText,
+      confirmAction: action,
+      order,
+    };
+  };
+
+  // NEW: Close confirmation modal
+  const closeConfirmationModal = () => {
+    confirmationModal.value = {
+      show: false,
+      title: '',
+      message: '',
+      confirmText: '',
+      confirmAction: null,
+      order: null,
+    };
+  };
+
+  // NEW: Handle confirmation
+  const handleConfirmation = async () => {
+    if (confirmationModal.value.confirmAction) {
+      await confirmationModal.value.confirmAction(
+        confirmationModal.value.order
+      );
+    }
+    closeConfirmationModal();
+  };
+
+  // NEW: Confirm Order
+  const confirmOrder = (order) => {
+    showConfirmationModal(
+      'Confirm Order',
+      `Confirm order ${order.po_number}?\n\nThis will mark the order as confirmed and ready for processing.`,
+      'Confirm Order',
+      performConfirmOrder,
+      order
+    );
+  };
+
+  // NEW: Perform Confirm Order (actual API call)
+  const performConfirmOrder = async (order) => {
+    processingOrder.value = order.id;
+    try {
+      const token = localStorage.getItem('supplierToken');
+      const supplier = JSON.parse(localStorage.getItem('supplierUser'));
+
+      const response = await axios.put(
+        `${apiConfig.baseURL}/purchase-orders/${order.id}/confirm`,
+        { confirmed_by: supplier?.name || 'Supplier' },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.data.success) {
+        showSuccess('Order confirmed successfully!');
+        await loadOrders(); // Refresh orders
+      }
+    } catch (error) {
+      console.error('Error confirming order:', error);
+      showError(error.response?.data?.message || 'Failed to confirm order');
+    } finally {
+      processingOrder.value = null;
+    }
+  };
+
+  // NEW: Mark In Progress
+  const markInProgress = (order) => {
+    showConfirmationModal(
+      'Mark In Progress',
+      `Mark order ${order.po_number} as In Progress?\n\nThis will indicate you are working on this order.`,
+      'Mark In Progress',
+      performMarkInProgress,
+      order
+    );
+  };
+
+  // NEW: Perform Mark In Progress (actual API call)
+  const performMarkInProgress = async (order) => {
+    processingOrder.value = order.id;
+    try {
+      const token = localStorage.getItem('supplierToken');
+      const supplier = JSON.parse(localStorage.getItem('supplierUser'));
+
+      const response = await axios.put(
+        `${apiConfig.baseURL}/purchase-orders/${order.id}/in-progress`,
+        { updated_by: supplier?.name || 'Supplier' },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.data.success) {
+        showSuccess('Order marked as in progress!');
+        await loadOrders(); // Refresh orders
+      }
+    } catch (error) {
+      console.error('Error updating order status:', error);
+      showError(
+        error.response?.data?.message || 'Failed to update order status'
+      );
+    } finally {
+      processingOrder.value = null;
+    }
+  };
+
   // Watch for filter changes to reset pagination
   watch(filterStatus, () => {
     currentPage.value = 1;
+  });
+
+  // Watch for expanded orders to load their returns
+  watch(expandedOrders, (newExpanded, oldExpanded) => {
+    // Find newly expanded orders
+    const newlyExpanded = newExpanded.filter((id) => !oldExpanded.includes(id));
+
+    // Load returns for newly expanded completed orders
+    newlyExpanded.forEach((orderId) => {
+      const order = orders.value.find((o) => o.id === orderId);
+      if (
+        order &&
+        order.status === 'Completed' &&
+        !orderReturns.value[orderId]
+      ) {
+        loadOrderReturns(orderId);
+      }
+    });
   });
 
   // Lifecycle

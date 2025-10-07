@@ -118,12 +118,13 @@
       <div
         class="mt-6 p-6 bg-gradient-to-r from-primaryColor/10 to-primaryColor/10 rounded-xl border border-primaryColor/30"
       >
-        <h4 class="text-lg font-semibold text-gray-800 mb-4">Order Summary</h4>
+        <h4 class="text-sm font-semibold text-gray-800 mb-4">Order Summary</h4>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div class="text-center">
-            <div class="text-sm text-gray-600 mb-1">Ordered Value</div>
-            <div class="text-2xl font-bold text-gray-800">
-              ₱{{
+            <div class="text-xs text-gray-600 mb-1">Ordered Value</div>
+            <div class="text-lg font-bold text-gray-800">
+              <font-awesome-icon icon="fa-solid fa-peso-sign" />
+              {{
                 totalOrderedValue.toLocaleString('en-PH', {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
@@ -132,9 +133,10 @@
             </div>
           </div>
           <div class="text-center">
-            <div class="text-sm text-gray-600 mb-1">Received Value</div>
-            <div class="text-2xl font-bold text-primaryColor">
-              ₱{{
+            <div class="text-xs text-gray-600 mb-1">Received Value</div>
+            <div class="text-lg font-bold text-primaryColor">
+              <font-awesome-icon icon="fa-solid fa-peso-sign" />
+              {{
                 totalReceivedValue.toLocaleString('en-PH', {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
@@ -143,22 +145,23 @@
             </div>
           </div>
           <div class="text-center">
-            <div class="text-sm text-gray-600 mb-1">Difference</div>
+            <div class="text-xs text-gray-600 mb-1">Difference</div>
             <div
-              class="text-2xl font-bold"
+              class="text-lg font-bold"
               :class="{
                 'text-primaryColor': differenceValue > 0,
                 'text-red-600': differenceValue < 0,
                 'text-gray-600': differenceValue === 0,
               }"
             >
-              ₱{{
+              <font-awesome-icon icon="fa-solid fa-peso-sign" />
+              {{
                 Math.abs(differenceValue).toLocaleString('en-PH', {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 })
               }}
-              <div class="text-sm font-normal mt-1">
+              <div class="text-xs font-normal mt-1">
                 <span v-if="differenceValue > 0" class="text-primaryColor"
                   >(Over-delivered)</span
                 >
@@ -167,6 +170,27 @@
                 >
                 <span v-else class="text-gray-500">(Exact match)</span>
               </div>
+              <!-- Budget Return Information -->
+<div
+  v-if="differenceValue < 0"
+  class="text-xs mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-center"
+>
+  <div class="flex justify-center items-center gap-1 text-blue-700">
+    <font-awesome-icon icon="fa-solid fa-circle-exclamation" />
+    <span class="font-medium">Budget Return Notice</span>
+  </div>
+  <p class="text-blue-600 mt-1 font-thin">
+    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+    {{
+      Math.abs(differenceValue).toLocaleString('en-PH', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    }}
+    will be returned to capital due to under-delivery.
+  </p>
+</div>
+
             </div>
           </div>
         </div>
@@ -189,7 +213,7 @@
       <div class="modal-action">
         <button
           type="button"
-          class="btn btn-ghost font-thin"
+          class="btn btn-ghost font-thin btn-sm"
           :disabled="loading"
           @click="closeModal"
         >
@@ -197,7 +221,7 @@
         </button>
         <button
           type="button"
-          class="btn bg-primaryColor text-white font-thin"
+          class="btn bg-primaryColor text-white font-thin btn-sm"
           :class="{ loading: loading }"
           :disabled="loading || !canComplete"
           @click="completeOrder"

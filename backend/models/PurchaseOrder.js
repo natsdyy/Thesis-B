@@ -36,14 +36,21 @@ class PurchaseOrder {
 
       const poIds = purchaseOrders.map((po) => po.id);
 
-      // Batch fetch all items for all POs in one query
+      // Batch fetch all items for all POs in one query with supplier product info
       const allItems = await db("purchase_order_items as poi")
         .leftJoin(
           "supply_request_items as sri",
           "poi.supply_request_item_id",
           "sri.id"
         )
-        .select("poi.*", "sri.item_number as original_item_number")
+        .leftJoin("supplier_products as sp", "poi.supplier_product_id", "sp.id")
+        .select(
+          "poi.*",
+          "sri.item_number as original_item_number",
+          "sp.product_name as supplier_product_name",
+          "sp.sku as supplier_sku",
+          "sp.item_type_id as supplier_item_type_id"
+        )
         .whereIn("poi.purchase_order_id", poIds)
         .orderBy("poi.purchase_order_id")
         .orderBy("poi.id");
@@ -265,7 +272,7 @@ class PurchaseOrder {
     }
   }
 
-  // Get items for a purchase order
+  // Get items for a purchase order with supplier product info
   static async getItems(purchaseOrderId) {
     try {
       return await db("purchase_order_items as poi")
@@ -274,7 +281,14 @@ class PurchaseOrder {
           "poi.supply_request_item_id",
           "sri.id"
         )
-        .select("poi.*", "sri.item_number as original_item_number")
+        .leftJoin("supplier_products as sp", "poi.supplier_product_id", "sp.id")
+        .select(
+          "poi.*",
+          "sri.item_number as original_item_number",
+          "sp.product_name as supplier_product_name",
+          "sp.sku as supplier_sku",
+          "sp.item_type_id as supplier_item_type_id"
+        )
         .where("poi.purchase_order_id", purchaseOrderId)
         .orderBy("poi.id");
     } catch (error) {
@@ -575,6 +589,8 @@ class PurchaseOrder {
       const poItems = items.map((item) => ({
         purchase_order_id: purchaseOrder.id,
         supply_request_item_id: item.supply_request_item_id || null,
+        supplier_product_id: item.supplier_product_id || null,
+        item_sku: item.item_sku || null,
         item_name: item.item_name,
         quantity: item.quantity,
         unit: item.unit,
@@ -661,11 +677,125 @@ class PurchaseOrder {
         }
       }
 
+      // BUDGET RETURN: When PO is completed, calculate under-delivered amount and return unused budget
+      if (
+        currentOrder.status !== "Completed" &&
+        poData.status === "Completed" &&
+        items
+      ) {
+        await this.handleBudgetReturnForUnderDelivery(
+          trx,
+          updatedPurchaseOrder,
+          items
+        );
+      }
+
       await trx.commit();
       return updatedPurchaseOrder;
     } catch (error) {
       await trx.rollback();
       throw error;
+    }
+  }
+
+  // Handle budget return for under-delivered items when PO is completed
+  static async handleBudgetReturnForUnderDelivery(trx, purchaseOrder, items) {
+    try {
+      // Calculate total under-delivered amount
+      let totalUnderDeliveredAmount = 0;
+      const underDeliveredItems = [];
+
+      for (const item of items) {
+        const orderedQty = Number(item.quantity || 0);
+        const receivedQty = Number(item.received_quantity || 0);
+        const unitPrice = Number(item.unit_price || 0);
+
+        if (receivedQty < orderedQty) {
+          const underDeliveredQty = orderedQty - receivedQty;
+          const underDeliveredAmount = underDeliveredQty * unitPrice;
+          totalUnderDeliveredAmount += underDeliveredAmount;
+
+          underDeliveredItems.push({
+            item_name: item.item_name,
+            ordered_qty: orderedQty,
+            received_qty: receivedQty,
+            under_delivered_qty: underDeliveredQty,
+            unit_price: unitPrice,
+            under_delivered_amount: underDeliveredAmount,
+          });
+        }
+      }
+
+      // Only proceed if there's under-delivered amount to return
+      if (totalUnderDeliveredAmount <= 0) {
+        return;
+      }
+
+      // Get the supply request and budget release info
+      const supplyRequest = await trx("supply_requests")
+        .where("id", purchaseOrder.supply_request_id)
+        .first();
+
+      if (!supplyRequest) {
+        console.warn(`No supply request found for PO ${purchaseOrder.id}`);
+        return;
+      }
+
+      const budgetRelease = await trx("budget_releases")
+        .where("supply_request_id", supplyRequest.id)
+        .first();
+
+      if (!budgetRelease) {
+        console.warn(
+          `No budget release found for supply request ${supplyRequest.id}`
+        );
+        return;
+      }
+
+      // Return unused budget to capital
+      const currentBalance = await trx("finance_balances")
+        .whereNull("deleted_at")
+        .orderBy("balance_date", "desc")
+        .first();
+
+      const newCapital =
+        Number(currentBalance?.capital || 0) + totalUnderDeliveredAmount;
+
+      // Create new finance balance snapshot with returned amount
+      await trx("finance_balances").insert({
+        capital: newCapital,
+        profit: Number(currentBalance?.profit || 0),
+        sales_remittances: Number(currentBalance?.sales_remittances || 0),
+        total_balance:
+          newCapital +
+          Number(currentBalance?.profit || 0) +
+          Number(currentBalance?.sales_remittances || 0),
+        balance_date: new Date(),
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+
+      // Create cash movement record for inflow (budget return)
+      await trx("cash_movements").insert({
+        branch_id: supplyRequest?.branch_id || null,
+        movement_type: "in",
+        amount: totalUnderDeliveredAmount,
+        source: "budget_return",
+        reference_id: purchaseOrder.id,
+        reference_type: "purchase_order",
+        notes: `Budget return from under-delivered PO ${purchaseOrder.po_number}. Under-delivered items: ${underDeliveredItems.map((item) => `${item.item_name} (${item.under_delivered_qty} ${item.ordered_qty > item.received_qty ? "less" : "more"})`).join(", ")}`,
+        occurred_at: new Date(),
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+
+      console.log(
+        `Returned ${totalUnderDeliveredAmount} to capital from under-delivered PO ${purchaseOrder.po_number}`
+      );
+    } catch (error) {
+      console.error("Error handling budget return for under-delivery:", error);
+      // Don't throw error here to avoid breaking the main transaction
+      // Just log the error for debugging
     }
   }
 
@@ -874,6 +1004,162 @@ class PurchaseOrder {
 
     // Format: PO-ITEM-SUPPLIER-YYYYMMDD
     return `PO-${poNumber}-ITEM-${itemTypeId}-${supplierId || "NONE"}-${year}${month}${day}`;
+  }
+
+  // Get comprehensive statistics for a purchase order including ordered vs received quantities
+  static async getOrderStatistics(purchaseOrderId) {
+    try {
+      const purchaseOrder = await db("purchase_orders")
+        .where("id", purchaseOrderId)
+        .first();
+
+      if (!purchaseOrder) {
+        throw new Error("Purchase order not found");
+      }
+
+      // Get all items with ordered and received quantities
+      const items = await db("purchase_order_items as poi")
+        .leftJoin("supplier_products as sp", "poi.supplier_product_id", "sp.id")
+        .select(
+          "poi.id",
+          "poi.item_name",
+          "poi.quantity as ordered_quantity",
+          "poi.unit",
+          "poi.unit_price as ordered_unit_price",
+          "poi.total_price as ordered_total_price",
+          "poi.received_quantity",
+          "poi.received_unit_price",
+          "poi.received_total_price",
+          "poi.supplier_product_id",
+          "sp.product_name as supplier_product_name",
+          "sp.sku as supplier_sku"
+        )
+        .where("poi.purchase_order_id", purchaseOrderId);
+
+      // Get return statistics for each item
+      const itemStats = await Promise.all(
+        items.map(async (item) => {
+          // Get total returned quantity for this item
+          const returnData = await db("item_returns")
+            .where("purchase_order_item_id", item.id)
+            .whereIn("status", ["Pending", "Processed", "Completed"])
+            .select(
+              db.raw("COALESCE(SUM(return_quantity), 0) as total_returned"),
+              db.raw(
+                "COUNT(CASE WHEN status = 'Pending' THEN 1 END) as pending_returns"
+              ),
+              db.raw(
+                "COUNT(CASE WHEN status = 'Completed' THEN 1 END) as completed_returns"
+              )
+            )
+            .first();
+
+          // Calculate actual received (received - completed returns)
+          const receivedQty = parseFloat(item.received_quantity || 0);
+          const totalReturned = parseFloat(returnData.total_returned || 0);
+          const actualReceived = receivedQty - totalReturned;
+
+          // Calculate variance
+          const orderedQty = parseFloat(item.ordered_quantity);
+          const variance = receivedQty - orderedQty;
+          const variancePercentage =
+            orderedQty > 0 ? ((variance / orderedQty) * 100).toFixed(2) : 0;
+
+          return {
+            ...item,
+            ordered_quantity: orderedQty,
+            received_quantity: receivedQty,
+            total_returned: totalReturned,
+            actual_received: actualReceived,
+            variance: variance,
+            variance_percentage: variancePercentage,
+            pending_returns: parseInt(returnData.pending_returns || 0),
+            completed_returns: parseInt(returnData.completed_returns || 0),
+          };
+        })
+      );
+
+      // Calculate totals
+      const totals = {
+        total_ordered_amount: items.reduce(
+          (sum, item) => sum + parseFloat(item.ordered_total_price || 0),
+          0
+        ),
+        total_received_amount: items.reduce(
+          (sum, item) => sum + parseFloat(item.received_total_price || 0),
+          0
+        ),
+        total_items: items.length,
+        items_fully_received: itemStats.filter(
+          (item) => item.received_quantity >= item.ordered_quantity
+        ).length,
+        items_partially_received: itemStats.filter(
+          (item) =>
+            item.received_quantity > 0 &&
+            item.received_quantity < item.ordered_quantity
+        ).length,
+        items_not_received: itemStats.filter(
+          (item) => !item.received_quantity || item.received_quantity === 0
+        ).length,
+        items_with_returns: itemStats.filter((item) => item.total_returned > 0)
+          .length,
+        items_with_pending_returns: itemStats.filter(
+          (item) => item.pending_returns > 0
+        ).length,
+      };
+
+      return {
+        purchase_order: purchaseOrder,
+        items: itemStats,
+        totals: totals,
+      };
+    } catch (error) {
+      console.error("Error getting order statistics:", error);
+      throw error;
+    }
+  }
+
+  // Get supplier product fulfillment rate
+  static async getSupplierProductFulfillment(supplierId, productId = null) {
+    try {
+      let query = db("purchase_order_items as poi")
+        .join("purchase_orders as po", "poi.purchase_order_id", "po.id")
+        .leftJoin("supplier_products as sp", "poi.supplier_product_id", "sp.id")
+        .where("po.supplier_id", supplierId)
+        .whereNotNull("poi.supplier_product_id")
+        .whereIn("po.status", ["Completed", "Received"]);
+
+      if (productId) {
+        query = query.where("poi.supplier_product_id", productId);
+      }
+
+      const results = await query
+        .select(
+          "poi.supplier_product_id",
+          "sp.product_name",
+          "sp.sku",
+          db.raw("SUM(poi.quantity) as total_ordered"),
+          db.raw("SUM(COALESCE(poi.received_quantity, 0)) as total_received"),
+          db.raw("COUNT(DISTINCT po.id) as order_count")
+        )
+        .groupBy("poi.supplier_product_id", "sp.product_name", "sp.sku");
+
+      return results.map((row) => ({
+        supplier_product_id: row.supplier_product_id,
+        product_name: row.product_name,
+        sku: row.sku,
+        total_ordered: parseFloat(row.total_ordered || 0),
+        total_received: parseFloat(row.total_received || 0),
+        order_count: parseInt(row.order_count || 0),
+        fulfillment_rate:
+          row.total_ordered > 0
+            ? ((row.total_received / row.total_ordered) * 100).toFixed(2)
+            : 0,
+      }));
+    } catch (error) {
+      console.error("Error getting supplier product fulfillment:", error);
+      throw error;
+    }
   }
 }
 

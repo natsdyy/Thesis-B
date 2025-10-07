@@ -267,6 +267,82 @@ router.put("/:id", async (req, res) => {
   }
 });
 
+// PUT /api/purchase-orders/:id/confirm - Confirm purchase order (for suppliers)
+router.put("/:id/confirm", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { confirmed_by } = req.body || {};
+
+    // Update status to Confirmed
+    const poData = {
+      status: "Confirmed",
+      confirmed_at: new Date(),
+      confirmed_by: confirmed_by || "Supplier",
+    };
+
+    const updated = await PurchaseOrder.update(id, poData);
+
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: "Purchase order not found",
+      });
+    }
+
+    const purchaseOrder = await PurchaseOrder.getById(id);
+
+    res.json({
+      success: true,
+      message: "Purchase order confirmed successfully",
+      data: purchaseOrder,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error confirming purchase order",
+      error: error.message,
+    });
+  }
+});
+
+// PUT /api/purchase-orders/:id/in-progress - Mark purchase order as in progress (for suppliers)
+router.put("/:id/in-progress", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { updated_by } = req.body || {};
+
+    // Update status to In Progress
+    const poData = {
+      status: "In Progress",
+      updated_at: new Date(),
+      updated_by: updated_by || "Supplier",
+    };
+
+    const updated = await PurchaseOrder.update(id, poData);
+
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: "Purchase order not found",
+      });
+    }
+
+    const purchaseOrder = await PurchaseOrder.getById(id);
+
+    res.json({
+      success: true,
+      message: "Purchase order marked as in progress",
+      data: purchaseOrder,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error updating purchase order status",
+      error: error.message,
+    });
+  }
+});
+
 // PUT /api/purchase-orders/:id/cancel - Cancel purchase order
 router.put("/:id/cancel", async (req, res) => {
   try {
@@ -395,4 +471,52 @@ router.get("/:id/can-create-grn", async (req, res) => {
     });
   }
 });
+
+// GET /api/purchase-orders/:id/statistics - Get comprehensive order statistics
+router.get("/:id/statistics", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const orderStats = await PurchaseOrder.getOrderStatistics(id);
+
+    res.json({
+      success: true,
+      data: orderStats,
+    });
+  } catch (error) {
+    console.error("Error fetching order statistics:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching order statistics",
+      error: error.message,
+    });
+  }
+});
+
+// GET /api/purchase-orders/supplier/:supplierId/product-fulfillment - Get supplier product fulfillment
+router.get("/supplier/:supplierId/product-fulfillment", async (req, res) => {
+  try {
+    const { supplierId } = req.params;
+    const { productId } = req.query;
+
+    const fulfillment = await PurchaseOrder.getSupplierProductFulfillment(
+      supplierId,
+      productId || null
+    );
+
+    res.json({
+      success: true,
+      data: fulfillment,
+      count: fulfillment.length,
+    });
+  } catch (error) {
+    console.error("Error fetching supplier product fulfillment:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching supplier product fulfillment",
+      error: error.message,
+    });
+  }
+});
+
 module.exports = router;

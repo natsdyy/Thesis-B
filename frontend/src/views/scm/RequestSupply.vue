@@ -6,9 +6,12 @@
   import { useAuthStore } from '../../stores/authStore.js';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
   import { useBranchStore } from '../../stores/branchStore.js';
+  import { useSupplierStore } from '../../stores/supplierStore.js';
   import cashRequestReceiptModal from '../../components/scm/cashRequestReceiptModal.vue';
   import PikaDay from 'pikaday';
   import 'pikaday/css/pikaday.css';
+  import axios from 'axios';
+  import { apiConfig } from '../../config/api.js';
   import {
     ReceiptText,
     CheckCircle,
@@ -50,6 +53,7 @@
   const authStore = useAuthStore();
   const inventoryStore = useInventoryStore();
   const branchStore = useBranchStore();
+  const supplierStore = useSupplierStore();
 
   // Local state
   const loading = ref(false);
@@ -64,6 +68,10 @@
   const receiptData = ref(null);
   const showBranchRequestModal = ref(false);
   const selectedBranchRequest = ref(null);
+
+  // Supplier integration state
+  const selectedSupplierId = ref('');
+  const supplierProducts = ref([]);
 
   // Tab system state
   const activeTab = ref('supply-requests');
@@ -155,6 +163,7 @@
       menu_item_id: null,
       category: '',
       source: '',
+      supplier_product_id: null,
     });
   };
 
@@ -225,6 +234,10 @@
     }));
   });
 
+  // Supplier dropdown options
+  const supplierOptions = computed(() => supplierStore.activeSuppliers || []);
+  const isSupplierMode = computed(() => !!selectedSupplierId.value);
+
   // Available item types based on selected category
   const availableItemTypes = computed(() => {
     if (!selectedCategory.value) return [];
@@ -253,6 +266,49 @@
     );
     if (category && category.types.length > 0) {
       requestForm.value.request_type = category.types[0];
+    }
+  };
+
+  // Handle supplier selection -> fetch products and prefill rows
+  const onSupplierSelected = async (supplierId) => {
+    try {
+      supplierProducts.value = [];
+      if (!supplierId) {
+        resetItemRows();
+        return;
+      }
+
+      // Fetch supplier products
+      const response = await axios.get(
+        `${apiConfig.baseURL}/supplier-products`,
+        { params: { supplier_id: supplierId } }
+      );
+
+      const products = response.data?.data || [];
+      supplierProducts.value = products;
+
+      // Auto-set inventory category from supplier data if available
+      try {
+        const supplier = supplierOptions.value?.find(
+          (s) => String(s.id) === String(supplierId)
+        );
+        if (supplier?.category) {
+          selectedCategory.value = supplier.category;
+          // If no explicit request type yet, pick the first available for this category
+          const categoryMeta = requestCategories.value.find(
+            (c) => c.category === supplier.category
+          );
+          if (!requestForm.value.request_type && categoryMeta?.types?.length) {
+            requestForm.value.request_type = categoryMeta.types[0];
+          }
+        }
+      } catch (_) {}
+
+      // In supplier mode, start with one empty row and let user choose products per row
+      resetItemRows();
+    } catch (e) {
+      console.error('Failed to load supplier products', e);
+      showToast('error', 'Failed to load supplier products');
     }
   };
 
@@ -1550,18 +1606,18 @@
         );
 
         // Initialize form with full data including items
-        initializeRequestForm(fullRequest);
+        await initializeRequestForm(fullRequest);
         modal.value.request = fullRequest;
       } catch (error) {
         console.error('Error fetching request details:', error);
         showToast('error', 'Failed to load request details');
         // Fallback to basic initialization
-        initializeRequestForm(request);
+        await initializeRequestForm(request);
       } finally {
         loading.value = false;
       }
     } else {
-      initializeRequestForm(request);
+      await initializeRequestForm(request);
     }
 
     if (type === 'create' || type === 'edit') {
@@ -1605,7 +1661,7 @@
   };
 
   // Initialize request form
-  const initializeRequestForm = (request = null) => {
+  const initializeRequestForm = async (request = null) => {
     if (request) {
       // Editing existing request
       requestForm.value = {
@@ -1627,6 +1683,15 @@
           'Current User',
         items: request.items || [],
       };
+
+      // If the request is supplier-sourced, preselect supplier to enable supplier mode
+      try {
+        selectedSupplierId.value = request.supplier_id || '';
+        if (selectedSupplierId.value) {
+          // Load supplier products so the item name dropdown shows selected values
+          await onSupplierSelected(selectedSupplierId.value);
+        }
+      } catch (_) {}
 
       // Update rowRequest with existing items
       if (
@@ -1653,6 +1718,12 @@
           menu_item_id: item.menu_item_id || null,
           category: item.category || '',
           source: item.source || item.item_type || '',
+          supplier_id:
+            item.supplier_id ||
+            request.supplier_id ||
+            selectedSupplierId.value ||
+            null,
+          supplier_product_id: item.supplier_product_id || null,
         }));
 
         // Set the selected category based on the first item's type
@@ -1705,6 +1776,7 @@
         menu_item_id: null,
         category: '',
         source: '',
+        supplier_product_id: null,
       },
     ];
   };
@@ -1712,6 +1784,44 @@
   // Auto-calculate item amounts when quantity or price changes
   const updateItemAmount = (item) => {
     item.item_amount = (item.item_quantity || 0) * (item.item_unitPrice || 0);
+  };
+
+  // When a supplier product is chosen from dropdown, auto-fill the row
+  const onSupplierProductSelected = (row) => {
+    const product = supplierProducts.value.find(
+      (p) => String(p.id) === String(row.supplier_product_id)
+    );
+    if (!product) return;
+
+    const itemType = inventoryStore.itemTypes?.find(
+      (t) => t.id === product.item_type_id
+    );
+    const categoryObj = itemType
+      ? inventoryStore.categories?.find((c) => c.id === itemType.category_id)
+      : null;
+
+    row.item_name = product.product_name || '';
+    row.item_quantity = Number(product.minimum_order_quantity || 1);
+    row.item_unit = product.unit || '';
+    row.item_type = itemType?.name || '';
+    row.item_unitPrice = Number(product.unit_price || 0);
+    updateItemAmount(row);
+    row.source = 'supplier';
+    row.category = categoryObj?.name || '';
+    // Link back to the chosen supplier for reporting
+    row.supplier_id = Number(selectedSupplierId.value) || null;
+    row.item_sku = product.sku || null;
+
+    if (categoryObj?.name) selectedCategory.value = categoryObj.name;
+    if (itemType?.name) requestForm.value.request_type = itemType.name;
+  };
+
+  // Helper: get supplier display name from store
+  const getSupplierName = (id) => {
+    if (!id) return null;
+    const list = supplierOptions.value || [];
+    const found = list.find((s) => Number(s.id) === Number(id));
+    return found ? found.name : `Supplier #${id}`;
   };
 
   // Date filter methods
@@ -1943,6 +2053,12 @@
       await branchStore.fetchActiveBranches();
     } catch (e) {
       console.error('Failed to load branches:', e);
+    }
+    // Load active suppliers for dropdown
+    try {
+      await supplierStore.fetchActiveSuppliers();
+    } catch (e) {
+      console.error('Failed to load suppliers:', e);
     }
 
     // Setup date picker
@@ -2982,6 +3098,7 @@
                       }}
                     </span>
                   </td>
+
                   <!-- Add priority -->
                   <td>
                     <div class="text-xs">
@@ -4048,7 +4165,28 @@
     <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-6xl">
       <!-- View Request Modal Content -->
       <template v-if="modal.type === 'viewRequest'">
-        <h3 class="text-lg font-bold mb-4 text-black">Request Details</h3>
+        <h3 class="text-lg font-bold mb-2 text-black">Request Details</h3>
+        <!-- Summary (plain text) -->
+        <div class="mb-4 text-sm text-black/80 space-y-1 grid grid-cols-2">
+          <div>
+            <span>{{
+              modal.request?.supplier_id
+                ? getSupplierName(modal.request.supplier_id)
+                : '-'
+            }}</span>
+          </div>
+          <div class="text-right">
+            <span>
+              {{ formatManilaDate(modal.request?.created_at) }}
+              {{ formatManilaTime(modal.request?.created_at) }}
+            </span>
+          </div>
+          <div>
+            <span class="text-black/50">{{
+              modal.request?.request_type || '-'
+            }}</span>
+          </div>
+        </div>
         <div class="overflow-x-auto">
           <table class="table table-xs text-black">
             <thead class="text-black">
@@ -4442,6 +4580,22 @@
       <div
         class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6 items-start mb-6 p-2 sm:p-4 bg-white/5 rounded-lg"
       >
+        <!-- Supplier Selection (optional) -->
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text text-black/70 font-medium">Supplier</span>
+          </label>
+          <select
+            v-model="selectedSupplierId"
+            @change="onSupplierSelected($event.target.value)"
+            class="select select-bordered bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+          >
+            <option value="">Manual entry</option>
+            <option v-for="s in supplierOptions" :key="s.id" :value="s.id">
+              {{ s.name }}
+            </option>
+          </select>
+        </div>
         <!-- Inventory Category Selection -->
         <div class="form-control">
           <label class="label">
@@ -4454,7 +4608,7 @@
             @change="onCategoryChange($event.target.value)"
             class="select select-bordered bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
             required
-            :disabled="isPreloaded"
+            :disabled="isPreloaded || isSupplierMode || !!selectedSupplierId"
           >
             <option value="" disabled>Select Inventory Category</option>
             <option
@@ -4628,7 +4782,26 @@
                 <td class="text-left font-medium">{{ row.id }}</td>
 
                 <td>
+                  <!-- When supplier is selected, show a dropdown of supplier products -->
+                  <select
+                    v-if="isSupplierMode"
+                    v-model="row.supplier_product_id"
+                    @change="onSupplierProductSelected(row)"
+                    class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor"
+                  >
+                    <option value="" disabled>Select product...</option>
+                    <option
+                      v-for="p in supplierProducts"
+                      :key="p.id"
+                      :value="p.id"
+                      :title="`${p.product_name} — ₱${Number(p.unit_price || 0).toFixed(2)} / ${p.unit}`"
+                    >
+                      {{ p.product_name }}
+                    </option>
+                  </select>
+                  <!-- Manual entry when no supplier selected -->
                   <input
+                    v-else
                     :disabled="isPreloaded"
                     type="text"
                     v-model="row.item_name"
@@ -4683,7 +4856,7 @@
                     v-model="row.item_type"
                     @change="onItemTypeChange(row)"
                     class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor"
-                    :disabled="isPreloaded"
+                    :disabled="isPreloaded || isSupplierMode"
                   >
                     <option value="" disabled>Type</option>
                     <option
@@ -4705,6 +4878,8 @@
                     step="0.01"
                     class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
                     @input="updateItemAmount(row)"
+                    :readonly="isSupplierMode"
+                    :disabled="isSupplierMode"
                   />
                 </td>
 

@@ -40,7 +40,7 @@
               </label>
               <div class="relative">
                 <Mail
-                  class="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-black/40"
+                  class="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 !text-black/40"
                 />
                 <input
                   v-model="loginForm.email"

@@ -76,7 +76,7 @@
 
     <!-- Empty State -->
     <div
-      v-else-if="filteredProducts.length === 0"
+      v-else-if="paginatedProducts.length === 0 && !loading"
       class="card bg-white shadow-xl border border-black/10"
     >
       <div class="card-body text-center py-12">
@@ -105,7 +105,7 @@
     <!-- Products Grid -->
     <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       <div
-        v-for="product in filteredProducts"
+        v-for="product in paginatedProducts"
         :key="product.id"
         class="card bg-white shadow-lg border border-black/10 hover:shadow-xl transition-shadow"
       >
@@ -195,10 +195,75 @@
           <div class="flex items-center gap-2">
             <div
               class="badge badge-sm"
-              :class="product.is_available ? 'bg-success/20 text-success' : 'bg-error/20 text-error'"
+              :class="
+                product.is_available
+                  ? 'bg-success/20 text-success'
+                  : 'bg-error/20 text-error'
+              "
             >
               {{ product.is_available ? 'Available' : 'Unavailable' }}
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pagination Controls -->
+    <div
+      v-if="filteredProducts.length > 0 && totalPages > 1"
+      class="card bg-white shadow-xl border border-black/10"
+    >
+      <div class="card-body">
+        <div
+          class="flex flex-col sm:flex-row items-center justify-between gap-4"
+        >
+          <!-- Pagination Info -->
+          <div class="text-sm text-black/60">
+            Showing {{ paginationInfo.showing }} products
+          </div>
+
+          <!-- Pagination Controls -->
+          <div class="join">
+            <!-- Previous Button -->
+            <button
+              class="join-item btn btn-sm bg-gray-200 text-black/50 border border-none hover:bg-gray-300"
+              :disabled="currentPage <= 1"
+              @click="currentPage--"
+            >
+              « Previous
+            </button>
+
+            <!-- Page Numbers -->
+            <template v-for="page in getVisiblePages()" :key="page">
+              <button
+                v-if="page !== '...'"
+                class="join-item btn btn-sm"
+                :class="{
+                  'bg-primaryColor text-white border-none':
+                    currentPage === page,
+                  'bg-gray-200 text-black/50 border border-none hover:bg-gray-300':
+                    currentPage !== page,
+                }"
+                @click="currentPage = page"
+              >
+                {{ page }}
+              </button>
+              <span
+                v-else
+                class="join-item btn btn-sm bg-gray-200 text-black/50 border border-none cursor-default"
+              >
+                ...
+              </span>
+            </template>
+
+            <!-- Next Button -->
+            <button
+              class="join-item btn btn-sm bg-gray-200 text-black/50 border border-none hover:bg-gray-300"
+              :disabled="currentPage >= totalPages"
+              @click="currentPage++"
+            >
+              Next »
+            </button>
           </div>
         </div>
       </div>
@@ -415,7 +480,7 @@
           </button>
           <button
             @click="deleteProduct"
-            class="btn btn-error btn-sm  border-none font-thin "
+            class="btn btn-error btn-sm border-none font-thin"
             :disabled="deleting"
           >
             <span
@@ -434,7 +499,7 @@
 </template>
 
 <script setup>
-  import { ref, computed, onMounted } from 'vue';
+  import { ref, computed, onMounted, watch } from 'vue';
   import { useCustomToast } from '../../composables/useCustomToast';
   import { useSupplierAuthStore } from '../../stores/supplierAuthStore';
   import { useSupplierProductsStore } from '../../stores/supplierProductsStore';
@@ -464,6 +529,10 @@
   const editMode = ref(false);
   const productToDelete = ref(null);
 
+  // Pagination state
+  const currentPage = ref(1);
+  const itemsPerPage = ref(6);
+
   const formData = ref({
     product_name: '',
     description: '',
@@ -488,6 +557,33 @@
     }
 
     return filtered;
+  });
+
+  // Pagination computed properties
+  const totalPages = computed(() => {
+    return Math.ceil(filteredProducts.value.length / itemsPerPage.value);
+  });
+
+  const paginatedProducts = computed(() => {
+    const start = (currentPage.value - 1) * itemsPerPage.value;
+    const end = start + itemsPerPage.value;
+    return filteredProducts.value.slice(start, end);
+  });
+
+  const paginationInfo = computed(() => {
+    const start = (currentPage.value - 1) * itemsPerPage.value + 1;
+    const end = Math.min(
+      currentPage.value * itemsPerPage.value,
+      filteredProducts.value.length
+    );
+    const total = filteredProducts.value.length;
+
+    return {
+      start,
+      end,
+      total,
+      showing: total > 0 ? `${start}-${end} of ${total}` : '0 of 0',
+    };
   });
 
   const loading = computed(() => productsStore.loading);
@@ -580,6 +676,8 @@
         filters.category = selectedCategory.value;
       }
       await productsStore.fetchProducts(filters);
+      // Reset pagination when loading new products
+      resetPagination();
     } catch (error) {
       console.error('Failed to load products:', error);
     }
@@ -679,6 +777,57 @@
       );
     }
   };
+
+  // Pagination methods
+  const getVisiblePages = () => {
+    const total = totalPages.value;
+    const current = currentPage.value;
+    const pages = [];
+
+    if (total <= 7) {
+      // Show all pages if 7 or fewer
+      for (let i = 1; i <= total; i++) {
+        pages.push(i);
+      }
+    } else {
+      // Show first page
+      pages.push(1);
+
+      if (current <= 4) {
+        // Show first 5 pages + ellipsis + last page
+        for (let i = 2; i <= 5; i++) {
+          pages.push(i);
+        }
+        pages.push('...');
+        pages.push(total);
+      } else if (current >= total - 3) {
+        // Show first page + ellipsis + last 5 pages
+        pages.push('...');
+        for (let i = total - 4; i <= total; i++) {
+          pages.push(i);
+        }
+      } else {
+        // Show first page + ellipsis + current-1, current, current+1 + ellipsis + last page
+        pages.push('...');
+        for (let i = current - 1; i <= current + 1; i++) {
+          pages.push(i);
+        }
+        pages.push('...');
+        pages.push(total);
+      }
+    }
+
+    return pages;
+  };
+
+  const resetPagination = () => {
+    currentPage.value = 1;
+  };
+
+  // Watchers
+  watch(availabilityFilter, () => {
+    resetPagination();
+  });
 
   // Lifecycle
   onMounted(() => {

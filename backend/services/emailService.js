@@ -22,7 +22,7 @@ const EMAIL_CONFIG = {
   user: process.env.SMTP_USER || 'mailcountrysidesteakhouse@gmail.com',
   pass: process.env.SMTP_PASS || 'sclg quvi fuyh dcfa', // Gmail App Password
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT) || 465,
+  port: parseInt(process.env.SMTP_PORT) || 587 || 465 || 25,
   secure: process.env.SMTP_SECURE === 'true' || false
 };
 

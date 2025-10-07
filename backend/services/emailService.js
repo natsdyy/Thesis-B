@@ -3,11 +3,18 @@ const sgMail = require('@sendgrid/mail');
 require("dotenv").config();
 
 // Initialize SendGrid if API key is available
-if (process.env.SENDGRID_API_KEY && process.env.SENDGRID_API_KEY !== 'your-sendgrid-api-key-here') {
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+const sendGridKey = process.env.SENDGRID_API_KEY || process.env.SENDGRID_API_KEY_2;
+if (sendGridKey && sendGridKey !== 'your-sendgrid-api-key-here' && sendGridKey.startsWith('SG.')) {
+  sgMail.setApiKey(sendGridKey);
   console.log('📧 SendGrid initialized for email delivery');
+  console.log('🚂 Railway-compatible email service ready');
+  console.log('🔑 Using SendGrid API key:', sendGridKey.substring(0, 10) + '...');
 } else {
   console.log('⚠️  SendGrid API key not found or not configured, using SMTP fallback');
+  console.log('💡 To fix Railway email issues, add SENDGRID_API_KEY environment variable');
+  if (sendGridKey) {
+    console.log('🔍 Detected API key but invalid format:', sendGridKey.substring(0, 10) + '...');
+  }
 }
 
 // Email configuration from environment variables
@@ -340,18 +347,25 @@ class EmailService {
       console.log('⚠️  Email service verification failed, but attempting to send anyway...');
     }
 
-    // Try SendGrid first if API key is available
-    if (process.env.SENDGRID_API_KEY) {
-      console.log('📧 Attempting to send via SendGrid...');
+    // Try SendGrid first if API key is available (Railway recommended)
+    const sendGridKey = process.env.SENDGRID_API_KEY || process.env.SENDGRID_API_KEY_2;
+    if (sendGridKey && sendGridKey !== 'your-sendgrid-api-key-here' && sendGridKey.startsWith('SG.')) {
+      console.log('📧 Attempting to send via SendGrid (Railway-compatible)...');
       const sendGridResult = await this.sendViaSendGrid(emailData);
       if (sendGridResult.success) {
+        console.log('✅ SendGrid email sent successfully (Railway-compatible)');
         return sendGridResult;
       }
       console.log('❌ SendGrid failed, falling back to SMTP...');
+    } else {
+      console.log('⚠️  SendGrid not configured - Railway email may fail due to SMTP port blocking');
+      if (sendGridKey) {
+        console.log('🔍 SendGrid key detected but invalid format');
+      }
     }
 
-    // Fallback to SMTP
-    console.log('📧 Sending via SMTP fallback...');
+    // Fallback to SMTP (may fail on Railway due to port blocking)
+    console.log('📧 Sending via SMTP fallback (may timeout on Railway)...');
     return await this.sendViaSMTP(emailData);
   }
 

@@ -15,23 +15,71 @@
     <!-- Profile Information -->
     <div class="card bg-white shadow-xl border border-black/10">
       <div class="card-body">
-        <h3 class="card-title text-xl text-primaryColor mb-4">
-          Account Information
-        </h3>
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="card-title text-xl text-primaryColor">
+            Account Information
+          </h3>
+          <button
+            v-if="!isEditingProfile"
+            @click="startEditingProfile"
+            class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/90 border-none font-thin"
+          >
+            <Edit class="w-4 h-4 mr-2" />
+            Edit Profile
+          </button>
+          <div v-else class="flex gap-2">
+            <button
+              @click="saveProfile"
+              class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/90 border-none font-thin"
+              :disabled="loadingProfile"
+            >
+              <span
+                v-if="loadingProfile"
+                class="loading loading-spinner loading-sm"
+              ></span>
+              <CheckCircle v-else class="w-4 h-4" />
+              Save Changes
+            </button>
+            <button
+              @click="cancelEditingProfile"
+              class="btn btn-sm bg-gray-200 text-black/50 hover:bg-gray-300 border-none font-thin"
+              :disabled="loadingProfile"
+            >
+              <X class="w-4 h-4" />
+              Cancel
+            </button>
+          </div>
+        </div>
+
+        <!-- Success Message -->
+        <div v-if="profileSuccess" class="alert alert-success mb-4">
+          <CheckCircle class="w-5 h-5" />
+          <span>Profile updated successfully!</span>
+        </div>
+
+        <!-- Error Message -->
+        <div v-if="profileError" class="alert alert-error mb-4">
+          <XCircle class="w-5 h-5" />
+          <span>{{ profileError }}</span>
+        </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <!-- Supplier Name -->
           <div>
             <label class="label">
               <span class="label-text text-black/70 font-medium"
-                >Supplier Name</span
+                >Supplier Name <span class="text-red-500">*</span></span
               >
             </label>
             <input
               type="text"
-              :value="supplierProfile.name"
-              class="input input-bordered w-full bg-gray-50"
-              readonly
+              v-model="profileForm.name"
+              :class="[
+                'input input-bordered w-full',
+                isEditingProfile ? 'bg-white' : 'bg-gray-50',
+              ]"
+              :readonly="!isEditingProfile"
+              required
             />
           </div>
 
@@ -39,14 +87,18 @@
           <div>
             <label class="label">
               <span class="label-text text-black/70 font-medium"
-                >Contact Person</span
+                >Contact Person <span class="text-red-500">*</span></span
               >
             </label>
             <input
               type="text"
-              :value="supplierProfile.contact_person"
-              class="input input-bordered w-full bg-gray-50"
-              readonly
+              v-model="profileForm.contact_person"
+              :class="[
+                'input input-bordered w-full',
+                isEditingProfile ? 'bg-white' : 'bg-gray-50',
+              ]"
+              :readonly="!isEditingProfile"
+              required
             />
           </div>
 
@@ -54,14 +106,18 @@
           <div>
             <label class="label">
               <span class="label-text text-black/70 font-medium"
-                >Email Address</span
+                >Email Address <span class="text-red-500">*</span></span
               >
             </label>
             <input
               type="email"
-              :value="supplierProfile.email"
-              class="input input-bordered w-full bg-gray-50"
-              readonly
+              v-model="profileForm.email"
+              :class="[
+                'input input-bordered w-full',
+                isEditingProfile ? 'bg-white' : 'bg-gray-50',
+              ]"
+              :readonly="!isEditingProfile"
+              required
             />
           </div>
 
@@ -69,14 +125,18 @@
           <div>
             <label class="label">
               <span class="label-text text-black/70 font-medium"
-                >Phone Number</span
+                >Phone Number <span class="text-red-500">*</span></span
               >
             </label>
             <input
               type="text"
-              :value="supplierProfile.phone"
-              class="input input-bordered w-full bg-gray-50"
-              readonly
+              v-model="profileForm.phone"
+              :class="[
+                'input input-bordered w-full',
+                isEditingProfile ? 'bg-white' : 'bg-gray-50',
+              ]"
+              :readonly="!isEditingProfile"
+              required
             />
           </div>
 
@@ -231,7 +291,7 @@
           <div class="flex gap-2">
             <button
               type="submit"
-              class="btn bg-primaryColor text-white hover:bg-primaryColor/90 border-none"
+              class="btn bg-primaryColor text-white hover:bg-primaryColor/90 border-none font-thin"
               :disabled="loadingPassword"
             >
               <span
@@ -244,7 +304,7 @@
             <button
               type="button"
               @click="resetPasswordForm"
-              class="btn btn-ghost"
+              class="btn btn-ghost font-thin"
               :disabled="loadingPassword"
             >
               Cancel
@@ -291,9 +351,19 @@
 <script setup>
   import { ref, computed, onMounted } from 'vue';
   import { useSupplierAuthStore } from '../../stores/supplierAuthStore';
-  import { Eye, EyeOff, Lock, CheckCircle, XCircle } from 'lucide-vue-next';
+  import { useCustomToast } from '../../composables/useCustomToast';
+  import {
+    Eye,
+    EyeOff,
+    Lock,
+    CheckCircle,
+    XCircle,
+    Edit,
+    X,
+  } from 'lucide-vue-next';
 
   const supplierAuthStore = useSupplierAuthStore();
+  const { showError, showSuccess } = useCustomToast();
 
   // State
   const passwordForm = ref({
@@ -307,6 +377,19 @@
   const loadingPassword = ref(false);
   const passwordError = ref('');
   const passwordSuccess = ref(false);
+
+  // Profile editing state
+  const isEditingProfile = ref(false);
+  const loadingProfile = ref(false);
+  const profileError = ref('');
+  const profileSuccess = ref(false);
+  const profileForm = ref({
+    name: '',
+    contact_person: '',
+    email: '',
+    phone: '',
+  });
+
   const stats = ref({
     total_orders: 0,
     avg_rating: 0,
@@ -385,11 +468,99 @@
     }
   };
 
-  // Load stats
+  // Profile editing methods
+  const startEditingProfile = () => {
+    // Populate form with current profile data
+    profileForm.value = {
+      name: supplierProfile.value.name || '',
+      contact_person: supplierProfile.value.contact_person || '',
+      email: supplierProfile.value.email || '',
+      phone: supplierProfile.value.phone || '',
+    };
+    isEditingProfile.value = true;
+    profileError.value = '';
+    profileSuccess.value = false;
+  };
+
+  const cancelEditingProfile = () => {
+    isEditingProfile.value = false;
+    profileForm.value = {
+      name: '',
+      contact_person: '',
+      email: '',
+      phone: '',
+    };
+    profileError.value = '';
+    profileSuccess.value = false;
+  };
+
+  const saveProfile = async () => {
+    profileError.value = '';
+    profileSuccess.value = false;
+
+    // Validation
+    if (!profileForm.value.name.trim()) {
+      profileError.value = 'Supplier name is required';
+      return;
+    }
+    if (!profileForm.value.contact_person.trim()) {
+      profileError.value = 'Contact person is required';
+      return;
+    }
+    if (!profileForm.value.email.trim()) {
+      profileError.value = 'Email address is required';
+      return;
+    }
+    if (!profileForm.value.phone.trim()) {
+      profileError.value = 'Phone number is required';
+      return;
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(profileForm.value.email)) {
+      profileError.value = 'Please enter a valid email address';
+      return;
+    }
+
+    loadingProfile.value = true;
+
+    try {
+      await supplierAuthStore.updateProfile(profileForm.value);
+
+      profileSuccess.value = true;
+      isEditingProfile.value = false;
+
+      // Hide success message after 5 seconds
+      setTimeout(() => {
+        profileSuccess.value = false;
+      }, 5000);
+    } catch (error) {
+      profileError.value =
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to update profile';
+    } finally {
+      loadingProfile.value = false;
+    }
+  };
+
+  // Initialize profile form with current data
+  const initializeProfileForm = () => {
+    profileForm.value = {
+      name: supplierProfile.value.name || '',
+      contact_person: supplierProfile.value.contact_person || '',
+      email: supplierProfile.value.email || '',
+      phone: supplierProfile.value.phone || '',
+    };
+  };
+
+  // Load stats and initialize profile form
   onMounted(() => {
     if (supplierProfile.value.stats) {
       stats.value = supplierProfile.value.stats;
     }
+    initializeProfileForm();
   });
 </script>
 

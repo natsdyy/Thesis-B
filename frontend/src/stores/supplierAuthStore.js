@@ -86,12 +86,7 @@ export const useSupplierAuthStore = defineStore('supplierAuth', () => {
 
       const response = await axios.post(
         `${apiConfig.baseURL}/supplier-auth/validate-session`,
-        { supplier_id: supplierData.id },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+        { supplier_id: supplierData.id }
       );
 
       if (response.data.success) {
@@ -122,11 +117,6 @@ export const useSupplierAuthStore = defineStore('supplierAuth', () => {
           supplier_id: supplier.value.id,
           old_password: oldPassword,
           new_password: newPassword,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
         }
       );
 
@@ -152,12 +142,7 @@ export const useSupplierAuthStore = defineStore('supplierAuth', () => {
       const token = localStorage.getItem('supplierToken');
 
       const response = await axios.get(
-        `${apiConfig.baseURL}/supplier-auth/profile?supplier_id=${supplier.value.id}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+        `${apiConfig.baseURL}/supplier-auth/profile?supplier_id=${supplier.value.id}`
       );
 
       if (response.data.success) {
@@ -170,6 +155,39 @@ export const useSupplierAuthStore = defineStore('supplierAuth', () => {
     } catch (err) {
       error.value =
         err.response?.data?.message || err.message || 'Failed to get profile';
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const updateProfile = async (profileData) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const token = localStorage.getItem('supplierToken');
+
+      const response = await axios.put(
+        `${apiConfig.baseURL}/supplier-auth/profile`,
+        {
+          supplier_id: supplier.value.id,
+          ...profileData,
+        }
+      );
+
+      if (response.data.success) {
+        supplier.value = response.data.data.supplier;
+        setSupplier(response.data.data.supplier);
+        return response.data.data.supplier;
+      } else {
+        throw new Error(response.data.message || 'Failed to update profile');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to update profile';
       throw err;
     } finally {
       loading.value = false;
@@ -219,6 +237,7 @@ export const useSupplierAuthStore = defineStore('supplierAuth', () => {
     validateSession,
     changePassword,
     getProfile,
+    updateProfile,
     clearError,
   };
 });

@@ -434,7 +434,7 @@
             <input
               v-model="formData.is_available"
               type="checkbox"
-              class="toggle toggle-success"
+              class="toggle checked:text-gray-50"
             />
           </div>
 

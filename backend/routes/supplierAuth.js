@@ -3,6 +3,45 @@ const router = express.Router();
 const jwt = require("jsonwebtoken");
 const Supplier = require("../models/Supplier");
 
+// Middleware to authenticate supplier JWT token
+function authenticateSupplierToken(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
+
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      message: "Access token required",
+      code: "TOKEN_REQUIRED",
+    });
+  }
+
+  try {
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET || "your-secret-key"
+    );
+
+    // Check if this is a supplier token
+    if (decoded.type !== "supplier") {
+      return res.status(403).json({
+        success: false,
+        message: "Invalid token type for supplier access",
+        code: "INVALID_TOKEN_TYPE",
+      });
+    }
+
+    req.supplier = decoded;
+    next();
+  } catch (error) {
+    return res.status(403).json({
+      success: false,
+      message: "Invalid or expired token",
+      code: "INVALID_TOKEN",
+    });
+  }
+}
+
 /**
  * @swagger
  * tags:
@@ -402,6 +441,135 @@ router.get("/profile", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to retrieve profile. Please try again.",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/supplier-auth/profile:
+ *   put:
+ *     summary: Update supplier profile
+ *     tags: [Supplier Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - supplier_id
+ *               - name
+ *               - contact_person
+ *               - email
+ *               - phone
+ *             properties:
+ *               supplier_id:
+ *                 type: integer
+ *               name:
+ *                 type: string
+ *               contact_person:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               phone:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ *       400:
+ *         description: Validation error
+ *       404:
+ *         description: Supplier not found
+ *       500:
+ *         description: Server error
+ */
+router.put("/profile", authenticateSupplierToken, async (req, res) => {
+  try {
+    const { supplier_id, name, contact_person, email, phone } = req.body;
+
+    // Validation
+    if (!supplier_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Supplier ID is required",
+        code: "MISSING_SUPPLIER_ID",
+      });
+    }
+
+    // Security check: Ensure supplier can only update their own profile
+    if (parseInt(supplier_id) !== parseInt(req.supplier.id)) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied: You can only update your own profile",
+        code: "ACCESS_DENIED",
+      });
+    }
+
+    if (!name || !contact_person || !email || !phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Name, contact person, email, and phone are required",
+        code: "MISSING_REQUIRED_FIELDS",
+      });
+    }
+
+    // Validate email format
+    if (!Supplier.isValidEmail(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email address format",
+        code: "INVALID_EMAIL",
+      });
+    }
+
+    // Update profile
+    const updatedSupplier = await Supplier.updateProfile(supplier_id, {
+      name,
+      contact_person,
+      email,
+      phone,
+    });
+
+    res.json({
+      success: true,
+      message: "Profile updated successfully",
+      code: "PROFILE_UPDATED",
+      data: {
+        supplier: updatedSupplier,
+      },
+    });
+  } catch (error) {
+    console.error("Supplier profile update error:", error);
+
+    // Handle specific validation errors
+    if (
+      error.message.includes("required") ||
+      error.message.includes("Invalid email") ||
+      error.message.includes("already in use")
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+        code: "VALIDATION_ERROR",
+      });
+    }
+
+    if (error.message.includes("not found")) {
+      return res.status(404).json({
+        success: false,
+        message: error.message,
+        code: "SUPPLIER_NOT_FOUND",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to update profile. Please try again.",
       code: "INTERNAL_SERVER_ERROR",
     });
   }

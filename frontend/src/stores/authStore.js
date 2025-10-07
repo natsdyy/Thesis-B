@@ -8,9 +8,19 @@ const setupAxiosInterceptors = () => {
   // Request interceptor to add auth token
   axios.interceptors.request.use(
     (config) => {
-      const token = localStorage.getItem('token');
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+      // Check if this is a supplier endpoint
+      if (config.url && config.url.includes('/supplier-auth/')) {
+        // Use supplier token for supplier endpoints
+        const supplierToken = localStorage.getItem('supplierToken');
+        if (supplierToken) {
+          config.headers.Authorization = `Bearer ${supplierToken}`;
+        }
+      } else {
+        // Use regular employee token for other endpoints
+        const token = localStorage.getItem('token');
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
       }
       return config;
     },
@@ -27,10 +37,13 @@ const setupAxiosInterceptors = () => {
     (error) => {
       if (error.response?.status === 401) {
         const requestUrl = error.config?.url || '';
-        const isLoginRequest = requestUrl.includes('/auth/login');
+        const isLoginRequest =
+          requestUrl.includes('/auth/login') ||
+          requestUrl.includes('/supplier-auth/login');
         const isOnLoginPage =
           typeof window !== 'undefined' &&
-          window.location?.pathname === '/login';
+          (window.location?.pathname === '/login' ||
+            window.location?.pathname === '/supplier/login');
 
         // Do NOT redirect for the login endpoint or when already on the login page
         if (isLoginRequest || isOnLoginPage) {
@@ -44,13 +57,27 @@ const setupAxiosInterceptors = () => {
           message: error.response?.data?.message,
         });
 
-        // Only redirect if it's a critical authentication error
+        // Handle employee authentication errors
         if (requestUrl.includes('/auth/validate-session')) {
-          console.warn('Session validation failed, redirecting to login');
+          console.warn(
+            'Employee session validation failed, redirecting to login'
+          );
           localStorage.removeItem('token');
           localStorage.removeItem('user');
           localStorage.removeItem('isAuthenticated');
           window.location.href = '/login';
+          return;
+        }
+
+        // Handle supplier authentication errors
+        if (requestUrl.includes('/supplier-auth/validate-session')) {
+          console.warn(
+            'Supplier session validation failed, redirecting to supplier login'
+          );
+          localStorage.removeItem('supplierToken');
+          localStorage.removeItem('supplier');
+          localStorage.removeItem('isSupplierAuthenticated');
+          window.location.href = '/supplier/login';
           return;
         }
 

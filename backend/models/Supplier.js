@@ -500,6 +500,77 @@ class Supplier {
     }
   }
 
+  // Update supplier profile (for supplier self-update)
+  static async updateProfile(supplierId, profileData) {
+    try {
+      if (!supplierId) {
+        throw new Error("Supplier ID is required");
+      }
+
+      // Validate required fields
+      const { name, contact_person, email, phone } = profileData;
+
+      if (!name || !name.trim()) {
+        throw new Error("Supplier name is required");
+      }
+
+      if (!contact_person || !contact_person.trim()) {
+        throw new Error("Contact person is required");
+      }
+
+      if (!email || !email.trim()) {
+        throw new Error("Email address is required");
+      }
+
+      if (!phone || !phone.trim()) {
+        throw new Error("Phone number is required");
+      }
+
+      // Validate email format
+      if (!this.isValidEmail(email)) {
+        throw new Error("Invalid email address format");
+      }
+
+      // Check if email is already used by another supplier
+      const existingSupplier = await db("suppliers")
+        .where("email", email.toLowerCase().trim())
+        .where("id", "!=", supplierId)
+        .whereNull("deleted_at")
+        .first();
+
+      if (existingSupplier) {
+        throw new Error("Email address is already in use by another supplier");
+      }
+
+      // Prepare update data (only allow specific fields for profile updates)
+      const updateData = {
+        name: name.trim(),
+        contact_person: contact_person.trim(),
+        email: email.toLowerCase().trim(),
+        phone: phone.trim(),
+        updated_at: new Date(),
+      };
+
+      const [updatedSupplier] = await db("suppliers")
+        .where("id", supplierId)
+        .whereNull("deleted_at")
+        .update(updateData)
+        .returning("*");
+
+      if (!updatedSupplier) {
+        throw new Error("Supplier not found or has been deleted");
+      }
+
+      // Remove password from returned object
+      const { password: _, ...supplierWithoutPassword } = updatedSupplier;
+
+      return supplierWithoutPassword;
+    } catch (error) {
+      console.error("Error updating supplier profile:", error);
+      throw error;
+    }
+  }
+
   // Create supplier with authentication
   static async createWithAuth(supplierData, password = "supplier123") {
     try {

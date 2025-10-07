@@ -31,7 +31,7 @@
             v-for="status in statuses"
             :key="status.value"
             @click="filterStatus = status.value"
-            class="btn btn-sm"
+            class="btn btn-sm font-thin"
             :class="{
               'bg-primaryColor text-white': filterStatus === status.value,
               'btn-outline text-primaryColor': filterStatus !== status.value,

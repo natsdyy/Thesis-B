@@ -1312,9 +1312,10 @@
   import feedbackService from '../../services/feedbackService.js';
   import branchService from '../../services/branchService.js';
   import menuService from '../../services/menuService.js';
+  import { formatImageUrl, apiConfig } from '../../config/api.js';
 
-  // Base URL for backend (used to resolve /uploads/* paths)
-  const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+  // Backend base derived from api config (strip /api)
+  const API_BASE_URL = (apiConfig?.baseURL || '').replace(/\/?api\/?$/, '');
 
   const router = useRouter();
   const isScrolled = ref(false);
@@ -1337,25 +1338,13 @@
   const resolvePublicUrl = (url) => {
     if (!url) return url;
 
-    // If we received a full URL but it's pointing to a local/LAN host,
-    // normalize it to the configured API base (production-safe).
-    if (url.startsWith('http')) {
-      try {
-        const parsed = new URL(url, window.location?.origin);
-        // If this is an uploads path, prefer the API base host in production
-        if (parsed.pathname.startsWith('/uploads/') && API_BASE_URL) {
-          return `${API_BASE_URL}${parsed.pathname}`;
-        }
-      } catch (e) {
-        // If URL parsing fails, just fall through
-      }
-      return url;
-    }
+    // Prefer shared formatter used across production views
+    const formatted = formatImageUrl(url);
+    if (formatted) return formatted;
 
-    // If we have API base, use it for relative paths
+    // Fallbacks
+    if (url.startsWith('http')) return url;
     if (API_BASE_URL) return `${API_BASE_URL}${url}`;
-
-    // Fallback for local dev when API base is not set
     const protocol = window.location?.protocol || 'http:';
     const host = window.location?.hostname || 'localhost';
     const backendPort = (

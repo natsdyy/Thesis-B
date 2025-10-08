@@ -102,7 +102,11 @@ export const useSupplierStore = defineStore('supplier', () => {
 
       if (response.data.success) {
         suppliers.value.unshift(response.data.data);
-        return response.data.data;
+        // Return supplier object augmented with emailStatus from backend
+        return {
+          ...response.data.data,
+          emailStatus: response.data.emailStatus,
+        };
       } else {
         throw new Error(response.data.message || 'Failed to create supplier');
       }

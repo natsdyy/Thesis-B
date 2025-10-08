@@ -16,7 +16,6 @@
     <div
       class="stats shadow w-full mb-4 sm:mb-6 bg-accentColor border border-black/10 rounded-lg lg:flex"
     >
-
       <!-- Active Suppliers -->
       <div class="stat">
         <div class="stat-figure">
@@ -1734,9 +1733,17 @@
         return;
       }
 
-      await supplierStore.createSupplier(supplierForm.value);
+      const created = await supplierStore.createSupplier(supplierForm.value);
       closeModal();
-      showToast('success', 'Supplier created successfully');
+      // Backend may include emailStatus similar to employees
+      const emailStatus = created?.emailStatus;
+      if (emailStatus?.sent) {
+        showToast('success', 'Supplier created. Welcome email sent.');
+      } else if (emailStatus?.error) {
+        showToast('error', 'Supplier created, but email failed to send.');
+      } else {
+        showToast('success', 'Supplier created successfully');
+      }
     } catch (err) {
       showToast('error', err.message || 'Failed to create supplier');
     }

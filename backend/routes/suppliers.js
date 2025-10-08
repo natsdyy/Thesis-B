@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const Supplier = require("../models/Supplier");
+const EmailService = require("../services/emailService");
 const { db } = require("../config/database");
 
 // GET /api/suppliers - Get all suppliers
@@ -138,20 +139,47 @@ router.post("/", async (req, res) => {
     };
 
     // Create supplier with authentication (default password: supplier123)
-    const supplier = await Supplier.createWithAuth(supplierData);
+    const defaultPassword = "supplier123";
+    const supplier = await Supplier.createWithAuth(
+      supplierData,
+      defaultPassword
+    );
+
+    // Attempt to send welcome email to supplier
+    let emailStatus = { sent: false };
+    try {
+      if (supplier?.email) {
+        const contactName =
+          supplier.contact_person || supplier.name || "Supplier";
+        const emailResult = await EmailService.sendSupplierWelcomeEmail(
+          supplier.email,
+          contactName,
+          supplier.email,
+          defaultPassword
+        );
+        emailStatus = {
+          sent: !!emailResult?.success,
+          provider: emailResult?.provider || "SMTP",
+          messageId: emailResult?.messageId,
+          error: emailResult?.error || null,
+        };
+      }
+    } catch (e) {
+      emailStatus = { sent: false, error: e.message };
+    }
 
     res.status(201).json({
       success: true,
       message: "Supplier created successfully with default login credentials",
       data: {
         ...supplier,
-        // Include a note about default credentials (for admin reference)
         login_info: {
-          email: email,
-          default_password: "supplier123",
+          email: supplier.email,
+          default_password: defaultPassword,
           note: "Supplier should change password on first login",
         },
       },
+      emailStatus,
     });
   } catch (error) {
     res.status(500).json({

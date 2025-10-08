@@ -108,6 +108,102 @@ class EmailService {
   }
 
   /**
+   * Send supplier welcome email with login credentials
+   * Tries SendGrid first, falls back to Gmail SMTP
+   */
+  static async sendSupplierWelcomeEmail(
+    to,
+    supplierName,
+    email,
+    password = "supplier123",
+    loginUrl = null
+  ) {
+    // Try SendGrid first
+    if (SendGridService.isConfigured()) {
+      console.log(
+        "📧 [EMAIL SERVICE] Using SendGrid for supplier welcome email"
+      );
+      const sendGridResult = await SendGridService.sendSupplierWelcomeEmail(
+        to,
+        supplierName,
+        email,
+        password,
+        loginUrl
+      );
+
+      if (sendGridResult.success) {
+        return sendGridResult;
+      } else {
+        console.log(
+          `⚠️ SendGrid failed, falling back to Gmail SMTP: ${sendGridResult.error}`
+        );
+      }
+    } else {
+      console.log(
+        "📧 [EMAIL SERVICE] SendGrid not configured, using Gmail SMTP"
+      );
+    }
+
+    // Fallback to Gmail SMTP
+    try {
+      const frontendUrl =
+        process.env.FRONTEND_URL ||
+        (process.env.NODE_ENV === "production"
+          ? "https://www.countryside-steakhouse.site"
+          : "http://localhost:8080");
+      const defaultLoginUrl = `${frontendUrl}/supplier/login`;
+      const loginLink = loginUrl || defaultLoginUrl;
+
+      const mailOptions = {
+        from: '"Countryside Steak House" <mailcountrysidesteakhouse@gmail.com>',
+        to: to,
+        subject: "Welcome to Countryside Supplier Portal",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <h1 style="color: #2c3e50; margin-bottom: 10px;">Countryside Supplier Portal</h1>
+            </div>
+            <div style="background-color: #f8f9fa; padding: 24px; border-radius: 10px; margin-bottom: 16px;">
+              <h3 style="color: #2c3e50; margin-top: 0;">Your Supplier Account</h3>
+              <p style="color: #555; font-size: 15px; line-height: 1.6;">Hello ${supplierName},</p>
+              <p style="color: #555; font-size: 15px; line-height: 1.6;">Your supplier account has been created. Here are your login details:</p>
+              <div style="background-color: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px;">
+                <p style="margin: 0 0 8px 0;"><strong>Email:</strong> ${email}</p>
+                <p style="margin: 0;"><strong>Default Password:</strong> <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">${password}</code></p>
+              </div>
+              <div style="text-align: center; margin-top: 16px;">
+                <a href="${loginLink}" style="background-color: #466114; color: white; padding: 10px 18px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Go to Supplier Login</a>
+              </div>
+              <p style="color: #856404; background: #fff3cd; padding: 10px; border-radius: 6px; font-size: 13px; margin-top: 16px;">
+                <strong>Note:</strong> Please change your password after your first login.
+              </p>
+            </div>
+          </div>
+        `,
+        text: `Hello ${supplierName},\n\nYour supplier account has been created.\n\nEmail: ${email}\nDefault Password: ${password}\n\nLogin: ${loginLink}\n\nPlease change your password after first login.`,
+      };
+
+      // Try primary then fallback
+      let info;
+      this.logEmailAttempt("Supplier Welcome Email", email);
+      try {
+        info = await this.withTimeout(transporter.sendMail(mailOptions), 25000);
+      } catch (primaryError) {
+        console.log(`❌ Primary transporter failed: ${primaryError.message}`);
+        info = await this.withTimeout(
+          fallbackTransporter.sendMail(mailOptions),
+          25000
+        );
+      }
+      console.log("✅ Supplier welcome email sent:", info.messageId);
+      return { success: true, messageId: info.messageId };
+    } catch (error) {
+      console.error("❌ Error sending supplier welcome email:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Check if we're in production environment
    */
   static isProduction() {

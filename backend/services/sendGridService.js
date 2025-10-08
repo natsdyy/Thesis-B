@@ -35,6 +35,121 @@ class SendGridService {
   }
 
   /**
+   * Send supplier welcome email using SendGrid
+   * @param {string} to - Recipient email address
+   * @param {string} supplierName - Supplier or contact person's name
+   * @param {string} email - Supplier login email address
+   * @param {string} password - Default/temporary password
+   * @param {string} loginUrl - Optional custom supplier portal login URL
+   */
+  static async sendSupplierWelcomeEmail(
+    to,
+    supplierName,
+    email,
+    password = "supplier123",
+    loginUrl = null
+  ) {
+    try {
+      if (!this.isConfigured()) {
+        console.log("⚠️ SendGrid not configured, skipping email");
+        return {
+          success: false,
+          error: "SendGrid API key not configured",
+          skipEmail: true,
+        };
+      }
+
+      const frontendUrl =
+        process.env.FRONTEND_URL ||
+        (process.env.NODE_ENV === "production"
+          ? "https://www.countryside-steakhouse.site"
+          : "http://localhost:8080");
+      const defaultLoginUrl = `${frontendUrl}/supplier/login`;
+      const loginLink = loginUrl || defaultLoginUrl;
+
+      const msg = {
+        to: to,
+        from: {
+          email: "mailcountrysidesteakhouse@gmail.com",
+          name: "Countryside Steakhouse",
+        },
+        subject: "Welcome to Countryside Supplier Portal",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
+            <div style="background-color: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+              <div style="text-align: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #466114;">
+                <h1 style="color: #2c3e50; margin: 0; font-size: 24px; font-weight: bold;">Countryside Steakhouse</h1>
+                <p style="color: #466114; margin: 6px 0 0 0; font-size: 14px; font-weight: 500;">Supplier Portal</p>
+              </div>
+              <div style="margin-bottom: 24px;">
+                <h2 style="color: #2c3e50; margin: 0 0 12px 0; font-size: 20px; font-weight: bold;">Your Supplier Account Has Been Created</h2>
+                <p style="color: #555; font-size: 15px; line-height: 1.6; margin: 0 0 16px 0;">Hi ${supplierName},</p>
+                <p style="color: #555; font-size: 15px; line-height: 1.6; margin: 0 0 16px 0;">Welcome to the Countryside Supplier Portal. Use the credentials below to sign in and manage your purchase orders and products.</p>
+                <div style="background-color: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; padding: 16px; margin: 16px 0; text-align: center;">
+                  <div style="margin-bottom: 10px;">
+                    <strong style="color: #2c3e50; display: block; margin-bottom: 5px;">Email:</strong>
+                    <a href="mailto:${email}" style="color: #007bff; text-decoration: none; font-weight: 500; font-size: 15px;">${email}</a>
+                  </div>
+                  <div>
+                    <strong style="color: #2c3e50; display: block; margin-bottom: 5px;">Default Password:</strong>
+                    <span style="color: #2c3e50; font-weight: bold; font-size: 15px; background-color: #e9ecef; padding: 4px 10px; border-radius: 4px; font-family: monospace;">${password}</span>
+                  </div>
+                </div>
+                <div style="text-align: center; margin: 24px 0;">
+                  <a href="${loginLink}" style="background-color: #466114; color: white; padding: 10px 18px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block; font-size: 15px; box-shadow: 0 2px 5px rgba(70,97,20,0.3);">Go to Supplier Login</a>
+                </div>
+                <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 12px; border-radius: 5px;">
+                  <p style="color: #856404; margin: 0; font-size: 13px;"><strong>Important:</strong> Please change your password after your first login.</p>
+                </div>
+              </div>
+              <div style="text-align: center; color: #666; font-size: 12px; margin-top: 24px; padding-top: 16px; border-top: 1px solid #dee2e6;">
+                <p style="margin: 0;">©2025 COUNTRYSIDE-STEAKHOUSE. All rights reserved.</p>
+                <p style="margin: 4px 0 0 0;">This is an automated message, please do not reply.</p>
+              </div>
+            </div>
+          </div>
+        `,
+        text: `
+          Welcome to the Countryside Supplier Portal!
+          
+          Hi ${supplierName},
+          Your supplier account has been created.
+          
+          Email: ${email}
+          Default Password: ${password}
+          
+          Login here: ${loginLink}
+          
+          Please change your password after first login.
+        `,
+      };
+
+      console.log(`📧 [SENDGRID] Sending supplier welcome email to ${email}`);
+      const response = await sgMail.send(msg);
+      console.log(
+        "✅ SendGrid supplier email sent:",
+        response[0].headers["x-message-id"]
+      );
+      return {
+        success: true,
+        messageId: response[0].headers["x-message-id"],
+        provider: "SendGrid",
+      };
+    } catch (error) {
+      console.error("❌ SendGrid supplier welcome error:", error);
+      if (error.response) {
+        console.error("SendGrid API Error:", error.response.body);
+        return {
+          success: false,
+          error: `SendGrid API Error: ${error.response.body.errors?.[0]?.message || error.message}`,
+          provider: "SendGrid",
+        };
+      }
+      return { success: false, error: error.message, provider: "SendGrid" };
+    }
+  }
+
+  /**
    * Send employee welcome email using SendGrid
    * @param {string} to - Recipient email address
    * @param {string} employeeName - Employee's full name

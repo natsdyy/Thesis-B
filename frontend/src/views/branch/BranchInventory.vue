@@ -561,11 +561,8 @@
 
   const formattedBranchInventory = computed(() => {
     return branchInventory.value.map((item) => {
-      if (
-        inventoryType.value === 'production' &&
-        item.image_url &&
-        item.image_url.startsWith('/uploads/')
-      ) {
+      // Format image URL for all items that have image_url, not just production items
+      if (item.image_url) {
         return { ...item, image_url: formatImageUrl(item.image_url) };
       }
       return item;
@@ -2677,12 +2674,7 @@
                       <tr v-for="item in paginatedInventory" :key="item.id">
                         <td>
                           <div class="flex items-center gap-2">
-                            <div
-                              v-if="
-                                inventoryType === 'production' && item.image_url
-                              "
-                              class="avatar"
-                            >
+                            <div v-if="item.image_url" class="avatar">
                               <div class="w-6 rounded">
                                 <img :src="item.image_url" alt="item" />
                               </div>
@@ -2717,12 +2709,15 @@
                           <div class="font-medium text-sm">
                             {{ item.quantity }} {{ item.unit }}
                           </div>
-                          <div class="text-sm text-gray-500 text-xs">
+                          <div class="text-gray-500 text-xs">
                             Min: {{ item.minimum_stock }}
                           </div>
                         </td>
                         <td v-if="inventoryType === 'production'">
-                          <div class="font-medium text-sm" v-if="item.selling_price">
+                          <div
+                            class="font-medium text-sm"
+                            v-if="item.selling_price"
+                          >
                             ₱{{
                               parseFloat(item.selling_price).toLocaleString()
                             }}

@@ -76,7 +76,25 @@ export const usePOSStore = defineStore('pos', () => {
 
   const orderSubtotal = computed(() => {
     return currentOrder.value.items.reduce((total, item) => {
-      return total + item.price * item.quantity;
+      // Calculate discounted price if promo applies
+      let itemPrice = item.price;
+      if (
+        item.promo_info &&
+        item.promo_info.is_active &&
+        item.quantity >= item.promo_info.minimum_quantity
+      ) {
+        if (item.promo_info.discount_type === 'percentage') {
+          const discountAmount =
+            item.price * (item.promo_info.discount_percentage / 100);
+          itemPrice = Math.max(0, item.price - discountAmount);
+        } else if (item.promo_info.discount_type === 'fixed_amount') {
+          itemPrice = Math.max(
+            0,
+            item.price - parseFloat(item.promo_info.discount_amount || 0)
+          );
+        }
+      }
+      return total + itemPrice * item.quantity;
     }, 0);
   });
 
@@ -258,6 +276,7 @@ export const usePOSStore = defineStore('pos', () => {
         image: menuItem.image_url,
         category: menuItem.category,
         stock_quantity: menuItem.stock_quantity,
+        promo_info: menuItem.promo_info, // Include promo discount information
       });
     }
 

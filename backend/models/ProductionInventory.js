@@ -154,6 +154,15 @@ class ProductionInventory {
           "mi.is_featured",
           "mi.tags",
           "mi.image_url",
+          // Promo discount fields
+          "mi.has_promo_discount",
+          "mi.promo_minimum_quantity",
+          "mi.promo_discount_percentage",
+          "mi.promo_discount_amount",
+          "mi.promo_discount_type",
+          "mi.promo_description",
+          "mi.promo_start_date",
+          "mi.promo_end_date",
           "r.recipe_name",
           "r.batch_size",
           "r.batch_unit",
@@ -196,7 +205,7 @@ class ProductionInventory {
 
       const results = await query.orderBy("mi.menu_item_name", "asc");
 
-      // Calculate production capacity for each item
+      // Calculate production capacity and promo_info for each item
       for (let item of results) {
         try {
           // Get recipe ingredients for production capacity calculation
@@ -222,6 +231,10 @@ class ProductionInventory {
             ingredients,
             item.batch_size
           );
+
+          // Calculate promo_info using MenuItem's method
+          const MenuItem = require("./MenuItem");
+          item.promo_info = MenuItem.calculatePromoInfo(item);
         } catch (error) {
           console.error(
             `Error calculating production capacity for item ${item.id}:`,
@@ -233,6 +246,7 @@ class ProductionInventory {
             limiting_factor: "Calculation error",
             can_produce: false,
           };
+          item.promo_info = null;
         }
       }
 

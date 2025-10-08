@@ -577,7 +577,14 @@
       if (order.status === 'completed') {
         gross += Number(order.total_amount || 0);
       } else if (order.status === 'void') {
-        voidedAmount += Number(order.total_amount || 0);
+        // Only deduct voided orders that were completed first (refunds)
+        // Orders cancelled before completion should not be deducted
+        if (order.completed_at) {
+          // This was a completed order that was later refunded
+          voidedAmount += Number(order.total_amount || 0);
+        }
+        // If completed_at is null, this was cancelled before completion
+        // Do not deduct from remittance amount
       }
       // Note: Refunds are not typically stored in individual orders
       // They would come from a separate refunds table if available
@@ -735,7 +742,8 @@
     return Math.max(1, Math.ceil(totalServerOrders.value / itemsPerPage.value));
   });
 
-  const totalOrders = computed(() => totalServerOrders.value);
+  // Total orders should be based on all orders in the period, not just paginated results
+  const totalOrders = computed(() => allOrdersForPeriod.value.length);
 
   watch(
     () => props.show,

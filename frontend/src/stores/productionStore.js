@@ -863,14 +863,17 @@ export const useProductionStore = defineStore('production', () => {
       console.log('API Response:', response.data);
 
       if (response.data.success) {
-        // Format image URLs for production
+        // Format image URLs for production and preserve all fields including promo_info
         menuItems.value = response.data.data.map((item) => ({
           ...item,
           image_url: item.image_url
             ? formatImageUrl(item.image_url)
             : item.image_url,
+          // Ensure promo_info is preserved (it should already be calculated by backend)
+          promo_info: item.promo_info,
         }));
         console.log('Menu items loaded:', menuItems.value.length, 'items');
+        console.log('Sample menu item with promo_info:', menuItems.value[0]);
       } else {
         throw new Error(response.data.message || 'Failed to fetch menu items');
       }

@@ -911,6 +911,8 @@ class POSOrder {
         .first();
 
       // Get refunded orders to adjust total sales
+      // Only deduct voided orders that were completed first (actual refunds)
+      // Orders cancelled before completion should not be deducted
       let refundedAmount = 0;
       try {
         const refundedQuery = db("pos_sales_orders")
@@ -927,7 +929,8 @@ class POSOrder {
             "Duplicate Order",
             "Payment Issue",
             "System Error",
-          ]);
+          ])
+          .whereNotNull("completed_at"); // Only include orders that were completed first
 
         if (dateFrom) {
           refundedQuery.where("voided_at", ">=", dateFrom);
@@ -950,6 +953,8 @@ class POSOrder {
 
       try {
         // Single query to get both voided orders count and loss profit
+        // Only count orders that were completed first as "disposed" (actual disposals)
+        // Orders cancelled before completion should not be counted as disposed
         const disposalQuery = db("pos_sales_orders")
           .leftJoin(
             "loss_profit_records",
@@ -957,7 +962,8 @@ class POSOrder {
             "loss_profit_records.order_id"
           )
           .where("pos_sales_orders.branch_id", branchId)
-          .where("pos_sales_orders.status", "void");
+          .where("pos_sales_orders.status", "void")
+          .whereNotNull("pos_sales_orders.completed_at"); // Only include orders that were completed first
 
         if (dateFrom) {
           disposalQuery.where("pos_sales_orders.voided_at", ">=", dateFrom);

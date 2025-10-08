@@ -273,6 +273,29 @@
     posStore.updateItemQuantity(itemId, quantity);
   };
 
+  // Calculate discounted price for promo items
+  const calculateDiscountedPrice = (item) => {
+    if (
+      !item.promo_info ||
+      !item.promo_info.is_active ||
+      item.quantity < item.promo_info.minimum_quantity
+    ) {
+      return parseFloat(item.price || 0);
+    }
+
+    const originalPrice = parseFloat(item.price || 0);
+    let discountAmount = 0;
+
+    if (item.promo_info.discount_type === 'percentage') {
+      discountAmount =
+        originalPrice * (item.promo_info.discount_percentage / 100);
+    } else if (item.promo_info.discount_type === 'fixed_amount') {
+      discountAmount = parseFloat(item.promo_info.discount_amount || 0);
+    }
+
+    return Math.max(0, originalPrice - discountAmount);
+  };
+
   const handleOrderTypeChange = (type) => {
     posStore.setOrderType(type);
   };
@@ -926,6 +949,27 @@
                             : `Stock: ${item.stock_quantity}`
                       }}
                     </span>
+                    <!-- Promo Discount Badge -->
+                    <span
+                      v-if="item.promo_info"
+                      class="badge badge-sm border-none ml-1"
+                      :class="
+                        item.promo_info.is_active
+                          ? 'bg-warning/20 text-warning'
+                          : 'bg-gray/20 text-gray-600'
+                      "
+                      :title="
+                        item.promo_info.is_active
+                          ? 'Active promotional discount available'
+                          : 'Promotional discount (inactive)'
+                      "
+                    >
+                      <font-awesome-icon
+                        icon="fa-solid fa-star"
+                        class="w-3 h-3 mr-1"
+                      />
+                      {{ item.promo_info.is_active ? 'PROMO' : 'PROMO' }}
+                    </span>
                   </div>
                   <div class="my-5">
                     <!-- Name -->
@@ -1005,10 +1049,49 @@
                 <div class="flex-1 min-w-0">
                   <h4 class="font-medium text-gray-900 truncate">
                     {{ item.name }}
+                    <!-- Promo Badge -->
+                    <span
+                      v-if="
+                        item.promo_info &&
+                        item.promo_info.is_active &&
+                        item.quantity >= item.promo_info.minimum_quantity
+                      "
+                      class="badge badge-xs bg-warning/20 text-warning ml-2"
+                    >
+                      <font-awesome-icon
+                        icon="fa-solid fa-star"
+                        class="w-2 h-2 mr-1"
+                      />
+                      PROMO
+                    </span>
                   </h4>
                   <p class="text-sm text-gray-600">
                     <font-awesome-icon icon="fa-solid fa-peso-sign" />
                     {{ parseFloat(item.price || 0).toFixed(2) }}
+                    <!-- Show discounted price if promo applies -->
+                    <span
+                      v-if="
+                        item.promo_info &&
+                        item.promo_info.is_active &&
+                        item.quantity >= item.promo_info.minimum_quantity
+                      "
+                      class="text-success ml-2"
+                    >
+                      (Discounted: ₱{{
+                        calculateDiscountedPrice(item).toFixed(2)
+                      }})
+                    </span>
+                  </p>
+                  <!-- Promo Description -->
+                  <p
+                    v-if="
+                      item.promo_info &&
+                      item.promo_info.is_active &&
+                      item.promo_info.description
+                    "
+                    class="text-xs text-warning mt-1"
+                  >
+                    {{ item.promo_info.description }}
                   </p>
                 </div>
 
@@ -1052,7 +1135,7 @@
                 :disabled="
                   posStore.currentOrder.items.length === 0 || isProcessingOrder
                 "
-                class="btn w-full btn-sm touch-manipulation border-none shadow-none"
+                class="btn w-full btn-md touch-manipulation border-none shadow-none"
                 :class="
                   posStore.currentOrder.items.length > 0
                     ? 'bg-primaryColor hover:bg-primaryColor/80 active:bg-primaryColor/90 text-white font-thin'
@@ -1315,7 +1398,6 @@
             <div
               class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3"
             >
-            
               <button
                 @click="closeOrderCompleteModal"
                 class="flex-1 btn btn-outline btn-sm sm:btn-md touch-manipulation font-thin hover:bg-gray-50"
@@ -1328,7 +1410,6 @@
               >
                 Print Receipt
               </button>
-
             </div>
           </div>
         </div>

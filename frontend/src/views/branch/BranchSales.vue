@@ -1359,8 +1359,10 @@
             }, 0);
         }
         if (metric === 'totalDisposed') {
-          // Number of voided orders in the bucket
-          return list.filter((o) => o.status === 'void').length;
+          // Number of voided orders that were completed first (actual disposals)
+          // Orders cancelled before completion should not be counted as disposed
+          return list.filter((o) => o.status === 'void' && o.completed_at)
+            .length;
         }
         return 0;
       });
@@ -1951,7 +1953,6 @@
                         class="w-3 h-3"
                       />
                     </button>
-      
                   </div>
                 </td>
 

@@ -10,9 +10,12 @@ const PHILIPPINE_TIMEZONE = "Asia/Manila";
  * @returns {Date} Current date/time in Philippine timezone
  */
 function getCurrentPhilippineTime() {
-  return new Date(
-    new Date().toLocaleString("en-US", { timeZone: PHILIPPINE_TIMEZONE })
-  );
+  const now = new Date();
+  // Get the timezone offset for Philippine timezone (UTC+8)
+  const philippineOffset = 8 * 60; // 8 hours in minutes
+  const utcTime = now.getTime() + now.getTimezoneOffset() * 60000;
+  const philippineTime = new Date(utcTime + philippineOffset * 60000);
+  return philippineTime;
 }
 
 /**

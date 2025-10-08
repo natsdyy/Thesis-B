@@ -29,6 +29,11 @@
   import { useAuthStore } from '../../stores/authStore.js';
   import { useUserStore } from '../../stores/userStore.js';
   import { apiConfig, formatImageUrl } from '../../config/api.js';
+  import {
+    getCurrentPhilippineTime,
+    formatForAPI,
+    parseFromAPI,
+  } from '../../utils/timezoneUtils.js';
 
   const productionStore = useProductionStore();
   const authStore = useAuthStore();
@@ -73,6 +78,15 @@
     // serving_size: 1, // Always 1 for customer portion
     serving_unit: 'serving',
     tags: '',
+    // Promo discount fields
+    has_promo_discount: false,
+    promo_minimum_quantity: null,
+    promo_discount_percentage: null,
+    promo_discount_amount: null,
+    promo_discount_type: 'percentage',
+    promo_description: '',
+    promo_start_date: '',
+    promo_end_date: '',
   });
 
   // Hybrid approach: Menu assignment strategy
@@ -282,6 +296,15 @@
       image_url: '', // Reset image URL
       isEditing: false, // Reset editing flags
       editingItemId: null,
+      // Promo discount fields
+      has_promo_discount: false,
+      promo_minimum_quantity: null,
+      promo_discount_percentage: null,
+      promo_discount_amount: null,
+      promo_discount_type: 'percentage',
+      promo_description: '',
+      promo_start_date: '',
+      promo_end_date: '',
     };
     menuAssignmentOption.value = 'auto'; // Reset to default
     availableMenus.value = []; // Clear available menus
@@ -386,6 +409,15 @@
       serving_unit: item.serving_unit || 'serving',
       tags: item.tags || '',
       image_url: imageUrl,
+      // Promo discount fields
+      has_promo_discount: item.has_promo_discount || false,
+      promo_minimum_quantity: item.promo_minimum_quantity || null,
+      promo_discount_percentage: item.promo_discount_percentage || null,
+      promo_discount_amount: item.promo_discount_amount || null,
+      promo_discount_type: item.promo_discount_type || 'percentage',
+      promo_description: item.promo_description || '',
+      promo_start_date: item.promo_start_date || '',
+      promo_end_date: item.promo_end_date || '',
     };
 
     // Initialize seasonal/standard tag selection from existing tags
@@ -1480,6 +1512,27 @@
                     >
                     <span class="xs:hidden">Check Needed</span>
                   </span>
+                  <!-- Promo Discount Badge -->
+                  <span
+                    v-if="item.promo_info"
+                    class="badge badge-xs sm:badge-sm"
+                    :class="
+                      item.promo_info.is_active
+                        ? 'bg-success/20 text-success border border-success/30'
+                        : 'bg-gray/20 text-gray-600 border border-gray/30'
+                    "
+                    :title="
+                      item.promo_info.is_active
+                        ? 'Active promotional discount available'
+                        : 'Promotional discount (inactive)'
+                    "
+                  >
+                    <Star class="w-3 h-3 mr-1" />
+                    <span class="hidden xs:inline">{{
+                      item.promo_info.is_active ? 'Promo Active' : 'Promo'
+                    }}</span>
+                    <span class="xs:hidden">Promo</span>
+                  </span>
                 </div>
 
                 <!-- Bottom Section - Responsive -->
@@ -2152,6 +2205,182 @@
             </p>
           </div>
 
+          <!-- Promo Discount Section -->
+          <div class="bg-white border border-black/10 p-4 rounded-xl">
+            <div class="flex items-center gap-2 mb-4">
+              <Star class="w-5 h-5 text-primaryColor" />
+              <h4 class="font-semibold text-primaryColor text-sm sm:text-base">
+                Promotional Discount
+              </h4>
+            </div>
+
+            <!-- Enable Promo Toggle -->
+            <div class="form-control mb-4">
+              <label class="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  v-model="menuItemForm.has_promo_discount"
+                  class="checkbox checkbox-sm checked:bg-primaryColor checked:text-white"
+                />
+                <span class="text-sm text-black/70">
+                  Enable promotional discount for this menu item
+                </span>
+              </label>
+            </div>
+
+            <!-- Promo Fields (shown when enabled) -->
+            <div v-if="menuItemForm.has_promo_discount" class="space-y-4">
+              <!-- Discount Type and Amount -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="form-control">
+                  <label class="label mb-1">
+                    <span class="label-text text-black/70 font-medium text-sm">
+                      Discount Type
+                    </span>
+                  </label>
+                  <select
+                    v-model="menuItemForm.promo_discount_type"
+                    class="select select-sm select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  >
+                    <option value="percentage">Percentage</option>
+                    <option value="fixed_amount">Fixed Amount</option>
+                  </select>
+                </div>
+
+                <div class="form-control">
+                  <label class="label mb-1">
+                    <span class="label-text text-black/70 font-medium text-sm">
+                      {{
+                        menuItemForm.promo_discount_type === 'percentage'
+                          ? 'Discount Percentage (%)'
+                          : 'Discount Amount (₱)'
+                      }}
+                    </span>
+                  </label>
+                  <input
+                    v-model.number="menuItemForm.promo_discount_percentage"
+                    v-if="menuItemForm.promo_discount_type === 'percentage'"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    class="input input-sm input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                    placeholder="e.g., 20"
+                  />
+                  <input
+                    v-model.number="menuItemForm.promo_discount_amount"
+                    v-else
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    class="input input-sm input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                    placeholder="e.g., 50.00"
+                  />
+                </div>
+              </div>
+
+              <!-- Minimum Quantity -->
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span class="label-text text-black/70 font-medium text-sm">
+                    Minimum Quantity for Discount
+                  </span>
+                </label>
+                <input
+                  v-model.number="menuItemForm.promo_minimum_quantity"
+                  type="number"
+                  min="1"
+                  class="input input-sm input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  placeholder="e.g., 2"
+                />
+                <p class="text-xs text-black/50 mt-1">
+                  Customer must order at least this many items to get the
+                  discount
+                </p>
+              </div>
+
+              <!-- Date Range -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="form-control">
+                  <label class="label mb-1">
+                    <span class="label-text text-black/70 font-medium text-sm">
+                      Start Date
+                    </span>
+                  </label>
+                  <input
+                    v-model="menuItemForm.promo_start_date"
+                    type="datetime-local"
+                    class="input input-sm input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  />
+                </div>
+
+                <div class="form-control">
+                  <label class="label mb-1">
+                    <span class="label-text text-black/70 font-medium text-sm">
+                      End Date
+                    </span>
+                  </label>
+                  <input
+                    v-model="menuItemForm.promo_end_date"
+                    type="datetime-local"
+                    class="input input-sm input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  />
+                </div>
+              </div>
+
+              <!-- Description -->
+              <div class="form-control">
+                <label class="label mb-1">
+                  <span class="label-text text-black/70 font-medium text-sm">
+                    Promo Description
+                  </span>
+                </label>
+                <textarea
+                  v-model="menuItemForm.promo_description"
+                  class="textarea textarea-sm textarea-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                  rows="2"
+                  placeholder="e.g., Buy 2 get 20% off! Limited time offer."
+                ></textarea>
+              </div>
+
+              <!-- Preview -->
+              <div
+                class="bg-primaryColor/5 border border-primaryColor/30 p-3 rounded-lg"
+              >
+                <h5 class="font-medium text-primaryColor mb-2">
+                  Discount Preview
+                </h5>
+                <div class="text-sm text-black/70">
+                  <p v-if="menuItemForm.promo_discount_type === 'percentage'">
+                    <strong
+                      >{{
+                        menuItemForm.promo_discount_percentage || 0
+                      }}%</strong
+                    >
+                    off when ordering
+                    <strong>{{
+                      menuItemForm.promo_minimum_quantity || 1
+                    }}</strong>
+                    or more items
+                  </p>
+                  <p v-else>
+                    <strong
+                      >₱{{ menuItemForm.promo_discount_amount || 0 }}</strong
+                    >
+                    off when ordering
+                    <strong>{{
+                      menuItemForm.promo_minimum_quantity || 1
+                    }}</strong>
+                    or more items
+                  </p>
+                  <p v-if="menuItemForm.promo_description" class="mt-1 text-xs">
+                    "{{ menuItemForm.promo_description }}"
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="flex justify-end gap-3 pt-4 border-t border-black/10">
             <button
               type="button"
@@ -2452,6 +2681,82 @@
             </div>
           </div>
 
+          <!-- Promo Discount Information -->
+          <div
+            v-if="
+              selectedMenuItem.promo_info &&
+              selectedMenuItem.promo_info.is_active
+            "
+          >
+            <h4 class="font-semibold text-primaryColor mb-3">
+              <Star class="w-4 h-4 inline mr-1" />
+              Active Promotion
+            </h4>
+            <div class="bg-success/10 border border-success/30 p-4 rounded-lg">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <div class="font-medium text-success mb-1">
+                    Discount Details
+                  </div>
+                  <p
+                    v-if="
+                      selectedMenuItem.promo_info.discount_type === 'percentage'
+                    "
+                  >
+                    <strong
+                      >{{
+                        selectedMenuItem.promo_info.discount_percentage
+                      }}%</strong
+                    >
+                    off
+                  </p>
+                  <p v-else>
+                    <strong
+                      >₱{{
+                        selectedMenuItem.promo_info.discount_amount
+                      }}</strong
+                    >
+                    off
+                  </p>
+                  <p class="text-xs text-success/70">
+                    Minimum quantity:
+                    {{ selectedMenuItem.promo_info.minimum_quantity }} items
+                  </p>
+                </div>
+                <div>
+                  <div class="font-medium text-success mb-1">Valid Period</div>
+                  <p class="text-xs text-success/70">
+                    <span v-if="selectedMenuItem.promo_info.start_date">
+                      From:
+                      {{
+                        parseFromAPI(
+                          selectedMenuItem.promo_info.start_date
+                        ).toLocaleDateString('en-PH', {
+                          timeZone: 'Asia/Manila',
+                        })
+                      }}
+                    </span>
+                    <span v-if="selectedMenuItem.promo_info.end_date">
+                      Until:
+                      {{
+                        parseFromAPI(
+                          selectedMenuItem.promo_info.end_date
+                        ).toLocaleDateString('en-PH', {
+                          timeZone: 'Asia/Manila',
+                        })
+                      }}
+                    </span>
+                  </p>
+                </div>
+              </div>
+              <div v-if="selectedMenuItem.promo_info.description" class="mt-3">
+                <div class="font-medium text-success mb-1">Description</div>
+                <p class="text-sm text-success/80">
+                  {{ selectedMenuItem.promo_info.description }}
+                </p>
+              </div>
+            </div>
+          </div>
 
           <!-- Quality Inspection History -->
           <div>

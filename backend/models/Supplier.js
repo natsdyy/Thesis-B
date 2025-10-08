@@ -465,15 +465,45 @@ class Supplier {
         };
       }
 
-      const supplier = await this.findByEmail(email);
+      // Fetch supplier without filtering out deleted/inactive to provide precise errors
+      const rawSupplier = await db("suppliers")
+        .where("email", email.toLowerCase().trim())
+        .first();
 
-      if (!supplier) {
+      if (!rawSupplier) {
         return {
           success: false,
           message: "Invalid email or password",
           code: "INVALID_CREDENTIALS",
         };
       }
+
+      // Specific account state checks
+      if (rawSupplier.deleted_at) {
+        return {
+          success: false,
+          message: "Supplier account has been deleted",
+          code: "ACCOUNT_DELETED",
+        };
+      }
+
+      if (rawSupplier.is_active === false) {
+        return {
+          success: false,
+          message: "Supplier account is currently inactive",
+          code: "ACCOUNT_INACTIVE",
+        };
+      }
+
+      if (rawSupplier.status !== "Active") {
+        return {
+          success: false,
+          message: "Supplier account is not active",
+          code: "ACCOUNT_NOT_ACTIVE",
+        };
+      }
+
+      const supplier = rawSupplier;
 
       // Check if supplier has a password set
       if (!supplier.password) {

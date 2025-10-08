@@ -683,7 +683,7 @@
         </div>
 
         <!-- Additional Delivery Info -->
-        <div class="mt-12 text-center ">
+        <div class="mt-12 text-center">
           <div
             class="bg-white/10 backdrop-blur-lg rounded-2xl p-6 w-full border border-white/30"
           >
@@ -699,7 +699,13 @@
               </div>
               <div>
                 <font-awesome-icon icon="fa-solid fa-coins" />
-                <p>Delivery Fee: <span><font-awesome-icon icon="fa-solid fa-peso-sign" /></span>50 - <span><font-awesome-icon icon="fa-solid fa-peso-sign" /></span>80</p>
+                <p>
+                  Delivery Fee:
+                  <span><font-awesome-icon icon="fa-solid fa-peso-sign" /></span
+                  >50 -
+                  <span><font-awesome-icon icon="fa-solid fa-peso-sign" /></span
+                  >80
+                </p>
               </div>
               <div>
                 <font-awesome-icon icon="fa-solid fa-location-dot" />
@@ -710,7 +716,6 @@
         </div>
       </div>
     </section>
-
 
     <!-- Our Stores Section -->
     <section id="stores" class="py-20 bg-white">
@@ -751,13 +756,15 @@
               <h3 class="text-xl font-bold text-green-800 mb-2">
                 {{ branch.name }}
               </h3>
-<div class="flex items-start text-sm text-gray-600 mb-3 leading-tight">
-  <font-awesome-icon
-    icon="fa-solid fa-location-dot"
-    class="mr-2 text-green-600 mt-1"
-  />
-  <span class="whitespace-normal">{{ branch.address }}</span>
-</div>
+              <div
+                class="flex items-start text-sm text-gray-600 mb-3 leading-tight"
+              >
+                <font-awesome-icon
+                  icon="fa-solid fa-location-dot"
+                  class="mr-2 text-green-600 mt-1"
+                />
+                <span class="whitespace-normal">{{ branch.address }}</span>
+              </div>
 
               <div
                 class="flex items-center text-sm text-gray-600 mb-4"
@@ -786,7 +793,6 @@
       </div>
     </section>
 
-
     <!-- Menu Teaser Section -->
     <section id="menu-teaser" class="py-20 bg-green-800">
       <div class="container mx-auto px-6">
@@ -813,36 +819,35 @@
         </div>
 
         <!-- Signature Dishes Grid -->
-<div
-  v-else-if="signatureDishes.length > 0"
-  class="grid md:grid-cols-2 lg:grid-cols-4 gap-6"
->
-  <div
-    v-for="item in signatureDishes"
-    :key="item.name"
-    class="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300"
-  >
-    <div class="h-48 overflow-hidden group">
-      <img
-        :src="item.image"
-        :alt="item.name"
-        class="w-full h-full object-cover transform transition-transform duration-500 ease-in-out group-hover:scale-110"
-      />
-    </div>
-    <div class="p-6">
-      <h3 class="text-xl font-bold text-green-800 mb-2">
-        {{ item.name }}
-      </h3>
-      <div class="flex justify-between items-center">
-        <span class="text-orange-500 font-bold text-lg">
-          <font-awesome-icon icon="fa-solid fa-peso-sign" />
-          {{ item.price.toFixed(2) }}
-        </span>
-      </div>
-    </div>
-  </div>
-</div>
-
+        <div
+          v-else-if="signatureDishes.length > 0"
+          class="grid md:grid-cols-2 lg:grid-cols-4 gap-6"
+        >
+          <div
+            v-for="item in signatureDishes"
+            :key="item.name"
+            class="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300"
+          >
+            <div class="h-48 overflow-hidden group">
+              <img
+                :src="item.image"
+                :alt="item.name"
+                class="w-full h-full object-cover transform transition-transform duration-500 ease-in-out group-hover:scale-110"
+              />
+            </div>
+            <div class="p-6">
+              <h3 class="text-xl font-bold text-green-800 mb-2">
+                {{ item.name }}
+              </h3>
+              <div class="flex justify-between items-center">
+                <span class="text-orange-500 font-bold text-lg">
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                  {{ item.price.toFixed(2) }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <!-- No Menu Items State -->
         <div v-else class="text-center py-12">
@@ -867,279 +872,364 @@
       </div>
     </section>
 
-<!-- Contact Section -->
-<section id="contact" class="py-20 bg-gray-50">
-  <div class="container mx-auto px-6 lg:px-8">
-    <!-- Section Header -->
-    <div class="text-center mb-16">
-      <div class="flex items-center justify-center">
-        <div class="w-10 sm:w-12 h-0.5 bg-green-600"></div>
-        <h2 class="text-3xl sm:text-4xl font-bold text-green-800 mx-3 sm:mx-4">
-          Get In Touch
-        </h2>
-        <div class="w-10 sm:w-12 h-0.5 bg-green-600"></div>
-      </div>
-      <p class="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto mt-4">
-        Have questions or want to make a reservation? We'd love to hear from you!
-      </p>
-    </div>
-
-    <!-- Grid Layout -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16">
-      <!-- Contact Info -->
-      <div>
-        <h3 class="text-2xl font-bold text-green-800 mb-6 text-center lg:text-left">
-          Contact Information
-        </h3>
-        <div class="space-y-5">
-          <!-- Phone -->
-          <div class="flex items-center justify-center lg:justify-start">
-            <div class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4 flex-shrink-0">
-              <font-awesome-icon icon="fa-solid fa-phone" class="text-white text-md" />
-            </div>
-            <div class="text-center lg:text-left">
-              <div class="font-semibold text-gray-800">Phone</div>
-              <div class="text-gray-600">+63 912 345 6789</div>
-            </div>
+    <!-- Contact Section -->
+    <section id="contact" class="py-20 bg-gray-50">
+      <div class="container mx-auto px-6 lg:px-8">
+        <!-- Section Header -->
+        <div class="text-center mb-16">
+          <div class="flex items-center justify-center">
+            <div class="w-10 sm:w-12 h-0.5 bg-green-600"></div>
+            <h2
+              class="text-3xl sm:text-4xl font-bold text-green-800 mx-3 sm:mx-4"
+            >
+              Get In Touch
+            </h2>
+            <div class="w-10 sm:w-12 h-0.5 bg-green-600"></div>
           </div>
-
-          <!-- Email -->
-          <div class="flex items-center justify-center lg:justify-start">
-            <div class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4 flex-shrink-0">
-              <font-awesome-icon icon="fa-solid fa-envelope" class="text-white text-md" />
-            </div>
-            <div class="text-center lg:text-left">
-              <div class="font-semibold text-gray-800">Email</div>
-              <div class="text-gray-600 break-all">
-                countryside_steakhouse@yahoo.com.ph
-              </div>
-            </div>
-          </div>
-
-          <!-- Address -->
-          <div class="flex items-center justify-center lg:justify-start">
-            <div class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4 flex-shrink-0">
-              <font-awesome-icon icon="fa-solid fa-location-dot" class="text-white text-md" />
-            </div>
-            <div class="text-center lg:text-left">
-              <div class="font-semibold text-gray-800">Main Office</div>
-              <div class="text-gray-600">Burol Main Street, Countryside City</div>
-            </div>
-          </div>
+          <p class="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto mt-4">
+            Have questions or want to make a reservation? We'd love to hear from
+            you!
+          </p>
         </div>
-      </div>
 
-      <!-- Feedback Form -->
-      <div class="bg-white rounded-2xl p-6 sm:p-8 shadow-xl">
-        <h3 class="text-2xl font-bold text-green-800 mb-6 text-center lg:text-left">
-          Send us a Message
-        </h3>
-
-        <form @submit.prevent="submitFeedback" class="space-y-4">
-          <!-- Name -->
-          <input
-            v-model="feedbackForm.name"
-            type="text"
-            placeholder="Your Name"
-            required
-            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
-          />
-
-          <!-- Email -->
-          <input
-            v-model="feedbackForm.email"
-            type="email"
-            placeholder="Your Email"
-            required
-            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
-          />
-
-          <!-- Phone -->
-          <input
-            v-model="feedbackForm.phone"
-            type="tel"
-            placeholder="Your Phone (Optional)"
-            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
-          />
-
-          <!-- Rating -->
+        <!-- Grid Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16">
+          <!-- Contact Info -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-3">Rating (Optional)</label>
-            <div class="flex flex-wrap items-center space-x-1 star-rating justify-center lg:justify-start">
-              <button
-                v-for="star in 5"
-                :key="star"
-                type="button"
-                @click="setRating(star)"
-                @mouseenter="hoveredRating = star"
-                @mouseleave="hoveredRating = 0"
-                :class="[
-                  'relative w-10 h-10 flex items-center justify-center transition-all duration-300 ease-out transform hover:scale-110 focus:outline-none',
-                  feedbackForm.rating >= star || hoveredRating >= star
-                    ? 'text-yellow-400'
-                    : 'text-gray-300',
-                ]"
-              >
-                <svg
-                  class="w-8 h-8 transition-all duration-300"
-                  :class="[
-                    feedbackForm.rating >= star || hoveredRating >= star
-                      ? 'scale-110 drop-shadow-lg'
-                      : 'scale-100',
-                  ]"
-                  fill="currentColor"
-                  viewBox="0 0 24 24"
+            <h3
+              class="text-2xl font-bold text-green-800 mb-6 text-center lg:text-left"
+            >
+              Contact Information
+            </h3>
+            <div class="space-y-5">
+              <!-- Phone -->
+              <div class="flex items-center justify-center lg:justify-start">
+                <div
+                  class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4 flex-shrink-0"
                 >
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                </svg>
-              </button>
-
-              <div class="ml-3 text-sm text-gray-600 mt-2 sm:mt-0">
-                <span v-if="feedbackForm.rating > 0" class="font-medium text-green-600">
-                  {{ feedbackForm.rating }}/5 stars
-                </span>
-                <span v-else class="text-gray-700">Click to rate</span>
+                  <font-awesome-icon
+                    icon="fa-solid fa-phone"
+                    class="text-white text-md"
+                  />
+                </div>
+                <div class="text-center lg:text-left">
+                  <div class="font-semibold text-gray-800">Phone</div>
+                  <div class="text-gray-600">+63 912 345 6789</div>
+                </div>
               </div>
-            </div>
 
-            <div v-if="feedbackForm.rating > 0" class="mt-2 text-xs text-gray-500 text-center lg:text-left">
-              <span v-if="feedbackForm.rating === 1">Poor</span>
-              <span v-else-if="feedbackForm.rating === 2">Fair</span>
-              <span v-else-if="feedbackForm.rating === 3">Good</span>
-              <span v-else-if="feedbackForm.rating === 4">Very Good</span>
-              <span v-else-if="feedbackForm.rating === 5">Excellent</span>
+              <!-- Email -->
+              <div class="flex items-center justify-center lg:justify-start">
+                <div
+                  class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4 flex-shrink-0"
+                >
+                  <font-awesome-icon
+                    icon="fa-solid fa-envelope"
+                    class="text-white text-md"
+                  />
+                </div>
+                <div class="text-center lg:text-left">
+                  <div class="font-semibold text-gray-800">Email</div>
+                  <div class="text-gray-600 break-all">
+                    countryside_steakhouse@yahoo.com.ph
+                  </div>
+                </div>
+              </div>
+
+              <!-- Address -->
+              <div class="flex items-center justify-center lg:justify-start">
+                <div
+                  class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4 flex-shrink-0"
+                >
+                  <font-awesome-icon
+                    icon="fa-solid fa-location-dot"
+                    class="text-white text-md"
+                  />
+                </div>
+                <div class="text-center lg:text-left">
+                  <div class="font-semibold text-gray-800">Main Office</div>
+                  <div class="text-gray-600">
+                    Burol Main Street, Countryside City
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
-          <!-- Message -->
-          <textarea
-            v-model="feedbackForm.message"
-            rows="4"
-            placeholder="Your Message"
-            required
-            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg resize-none placeholder:text-gray-600"
-          ></textarea>
+          <!-- Feedback Form -->
+          <div class="bg-white rounded-2xl p-6 sm:p-8 shadow-xl">
+            <h3
+              class="text-2xl font-bold text-green-800 mb-6 text-center lg:text-left"
+            >
+              Send us a Message
+            </h3>
 
-          <!-- Image Upload -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-3">
-              <font-awesome-icon icon="fa-solid fa-camera" class="text-green-600 mr-2" />
-              Share Your Food Experience
-            </label>
-
-            <div class="space-y-3">
-              <label
-                for="feedback-image"
-                class="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-400 hover:bg-green-50 transition-all duration-300"
-              >
-                <div class="text-center">
-                  <svg
-                    class="mx-auto h-8 w-8 text-gray-400 mb-2"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                    ></path>
-                  </svg>
-                  <span class="text-sm text-gray-700">
-                    <span class="font-medium text-green-600 hover:text-green-500">Click to upload</span>
-                    or drag and drop
-                  </span>
-                  <p class="text-xs text-gray-600 mt-1">PNG, JPG, GIF up to 5MB</p>
-                </div>
-              </label>
+            <form @submit.prevent="submitFeedback" class="space-y-4">
+              <!-- Name -->
               <input
-                @change="handleImageUpload"
-                type="file"
-                accept="image/*"
-                class="hidden"
-                ref="imageInput"
-                id="feedback-image"
+                v-model="feedbackForm.name"
+                type="text"
+                placeholder="Your Name"
+                required
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
               />
 
-              <div v-if="feedbackForm.image" class="relative bg-gray-50 rounded-lg p-4 shadow-sm">
-                <div class="flex items-center space-x-3">
-                  <img
-                    :src="feedbackForm.image.preview"
-                    alt="Preview"
-                    class="w-16 h-16 object-cover rounded-lg border border-gray-300"
-                  />
-                  <div class="flex-1">
-                    <p class="text-sm font-medium text-gray-900">{{ feedbackForm.image.name }}</p>
-                    <p class="text-xs text-gray-500">{{ formatFileSize(feedbackForm.image.size) }}</p>
-                  </div>
+              <!-- Email -->
+              <input
+                v-model="feedbackForm.email"
+                type="email"
+                placeholder="Your Email"
+                required
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
+              />
+
+              <!-- Phone -->
+              <input
+                v-model="feedbackForm.phone"
+                type="tel"
+                placeholder="Your Phone (Optional)"
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
+              />
+
+              <!-- Rating -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-3"
+                  >Rating (Optional)</label
+                >
+                <div
+                  class="flex flex-wrap items-center space-x-1 star-rating justify-center lg:justify-start"
+                >
                   <button
-                    @click="removeImage"
+                    v-for="star in 5"
+                    :key="star"
                     type="button"
-                    class="text-red-500 hover:text-red-700 transition-colors duration-200"
-                    title="Remove image"
+                    @click="setRating(star)"
+                    @mouseenter="hoveredRating = star"
+                    @mouseleave="hoveredRating = 0"
+                    :class="[
+                      'relative w-10 h-10 flex items-center justify-center transition-all duration-300 ease-out transform hover:scale-110 focus:outline-none',
+                      feedbackForm.rating >= star || hoveredRating >= star
+                        ? 'text-yellow-400'
+                        : 'text-gray-300',
+                    ]"
                   >
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      class="w-8 h-8 transition-all duration-300"
+                      :class="[
+                        feedbackForm.rating >= star || hoveredRating >= star
+                          ? 'scale-110 drop-shadow-lg'
+                          : 'scale-100',
+                      ]"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                      />
                     </svg>
                   </button>
+
+                  <div class="ml-3 text-sm text-gray-600 mt-2 sm:mt-0">
+                    <span
+                      v-if="feedbackForm.rating > 0"
+                      class="font-medium text-green-600"
+                    >
+                      {{ feedbackForm.rating }}/5 stars
+                    </span>
+                    <span v-else class="text-gray-700">Click to rate</span>
+                  </div>
+                </div>
+
+                <div
+                  v-if="feedbackForm.rating > 0"
+                  class="mt-2 text-xs text-gray-500 text-center lg:text-left"
+                >
+                  <span v-if="feedbackForm.rating === 1">Poor</span>
+                  <span v-else-if="feedbackForm.rating === 2">Fair</span>
+                  <span v-else-if="feedbackForm.rating === 3">Good</span>
+                  <span v-else-if="feedbackForm.rating === 4">Very Good</span>
+                  <span v-else-if="feedbackForm.rating === 5">Excellent</span>
                 </div>
               </div>
+
+              <!-- Message -->
+              <textarea
+                v-model="feedbackForm.message"
+                rows="4"
+                placeholder="Your Message"
+                required
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg resize-none placeholder:text-gray-600"
+              ></textarea>
+
+              <!-- Image Upload -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-3">
+                  <font-awesome-icon
+                    icon="fa-solid fa-camera"
+                    class="text-green-600 mr-2"
+                  />
+                  Share Your Food Experience
+                </label>
+
+                <div class="space-y-3">
+                  <label
+                    for="feedback-image"
+                    class="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-400 hover:bg-green-50 transition-all duration-300"
+                  >
+                    <div class="text-center">
+                      <svg
+                        class="mx-auto h-8 w-8 text-gray-400 mb-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                        ></path>
+                      </svg>
+                      <span class="text-sm text-gray-700">
+                        <span
+                          class="font-medium text-green-600 hover:text-green-500"
+                          >Click to upload</span
+                        >
+                        or drag and drop
+                      </span>
+                      <p class="text-xs text-gray-600 mt-1">
+                        PNG, JPG, GIF up to 5MB
+                      </p>
+                    </div>
+                  </label>
+                  <input
+                    @change="handleImageUpload"
+                    type="file"
+                    accept="image/*"
+                    class="hidden"
+                    ref="imageInput"
+                    id="feedback-image"
+                  />
+
+                  <div
+                    v-if="feedbackForm.image"
+                    class="relative bg-gray-50 rounded-lg p-4 shadow-sm"
+                  >
+                    <div class="flex items-center space-x-3">
+                      <img
+                        :src="feedbackForm.image.preview"
+                        alt="Preview"
+                        class="w-16 h-16 object-cover rounded-lg border border-gray-300"
+                      />
+                      <div class="flex-1">
+                        <p class="text-sm font-medium text-gray-900">
+                          {{ feedbackForm.image.name }}
+                        </p>
+                        <p class="text-xs text-gray-500">
+                          {{ formatFileSize(feedbackForm.image.size) }}
+                        </p>
+                      </div>
+                      <button
+                        @click="removeImage"
+                        type="button"
+                        class="text-red-500 hover:text-red-700 transition-colors duration-200"
+                        title="Remove image"
+                      >
+                        <svg
+                          class="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Submit Button -->
+              <button
+                type="submit"
+                :disabled="isSubmitting"
+                class="w-full bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-500 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transform hover:scale-[1.02] active:scale-[0.98] shadow-lg hover:shadow-xl cursor-pointer"
+              >
+                <span
+                  v-if="isSubmitting"
+                  class="loading loading-spinner loading-sm mr-2"
+                ></span>
+                <span v-if="isSubmitting" class="animate-pulse"
+                  >Sending...</span
+                >
+                <span v-else>Send Message</span>
+              </button>
+            </form>
+
+            <!-- Feedback Messages -->
+            <div
+              v-if="feedbackMessage.show"
+              :class="[
+                'mt-4 p-4 rounded-lg text-center',
+                feedbackMessage.type === 'success'
+                  ? 'bg-green-100 text-green-800 border border-green-200'
+                  : 'bg-red-100 text-red-800 border border-red-200',
+              ]"
+            >
+              {{ feedbackMessage.text }}
             </div>
           </div>
-
-          <!-- Submit Button -->
-          <button
-            type="submit"
-            :disabled="isSubmitting"
-            class="w-full bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-500 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transform hover:scale-[1.02] active:scale-[0.98] shadow-lg hover:shadow-xl cursor-pointer"
-          >
-            <span v-if="isSubmitting" class="loading loading-spinner loading-sm mr-2"></span>
-            <span v-if="isSubmitting" class="animate-pulse">Sending...</span>
-            <span v-else>Send Message</span>
-          </button>
-        </form>
-
-        <!-- Feedback Messages -->
-        <div
-          v-if="feedbackMessage.show"
-          :class="[
-            'mt-4 p-4 rounded-lg text-center',
-            feedbackMessage.type === 'success'
-              ? 'bg-green-100 text-green-800 border border-green-200'
-              : 'bg-red-100 text-red-800 border border-red-200',
-          ]"
-        >
-          {{ feedbackMessage.text }}
         </div>
       </div>
-    </div>
-  </div>
-</section>
+    </section>
 
+    <footer class="bg-orange-500 text-white p-8">
+      <div
+        class="container mx-auto flex flex-col sm:flex-row justify-between items-center sm:items-start space-y-8 sm:space-y-0 sm:space-x-8"
+      >
+        <!-- Logo + Description -->
+        <aside
+          class="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left space-x-0 sm:space-x-4 space-y-2 sm:space-y-0"
+        >
+          <img
+            src="/logo1.png"
+            alt="Countryside Steakhouse Logo"
+            class="w-14 h-14 object-contain"
+          />
+          <p>
+            <span class="font-bold text-lg block">Countryside Steakhouse</span>
+            Serving quality steaks since 1984
+            <font-awesome-icon icon="fa-solid fa-utensils" class="ml-1" />
+          </p>
+        </aside>
 
-<footer class="bg-orange-500 text-white p-8">
-  <div class="container mx-auto flex flex-col sm:flex-row justify-between items-center sm:items-start space-y-8 sm:space-y-0 sm:space-x-8">
-
-    <!-- Logo + Description -->
-    <aside class="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left space-x-0 sm:space-x-4 space-y-2 sm:space-y-0">
-      <img src="/logo1.png" alt="Countryside Steakhouse Logo" class="w-14 h-14 object-contain" />
-      <p>
-        <span class="font-bold text-lg block">Countryside Steakhouse</span>
-        Serving quality steaks since 1984
-        <font-awesome-icon icon="fa-solid fa-utensils" class="ml-1" />
-      </p>
-    </aside>
-
-    <!-- Follow Us Section -->
-    <nav class="flex flex-col items-center sm:items-start space-y-3">
-      <h6 class="footer-title text-sm text-white font-thin uppercase tracking-wide">Follow Us</h6>
-      <div class="flex space-x-6">
-        <!-- Twitter -->
-        <a href="https://www.facebook.com/PNCountryside" class="hover:text-green-200 transition-transform transform hover:scale-110">
-          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" class="fill-current">
-            <path
-              d="M24 4.557c-.883.392-1.832.656-2.828.775 
+        <!-- Follow Us Section -->
+        <nav class="flex flex-col items-center sm:items-start space-y-3">
+          <h6
+            class="footer-title text-sm text-white font-thin uppercase tracking-wide"
+          >
+            Follow Us
+          </h6>
+          <div class="flex space-x-6">
+            <!-- Twitter -->
+            <a
+              href="https://www.facebook.com/PNCountryside"
+              class="hover:text-green-200 transition-transform transform hover:scale-110"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                class="fill-current"
+              >
+                <path
+                  d="M24 4.557c-.883.392-1.832.656-2.828.775 
               1.017-.609 1.798-1.574 2.165-2.724
               -.951.564-2.005.974-3.127 1.195
               -.897-.957-2.178-1.555-3.594-1.555
@@ -1154,47 +1244,63 @@
               2.179 1.397 4.768 2.212 7.548 2.212
               9.142 0 14.307-7.721 13.995-14.646
               .962-.695 1.797-1.562 2.457-2.549z"
-            ></path>
-          </svg>
-        </a>
+                ></path>
+              </svg>
+            </a>
 
-        <!-- YouTube -->
-        <a href="https://www.facebook.com/PNCountryside" class="hover:text-green-200 transition-transform transform hover:scale-110">
-          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" class="fill-current">
-            <path
-              d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0
+            <!-- YouTube -->
+            <a
+              href="https://www.facebook.com/PNCountryside"
+              class="hover:text-green-200 transition-transform transform hover:scale-110"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                class="fill-current"
+              >
+                <path
+                  d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0
               -3.897.266-4.356 2.62-4.385 8.816
               .029 6.185.484 8.549 4.385 8.816
               3.6.245 11.626.246 15.23 0
               3.897-.266 4.356-2.62 4.385-8.816
               -.029-6.185-.484-8.549-4.385-8.816zm-10.615
               12.816v-8l8 3.993-8 4.007z"
-            ></path>
-          </svg>
-        </a>
+                ></path>
+              </svg>
+            </a>
 
-        <!-- Facebook -->
-        <a href="https://www.facebook.com/PNCountryside" class="hover:text-green-200 transition-transform transform hover:scale-110">
-          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" class="fill-current">
-            <path
-              d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667
+            <!-- Facebook -->
+            <a
+              href="https://www.facebook.com/PNCountryside"
+              class="hover:text-green-200 transition-transform transform hover:scale-110"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                class="fill-current"
+              >
+                <path
+                  d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667
               c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808
               c-3.596 0-5.192 1.583-5.192 4.615v3.385z"
-            ></path>
-          </svg>
-        </a>
+                ></path>
+              </svg>
+            </a>
+          </div>
+        </nav>
       </div>
-    </nav>
-  </div>
 
-  <!-- Divider -->
-  <div class="border-t border-white/20 mt-8 pt-4 text-center text-sm">
-    © {{ new Date().getFullYear() }} Countryside Steakhouse. All rights reserved.
-  </div>
-</footer>
-
-
-
+      <!-- Divider -->
+      <div class="border-t border-white/20 mt-8 pt-4 text-center text-sm">
+        © {{ new Date().getFullYear() }} Countryside Steakhouse. All rights
+        reserved.
+      </div>
+    </footer>
   </div>
 </template>
 
@@ -1230,9 +1336,25 @@
   // Resolve backend public file URLs that may be relative (e.g., /uploads/..)
   const resolvePublicUrl = (url) => {
     if (!url) return url;
-    if (url.startsWith('http')) return url;
-    // If we have API base, use it
+
+    // If we received a full URL but it's pointing to a local/LAN host,
+    // normalize it to the configured API base (production-safe).
+    if (url.startsWith('http')) {
+      try {
+        const parsed = new URL(url, window.location?.origin);
+        // If this is an uploads path, prefer the API base host in production
+        if (parsed.pathname.startsWith('/uploads/') && API_BASE_URL) {
+          return `${API_BASE_URL}${parsed.pathname}`;
+        }
+      } catch (e) {
+        // If URL parsing fails, just fall through
+      }
+      return url;
+    }
+
+    // If we have API base, use it for relative paths
     if (API_BASE_URL) return `${API_BASE_URL}${url}`;
+
     // Fallback for local dev when API base is not set
     const protocol = window.location?.protocol || 'http:';
     const host = window.location?.hostname || 'localhost';

@@ -2709,20 +2709,20 @@
                           </div>
                         </td>
                         <td>
-                          <div class="badge badge-xs">
+                          <div class="badge badge-sm">
                             {{ item.category }}
                           </div>
                         </td>
                         <td>
-                          <div class="font-medium">
+                          <div class="font-medium text-sm">
                             {{ item.quantity }} {{ item.unit }}
                           </div>
-                          <div class="text-sm text-gray-500">
+                          <div class="text-sm text-gray-500 text-xs">
                             Min: {{ item.minimum_stock }}
                           </div>
                         </td>
                         <td v-if="inventoryType === 'production'">
-                          <div class="font-medium" v-if="item.selling_price">
+                          <div class="font-medium text-sm" v-if="item.selling_price">
                             ₱{{
                               parseFloat(item.selling_price).toLocaleString()
                             }}

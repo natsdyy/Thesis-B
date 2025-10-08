@@ -4802,7 +4802,7 @@
                   <!-- Manual entry when no supplier selected -->
                   <input
                     v-else
-                    :disabled="isPreloaded"
+                    :readonly="isPreloaded"
                     type="text"
                     v-model="row.item_name"
                     placeholder="Enter item name..."

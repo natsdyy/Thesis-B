@@ -23,6 +23,7 @@
     EllipsisVertical,
     BadgeCheck,
     UserCheck,
+    Building2,
   } from 'lucide-vue-next';
 
   const branchStore = useBranchStore();
@@ -96,6 +97,7 @@
     country: '',
     is_active: true,
     description: '',
+    image_url: '',
     latitude: null,
     longitude: null,
     radius_meters: 2,
@@ -745,10 +747,33 @@
       country: '',
       is_active: true,
       description: '',
+      image_url: '',
       latitude: null,
       longitude: null,
       radius_meters: 2,
     };
+  };
+
+  // Handle image file selection and upload
+  const onImageFileSelected = async (event) => {
+    try {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      formLoading.value = true;
+      const url = await (
+        await import('../../services/branchService')
+      ).default.uploadImage(file);
+      const base = import.meta.env.VITE_API_URL || '';
+      branchForm.value.image_url = url.startsWith('http')
+        ? url
+        : `${base}${url}`;
+      showToast('success', 'Image uploaded');
+    } catch (error) {
+      console.error('Image upload failed:', error);
+      showToast('error', error.message || 'Image upload failed');
+    } finally {
+      formLoading.value = false;
+    }
   };
 
   const submitBranch = () => {
@@ -1056,16 +1081,25 @@
             <tbody>
               <tr v-for="branch in filteredBranches" :key="branch.id">
                 <td>
-                  <div>
-                    <div class="font-bold">{{ branch.name }}</div>
-                    <div class="text-sm text-base-content/70">
-                      Code: {{ branch.code }}
-                    </div>
-                    <div
-                      v-if="branch.description"
-                      class="text-xs text-base-content/50 mt-1"
-                    >
-                      {{ branch.description }}
+                  <div class="flex items-center gap-3">
+                    <img
+                      v-if="branch.image_url"
+                      :src="branch.image_url"
+                      alt="Branch"
+                      class="w-12 h-12 rounded object-cover border"
+                      @error="(e) => (e.target.style.display = 'none')"
+                    />
+                    <div>
+                      <div class="font-bold">{{ branch.name }}</div>
+                      <div class="text-sm text-base-content/70">
+                        Code: {{ branch.code }}
+                      </div>
+                      <div
+                        v-if="branch.description"
+                        class="text-xs text-base-content/50 mt-1"
+                      >
+                        {{ branch.description }}
+                      </div>
                     </div>
                   </div>
                 </td>
@@ -1237,10 +1271,10 @@
 
           <!-- Address Section -->
           <div
-            class="grid grid-cols-1 lg:grid-cols-1 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
+            class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
           >
             <!-- Address -->
-            <div class="form-control">
+            <div class="form-control col-span-2">
               <label class="label mb-1">
                 <span class="label-text"
                   >Address <span class="text-red-500">*</span></span
@@ -1262,6 +1296,35 @@
                   <font-awesome-icon icon="fa-solid fa-map" />
                   Map
                 </button>
+              </div>
+            </div>
+
+            <!-- Optional Image URL with preview or upload -->
+            <div class="form-control col-span-2">
+              <label class="label mb-1">
+                <span class="label-text">Branch Image (optional)</span>
+              </label>
+              <div class="flex gap-2">
+                <input
+                  v-model="branchForm.image_url"
+                  type="text"
+                  placeholder="https://example.com/image.jpg or /uploads/branch-images/file.png"
+                  class="input input-sm sm:input-md input-bordered w-full"
+                />
+                <input
+                  type="file"
+                  accept="image/*"
+                  class="file-input file-input-sm file-input-bordered"
+                  @change="onImageFileSelected"
+                />
+              </div>
+              <div v-if="branchForm.image_url" class="mt-2">
+                <img
+                  :src="branchForm.image_url"
+                  alt="Branch Image Preview"
+                  class="w-full h-32 object-cover rounded-lg border"
+                  @error="(e) => (e.target.style.display = 'none')"
+                />
               </div>
             </div>
           </div>

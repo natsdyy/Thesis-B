@@ -127,4 +127,28 @@ router.get("/summary", authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/cash-movements/disposal-losses - get disposal losses by branch
+router.get("/disposal-losses", authenticateToken, async (req, res) => {
+  try {
+    const { date_from, date_to } = req.query;
+
+    const result = await CashMovement.getDisposalLossesByBranch({
+      date_from: date_from || null,
+      date_to: date_to || null,
+    });
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error fetching disposal losses:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch disposal losses",
+      error: error.message,
+    });
+  }
+});
+
 module.exports = router;

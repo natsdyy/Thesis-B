@@ -3,6 +3,9 @@ const router = express.Router();
 const Branch = require("../models/Branch");
 const Employee = require("../models/Employee");
 // const { requirePermission } = require('../middleware/rbac');
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
 
 // Temporary bypass for authentication - replace with proper auth middleware later
 const requirePermission = (permissionName) => {
@@ -74,6 +77,78 @@ const requirePermission = (permissionName) => {
 // =============================================================================
 // PUBLIC ROUTES (NO AUTHENTICATION REQUIRED)
 // =============================================================================
+
+/**
+ * @swagger
+ * /api/branches/public:
+ *   get:
+ *     summary: Get all active branches for public display
+ *     tags: [Branches]
+ *     responses:
+ *       200:
+ *         description: List of active branches
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Branch'
+ */
+router.get("/public", async (req, res) => {
+  try {
+    const branches = await Branch.getActiveBranches();
+    res.json({
+      success: true,
+      data: branches,
+    });
+  } catch (error) {
+    console.error("Error fetching public branches:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch branches",
+    });
+  }
+});
+
+// =============================================================================
+// IMAGE UPLOAD (OPTIONAL)
+// =============================================================================
+// Ensure upload directory exists
+const branchImagesDir = path.join(__dirname, "../uploads/branch-images");
+if (!fs.existsSync(branchImagesDir)) {
+  fs.mkdirSync(branchImagesDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, branchImagesDir);
+  },
+  filename: (req, file, cb) => {
+    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, unique + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({ storage });
+
+/**
+ * POST /api/branches/upload-image
+ * Upload a branch image and get back a URL
+ */
+router.post("/upload-image", upload.single("image"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res
+        .status(400)
+        .json({ success: false, message: "No file uploaded" });
+    }
+    const filePath = `/uploads/branch-images/${req.file.filename}`;
+    res.json({ success: true, url: filePath });
+  } catch (error) {
+    console.error("Error uploading branch image:", error);
+    res.status(500).json({ success: false, message: "Upload failed" });
+  }
+});
 
 /**
  * @swagger

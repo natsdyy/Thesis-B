@@ -151,7 +151,7 @@
         include_non_branch: true, // Include HQ/SCM budget release movements
       };
 
-      await cashMovementStore.fetchMovements(filters);
+      await cashMovementStore.forceRefresh(filters);
       currentPage.value = 1;
     } catch (err) {
       console.error('Failed to load cash movements:', err);
@@ -196,6 +196,7 @@
       manual: 'Manual Entry',
       loan: 'Loan',
       expense: 'Expense',
+      disposal_loss: 'Inventory Disposal Loss',
     };
 
     return (

@@ -153,6 +153,38 @@ class CashMovement {
         getCurrentPhilippineTime(),
     });
   }
+
+  /**
+   * Get disposal losses by branch within a date range
+   * @param {Object} params
+   * @param {string|Date} [params.date_from]
+   * @param {string|Date} [params.date_to]
+   */
+  static async getDisposalLossesByBranch({
+    date_from = null,
+    date_to = null,
+  } = {}) {
+    let q = db("cash_movements as cm")
+      .leftJoin("branches as b", "cm.branch_id", "b.id")
+      .whereNull("cm.deleted_at")
+      .where("cm.source", "disposal_loss")
+      .where("cm.movement_type", "out");
+
+    if (date_from) q.where("cm.occurred_at", ">=", date_from);
+    if (date_to) q.where("cm.occurred_at", "<=", date_to);
+
+    const rows = await q
+      .select("cm.branch_id", "b.name as branch_name")
+      .sum({ total_disposal_loss: "cm.amount" })
+      .groupBy("cm.branch_id", "b.name")
+      .orderBy("b.name", "asc");
+
+    return rows.map((r) => ({
+      branch_id: r.branch_id,
+      branch_name: r.branch_name || "HQ/SCM",
+      disposal_loss: Number(r.total_disposal_loss || 0),
+    }));
+  }
 }
 
 module.exports = CashMovement;

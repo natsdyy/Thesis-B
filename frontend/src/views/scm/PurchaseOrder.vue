@@ -3398,14 +3398,19 @@
                       order.item_count
                     }}</span>
                   </div>
-                  <div class="flex items-center text-xs sm:text-sm">
-                    <span class="font-medium text-black/70 w-16 sm:w-20"
-                      >Total:</span
-                    >
-                    <span class="text-black font-semibold"
-                      >₱{{ order.total_amount.toLocaleString() }}</span
-                    >
-                  </div>
+ <div class="flex items-center text-xs sm:text-sm">
+  <span class="font-medium text-black/70 w-16 sm:w-20">Total:</span>
+  <span class="text-black font-semibold flex items-center gap-1">
+    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+    {{
+      Number(order.total_amount || 0).toLocaleString('en-PH', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      })
+    }}
+  </span>
+</div>
+
                   <div
                     v-if="order.supply_request_number"
                     class="flex items-center text-xs sm:text-sm"

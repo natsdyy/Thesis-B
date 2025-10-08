@@ -529,8 +529,21 @@
                     </td>
                     <td>{{ item.ordered_quantity || 0 }} /</td>
                     <td>{{ item.received_quantity || 0 }}</td>
-                    <td>₱{{ (item.unit_cost || 0).toLocaleString() }}</td>
-                    <td>₱{{ (item.total_value || 0).toLocaleString() }}</td>
+              <td class="">
+  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+  {{
+    Number(item.unit_cost || 0).toLocaleString('en-PH', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })
+  }}
+</td>
+                    <td>₱  {{
+    Number(item.total_value || 0).toLocaleString('en-PH', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })
+  }}</td>
                     <td>
                       <span
                         :class="getQualityStatusBadgeClass(item.quality_status)"

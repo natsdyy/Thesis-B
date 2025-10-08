@@ -32,12 +32,14 @@
   import { useSupplyRequestStore } from '../../stores/supplyRequestStore.js';
   import { useBudgetReleaseStore } from '../../stores/budgetReleaseStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
+  import { useFinanceBalanceStore } from '../../stores/financeBalanceStore.js';
   import cashRequestReceiptModal from '../../components/scm/cashRequestReceiptModal.vue';
 
   // Stores
   const supplyRequestStore = useSupplyRequestStore();
   const budgetReleaseStore = useBudgetReleaseStore();
   const authStore = useAuthStore();
+  const financeBalanceStore = useFinanceBalanceStore();
 
   // Local state
   const loading = ref(false);
@@ -467,6 +469,17 @@
         return;
       }
 
+      // Re-check balance sufficiency before proceeding
+      await financeBalanceStore.fetchTotals?.();
+      const currentBalance = Number(
+        financeBalanceStore.totals?.total_balance || 0
+      );
+      const requiredAmount = Number(request.total_amount || 0);
+      if (currentBalance < requiredAmount) {
+        showToast('error', 'Insufficient balance to release this budget');
+        return;
+      }
+
       // Use the store to release budget (pass an object!)
       await budgetReleaseStore.releaseBudget({
         supply_request_id: request.id, // numeric id
@@ -495,6 +508,20 @@
   const viewRequest = (request) => openModal('viewRequest', request);
   const releaseBudget = (request) => openModal('release', request);
 
+  // Balance indicators for the Release modal
+  const currentFinanceBalance = computed(() =>
+    Number(financeBalanceStore.totals?.total_balance || 0)
+  );
+  const toBeReleasedAmount = computed(() =>
+    Number(modal.value?.request?.total_amount || 0)
+  );
+  const remainingAfterRelease = computed(
+    () => currentFinanceBalance.value - toBeReleasedAmount.value
+  );
+  const hasSufficientBalance = computed(
+    () => currentFinanceBalance.value >= toBeReleasedAmount.value
+  );
+
   // Receipt modal function
   const showReceiptModal = async (release) => {
     try {
@@ -520,6 +547,7 @@
         supplyRequestStore.fetchRequests(),
         budgetReleaseStore.fetchReleases(),
         supplyRequestStore.fetchStats(),
+        financeBalanceStore.fetchTotals?.(),
       ]);
 
       // Update filter counts after data is loaded
@@ -951,7 +979,6 @@
                       :key="request.request_id"
                       class="hover:bg-success/5"
                     >
-  
                       <td>{{ request.requested_by }}</td>
                       <td>
                         <div
@@ -973,15 +1000,15 @@
                       <td class="text-wrap">
                         {{ request.request_description }}
                       </td>
-    <td class="font-semibold text-black/80">
-  <font-awesome-icon icon="fa-solid fa-peso-sign" />
-  {{
-    Number(request.total_amount).toLocaleString('en-PH', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })
-  }}
-</td>
+                      <td class="font-semibold text-black/80">
+                        <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                        {{
+                          Number(request.total_amount).toLocaleString('en-PH', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })
+                        }}
+                      </td>
                       <td>
                         <div class="flex flex-col">
                           <span>{{
@@ -1004,7 +1031,7 @@
                         </div>
                       </td>
                       <td>
-                        <div class="dropdown dropdown-left dropdown-end ">
+                        <div class="dropdown dropdown-left dropdown-end">
                           <label
                             tabindex="0"
                             class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
@@ -1660,6 +1687,64 @@
           >
         </div>
 
+        <!-- Balance indication -->
+        <div
+          class="mt-4 p-3 rounded border"
+          :class="
+            hasSufficientBalance
+              ? 'bg-success/5 border-success/30'
+              : 'bg-error/5 border-error/30'
+          "
+        >
+          <div class="flex flex-col gap-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-black/60">Current Balance</span>
+              <span class="font-semibold text-black/80">
+                <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                  currentFinanceBalance.toLocaleString('en-PH', {
+                    minimumFractionDigits: 2,
+                  })
+                }}
+              </span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-black/60">To be Released</span>
+              <span class="font-semibold text-black/80">
+                <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                  toBeReleasedAmount.toLocaleString('en-PH', {
+                    minimumFractionDigits: 2,
+                  })
+                }}
+              </span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-black/60">Remaining After Release</span>
+              <span
+                class="font-thin"
+                :class="
+                  remainingAfterRelease >= 0 ? 'text-success' : 'text-error'
+                "
+              >
+              <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                  Math.max(remainingAfterRelease, 0).toLocaleString('en-PH', {
+                    minimumFractionDigits: 2,
+                  })
+                }}
+              </span>
+            </div>
+            <div
+              v-if="!hasSufficientBalance"
+              class="alert alert-error shadow-none py-2 px-3 mt-2"
+            >
+              <AlertCircle class="w-4 h-4" />
+              <span class="text-xs"
+                >Insufficient balance. Please add funds or reduce the
+                amount.</span
+              >
+            </div>
+          </div>
+        </div>
+
         <!-- Optional remarks for budget release -->
         <div class="form-control mt-4">
           <label class="label">
@@ -1687,13 +1772,19 @@
             type="button"
             class="btn bg-primaryColor text-white hover:bg-primaryColor/80 font-thin btn-sm"
             @click="openConfirmModal('release', modal.request)"
-            :disabled="loading"
+            :disabled="loading || !hasSufficientBalance"
           >
             <span
               class="loading loading-spinner loading-xs"
               v-if="loading"
             ></span>
-            {{ loading ? 'Releasing...' : 'Release Budget' }}
+            {{
+              loading
+                ? 'Releasing...'
+                : hasSufficientBalance
+                  ? 'Release Budget'
+                  : 'Insufficient Balance'
+            }}
           </button>
         </div>
       </template>

@@ -59,6 +59,15 @@ export const useCashMovementStore = defineStore('cashMovement', () => {
     error.value = null;
 
     try {
+      // Clear previous data to ensure fresh load
+      movements.value = [];
+      pagination.value = {
+        total: 0,
+        limit: 20,
+        offset: 0,
+        pages: 0,
+      };
+
       const params = new URLSearchParams();
 
       Object.keys(filters).forEach((key) => {
@@ -81,8 +90,13 @@ export const useCashMovementStore = defineStore('cashMovement', () => {
       );
 
       if (response.data.success) {
-        movements.value = response.data.data;
-        pagination.value = response.data.pagination;
+        movements.value = response.data.data || [];
+        pagination.value = response.data.pagination || {
+          total: 0,
+          limit: 20,
+          offset: 0,
+          pages: 0,
+        };
       } else {
         throw new Error(
           response.data.message || 'Failed to fetch cash movements'
@@ -199,6 +213,12 @@ export const useCashMovementStore = defineStore('cashMovement', () => {
     };
   };
 
+  const forceRefresh = async (filters = {}) => {
+    // Clear cache and fetch fresh data
+    clearMovements();
+    await fetchMovements(filters);
+  };
+
   return {
     // State
     movements,
@@ -218,5 +238,6 @@ export const useCashMovementStore = defineStore('cashMovement', () => {
     fetchSummary,
     clearError,
     clearMovements,
+    forceRefresh,
   };
 });

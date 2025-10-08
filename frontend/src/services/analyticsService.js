@@ -1,18 +1,24 @@
-const API_BASE_URL = process.env.VUE_APP_API_URL || '';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 class AnalyticsService {
   // Get overview statistics
   async getOverview(filters = {}) {
     try {
       const params = new URLSearchParams();
-      
-      Object.keys(filters).forEach(key => {
-        if (filters[key] !== null && filters[key] !== undefined && filters[key] !== '') {
+
+      Object.keys(filters).forEach((key) => {
+        if (
+          filters[key] !== null &&
+          filters[key] !== undefined &&
+          filters[key] !== ''
+        ) {
           params.append(key, filters[key]);
         }
       });
 
-      const response = await fetch(`${API_BASE_URL}/api/analytics/overview?${params.toString()}`);
+      const response = await fetch(
+        `${API_BASE_URL}/api/analytics/overview?${params.toString()}`
+      );
       const data = await response.json();
 
       if (!response.ok) {
@@ -30,14 +36,20 @@ class AnalyticsService {
   async getTopFoods(filters = {}) {
     try {
       const params = new URLSearchParams();
-      
-      Object.keys(filters).forEach(key => {
-        if (filters[key] !== null && filters[key] !== undefined && filters[key] !== '') {
+
+      Object.keys(filters).forEach((key) => {
+        if (
+          filters[key] !== null &&
+          filters[key] !== undefined &&
+          filters[key] !== ''
+        ) {
           params.append(key, filters[key]);
         }
       });
 
-      const response = await fetch(`${API_BASE_URL}/api/analytics/top-foods?${params.toString()}`);
+      const response = await fetch(
+        `${API_BASE_URL}/api/analytics/top-foods?${params.toString()}`
+      );
       const data = await response.json();
 
       if (!response.ok) {
@@ -55,14 +67,20 @@ class AnalyticsService {
   async getBranchPerformance(filters = {}) {
     try {
       const params = new URLSearchParams();
-      
-      Object.keys(filters).forEach(key => {
-        if (filters[key] !== null && filters[key] !== undefined && filters[key] !== '') {
+
+      Object.keys(filters).forEach((key) => {
+        if (
+          filters[key] !== null &&
+          filters[key] !== undefined &&
+          filters[key] !== ''
+        ) {
           params.append(key, filters[key]);
         }
       });
 
-      const response = await fetch(`${API_BASE_URL}/api/analytics/branch-performance?${params.toString()}`);
+      const response = await fetch(
+        `${API_BASE_URL}/api/analytics/branch-performance?${params.toString()}`
+      );
       const data = await response.json();
 
       if (!response.ok) {
@@ -80,14 +98,20 @@ class AnalyticsService {
   async getTrends(filters = {}) {
     try {
       const params = new URLSearchParams();
-      
-      Object.keys(filters).forEach(key => {
-        if (filters[key] !== null && filters[key] !== undefined && filters[key] !== '') {
+
+      Object.keys(filters).forEach((key) => {
+        if (
+          filters[key] !== null &&
+          filters[key] !== undefined &&
+          filters[key] !== ''
+        ) {
           params.append(key, filters[key]);
         }
       });
 
-      const response = await fetch(`${API_BASE_URL}/api/analytics/trends?${params.toString()}`);
+      const response = await fetch(
+        `${API_BASE_URL}/api/analytics/trends?${params.toString()}`
+      );
       const data = await response.json();
 
       if (!response.ok) {
@@ -105,14 +129,20 @@ class AnalyticsService {
   async getRatingDistribution(filters = {}) {
     try {
       const params = new URLSearchParams();
-      
-      Object.keys(filters).forEach(key => {
-        if (filters[key] !== null && filters[key] !== undefined && filters[key] !== '') {
+
+      Object.keys(filters).forEach((key) => {
+        if (
+          filters[key] !== null &&
+          filters[key] !== undefined &&
+          filters[key] !== ''
+        ) {
           params.append(key, filters[key]);
         }
       });
 
-      const response = await fetch(`${API_BASE_URL}/api/analytics/rating-distribution?${params.toString()}`);
+      const response = await fetch(
+        `${API_BASE_URL}/api/analytics/rating-distribution?${params.toString()}`
+      );
       const data = await response.json();
 
       if (!response.ok) {
@@ -134,13 +164,13 @@ class AnalyticsService {
         topFoods,
         branchPerformance,
         trends,
-        ratingDistribution
+        ratingDistribution,
       ] = await Promise.all([
         this.getOverview(filters),
         this.getTopFoods(filters),
         this.getBranchPerformance(filters),
         this.getTrends(filters),
-        this.getRatingDistribution(filters)
+        this.getRatingDistribution(filters),
       ]);
 
       return {
@@ -150,8 +180,8 @@ class AnalyticsService {
           topFoods: topFoods.data,
           branchPerformance: branchPerformance.data,
           trends: trends.data,
-          ratingDistribution: ratingDistribution.data
-        }
+          ratingDistribution: ratingDistribution.data,
+        },
       };
     } catch (error) {
       console.error('Error fetching all analytics:', error);
@@ -165,7 +195,7 @@ class AnalyticsService {
       const [overview, topCustomers, recentActivity] = await Promise.all([
         this.getOverview(filters),
         this.getTopCustomers(filters),
-        this.getRecentActivity(filters)
+        this.getRecentActivity(filters),
       ]);
 
       return {
@@ -173,8 +203,8 @@ class AnalyticsService {
         data: {
           overview: overview.data,
           topCustomers: topCustomers.data,
-          recentActivity: recentActivity.data
-        }
+          recentActivity: recentActivity.data,
+        },
       };
     } catch (error) {
       console.error('Error fetching dashboard summary:', error);
@@ -187,14 +217,21 @@ class AnalyticsService {
     try {
       const params = new URLSearchParams();
       params.append('limit', filters.limit || 5);
-      
-      Object.keys(filters).forEach(key => {
-        if (key !== 'limit' && filters[key] !== null && filters[key] !== undefined && filters[key] !== '') {
+
+      Object.keys(filters).forEach((key) => {
+        if (
+          key !== 'limit' &&
+          filters[key] !== null &&
+          filters[key] !== undefined &&
+          filters[key] !== ''
+        ) {
           params.append(key, filters[key]);
         }
       });
 
-      const response = await fetch(`${API_BASE_URL}/api/customers/top?${params.toString()}`);
+      const response = await fetch(
+        `${API_BASE_URL}/api/customers/top?${params.toString()}`
+      );
       const data = await response.json();
 
       if (!response.ok) {
@@ -215,14 +252,21 @@ class AnalyticsService {
       params.append('limit', filters.limit || 5);
       params.append('sort_by', 'created_at');
       params.append('sort_order', 'desc');
-      
-      Object.keys(filters).forEach(key => {
-        if (!['limit', 'sort_by', 'sort_order'].includes(key) && filters[key] !== null && filters[key] !== undefined && filters[key] !== '') {
+
+      Object.keys(filters).forEach((key) => {
+        if (
+          !['limit', 'sort_by', 'sort_order'].includes(key) &&
+          filters[key] !== null &&
+          filters[key] !== undefined &&
+          filters[key] !== ''
+        ) {
           params.append(key, filters[key]);
         }
       });
 
-      const response = await fetch(`${API_BASE_URL}/api/customers?${params.toString()}`);
+      const response = await fetch(
+        `${API_BASE_URL}/api/customers?${params.toString()}`
+      );
       const data = await response.json();
 
       if (!response.ok) {
@@ -230,16 +274,16 @@ class AnalyticsService {
       }
 
       // Transform customer data to activity format
-      const activities = data.data.map(customer => ({
+      const activities = data.data.map((customer) => ({
         id: customer.id,
         description: `New customer ${customer.name} registered`,
         created_at: customer.created_at,
-        type: 'customer_registration'
+        type: 'customer_registration',
       }));
 
       return {
         success: true,
-        data: activities
+        data: activities,
       };
     } catch (error) {
       console.error('Error fetching recent activity:', error);
@@ -252,15 +296,21 @@ class AnalyticsService {
     try {
       const params = new URLSearchParams();
       params.append('format', format);
-      
-      Object.keys(filters).forEach(key => {
-        if (filters[key] !== null && filters[key] !== undefined && filters[key] !== '') {
+
+      Object.keys(filters).forEach((key) => {
+        if (
+          filters[key] !== null &&
+          filters[key] !== undefined &&
+          filters[key] !== ''
+        ) {
           params.append(key, filters[key]);
         }
       });
 
-      const response = await fetch(`${API_BASE_URL}/api/analytics/export?${params.toString()}`);
-      
+      const response = await fetch(
+        `${API_BASE_URL}/api/analytics/export?${params.toString()}`
+      );
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to export analytics');

@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const Inventory = require("../models/Inventory");
+const CashMovement = require("../models/CashMovement");
 const { db } = require("../config/database");
 const {
   getCurrentPhilippineTime,
@@ -724,6 +725,51 @@ router.post("/adjustment", async (req, res) => {
       inventory_item_id,
       transactionData
     );
+
+    // Create cash movement entry for disposal with cost
+    if (adjustment_type === "disposal" && disposal_cost > 0) {
+      try {
+        // Get inventory item details for better cash movement description
+        const inventoryItem = await db("inventory_items")
+          .leftJoin(
+            "inventory_item_types",
+            "inventory_items.item_type_id",
+            "inventory_item_types.id"
+          )
+          .select(
+            "inventory_items.item_name",
+            "inventory_items.batch_number",
+            "inventory_item_types.name as item_type_name"
+          )
+          .where("inventory_items.id", inventory_item_id)
+          .first();
+
+        const itemName =
+          inventoryItem?.item_name ||
+          inventoryItem?.item_type_name ||
+          "Unknown Item";
+        const batchInfo = inventoryItem?.batch_number
+          ? ` (Batch: ${inventoryItem.batch_number})`
+          : "";
+
+        await CashMovement.create({
+          branch_id: null, // HQ/SCM disposal
+          movement_type: "out",
+          amount: parseFloat(disposal_cost),
+          source: "disposal_loss",
+          reference_id: inventory_item_id,
+          reference_type: "inventory_disposal",
+          notes: `Disposal loss for ${itemName}${batchInfo} - ${reason}`,
+          occurred_at: getCurrentPhilippineTime(),
+        });
+      } catch (cashMovementError) {
+        console.error(
+          "Failed to create cash movement for disposal:",
+          cashMovementError
+        );
+        // Don't fail the main operation if cash movement creation fails
+      }
+    }
 
     res.json({
       success: true,

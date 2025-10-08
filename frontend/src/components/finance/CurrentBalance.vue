@@ -1,10 +1,12 @@
 <script setup>
   import { ref, onMounted, computed, watch } from 'vue';
+  import axios from 'axios';
   import { useFinanceBalanceStore } from '../../stores/financeBalanceStore.js';
   import { useBranchContextStore } from '../../stores/branchContextStore.js';
   import { usePOSStore } from '../../stores/posStore.js';
   import { useCashMovementStore } from '../../stores/cashMovementStore.js';
   import { useCustomToast } from '../../composables/useCustomToast.js';
+  import { apiConfig } from '../../config/api.js';
   import {
     getCurrentPhilippineTime,
     createPhilippineDate,
@@ -21,6 +23,7 @@
   const balances = computed(() => financeBalanceStore.totals);
   const branchBreakdown = ref([]);
   const totalExpenses = ref(0); // Total outflows from cash movements
+  const disposalLosses = ref([]); // Disposal losses by branch
   const currentPage = ref(1);
   const pageSize = ref(10);
   const totalPages = computed(() => {
@@ -44,11 +47,23 @@
   );
   const currentBranch = computed(() => branchContext.currentBranch);
 
-  // Total loss across branches (sum of voided_amount from remittances)
+  // Total loss across branches (sum of voided_amount from remittances + disposal losses)
   const totalLoss = computed(() => {
-    return (branchBreakdown.value || []).reduce((acc, row) => {
-      return acc + Number(row.loss || 0);
-    }, 0);
+    const remittanceLosses = (branchBreakdown.value || []).reduce(
+      (acc, row) => {
+        return acc + Number(row.loss || 0);
+      },
+      0
+    );
+
+    const disposalLossTotal = (disposalLosses.value || []).reduce(
+      (acc, row) => {
+        return acc + Number(row.disposal_loss || 0);
+      },
+      0
+    );
+
+    return remittanceLosses + disposalLossTotal;
   });
 
   const getDateRange = () => {
@@ -225,6 +240,29 @@
         totalExpenses.value = 0;
       }
 
+      // Fetch disposal losses by branch for the period
+      try {
+        const disposalResponse = await axios.get(
+          `${apiConfig.baseURL}/cash-movements/disposal-losses`,
+          {
+            params: {
+              date_from: start.toISOString(),
+              date_to: end.toISOString(),
+            },
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem('token')}`,
+            },
+          }
+        );
+
+        if (disposalResponse.data.success) {
+          disposalLosses.value = disposalResponse.data.data;
+        }
+      } catch (err) {
+        console.error('Failed to fetch disposal losses:', err);
+        disposalLosses.value = [];
+      }
+
       // Fetch branch breakdown from remittances
       const { data: remittances } = await posStore.fetchRemittances({
         dateFrom: start.toISOString(),
@@ -245,6 +283,7 @@
             profit: 0,
             sales_remittances: 0,
             loss: 0,
+            disposal_loss: 0,
           };
         });
       }
@@ -260,6 +299,7 @@
               profit: 0,
               sales_remittances: 0,
               loss: 0,
+              disposal_loss: 0,
             };
           }
           aggregatedBreakdown[branchId].profit += Number(
@@ -271,6 +311,26 @@
           // Capture voids as loss impact
           aggregatedBreakdown[branchId].loss += Number(
             remittance.voided_amount || 0
+          );
+        });
+      }
+
+      // Add disposal losses to branch breakdown
+      if (disposalLosses.value && disposalLosses.value.length > 0) {
+        disposalLosses.value.forEach((disposal) => {
+          const branchId = disposal.branch_id;
+          if (!aggregatedBreakdown[branchId]) {
+            aggregatedBreakdown[branchId] = {
+              branch_id: branchId,
+              branch_name: disposal.branch_name || `Branch ${branchId}`,
+              profit: 0,
+              sales_remittances: 0,
+              loss: 0,
+              disposal_loss: 0,
+            };
+          }
+          aggregatedBreakdown[branchId].disposal_loss += Number(
+            disposal.disposal_loss || 0
           );
         });
       }
@@ -358,7 +418,7 @@
         </div>
       </div>
     </div>
-        <div class="card bg-white shadow border border-black/10">
+    <div class="card bg-white shadow border border-black/10">
       <div class="card-body py-4">
         <div class="text-xs text-gray-500">Total Expenses</div>
         <div class="text-lg font-semibold text-warning">
@@ -421,11 +481,12 @@
               <th>Profit</th>
               <th>Sales Remittances</th>
               <th>Loss</th>
+              <th>Disposal Loss</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="!branchBreakdown.length">
-              <td colspan="4" class="text-center text-gray-500">No data</td>
+              <td colspan="5" class="text-center text-gray-500">No data</td>
             </tr>
             <tr v-for="row in pagedBreakdown" :key="row.branch_id">
               <td>{{ row.branch_name }}</td>
@@ -460,6 +521,18 @@
                 />
                 {{
                   Number(row.loss || 0).toLocaleString('en-PH', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })
+                }}
+              </td>
+              <td :class="{ 'text-error': row.disposal_loss > 0 }">
+                <font-awesome-icon
+                  icon="fa-solid fa-peso-sign"
+                  class="!w-3 !h-3"
+                />
+                {{
+                  Number(row.disposal_loss || 0).toLocaleString('en-PH', {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   })

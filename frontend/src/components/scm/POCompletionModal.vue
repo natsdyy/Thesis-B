@@ -81,6 +81,7 @@
                   step="0.01"
                   class="input input-sm input-bordered w-24 text-center"
                   @input="updateItemTotals(index)"
+                  readonly
                 />
               </td>
               <td class="py-4 px-4 text-center">

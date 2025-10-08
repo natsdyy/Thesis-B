@@ -140,6 +140,17 @@
                   </a>
                 </li>
                 <li>
+                  <a @click="openPromoModal(product)">
+                    <font-awesome-icon
+                      icon="fa-solid fa-percentage"
+                      class="w-4 h-4"
+                    />
+                    {{
+                      product.has_promo_discount ? 'Edit Promo' : 'Add Promo'
+                    }}
+                  </a>
+                </li>
+                <li>
                   <a @click="confirmDelete(product)" class="text-error"
                     ><Trash2 class="w-4 h-4" />Delete</a
                   >
@@ -191,8 +202,8 @@
             </div>
           </div>
 
-          <!-- Availability Status -->
-          <div class="flex items-center gap-2">
+          <!-- Availability Status & Promo Badge -->
+          <div class="flex items-center gap-2 flex-wrap">
             <div
               class="badge badge-sm"
               :class="
@@ -202,6 +213,21 @@
               "
             >
               {{ product.is_available ? 'Available' : 'Unavailable' }}
+            </div>
+            <!-- Promo Discount Badge -->
+            <div
+              v-if="product.promo_info && product.promo_info.is_active"
+              class="badge badge-sm bg-orange-500/20 text-orange-600"
+            >
+              <font-awesome-icon
+                icon="fa-solid fa-percentage"
+                class="!w-3 !h-3 mr-1"
+              />
+              {{
+                product.promo_info.discount_type === 'percentage'
+                  ? `${product.promo_info.discount_percentage}% OFF`
+                  : `₱${product.promo_info.discount_amount} OFF`
+              }}
             </div>
           </div>
         </div>
@@ -495,6 +521,213 @@
         <button @click="closeDeleteModal">close</button>
       </form>
     </dialog>
+
+    <!-- Promo Discount Modal -->
+    <dialog id="promo_modal" class="modal" :open="showPromoModal">
+      <div class="modal-box max-w-2xl w-11/12">
+        <h3 class="font-bold text-lg text-primaryColor mb-4">
+          {{
+            promoFormData.has_promo_discount
+              ? 'Edit Promo Discount'
+              : 'Add Promo Discount'
+          }}
+        </h3>
+
+        <form @submit.prevent="savePromoDiscount" class="space-y-4">
+          <!-- Enable Promo Toggle -->
+          <div
+            class="grid gap-2 md:gap-4 md:grid-cols-[140px_1fr] items-start md:items-center"
+          >
+            <label class="text-sm font-medium text-gray-700"
+              >Enable Promo</label
+            >
+            <input
+              v-model="promoFormData.has_promo_discount"
+              type="checkbox"
+              class="toggle checked:text-gray-50"
+            />
+          </div>
+
+          <!-- Promo Fields (shown when promo is enabled) -->
+          <div
+            v-if="promoFormData.has_promo_discount"
+            class="space-y-4 border-t pt-4"
+          >
+            <!-- Discount Type -->
+            <div
+              class="grid gap-2 md:gap-4 md:grid-cols-[140px_1fr] items-start md:items-center"
+            >
+              <label class="text-sm font-medium text-gray-700"
+                >Discount Type</label
+              >
+              <select
+                v-model="promoFormData.promo_discount_type"
+                class="select select-bordered w-full"
+                required
+              >
+                <option value="percentage">Percentage (%)</option>
+                <option value="fixed_amount">Fixed Amount (₱)</option>
+              </select>
+            </div>
+
+            <!-- Discount Value -->
+            <div
+              class="grid gap-2 md:gap-4 md:grid-cols-[140px_1fr] items-start md:items-center"
+            >
+              <label class="text-sm font-medium text-gray-700">
+                {{
+                  promoFormData.promo_discount_type === 'percentage'
+                    ? 'Discount %'
+                    : 'Discount Amount (₱)'
+                }}
+              </label>
+              <input
+                v-model.number="
+                  promoFormData[
+                    promoFormData.promo_discount_type === 'percentage'
+                      ? 'promo_discount_percentage'
+                      : 'promo_discount_amount'
+                  ]
+                "
+                type="number"
+                :min="0"
+                :max="
+                  promoFormData.promo_discount_type === 'percentage'
+                    ? 100
+                    : null
+                "
+                :step="
+                  promoFormData.promo_discount_type === 'percentage' ? 1 : 0.01
+                "
+                :placeholder="
+                  promoFormData.promo_discount_type === 'percentage'
+                    ? 'e.g., 10'
+                    : 'e.g., 50.00'
+                "
+                class="input input-bordered w-full"
+                required
+              />
+            </div>
+
+            <!-- Minimum Quantity -->
+            <div
+              class="grid gap-2 md:gap-4 md:grid-cols-[140px_1fr] items-start md:items-center"
+            >
+              <label class="text-sm font-medium text-gray-700"
+                >Min. Quantity</label
+              >
+              <input
+                v-model.number="promoFormData.promo_minimum_quantity"
+                type="number"
+                min="1"
+                placeholder="e.g., 5"
+                class="input input-bordered w-full"
+                required
+              />
+            </div>
+
+            <!-- Promo Description -->
+            <div
+              class="grid gap-2 md:gap-4 md:grid-cols-[140px_1fr] items-start"
+            >
+              <label class="text-sm font-medium text-gray-700 pt-3"
+                >Description</label
+              >
+              <textarea
+                v-model="promoFormData.promo_description"
+                placeholder="e.g., Buy 5 or more and get 10% discount"
+                class="textarea textarea-bordered w-full"
+                rows="2"
+              ></textarea>
+            </div>
+
+            <!-- Date Range -->
+            <div
+              class="grid gap-2 md:gap-4 md:grid-cols-[140px_1fr] items-start md:items-center"
+            >
+              <label class="text-sm font-medium text-gray-700"
+                >Start Date</label
+              >
+              <input
+                v-model="promoFormData.promo_start_date"
+                type="datetime-local"
+                class="input input-bordered w-full"
+              />
+            </div>
+
+            <div
+              class="grid gap-2 md:gap-4 md:grid-cols-[140px_1fr] items-start md:items-center"
+            >
+              <label class="text-sm font-medium text-gray-700">End Date</label>
+              <input
+                v-model="promoFormData.promo_end_date"
+                type="datetime-local"
+                class="input input-bordered w-full"
+              />
+            </div>
+
+            <!-- Preview -->
+            <div class="bg-orange-50 border border-orange-200 rounded-lg p-4">
+              <h4 class="font-semibold text-orange-800 mb-2">Promo Preview:</h4>
+              <p class="text-sm text-orange-700 mb-2">
+                <span v-if="promoFormData.promo_discount_type === 'percentage'">
+                  {{ promoFormData.promo_discount_percentage || 0 }}% OFF
+                </span>
+                <span v-else>
+                  ₱{{ promoFormData.promo_discount_amount || 0 }} OFF
+                </span>
+                when buying {{ promoFormData.promo_minimum_quantity || 1 }} or
+                more
+              </p>
+              <div
+                v-if="
+                  promoFormData.promo_start_date || promoFormData.promo_end_date
+                "
+                class="text-xs text-orange-600"
+              >
+                <div v-if="promoFormData.promo_start_date">
+                  <strong>Starts:</strong>
+                  {{ formatForDisplay(promoFormData.promo_start_date) }}
+                  {{ formatTimeForDisplay(promoFormData.promo_start_date) }}
+                </div>
+                <div v-if="promoFormData.promo_end_date">
+                  <strong>Ends:</strong>
+                  {{ formatForDisplay(promoFormData.promo_end_date) }}
+                  {{ formatTimeForDisplay(promoFormData.promo_end_date) }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Modal Actions -->
+          <div class="modal-action">
+            <button
+              type="button"
+              @click="closePromoModal"
+              class="btn btn-ghost btn-sm"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              class="btn bg-orange-500 text-white hover:bg-orange-600 border-none btn-sm font-thin"
+              :disabled="savingPromo"
+            >
+              <span
+                v-if="savingPromo"
+                class="loading loading-spinner loading-sm"
+              ></span>
+              {{
+                promoFormData.has_promo_discount ? 'Update Promo' : 'Add Promo'
+              }}
+            </button>
+          </div>
+        </form>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="closePromoModal">close</button>
+      </form>
+    </dialog>
   </div>
 </template>
 
@@ -503,6 +736,12 @@
   import { useCustomToast } from '../../composables/useCustomToast';
   import { useSupplierAuthStore } from '../../stores/supplierAuthStore';
   import { useSupplierProductsStore } from '../../stores/supplierProductsStore';
+  import {
+    formatForAPI,
+    parseFromAPI,
+    formatForDisplay,
+    formatTimeForDisplay,
+  } from '../../utils/timezoneUtils';
   import {
     Plus,
     Search,
@@ -521,13 +760,16 @@
   // State
   const saving = ref(false);
   const deleting = ref(false);
+  const savingPromo = ref(false);
   const searchQuery = ref('');
   const selectedCategory = ref('');
   const availabilityFilter = ref('all');
   const showModal = ref(false);
   const showDeleteModal = ref(false);
+  const showPromoModal = ref(false);
   const editMode = ref(false);
   const productToDelete = ref(null);
+  const productForPromo = ref(null);
 
   // Pagination state
   const currentPage = ref(1);
@@ -545,9 +787,47 @@
     image_url: '',
   });
 
+  const promoFormData = ref({
+    has_promo_discount: false,
+    promo_minimum_quantity: 1,
+    promo_discount_percentage: 0,
+    promo_discount_amount: 0,
+    promo_discount_type: 'percentage',
+    promo_description: '',
+    promo_start_date: '',
+    promo_end_date: '',
+  });
+
   // Computed
+  const categories = computed(() => {
+    const categorySet = new Set();
+    (productsStore.products || []).forEach((product) => {
+      if (product.category && product.category.trim()) {
+        categorySet.add(product.category);
+      }
+    });
+    return Array.from(categorySet).sort();
+  });
+
   const filteredProducts = computed(() => {
     let filtered = [...(productsStore.products || [])];
+
+    // Filter by search query
+    if (searchQuery.value) {
+      const query = searchQuery.value.toLowerCase();
+      filtered = filtered.filter(
+        (p) =>
+          p.product_name.toLowerCase().includes(query) ||
+          p.description?.toLowerCase().includes(query) ||
+          p.category?.toLowerCase().includes(query) ||
+          p.sku?.toLowerCase().includes(query)
+      );
+    }
+
+    // Filter by category
+    if (selectedCategory.value) {
+      filtered = filtered.filter((p) => p.category === selectedCategory.value);
+    }
 
     // Filter by availability
     if (availabilityFilter.value === 'available') {
@@ -668,14 +948,7 @@
 
   const loadProducts = async () => {
     try {
-      const filters = {};
-      if (searchQuery.value) {
-        filters.search = searchQuery.value;
-      }
-      if (selectedCategory.value) {
-        filters.category = selectedCategory.value;
-      }
-      await productsStore.fetchProducts(filters);
+      await productsStore.fetchProducts();
       // Reset pagination when loading new products
       resetPagination();
     } catch (error) {
@@ -692,11 +965,11 @@
   };
 
   const handleSearch = () => {
-    loadProducts();
+    resetPagination();
   };
 
   const filterByCategory = () => {
-    loadProducts();
+    resetPagination();
   };
 
   const openCreateModal = () => {
@@ -824,8 +1097,92 @@
     currentPage.value = 1;
   };
 
+  // Helper function to format date for datetime-local input
+  const formatDateForInput = (dateString) => {
+    if (!dateString) return '';
+    const date = parseFromAPI(dateString);
+    return date.toISOString().substring(0, 16);
+  };
+
+  // Promo discount methods
+  const openPromoModal = (product) => {
+    productForPromo.value = product;
+    promoFormData.value = {
+      has_promo_discount: product.has_promo_discount || false,
+      promo_minimum_quantity: product.promo_minimum_quantity || 1,
+      promo_discount_percentage: product.promo_discount_percentage || 0,
+      promo_discount_amount: product.promo_discount_amount || 0,
+      promo_discount_type: product.promo_discount_type || 'percentage',
+      promo_description: product.promo_description || '',
+      promo_start_date: formatDateForInput(product.promo_start_date),
+      promo_end_date: formatDateForInput(product.promo_end_date),
+    };
+    showPromoModal.value = true;
+  };
+
+  const closePromoModal = () => {
+    showPromoModal.value = false;
+    productForPromo.value = null;
+    promoFormData.value = {
+      has_promo_discount: false,
+      promo_minimum_quantity: 1,
+      promo_discount_percentage: 0,
+      promo_discount_amount: 0,
+      promo_discount_type: 'percentage',
+      promo_description: '',
+      promo_start_date: '',
+      promo_end_date: '',
+    };
+  };
+
+  const savePromoDiscount = async () => {
+    if (!productForPromo.value) return;
+
+    savingPromo.value = true;
+    try {
+      const promoData = {
+        supplier_id: supplierAuthStore.supplier.id,
+        ...promoFormData.value,
+      };
+
+      // Convert datetime-local to ISO string using timezone utilities
+      if (promoData.promo_start_date) {
+        promoData.promo_start_date = formatForAPI(
+          new Date(promoData.promo_start_date)
+        );
+      }
+      if (promoData.promo_end_date) {
+        promoData.promo_end_date = formatForAPI(
+          new Date(promoData.promo_end_date)
+        );
+      }
+
+      await productsStore.togglePromoDiscount(
+        productForPromo.value.id,
+        promoData
+      );
+      closePromoModal();
+      showSuccess('Promo discount updated successfully');
+    } catch (error) {
+      console.error('Failed to save promo discount:', error);
+      showError(
+        error.response?.data?.message || 'Failed to save promo discount'
+      );
+    } finally {
+      savingPromo.value = false;
+    }
+  };
+
   // Watchers
   watch(availabilityFilter, () => {
+    resetPagination();
+  });
+
+  watch(searchQuery, () => {
+    resetPagination();
+  });
+
+  watch(selectedCategory, () => {
     resetPagination();
   });
 

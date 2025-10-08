@@ -82,7 +82,7 @@ class SendGridService {
                 <p style="color: #466114; margin: 6px 0 0 0; font-size: 14px; font-weight: 500;">Supplier Portal</p>
               </div>
               <div style="margin-bottom: 24px;">
-                <h2 style="color: #2c3e50; margin: 0 0 12px 0; font-size: 20px; font-weight: bold;">Your Supplier Account Has Been Created</h2>
+                <h2 style="color: #2c3e50; margin: 0 0 12px 0; font-size: 20px; font-weight: bold;">Your Supplier Account Has Been Created!</h2>
                 <p style="color: #555; font-size: 15px; line-height: 1.6; margin: 0 0 16px 0;">Hi ${supplierName},</p>
                 <p style="color: #555; font-size: 15px; line-height: 1.6; margin: 0 0 16px 0;">Welcome to the Countryside Supplier Portal. Use the credentials below to sign in and manage your purchase orders and products.</p>
                 <div style="background-color: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; padding: 16px; margin: 16px 0; text-align: center;">

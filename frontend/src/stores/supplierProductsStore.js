@@ -302,6 +302,42 @@ export const useSupplierProductsStore = defineStore('supplierProducts', () => {
     error.value = null;
   };
 
+  const togglePromoDiscount = async (productId, promoData) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const token = getToken();
+      const supplier = getSupplier();
+
+      const response = await axios.patch(
+        `${apiConfig.baseURL}/supplier-products/${productId}/toggle-promo`,
+        { supplier_id: supplier.id, ...promoData },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (response.data.success) {
+        // Update product in the list
+        const index = products.value.findIndex((p) => p.id === productId);
+        if (index !== -1) {
+          products.value[index] = response.data.data;
+        }
+
+        return response.data.data;
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to update promo discount';
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const resetStore = () => {
     products.value = [];
     itemTypes.value = [];
@@ -333,6 +369,7 @@ export const useSupplierProductsStore = defineStore('supplierProducts', () => {
     toggleAvailability,
     searchProducts,
     filterByItemType,
+    togglePromoDiscount,
     clearError,
     resetStore,
   };

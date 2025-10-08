@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const SupplierProduct = require("../models/SupplierProduct");
+const { formatForDatabaseWithTimezone } = require("../utils/timezoneUtils");
 
 /**
  * @swagger
@@ -224,6 +225,15 @@ router.post("/", async (req, res) => {
       is_available,
       sku,
       image_url,
+      // Promo discount fields
+      has_promo_discount,
+      promo_minimum_quantity,
+      promo_discount_percentage,
+      promo_discount_amount,
+      promo_discount_type,
+      promo_description,
+      promo_start_date,
+      promo_end_date,
     } = req.body;
 
     // Validation
@@ -252,6 +262,19 @@ router.post("/", async (req, res) => {
       is_available: is_available !== undefined ? is_available : true,
       sku: sku || null,
       image_url: image_url || null,
+      // Promo discount fields
+      has_promo_discount: has_promo_discount || false,
+      promo_minimum_quantity: promo_minimum_quantity || null,
+      promo_discount_percentage: promo_discount_percentage || null,
+      promo_discount_amount: promo_discount_amount || null,
+      promo_discount_type: promo_discount_type || "percentage",
+      promo_description: promo_description || null,
+      promo_start_date: promo_start_date
+        ? formatForDatabaseWithTimezone(new Date(promo_start_date))
+        : null,
+      promo_end_date: promo_end_date
+        ? formatForDatabaseWithTimezone(new Date(promo_end_date))
+        : null,
     };
 
     const product = await SupplierProduct.create(productData);
@@ -292,6 +315,15 @@ router.put("/:id", async (req, res) => {
       is_available,
       sku,
       image_url,
+      // Promo discount fields
+      has_promo_discount,
+      promo_minimum_quantity,
+      promo_discount_percentage,
+      promo_discount_amount,
+      promo_discount_type,
+      promo_description,
+      promo_start_date,
+      promo_end_date,
     } = req.body;
 
     if (!supplier_id) {
@@ -319,6 +351,27 @@ router.put("/:id", async (req, res) => {
     if (is_available !== undefined) updateData.is_available = is_available;
     if (sku !== undefined) updateData.sku = sku;
     if (image_url !== undefined) updateData.image_url = image_url;
+    // Promo discount fields
+    if (has_promo_discount !== undefined)
+      updateData.has_promo_discount = has_promo_discount;
+    if (promo_minimum_quantity !== undefined)
+      updateData.promo_minimum_quantity = promo_minimum_quantity;
+    if (promo_discount_percentage !== undefined)
+      updateData.promo_discount_percentage = promo_discount_percentage;
+    if (promo_discount_amount !== undefined)
+      updateData.promo_discount_amount = promo_discount_amount;
+    if (promo_discount_type !== undefined)
+      updateData.promo_discount_type = promo_discount_type;
+    if (promo_description !== undefined)
+      updateData.promo_description = promo_description;
+    if (promo_start_date !== undefined)
+      updateData.promo_start_date = promo_start_date
+        ? formatForDatabaseWithTimezone(new Date(promo_start_date))
+        : null;
+    if (promo_end_date !== undefined)
+      updateData.promo_end_date = promo_end_date
+        ? formatForDatabaseWithTimezone(new Date(promo_end_date))
+        : null;
 
     const product = await SupplierProduct.update(id, supplier_id, updateData);
 
@@ -425,6 +478,140 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to delete product",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/supplier-products/{id}/toggle-promo:
+ *   patch:
+ *     summary: Toggle or update promo discount for a product
+ *     tags: [Supplier Products]
+ */
+router.patch("/:id/toggle-promo", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { supplier_id, ...promoData } = req.body;
+
+    if (!supplier_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Supplier ID is required",
+      });
+    }
+
+    const product = await SupplierProduct.togglePromoDiscount(
+      id,
+      supplier_id,
+      promoData
+    );
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found or you don't have permission to update it",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Product promo discount ${product.has_promo_discount ? "enabled" : "disabled"} successfully`,
+      data: product,
+    });
+  } catch (error) {
+    console.error("Toggle promo discount error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to toggle promo discount",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/supplier-products/promotions:
+ *   get:
+ *     summary: Get products with active promotions for a supplier
+ *     tags: [Supplier Products]
+ */
+router.get("/promotions", async (req, res) => {
+  try {
+    const { supplier_id } = req.query;
+
+    if (!supplier_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Supplier ID is required",
+      });
+    }
+
+    const products =
+      await SupplierProduct.getProductsWithActivePromotions(supplier_id);
+
+    res.json({
+      success: true,
+      message: "Products with active promotions retrieved successfully",
+      data: products,
+    });
+  } catch (error) {
+    console.error("Get promotions error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve promotions",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/supplier-products/{id}/calculate-price:
+ *   post:
+ *     summary: Calculate discounted price for a product based on quantity
+ *     tags: [Supplier Products]
+ */
+router.post("/:id/calculate-price", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { quantity } = req.body;
+
+    if (!quantity || quantity < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid quantity is required",
+      });
+    }
+
+    const product = await SupplierProduct.getById(id);
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    const priceInfo = SupplierProduct.calculateDiscountedPrice(
+      product,
+      quantity
+    );
+
+    res.json({
+      success: true,
+      message: "Price calculated successfully",
+      data: {
+        product_id: id,
+        quantity,
+        ...priceInfo,
+      },
+    });
+  } catch (error) {
+    console.error("Calculate price error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to calculate price",
       error: error.message,
     });
   }

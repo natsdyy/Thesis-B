@@ -164,27 +164,37 @@ function formatForDatabaseWithTimezone(date = new Date()) {
 
 /**
  * Parse date from database (assumes Philippine timezone)
- * @param {string} dateString - Date string from database
+ * @param {string|Date} dateString - Date string or Date object from database
  * @returns {Date} Date parsed as Philippine timezone
  */
 function parseFromDatabase(dateString) {
   if (!dateString) return new Date();
 
+  // If it's already a Date object, return it
+  if (dateString instanceof Date) {
+    return new Date(
+      dateString.toLocaleString("en-US", { timeZone: PHILIPPINE_TIMEZONE })
+    );
+  }
+
+  // Convert to string if it's not already
+  const dateStr = String(dateString);
+
   // If the date string already has timezone info (+08:00), parse it directly
-  if (dateString.includes("+08:00") || dateString.includes("+0800")) {
-    return new Date(dateString);
+  if (dateStr.includes("+08:00") || dateStr.includes("+0800")) {
+    return new Date(dateStr);
   }
 
   // For UTC dates (ending with Z), convert to Philippine timezone
-  if (dateString.endsWith("Z")) {
-    const utcDate = new Date(dateString);
+  if (dateStr.endsWith("Z")) {
+    const utcDate = new Date(dateStr);
     return new Date(
       utcDate.toLocaleString("en-US", { timeZone: PHILIPPINE_TIMEZONE })
     );
   }
 
   // Default parsing
-  const date = new Date(dateString);
+  const date = new Date(dateStr);
   return new Date(
     date.toLocaleString("en-US", { timeZone: PHILIPPINE_TIMEZONE })
   );

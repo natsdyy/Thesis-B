@@ -33,6 +33,7 @@
     DollarSign,
     FileCheck,
     Eye,
+    PartyPopper,
     TriangleAlert,
     PhilippinePeso,
   } from 'lucide-vue-next';
@@ -72,6 +73,7 @@
   // Supplier integration state
   const selectedSupplierId = ref('');
   const supplierProducts = ref([]);
+  const productPromoInfo = ref({}); // Store promo info for each product
 
   // Tab system state
   const activeTab = ref('supply-requests');
@@ -238,6 +240,30 @@
   const supplierOptions = computed(() => supplierStore.activeSuppliers || []);
   const isSupplierMode = computed(() => !!selectedSupplierId.value);
 
+  // Available promos for the selected supplier
+  const availablePromos = computed(() => {
+    if (!selectedSupplierId.value || !supplierProducts.value.length) return [];
+
+    return supplierProducts.value
+      .filter(
+        (product) =>
+          product.promo_info &&
+          product.promo_info.is_active &&
+          product.has_promo_discount
+      )
+      .map((product) => ({
+        id: product.id,
+        product_name: product.product_name,
+        discount_percentage: product.promo_info.discount_percentage,
+        minimum_quantity: product.promo_info.minimum_quantity,
+        unit: product.unit,
+        description: product.promo_info.description,
+        promo_info: product.promo_info,
+        promo_start_date: product.promo_start_date,
+        promo_end_date: product.promo_end_date,
+      }));
+  });
+
   // Available item types based on selected category
   const availableItemTypes = computed(() => {
     if (!selectedCategory.value) return [];
@@ -269,10 +295,34 @@
     }
   };
 
+  // Calculate promo discount for a product and quantity
+  const calculateProductPromoDiscount = async (productId, quantity) => {
+    try {
+      const response = await axios.post(
+        `${apiConfig.baseURL}/supplier-products/${productId}/calculate-price`,
+        { quantity },
+        {
+          headers: {
+            Authorization: `Bearer ${authStore.token}`,
+          },
+        }
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      }
+      return null;
+    } catch (error) {
+      console.error('Failed to calculate promo discount:', error);
+      return null;
+    }
+  };
+
   // Handle supplier selection -> fetch products and prefill rows
   const onSupplierSelected = async (supplierId) => {
     try {
       supplierProducts.value = [];
+      productPromoInfo.value = {}; // Clear promo info when switching suppliers
       if (!supplierId) {
         resetItemRows();
         return;
@@ -286,6 +336,13 @@
 
       const products = response.data?.data || [];
       supplierProducts.value = products;
+
+      // Store promo info for products that have active promos
+      products.forEach((product) => {
+        if (product.promo_info && product.promo_info.is_active) {
+          productPromoInfo.value[product.id] = product.promo_info;
+        }
+      });
 
       // Auto-set inventory category from supplier data if available
       try {
@@ -1470,6 +1527,29 @@
     return total.toFixed(2);
   });
 
+  const totalSavings = computed(() => {
+    const savings = rowRequest.value.reduce((acc, row) => {
+      if (row.promo_applied && row.original_price) {
+        const originalTotal =
+          (Number(row.item_quantity) || 0) * row.original_price;
+        const discountedTotal =
+          (Number(row.item_quantity) || 0) * (Number(row.item_unitPrice) || 0);
+        return acc + (originalTotal - discountedTotal);
+      }
+      return acc;
+    }, 0);
+    return savings.toFixed(2);
+  });
+
+  const originalTotalAmount = computed(() => {
+    const total = rowRequest.value.reduce((acc, row) => {
+      const price = row.original_price || Number(row.item_unitPrice) || 0;
+      const quantity = Number(row.item_quantity) || 0;
+      return acc + price * quantity;
+    }, 0);
+    return total.toFixed(2);
+  });
+
   // Enhanced confirmation modal state
   const confirmModal = ref({
     show: false,
@@ -1786,8 +1866,44 @@
     item.item_amount = (item.item_quantity || 0) * (item.item_unitPrice || 0);
   };
 
+  // Recalculate promo discount when quantity changes
+  const updatePromoDiscount = (row) => {
+    if (!row.supplier_product_id || !row.promo_info) return;
+
+    const promoInfo = row.promo_info;
+    const quantity = Number(row.item_quantity || 0);
+    const originalPrice = Number(row.original_price || 0);
+
+    // Check if quantity meets minimum requirement for promo
+    if (quantity >= Number(promoInfo.minimum_quantity)) {
+      // Apply promo discount
+      let discountedPrice = originalPrice;
+      if (promoInfo.discount_type === 'percentage') {
+        discountedPrice =
+          originalPrice * (1 - Number(promoInfo.discount_percentage) / 100);
+      } else if (promoInfo.discount_type === 'fixed_amount') {
+        discountedPrice = Math.max(
+          0,
+          originalPrice - Number(promoInfo.discount_amount)
+        );
+      }
+      row.item_unitPrice = discountedPrice;
+      row.promo_applied = true;
+      showToast(
+        'success',
+        `Promo discount applied! ${promoInfo.discount_percentage}% OFF`
+      );
+    } else {
+      // Remove promo discount
+      row.item_unitPrice = originalPrice;
+      row.promo_applied = false;
+    }
+
+    updateItemAmount(row);
+  };
+
   // When a supplier product is chosen from dropdown, auto-fill the row
-  const onSupplierProductSelected = (row) => {
+  const onSupplierProductSelected = async (row) => {
     const product = supplierProducts.value.find(
       (p) => String(p.id) === String(row.supplier_product_id)
     );
@@ -1804,7 +1920,43 @@
     row.item_quantity = Number(product.minimum_order_quantity || 1);
     row.item_unit = product.unit || '';
     row.item_type = itemType?.name || '';
-    row.item_unitPrice = Number(product.unit_price || 0);
+
+    // Set original unit price
+    const originalPrice = Number(product.unit_price || 0);
+    row.item_unitPrice = originalPrice;
+
+    // Check for promo discount
+    const promoInfo = productPromoInfo.value[product.id];
+    if (
+      promoInfo &&
+      promoInfo.is_active &&
+      row.item_quantity >= Number(promoInfo.minimum_quantity)
+    ) {
+      // Apply promo discount
+      let discountedPrice = originalPrice;
+      if (promoInfo.discount_type === 'percentage') {
+        discountedPrice =
+          originalPrice * (1 - Number(promoInfo.discount_percentage) / 100);
+      } else if (promoInfo.discount_type === 'fixed_amount') {
+        discountedPrice = Math.max(
+          0,
+          originalPrice - Number(promoInfo.discount_amount)
+        );
+      }
+      row.item_unitPrice = discountedPrice;
+      row.promo_applied = true;
+      row.original_price = originalPrice;
+      row.promo_info = promoInfo;
+      showToast(
+        'success',
+        `Promo discount applied! ${promoInfo.discount_percentage}% OFF`
+      );
+    } else {
+      row.promo_applied = false;
+      row.original_price = originalPrice;
+      row.promo_info = promoInfo; // Store promo info even if not applied
+    }
+
     updateItemAmount(row);
     row.source = 'supplier';
     row.category = categoryObj?.name || '';
@@ -2486,6 +2638,87 @@
       'Cancelled',
       'Request cancelled by SCM'
     );
+  };
+
+  // Get summary of applied promos across all rows
+  const getAppliedPromosSummary = () => {
+    const promoMap = new Map();
+
+    rowRequest.value.forEach((row) => {
+      if (row.promo_applied && row.promo_info) {
+        const key = row.item_name;
+        const savings =
+          (row.item_quantity || 0) * (row.original_price - row.item_unitPrice);
+
+        if (promoMap.has(key)) {
+          const existing = promoMap.get(key);
+          existing.total_savings += savings;
+          existing.quantity += row.item_quantity || 0;
+        } else {
+          promoMap.set(key, {
+            product_name: row.item_name,
+            discount_percentage: row.promo_info.discount_percentage,
+            quantity: row.item_quantity || 0,
+            total_savings: savings,
+          });
+        }
+      }
+    });
+
+    return Array.from(promoMap.values());
+  };
+
+  // Get total savings from all applied promos
+  const getTotalPromoSavings = () => {
+    return getAppliedPromosSummary().reduce(
+      (sum, promo) => sum + promo.total_savings,
+      0
+    );
+  };
+
+  // Format promo date for display
+  const formatPromoDate = (dateString) => {
+    if (!dateString) return 'N/A';
+
+    try {
+      const date = new Date(dateString);
+
+      // Check if the date is valid
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date string:', dateString);
+        return 'N/A';
+      }
+
+      return date.toLocaleDateString('en-PH', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Asia/Manila',
+      });
+    } catch (error) {
+      console.error('Error formatting date:', dateString, error);
+      return 'N/A';
+    }
+  };
+
+  // Check if promo is expiring within 24 hours
+  const isPromoExpiringSoon = (promo) => {
+    const endDate = promo.promo_info?.end_date || promo.promo_end_date;
+    if (!endDate) return false;
+    const endDateObj = new Date(endDate);
+    const now = new Date();
+    const hoursUntilExpiry = (endDateObj - now) / (1000 * 60 * 60);
+    return hoursUntilExpiry <= 24 && hoursUntilExpiry > 0;
+  };
+
+  // Get promo end date for a specific product
+  const getPromoEndDate = (productName) => {
+    const promo = availablePromos.value.find(
+      (p) => p.product_name === productName
+    );
+    return promo ? promo.promo_info?.end_date || promo.promo_end_date : null;
   };
 </script>
 
@@ -4439,6 +4672,12 @@
               >
                 <p class="text-sm text-black">₱</p>
                 <p class="text-sm text-black">{{ totalAmount }}</p>
+                <span
+                  v-if="Number(totalSavings) > 0"
+                  class="text-xs text-green-600 ml-2"
+                >
+                  (Save ₱{{ totalSavings }})
+                </span>
               </div>
             </div>
           </div>
@@ -4742,6 +4981,150 @@
         ></textarea>
       </div>
 
+      <!-- Available Promos Section -->
+      <div v-if="selectedSupplierId && availablePromos.length > 0" class="mb-6">
+        <div
+          class="alert bg-primaryColor/10 border-primaryColor text-primaryColor flex items-start gap-4"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            class="stroke-current shrink-0 w-6 h-6"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            ></path>
+          </svg>
+          <div class="w-full">
+            <h3 class="font-bold">
+              <PartyPopper class="w-5 h-5 inline-block mr-2" />
+              Available Promotions!
+            </h3>
+            <div class="text-sm">
+              <p class="mb-2">This supplier has active promotions:</p>
+              <ul class="list-disc list-inside space-y-2">
+                <li
+                  v-for="promo in availablePromos"
+                  :key="promo.id"
+                  class="font-medium"
+                >
+                  <div class="flex flex-col">
+                    <div>
+                      <strong>{{ promo.product_name }}</strong> -
+                      {{ promo.discount_percentage }}% OFF (Min.
+                      {{ promo.minimum_quantity }} {{ promo.unit }})
+                    </div>
+                    <div class="text-xs text-primaryColor/70 mt-1 ml-4">
+                      <font-awesome-icon
+                        icon="fa-solid fa-calendar-days"
+                        class="mr-1"
+                      />
+                      Valid:
+                      {{
+                        formatPromoDate(
+                          promo.promo_info?.start_date || promo.promo_start_date
+                        )
+                      }}
+                      -
+                      {{
+                        formatPromoDate(
+                          promo.promo_info?.end_date || promo.promo_end_date
+                        )
+                      }}
+                      <span
+                        v-if="isPromoExpiringSoon(promo)"
+                        class="ml-2 text-orange-500 font-semibold"
+                      >
+                        <font-awesome-icon
+                          icon="fa-solid fa-clock"
+                          class="mr-1"
+                        />
+                        Expires Soon!
+                      </span>
+                    </div>
+                  </div>
+                </li>
+              </ul>
+            </div>
+
+            <!-- Applied Promos Summary -->
+            <div
+              v-if="getAppliedPromosSummary().length > 0"
+              class="mt-4 pt-3 border-t border-primaryColor/20"
+            >
+              <h4 class="font-semibold text-primaryColor mb-2">
+                <font-awesome-icon icon="fa-solid fa-check" />
+                Applied Promotions
+              </h4>
+              <div class="space-y-2">
+                <div
+                  v-for="appliedPromo in getAppliedPromosSummary()"
+                  :key="appliedPromo.product_name"
+                  class="bg-primaryColor/10 rounded-lg p-3"
+                >
+                  <div class="flex justify-between items-start">
+                    <div class="flex-1">
+                      <div class="flex items-center gap-2">
+                        <span class="font-medium text-primaryColor">{{
+                          appliedPromo.product_name
+                        }}</span>
+                        <span class="text-primaryColor/80 text-sm"
+                          >{{ appliedPromo.discount_percentage }}% OFF</span
+                        >
+                      </div>
+                      <div class="text-xs text-primaryColor/60 mt-1">
+                        <font-awesome-icon
+                          icon="fa-solid fa-calendar-check"
+                          class="mr-1"
+                        />
+                        Valid until:
+                        {{
+                          formatPromoDate(
+                            getPromoEndDate(appliedPromo.product_name)
+                          )
+                        }}
+                      </div>
+                    </div>
+                    <div class="text-primaryColor font-semibold">
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{
+                        Number(appliedPromo.total_savings).toLocaleString(
+                          'en-PH',
+                          {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          }
+                        )
+                      }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-3 pt-2 border-t border-primaryColor/20">
+                <div
+                  class="flex justify-between items-center font-semibold text-primaryColor"
+                >
+                  <span>Total Savings:</span>
+                  <span>
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{
+                      Number(getTotalPromoSavings()).toLocaleString('en-PH', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Items Section with Centralized Categories -->
       <div class="mb-6">
         <div class="flex justify-between items-center mb-4">
@@ -4819,7 +5202,10 @@
                     min="0"
                     step="1"
                     class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
-                    @input="updateItemAmount(row)"
+                    @input="
+                      updateItemAmount(row);
+                      updatePromoDiscount(row);
+                    "
                   />
                 </td>
 
@@ -4870,30 +5256,62 @@
                 </td>
 
                 <td>
-                  <input
-                    type="number"
-                    v-model.number="row.item_unitPrice"
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
-                    class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
-                    @input="updateItemAmount(row)"
-                    :readonly="isSupplierMode"
-                    :disabled="isSupplierMode"
-                  />
+                  <div class="space-y-1">
+                    <input
+                      type="number"
+                      v-model.number="row.item_unitPrice"
+                      placeholder="0.00"
+                      min="0"
+                      step="0.01"
+                      class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
+                      @input="updateItemAmount(row)"
+                      :readonly="isSupplierMode"
+                      :disabled="isSupplierMode"
+                    />
+                  </div>
                 </td>
 
                 <td>
-                  <div class="text-right font-medium">
-                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                    {{
-                      (
-                        (row.item_quantity || 0) * (row.item_unitPrice || 0)
-                      ).toLocaleString('en-PH', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })
-                    }}
+                  <div class="text-right font-medium space-y-1">
+                    <div>
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{
+                        (
+                          (row.item_quantity || 0) * (row.item_unitPrice || 0)
+                        ).toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })
+                      }}
+                    </div>
+                    <!-- Show savings when promo is applied -->
+                    <div
+                      v-if="row.promo_applied && row.original_price"
+                      class="text-xs text-priumaryColor text-right"
+                    >
+                      <span class="line-through text-gray-400">
+                        ₱{{
+                          (
+                            (row.item_quantity || 0) * row.original_price
+                          ).toLocaleString('en-PH', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })
+                        }}
+                      </span>
+                      <br />
+                      <span class="font-semibold">
+                        Save ₱{{
+                          (
+                            (row.item_quantity || 0) *
+                            (row.original_price - row.item_unitPrice)
+                          ).toLocaleString('en-PH', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })
+                        }}
+                      </span>
+                    </div>
                   </div>
                 </td>
 
@@ -4909,9 +5327,48 @@
               </tr>
             </tbody>
             <tfoot>
+              <!-- Original Total (if there are promos) -->
+              <tr v-if="Number(totalSavings) > 0" class="text-sm">
+                <td colspan="6" class="text-right text-gray-500">
+                  Original Total:
+                </td>
+                <td class="text-right text-gray-400">
+                  <span class="line-through">
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{
+                      Number(originalTotalAmount).toLocaleString('en-PH', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    }}
+                  </span>
+                </td>
+                <td></td>
+              </tr>
+
+              <!-- Total Savings (if there are promos) -->
+              <tr v-if="Number(totalSavings) > 0" class="text-sm">
+                <td colspan="6" class="text-right text-green-600">
+                  Total Savings:
+                </td>
+                <td class="text-right text-green-600 font-semibold">
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                  {{
+                    Number(totalSavings).toLocaleString('en-PH', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  }}
+                </td>
+                <td></td>
+              </tr>
+
+              <!-- Final Total -->
               <tr class="font-semibold">
                 <td colspan="6" class="text-right text-black/50">
-                  Total Amount:
+                  {{
+                    Number(totalSavings) > 0 ? 'Final Total:' : 'Total Amount:'
+                  }}
                 </td>
                 <td class="text-right text-primaryColor">
                   <font-awesome-icon icon="fa-solid fa-peso-sign" />

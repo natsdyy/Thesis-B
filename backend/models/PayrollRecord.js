@@ -28,6 +28,8 @@ class PayrollRecord {
         days_worked: data.days_worked || 0,
         hours_worked: data.hours_worked || 0,
         overtime_hours: data.overtime_hours || 0,
+        night_diff_hours: data.night_diff_hours || 0,
+        night_diff_pay: data.night_diff_pay || 0,
         late_count: data.late_count || 0,
         absent_from_lates: data.absent_from_lates || 0,
         leave_days: data.leave_days || 0,

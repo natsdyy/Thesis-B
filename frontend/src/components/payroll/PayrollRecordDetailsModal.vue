@@ -128,6 +128,12 @@
                 </p>
               </div>
               <div>
+                <p class="text-sm text-gray-600">Night Diff Hours</p>
+                <p class="font-bold text-gray-700 text-md">
+                  {{ record?.night_diff_hours || 0 }}
+                </p>
+              </div>
+              <div>
                 <p class="text-sm text-gray-600">Late Count</p>
                 <p class="font-bold text-gray-700 text-md">
                   {{ record?.late_count || 0 }}
@@ -204,6 +210,15 @@
                 <span class="font-medium text-gray-700"
                   ><i class="fas fa-peso-sign mr-1"></i
                   >{{ formatCurrency(record?.overtime_pay) }}</span
+                >
+              </div>
+              <div class="flex justify-between">
+                <span class="text-sm text-black/60"
+                  >Night Differential Pay</span
+                >
+                <span class="font-medium text-gray-700"
+                  ><i class="fas fa-peso-sign mr-1"></i
+                  >{{ formatCurrency(record?.night_diff_pay) }}</span
                 >
               </div>
               <div class="flex justify-between">

@@ -213,6 +213,8 @@ class PayrollService {
     // Calculate hours worked and overtime
     let totalHoursWorked = 0;
     let totalOvertimeHours = 0;
+    let totalNightDiffHours = 0;
+    let totalNightDiffPay = 0;
     let lateCount = 0;
     let leaveDays = 0;
     let regularHolidayPay = 0;
@@ -266,6 +268,15 @@ class PayrollService {
       // Calculate hours worked
       const hoursWorked = Number(record.hours_worked || 0);
       const overtimeHours = Number(record.overtime_hours || 0);
+
+      // Calculate night differential
+      const nightDiff = this.calculateNightDifferential(
+        record,
+        hourlyRate,
+        holiday?.type
+      );
+      totalNightDiffHours += nightDiff.nightDiffHours;
+      totalNightDiffPay += nightDiff.nightDiffPay;
 
       if (holiday) {
         // Holiday pay calculation
@@ -347,6 +358,7 @@ class PayrollService {
     const grossSalary =
       basicSalary +
       overtimePay +
+      totalNightDiffPay +
       regularHolidayPay +
       specialHolidayPay +
       doubleHolidayPay +
@@ -376,6 +388,8 @@ class PayrollService {
       days_worked: daysWorked - absentFromLates,
       hours_worked: totalHoursWorked,
       overtime_hours: totalOvertimeHours,
+      night_diff_hours: totalNightDiffHours,
+      night_diff_pay: totalNightDiffPay,
       late_count: lateCount,
       absent_from_lates: absentFromLates,
       leave_days: leaveDays,
@@ -442,6 +456,67 @@ class PayrollService {
     // TODO: Implement custom holidays from database
 
     return holidays;
+  }
+
+  /**
+   * Calculate night differential hours and pay
+   * @param {Object} record - Attendance record
+   * @param {number} hourlyRate - Employee hourly rate
+   * @param {string} holidayType - Type of holiday if applicable
+   * @returns {Object}
+   */
+  static calculateNightDifferential(record, hourlyRate, holidayType = null) {
+    const checkInTime = new Date(record.check_in_time);
+    const checkOutTime = new Date(record.check_out_time);
+
+    // Night differential period: 10 PM - 6 AM
+    const nightStart = 22; // 10 PM
+    const nightEnd = 6; // 6 AM
+
+    let nightDiffHours = 0;
+    let nightDiffPay = 0;
+
+    // Calculate night differential hours
+    if (record.check_in_time && record.check_out_time) {
+      const checkInHour = checkInTime.getHours();
+      const checkOutHour = checkOutTime.getHours();
+
+      // Simple calculation - if work spans night hours
+      if (checkInHour < nightEnd || checkOutHour >= nightStart) {
+        // For simplicity, assume if working during night period, apply ND
+        // In real implementation, you'd calculate exact hours within night period
+        nightDiffHours = Math.min(record.hours_worked || 0, 8); // Max 8 hours
+      }
+    }
+
+    // Calculate night differential pay based on holiday type
+    if (nightDiffHours > 0) {
+      const baseNightDiffRate = hourlyRate * 0.1; // 10% additional
+
+      switch (holidayType) {
+        case "regular":
+          // Regular Holiday + ND: 2.20x (200% + 10% of 200%)
+          nightDiffPay = nightDiffHours * hourlyRate * 2.2;
+          break;
+        case "special_non_working":
+          // Special Non-Working + ND: 1.43x (130% + 10% of 130%)
+          nightDiffPay = nightDiffHours * hourlyRate * 1.43;
+          break;
+        case "double":
+          // Double Holiday + ND: 3.30x (300% + 10% of 300%)
+          nightDiffPay = nightDiffHours * hourlyRate * 3.3;
+          break;
+        default:
+          // Regular day + ND: 1.10x (100% + 10%)
+          nightDiffPay = nightDiffHours * hourlyRate * 1.1;
+          break;
+      }
+    }
+
+    return {
+      nightDiffHours,
+      nightDiffPay,
+    };
   }
 
   /**

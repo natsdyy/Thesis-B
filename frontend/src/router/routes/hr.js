@@ -69,4 +69,10 @@ export default [
     component: () => import('../../views/hr/Positions.vue'),
     meta: { title: 'Positions' },
   },
+  {
+    path: 'payroll-management',
+    name: 'HRPayrollManagement',
+    component: () => import('../../views/hr/PayrollManagement.vue'),
+    meta: { title: 'Payroll Management' },
+  },
 ];

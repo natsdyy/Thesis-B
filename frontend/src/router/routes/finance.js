@@ -13,6 +13,12 @@ export default [
     meta: { title: 'Request Approval' },
   },
   {
+    path: 'payroll-approval',
+    name: 'PayrollApproval',
+    component: () => import('../../views/finance/PayrollApproval.vue'),
+    meta: { title: 'Payroll Approval' },
+  },
+  {
     path: 'budget-release',
     name: 'BudgetRelease',
     component: () => import('../../views/finance/BudgetRelease.vue'),

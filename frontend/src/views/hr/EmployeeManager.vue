@@ -17,12 +17,21 @@
     AlertTriangle,
     Building2,
     MapPin,
+    DollarSign,
   } from 'lucide-vue-next';
   import { useEmployeeStore } from '../../stores/employeeStore.js';
   import { usePositionsStore } from '../../stores/positionsStore.js';
   import { useAttendanceStore } from '../../stores/attendanceStore.js';
   import { apiConfig } from '../../config/api.js';
   import { useBranchStore } from '../../stores/branchStore.js';
+  import PayrollGenerationModal from '../../components/payroll/PayrollGenerationModal.vue';
+  import {
+    PHILIPPINE_TIMEZONE,
+    getCurrentPhilippineDate,
+    formatForDisplay,
+    formatTimeForDisplay,
+    formatPhilippineTime,
+  } from '../../utils/timezoneUtils.js';
 
   const router = useRouter();
   const route = useRoute();
@@ -71,6 +80,15 @@
     handoverNotes: '',
     finalPayroll: false,
     systemAccess: false,
+  });
+
+  // Payroll generation modal state
+  const payrollGenerationModal = ref({
+    show: false,
+    scope: '', // 'department' or 'branch'
+    scopeId: '',
+    scopeName: '',
+    estimatedEmployeeCount: 0,
   });
   const openConfirm = (title, message, onConfirm) => {
     confirmModal.value = { show: true, title, message, onConfirm };
@@ -186,16 +204,52 @@
     return Array.from(set).sort();
   });
 
+  // Payroll generation modal functions
+  const openPayrollGenerationModal = (scope) => {
+    if (scope === 'department' && !selectedDepartment.value) {
+      showToast('warning', 'Please select a department first');
+      return;
+    }
+    if (scope === 'branch' && !selectedBranch.value) {
+      showToast('warning', 'Please select a branch first');
+      return;
+    }
+
+    payrollGenerationModal.value = {
+      show: true,
+      scope,
+      scopeId:
+        scope === 'department'
+          ? selectedDepartment.value
+          : selectedBranch.value,
+      scopeName:
+        scope === 'department'
+          ? selectedDepartment.value
+          : getBranchName(selectedBranch.value),
+      estimatedEmployeeCount: filteredEmployees.value.length,
+    };
+  };
+
+  const closePayrollGenerationModal = () => {
+    payrollGenerationModal.value = {
+      show: false,
+      scope: '',
+      scopeId: '',
+      scopeName: '',
+      estimatedEmployeeCount: 0,
+    };
+  };
+
+  const handlePayrollGenerated = (result) => {
+    showToast('success', 'Payroll generated successfully');
+    closePayrollGenerationModal();
+  };
+
   // Fetch attendance data for employees
   const fetchAttendanceData = async () => {
     try {
-      // Use Asia/Manila date for attendance checking
-      const today = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Manila',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).format(new Date());
+      // Use Philippine timezone date for attendance checking
+      const today = getCurrentPhilippineDate();
 
       const normalizeStatus = (row) => {
         // If API row has a time_in, force status to present to override day_off
@@ -290,8 +344,8 @@
       list = list.filter((e) => e.branch_id === selectedBranch.value);
     }
 
-    // Apply general filters
-    if (departmentFilter.value) {
+    // Apply general filters (skip department filter if already filtering by tab)
+    if (departmentFilter.value && activeTab.value === 'all') {
       list = list.filter((e) => e.department === departmentFilter.value);
     }
 
@@ -690,7 +744,7 @@
 
   const formatDate = (dateString) => {
     if (!dateString) return '';
-    return new Date(dateString).toLocaleDateString('en-PH', {
+    return formatForDisplay(dateString, 'en-PH', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -698,7 +752,7 @@
   };
   const formatDateLong = (dateString) => {
     if (!dateString) return '—';
-    return new Date(dateString).toLocaleDateString('en-PH', {
+    return formatForDisplay(dateString, 'en-PH', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -873,8 +927,18 @@
               </select>
             </div>
           </div>
-          <div class="text-sm text-black/60" v-if="selectedDepartment">
-            Showing employees from {{ selectedDepartment }} department
+          <div class="flex items-center gap-3">
+            <div class="text-sm text-black/60" v-if="selectedDepartment">
+              Showing employees from {{ selectedDepartment }} department
+            </div>
+            <button
+              v-if="selectedDepartment"
+              @click="openPayrollGenerationModal('department')"
+              class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/90 border-none font-thin whitespace-nowrap"
+            >
+              <font-awesome-icon icon="fa-solid fa-peso-sign" />
+              Generate Payroll
+            </button>
           </div>
         </div>
       </div>
@@ -900,13 +964,23 @@
               >
                 <option value="">Choose a branch...</option>
                 <option v-for="b in activeBranches" :key="b.id" :value="b.id">
-                  {{ b.name }} ({{ b.code }})
+                  {{ b.name }}
                 </option>
               </select>
             </div>
           </div>
-          <div class="text-sm text-black/60" v-if="selectedBranch">
-            Showing employees from {{ getBranchName(selectedBranch) }} branch
+          <div class="flex items-center gap-3">
+            <div class="text-sm text-black/60" v-if="selectedBranch">
+              Showing employees from {{ getBranchName(selectedBranch) }} branch
+            </div>
+            <button
+              v-if="selectedBranch"
+              @click="openPayrollGenerationModal('branch')"
+              class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/90 border-none font-thin whitespace-nowrap"
+            >
+              <font-awesome-icon icon="fa-solid fa-peso-sign" />
+              Generate Payroll
+            </button>
           </div>
         </div>
       </div>
@@ -931,9 +1005,11 @@
               />
             </div>
 
+            <!-- Department filter dropdown - hidden in department/branch tabs to avoid redundancy -->
             <select
               v-model="departmentFilter"
               class="select select-sm sm:select-md select-bordered"
+              v-show="activeTab !== 'department' && activeTab !== 'branch'"
             >
               <option value="">All Departments</option>
               <option v-for="d in departments" :key="d" :value="d">
@@ -965,7 +1041,7 @@
             </select>
 
             <button
-              class="btn btn-outline btn-sm text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
+              class="btn btn-outline btn-sm text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white font-thin"
               :disabled="loading"
               @click="refresh"
             >
@@ -974,7 +1050,7 @@
             </button>
 
             <button
-              class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/90 border-none"
+              class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/90 border-none font-thin"
               @click="gotoAddEmployee"
             >
               <Plus class="w-4 h-4 mr-1" />
@@ -1687,10 +1763,10 @@
                 :key="page"
                 @click="goToPage(page)"
                 :class="[
-                  'btn btn-sm',
+                  'btn btn-sm font-thin',
                   page === currentPage
                     ? 'bg-primaryColor text-white border-primaryColor'
-                    : 'btn-outline',
+                    : 'bg-gray-200 text-black/60 hover:bg-gray-300 border-none',
                 ]"
               >
                 {{ page }}
@@ -2472,10 +2548,6 @@
             >
               <option value="" disabled>Select reason</option>
               <option value="Resignation">Resignation</option>
-              <option value="Performance Issues">Performance Issues</option>
-              <option value="Misconduct">Misconduct</option>
-              <option value="Redundancy">Redundancy</option>
-              <option value="End of Contract">End of Contract</option>
               <option value="Other">Other</option>
             </select>
           </div>
@@ -2612,6 +2684,17 @@
       <button @click="closeTerminationModal">close</button>
     </form>
   </dialog>
+
+  <!-- Payroll Generation Modal -->
+  <PayrollGenerationModal
+    :show="payrollGenerationModal.show"
+    :scope="payrollGenerationModal.scope"
+    :scope-id="payrollGenerationModal.scopeId"
+    :scope-name="payrollGenerationModal.scopeName"
+    :estimated-employee-count="payrollGenerationModal.estimatedEmployeeCount"
+    @close="closePayrollGenerationModal"
+    @generated="handlePayrollGenerated"
+  />
 </template>
 <style scoped>
   .table-zebra tbody tr:nth-child(odd) {

@@ -197,6 +197,9 @@
       loan: 'Loan',
       expense: 'Expense',
       disposal_loss: 'Inventory Disposal Loss',
+      payroll: 'Payroll - Net Salary',
+      payroll_employer_contributions: 'Payroll - Employer Contributions',
+      payroll_employee_contributions: 'Payroll - Employee Contributions',
     };
 
     return (

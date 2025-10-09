@@ -335,6 +335,204 @@ class SendGridService {
   }
 
   /**
+   * Send payroll notification email using SendGrid
+   * @param {string} to - Recipient email address
+   * @param {string} employeeName - Employee's full name
+   * @param {Object} payrollData - Payroll information
+   */
+  static async sendPayrollNotification(to, employeeName, payrollData) {
+    try {
+      if (!this.isConfigured()) {
+        console.log("⚠️ SendGrid not configured, skipping email");
+        return {
+          success: false,
+          error: "SendGrid API key not configured",
+          skipEmail: true,
+        };
+      }
+
+      const msg = {
+        to: to,
+        from: {
+          email: "mailcountrysidesteakhouse@gmail.com",
+          name: "Countryside Steakhouse",
+        },
+        subject: `Payroll Statement - ${payrollData.period_name}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
+            <div style="background-color: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+              
+              <!-- Header -->
+              <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px; margin: -30px -30px 30px -30px;">
+                <h1 style="color: white; margin: 0; font-size: 28px; font-weight: bold;">Countryside Steakhouse</h1>
+                <p style="color: #e0e7ff; margin: 10px 0 0 0; font-size: 16px; font-weight: 500;">Payroll Statement</p>
+              </div>
+              
+              <!-- Main Content -->
+              <div style="margin-bottom: 30px;">
+                <p style="font-size: 16px; color: #374151; margin-bottom: 20px;">
+                  Dear <strong>${employeeName}</strong>,
+                </p>
+                
+                <p style="color: #6b7280; line-height: 1.6; margin-bottom: 25px;">
+                  Your payroll for the period <strong>${payrollData.period_name}</strong> has been processed and released.
+                </p>
+                
+                <!-- Payroll Summary Card -->
+                <div style="background: white; padding: 25px; border-radius: 8px; margin: 20px 0; border: 2px solid #667eea; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                  <h2 style="color: #667eea; margin-top: 0; font-size: 18px; font-weight: bold; margin-bottom: 20px;">Payroll Summary</h2>
+                  
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                      <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Period Covered:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 14px;">
+                        ${new Date(payrollData.date_from).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })} - 
+                        ${new Date(payrollData.date_to).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+                      </td>
+                    </tr>
+                    <tr style="border-top: 1px solid #e5e7eb;">
+                      <td style="padding: 12px 0; color: #6b7280; font-size: 15px;">Gross Salary:</td>
+                      <td style="padding: 12px 0; text-align: right; font-weight: 700; color: #059669; font-size: 16px;">
+                        ₱${Number(payrollData.gross_salary).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  </table>
+                  
+                  <!-- Deductions Section -->
+                  <div style="margin: 20px 0; padding-top: 15px; border-top: 2px solid #e5e7eb;">
+                    <h3 style="color: #dc2626; font-size: 15px; margin-bottom: 12px; font-weight: bold;">Deductions:</h3>
+                    <table style="width: 100%; font-size: 14px;">
+                      <tr>
+                        <td style="padding: 6px 0; color: #6b7280;">SSS:</td>
+                        <td style="padding: 6px 0; text-align: right; font-weight: 500;">
+                          ₱${Number(payrollData.deductions.sss || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; color: #6b7280;">PhilHealth:</td>
+                        <td style="padding: 6px 0; text-align: right; font-weight: 500;">
+                          ₱${Number(payrollData.deductions.philhealth || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; color: #6b7280;">Pag-IBIG:</td>
+                        <td style="padding: 6px 0; text-align: right; font-weight: 500;">
+                          ₱${Number(payrollData.deductions.pagibig || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                      <tr style="border-top: 1px solid #e5e7eb;">
+                        <td style="padding: 10px 0 6px 0; color: #dc2626; font-weight: 600;">Total Deductions:</td>
+                        <td style="padding: 10px 0 6px 0; text-align: right; color: #dc2626; font-weight: 700; font-size: 15px;">
+                          ₱${Number(payrollData.deductions.total || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    </table>
+                  </div>
+                  
+                  <!-- Net Salary Section -->
+                  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 8px; margin-top: 20px; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);">
+                    <table style="width: 100%;">
+                      <tr>
+                        <td style="color: white; font-size: 18px; font-weight: 700;">Net Salary:</td>
+                        <td style="color: white; font-size: 26px; font-weight: 900; text-align: right; letter-spacing: -0.5px;">
+                          ₱${Number(payrollData.net_salary).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    </table>
+                  </div>
+                  
+                  <!-- Payment Date -->
+                  <p style="color: #6b7280; font-size: 13px; margin-top: 15px; margin-bottom: 0; text-align: center;">
+                    <strong>Payment Date:</strong> ${new Date(payrollData.payment_date).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+                  </p>
+                </div>
+                
+                <!-- Information Note -->
+                <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                  <p style="color: #1e40af; margin: 0; font-size: 14px; line-height: 1.6;">
+                    Your net salary has been disbursed. Please contact the HR department if you have any questions about your payroll.
+                  </p>
+                </div>
+                
+                <p style="color: #6b7280; font-size: 15px; margin-top: 25px; line-height: 1.6;">
+                  Thank you for your hard work and dedication!<br>
+                  <strong style="color: #466114;">Countryside Steakhouse HR Team</strong>
+                </p>
+              </div>
+              
+              <!-- Footer -->
+              <div style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                <p style="margin: 0;">©2025 COUNTRYSIDE-STEAKHOUSE. All rights reserved.</p>
+                <p style="margin: 5px 0 0 0;">This is an automated message. Please do not reply to this email.</p>
+              </div>
+            </div>
+          </div>
+        `,
+        text: `
+          Countryside Steakhouse - Payroll Statement
+          
+          Dear ${employeeName},
+          
+          Your payroll for the period ${payrollData.period_name} has been processed and released.
+          
+          PAYROLL SUMMARY
+          ----------------
+          Period Covered: ${new Date(payrollData.date_from).toLocaleDateString("en-PH")} - ${new Date(payrollData.date_to).toLocaleDateString("en-PH")}
+          Gross Salary: ₱${Number(payrollData.gross_salary).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+          
+          DEDUCTIONS:
+          SSS: ₱${Number(payrollData.deductions.sss || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+          PhilHealth: ₱${Number(payrollData.deductions.philhealth || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+          Pag-IBIG: ₱${Number(payrollData.deductions.pagibig || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+          Total Deductions: ₱${Number(payrollData.deductions.total || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+          
+          NET SALARY: ₱${Number(payrollData.net_salary).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+          
+          Payment Date: ${new Date(payrollData.payment_date).toLocaleDateString("en-PH")}
+          
+          Your net salary has been disbursed. Please contact the HR department if you have any questions about your payroll.
+          
+          Thank you for your hard work and dedication!
+          Countryside Steakhouse HR Team
+          
+          ©2025 Countryside-Steakhouse. All rights reserved.
+          This is an automated message. Please do not reply to this email.
+        `,
+      };
+
+      console.log(`📧 [SENDGRID] Sending payroll notification to ${to}`);
+      const response = await sgMail.send(msg);
+
+      console.log(
+        "✅ SendGrid payroll notification sent:",
+        response[0].headers["x-message-id"]
+      );
+      return {
+        success: true,
+        messageId: response[0].headers["x-message-id"],
+        provider: "SendGrid",
+      };
+    } catch (error) {
+      console.error("❌ SendGrid payroll notification error:", error);
+
+      if (error.response) {
+        console.error("SendGrid API Error:", error.response.body);
+        return {
+          success: false,
+          error: `SendGrid API Error: ${error.response.body.errors?.[0]?.message || error.message}`,
+          provider: "SendGrid",
+        };
+      }
+
+      return {
+        success: false,
+        error: error.message,
+        provider: "SendGrid",
+      };
+    }
+  }
+
+  /**
    * Send password recovery email using SendGrid
    */
   static async sendPasswordRecoveryEmail(to, resetToken, username = "User") {

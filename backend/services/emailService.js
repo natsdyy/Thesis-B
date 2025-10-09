@@ -642,6 +642,165 @@ class EmailService {
   }
 
   /**
+   * Send payroll notification email to employee
+   * @param {string} to - Employee email address
+   * @param {string} employeeName - Employee's full name
+   * @param {Object} payrollData - Payroll details
+   * @param {string} payrollData.period_name - Payroll period name
+   * @param {Date} payrollData.date_from - Period start date
+   * @param {Date} payrollData.date_to - Period end date
+   * @param {number} payrollData.gross_salary - Gross salary amount
+   * @param {Object} payrollData.deductions - Deductions breakdown
+   * @param {number} payrollData.net_salary - Net salary amount
+   * @param {Date} payrollData.payment_date - Payment date
+   */
+  static async sendPayrollNotification(to, employeeName, payrollData) {
+    try {
+      // Use SendGrid for payroll notifications (tested and reliable)
+      const SendGridService = require("./sendGridService");
+      const result = await SendGridService.sendPayrollNotification(
+        to,
+        employeeName,
+        payrollData
+      );
+
+      if (result.success) {
+        console.log(
+          `✅ Payroll notification sent successfully via ${result.provider}:`,
+          result.messageId
+        );
+        return result;
+      }
+
+      // If SendGrid fails or is not configured, log and return failure
+      console.error(`❌ Failed to send payroll notification:`, result.error);
+      return result;
+    } catch (error) {
+      console.error("❌ Error in sendPayrollNotification:", error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * DEPRECATED: Old SMTP-based payroll notification (kept for reference)
+   * Use sendPayrollNotification() which uses SendGrid instead
+   */
+  static async sendPayrollNotificationSMTP(to, employeeName, payrollData) {
+    try {
+      const mailOptions = {
+        from: process.env.EMAIL_USER || "mailcountrysidesteakhouse@gmail.com",
+        to,
+        subject: `Payroll Statement - ${payrollData.period_name}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+              <h1 style="color: white; margin: 0;">Countryside Steak House</h1>
+              <p style="color: #e0e7ff; margin: 10px 0 0 0;">Payroll Statement</p>
+            </div>
+            
+            <div style="background: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 10px 10px;">
+              <p style="font-size: 16px; color: #374151;">Dear ${employeeName},</p>
+              
+              <p style="color: #6b7280; line-height: 1.6;">
+                Your payroll for the period <strong>${payrollData.period_name}</strong> has been processed and released.
+              </p>
+              
+              <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 2px solid #667eea;">
+                <h2 style="color: #667eea; margin-top: 0; font-size: 18px;">Payroll Summary</h2>
+                
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td style="padding: 8px 0; color: #6b7280;">Period Covered:</td>
+                    <td style="padding: 8px 0; text-align: right; font-weight: 600;">
+                      ${new Date(payrollData.date_from).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })} - 
+                      ${new Date(payrollData.date_to).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+                    </td>
+                  </tr>
+                  <tr style="border-top: 1px solid #e5e7eb;">
+                    <td style="padding: 8px 0; color: #6b7280;">Gross Salary:</td>
+                    <td style="padding: 8px 0; text-align: right; font-weight: 600; color: #059669;">
+                      ₱${Number(payrollData.gross_salary).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                </table>
+                
+                <div style="margin: 15px 0; padding-top: 15px; border-top: 1px solid #e5e7eb;">
+                  <h3 style="color: #dc2626; font-size: 14px; margin-bottom: 10px;">Deductions:</h3>
+                  <table style="width: 100%; font-size: 14px;">
+                    <tr>
+                      <td style="padding: 4px 0; color: #6b7280;">SSS:</td>
+                      <td style="padding: 4px 0; text-align: right;">
+                        ₱${Number(payrollData.deductions.sss || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 4px 0; color: #6b7280;">PhilHealth:</td>
+                      <td style="padding: 4px 0; text-align: right;">
+                        ₱${Number(payrollData.deductions.philhealth || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 4px 0; color: #6b7280;">Pag-IBIG:</td>
+                      <td style="padding: 4px 0; text-align: right;">
+                        ₱${Number(payrollData.deductions.pagibig || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                    <tr style="border-top: 1px solid #e5e7eb; font-weight: 600;">
+                      <td style="padding: 8px 0 4px 0; color: #dc2626;">Total Deductions:</td>
+                      <td style="padding: 8px 0 4px 0; text-align: right; color: #dc2626;">
+                        ₱${Number(payrollData.deductions.total || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+                
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px; border-radius: 6px; margin-top: 15px;">
+                  <table style="width: 100%;">
+                    <tr>
+                      <td style="color: white; font-size: 18px; font-weight: 600;">Net Salary:</td>
+                      <td style="color: white; font-size: 24px; font-weight: 700; text-align: right;">
+                        ₱${Number(payrollData.net_salary).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+                
+                <p style="color: #6b7280; font-size: 14px; margin-top: 15px; margin-bottom: 0;">
+                  <strong>Payment Date:</strong> ${new Date(payrollData.payment_date).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+                </p>
+              </div>
+              
+              <p style="color: #6b7280; font-size: 14px; line-height: 1.6;">
+                Your net salary has been disbursed. Please contact the HR department if you have any questions about your payroll.
+              </p>
+              
+              <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">
+                Thank you for your hard work and dedication!<br>
+                <strong>Countryside Steak House HR Team</strong>
+              </p>
+            </div>
+            
+            <div style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px;">
+              <p>© 2025 Countryside Steak House. All rights reserved.</p>
+              <p>This is an automated message. Please do not reply to this email.</p>
+            </div>
+          </div>
+        `,
+      };
+
+      const info = await transporter.sendMail(mailOptions);
+      console.log("✅ Payroll notification sent:", info.messageId);
+      return { success: true, messageId: info.messageId };
+    } catch (error) {
+      console.error("❌ Error sending payroll notification:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Send feedback reply email to customer
    * @param {string} customerEmail - Customer's email address
    * @param {string} customerName - Customer's name

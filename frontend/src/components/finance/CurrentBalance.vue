@@ -24,6 +24,12 @@
   const branchBreakdown = ref([]);
   const totalExpenses = ref(0); // Total outflows from cash movements
   const disposalLosses = ref([]); // Disposal losses by branch
+  const payrollExpenses = ref({
+    netSalary: 0,
+    employerContributions: 0,
+    employeeContributions: 0,
+    total: 0,
+  }); // Payroll expense breakdown
   const currentPage = ref(1);
   const pageSize = ref(10);
   const totalPages = computed(() => {
@@ -228,13 +234,32 @@
           limit: 9999,
         });
 
-        // Calculate total from outflow movements
-        totalExpenses.value = cashMovementStore.outflowMovements.reduce(
-          (sum, movement) => {
-            return sum + Number(movement.amount || 0);
-          },
-          0
-        );
+        // Calculate total from outflow movements and break down payroll expenses
+        totalExpenses.value = 0;
+        payrollExpenses.value = {
+          netSalary: 0,
+          employerContributions: 0,
+          employeeContributions: 0,
+          total: 0,
+        };
+
+        cashMovementStore.outflowMovements.forEach((movement) => {
+          const amount = Number(movement.amount || 0);
+          totalExpenses.value += amount;
+
+          // Track payroll-specific expenses
+          const source = (movement.source || '').toLowerCase();
+          if (source === 'payroll') {
+            payrollExpenses.value.netSalary += amount;
+            payrollExpenses.value.total += amount;
+          } else if (source === 'payroll_employer_contributions') {
+            payrollExpenses.value.employerContributions += amount;
+            payrollExpenses.value.total += amount;
+          } else if (source === 'payroll_employee_contributions') {
+            payrollExpenses.value.employeeContributions += amount;
+            payrollExpenses.value.total += amount;
+          }
+        });
       } catch (err) {
         console.error('Failed to fetch expenses:', err);
         totalExpenses.value = 0;
@@ -443,6 +468,98 @@
               maximumFractionDigits: 2,
             })
           }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Payroll Expenses Breakdown -->
+  <div
+    v-if="payrollExpenses.total > 0"
+    class="card mt-4 bg-white shadow border border-black/10"
+  >
+    <div class="card-body">
+      <h3 class="text-sm font-medium text-gray-700 mb-3">
+        Payroll Expenses Breakdown
+      </h3>
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div class="stats shadow border border-gray-200">
+          <div class="stat p-3">
+            <div class="stat-title text-xs">Net Salary Paid</div>
+            <div class="stat-value text-lg text-purple-600">
+              <font-awesome-icon
+                icon="fa-solid fa-peso-sign"
+                class="!w-4 !h-4"
+              />
+              {{
+                Number(payrollExpenses.netSalary).toLocaleString('en-PH', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })
+              }}
+            </div>
+            <div class="stat-desc text-xs">Employee salaries</div>
+          </div>
+        </div>
+        <div class="stats shadow border border-gray-200">
+          <div class="stat p-3">
+            <div class="stat-title text-xs">Employer Contributions</div>
+            <div class="stat-value text-lg text-orange-600">
+              <font-awesome-icon
+                icon="fa-solid fa-peso-sign"
+                class="!w-4 !h-4"
+              />
+              {{
+                Number(payrollExpenses.employerContributions).toLocaleString(
+                  'en-PH',
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  }
+                )
+              }}
+            </div>
+            <div class="stat-desc text-xs">SSS, PhilHealth, Pag-IBIG</div>
+          </div>
+        </div>
+        <div class="stats shadow border border-gray-200">
+          <div class="stat p-3">
+            <div class="stat-title text-xs">Employee Contributions</div>
+            <div class="stat-value text-lg text-blue-600">
+              <font-awesome-icon
+                icon="fa-solid fa-peso-sign"
+                class="!w-4 !h-4"
+              />
+              {{
+                Number(payrollExpenses.employeeContributions).toLocaleString(
+                  'en-PH',
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  }
+                )
+              }}
+            </div>
+            <div class="stat-desc text-xs">To be remitted</div>
+          </div>
+        </div>
+        <div class="stats shadow border border-gray-200">
+          <div class="stat p-3">
+            <div class="stat-title text-xs">Total Payroll Expense</div>
+            <div class="stat-value text-lg text-error">
+              <font-awesome-icon
+                icon="fa-solid fa-peso-sign"
+                class="!w-4 !h-4"
+              />
+              {{
+                Number(payrollExpenses.total).toLocaleString('en-PH', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })
+              }}
+            </div>
+            <div class="stat-desc text-xs">Total payroll cost</div>
+          </div>
         </div>
       </div>
     </div>

@@ -323,8 +323,8 @@
       ...filteredBudgetHistory.value.map((release) =>
         [
           release.release_id,
-          release.request_id,
-          `"${release.request_description.replace(/"/g, '""')}"`,
+          release.request_id || 'N/A',
+          `"${(release.payroll_period_name || release.request_description).replace(/"/g, '""')}"`,
           release.released_amount,
           release.released_at,
           release.released_by,
@@ -772,6 +772,7 @@
       filtered = filtered.filter(
         (r) =>
           (r.request_description || '').toLowerCase().includes(q) ||
+          (r.payroll_period_name || '').toLowerCase().includes(q) ||
           (r.request_id || '').toString().toLowerCase().includes(q) ||
           (r.release_id || '').toString().toLowerCase().includes(q)
       );
@@ -1349,10 +1350,22 @@
                       <td class="max-w-xs">
                         <div
                           class="tooltip tooltip-top"
-                          :data-tip="release.request_description"
+                          :data-tip="
+                            release.payroll_period_name ||
+                            release.request_description
+                          "
                         >
                           <p class="truncate font-medium">
-                            {{ release.request_description }}
+                            {{
+                              release.payroll_period_name ||
+                              release.request_description
+                            }}
+                          </p>
+                          <p
+                            v-if="release.payroll_period_name"
+                            class="text-xs text-purple-600"
+                          >
+                            Payroll Release
                           </p>
                         </div>
                       </td>
@@ -1725,7 +1738,7 @@
                   remainingAfterRelease >= 0 ? 'text-success' : 'text-error'
                 "
               >
-              <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
                   Math.max(remainingAfterRelease, 0).toLocaleString('en-PH', {
                     minimumFractionDigits: 2,
                   })

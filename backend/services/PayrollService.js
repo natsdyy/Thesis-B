@@ -369,6 +369,10 @@ class PayrollService {
       role_name: employee.role_name || employee.job_title,
       rate_per_hour: hourlyRate,
       employee_type: employeeType,
+      // Government benefit numbers for compliance
+      sss_number: employee.sss_number || null,
+      philhealth_number: employee.philhealth_number || null,
+      pagibig_number: employee.pagibig_number || null,
       days_worked: daysWorked - absentFromLates,
       hours_worked: totalHoursWorked,
       overtime_hours: totalOvertimeHours,
@@ -450,141 +454,149 @@ class PayrollService {
     // Calculate monthly salary for bracket determination
     const monthlySalary = grossSalary;
 
-    // SSS Contribution (2025 rates - simplified)
+    // SSS Contribution (2025 rates - Official Schedule)
+    // Based on official SSS 2025 schedule: 5% employee, 10% employer, max MSC ₱35,000
     let sssEmployee = 0;
     let sssEmployer = 0;
 
-    if (monthlySalary <= 4250) {
-      sssEmployee = 180;
-      sssEmployer = 380;
-    } else if (monthlySalary <= 4750) {
-      sssEmployee = 202.5;
-      sssEmployer = 427.5;
-    } else if (monthlySalary <= 5250) {
-      sssEmployee = 225;
-      sssEmployer = 475;
-    } else if (monthlySalary <= 5750) {
-      sssEmployee = 247.5;
-      sssEmployer = 522.5;
-    } else if (monthlySalary <= 6250) {
-      sssEmployee = 270;
-      sssEmployer = 570;
-    } else if (monthlySalary <= 6750) {
-      sssEmployee = 292.5;
-      sssEmployer = 617.5;
-    } else if (monthlySalary <= 7250) {
-      sssEmployee = 315;
-      sssEmployer = 665;
-    } else if (monthlySalary <= 7750) {
-      sssEmployee = 337.5;
-      sssEmployer = 712.5;
-    } else if (monthlySalary <= 8250) {
-      sssEmployee = 360;
-      sssEmployer = 760;
-    } else if (monthlySalary <= 8750) {
-      sssEmployee = 382.5;
-      sssEmployer = 807.5;
-    } else if (monthlySalary <= 9250) {
-      sssEmployee = 405;
-      sssEmployer = 855;
-    } else if (monthlySalary <= 9750) {
-      sssEmployee = 427.5;
-      sssEmployer = 902.5;
-    } else if (monthlySalary <= 10250) {
-      sssEmployee = 450;
-      sssEmployer = 950;
-    } else if (monthlySalary <= 10750) {
-      sssEmployee = 472.5;
-      sssEmployer = 997.5;
-    } else if (monthlySalary <= 11250) {
-      sssEmployee = 495;
-      sssEmployer = 1045;
-    } else if (monthlySalary <= 11750) {
-      sssEmployee = 517.5;
-      sssEmployer = 1092.5;
-    } else if (monthlySalary <= 12250) {
-      sssEmployee = 540;
-      sssEmployer = 1140;
-    } else if (monthlySalary <= 12750) {
-      sssEmployee = 562.5;
-      sssEmployer = 1187.5;
-    } else if (monthlySalary <= 13250) {
-      sssEmployee = 585;
-      sssEmployer = 1235;
-    } else if (monthlySalary <= 13750) {
-      sssEmployee = 607.5;
-      sssEmployer = 1282.5;
-    } else if (monthlySalary <= 14250) {
-      sssEmployee = 630;
-      sssEmployer = 1330;
-    } else if (monthlySalary <= 14750) {
-      sssEmployee = 652.5;
-      sssEmployer = 1377.5;
-    } else if (monthlySalary <= 15250) {
-      sssEmployee = 675;
-      sssEmployer = 1425;
-    } else if (monthlySalary <= 15750) {
-      sssEmployee = 697.5;
-      sssEmployer = 1472.5;
-    } else if (monthlySalary <= 16250) {
-      sssEmployee = 720;
-      sssEmployer = 1520;
-    } else if (monthlySalary <= 16750) {
-      sssEmployee = 742.5;
-      sssEmployer = 1567.5;
-    } else if (monthlySalary <= 17250) {
-      sssEmployee = 765;
-      sssEmployer = 1615;
-    } else if (monthlySalary <= 17750) {
-      sssEmployee = 787.5;
-      sssEmployer = 1662.5;
-    } else if (monthlySalary <= 18250) {
-      sssEmployee = 810;
-      sssEmployer = 1710;
-    } else if (monthlySalary <= 18750) {
-      sssEmployee = 832.5;
-      sssEmployer = 1757.5;
-    } else if (monthlySalary <= 19250) {
-      sssEmployee = 855;
-      sssEmployer = 1805;
-    } else if (monthlySalary <= 19750) {
-      sssEmployee = 877.5;
-      sssEmployer = 1852.5;
-    } else if (monthlySalary <= 20250) {
-      sssEmployee = 900;
-      sssEmployer = 1900;
-    } else if (monthlySalary <= 20750) {
-      sssEmployee = 922.5;
-      sssEmployer = 1947.5;
-    } else if (monthlySalary <= 21250) {
-      sssEmployee = 945;
-      sssEmployer = 1995;
-    } else if (monthlySalary <= 21750) {
-      sssEmployee = 967.5;
-      sssEmployer = 2042.5;
-    } else if (monthlySalary <= 22250) {
-      sssEmployee = 990;
-      sssEmployer = 2090;
-    } else if (monthlySalary <= 22750) {
-      sssEmployee = 1012.5;
-      sssEmployer = 2137.5;
-    } else if (monthlySalary <= 23250) {
-      sssEmployee = 1035;
-      sssEmployer = 2185;
-    } else if (monthlySalary <= 23750) {
-      sssEmployee = 1057.5;
-      sssEmployer = 2232.5;
-    } else if (monthlySalary <= 24250) {
-      sssEmployee = 1080;
-      sssEmployer = 2280;
-    } else if (monthlySalary <= 24750) {
-      sssEmployee = 1102.5;
-      sssEmployer = 2327.5;
+    // Determine Monthly Salary Credit (MSC) based on salary range
+    let msc = 0;
+    if (monthlySalary < 5250) {
+      msc = 5000;
+    } else if (monthlySalary < 5750) {
+      msc = 5500;
+    } else if (monthlySalary < 6250) {
+      msc = 6000;
+    } else if (monthlySalary < 6750) {
+      msc = 6500;
+    } else if (monthlySalary < 7250) {
+      msc = 7000;
+    } else if (monthlySalary < 7750) {
+      msc = 7500;
+    } else if (monthlySalary < 8250) {
+      msc = 8000;
+    } else if (monthlySalary < 8750) {
+      msc = 8500;
+    } else if (monthlySalary < 9250) {
+      msc = 9000;
+    } else if (monthlySalary < 9750) {
+      msc = 9500;
+    } else if (monthlySalary < 10250) {
+      msc = 10000;
+    } else if (monthlySalary < 10750) {
+      msc = 10500;
+    } else if (monthlySalary < 11250) {
+      msc = 11000;
+    } else if (monthlySalary < 11750) {
+      msc = 11500;
+    } else if (monthlySalary < 12250) {
+      msc = 12000;
+    } else if (monthlySalary < 12750) {
+      msc = 12500;
+    } else if (monthlySalary < 13250) {
+      msc = 13000;
+    } else if (monthlySalary < 13750) {
+      msc = 13500;
+    } else if (monthlySalary < 14250) {
+      msc = 14000;
+    } else if (monthlySalary < 14750) {
+      msc = 14500;
+    } else if (monthlySalary < 15250) {
+      msc = 15000;
+    } else if (monthlySalary < 15750) {
+      msc = 15500;
+    } else if (monthlySalary < 16250) {
+      msc = 16000;
+    } else if (monthlySalary < 16750) {
+      msc = 16500;
+    } else if (monthlySalary < 17250) {
+      msc = 17000;
+    } else if (monthlySalary < 17750) {
+      msc = 17500;
+    } else if (monthlySalary < 18250) {
+      msc = 18000;
+    } else if (monthlySalary < 18750) {
+      msc = 18500;
+    } else if (monthlySalary < 19250) {
+      msc = 19000;
+    } else if (monthlySalary < 19750) {
+      msc = 19500;
+    } else if (monthlySalary < 20250) {
+      msc = 20000;
+    } else if (monthlySalary < 20750) {
+      msc = 20500;
+    } else if (monthlySalary < 21250) {
+      msc = 21000;
+    } else if (monthlySalary < 21750) {
+      msc = 21500;
+    } else if (monthlySalary < 22250) {
+      msc = 22000;
+    } else if (monthlySalary < 22750) {
+      msc = 22500;
+    } else if (monthlySalary < 23250) {
+      msc = 23000;
+    } else if (monthlySalary < 23750) {
+      msc = 23500;
+    } else if (monthlySalary < 24250) {
+      msc = 24000;
+    } else if (monthlySalary < 24750) {
+      msc = 24500;
+    } else if (monthlySalary < 25250) {
+      msc = 25000;
+    } else if (monthlySalary < 25750) {
+      msc = 25500;
+    } else if (monthlySalary < 26250) {
+      msc = 26000;
+    } else if (monthlySalary < 26750) {
+      msc = 26500;
+    } else if (monthlySalary < 27250) {
+      msc = 27000;
+    } else if (monthlySalary < 27750) {
+      msc = 27500;
+    } else if (monthlySalary < 28250) {
+      msc = 28000;
+    } else if (monthlySalary < 28750) {
+      msc = 28500;
+    } else if (monthlySalary < 29250) {
+      msc = 29000;
+    } else if (monthlySalary < 29750) {
+      msc = 29500;
+    } else if (monthlySalary < 30250) {
+      msc = 30000;
+    } else if (monthlySalary < 30750) {
+      msc = 30500;
+    } else if (monthlySalary < 31250) {
+      msc = 31000;
+    } else if (monthlySalary < 31750) {
+      msc = 31500;
+    } else if (monthlySalary < 32250) {
+      msc = 32000;
+    } else if (monthlySalary < 32750) {
+      msc = 32500;
+    } else if (monthlySalary < 33250) {
+      msc = 33000;
+    } else if (monthlySalary < 33750) {
+      msc = 33500;
     } else {
-      // Maximum contribution
-      sssEmployee = 1125;
-      sssEmployer = 2375;
+      // Maximum MSC for 2025: ₱35,000
+      msc = 35000;
     }
+
+    // Calculate SSS contributions based on MSC
+    // 2025 rates: 5% employee, 10% employer
+    sssEmployee = msc * 0.05; // 5%
+    sssEmployer = msc * 0.1; // 10%
+
+    // EC (Employee Compensation) contribution - paid by employer only
+    let ecContribution = 0;
+    if (msc < 15000) {
+      ecContribution = 10;
+    } else {
+      ecContribution = 30;
+    }
+
+    // Add EC to employer's total contribution
+    sssEmployer += ecContribution;
 
     // PhilHealth Contribution (2025: 4.5% of basic salary, max ₱90,000)
     const philhealthBase = Math.min(monthlySalary, 90000);

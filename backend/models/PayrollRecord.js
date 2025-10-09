@@ -21,6 +21,10 @@ class PayrollRecord {
         role_name: data.role_name,
         rate_per_hour: data.rate_per_hour,
         employee_type: data.employee_type,
+        // Government benefit numbers
+        sss_number: data.sss_number || null,
+        philhealth_number: data.philhealth_number || null,
+        pagibig_number: data.pagibig_number || null,
         days_worked: data.days_worked || 0,
         hours_worked: data.hours_worked || 0,
         overtime_hours: data.overtime_hours || 0,

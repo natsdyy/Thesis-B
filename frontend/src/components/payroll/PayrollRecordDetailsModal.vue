@@ -16,7 +16,7 @@
         </h2>
         <button
           @click="closeModal"
-          class="text-white hover:bg-white/20 rounded-full p-2 transition-colors "
+          class="text-white hover:bg-white/20 rounded-full p-2 transition-colors"
         >
           <svg
             class="w-5 h-5"
@@ -64,6 +64,40 @@
                 <p class="font-medium text-primaryColor">
                   <i class="fas fa-peso-sign mr-1"></i
                   >{{ formatCurrency(record?.rate_per_hour) }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Government Benefit Numbers -->
+          <div
+            v-if="
+              record?.sss_number ||
+              record?.philhealth_number ||
+              record?.pagibig_number
+            "
+            class="bg-blue-50 border border-blue-200 rounded-xl p-4"
+          >
+            <h3 class="text-md font-semibold text-blue-800 mb-3">
+              Government Benefit Numbers
+            </h3>
+            <div class="grid grid-cols-3 gap-4">
+              <div v-if="record?.sss_number">
+                <p class="text-sm text-blue-600">SSS</p>
+                <p class="font-medium text-gray-700 font-mono text-sm">
+                  {{ record.sss_number }}
+                </p>
+              </div>
+              <div v-if="record?.philhealth_number">
+                <p class="text-sm text-blue-600">PhilHealth</p>
+                <p class="font-medium text-gray-700 font-mono text-sm">
+                  {{ record.philhealth_number }}
+                </p>
+              </div>
+              <div v-if="record?.pagibig_number">
+                <p class="text-sm text-blue-600">Pag-IBIG</p>
+                <p class="font-medium text-gray-700 font-mono text-sm">
+                  {{ record.pagibig_number }}
                 </p>
               </div>
             </div>
@@ -154,7 +188,9 @@
 
           <!-- Earnings Breakdown -->
           <div class="bg-white border border-black/10 rounded-xl p-4">
-            <h3 class="text-md font-semibold text-primaryColor mb-3">Earnings</h3>
+            <h3 class="text-md font-semibold text-primaryColor mb-3">
+              Earnings
+            </h3>
             <div class="space-y-2">
               <div class="flex justify-between">
                 <span class="text-sm text-black/60">Basic Salary</span>
@@ -285,7 +321,7 @@
 
           <!-- Net Salary -->
           <div
-            class="bg-primaryColor/10  rounded-xl p-4 text-white border border-black/10"
+            class="bg-primaryColor/10 rounded-xl p-4 text-white border border-black/10"
           >
             <div class="flex justify-between items-center text-primaryColor">
               <span class="text-md font-thin">Net Salary</span>
@@ -301,9 +337,7 @@
             v-if="record?.remarks"
             class="bg-white border border-black/10 rounded-xl p-4"
           >
-            <h3 class="text-md font-thin text-primaryColor mb-2">
-              Remarks
-            </h3>
+            <h3 class="text-md font-thin text-primaryColor mb-2">Remarks</h3>
             <p class="text-black/70">{{ record.remarks }}</p>
           </div>
         </div>

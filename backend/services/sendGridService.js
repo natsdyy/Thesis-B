@@ -360,69 +360,118 @@ class SendGridService {
         subject: `Payroll Statement - ${payrollData.period_name}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
+            <!-- Main Email Container -->
             <div style="background-color: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
               
               <!-- Header -->
-              <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px; margin: -30px -30px 30px -30px;">
-                <h1 style="color: white; margin: 0; font-size: 28px; font-weight: bold;">Countryside Steakhouse</h1>
-                <p style="color: #e0e7ff; margin: 10px 0 0 0; font-size: 16px; font-weight: 500;">Payroll Statement</p>
+              <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #466114;">
+                <h1 style="color: #2c3e50; margin: 0; font-size: 28px; font-weight: bold;">Countryside Steakhouse</h1>
+                <p style="color: #466114; margin: 5px 0 0 0; font-size: 16px; font-weight: 500;">Payroll Statement</p>
               </div>
               
               <!-- Main Content -->
               <div style="margin-bottom: 30px;">
-                <p style="font-size: 16px; color: #374151; margin-bottom: 20px;">
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
                   Dear <strong>${employeeName}</strong>,
                 </p>
                 
-                <p style="color: #6b7280; line-height: 1.6; margin-bottom: 25px;">
-                  Your payroll for the period <strong>${payrollData.period_name}</strong> has been processed and released.
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
+                  Your payroll for the period <strong>${payrollData.period_name} (${new Date(payrollData.date_from).toLocaleDateString("en-PH", { month: "short", day: "numeric" })} - ${new Date(payrollData.date_to).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })})</strong> has been processed and released.
                 </p>
                 
                 <!-- Payroll Summary Card -->
-                <div style="background: white; padding: 25px; border-radius: 8px; margin: 20px 0; border: 2px solid #667eea; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                  <h2 style="color: #667eea; margin-top: 0; font-size: 18px; font-weight: bold; margin-bottom: 20px;">Payroll Summary</h2>
+                <div style="background-color: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                  <h2 style="color: #2c3e50; margin-top: 0; font-size: 20px; font-weight: bold; margin-bottom: 20px;">Payroll Summary</h2>
                   
                   <table style="width: 100%; border-collapse: collapse;">
                     <tr>
-                      <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Period Covered:</td>
-                      <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 14px;">
+                      <td style="padding: 8px 0; color: #555; font-size: 15px;">Period Covered:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
                         ${new Date(payrollData.date_from).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })} - 
                         ${new Date(payrollData.date_to).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
                       </td>
                     </tr>
-                    <tr style="border-top: 1px solid #e5e7eb;">
-                      <td style="padding: 12px 0; color: #6b7280; font-size: 15px;">Gross Salary:</td>
-                      <td style="padding: 12px 0; text-align: right; font-weight: 700; color: #059669; font-size: 16px;">
+                  </table>
+                  
+                  <!-- Government Benefit Numbers -->
+                  ${
+                    payrollData.sss_number ||
+                    payrollData.philhealth_number ||
+                    payrollData.pagibig_number
+                      ? `
+                  <div style="margin: 15px 0; padding: 12px; background-color: #e9ecef; border-radius: 5px;">
+                    <p style="color: #555; font-size: 13px; font-weight: 600; margin: 0 0 8px 0;">Government Benefit Numbers:</p>
+                    <table style="width: 100%; font-size: 13px;">
+                      ${
+                        payrollData.sss_number
+                          ? `
+                      <tr>
+                        <td style="padding: 3px 0; color: #555;">SSS:</td>
+                        <td style="padding: 3px 0; text-align: right; font-weight: 500; color: #2c3e50; font-family: monospace;">${payrollData.sss_number}</td>
+                      </tr>
+                      `
+                          : ""
+                      }
+                      ${
+                        payrollData.philhealth_number
+                          ? `
+                      <tr>
+                        <td style="padding: 3px 0; color: #555;">PhilHealth:</td>
+                        <td style="padding: 3px 0; text-align: right; font-weight: 500; color: #2c3e50; font-family: monospace;">${payrollData.philhealth_number}</td>
+                      </tr>
+                      `
+                          : ""
+                      }
+                      ${
+                        payrollData.pagibig_number
+                          ? `
+                      <tr>
+                        <td style="padding: 3px 0; color: #555;">Pag-IBIG:</td>
+                        <td style="padding: 3px 0; text-align: right; font-weight: 500; color: #2c3e50; font-family: monospace;">${payrollData.pagibig_number}</td>
+                      </tr>
+                      `
+                          : ""
+                      }
+                    </table>
+                  </div>
+                  `
+                      : ""
+                  }
+                  
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <tr style="border-top: 1px solid #dee2e6;">
+                      <td style="padding: 12px 0; color: #555; font-size: 16px; font-weight: 500;">Gross Salary:</td>
+                      <td style="padding: 12px 0; text-align: right; font-weight: 700; color: #466114; font-size: 18px;">
                         ₱${Number(payrollData.gross_salary).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                     </tr>
                   </table>
                   
                   <!-- Deductions Section -->
-                  <div style="margin: 20px 0; padding-top: 15px; border-top: 2px solid #e5e7eb;">
-                    <h3 style="color: #dc2626; font-size: 15px; margin-bottom: 12px; font-weight: bold;">Deductions:</h3>
-                    <table style="width: 100%; font-size: 14px;">
+                  <div style="margin: 20px 0; padding-top: 15px; border-top: 2px solid #dee2e6;">
+                    <h3 style="color: #dc2626; font-size: 16px; margin-bottom: 12px; font-weight: bold;">Deductions:</h3>
+                    <table style="width: 100%; font-size: 15px;">
                       <tr>
-                        <td style="padding: 6px 0; color: #6b7280;">SSS:</td>
-                        <td style="padding: 6px 0; text-align: right; font-weight: 500;">
+                        <td style="padding: 6px 0; color: #555;">SSS:</td>
+                        <td style="padding: 6px 0; text-align: right; font-weight: 500; color: #2c3e50;">
                           ₱${Number(payrollData.deductions.sss || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
                       <tr>
-                        <td style="padding: 6px 0; color: #6b7280;">PhilHealth:</td>
-                        <td style="padding: 6px 0; text-align: right; font-weight: 500;">
+                        <td style="padding: 6px 0; color: #555;">PhilHealth:</td>
+                        <td style="padding: 6px 0; text-align: right; font-weight: 500; color: #2c3e50;">
                           ₱${Number(payrollData.deductions.philhealth || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
                       <tr>
-                        <td style="padding: 6px 0; color: #6b7280;">Pag-IBIG:</td>
-                        <td style="padding: 6px 0; text-align: right; font-weight: 500;">
+                        <td style="padding: 6px 0; color: #555;">Pag-IBIG:</td>
+                        <td style="padding: 6px 0; text-align: right; font-weight: 500; color: #2c3e50;">
                           ₱${Number(payrollData.deductions.pagibig || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
-                      <tr style="border-top: 1px solid #e5e7eb;">
-                        <td style="padding: 10px 0 6px 0; color: #dc2626; font-weight: 600;">Total Deductions:</td>
-                        <td style="padding: 10px 0 6px 0; text-align: right; color: #dc2626; font-weight: 700; font-size: 15px;">
+                      <tr style="border-top: 1px solid #dee2e6;">
+                        <td style="padding: 10px 0 6px 0; color: #dc2626; font-weight: 600; font-size: 16px;">Total Deductions:</td>
+                        <td style="padding: 10px 0 6px 0; text-align: right; color: #dc2626; font-weight: 700; font-size: 16px;">
                           ₱${Number(payrollData.deductions.total || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
@@ -430,11 +479,11 @@ class SendGridService {
                   </div>
                   
                   <!-- Net Salary Section -->
-                  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 8px; margin-top: 20px; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);">
+                  <div style="background-color: #466114; padding: 20px; border-radius: 8px; margin-top: 20px; box-shadow: 0 2px 5px rgba(70,97,20,0.3);">
                     <table style="width: 100%;">
                       <tr>
                         <td style="color: white; font-size: 18px; font-weight: 700;">Net Salary:</td>
-                        <td style="color: white; font-size: 26px; font-weight: 900; text-align: right; letter-spacing: -0.5px;">
+                        <td style="color: white; font-size: 28px; font-weight: 900; text-align: right;">
                           ₱${Number(payrollData.net_salary).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
@@ -442,28 +491,29 @@ class SendGridService {
                   </div>
                   
                   <!-- Payment Date -->
-                  <p style="color: #6b7280; font-size: 13px; margin-top: 15px; margin-bottom: 0; text-align: center;">
+                  <p style="color: #555; font-size: 14px; margin-top: 15px; margin-bottom: 0; text-align: center;">
                     <strong>Payment Date:</strong> ${new Date(payrollData.payment_date).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
                   </p>
                 </div>
                 
                 <!-- Information Note -->
-                <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                  <p style="color: #1e40af; margin: 0; font-size: 14px; line-height: 1.6;">
+                <div style="background-color: rgba(170,211,109,0.1); border-left: 4px solid #466114; padding: 20px; border-radius: 5px; margin: 20px 0;">
+                  <h4 style="color: #466114; margin-top: 0; margin-bottom: 10px; font-size: 16px; font-weight: bold;">Payment Notification</h4>
+                  <p style="color: #2c3e50; margin: 0; font-size: 15px; line-height: 1.6;">
                     Your net salary has been disbursed. Please contact the HR department if you have any questions about your payroll.
                   </p>
                 </div>
                 
-                <p style="color: #6b7280; font-size: 15px; margin-top: 25px; line-height: 1.6;">
+                <p style="color: #555; font-size: 16px; margin-top: 25px; line-height: 1.6;">
                   Thank you for your hard work and dedication!<br>
                   <strong style="color: #466114;">Countryside Steakhouse HR Team</strong>
                 </p>
               </div>
               
               <!-- Footer -->
-              <div style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+              <div style="text-align: center; color: #666; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
                 <p style="margin: 0;">©2025 COUNTRYSIDE-STEAKHOUSE. All rights reserved.</p>
-                <p style="margin: 5px 0 0 0;">This is an automated message. Please do not reply to this email.</p>
+                <p style="margin: 5px 0 0 0;">This is an automated message, please do not reply to this email.</p>
               </div>
             </div>
           </div>

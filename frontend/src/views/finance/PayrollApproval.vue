@@ -28,8 +28,9 @@
   // State
   const activeTab = ref('pending');
   const searchQuery = ref('');
-  const dateFromFilter = ref('');
-  const dateToFilter = ref('');
+  const dateRangeFilter = ref('all'); // all | today | week | month | custom
+  const customMonth = ref(new Date().getMonth());
+  const customYear = ref(new Date().getFullYear());
   const selectedPeriod = ref(null);
   const showDetailsModal = ref(false);
 
@@ -43,6 +44,16 @@
   // Computed
   const loading = computed(() => payrollStore.loading);
   const payrollPeriods = computed(() => payrollStore.payrollPeriods);
+
+  // Available years for custom month picker (current year ± 2 years)
+  const availableYears = computed(() => {
+    const currentYear = new Date().getFullYear();
+    const years = [];
+    for (let i = currentYear - 2; i <= currentYear + 2; i++) {
+      years.push(i);
+    }
+    return years;
+  });
 
   // Stats
   const stats = computed(() => {
@@ -82,16 +93,59 @@
     }
 
     // Filter by date range
-    if (dateFromFilter.value) {
-      periods = periods.filter(
-        (p) => new Date(p.date_from) >= new Date(dateFromFilter.value)
-      );
-    }
+    if (dateRangeFilter.value !== 'all') {
+      const now = getCurrentPhilippineDate();
+      let startDate, endDate;
 
-    if (dateToFilter.value) {
-      periods = periods.filter(
-        (p) => new Date(p.date_to) <= new Date(dateToFilter.value)
-      );
+      if (dateRangeFilter.value === 'today') {
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        endDate = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59
+        );
+      } else if (dateRangeFilter.value === 'week') {
+        const day = now.getDay();
+        const diff = (day + 6) % 7; // Monday start
+        startDate = new Date(now);
+        startDate.setDate(startDate.getDate() - diff);
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + 6);
+        endDate.setHours(23, 59, 59, 999);
+      } else if (dateRangeFilter.value === 'month') {
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        endDate = new Date(
+          now.getFullYear(),
+          now.getMonth() + 1,
+          0,
+          23,
+          59,
+          59
+        );
+      } else if (dateRangeFilter.value === 'custom') {
+        startDate = new Date(customYear.value, customMonth.value, 1);
+        endDate = new Date(
+          customYear.value,
+          customMonth.value + 1,
+          0,
+          23,
+          59,
+          59
+        );
+      }
+
+      if (startDate && endDate) {
+        periods = periods.filter((p) => {
+          const periodStart = new Date(p.date_from);
+          const periodEnd = new Date(p.date_to);
+          // Check if period overlaps with filter range
+          return periodStart <= endDate && periodEnd >= startDate;
+        });
+      }
     }
 
     // Filter by search query
@@ -347,24 +401,50 @@
             />
           </div>
 
-          <!-- Date From -->
+          <!-- Date Range Filter -->
           <div class="form-control">
-            <input
-              v-model="dateFromFilter"
-              type="date"
-              class="input input-sm input-bordered"
-              placeholder="From"
-            />
+            <select
+              v-model="dateRangeFilter"
+              class="select select-sm select-bordered w-full sm:w-auto"
+            >
+              <option value="all">All Time</option>
+              <option value="today">Today</option>
+              <option value="week">This Week</option>
+              <option value="month">This Month</option>
+              <option value="custom">Custom Month</option>
+            </select>
           </div>
 
-          <!-- Date To -->
-          <div class="form-control">
-            <input
-              v-model="dateToFilter"
-              type="date"
-              class="input input-sm input-bordered"
-              placeholder="To"
-            />
+          <!-- Custom Month Picker -->
+          <div
+            v-if="dateRangeFilter === 'custom'"
+            class="flex flex-col sm:flex-row items-start sm:items-center gap-2"
+          >
+            <select
+              v-model="customMonth"
+              class="select select-sm select-bordered w-full sm:min-w-[120px]"
+            >
+              <option value="0">January</option>
+              <option value="1">February</option>
+              <option value="2">March</option>
+              <option value="3">April</option>
+              <option value="4">May</option>
+              <option value="5">June</option>
+              <option value="6">July</option>
+              <option value="7">August</option>
+              <option value="8">September</option>
+              <option value="9">October</option>
+              <option value="10">November</option>
+              <option value="11">December</option>
+            </select>
+            <select
+              v-model="customYear"
+              class="select select-sm select-bordered w-full sm:min-w-[100px]"
+            >
+              <option v-for="year in availableYears" :key="year" :value="year">
+                {{ year }}
+              </option>
+            </select>
           </div>
 
           <!-- Refresh Button -->

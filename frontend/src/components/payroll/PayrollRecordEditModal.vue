@@ -1,22 +1,22 @@
 <template>
   <div
     v-if="show"
-    class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]"
+    class="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-2 sm:p-4 backdrop-blur-sm"
     @click.self="closeModal"
   >
     <div
-      class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden"
+      class="bg-accentColor rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-black/10"
     >
       <!-- Header -->
       <div
-        class="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-green-500 to-green-600 text-white"
+        class="flex items-center justify-between px-6 py-4 bg-primaryColor text-white border-b border-black/10"
       >
-        <h2 class="text-xl font-bold">
+        <h2 class="text-md font-thin">
           Edit Payroll Record - {{ formData.employee_name }}
         </h2>
         <button
           @click="closeModal"
-          class="text-white hover:bg-green-700 rounded-full p-2 transition-colors"
+          class="text-white hover:bg-white/20 rounded-full p-2 transition-colors"
         >
           <svg
             class="w-5 h-5"
@@ -35,20 +35,16 @@
       </div>
 
       <!-- Content -->
-      <form
-        @submit.prevent="saveChanges"
-        class="overflow-y-auto p-6"
-        style="max-height: calc(90vh - 140px)"
-      >
+      <form @submit.prevent="saveChanges" class="p-6">
         <div class="space-y-6">
           <!-- Attendance Adjustments -->
-          <div class="bg-blue-50 rounded-lg p-4">
-            <h3 class="text-lg font-semibold text-blue-800 mb-4">
+          <div class="bg-white border border-black/10 rounded-xl p-4">
+            <h3 class="text-md font-semibold text-primaryColor mb-4">
               Attendance Adjustments
             </h3>
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">
+                <label class="block text-sm font-medium text-black/60 mb-2">
                   Days Worked
                 </label>
                 <input
@@ -56,12 +52,12 @@
                   type="number"
                   step="0.5"
                   min="0"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  class="w-full px-3 py-2 border border-black/10 rounded-lg focus:ring-2 focus:ring-primaryColor focus:border-transparent"
                   @input="recalculatePayroll"
                 />
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">
+                <label class="block text-sm font-medium text-black/60 mb-2">
                   Hours Worked
                 </label>
                 <input
@@ -69,12 +65,12 @@
                   type="number"
                   step="0.25"
                   min="0"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  class="w-full px-3 py-2 border border-black/10 rounded-lg focus:ring-2 focus:ring-primaryColor focus:border-transparent"
                   @input="recalculatePayroll"
                 />
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">
+                <label class="block text-sm font-medium text-black/60 mb-2">
                   Overtime Hours
                 </label>
                 <input
@@ -82,12 +78,12 @@
                   type="number"
                   step="0.25"
                   min="0"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  class="w-full px-3 py-2 border border-black/10 rounded-lg focus:ring-2 focus:ring-primaryColor focus:border-transparent"
                   @input="recalculatePayroll"
                 />
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">
+                <label class="block text-sm font-medium text-black/60 mb-2">
                   Leave Days
                 </label>
                 <input
@@ -95,7 +91,7 @@
                   type="number"
                   step="0.5"
                   min="0"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  class="w-full px-3 py-2 border border-black/10 rounded-lg focus:ring-2 focus:ring-primaryColor focus:border-transparent"
                   @input="recalculatePayroll"
                 />
               </div>
@@ -103,35 +99,35 @@
           </div>
 
           <!-- Manual Adjustments -->
-          <div class="bg-purple-50 rounded-lg p-4">
-            <h3 class="text-lg font-semibold text-purple-800 mb-4">
+          <div class="bg-white border border-black/10 rounded-xl p-4">
+            <h3 class="text-md font-semibold text-primaryColor mb-4">
               Manual Pay Adjustments
             </h3>
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">
-                  Additional Earnings (₱)
+                <label class="block text-sm font-medium text-black/60 mb-2">
+                  Additional Earnings (<i class="fas fa-peso-sign"></i>)
                 </label>
                 <input
                   v-model.number="formData.additional_earnings"
                   type="number"
                   step="0.01"
                   min="0"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  class="w-full px-3 py-2 border border-black/10 rounded-lg focus:ring-2 focus:ring-primaryColor focus:border-transparent"
                   placeholder="Bonus, allowances, etc."
                   @input="recalculatePayroll"
                 />
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">
-                  Additional Deductions (₱)
+                <label class="block text-sm font-medium text-black/60 mb-2">
+                  Additional Deductions (<i class="fas fa-peso-sign"></i>)
                 </label>
                 <input
                   v-model.number="formData.additional_deductions"
                   type="number"
                   step="0.01"
                   min="0"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  class="w-full px-3 py-2 border border-black/10 rounded-lg focus:ring-2 focus:ring-primaryColor focus:border-transparent"
                   placeholder="Cash advance, etc."
                   @input="recalculatePayroll"
                 />
@@ -140,83 +136,95 @@
           </div>
 
           <!-- Calculated Summary (Read-only) -->
-          <div class="bg-gray-50 rounded-lg p-4 border-2 border-gray-200">
-            <h3 class="text-lg font-semibold text-gray-800 mb-4">
+          <div class="bg-white border border-black/10 rounded-xl p-4">
+            <h3 class="text-md font-semibold text-primaryColor mb-4">
               Calculated Summary
             </h3>
-            <div class="space-y-3">
+            <div class="space-y-2">
               <div class="flex justify-between items-center">
-                <span class="text-sm text-gray-700">Basic Salary:</span>
-                <span class="font-bold text-gray-900"
-                  >₱{{ formatCurrency(calculated.basic_salary) }}</span
-                >
-              </div>
-              <div class="flex justify-between items-center">
-                <span class="text-sm text-gray-700">Overtime Pay:</span>
-                <span class="font-bold text-gray-900"
-                  >₱{{ formatCurrency(calculated.overtime_pay) }}</span
+                <span class="text-sm text-black/60">Basic Salary:</span>
+                <span class="font-medium text-gray-700"
+                  ><i class="fas fa-peso-sign mr-1"></i
+                  >{{ formatCurrency(calculated.basic_salary) }}</span
                 >
               </div>
               <div class="flex justify-between items-center">
-                <span class="text-sm text-gray-700">Additional Earnings:</span>
-                <span class="font-bold text-green-700"
-                  >+₱{{
-                    formatCurrency(formData.additional_earnings || 0)
-                  }}</span
+                <span class="text-sm text-black/60">Overtime Pay:</span>
+                <span class="font-medium text-gray-700"
+                  ><i class="fas fa-peso-sign mr-1"></i
+                  >{{ formatCurrency(calculated.overtime_pay) }}</span
                 >
               </div>
-              <div class="flex justify-between items-center pt-2 border-t">
-                <span class="font-semibold text-gray-700">Gross Salary:</span>
-                <span class="font-bold text-green-700 text-lg"
-                  >₱{{ formatCurrency(calculated.gross_salary) }}</span
+              <div class="flex justify-between items-center">
+                <span class="text-sm text-black/60">Additional Earnings:</span>
+                <span class="font-medium text-primaryColor"
+                  >+<i class="fas fa-peso-sign mr-1"></i
+                  >{{ formatCurrency(formData.additional_earnings || 0) }}</span
                 >
               </div>
-              <div class="flex justify-between items-center pt-2 border-t">
-                <span class="text-sm text-gray-700"
+              <div
+                class="flex justify-between items-center pt-2 border-t border-black/10"
+              >
+                <span class="font-bold text-primaryColor">Gross Salary:</span>
+                <span class="font-bold text-gray-700 text-md"
+                  ><i class="fas fa-peso-sign mr-1"></i
+                  >{{ formatCurrency(calculated.gross_salary) }}</span
+                >
+              </div>
+              <div
+                class="flex justify-between items-center pt-2 border-t border-black/10"
+              >
+                <span class="text-sm text-black/60"
                   >Government Deductions:</span
                 >
-                <span class="font-medium text-orange-700"
-                  >₱{{ formatCurrency(calculated.gov_deductions) }}</span
+                <span class="font-medium text-error"
+                  ><i class="fas fa-peso-sign mr-1"></i
+                  >{{ formatCurrency(calculated.gov_deductions) }}</span
                 >
               </div>
               <div class="flex justify-between items-center">
-                <span class="text-sm text-gray-700"
+                <span class="text-sm text-black/60"
                   >Additional Deductions:</span
                 >
-                <span class="font-medium text-orange-700"
-                  >₱{{
+                <span class="font-medium text-error"
+                  ><i class="fas fa-peso-sign mr-1"></i
+                  >{{
                     formatCurrency(formData.additional_deductions || 0)
                   }}</span
                 >
               </div>
-              <div class="flex justify-between items-center pt-2 border-t">
-                <span class="font-semibold text-gray-700"
-                  >Total Deductions:</span
-                >
-                <span class="font-bold text-orange-700 text-lg"
-                  >₱{{ formatCurrency(calculated.total_deductions) }}</span
-                >
-              </div>
               <div
-                class="flex justify-between items-center pt-3 border-t-2 border-gray-300 bg-blue-100 -mx-4 px-4 py-2 rounded"
+                class="flex justify-between items-center pt-2 border-t border-black/10"
               >
-                <span class="font-bold text-blue-800 text-lg">Net Salary:</span>
-                <span class="font-bold text-blue-900 text-2xl"
-                  >₱{{ formatCurrency(calculated.net_salary) }}</span
+                <span class="font-bold text-error">Total Deductions:</span>
+                <span class="font-bold text-gray-700 text-md"
+                  ><i class="fas fa-peso-sign mr-1"></i
+                  >{{ formatCurrency(calculated.total_deductions) }}</span
                 >
               </div>
             </div>
           </div>
 
+          <!-- Net Salary -->
+          <div class="bg-primaryColor/10 rounded-xl p-4 border border-black/10">
+            <div class="flex justify-between items-center text-primaryColor">
+              <span class="text-md font-thin">Net Salary</span>
+              <span class="text-md font-thin"
+                ><i class="fas fa-peso-sign mr-1"></i
+                >{{ formatCurrency(calculated.net_salary) }}</span
+              >
+            </div>
+          </div>
+
           <!-- Remarks -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">
+          <div class="bg-white border border-black/10 rounded-xl p-4">
+            <label class="block text-sm font-medium text-black/60 mb-2">
               Remarks / Notes
             </label>
             <textarea
               v-model="formData.remarks"
               rows="3"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              class="w-full px-3 py-2 border border-black/10 rounded-lg focus:ring-2 focus:ring-primaryColor focus:border-transparent"
               placeholder="Add any notes or explanations for adjustments..."
             ></textarea>
           </div>
@@ -224,18 +232,20 @@
       </form>
 
       <!-- Footer -->
-      <div class="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3">
+      <div
+        class="px-6 py-4 bg-accentColor border-t border-black/10 flex justify-end gap-3"
+      >
         <button
           type="button"
           @click="closeModal"
-          class="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 font-medium transition-colors"
+          class="btn btn-sm font-thin border-none bg-gray-200 hover:bg-gray-300 text-black/50"
         >
           Cancel
         </button>
         <button
           type="button"
           @click="saveChanges"
-          class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors"
+          class="btn btn-sm font-thin border-none bg-primaryColor hover:bg-primaryColor/90 text-white"
         >
           Save Changes
         </button>

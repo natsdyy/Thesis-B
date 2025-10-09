@@ -96,6 +96,147 @@
         </div>
       </div>
 
+      <!-- Balance Summary (Finance Only) -->
+      <div
+        v-if="showBalanceSummary"
+        class="px-6 py-4 bg-white border-b border-black/10"
+      >
+        <div v-if="balanceLoading" class="flex justify-center py-4">
+          <span class="loading loading-spinner loading-md"></span>
+        </div>
+        <div v-else>
+          <h3 class="text-lg font-semibold text-gray-800 mb-4">
+            Financial Summary
+          </h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Current Balance -->
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p class="text-xs text-blue-600 font-medium mb-1">
+                Current Balance
+              </p>
+              <p class="text-2xl font-bold text-blue-700">
+                <i class="fas fa-peso-sign mr-1"></i
+                >{{ formatCurrency(currentBalance) }}
+              </p>
+            </div>
+
+            <!-- Total Payroll Amount -->
+            <div class="bg-orange-50 border border-orange-200 rounded-lg p-4">
+              <p class="text-xs text-orange-600 font-medium mb-1">
+                Total Payroll Amount
+              </p>
+              <p class="text-2xl font-bold text-orange-700">
+                <i class="fas fa-peso-sign mr-1"></i
+                >{{ formatCurrency(totalPayrollAmount) }}
+              </p>
+              <p class="text-xs text-gray-600 mt-1">
+                (Net Salary + Employer Contributions)
+              </p>
+            </div>
+
+            <!-- Remaining Balance -->
+            <div
+              :class="[
+                'border rounded-lg p-4',
+                isSufficientBalance
+                  ? 'bg-green-50 border-green-200'
+                  : 'bg-red-50 border-red-200',
+              ]"
+            >
+              <p
+                :class="[
+                  'text-xs font-medium mb-1',
+                  isSufficientBalance ? 'text-green-600' : 'text-red-600',
+                ]"
+              >
+                Remaining Balance
+              </p>
+              <p
+                :class="[
+                  'text-2xl font-bold',
+                  isSufficientBalance ? 'text-green-700' : 'text-red-700',
+                ]"
+              >
+                <i class="fas fa-peso-sign mr-1"></i
+                >{{ formatCurrency(remainingBalance) }}
+              </p>
+              <div class="flex items-center mt-2">
+                <svg
+                  v-if="isSufficientBalance"
+                  class="w-4 h-4 text-green-600 mr-1"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 13l4 4L19 7"
+                  ></path>
+                </svg>
+                <svg
+                  v-else
+                  class="w-4 h-4 text-red-600 mr-1"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  ></path>
+                </svg>
+                <p
+                  :class="[
+                    'text-xs font-medium',
+                    isSufficientBalance ? 'text-green-600' : 'text-red-600',
+                  ]"
+                >
+                  {{
+                    isSufficientBalance
+                      ? 'Sufficient Balance'
+                      : 'Insufficient Balance'
+                  }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Warning for insufficient balance -->
+          <div
+            v-if="!isSufficientBalance"
+            class="mt-4 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start"
+          >
+            <svg
+              class="w-5 h-5 text-red-600 mr-3 mt-0.5 flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              ></path>
+            </svg>
+            <div>
+              <p class="text-sm font-semibold text-red-800 mb-1">
+                Insufficient Balance Warning
+              </p>
+              <p class="text-sm text-red-700">
+                The current balance is insufficient to cover this payroll.
+                Please ensure adequate funds are available before proceeding
+                with approval and budget release.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Payroll Records Table -->
       <div class="overflow-y-auto" style="max-height: calc(90vh - 400px)">
         <table class="table table-zebra w-full !able-xs">
@@ -220,7 +361,11 @@
         <div class="text-sm text-gray-600">
           <span v-if="payrollPeriod?.finance_approved_by">
             Approved by:
-            <strong>{{ payrollPeriod.finance_approved_by }}</strong> on
+            <strong>{{
+              payrollPeriod.finance_approved_by_name ||
+              payrollPeriod.finance_approved_by
+            }}</strong>
+            on
             {{ formatDate(payrollPeriod.finance_approved_at) }}
           </span>
         </div>
@@ -328,9 +473,10 @@
 </template>
 
 <script>
-  import { ref, computed } from 'vue';
+  import { ref, computed, onMounted } from 'vue';
   import { usePayrollStore } from '@/stores/payrollStore';
   import { useAuthStore } from '@/stores/authStore';
+  import { useFinanceBalanceStore } from '@/stores/financeBalanceStore';
   import { useCustomToast } from '@/composables/useCustomToast.js';
   import PayrollRecordDetailsModal from './PayrollRecordDetailsModal.vue';
   import PayrollRecordEditModal from './PayrollRecordEditModal.vue';
@@ -355,6 +501,7 @@
     setup(props, { emit }) {
       const payrollStore = usePayrollStore();
       const authStore = useAuthStore();
+      const financeBalanceStore = useFinanceBalanceStore();
       const { showSuccess, showError, showWarning, showInfo } =
         useCustomToast();
 
@@ -363,6 +510,7 @@
       const selectedRecord = ref(null);
       const actionLoading = ref(false);
       const actionLoadingText = ref('');
+      const balanceLoading = ref(false);
 
       const payrollPeriod = computed(() => payrollStore.selectedPeriod);
       const payrollRecords = computed(() => payrollStore.payrollRecords);
@@ -374,6 +522,40 @@
         { status: 'budget_released', label: 'Budget Released' },
         { status: 'paid', label: 'Paid' },
       ];
+
+      // Financial Summary
+      const currentBalance = computed(() => financeBalanceStore.currentBalance);
+      const totalPayrollAmount = computed(() => {
+        const netAmount = Number(payrollPeriod.value?.total_net_amount || 0);
+        const employerContributions = payrollRecords.value.reduce(
+          (sum, record) => {
+            return (
+              sum +
+              Number(record.sss_employer_share || 0) +
+              Number(record.philhealth_employer_share || 0) +
+              Number(record.pagibig_employer_share || 0)
+            );
+          },
+          0
+        );
+        return netAmount + employerContributions;
+      });
+
+      const remainingBalance = computed(() => {
+        return currentBalance.value - totalPayrollAmount.value;
+      });
+
+      const isSufficientBalance = computed(() => {
+        return remainingBalance.value >= 0;
+      });
+
+      const showBalanceSummary = computed(() => {
+        // Show balance summary for Finance when reviewing or approving
+        return (
+          authStore.userDepartment === 'Finance' &&
+          ['pending_approval', 'approved'].includes(payrollPeriod.value?.status)
+        );
+      });
 
       const isStepActive = (status) => {
         const currentIndex = statusSteps.findIndex(
@@ -607,6 +789,20 @@
         emit('close');
       };
 
+      // Fetch balance when modal opens
+      onMounted(async () => {
+        if (showBalanceSummary.value) {
+          balanceLoading.value = true;
+          try {
+            await financeBalanceStore.fetchCurrentBalance();
+          } catch (error) {
+            console.error('Error fetching balance:', error);
+          } finally {
+            balanceLoading.value = false;
+          }
+        }
+      });
+
       return {
         payrollPeriod,
         payrollRecords,
@@ -634,6 +830,13 @@
         selectedRecord,
         actionLoading,
         actionLoadingText,
+        // Balance summary
+        showBalanceSummary,
+        currentBalance,
+        totalPayrollAmount,
+        remainingBalance,
+        isSufficientBalance,
+        balanceLoading,
       };
     },
   };

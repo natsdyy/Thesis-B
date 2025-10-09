@@ -1546,15 +1546,7 @@
                       <Clock class="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
                       <span>{{ item.preparation_time_minutes }}m</span>
                     </div>
-                    <div class="flex items-center gap-1">
-                      <Users class="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                      <span class="text-xs">
-                        <span class="font-medium">1 serving</span>
-                        <span class="text-gray-500"
-                          >/ {{ item.recipe_batch_size || 'N/A' }} batch</span
-                        >
-                      </span>
-                    </div>
+         
                   </div>
                   <!-- Actions Dropdown -->
                   <div

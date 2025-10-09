@@ -1427,19 +1427,70 @@
           category: alertItem.category_name,
           item_type_id: alertItem.item_type_id,
           source: 'scm',
+          // Include supplier information - try to get from alert item first, then from current inventory
+          supplier_id:
+            alertItem.supplier_id ||
+            (() => {
+              // Try to find supplier info from current inventory
+              const inventoryItem = currentInventory.value.find(
+                (item) =>
+                  item.item_type_id === alertItem.item_type_id ||
+                  item.id === alertItem.id
+              );
+              return inventoryItem?.supplier_id;
+            })(),
+          supplier_name:
+            alertItem.supplier_name ||
+            (() => {
+              // Try to find supplier info from current inventory
+              const inventoryItem = currentInventory.value.find(
+                (item) =>
+                  item.item_type_id === alertItem.item_type_id ||
+                  item.id === alertItem.id
+              );
+              return inventoryItem?.supplier_name;
+            })(),
         },
       };
-      router.push({ name: 'RequestSupply', state });
+      console.log(
+        'MainInventory - Navigating to RequestSupply with state:',
+        state
+      );
+      console.log('Alert item data:', alertItem);
+      console.log('Alert item keys:', Object.keys(alertItem));
+      console.log('Alert item supplier info:', {
+        supplier_id: alertItem.supplier_id,
+        supplier_name: alertItem.supplier_name,
+        hasSupplierId: 'supplier_id' in alertItem,
+        hasSupplierName: 'supplier_name' in alertItem,
+      });
+
+      // Check current inventory for supplier info
+      const inventoryItem = currentInventory.value.find(
+        (item) =>
+          item.item_type_id === alertItem.item_type_id ||
+          item.id === alertItem.id
+      );
+      console.log('Found inventory item for supplier lookup:', inventoryItem);
+      console.log('Final supplier info being sent:', {
+        supplier_id: state.preloadSupplyRequest.supplier_id,
+        supplier_name: state.preloadSupplyRequest.supplier_name,
+      });
+
+      // Store preload data in sessionStorage as a backup
+      sessionStorage.setItem(
+        'preloadSupplyRequest',
+        JSON.stringify(state.preloadSupplyRequest)
+      );
+
+      router.push({
+        name: 'RequestSupply',
+        state: state,
+      });
     } catch (e) {
       showToast('error', 'Failed to navigate to Request Supply');
     }
   };
-
-
-
-
-
-
 
   const getExpiryStatusText = (expiryDate) => {
     const days = getDaysUntilExpiry(expiryDate);
@@ -1448,10 +1499,6 @@
     if (days <= 7) return `${days}d left`;
     return 'Good';
   };
-
-
-
-
 
   // Batch-level low stock evaluation (UI override for Status column)
   const getBatchStockStatus = (batch) => {
@@ -1488,14 +1535,6 @@
     if (state === 'low') return 'low stock';
     return batch.status || 'available';
   };
-
- 
-
-
-
-
-
-
 
   // Helper function to format batch numbers for better readability
   const formatBatchNumber = (batchNumber) => {
@@ -1539,16 +1578,6 @@
       ? `${batchNumber.substring(0, 20)}...`
       : batchNumber;
   };
-
-
-
-
-
-
-
-
-
-
 
   // Handle modal submissions
   const handleConsumption = async (consumptionData) => {

@@ -912,7 +912,7 @@ class Inventory {
   // Get low stock items PER BATCH — used by /alerts/low-stock-batches
   static async getLowStockItemsPerBatch() {
     try {
-      const SAFETY_MARGIN_FACTOR = 0.9; // 90%
+      const SAFETY_MARGIN_FACTOR = 0.95; // 95% (more sensitive)
       return await db("inventory_items as ii")
         .leftJoin("inventory_item_types as it", "ii.item_type_id", "it.id")
         .leftJoin("inventory_categories as ic", "it.category_id", "ic.id")
@@ -945,7 +945,7 @@ class Inventory {
         // Quantity must be non-negative and at/below threshold
         .whereRaw("ii.quantity >= 0")
         .whereRaw(
-          `ii.quantity < COALESCE(ia.min_stock_level, ii.reorder_level) * ${SAFETY_MARGIN_FACTOR}`
+          `ii.quantity <= COALESCE(ia.min_stock_level, ii.reorder_level) * ${SAFETY_MARGIN_FACTOR}`
         )
         .orderBy([
           { column: "ic.name", order: "asc" },

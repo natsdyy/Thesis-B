@@ -62,6 +62,21 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     );
   });
 
+  // Helper getter for purchase orders with supplier products
+  const ordersWithSupplierProducts = computed(() => {
+    return purchaseOrders.value.filter(
+      (order) =>
+        order.items && order.items.some((item) => item.supplier_product_id)
+    );
+  });
+
+  // Helper getter for purchase orders by supplier
+  const ordersBySupplier = computed(() => (supplierId) => {
+    return purchaseOrders.value.filter(
+      (order) => order.supplier_id === supplierId
+    );
+  });
+
   // Check if cache is still valid
   const isCacheValid = computed(() => {
     return (
@@ -835,6 +850,8 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     pendingOrders,
     draftOrders,
     itemReturnsByStatus, // Add this
+    ordersWithSupplierProducts,
+    ordersBySupplier,
 
     // Actions
     fetchPurchaseOrders,

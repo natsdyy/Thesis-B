@@ -1971,9 +1971,18 @@
   // Helper: get supplier display name from store
   const getSupplierName = (id) => {
     if (!id) return null;
-    const list = supplierOptions.value || [];
-    const found = list.find((s) => Number(s.id) === Number(id));
-    return found ? found.name : `Supplier #${id}`;
+    // First check active suppliers
+    const activeList = supplierOptions.value || [];
+    const activeFound = activeList.find((s) => Number(s.id) === Number(id));
+    if (activeFound) return activeFound.name;
+
+    // If not found in active suppliers, check all suppliers
+    const allList = supplierStore.suppliers || [];
+    const allFound = allList.find((s) => Number(s.id) === Number(id));
+    if (allFound) return allFound.name;
+
+    // Fallback
+    return `Supplier #${id}`;
   };
 
   // Date filter methods
@@ -2236,9 +2245,38 @@
 
     // Preload items from navigation state (e.g., from Inventory Alerts)
     try {
-      const state = router.options?.history?.state || {};
-      const preload = state.preloadSupplyRequest;
+      // Try different ways to access router state
+      const state1 = router.options?.history?.state || {};
+      const state2 = window.history.state || {};
+      const state3 = router.currentRoute?.value?.state || {};
+
+      console.log('RequestSupply mounted - checking for preload data:', {
+        state1,
+        state2,
+        state3,
+        currentRoute: router.currentRoute?.value,
+      });
+
+      const state = state1 || state2 || state3;
+      let preload = state.preloadSupplyRequest;
+
+      // Fallback: check sessionStorage if router state is not available
+      if (!preload) {
+        try {
+          const sessionData = sessionStorage.getItem('preloadSupplyRequest');
+          if (sessionData) {
+            preload = JSON.parse(sessionData);
+            console.log('Preload data found in sessionStorage:', preload);
+            // Clear sessionStorage after reading
+            sessionStorage.removeItem('preloadSupplyRequest');
+          }
+        } catch (e) {
+          console.error('Error reading preload data from sessionStorage:', e);
+        }
+      }
+
       if (preload && Array.isArray(preload.items) && preload.items.length) {
+        console.log('Preload data found:', preload);
         // Fill requested_by with the real employee name from auth store
         try {
           const u = authStore?.user || {};
@@ -2273,20 +2311,121 @@
           }
         }
 
-        // Build rows from preload
-        rowRequest.value = preload.items.map((it, idx) => ({
-          id: idx + 1,
-          item_name: it.name,
-          item_quantity: it.quantity || 0,
-          item_unit: it.unit || '',
-          item_type: requestForm.value.request_type,
-          item_unitPrice: it.unit_price || 0,
-          item_amount: (it.unit_price || 0) * (it.quantity || 0),
-          inventory_item_id: null,
-          menu_item_id: null,
-          category: preload.category || '',
-          source: preload.source || 'scm',
-        }));
+        // Set supplier information if provided in preload
+        if (preload.supplier_id && preload.supplier_name) {
+          console.log('Setting supplier from preload:', {
+            supplier_id: preload.supplier_id,
+            supplier_name: preload.supplier_name,
+          });
+
+          // Ensure suppliers are loaded first
+          try {
+            await supplierStore.fetchActiveSuppliers();
+            console.log(
+              'Active suppliers loaded:',
+              supplierOptions.value?.length
+            );
+          } catch (e) {
+            console.error('Failed to load suppliers for preload:', e);
+          }
+
+          // Check if the supplier exists in the active suppliers list
+          const supplierExists = supplierOptions.value?.some(
+            (s) => String(s.id) === String(preload.supplier_id)
+          );
+
+          console.log('Supplier exists in active list:', supplierExists);
+          console.log(
+            'Available suppliers:',
+            supplierOptions.value?.map((s) => ({ id: s.id, name: s.name }))
+          );
+
+          if (supplierExists) {
+            selectedSupplierId.value = String(preload.supplier_id);
+            console.log('Set selectedSupplierId to:', selectedSupplierId.value);
+            // Trigger supplier selection to load supplier products
+            await onSupplierSelected(preload.supplier_id);
+          } else {
+            console.warn(
+              `Supplier ${preload.supplier_id} (${preload.supplier_name}) not found in active suppliers list`
+            );
+            // Try to fetch all suppliers to see if the supplier exists but is not active
+            try {
+              await supplierStore.fetchSuppliers();
+              const allSuppliers = supplierStore.suppliers || [];
+              const supplierInAll = allSuppliers.find(
+                (s) => String(s.id) === String(preload.supplier_id)
+              );
+
+              if (supplierInAll) {
+                console.log(
+                  'Supplier found in all suppliers but not active:',
+                  supplierInAll
+                );
+                // Even though supplier is not active, we can still use it for the request
+                selectedSupplierId.value = String(preload.supplier_id);
+                console.log(
+                  'Set selectedSupplierId to (from all suppliers):',
+                  selectedSupplierId.value
+                );
+                await onSupplierSelected(preload.supplier_id);
+              } else {
+                console.error('Supplier not found in any supplier list');
+                // Still try to set it as a fallback
+                selectedSupplierId.value = String(preload.supplier_id);
+                console.log(
+                  'Set selectedSupplierId to (fallback):',
+                  selectedSupplierId.value
+                );
+                await onSupplierSelected(preload.supplier_id);
+              }
+            } catch (e) {
+              console.error('Failed to fetch all suppliers:', e);
+              // Still try to set it as a fallback
+              selectedSupplierId.value = String(preload.supplier_id);
+              console.log(
+                'Set selectedSupplierId to (fallback):',
+                selectedSupplierId.value
+              );
+              await onSupplierSelected(preload.supplier_id);
+            }
+          }
+        }
+
+        // Build rows from preload - wait for supplier products to be loaded
+        console.log(
+          'Building rows with supplier products:',
+          supplierProducts.value
+        );
+        rowRequest.value = preload.items.map((it, idx) => {
+          // Try to find matching supplier product
+          const matchingProduct = supplierProducts.value?.find(
+            (product) =>
+              product.product_name.toLowerCase() === it.name.toLowerCase()
+          );
+
+          console.log(
+            `Mapping item "${it.name}" to supplier product:`,
+            matchingProduct
+          );
+
+          return {
+            id: idx + 1,
+            item_name: it.name,
+            item_quantity: it.quantity || 0,
+            item_unit: it.unit || '',
+            item_type: requestForm.value.request_type,
+            item_unitPrice: it.unit_price || 0,
+            item_amount: (it.unit_price || 0) * (it.quantity || 0),
+            inventory_item_id: null,
+            menu_item_id: null,
+            category: preload.category || '',
+            source: preload.source || 'scm',
+            // Add supplier product mapping
+            supplier_product_id: matchingProduct?.id || null,
+            supplier_id: preload.supplier_id || null,
+          };
+        });
         // Open the create modal immediately
         openCreateTab();
         // Lock category/type so user doesn't accidentally change them for preloaded drafts
@@ -4832,6 +4971,19 @@
             <option value="">Manual entry</option>
             <option v-for="s in supplierOptions" :key="s.id" :value="s.id">
               {{ s.name }}
+            </option>
+            <!-- Custom option for suppliers not in active list but selected from preload -->
+            <option
+              v-if="
+                selectedSupplierId &&
+                !supplierOptions.some(
+                  (s) => String(s.id) === String(selectedSupplierId)
+                )
+              "
+              :key="`custom-${selectedSupplierId}`"
+              :value="selectedSupplierId"
+            >
+              {{ getSupplierName(selectedSupplierId) }}
             </option>
           </select>
         </div>

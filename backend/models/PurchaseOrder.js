@@ -444,6 +444,7 @@ class PurchaseOrder {
       // Validate that all selected items belong to the supply request
       const selectedItemIds = selectedItems.map((item) => item.id);
       const supplyRequestItems = await trx("supply_request_items")
+        .select("*") // Explicitly select all fields including supplier_product_id and item_sku
         .where("supply_request_id", supplyRequestId)
         .whereIn("id", selectedItemIds);
 
@@ -495,21 +496,33 @@ class PurchaseOrder {
         .returning("*");
 
       // Create purchase order items from selected items
-      const poItems = selectedItems.map((item) => ({
-        purchase_order_id: purchaseOrder.id,
-        supply_request_item_id: item.id,
-        item_name: item.item_name,
-        quantity: item.quantity,
-        unit: item.unit,
-        unit_price: item.unit_price,
-        total_price: item.total_price,
-        description: item.description,
-        received_quantity: null,
-        received_unit_price: null,
-        received_total_price: null,
-        received_at: null,
-        received_by: null,
-      }));
+      // Create a map of supply request items for quick lookup
+      const supplyRequestItemsMap = supplyRequestItems.reduce((map, item) => {
+        map[item.id] = item;
+        return map;
+      }, {});
+
+      const poItems = selectedItems.map((item) => {
+        const supplyRequestItem = supplyRequestItemsMap[item.id];
+        return {
+          purchase_order_id: purchaseOrder.id,
+          supply_request_item_id: item.id,
+          item_name: item.item_name,
+          quantity: item.quantity,
+          unit: item.unit,
+          unit_price: item.unit_price,
+          total_price: item.total_price,
+          description: item.description,
+          received_quantity: null,
+          received_unit_price: null,
+          received_total_price: null,
+          received_at: null,
+          received_by: null,
+          // Copy supplier product information from supply request item
+          supplier_product_id: supplyRequestItem?.supplier_product_id || null,
+          item_sku: supplyRequestItem?.item_sku || null,
+        };
+      });
 
       const createdItems = await trx("purchase_order_items")
         .insert(poItems)

@@ -273,7 +273,7 @@
     posStore.updateItemQuantity(itemId, quantity);
   };
 
-  // Calculate discounted price for promo items
+  // Calculate discounted price for promo items (for cart items with quantity)
   const calculateDiscountedPrice = (item) => {
     if (
       !item.promo_info ||
@@ -289,6 +289,28 @@
     if (item.promo_info.discount_type === 'percentage') {
       discountAmount =
         originalPrice * (item.promo_info.discount_percentage / 100);
+    } else if (item.promo_info.discount_type === 'fixed_amount') {
+      discountAmount = parseFloat(item.promo_info.discount_amount || 0);
+    }
+
+    return Math.max(0, originalPrice - discountAmount);
+  };
+
+  // Calculate discounted price for menu items (for display in grid)
+  const calculateMenuDiscountedPrice = (item) => {
+    if (
+      !item.promo_info ||
+      !item.promo_info.is_active
+    ) {
+      return parseFloat(item.price || 0);
+    }
+
+    const originalPrice = parseFloat(item.price || 0);
+    let discountAmount = 0;
+
+    if (item.promo_info.discount_type === 'percentage') {
+      discountAmount =
+        originalPrice * (parseFloat(item.promo_info.discount_percentage || 0) / 100);
     } else if (item.promo_info.discount_type === 'fixed_amount') {
       discountAmount = parseFloat(item.promo_info.discount_amount || 0);
     }
@@ -960,7 +982,7 @@
                       "
                       :title="
                         item.promo_info.is_active
-                          ? 'Active promotional discount available'
+                          ? `${item.promo_info.description || 'Active promotional discount available'} - ${item.promo_info.discount_type === 'percentage' ? item.promo_info.discount_percentage + '% off' : 'Fixed amount discount'}`
                           : 'Promotional discount (inactive)'
                       "
                     >
@@ -980,10 +1002,39 @@
 
                   <div class="">
                     <!-- Price -->
-                    <p class="text-lg font-bold text-gray-900 mt-2">
-                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                      {{ parseFloat(item.price).toFixed(2) }}
-                    </p>
+                    <div class="mt-2">
+                      <p class="text-lg font-bold text-gray-900">
+                        <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                        {{ parseFloat(item.price).toFixed(2) }}
+                      </p>
+                      <!-- Show discounted price if promo applies -->
+                      <p
+                        v-if="
+                          item.promo_info &&
+                          item.promo_info.is_active &&
+                          item.promo_info.discount_type
+                        "
+                        class="text-sm font-semibold text-success"
+                      >
+                        <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                        {{ calculateMenuDiscountedPrice(item).toFixed(2) }}
+                        <span class="text-xs text-warning ml-1">
+                          (Save ₱{{
+                            (
+                              parseFloat(item.price) -
+                              calculateMenuDiscountedPrice(item)
+                            ).toFixed(2)
+                          }})
+                        </span>
+                        <!-- Show minimum quantity requirement if > 1 -->
+                        <div
+                          v-if="item.promo_info.minimum_quantity > 1"
+                          class="text-xs text-orange-600 mt-1"
+                        >
+                          Min: {{ item.promo_info.minimum_quantity }} pcs
+                        </div>
+                      </p>
+                    </div>
                   </div>
 
                   <!-- Order Button -->
@@ -1065,9 +1116,12 @@
                       PROMO
                     </span>
                   </h4>
-                  <p class="text-sm text-gray-600">
-                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                    {{ parseFloat(item.price || 0).toFixed(2) }}
+                  <div class="text-sm text-gray-600">
+                    <!-- Original Price -->
+                    <span class="text-gray-500">
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{ parseFloat(item.price || 0).toFixed(2) }}
+                    </span>
                     <!-- Show discounted price if promo applies -->
                     <span
                       v-if="
@@ -1077,11 +1131,19 @@
                       "
                       class="text-success ml-2"
                     >
-                      (Discounted: ₱{{
-                        calculateDiscountedPrice(item).toFixed(2)
-                      }})
+                      →
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{ calculateDiscountedPrice(item).toFixed(2) }}
+                      <span class="text-xs text-warning ml-1">
+                        (Save ₱{{
+                          (
+                            parseFloat(item.price) -
+                            calculateDiscountedPrice(item)
+                          ).toFixed(2)
+                        }})
+                      </span>
                     </span>
-                  </p>
+                  </div>
                   <!-- Promo Description -->
                   <p
                     v-if="
@@ -1237,18 +1299,61 @@
                   class="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0"
                 >
                   <div class="flex-1">
-                    <p class="font-medium text-gray-900">{{ item.name }}</p>
-                    <p class="text-sm text-gray-600">
-                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                      {{ parseFloat(item.price || 0).toFixed(2) }} ×
-                      {{ item.quantity }}
-                    </p>
+                    <div class="flex items-center gap-2">
+                      <p class="font-medium text-gray-900">{{ item.name }}</p>
+                      <!-- Promo Badge -->
+                      <span
+                        v-if="
+                          item.promo_info &&
+                          item.promo_info.is_active &&
+                          item.quantity >= item.promo_info.minimum_quantity
+                        "
+                        class="badge badge-xs bg-warning/20 text-warning"
+                      >
+                        <font-awesome-icon
+                          icon="fa-solid fa-star"
+                          class="w-2 h-2 mr-1"
+                        />
+                        PROMO
+                      </span>
+                    </div>
+                    <div class="text-sm text-gray-600">
+                      <!-- Original Price -->
+                      <span class="text-gray-500">
+                        <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                        {{ parseFloat(item.price || 0).toFixed(2) }}
+                      </span>
+                      <!-- Discounted Price if promo applies -->
+                      <span
+                        v-if="
+                          item.promo_info &&
+                          item.promo_info.is_active &&
+                          item.quantity >= item.promo_info.minimum_quantity
+                        "
+                        class="text-success ml-2"
+                      >
+                        →
+                        <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                        {{ calculateDiscountedPrice(item).toFixed(2) }}
+                        <span class="text-xs text-warning ml-1">
+                          (Save ₱{{
+                            (
+                              parseFloat(item.price) -
+                              calculateDiscountedPrice(item)
+                            ).toFixed(2)
+                          }})
+                        </span>
+                      </span>
+                      <span class="ml-1">× {{ item.quantity }}</span>
+                    </div>
                   </div>
                   <div class="text-right">
                     <p class="font-semibold text-gray-900">
                       <font-awesome-icon icon="fa-solid fa-peso-sign" />
                       {{
-                        (parseFloat(item.price || 0) * item.quantity).toFixed(2)
+                        (
+                          calculateDiscountedPrice(item) * item.quantity
+                        ).toFixed(2)
                       }}
                     </p>
                   </div>

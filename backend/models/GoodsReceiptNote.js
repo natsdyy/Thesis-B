@@ -143,6 +143,12 @@ class GoodsReceiptNote {
           "gi.purchase_order_item_id",
           "poi.id"
         )
+        .leftJoin(
+          "supply_request_items as sri",
+          "poi.supply_request_item_id",
+          "sri.id"
+        )
+        .leftJoin("supplier_products as sp", "poi.supplier_product_id", "sp.id")
         .leftJoin("inventory_item_types as it", "gi.item_type_id", "it.id")
         .leftJoin("inventory_categories as ic", "it.category_id", "ic.id")
         .leftJoin("employees as u", "gi.inspected_by", "u.id")
@@ -151,6 +157,12 @@ class GoodsReceiptNote {
           "poi.item_name as po_item_name",
           "poi.quantity as po_quantity",
           "poi.unit as po_unit",
+          "poi.supplier_product_id as supplier_product_id",
+          "poi.item_sku as supplier_item_sku",
+          "sri.item_number as original_item_number",
+          "sp.product_name as supplier_product_name",
+          "sp.sku as supplier_sku",
+          "sp.item_type_id as supplier_item_type_id",
           "it.name as item_type_name",
           "it.unit_of_measure as item_unit_of_measure",
           "ic.name as category_name",

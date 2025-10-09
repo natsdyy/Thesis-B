@@ -1,4 +1,5 @@
 const nodemailer = require("nodemailer");
+const sgMail = require("@sendgrid/mail");
 const SendGridService = require("./sendGridService");
 require("dotenv").config();
 
@@ -564,6 +565,17 @@ class EmailService {
   }
 
   /**
+   * Log successful email send with environment context
+   */
+  static logEmailSuccess(operation, email, info, environment = null) {
+    const env =
+      environment || (this.isProduction() ? "PRODUCTION" : "DEVELOPMENT");
+    console.log(
+      `✅ [${env}] ${operation} - Email sent successfully to: ${email}, MessageID: ${info.messageId}`
+    );
+  }
+
+  /**
    * Send password recovery email
    * @param {string} to - Recipient email address
    * @param {string} resetToken - Password reset token
@@ -598,6 +610,9 @@ class EmailService {
     console.log(
       "📧 [EMAIL SERVICE] Using Gmail SMTP fallback for password recovery email"
     );
+
+    const maxRetries = 2;
+    let lastError;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       // Add delay between attempts (except for first attempt)

@@ -16,38 +16,18 @@
     <div
       class="stats shadow w-full mb-4 sm:mb-6 bg-accentColor border border-black/10 rounded-lg lg:flex"
     >
-      <!-- Total Suppliers -->
-      <div class="stat">
-        <div class="stat-figure">
-          <Building2
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-primaryColor"
-          />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">
-          Total Suppliers
-        </div>
-        <div
-          class="stat-value text-primaryColor text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ supplierStats.total }}
-        </div>
-        <div class="stat-desc text-black/50 text-xs sm:text-sm">
-          Registered suppliers
-        </div>
-      </div>
-
       <!-- Active Suppliers -->
       <div class="stat">
         <div class="stat-figure">
           <CheckCircle
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-success"
+            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-primaryColor"
           />
         </div>
         <div class="stat-title text-black/50 text-xs sm:text-sm">
           Active Suppliers
         </div>
         <div
-          class="stat-value text-success text-lg sm:text-xl lg:text-2xl xl:text-3xl"
+          class="stat-value text-primaryColor text-lg sm:text-xl lg:text-2xl xl:text-3xl"
         >
           {{ supplierStats.active }}
         </div>
@@ -144,7 +124,7 @@
                 v-model="searchQuery"
                 type="text"
                 placeholder="Search suppliers..."
-                class="input input-sm sm:input-md input-bordered bg-white border-primaryColor/30 text-black/70 pl-10 w-full shadow-none text-sm sm:text-base"
+                class="input input-sm sm:input-md input-bordered bg-white !border-primaryColor/30 text-black/70 pl-10 w-full shadow-none text-sm sm:text-base"
               />
             </div>
           </div>
@@ -191,7 +171,7 @@
               >
               <select
                 v-model="categoryFilter"
-                class="select select-xs sm:select-sm select-bordered bg-white border-primaryColor/30 text-black/70 text-xs sm:text-sm"
+                class="select select-xs sm:select-sm select-bordered bg-white !border-primaryColor/30 text-black/70 text-xs sm:text-sm"
               >
                 <option value="">All Categories</option>
                 <option
@@ -1753,9 +1733,17 @@
         return;
       }
 
-      await supplierStore.createSupplier(supplierForm.value);
+      const created = await supplierStore.createSupplier(supplierForm.value);
       closeModal();
-      showToast('success', 'Supplier created successfully');
+      // Backend may include emailStatus similar to employees
+      const emailStatus = created?.emailStatus;
+      if (emailStatus?.sent) {
+        showToast('success', 'Supplier created. Welcome email sent.');
+      } else if (emailStatus?.error) {
+        showToast('error', 'Supplier created, but email failed to send.');
+      } else {
+        showToast('success', 'Supplier created successfully');
+      }
     } catch (err) {
       showToast('error', err.message || 'Failed to create supplier');
     }

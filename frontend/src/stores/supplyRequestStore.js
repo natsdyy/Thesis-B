@@ -164,6 +164,10 @@ export const useSupplyRequestStore = defineStore('supplyRequest', () => {
           menu_item_id: item.menu_item_id || null,
           category: item.category || null,
           source: item.source || null,
+          // Supplier linkage (optional)
+          supplier_id: item.supplier_id || null,
+          supplier_product_id: item.supplier_product_id || null,
+          item_sku: item.item_sku || item.sku || null,
         })),
       };
 
@@ -210,6 +214,10 @@ export const useSupplyRequestStore = defineStore('supplyRequest', () => {
           menu_item_id: item.menu_item_id || null,
           category: item.category || null,
           source: item.source || null,
+          // Preserve supplier linkage on update
+          supplier_id: item.supplier_id || null,
+          supplier_product_id: item.supplier_product_id || null,
+          item_sku: item.item_sku || item.sku || null,
         }));
       }
 

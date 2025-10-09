@@ -28,6 +28,10 @@
   const projectionsCurrentPage = ref(1);
   const projectionsItemsPerPage = ref(10);
 
+  // Promo suggestions state
+  const promoSuggestions = ref([]);
+  const promoLoading = ref(false);
+
   // Stores for real data
   const branchContext = useBranchContextStore();
   const posStore = usePOSStore();
@@ -80,12 +84,46 @@
       );
       const merged = new Map();
       lists.flat().forEach((it) => {
-        if (!merged.has(it.id)) merged.set(it.id, { id: it.id, name: it.name });
+        // Filter for production items only - exclude beverages, SCM items, and Item 0
+        const isProductionItem =
+          it.item_type === 'production' &&
+          it.id !== 0 &&
+          it.id !== '0' &&
+          it.name !== 'Item 0' &&
+          it.name !== 'item 0' &&
+          it.name !== 'Item0' &&
+          it.name !== 'item0' &&
+          it.name !== '0' &&
+          it.item_type !== 'scm' &&
+          it.category !== 'SCM' &&
+          it.category !== 'scm' &&
+          it.category !== 'Beverage' &&
+          it.category !== 'beverage' &&
+          !it.category?.toLowerCase().includes('beverage') &&
+          !it.name?.toLowerCase().includes('drink') &&
+          !it.name?.toLowerCase().includes('juice') &&
+          !it.name?.toLowerCase().includes('water') &&
+          !it.name?.toLowerCase().includes('coffee') &&
+          !it.name?.toLowerCase().includes('tea') &&
+          !it.name?.toLowerCase().includes('soda') &&
+          !it.name?.toLowerCase().includes('coke') &&
+          !it.name?.toLowerCase().includes('pepsi') &&
+          !it.name?.toLowerCase().includes('sprite') &&
+          !it.name?.toLowerCase().includes('item 0') &&
+          !it.name?.toLowerCase().includes('item0');
+
+        if (isProductionItem && !merged.has(it.id)) {
+          merged.set(it.id, {
+            id: it.id,
+            name: it.name,
+            category: it.category,
+          });
+        }
       });
       const arr = Array.from(merged.values()).sort((a, b) =>
         String(a.name).localeCompare(String(b.name))
       );
-      products.value = [{ id: 'all', name: 'All Products' }, ...arr];
+      products.value = [{ id: 'all', name: 'All Production Items' }, ...arr];
       if (
         !products.value.find((p) => p.id === selectedInventoryItem.value) &&
         selectedInventoryItem.value !== 'all'
@@ -122,11 +160,14 @@
         return;
       }
 
-      // Use the store's multiple branch inventory method
+      // Use the store's multiple branch inventory method - focus on production items only, exclude SCM
       const result = await branchInventoryStore.fetchMultipleBranchInventory(
         branches,
         {
           item_type: 'production',
+          category: 'Production',
+          exclude_scm: true,
+          exclude_item_zero: true,
         }
       );
 
@@ -142,6 +183,176 @@
       // ignore, UI will show empty state
     } finally {
       branchInventoryLoading.value = false;
+    }
+  };
+
+  // Calculate promo suggestions based on sales trends and inventory levels
+  const generatePromoSuggestions = async () => {
+    promoLoading.value = true;
+    try {
+      const suggestions = [];
+
+      if (!inventoryForecastData.value?.results) {
+        promoSuggestions.value = [];
+        return;
+      }
+
+      const branches =
+        selectedInventoryBranch.value === 'all'
+          ? (branchStore.activeBranches || []).map((b) => b.id)
+          : [parseInt(selectedInventoryBranch.value)];
+
+      for (const branchId of branches) {
+        const branchResults = inventoryForecastData.value.results.filter(
+          (r) => r.branchId === branchId
+        );
+
+        for (const item of branchResults) {
+          const suggestions = [];
+
+          // 1. High Stock + Low Demand = Clearance Promo
+          if (
+            item.currentStock > item.maxStock * 0.8 &&
+            item.dailyConsumption < 0.1
+          ) {
+            suggestions.push({
+              type: 'clearance',
+              priority: 'high',
+              title: 'Clearance Sale Opportunity',
+              reason: `High stock (${item.currentStock} ${item.unit}) with low daily sales (${item.dailyConsumption} ${item.unit}/day)`,
+              recommendation: `Run a 20-30% clearance promo to reduce excess inventory`,
+              discountType: 'percentage',
+              discountValue: 25,
+              duration: '1-2 weeks',
+              expectedImpact: 'Reduce stock by 40-60%',
+              icon: 'fa-solid fa-tags',
+              color: 'text-orange-600',
+            });
+          }
+
+          // 2. Low Demand + Near Expiry = Urgent Promo
+          if (item.daysUntilStockout <= 5 && item.dailyConsumption < 0.2) {
+            suggestions.push({
+              type: 'urgent',
+              priority: 'critical',
+              title: 'Urgent Stock Clearance',
+              reason: `Only ${item.daysUntilStockout} days until stockout with low demand`,
+              recommendation: `Launch immediate 15-25% discount to boost sales`,
+              discountType: 'percentage',
+              discountValue: 20,
+              duration: '3-5 days',
+              expectedImpact: `Clear ${Math.min(item.currentStock * 0.8, item.reorderQuantity)} ${item.unit}`,
+              icon: 'fa-solid fa-exclamation-triangle',
+              color: 'text-red-600',
+            });
+          }
+
+          // 3. Declining Sales Trend = Boost Promo
+          if (
+            item.dailyConsumption < 0.1 &&
+            item.currentStock > item.minStock * 2
+          ) {
+            suggestions.push({
+              type: 'boost',
+              priority: 'medium',
+              title: 'Sales Boost Campaign',
+              reason: `Declining sales trend (${item.dailyConsumption} ${item.unit}/day) with adequate stock`,
+              recommendation: `Run a 10-15% promotional campaign to stimulate demand`,
+              discountType: 'percentage',
+              discountValue: 12,
+              duration: '1-2 weeks',
+              expectedImpact: 'Increase daily sales by 50-100%',
+              icon: 'fa-solid fa-chart-line',
+              color: 'text-blue-600',
+            });
+          }
+
+          // 4. Seasonal/Weather-based Promo Suggestions
+          const currentMonth = new Date().getMonth() + 1;
+          const isSummer = currentMonth >= 3 && currentMonth <= 5;
+          const isRainy = currentMonth >= 6 && currentMonth <= 10;
+          const isChristmas = currentMonth >= 11 || currentMonth <= 1;
+
+          if (isSummer && item.dailyConsumption < 0.15) {
+            suggestions.push({
+              type: 'seasonal',
+              priority: 'medium',
+              title: 'Summer Promotion',
+              reason: 'Summer season with lower demand patterns',
+              recommendation: `Launch "Summer Special" with 10-15% discount`,
+              discountType: 'percentage',
+              discountValue: 12,
+              duration: '2-3 weeks',
+              expectedImpact: 'Maintain sales during low season',
+              icon: 'fa-solid fa-sun',
+              color: 'text-yellow-600',
+            });
+          }
+
+          if (isChristmas && item.dailyConsumption > 0.3) {
+            suggestions.push({
+              type: 'seasonal',
+              priority: 'high',
+              title: 'Holiday Bundle Promotion',
+              reason: 'High demand during Christmas season',
+              recommendation: `Create bundle deals or volume discounts`,
+              discountType: 'percentage',
+              discountValue: 15,
+              duration: '1 month',
+              expectedImpact: 'Maximize holiday sales revenue',
+              icon: 'fa-solid fa-gift',
+              color: 'text-green-600',
+            });
+          }
+
+          // 5. High Stock Turnover = Volume Promo
+          if (
+            item.dailyConsumption > 0.5 &&
+            item.currentStock > item.minStock * 3
+          ) {
+            suggestions.push({
+              type: 'volume',
+              priority: 'medium',
+              title: 'Volume Discount Promotion',
+              reason: `High demand (${item.dailyConsumption} ${item.unit}/day) with good stock levels`,
+              recommendation: `Offer "Buy More, Save More" volume discounts`,
+              discountType: 'percentage',
+              discountValue: 10,
+              duration: '2 weeks',
+              expectedImpact: 'Increase average order value by 30%',
+              icon: 'fa-solid fa-shopping-cart',
+              color: 'text-purple-600',
+            });
+          }
+
+          // Add suggestions to the main array
+          suggestions.forEach((suggestion) => {
+            promoSuggestions.value.push({
+              ...suggestion,
+              branchId: item.branchId,
+              branchName: item.branchName,
+              itemId: item.itemId,
+              itemName: item.itemName,
+              category: item.category,
+              currentStock: item.currentStock,
+              dailyConsumption: item.dailyConsumption,
+              unit: item.unit,
+              daysUntilStockout: item.daysUntilStockout,
+            });
+          });
+        }
+      }
+
+      // Sort suggestions by priority and type
+      promoSuggestions.value.sort((a, b) => {
+        const priorityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
+        return priorityOrder[b.priority] - priorityOrder[a.priority];
+      });
+    } catch (error) {
+      console.error('Error generating promo suggestions:', error);
+      promoSuggestions.value = [];
+    } finally {
+      promoLoading.value = false;
     }
   };
 
@@ -167,7 +378,8 @@
       const remittedOnly = orders.filter((o) => {
         const hasRemit = o && o.remittance_id != null;
         const status = String(o?.remittance_status || '').toLowerCase();
-        return hasRemit && status === 'approved';
+        const isApproved = status === 'approved';
+        return hasRemit && isApproved;
       });
 
       let totalQuantity = 0;
@@ -176,7 +388,30 @@
       remittedOnly.forEach((o) => {
         const items = Array.isArray(o.items) ? o.items : [];
         const matched = items.filter(
-          (it) => Number(it.menu_item_id) === Number(menuItemId)
+          (it) =>
+            Number(it.menu_item_id) === Number(menuItemId) &&
+            it.menu_item_id !== 0 &&
+            it.item_name !== 'Item 0' &&
+            it.item_name !== 'item 0' &&
+            it.item_name !== 'Item0' &&
+            it.item_name !== 'item0' &&
+            it.item_name !== '0' &&
+            it.item_type === 'production' &&
+            it.item_type !== 'scm' &&
+            it.category !== 'SCM' &&
+            it.category !== 'scm' &&
+            it.category !== 'Beverage' &&
+            it.category !== 'beverage' &&
+            !it.category?.toLowerCase().includes('beverage') &&
+            !it.name?.toLowerCase().includes('drink') &&
+            !it.name?.toLowerCase().includes('juice') &&
+            !it.name?.toLowerCase().includes('water') &&
+            !it.name?.toLowerCase().includes('coffee') &&
+            !it.name?.toLowerCase().includes('tea') &&
+            !it.name?.toLowerCase().includes('soda') &&
+            !it.name?.toLowerCase().includes('coke') &&
+            !it.name?.toLowerCase().includes('pepsi') &&
+            !it.name?.toLowerCase().includes('sprite')
         );
         if (matched.length > 0) {
           orderCount += 1;
@@ -230,14 +465,40 @@
           branchList.find((b) => b.id === branchId)?.name ||
           `Branch ${branchId}`;
 
-        // Build list of menu items to process from POS products
+        // Build list of menu items to process from POS products - production items only
         const menuItemsAll = (
           Array.isArray(products.value) ? products.value : []
         ).filter((p) => p.id !== 'all');
+
+        // Additional filter to ensure only production items are processed - exclude Item 0 and SCM items
+        const productionItemsOnly = menuItemsAll.filter((item) => {
+          return (
+            item.item_type === 'production' &&
+            item.id !== 0 &&
+            item.id !== '0' &&
+            item.name !== 'Item 0' &&
+            item.name !== 'item 0' &&
+            item.name !== 'Item0' &&
+            item.name !== 'item0' &&
+            item.name !== '0' &&
+            item.item_type !== 'scm' &&
+            item.category !== 'SCM' &&
+            item.category !== 'scm' &&
+            item.category !== 'Beverage' &&
+            item.category !== 'beverage' &&
+            !item.category?.toLowerCase().includes('beverage') &&
+            !item.name?.toLowerCase().includes('coke') &&
+            !item.name?.toLowerCase().includes('pepsi') &&
+            !item.name?.toLowerCase().includes('sprite') &&
+            !item.name?.toLowerCase().includes('item 0') &&
+            !item.name?.toLowerCase().includes('item0')
+          );
+        });
+
         const menuItemsToProcess =
           selectedInventoryItem.value === 'all'
-            ? menuItemsAll
-            : menuItemsAll.filter(
+            ? productionItemsOnly
+            : productionItemsOnly.filter(
                 (p) => Number(p.id) === Number(selectedInventoryItem.value)
               );
 
@@ -375,6 +636,9 @@
           needsReorder: forecastResults.filter((r) => r.needsReorder).length,
         },
       };
+
+      // Generate promo suggestions after inventory analysis
+      await generatePromoSuggestions();
     } catch (error) {
       inventoryForecastData.value = {
         results: [],
@@ -586,7 +850,7 @@
     <div class="card bg-white shadow border border-black/10">
       <div class="card-body">
         <h3 class="text-sm font-medium text-gray-700 mb-4">
-          Menu Inventory Forecasting Parameters
+          Production Menu Inventory Forecasting Parameters
         </h3>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
@@ -610,7 +874,7 @@
 
           <div>
             <label class="label">
-              <span class="label-text text-xs">Menu Item</span>
+              <span class="label-text text-xs">Production Menu Item</span>
             </label>
             <select
               class="select select-bordered select-sm w-full"
@@ -660,7 +924,7 @@
     <!-- Inventory Forecast Results -->
     <div v-if="inventoryForecastData" class="space-y-4">
       <!-- Summary Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div class="stat bg-gray-50 rounded-lg p-4">
           <div class="stat-title text-xs">Total Items</div>
           <div class="stat-value text-lg text-primaryColor">
@@ -692,6 +956,16 @@
           </div>
           <div class="stat-desc text-xs">Items requiring reproduction</div>
         </div>
+
+        <div
+          class="stat bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200"
+        >
+          <div class="stat-title text-xs">Promo Opportunities</div>
+          <div class="stat-value text-lg text-purple-600">
+            {{ promoSuggestions.length }}
+          </div>
+          <div class="stat-desc text-xs">Intelligent promo suggestions</div>
+        </div>
       </div>
 
       <!-- Inventory Forecast Table -->
@@ -699,7 +973,7 @@
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-sm font-medium text-gray-700">
-              Menu Inventory Demand Forecast
+              Production Menu Inventory Demand Forecast
             </h3>
             <div class="flex items-center gap-2 flex-wrap">
               <label class="text-xs text-gray-600">Items per page:</label>
@@ -879,7 +1153,7 @@
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-sm font-medium text-gray-700">
-              Menu Stock Level Projections
+              Production Menu Stock Level Projections
             </h3>
             <div class="flex items-center gap-2 flex-wrap">
               <label class="text-xs text-gray-600">Items per page:</label>
@@ -1024,6 +1298,197 @@
                   class="ml-1"
                 />
               </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Promo Suggestions DSS -->
+      <div class="card bg-white shadow border border-black/10">
+        <div class="card-body">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-medium text-gray-700">
+              🎯 Intelligent Promo Suggestions (DSS)
+            </h3>
+            <div class="flex items-center gap-2">
+              <div class="badge badge-sm bg-primaryColor/10 text-primaryColor">
+                {{ promoSuggestions.length }} Suggestions
+              </div>
+              <button
+                class="btn btn-xs btn-outline"
+                @click="generatePromoSuggestions"
+                :disabled="promoLoading"
+              >
+                <font-awesome-icon
+                  icon="fa-solid fa-sync-alt"
+                  :class="{ 'animate-spin': promoLoading }"
+                  class="mr-1"
+                />
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <!-- Promo Suggestions Grid -->
+          <div
+            v-if="promoSuggestions.length > 0"
+            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+          >
+            <div
+              v-for="suggestion in promoSuggestions"
+              :key="`${suggestion.branchId}-${suggestion.itemId}-${suggestion.type}`"
+              class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-4 border-l-4"
+              :class="{
+                'border-red-500': suggestion.priority === 'critical',
+                'border-orange-500': suggestion.priority === 'high',
+                'border-blue-500': suggestion.priority === 'medium',
+                'border-gray-500': suggestion.priority === 'low',
+              }"
+            >
+              <!-- Header -->
+              <div class="flex items-start justify-between mb-3">
+                <div class="flex items-center gap-2">
+                  <font-awesome-icon
+                    :icon="suggestion.icon"
+                    :class="suggestion.color"
+                    class="text-lg"
+                  />
+                  <div>
+                    <h4 class="text-sm font-semibold text-gray-800">
+                      {{ suggestion.title }}
+                    </h4>
+                    <div class="text-xs text-gray-600">
+                      {{ suggestion.branchName }} • {{ suggestion.itemName }}
+                    </div>
+                  </div>
+                </div>
+                <div
+                  class="badge badge-xs"
+                  :class="{
+                    'bg-red-100 text-red-800':
+                      suggestion.priority === 'critical',
+                    'bg-orange-100 text-orange-800':
+                      suggestion.priority === 'high',
+                    'bg-blue-100 text-blue-800':
+                      suggestion.priority === 'medium',
+                    'bg-gray-100 text-gray-800': suggestion.priority === 'low',
+                  }"
+                >
+                  {{ suggestion.priority.toUpperCase() }}
+                </div>
+              </div>
+
+              <!-- Reason -->
+              <div class="mb-3">
+                <p class="text-xs text-gray-700 font-medium mb-1">Reason:</p>
+                <p class="text-xs text-gray-600">{{ suggestion.reason }}</p>
+              </div>
+
+              <!-- Recommendation -->
+              <div class="mb-3">
+                <p class="text-xs text-gray-700 font-medium mb-1">
+                  Recommendation:
+                </p>
+                <p class="text-xs text-gray-800">
+                  {{ suggestion.recommendation }}
+                </p>
+              </div>
+
+              <!-- Promo Details -->
+              <div class="bg-white rounded-md p-3 mb-3">
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span class="text-gray-600">Discount:</span>
+                    <div class="font-semibold text-primaryColor">
+                      {{ suggestion.discountValue }}%
+                      {{
+                        suggestion.discountType === 'percentage'
+                          ? 'off'
+                          : 'fixed'
+                      }}
+                    </div>
+                  </div>
+                  <div>
+                    <span class="text-gray-600">Duration:</span>
+                    <div class="font-semibold">{{ suggestion.duration }}</div>
+                  </div>
+                  <div>
+                    <span class="text-gray-600">Current Stock:</span>
+                    <div class="font-semibold">
+                      {{ suggestion.currentStock }} {{ suggestion.unit }}
+                    </div>
+                  </div>
+                  <div>
+                    <span class="text-gray-600">Daily Sales:</span>
+                    <div class="font-semibold">
+                      {{ suggestion.dailyConsumption }}
+                      {{ suggestion.unit }}/day
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Expected Impact -->
+              <div class="mb-3">
+                <p class="text-xs text-gray-700 font-medium mb-1">
+                  Expected Impact:
+                </p>
+                <p class="text-xs text-green-700 font-medium">
+                  {{ suggestion.expectedImpact }}
+                </p>
+              </div>
+
+              <!-- Action Buttons -->
+              <div class="flex gap-2">
+                <button
+                  class="btn btn-xs bg-primaryColor text-white flex-1"
+                  @click="
+                    alert(
+                      `Creating promo for ${suggestion.itemName}: ${suggestion.discountValue}% off for ${suggestion.duration}`
+                    )
+                  "
+                >
+                  <font-awesome-icon icon="fa-solid fa-plus" class="mr-1" />
+                  Create Promo
+                </button>
+                <button
+                  class="btn btn-xs btn-outline"
+                  @click="
+                    alert(
+                      `Detailed analysis for ${suggestion.itemName}: ${suggestion.reason}`
+                    )
+                  "
+                >
+                  <font-awesome-icon icon="fa-solid fa-info-circle" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- No Suggestions State -->
+          <div v-else-if="!promoLoading" class="text-center py-8 text-gray-500">
+            <font-awesome-icon
+              icon="fa-solid fa-lightbulb"
+              class="text-4xl mb-4 text-gray-300"
+            />
+            <div class="space-y-2">
+              <div class="text-sm font-medium">
+                No Promo Suggestions Available
+              </div>
+              <div class="text-xs">
+                All menu items are performing well or have adequate stock
+                levels.
+              </div>
+            </div>
+          </div>
+
+          <!-- Loading State -->
+          <div v-else class="text-center py-8">
+            <div
+              class="loading loading-spinner loading-md text-primaryColor"
+            ></div>
+            <div class="text-sm text-gray-600 mt-2">
+              Analyzing promo opportunities...
             </div>
           </div>
         </div>

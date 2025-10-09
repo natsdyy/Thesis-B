@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const Supplier = require("../models/Supplier");
+const EmailService = require("../services/emailService");
 const { db } = require("../config/database");
 
 // GET /api/suppliers - Get all suppliers
@@ -108,8 +109,16 @@ router.get("/:id", async (req, res) => {
 // POST /api/suppliers - Create supplier
 router.post("/", async (req, res) => {
   try {
-    const { name, contact_person, email, phone, address, category, status } =
-      req.body;
+    const {
+      name,
+      contact_person,
+      email,
+      phone,
+      address,
+      category,
+      status,
+      notes,
+    } = req.body;
 
     if (!name) {
       return res.status(400).json({
@@ -126,15 +135,51 @@ router.post("/", async (req, res) => {
       address,
       category,
       status: status || "Active",
+      notes,
     };
 
-    const supplierId = await Supplier.create(supplierData);
-    const supplier = await Supplier.getById(supplierId);
+    // Create supplier with authentication (default password: supplier123)
+    const defaultPassword = "supplier123";
+    const supplier = await Supplier.createWithAuth(
+      supplierData,
+      defaultPassword
+    );
+
+    // Attempt to send welcome email to supplier
+    let emailStatus = { sent: false };
+    try {
+      if (supplier?.email) {
+        const contactName =
+          supplier.contact_person || supplier.name || "Supplier";
+        const emailResult = await EmailService.sendSupplierWelcomeEmail(
+          supplier.email,
+          contactName,
+          supplier.email,
+          defaultPassword
+        );
+        emailStatus = {
+          sent: !!emailResult?.success,
+          provider: emailResult?.provider || "SMTP",
+          messageId: emailResult?.messageId,
+          error: emailResult?.error || null,
+        };
+      }
+    } catch (e) {
+      emailStatus = { sent: false, error: e.message };
+    }
 
     res.status(201).json({
       success: true,
-      message: "Supplier created successfully",
-      data: supplier,
+      message: "Supplier created successfully with default login credentials",
+      data: {
+        ...supplier,
+        login_info: {
+          email: supplier.email,
+          default_password: defaultPassword,
+          note: "Supplier should change password on first login",
+        },
+      },
+      emailStatus,
     });
   } catch (error) {
     res.status(500).json({
@@ -409,6 +454,69 @@ router.get("/:id/transactions", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error fetching supplier transactions",
+      error: error.message,
+    });
+  }
+});
+
+// GET /api/suppliers/:id/product-performance - Get product performance metrics
+router.get("/:id/product-performance", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify supplier exists
+    const supplier = await Supplier.getById(id);
+    if (!supplier) {
+      return res.status(404).json({
+        success: false,
+        message: "Supplier not found",
+      });
+    }
+
+    const performance = await Supplier.getProductPerformance(id);
+
+    res.json({
+      success: true,
+      data: performance,
+      count: performance.length,
+    });
+  } catch (error) {
+    console.error("Error fetching product performance:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching product performance",
+      error: error.message,
+    });
+  }
+});
+
+// GET /api/suppliers/:id/order-history - Get order history with received vs ordered
+router.get("/:id/order-history", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { limit = 10 } = req.query;
+
+    // Verify supplier exists
+    const supplier = await Supplier.getById(id);
+    if (!supplier) {
+      return res.status(404).json({
+        success: false,
+        message: "Supplier not found",
+      });
+    }
+
+    const orderHistory = await Supplier.getOrderHistory(id, parseInt(limit));
+
+    res.json({
+      success: true,
+      data: orderHistory,
+      count: orderHistory.length,
+    });
+  } catch (error) {
+    console.error("Error fetching order history:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching order history",
       error: error.message,
     });
   }

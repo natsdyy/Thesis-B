@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '../stores/authStore';
+import { useSupplierAuthStore } from '../stores/supplierAuthStore';
 
 // Import route modules
 import hrRoutes from './routes/hr';
@@ -13,6 +14,7 @@ import branchRoutes from './routes/branch';
 // Import layout components
 import DashboardLayout from '../layouts/DashboardLayout.vue';
 import BranchLayout from '../layouts/BranchLayout.vue';
+import SupplierLayout from '../layouts/SupplierLayout.vue';
 
 // Import page components
 import HomePage from '../views/HomePage.vue';
@@ -21,6 +23,13 @@ import Login from '../views/Login.vue';
 import ForgotPassword from '../views/ForgotPassword.vue';
 import VerifyOTP from '../views/VerifyOTP.vue';
 import ResetPassword from '../views/ResetPassword.vue';
+
+// Import supplier components
+import SupplierLogin from '../views/supplier/SupplierLogin.vue';
+import SupplierDashboard from '../views/supplier/SupplierDashboard.vue';
+import SupplierOrders from '../views/supplier/SupplierOrders.vue';
+import SupplierProfile from '../views/supplier/SupplierProfile.vue';
+import SupplierProducts from '../views/supplier/SupplierProducts.vue';
 
 // Import crm components
 import FullMenu from '../components/crm/FullMenu.vue';
@@ -55,24 +64,43 @@ const routes = [
     component: Login,
     meta: { title: 'Login' },
   },
-  // Password recovery routes
+  // Supplier routes
   {
-    path: '/forgot-password',
-    name: 'ForgotPassword',
-    component: ForgotPassword,
-    meta: { title: 'Forgot Password' },
+    path: '/supplier/login',
+    name: 'SupplierLogin',
+    component: SupplierLogin,
+    meta: { title: 'Supplier Login' },
   },
   {
-    path: '/verify-otp',
-    name: 'VerifyOTP',
-    component: VerifyOTP,
-    meta: { title: 'Verify OTP' },
-  },
-  {
-    path: '/reset-password',
-    name: 'ResetPassword',
-    component: ResetPassword,
-    meta: { title: 'Reset Password' },
+    path: '/supplier',
+    component: SupplierLayout,
+    meta: { requiresSupplierAuth: true },
+    children: [
+      {
+        path: 'dashboard',
+        name: 'SupplierDashboard',
+        component: SupplierDashboard,
+        meta: { title: 'Supplier Dashboard', requiresSupplierAuth: true },
+      },
+      {
+        path: 'orders',
+        name: 'SupplierOrders',
+        component: SupplierOrders,
+        meta: { title: 'My Orders', requiresSupplierAuth: true },
+      },
+      {
+        path: 'profile',
+        name: 'SupplierProfile',
+        component: SupplierProfile,
+        meta: { title: 'My Profile', requiresSupplierAuth: true },
+      },
+      {
+        path: 'products',
+        name: 'SupplierProducts',
+        component: SupplierProducts,
+        meta: { title: 'My Products', requiresSupplierAuth: true },
+      },
+    ],
   },
   {
     path: '/dashboard',
@@ -230,6 +258,33 @@ function canAccessAdminRoutes(userRole, userDepartment) {
 
 // Add a global navigation guard
 router.beforeEach(async (to, from, next) => {
+  // Check for supplier authentication
+  if (to.matched.some((record) => record.meta.requiresSupplierAuth)) {
+    const supplierAuthStore = useSupplierAuthStore();
+    const isValidSession = await supplierAuthStore.validateSession();
+
+    if (!isValidSession) {
+      next({ path: '/supplier/login', query: { redirect: to.fullPath } });
+      return;
+    }
+  }
+
+  // Redirect supplier login if already authenticated
+  if (to.path === '/supplier/login') {
+    const supplierAuthStore = useSupplierAuthStore();
+    if (supplierAuthStore.isAuthenticated) {
+      next({ path: '/supplier/dashboard' });
+      return;
+    }
+  }
+
+  // If navigating to any supplier route, skip employee auth guard logic below.
+  // Supplier routes have their own auth (via requiresSupplierAuth meta) and login page.
+  if (to.path.startsWith('/supplier')) {
+    next();
+    return;
+  }
+
   const authStore = useAuthStore();
 
   // Routes that don't require authentication
@@ -243,6 +298,7 @@ router.beforeEach(async (to, from, next) => {
     '/menu',
     '/stores',
     '/rate-order',
+    '/supplier/login',
   ];
 
   if (publicRoutes.includes(to.path)) {

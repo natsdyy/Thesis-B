@@ -89,7 +89,6 @@
     PhilippinePeso,
     BarChart3,
     History,
-    TrendingDown,
     ChevronDown,
     ChevronUp,
     X,
@@ -312,12 +311,6 @@
   const categoryFilter = ref('');
   const expandedItems = ref(new Set());
 
-  // Enhanced Reports state
-  const reportPeriod = ref('current');
-  const reportSearchQuery = ref('');
-  const reportCategoryFilter = ref('');
-  const reportConditionFilter = ref('');
-  const expandedCategories = ref(new Set());
   const forecastPeriod = ref('30');
   const forecastMethod = ref('moving_average');
   // Advanced forecasting controls
@@ -336,12 +329,6 @@
   // Forecasting pagination state
   const forecastCurrentPage = ref(1);
   const forecastItemsPerPage = ref(10);
-
-  // Disposed Items state
-  const disposedItems = ref([]);
-  const disposedFromDate = ref('');
-  const disposedToDate = ref('');
-  const disposedCategoryFilter = ref('');
 
   // Branch Distribution state
   // branches now from branchStore, productionInventory from productionStore
@@ -599,20 +586,6 @@
       item.id || `${item.item_type_id}-${item.expiry_date}`
     );
   };
-
-  // Enhanced Reports computed properties
-  const filteredInventorySummary = computed(() => {
-    if (!inventorySummary.value) return [];
-    let filtered = [...inventorySummary.value];
-
-    if (reportCategoryFilter.value) {
-      filtered = filtered.filter(
-        (item) => item.category_id == reportCategoryFilter.value
-      );
-    }
-
-    return filtered;
-  });
 
   const recentStockMovements = computed(() => {
     if (!recentActivity.value) return [];
@@ -1454,53 +1427,69 @@
           category: alertItem.category_name,
           item_type_id: alertItem.item_type_id,
           source: 'scm',
+          // Include supplier information - try to get from alert item first, then from current inventory
+          supplier_id:
+            alertItem.supplier_id ||
+            (() => {
+              // Try to find supplier info from current inventory
+              const inventoryItem = currentInventory.value.find(
+                (item) =>
+                  item.item_type_id === alertItem.item_type_id ||
+                  item.id === alertItem.id
+              );
+              return inventoryItem?.supplier_id;
+            })(),
+          supplier_name:
+            alertItem.supplier_name ||
+            (() => {
+              // Try to find supplier info from current inventory
+              const inventoryItem = currentInventory.value.find(
+                (item) =>
+                  item.item_type_id === alertItem.item_type_id ||
+                  item.id === alertItem.id
+              );
+              return inventoryItem?.supplier_name;
+            })(),
         },
       };
-      router.push({ name: 'RequestSupply', state });
+      console.log(
+        'MainInventory - Navigating to RequestSupply with state:',
+        state
+      );
+      console.log('Alert item data:', alertItem);
+      console.log('Alert item keys:', Object.keys(alertItem));
+      console.log('Alert item supplier info:', {
+        supplier_id: alertItem.supplier_id,
+        supplier_name: alertItem.supplier_name,
+        hasSupplierId: 'supplier_id' in alertItem,
+        hasSupplierName: 'supplier_name' in alertItem,
+      });
+
+      // Check current inventory for supplier info
+      const inventoryItem = currentInventory.value.find(
+        (item) =>
+          item.item_type_id === alertItem.item_type_id ||
+          item.id === alertItem.id
+      );
+      console.log('Found inventory item for supplier lookup:', inventoryItem);
+      console.log('Final supplier info being sent:', {
+        supplier_id: state.preloadSupplyRequest.supplier_id,
+        supplier_name: state.preloadSupplyRequest.supplier_name,
+      });
+
+      // Store preload data in sessionStorage as a backup
+      sessionStorage.setItem(
+        'preloadSupplyRequest',
+        JSON.stringify(state.preloadSupplyRequest)
+      );
+
+      router.push({
+        name: 'RequestSupply',
+        state: state,
+      });
     } catch (e) {
       showToast('error', 'Failed to navigate to Request Supply');
     }
-  };
-
-  // Enhanced Reports helper functions
-  const getValuePercentage = (value) => {
-    const total = filteredInventorySummary.value.reduce(
-      (sum, item) => sum + parseFloat(item.total_value || 0),
-      0
-    );
-    return total > 0 ? (parseFloat(value || 0) / total) * 100 : 0;
-  };
-
-  const toggleCategoryDetails = (categoryId) => {
-    if (expandedCategories.value.has(categoryId)) {
-      expandedCategories.value.delete(categoryId);
-    } else {
-      expandedCategories.value.add(categoryId);
-    }
-  };
-
-  const getConditionBadgeClass = (status) => {
-    const classes = {
-      available: 'badge-sm border-none font-medium bg-success/20 text-success',
-      reserved: 'badge-sm border-none font-medium bg-warning/20 text-warning',
-      expired: 'badge-sm border-none font-medium bg-error/20 text-error',
-      damaged: 'badge-sm border-none font-medium bg-error/20 text-error',
-    };
-    return (
-      classes[status] ||
-      'badge-sm border-none font-medium bg-neutral/20 text-neutral'
-    );
-  };
-
-  const getExpiryStatusBadgeClass = (expiryDate) => {
-    const days = getDaysUntilExpiry(expiryDate);
-    if (days <= 0)
-      return 'badge-sm border-none font-medium bg-error/20 text-error';
-    if (days <= 3)
-      return 'badge-sm border-none font-medium bg-warning/20 text-warning';
-    if (days <= 7)
-      return 'badge-sm border-none font-medium bg-info/20 text-info';
-    return 'badge-sm border-none font-medium bg-success/20 text-success';
   };
 
   const getExpiryStatusText = (expiryDate) => {
@@ -1509,71 +1498,6 @@
     if (days <= 3) return `${days}d left`;
     if (days <= 7) return `${days}d left`;
     return 'Good';
-  };
-
-  const getStockLevelBadgeClass = (item) => {
-    // Find if this item has low stock alert
-    const lowStockItem = lowStockItems.value.find(
-      (ls) => ls.item_type_id === item.item_type_id
-    );
-    if (lowStockItem) {
-      const severity = getLowStockSeverity(lowStockItem);
-      if (severity === 'critical')
-        return 'badge-sm border-none font-medium bg-error/20 text-error';
-      if (severity === 'warning')
-        return 'badge-sm border-none font-medium bg-warning/20 text-warning';
-    }
-    // Fallback: compute from available fields (e.g., reorder_level on batch)
-    const currentFallback = parseFloat(
-      item.current_stock ?? item.total_quantity ?? item.quantity ?? 0
-    );
-    const minLevelFallback = parseFloat(
-      item.min_stock_level ?? item.reorder_level ?? 0
-    );
-    if (
-      !isNaN(currentFallback) &&
-      !isNaN(minLevelFallback) &&
-      minLevelFallback > 0
-    ) {
-      if (currentFallback <= minLevelFallback) {
-        // Critical if 0 or extremely low (<= 20% of min level)
-        if (currentFallback === 0 || currentFallback <= minLevelFallback * 0.2)
-          return 'badge-sm border-none font-medium bg-error/20 text-error';
-        return 'badge-sm border-none font-medium bg-warning/20 text-warning';
-      }
-    }
-    return 'badge-sm border-none font-medium bg-success/20 text-success';
-  };
-
-  const getStockLevelText = (item) => {
-    const lowStockItem = lowStockItems.value.find(
-      (ls) => ls.item_type_id === item.item_type_id
-    );
-    if (lowStockItem) {
-      const severity = getLowStockSeverity(lowStockItem);
-      if (severity === 'critical') return 'Critical';
-      if (severity === 'warning') return 'Low';
-    }
-    // Fallback using reorder/min levels present on the item/batch
-    const currentFallback = parseFloat(
-      item.current_stock ?? item.total_quantity ?? item.quantity ?? 0
-    );
-    const minLevelFallback = parseFloat(
-      item.min_stock_level ?? item.reorder_level ?? 0
-    );
-    if (
-      !isNaN(currentFallback) &&
-      !isNaN(minLevelFallback) &&
-      minLevelFallback > 0
-    ) {
-      if (currentFallback <= minLevelFallback) {
-        return currentFallback === 0 ||
-          currentFallback <= minLevelFallback * 0.2
-          ? 'Critical'
-          : 'Low';
-      }
-    }
-    return 'Normal';
   };
 
   // Batch-level low stock evaluation (UI override for Status column)
@@ -1610,50 +1534,6 @@
     if (state === 'critical') return 'critical';
     if (state === 'low') return 'low stock';
     return batch.status || 'available';
-  };
-
-  const getForecastText = (item) => {
-    const forecast = inventoryForecasts.value.find(
-      (f) => f.item_type_id === item.item_type_id
-    );
-    if (!forecast) return 'N/A';
-
-    if (forecast.avg_daily_usage <= 0) return 'No usage';
-    return `${forecast.projected_demand.toFixed(0)} units`;
-  };
-
-  const getDepletionWarningClass = (days) => {
-    if (days <= 7) return 'text-error font-bold';
-    if (days <= 14) return 'text-warning font-medium';
-    if (days <= 30) return 'text-info';
-    return 'text-success';
-  };
-
-  const getActionBadgeClass = (action) => {
-    const classes = {
-      Urgent: 'badge-sm border-none font-medium bg-error/20 text-error',
-      'Reorder Soon':
-        'badge-sm border-none font-medium bg-warning/20 text-warning',
-      'Plan Reorder': 'badge-sm border-none font-medium bg-info/20 text-info',
-      Reorder: 'badge-sm border-none font-medium bg-warning/20 text-warning',
-      Monitor: 'badge-sm border-none font-medium bg-success/20 text-success',
-    };
-    return (
-      classes[action] ||
-      'badge-sm border-none font-medium bg-neutral/20 text-neutral'
-    );
-  };
-
-  const getConfidenceBadgeClass = (confidence) => {
-    const classes = {
-      High: 'badge-sm border-none font-medium bg-success/20 text-success',
-      Medium: 'badge-sm border-none font-medium bg-warning/20 text-warning',
-      Low: 'badge-sm border-none font-medium bg-error/20 text-error',
-    };
-    return (
-      classes[confidence] ||
-      'badge-sm border-none font-medium bg-neutral/20 text-neutral'
-    );
   };
 
   // Helper function to format batch numbers for better readability
@@ -1697,181 +1577,6 @@
     return batchNumber.length > 20
       ? `${batchNumber.substring(0, 20)}...`
       : batchNumber;
-  };
-
-  const refreshReportData = async () => {
-    try {
-      await Promise.all([
-        inventoryStore.fetchCurrentInventory(),
-        inventoryStore.fetchInventorySummary(),
-        inventoryStore.fetchLowStockItems(),
-        inventoryStore.fetchRecentActivity(),
-      ]);
-      showToast('success', 'Report data refreshed successfully');
-    } catch (error) {
-      showToast('error', 'Failed to refresh report data');
-    }
-  };
-
-  // Export functions
-  const exportDetailedInventory = () => {
-    const data = detailedCategoryReport.value.flatMap((category) =>
-      category.items.map((item) => ({
-        Category: category.category_name,
-        'Item Name': item.item_type_name,
-        Batch: formatBatchNumber(item.batch_number),
-        Quantity: item.quantity,
-        Unit: item.unit_of_measure,
-        'Unit Cost': item.unit_cost,
-        'Total Value': item.total_value,
-        Status: item.status,
-        'Expiry Date': item.expiry_date ? formatDate(item.expiry_date) : 'N/A',
-        Supplier: item.supplier_name || 'N/A',
-      }))
-    );
-    downloadCSV(data, 'detailed_inventory_report.csv');
-  };
-
-  const exportValueAnalysis = () => {
-    const data = filteredInventorySummary.value.map((summary) => ({
-      Category: summary.category_name,
-      'Total Items': summary.unique_items,
-      'Total Quantity': summary.total_quantity,
-      'Total Value': summary.total_value,
-      Percentage: getValuePercentage(summary.total_value).toFixed(2) + '%',
-    }));
-    downloadCSV(data, 'value_analysis_report.csv');
-  };
-
-  const exportForecastReport = () => {
-    const data = inventoryForecasts.value.map((forecast) => ({
-      Item: forecast.item_type_name,
-      'Current Stock': forecast.current_stock,
-      'Avg Daily Usage': forecast.avg_daily_usage.toFixed(2),
-      'Projected Demand': forecast.projected_demand.toFixed(0),
-      'Days Until Depletion': forecast.days_until_depletion,
-      'Recommended Action': forecast.recommended_action,
-    }));
-    downloadCSV(data, 'forecast_report.csv');
-  };
-
-  const exportLowStockAlert = () => {
-    const data = lowStockAlertItems.value.map((item) => ({
-      Item: item.item_type_name,
-      Category: item.category_name,
-      'Current Stock': item.current_stock,
-      'Min Level': item.min_stock_level,
-      Variance:
-        parseFloat(item.current_stock) - parseFloat(item.min_stock_level),
-      'Days of Cover': estimateDaysOfCover(item),
-    }));
-    downloadCSV(data, 'low_stock_alert.csv');
-  };
-
-  const downloadCSV = (data, filename) => {
-    if (data.length === 0) {
-      showToast('error', 'No data to export');
-      return;
-    }
-
-    const headers = Object.keys(data[0]);
-    const csvContent = [
-      headers.join(','),
-      ...data.map((row) =>
-        headers.map((header) => `"${row[header] || ''}"`).join(',')
-      ),
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    showToast('success', `${filename} exported successfully`);
-  };
-
-  // Disposed Items functions
-  const loadDisposedItems = async (showToastMessage = false) => {
-    try {
-      const filters = {
-        category_id: disposedCategoryFilter.value,
-        disposed_from: disposedFromDate.value,
-        disposed_to: disposedToDate.value,
-      };
-
-      const items = await inventoryStore.fetchDisposedItems(filters);
-
-      // Normalize fields coming from the backend join
-      disposedItems.value = items.map((item) => {
-        const originalQty = parseFloat(item.original_quantity || 0); // from tr.quantity alias
-        const unitCost = parseFloat(item.unit_cost || 0);
-        return {
-          ...item,
-          original_quantity: originalQty,
-          original_value: originalQty * unitCost,
-        };
-      });
-
-      // Only show toast if explicitly requested
-      if (showToastMessage) {
-        showToast('success', `Loaded ${items.length} disposed items`);
-      }
-    } catch (error) {
-      if (showToastMessage) {
-        showToast('error', 'Failed to load disposed items');
-      }
-    }
-  };
-
-  const refreshDisposedItems = async () => {
-    await loadDisposedItems(true); // Show toast when explicitly refreshing
-  };
-
-  const getTotalDisposalCost = () => {
-    return disposedItems.value.reduce(
-      (sum, item) => sum + parseFloat(item.disposal_cost || 0),
-      0
-    );
-  };
-
-  const getTotalOriginalValue = () => {
-    return disposedItems.value.reduce((sum, item) => {
-      const qty = parseFloat(item.original_quantity || 0);
-      const cost = parseFloat(item.unit_cost || 0);
-      return sum + qty * cost;
-    }, 0);
-  };
-
-  const exportDisposedItems = () => {
-    const data = disposedItems.value.map((item) => ({
-      'Item Name': item.item_type_name,
-      Category: item.category_name,
-      'Batch Number': formatBatchNumber(item.batch_number),
-      'Original Quantity': item.original_quantity,
-      'Unit of Measure': item.unit_of_measure,
-      'Unit Cost': item.unit_cost,
-      'Original Value': item.total_value,
-      'Disposal Cost': item.disposal_cost,
-      'Disposed Date': formatDate(item.disposed_date),
-      'Disposed By': item.disposed_by,
-      'Disposal Reason': item.disposal_reason || '',
-      'Disposal Notes': item.disposal_notes || '',
-      Supplier: item.supplier_name || 'N/A',
-    }));
-    downloadCSV(data, 'disposed_items_report.csv');
-  };
-
-  const adjustItem = (item) => {
-    modal.value = { type: 'adjustment', show: true, item };
-  };
-
-  const consumeItem = (item) => {
-    modal.value = { type: 'consumption', show: true, item };
   };
 
   // Handle modal submissions
@@ -2517,9 +2222,6 @@
         fetchDistributionHistory(1),
       ]);
 
-      // Load disposed items for reports
-      await loadDisposedItems();
-
       // Handle query parameters for production integration
       handleQueryParameters();
 
@@ -2663,46 +2365,6 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <Package
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-primaryColor"
-          />
-        </div>
-        <div class="stat-title text-black/50 !text-xs sm:text-sm">
-          Total Items
-        </div>
-        <div
-          class="stat-value text-primaryColor text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ stats.total_item_types || 0 }}
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Unique item types
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <CheckCircle
-            class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-success"
-          />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">Available</div>
-        <div
-          class="stat-value text-success text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ stats.total_inventory_entries || 0 }}
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Stock entries
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
           <AlertTriangle
             class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-warning"
           />
@@ -2740,24 +2402,8 @@
 
     <!-- Action Buttons -->
     <div
-      class="flex flex-wrap gap-2 mb-4 sm:mb-6 justify-center sm:justify-start"
+      class="flex flex-wrap gap-2 mb-4 sm:mb-6 !justify-end sm:justify-start !items-end"
     >
-      <button
-        @click="openConsumptionModal"
-        class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
-        :disabled="loading"
-      >
-        <Minus class="w-4 h-4 mr-1" />
-        Record Usage
-      </button>
-      <button
-        @click="openAdjustmentModal"
-        class="btn btn-outline btn-sm text-warning hover:bg-warning/10 font-thin hover:border-none hover:shadow-none"
-        :disabled="loading"
-      >
-        <RefreshCcw class="w-4 h-4 mr-1" />
-        Stock Adjustment
-      </button>
       <button
         @click="refreshData"
         class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
@@ -2799,14 +2445,6 @@
         >
           {{ alertsCount }}
         </span>
-      </button>
-      <button
-        @click="activeTab = 'reports'"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'reports' }"
-      >
-        <TrendingDown class="w-4 h-4 mr-1" />
-        Reports
       </button>
       <button
         @click="activeTab = 'distribution'"
@@ -3201,8 +2839,15 @@
                       <div class="bg-gray-50 rounded-lg p-3">
                         <div class="text-xs text-gray-600 mb-1">Value</div>
                         <div class="text-lg font-bold text-success">
-                          ₱{{
-                            parseFloat(activity.total_value).toLocaleString()
+                          <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                          {{
+                            parseFloat(activity.total_value).toLocaleString(
+                              'en-PH',
+                              {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              }
+                            )
                           }}
                         </div>
                       </div>
@@ -3215,9 +2860,21 @@
                       <div class="text-xs text-error font-medium mb-1">
                         Disposal Cost
                       </div>
-                      <div class="text-sm font-bold text-error">
-                        ₱{{
-                          parseFloat(activity.disposal_cost).toLocaleString()
+                      <div
+                        class="text-sm font-bold text-error flex items-center gap-1"
+                      >
+                        <font-awesome-icon
+                          icon="fa-solid fa-peso-sign"
+                          class="text-error"
+                        />
+                        {{
+                          Number(activity.disposal_cost || 0).toLocaleString(
+                            'en-PH',
+                            {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            }
+                          )
                         }}
                       </div>
                     </div>
@@ -3252,7 +2909,7 @@
               <div v-if="recentActivity.length > 0" class="mt-6 text-center">
                 <button
                   @click="openTransactionModal"
-                  class="btn btn-sm btn-outline bg-primaryColor text-white font-thin hover:bg-primaryColor/90 transition-all duration-200 shadow-lg hover:shadow-xl"
+                  class="btn btn-sm bg-primaryColor text-white font-thin hover:bg-primaryColor/90 transition-all duration-200 shadow-lg hover:shadow-xl"
                 >
                   <BarChart3 class="w-4 h-4 mr-2" />
                   View All Transactions
@@ -3399,8 +3056,7 @@
                         <th>Expiry Date</th>
                         <th>Received Date</th>
                         <th>Supplier</th>
-                        <th>Unit Cost</th>
-                        <th>Total Value</th>
+
                         <th>Status</th>
                         <th>Actions</th>
                       </tr>
@@ -3455,22 +3111,7 @@
                             batch.supplier_name || 'N/A'
                           }}</span>
                         </td>
-                        <td>
-                          <span class="text-sm"
-                            >₱{{
-                              parseFloat(batch.unit_cost || 0).toLocaleString()
-                            }}</span
-                          >
-                        </td>
-                        <td>
-                          <span class="font-medium"
-                            >₱{{
-                              parseFloat(
-                                batch.total_value || 0
-                              ).toLocaleString()
-                            }}</span
-                          >
-                        </td>
+
                         <td>
                           <span
                             :class="getBatchStatusBadgeClass(batch)"
@@ -3700,7 +3341,7 @@
                   v-else-if="getExpirySeverityLevel(item) === 'warning'"
                   class="w-5 h-5 text-warning"
                 />
-                <Calendar v-else class="w-5 h-5 text-info" />
+                <Calendar v-else class="w-5 h-5 text-primaryColor" />
               </div>
 
               <div class="flex-1">
@@ -3767,17 +3408,6 @@
                   </button>
                   <button class="btn btn-ghost btn-xs" disabled>
                     Mark for Disposal
-                  </button>
-                  <button
-                    class="btn btn-outline btn-xs"
-                    :class="{
-                      'btn-disabled': acknowledgedExpiring.has(
-                        item.id || `${item.item_type_id}-${item.expiry_date}`
-                      ),
-                    }"
-                    @click="acknowledgeExpiring(item)"
-                  >
-                    Acknowledge
                   </button>
                 </div>
               </div>
@@ -3890,1133 +3520,6 @@
             <div v-if="lowStockItems.length === 0" class="text-center py-8">
               <CheckCircle class="w-12 h-12 mx-auto text-success mb-2" />
               <p class="text-gray-500">No low stock alerts!</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Reports Tab -->
-        <div v-if="activeTab === 'reports'" class="space-y-6">
-          <div
-            class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
-          >
-            <h2
-              class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl"
-            >
-              Enhanced Inventory Reports
-            </h2>
-
-            <!-- Report Controls -->
-            <div class="flex flex-wrap gap-2 sm:flex-row w-full">
-              <select
-                v-model="reportPeriod"
-                class="select select-bordered select-sm"
-              >
-                <option value="current">Current Period</option>
-                <option value="last_month">vs Last Month</option>
-                <option value="last_quarter">vs Last Quarter</option>
-              </select>
-              <button @click="refreshReportData" class="btn btn-sm btn-outline">
-                <RefreshCcw class="w-4 h-4 mr-1" />
-                Refresh
-              </button>
-            </div>
-          </div>
-
-          <!-- Search and Filter for Reports -->
-          <div class="flex flex-col sm:flex-row gap-4 mb-6">
-            <div class="join flex-1">
-              <input
-                v-model="reportSearchQuery"
-                type="text"
-                placeholder="Search items in reports..."
-                class="input input-bordered input-sm join-item flex-1"
-              />
-              <button class="btn btn-sm join-item">
-                <Search class="w-4 h-4" />
-              </button>
-            </div>
-            <select
-              v-model="reportCategoryFilter"
-              class="select select-bordered select-sm"
-            >
-              <option value="">All Categories</option>
-              <option
-                v-for="category in categories"
-                :key="category.id"
-                :value="category.id"
-              >
-                {{ category.name }}
-              </option>
-            </select>
-            <select
-              v-model="reportConditionFilter"
-              class="select select-bordered select-sm"
-            >
-              <option value="">All Conditions</option>
-              <option value="available">Available</option>
-              <option value="expired">Expired</option>
-              <option value="damaged">Damaged</option>
-              <option value="reserved">Reserved</option>
-            </select>
-          </div>
-
-          <!-- Visual Analytics Dashboard -->
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <!-- Inventory Distribution Chart -->
-            <div class="card bg-base-100 border border-gray-200">
-              <div class="card-body p-4">
-                <h3
-                  class="card-title text-sm font-semibold text-primaryColor mb-4"
-                >
-                  <BarChart3 class="w-4 h-4 mr-2" />
-                  Inventory Value Distribution
-                </h3>
-                <div class="h-64 flex items-center justify-center">
-                  <div class="w-full space-y-3">
-                    <div
-                      v-for="summary in filteredInventorySummary"
-                      :key="summary.category_id"
-                      class="relative"
-                    >
-                      <div class="flex justify-between items-center mb-1">
-                        <span class="text-xs font-medium">{{
-                          summary.category_name
-                        }}</span>
-                        <span class="text-xs"
-                          >₱{{
-                            parseFloat(
-                              summary.total_value || 0
-                            ).toLocaleString()
-                          }}</span
-                        >
-                      </div>
-                      <div class="w-full bg-gray-200 rounded-full h-2">
-                        <div
-                          class="bg-primaryColor h-2 rounded-full transition-all duration-300"
-                          :style="{
-                            width:
-                              getValuePercentage(summary.total_value) + '%',
-                          }"
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Stock Movement Trends -->
-            <div class="card bg-base-100 border border-gray-200">
-              <div class="card-body p-4">
-                <h3
-                  class="card-title text-sm font-semibold text-primaryColor mb-4"
-                >
-                  <TrendingDown class="w-4 h-4 mr-2" />
-                  Recent Stock Movements (7 Days)
-                </h3>
-                <div class="space-y-2 max-h-60 overflow-y-auto">
-                  <div
-                    v-for="movement in recentStockMovements"
-                    :key="movement.id"
-                    class="flex justify-between items-center p-2 bg-gray-50 rounded text-xs"
-                  >
-                    <div class="flex items-center gap-2">
-                      <component
-                        :is="
-                          getTransactionTypeInfo(
-                            movement.transaction_type,
-                            movement.adjustment_type
-                          ).icon
-                        "
-                        class="w-3 h-3"
-                      />
-                      <span class="font-medium">{{
-                        movement.item_type_name
-                      }}</span>
-                    </div>
-                    <div class="text-right">
-                      <div
-                        class="font-medium"
-                        :class="
-                          getTransactionTypeInfo(
-                            movement.transaction_type,
-                            movement.adjustment_type
-                          ).color
-                        "
-                      >
-                        {{
-                          movement.transaction_type === 'consumption'
-                            ? '-'
-                            : '+'
-                        }}{{ parseFloat(movement.quantity).toLocaleString() }}
-                      </div>
-                      <div class="text-gray-500">
-                        {{ formatTransactionDate(movement.transaction_date) }}
-                      </div>
-                    </div>
-                  </div>
-                  <div
-                    v-if="recentStockMovements.length === 0"
-                    class="text-center py-4 text-gray-500"
-                  >
-                    No recent movements
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Enhanced Category Breakdown with Item Details -->
-          <div class="space-y-4">
-            <div
-              v-for="category in detailedCategoryReport"
-              :key="category.category_id"
-              class="card bg-base-100 border border-gray-200"
-            >
-              <div class="card-body p-4">
-                <div class="flex justify-between items-center mb-4">
-                  <h3
-                    class="card-title text-sm font-semibold text-primaryColor"
-                  >
-                    {{ category.category_name }}
-                  </h3>
-                  <div class="flex items-center gap-4">
-                    <span class="text-sm font-medium"
-                      >Total Value: ₱{{
-                        parseFloat(category.total_value || 0).toLocaleString()
-                      }}</span
-                    >
-                    <button
-                      @click="toggleCategoryDetails(category.category_id)"
-                      class="btn btn-ghost btn-xs"
-                    >
-                      <ChevronDown
-                        v-if="!expandedCategories.has(category.category_id)"
-                        class="w-4 h-4"
-                      />
-                      <ChevronUp v-else class="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Category Summary Stats -->
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                  <div class="text-center p-2 bg-gray-50 rounded">
-                    <div class="text-lg font-bold text-primaryColor">
-                      {{ category.total_items }}
-                    </div>
-                    <div class="text-xs text-gray-600">Total Items</div>
-                  </div>
-                  <div class="text-center p-2 bg-gray-50 rounded">
-                    <div class="text-lg font-bold text-success">
-                      {{ category.available_items }}
-                    </div>
-                    <div class="text-xs text-gray-600">Available</div>
-                  </div>
-                  <div class="text-center p-2 bg-gray-50 rounded">
-                    <div class="text-lg font-bold text-warning">
-                      {{ category.expiring_items }}
-                    </div>
-                    <div class="text-xs text-gray-600">Expiring</div>
-                  </div>
-                  <div class="text-center p-2 bg-gray-50 rounded">
-                    <div class="text-lg font-bold text-error">
-                      {{ category.expired_items }}
-                    </div>
-                    <div class="text-xs text-gray-600">Expired</div>
-                  </div>
-                </div>
-
-                <!-- Detailed Item Breakdown -->
-                <div
-                  v-if="expandedCategories.has(category.category_id)"
-                  class="mt-4"
-                >
-                  <div class="overflow-x-auto">
-                    <table class="table table-zebra table-xs w-full">
-                      <thead>
-                        <tr class="bg-base-200">
-                          <th>Item Name</th>
-                          <th>Quantity</th>
-                          <th>Unit Value</th>
-                          <th>Total Value</th>
-                          <th>Condition</th>
-                          <th>Expiry Status</th>
-                          <th>Stock Level</th>
-                          <th>Forecast</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr
-                          v-for="item in category.items"
-                          :key="item.id"
-                          class="hover:bg-base-100"
-                        >
-                          <td>
-                            <div class="font-medium">
-                              {{ item.item_type_name }}
-                            </div>
-                            <div class="text-xs text-gray-500">
-                              {{ formatBatchNumber(item.batch_number) }}
-                            </div>
-                          </td>
-                          <td class="font-medium">
-                            {{ parseFloat(item.quantity).toLocaleString() }}
-                            {{ item.unit_of_measure }}
-                          </td>
-                          <td>
-                            ₱{{
-                              parseFloat(item.unit_cost || 0).toLocaleString()
-                            }}
-                          </td>
-                          <td class="font-medium">
-                            ₱{{
-                              parseFloat(item.total_value || 0).toLocaleString()
-                            }}
-                          </td>
-                          <td>
-                            <span
-                              :class="getConditionBadgeClass(item.status)"
-                              class="badge badge-xs"
-                            >
-                              {{ item.status }}
-                            </span>
-                          </td>
-                          <td>
-                            <span
-                              v-if="item.expiry_date"
-                              :class="
-                                getExpiryStatusBadgeClass(item.expiry_date)
-                              "
-                              class="badge badge-xs"
-                            >
-                              {{ getExpiryStatusText(item.expiry_date) }}
-                            </span>
-                            <span v-else class="text-gray-400 text-xs"
-                              >No expiry</span
-                            >
-                          </td>
-                          <td>
-                            <span
-                              :class="getStockLevelBadgeClass(item)"
-                              class="badge badge-xs"
-                            >
-                              {{ getStockLevelText(item) }}
-                            </span>
-                          </td>
-                          <td>
-                            <div class="text-xs">
-                              <div class="font-medium">
-                                {{ getForecastText(item) }}
-                              </div>
-                              <div class="text-gray-500">Next 30d</div>
-                            </div>
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Low Stock Alerts Section -->
-          <div class="card bg-base-100 border border-gray-200">
-            <div class="card-body p-4">
-              <h3 class="card-title text-sm font-semibold text-error mb-4">
-                <AlertTriangle class="w-4 h-4 mr-2" />
-                Low Stock Alerts
-              </h3>
-              <div class="space-y-2">
-                <div
-                  v-for="item in lowStockAlertItems"
-                  :key="item.item_type_id"
-                  class="flex justify-between items-center p-3 bg-error/10 border border-error/20 rounded"
-                >
-                  <div>
-                    <div class="font-medium text-error">
-                      {{ item.item_type_name }}
-                    </div>
-                    <div class="text-xs text-gray-600">
-                      Current:
-                      {{ parseFloat(item.current_stock).toLocaleString() }} |
-                      Min:
-                      {{ parseFloat(item.min_stock_level).toLocaleString() }}
-                    </div>
-                    <div
-                      v-if="item._top_items && item._top_items.length"
-                      class="text-xs text-gray-500 mt-1"
-                    >
-                      Top low items:
-                      <span
-                        v-for="(ti, idx) in item._top_items"
-                        :key="idx"
-                        class="mr-2"
-                      >
-                        {{ ti.name }} ({{
-                          parseFloat(ti.qty).toLocaleString()
-                        }})
-                      </span>
-                    </div>
-                  </div>
-                  <div class="flex gap-2">
-                    <button class="btn btn-xs btn-outline btn-error">
-                      Reorder
-                    </button>
-                    <button class="btn btn-xs btn-ghost">View Details</button>
-                  </div>
-                </div>
-                <div
-                  v-if="lowStockAlertItems.length === 0"
-                  class="text-center py-4 text-gray-500"
-                >
-                  No low stock alerts
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Forecasting Section -->
-          <div
-            class="card bg-base-100 border border-gray-200 forecasting-section"
-          >
-            <div class="card-body p-4">
-              <div class="mb-4">
-                <div class="flex items-center mb-2">
-                  <h3
-                    class="card-title text-sm font-semibold text-primaryColor"
-                  >
-                    <BarChart3 class="w-4 h-4 mr-2" />
-                    Inventory Forecasting
-                  </h3>
-                  <div
-                    class="tooltip tooltip-top ml-2"
-                    data-tip="Predict future inventory needs and optimize reorder timing"
-                  >
-                    <HelpCircle class="w-4 h-4 text-gray-400 cursor-help" />
-                  </div>
-                </div>
-                <p class="text-xs text-gray-600 mb-3">
-                  Configure forecasting parameters to predict when items will
-                  run out and when to reorder.
-                  <span class="font-medium">Lead Time</span> and
-                  <span class="font-medium">Service Level</span> are key factors
-                  for inventory planning.
-                </p>
-
-                <!-- Forecasting Summary -->
-                <div
-                  class="flex flex-wrap items-center justify-between gap-2 mb-3 p-2 bg-base-200 rounded text-xs"
-                >
-                  <div class="flex items-center gap-4">
-                    <span class="text-gray-600">
-                      <span class="font-medium">Total Forecasts:</span>
-                      {{ filteredInventoryForecasts.length }}
-                    </span>
-                    <span class="text-gray-600">
-                      <span class="font-medium">Page:</span>
-                      {{ forecastCurrentPage }} of {{ totalForecastPages }}
-                    </span>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <span class="text-gray-600">
-                      <span class="font-medium">Showing:</span>
-                      {{ forecastItemsPerPage }} per page
-                    </span>
-                    <button
-                      @click="exportCurrentPageForecasts"
-                      class="btn btn-xs btn-outline bg-primaryColor text-white font-thin"
-                      :disabled="paginatedInventoryForecasts.length === 0"
-                    >
-                      Export Page
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Forecasting Controls -->
-              <div
-                class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-4"
-              >
-                <div class="flex flex-col gap-1">
-                  <label class="text-xs text-gray-600 font-medium"
-                    >Forecast Period</label
-                  >
-                  <div class="flex items-center gap-1">
-                    <select
-                      v-model="forecastPeriod"
-                      class="select select-bordered select-xs"
-                    >
-                      <option value="30">30 Days</option>
-                      <option value="60">60 Days</option>
-                      <option value="90">90 Days</option>
-                    </select>
-                    <div
-                      class="tooltip tooltip-top"
-                      data-tip="How far into the future to predict inventory needs"
-                    >
-                      <HelpCircle class="w-3 h-3 text-gray-400 cursor-help" />
-                    </div>
-                  </div>
-                </div>
-
-                <div class="flex flex-col gap-1">
-                  <label class="text-xs text-gray-600 font-medium"
-                    >Method</label
-                  >
-                  <div class="flex items-center gap-1">
-                    <select
-                      v-model="forecastMethod"
-                      class="select select-bordered select-xs"
-                    >
-                      <option value="moving_average">Moving Average</option>
-                      <option value="linear_trend">Linear Trend</option>
-                    </select>
-                    <div
-                      class="tooltip tooltip-top"
-                      data-tip="Moving Average: Uses recent usage patterns. Linear Trend: Considers growth/decline trends"
-                    >
-                      <HelpCircle class="w-3 h-3 text-gray-400 cursor-help" />
-                    </div>
-                  </div>
-                </div>
-
-                <div class="flex flex-col gap-1">
-                  <label class="text-xs text-gray-600 font-medium"
-                    >Analysis Window</label
-                  >
-                  <div class="flex items-center gap-1">
-                    <select
-                      v-model="windowProfile"
-                      class="select select-bordered select-xs"
-                    >
-                      <option value="auto">Auto</option>
-                      <option value="fast">Fast (14d)</option>
-                      <option value="medium">Medium (30d)</option>
-                      <option value="slow">Slow (60d)</option>
-                      <option value="custom">Custom</option>
-                    </select>
-                    <div
-                      class="tooltip tooltip-top"
-                      data-tip="How much historical data to analyze. Fast: Recent trends, Slow: Long-term patterns"
-                    >
-                      <HelpCircle class="w-3 h-3 text-gray-400 cursor-help" />
-                    </div>
-                  </div>
-                </div>
-
-                <div
-                  v-if="windowProfile === 'custom'"
-                  class="flex flex-col gap-1"
-                >
-                  <label class="text-xs text-gray-600 font-medium"
-                    >Custom Days</label
-                  >
-                  <input
-                    v-model.number="customWindowDays"
-                    type="number"
-                    min="7"
-                    class="input input-bordered input-xs"
-                    placeholder="30"
-                  />
-                </div>
-
-                <div class="flex flex-col gap-1">
-                  <label class="text-xs text-gray-600 font-medium"
-                    >Lead Time</label
-                  >
-                  <div class="flex items-center gap-1">
-                    <input
-                      v-model.number="leadTimeDays"
-                      type="number"
-                      min="0"
-                      max="365"
-                      class="input input-bordered input-xs w-20"
-                      placeholder="7"
-                    />
-                    <span class="text-xs text-gray-500">days</span>
-                    <div
-                      class="tooltip tooltip-top"
-                      data-tip="How many days it takes to receive items after ordering"
-                    >
-                      <HelpCircle class="w-3 h-3 text-gray-400 cursor-help" />
-                    </div>
-                  </div>
-                </div>
-
-                <div class="flex flex-col gap-1">
-                  <label class="text-xs text-gray-600 font-medium"
-                    >Service Level</label
-                  >
-                  <div class="flex items-center gap-1">
-                    <input
-                      v-model.number="serviceLevel"
-                      type="number"
-                      step="0.01"
-                      min="0.5"
-                      max="0.999"
-                      class="input input-bordered input-xs w-20"
-                      placeholder="0.95"
-                    />
-                    <span class="text-xs text-gray-500">%</span>
-                    <div
-                      class="tooltip tooltip-top"
-                      data-tip="Target percentage of time items are available when needed (95% = high availability)"
-                    >
-                      <HelpCircle class="w-3 h-3 text-gray-400 cursor-help" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Forecasting Parameters Summary -->
-              <div
-                class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4"
-              >
-                <div class="flex items-center gap-2 mb-2">
-                  <Info class="w-4 h-4 text-blue-600" />
-                  <h4 class="text-sm font-medium text-blue-800">
-                    Understanding Your Settings
-                  </h4>
-                </div>
-                <div
-                  class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-blue-700"
-                >
-                  <div>
-                    <span class="font-medium"
-                      >Lead Time ({{ leadTimeDays }} days):</span
-                    >
-                    Items will be reordered {{ leadTimeDays }} days before
-                    they're expected to run out
-                  </div>
-                  <div>
-                    <span class="font-medium"
-                      >Service Level ({{
-                        (serviceLevel * 100).toFixed(0)
-                      }}%):</span
-                    >
-                    {{
-                      serviceLevel >= 0.95
-                        ? 'High availability'
-                        : serviceLevel >= 0.85
-                          ? 'Good availability'
-                          : 'Standard availability'
-                    }}
-                    - items will be available when needed
-                  </div>
-                </div>
-              </div>
-
-              <!-- Forecasting Filters -->
-              <div
-                class="flex flex-wrap gap-4 mb-4 p-3 bg-base-200 rounded-lg sm:flex-row flex-col"
-              >
-                <div class="flex flex-col gap-1">
-                  <label class="text-xs text-gray-600 font-medium"
-                    >Category Filter</label
-                  >
-                  <select
-                    v-model="forecastCategoryFilter"
-                    class="select select-bordered select-xs"
-                  >
-                    <option value="">All Categories</option>
-                    <option
-                      v-for="category in categories"
-                      :key="category.id"
-                      :value="category.name"
-                    >
-                      {{ category.name }}
-                    </option>
-                  </select>
-                </div>
-
-                <div class="flex flex-col gap-1">
-                  <label class="text-xs text-gray-600 font-medium"
-                    >Priority Filter</label
-                  >
-                  <select
-                    v-model="forecastPriorityFilter"
-                    class="select select-bordered select-xs"
-                  >
-                    <option value="">All Priorities</option>
-                    <option value="1">Urgent (≤7 days)</option>
-                    <option value="2">Reorder Soon (≤14 days)</option>
-                    <option value="3">Plan Reorder (≤30 days)</option>
-                    <option value="4">Reorder (At ROP)</option>
-                    <option value="5">Monitor</option>
-                  </select>
-                </div>
-
-                <div class="flex flex-col gap-1">
-                  <label class="text-xs text-gray-600 font-medium"
-                    >Usage Confidence</label
-                  >
-                  <select
-                    v-model="forecastConfidenceFilter"
-                    class="select select-bordered select-xs"
-                  >
-                    <option value="">All Levels</option>
-                    <option value="High">High Confidence</option>
-                    <option value="Medium">Medium Confidence</option>
-                    <option value="Low">Low Confidence</option>
-                  </select>
-                </div>
-
-                <div class="flex flex-col gap-1 sm:flex-row !w-full">
-                  <label class="text-xs text-gray-600 font-medium"
-                    >Search Items</label
-                  >
-                  <input
-                    v-model="forecastSearchQuery"
-                    type="text"
-                    placeholder="Search by item name, supplier, batch..."
-                    class="input input-bordered input-xs w-full"
-                  />
-                </div>
-
-                <div class="flex flex-col gap-1">
-                  <label class="text-xs text-gray-600 font-medium"
-                    >Show Items</label
-                  >
-                  <select
-                    v-model="forecastShowItems"
-                    class="select select-bordered select-xs"
-                  >
-                    <option value="all">All Items</option>
-                    <option value="with_usage">With Usage Data</option>
-                    <option value="critical">Critical Only (≤7 days)</option>
-                    <option value="needs_reorder">Needs Reorder</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="overflow-x-auto">
-                <table class="table table-zebra table-xs w-full">
-                  <thead>
-                    <tr class="bg-base-200">
-                      <th>Item Details</th>
-                      <th>Current Stock</th>
-                      <th>Usage & Forecast</th>
-                      <th>Reorder Info</th>
-                      <th>Timing</th>
-                      <th>Action</th>
-                      <th>Confidence</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="forecast in paginatedInventoryForecasts"
-                      :key="forecast.id"
-                      class="hover:bg-base-100"
-                    >
-                      <!-- Item Details Column -->
-                      <td class="min-w-48">
-                        <div class="space-y-1">
-                          <div class="font-medium text-sm">
-                            {{ forecast.item_name }}
-                          </div>
-                          <div class="text-xs text-gray-600">
-                            {{ forecast.item_type_name }} •
-                            {{ forecast.category_name }}
-                          </div>
-                          <div class="text-xs text-gray-500">
-                            <span v-if="forecast.batch_number"
-                              >Batch: {{ forecast.batch_number }}</span
-                            >
-                            <span v-if="forecast.supplier_name">
-                              • {{ forecast.supplier_name }}</span
-                            >
-                          </div>
-                          <div class="text-xs text-gray-500">
-                            Unit: {{ forecast.unit_of_measure }} • Cost: ₱{{
-                              forecast.unit_cost?.toLocaleString() || '0'
-                            }}
-                          </div>
-                        </div>
-                      </td>
-
-                      <!-- Current Stock Column -->
-                      <td class="text-center">
-                        <div class="space-y-1">
-                          <div class="font-semibold text-lg">
-                            {{ forecast.current_stock.toLocaleString() }}
-                          </div>
-                          <div class="text-xs text-gray-600">
-                            {{ forecast.unit_of_measure }}
-                          </div>
-                          <div class="text-xs text-gray-500">
-                            Value: ₱{{
-                              forecast.total_value?.toLocaleString() || '0'
-                            }}
-                          </div>
-                        </div>
-                      </td>
-
-                      <!-- Usage & Forecast Column -->
-                      <td class="min-w-32">
-                        <div class="space-y-1">
-                          <div class="text-sm">
-                            <span class="font-medium">Daily:</span>
-                            {{ forecast.avg_daily_usage.toFixed(2) }}
-                          </div>
-                          <div class="text-xs text-gray-600">
-                            <span class="font-medium">Projected:</span>
-                            {{ forecast.projected_demand.toFixed(0) }}
-                          </div>
-                          <div class="text-xs text-gray-500">
-                            <span class="font-medium">Safety:</span>
-                            {{ forecast.safety_stock.toFixed(1) }}
-                          </div>
-                        </div>
-                      </td>
-
-                      <!-- Reorder Info Column -->
-                      <td class="min-w-32">
-                        <div class="space-y-1">
-                          <div class="text-sm">
-                            <span class="font-medium">ROP:</span>
-                            {{
-                              Math.ceil(forecast.reorder_point).toLocaleString()
-                            }}
-                          </div>
-                          <div class="text-xs text-gray-600">
-                            <span class="font-medium">Reorder Date:</span>
-                            {{ forecast.reorder_date }}
-                          </div>
-                          <div class="text-xs text-gray-500">
-                            <span class="font-medium">Last Activity:</span>
-                            {{ forecast.last_activity }}
-                          </div>
-                        </div>
-                      </td>
-
-                      <!-- Timing Column -->
-                      <td class="text-center">
-                        <span
-                          :class="
-                            getDepletionWarningClass(
-                              forecast.days_until_depletion
-                            )
-                          "
-                          class="font-medium"
-                        >
-                          {{
-                            forecast.days_until_depletion > 0
-                              ? forecast.days_until_depletion + ' days'
-                              : 'Critical'
-                          }}
-                        </span>
-                      </td>
-
-                      <!-- Action Column -->
-                      <td class="text-center">
-                        <span
-                          :class="
-                            getActionBadgeClass(forecast.recommended_action)
-                          "
-                          class="badge badge-xs"
-                        >
-                          {{ forecast.recommended_action }}
-                        </span>
-                      </td>
-
-                      <!-- Confidence Column -->
-                      <td class="text-center">
-                        <span
-                          :class="
-                            getConfidenceBadgeClass(forecast.usage_confidence)
-                          "
-                          class="badge badge-xs"
-                        >
-                          {{ forecast.usage_confidence }}
-                        </span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <!-- No forecasts message -->
-                <div
-                  v-if="filteredInventoryForecasts.length === 0"
-                  class="text-center py-8 text-gray-500"
-                >
-                  <BarChart3 class="w-12 h-12 mx-auto mb-2 text-gray-400" />
-                  <p class="text-sm">
-                    No forecasts found matching your criteria.
-                  </p>
-                  <p class="text-xs text-gray-400 mt-1">
-                    Try adjusting your filters or search terms.
-                  </p>
-                </div>
-              </div>
-
-              <!-- Pagination for Forecasting Table -->
-              <div
-                class="flex flex-col sm:flex-row justify-between items-center mt-4 sm:mt-6 gap-3"
-                v-if="
-                  filteredInventoryForecasts.length > 0 &&
-                  totalForecastPages > 1
-                "
-              >
-                <div class="flex flex-col sm:flex-row items-center gap-3">
-                  <div
-                    class="text-xs sm:text-sm text-black/60 text-center sm:text-left"
-                  >
-                    Showing
-                    {{ (forecastCurrentPage - 1) * forecastItemsPerPage + 1 }}
-                    to
-                    {{
-                      Math.min(
-                        forecastCurrentPage * forecastItemsPerPage,
-                        filteredInventoryForecasts.length
-                      )
-                    }}
-                    of {{ filteredInventoryForecasts.length }} forecasts
-                  </div>
-
-                  <!-- Items per page selector -->
-                  <div class="flex items-center gap-2">
-                    <span class="text-xs text-black/60">Show:</span>
-                    <select
-                      v-model="forecastItemsPerPage"
-                      @change="changeForecastItemsPerPage(forecastItemsPerPage)"
-                      class="select select-bordered select-xs"
-                    >
-                      <option value="5">5</option>
-                      <option value="10">10</option>
-                      <option value="20">20</option>
-                      <option value="50">50</option>
-                    </select>
-                    <span class="text-xs text-black/60">per page</span>
-                  </div>
-                </div>
-
-                <div class="join space-x-1">
-                  <button
-                    class="join-item btn font-thin !bg-gray-200 text-black/50 btn-xs sm:btn-sm border border-none hover:bg-gray-300"
-                    :disabled="forecastCurrentPage <= 1"
-                    @click="goToForecastPage(forecastCurrentPage - 1)"
-                  >
-                    « Prev
-                  </button>
-
-                  <button
-                    class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-xs sm:btn-sm shadow-none"
-                    v-for="page in totalForecastPages"
-                    :key="page"
-                    :class="{
-                      'btn-active': forecastCurrentPage === page,
-                      '!bg-primaryColor text-white':
-                        forecastCurrentPage === page,
-                    }"
-                    @click="goToForecastPage(page)"
-                  >
-                    {{ page }}
-                  </button>
-
-                  <button
-                    class="join-item btn font-thin btn-xs sm:btn-sm !bg-gray-200 text-black/50 border border-none"
-                    :disabled="forecastCurrentPage >= totalForecastPages"
-                    @click="goToForecastPage(forecastCurrentPage + 1)"
-                  >
-                    Next »
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Disposed Items Report -->
-          <div class="card bg-base-100 border border-gray-200">
-            <div class="card-body p-4">
-              <div class="flex justify-between items-center mb-4">
-                <h3 class="card-title text-sm font-semibold text-error">
-                  <Trash class="w-4 h-4 mr-2" />
-                  Disposed Items Report
-                </h3>
-                <button
-                  @click="refreshDisposedItems"
-                  class="btn btn-xs btn-outline"
-                >
-                  <RefreshCcw class="w-3 h-3 mr-1" />
-                  Refresh
-                </button>
-              </div>
-
-              <!-- Disposed Items Filters -->
-              <div class="flex flex-wrap gap-2 mb-4">
-                <input
-                  v-model="disposedFromDate"
-                  type="date"
-                  class="input input-bordered input-xs"
-                  placeholder="From Date"
-                />
-                <input
-                  v-model="disposedToDate"
-                  type="date"
-                  class="input input-bordered input-xs"
-                  placeholder="To Date"
-                />
-                <select
-                  v-model="disposedCategoryFilter"
-                  class="select select-bordered select-xs"
-                >
-                  <option value="">All Categories</option>
-                  <option
-                    v-for="category in categories"
-                    :key="category.id"
-                    :value="category.id"
-                  >
-                    {{ category.name }}
-                  </option>
-                </select>
-                <button
-                  @click="loadDisposedItems"
-                  class="btn btn-xs btn-outline bg-primaryColor text-white font-thin"
-                >
-                  Apply Filters
-                </button>
-              </div>
-
-              <!-- Disposed Items Table -->
-              <div class="overflow-x-auto max-h-80">
-                <table class="table table-zebra table-xs w-full">
-                  <thead>
-                    <tr class="bg-base-200">
-                      <th>Item Name</th>
-                      <th>Category</th>
-                      <th>Batch #</th>
-                      <th>Original Qty</th>
-                      <th>Disposal Cost</th>
-                      <th>Disposed Date</th>
-                      <th>Disposed By</th>
-                      <th>Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="item in disposedItems"
-                      :key="item.id"
-                      class="hover:bg-base-100"
-                    >
-                      <td>
-                        <div class="font-medium">{{ item.item_type_name }}</div>
-                        <div class="text-xs text-gray-500">
-                          {{ item.item_name || 'N/A' }}
-                        </div>
-                      </td>
-                      <td>{{ item.category_name }}</td>
-                      <td class="font-mono text-xs">
-                        {{ formatBatchNumber(item.batch_number) }}
-                      </td>
-                      <td>
-                        {{
-                          parseFloat(
-                            item.original_quantity || 0
-                          ).toLocaleString()
-                        }}
-                        {{ item.unit_of_measure }}
-                      </td>
-                      <td class="font-medium text-error">
-                        ₱{{
-                          parseFloat(item.disposal_cost || 0).toLocaleString()
-                        }}
-                      </td>
-                      <td>{{ formatDate(item.disposed_date) }}</td>
-                      <td>{{ item.disposed_by || 'N/A' }}</td>
-                      <td
-                        class="max-w-32 truncate"
-                        :title="item.disposal_reason"
-                      >
-                        {{ item.disposal_reason || 'N/A' }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <div
-                  v-if="disposedItems.length === 0"
-                  class="text-center py-8 text-gray-500"
-                >
-                  <Trash class="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                  <p>No disposed items found</p>
-                  <p class="text-xs">Items will appear here after disposal</p>
-                </div>
-              </div>
-
-              <!-- Disposal Summary -->
-              <div
-                v-if="disposedItems.length > 0"
-                class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4"
-              >
-                <div class="text-center p-3 bg-error/10 rounded">
-                  <div class="text-lg font-bold text-error">
-                    {{ disposedItems.length }}
-                  </div>
-                  <div class="text-xs text-gray-600">Total Items Disposed</div>
-                </div>
-                <div class="text-center p-3 bg-error/10 rounded">
-                  <div class="text-lg font-bold text-error">
-                    ₱{{ getTotalDisposalCost().toLocaleString() }}
-                  </div>
-                  <div class="text-xs text-gray-600">Total Disposal Cost</div>
-                </div>
-                <div class="text-center p-3 bg-error/10 rounded">
-                  <div class="text-lg font-bold text-error">
-                    ₱{{ getTotalOriginalValue().toLocaleString() }}
-                  </div>
-                  <div class="text-xs text-gray-600">Original Value Lost</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Export Options -->
-          <div class="card bg-base-100 border border-gray-200">
-            <div class="card-body p-4">
-              <h3
-                class="card-title text-sm font-semibold text-primaryColor mb-4"
-              >
-                Export Enhanced Reports
-              </h3>
-              <div class="flex flex-wrap gap-2 sm:flex-row w-full flex-col">
-                <button
-                  class="btn btn-sm btn-outline"
-                  @click="exportDetailedInventory"
-                >
-                  <History class="w-4 h-4 mr-1" />
-                  Export Detailed Inventory
-                </button>
-                <button
-                  class="btn btn-sm btn-outline"
-                  @click="exportValueAnalysis"
-                >
-                  <BarChart3 class="w-4 h-4 mr-1" />
-                  Export Value Analysis
-                </button>
-                <button
-                  class="btn btn-sm btn-outline"
-                  @click="exportForecastReport"
-                >
-                  <TrendingDown class="w-4 h-4 mr-1" />
-                  Export Forecast Report
-                </button>
-                <button
-                  class="btn btn-sm btn-outline"
-                  @click="exportLowStockAlert"
-                >
-                  <AlertTriangle class="w-4 h-4 mr-1" />
-                  Export Low Stock Alert
-                </button>
-                <button
-                  class="btn btn-sm btn-outline"
-                  @click="exportDisposedItems"
-                >
-                  <Trash class="w-4 h-4 mr-1" />
-                  Export Disposed Items
-                </button>
-              </div>
             </div>
           </div>
         </div>

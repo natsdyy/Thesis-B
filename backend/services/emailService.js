@@ -1,5 +1,5 @@
 const nodemailer = require("nodemailer");
-const sgMail = require('@sendgrid/mail');
+const SendGridService = require("./sendGridService");
 require("dotenv").config();
 
 // Initialize SendGrid if API key is available
@@ -104,29 +104,17 @@ const createTransporter = (config) => {
       user: EMAIL_CONFIG.user,
       pass: EMAIL_CONFIG.pass,
     },
-    // Reduced timeout settings for Railway compatibility
-    connectionTimeout: 15000, // 15 seconds (reduced from 30)
-    greetingTimeout: 15000, // 15 seconds (reduced from 30)
-    socketTimeout: 30000, // 30 seconds (reduced from 60)
+    // Production-optimized timeout settings for Railway
+    connectionTimeout: 30000, // 30 seconds - reduced for Railway
+    greetingTimeout: 30000, // 30 seconds - reduced for Railway
+    socketTimeout: 30000, // 30 seconds - reduced for Railway
     pool: false, // Disable connection pooling for Railway compatibility
     tls: {
       rejectUnauthorized: false,
       secureProtocol: "TLSv1_2_method",
     },
-    debug: false, // Reduced logging for production
-    logger: false,
-    // Add DNS resolution options for Railway
-    dns: {
-      servers: ['8.8.8.8', '8.8.4.4'] // Use Google DNS
-    },
-    // Add additional options for Railway
-    requireTLS: false,
-    ignoreTLS: false,
-    // Retry configuration
-    maxConnections: 1,
-    maxMessages: 1,
-    rateDelta: 20000,
-    rateLimit: 5
+    debug: process.env.NODE_ENV === "development", // Enable debug in development only
+    logger: process.env.NODE_ENV === "development",
   });
 };
 
@@ -447,9 +435,9 @@ class EmailService {
   /**
    * Wrapper to add timeout to email operations
    * @param {Promise} emailPromise - The email promise
-   * @param {number} timeoutMs - Timeout in milliseconds (default: 90000)
+   * @param {number} timeoutMs - Timeout in milliseconds (default: 30000 for production)
    */
-  static async withTimeout(emailPromise, timeoutMs = 60000) {
+  static async withTimeout(emailPromise, timeoutMs = 30000) {
     return Promise.race([
       emailPromise,
       new Promise((_, reject) =>
@@ -462,14 +450,162 @@ class EmailService {
   }
 
   /**
+   * Send supplier welcome email with login credentials
+   * Tries SendGrid first, falls back to Gmail SMTP
+   */
+  static async sendSupplierWelcomeEmail(
+    to,
+    supplierName,
+    email,
+    password = "supplier123",
+    loginUrl = null
+  ) {
+    // Try SendGrid first
+    if (SendGridService.isConfigured()) {
+      console.log(
+        "📧 [EMAIL SERVICE] Using SendGrid for supplier welcome email"
+      );
+      const sendGridResult = await SendGridService.sendSupplierWelcomeEmail(
+        to,
+        supplierName,
+        email,
+        password,
+        loginUrl
+      );
+
+      if (sendGridResult.success) {
+        return sendGridResult;
+      } else {
+        console.log(
+          `⚠️ SendGrid failed, falling back to Gmail SMTP: ${sendGridResult.error}`
+        );
+      }
+    } else {
+      console.log(
+        "📧 [EMAIL SERVICE] SendGrid not configured, using Gmail SMTP"
+      );
+    }
+
+    // Fallback to Gmail SMTP
+    try {
+      const frontendUrl =
+        process.env.FRONTEND_URL ||
+        (process.env.NODE_ENV === "production"
+          ? "https://www.countryside-steakhouse.site"
+          : "http://localhost:8080");
+      const defaultLoginUrl = `${frontendUrl}/supplier/login`;
+      const loginLink = loginUrl || defaultLoginUrl;
+
+      const mailOptions = {
+        from: '"Countryside Steak House" <mailcountrysidesteakhouse@gmail.com>',
+        to: to,
+        subject: "Welcome to Countryside Supplier Portal",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <h1 style="color: #2c3e50; margin-bottom: 10px;">Countryside Supplier Portal</h1>
+            </div>
+            <div style="background-color: #f8f9fa; padding: 24px; border-radius: 10px; margin-bottom: 16px;">
+              <h3 style="color: #2c3e50; margin-top: 0;">Your Supplier Account</h3>
+              <p style="color: #555; font-size: 15px; line-height: 1.6;">Hello ${supplierName},</p>
+              <p style="color: #555; font-size: 15px; line-height: 1.6;">Your supplier account has been created. Here are your login details:</p>
+              <div style="background-color: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px;">
+                <p style="margin: 0 0 8px 0;"><strong>Email:</strong> ${email}</p>
+                <p style="margin: 0;"><strong>Default Password:</strong> <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">${password}</code></p>
+              </div>
+              <div style="text-align: center; margin-top: 16px;">
+                <a href="${loginLink}" style="background-color: #466114; color: white; padding: 10px 18px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Go to Supplier Login</a>
+              </div>
+              <p style="color: #856404; background: #fff3cd; padding: 10px; border-radius: 6px; font-size: 13px; margin-top: 16px;">
+                <strong>Note:</strong> Please change your password after your first login.
+              </p>
+            </div>
+          </div>
+        `,
+        text: `Hello ${supplierName},\n\nYour supplier account has been created.\n\nEmail: ${email}\nDefault Password: ${password}\n\nLogin: ${loginLink}\n\nPlease change your password after first login.`,
+      };
+
+      // Try primary then fallback
+      let info;
+      this.logEmailAttempt("Supplier Welcome Email", email);
+      try {
+        info = await this.withTimeout(transporter.sendMail(mailOptions), 25000);
+      } catch (primaryError) {
+        console.log(`❌ Primary transporter failed: ${primaryError.message}`);
+        info = await this.withTimeout(
+          fallbackTransporter.sendMail(mailOptions),
+          25000
+        );
+      }
+      console.log("✅ Supplier welcome email sent:", info.messageId);
+      return { success: true, messageId: info.messageId };
+    } catch (error) {
+      console.error("❌ Error sending supplier welcome email:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Check if we're in production environment
+   */
+  static isProduction() {
+    return process.env.NODE_ENV === "production";
+  }
+
+  /**
+   * Log email attempt with environment context
+   */
+  static logEmailAttempt(operation, email, environment = null) {
+    const env =
+      environment || (this.isProduction() ? "PRODUCTION" : "DEVELOPMENT");
+    console.log(
+      `📧 [${env}] ${operation} - Attempting to send email to: ${email}`
+    );
+  }
+
+  /**
    * Send password recovery email
    * @param {string} to - Recipient email address
    * @param {string} resetToken - Password reset token
    * @param {string} username - User's username/name
    */
   static async sendPasswordRecoveryEmail(to, resetToken, username = "User") {
-    const maxRetries = 2;
-    let lastError;
+    // Try SendGrid first (recommended for production)
+    if (SendGridService.isConfigured()) {
+      console.log(
+        "📧 [EMAIL SERVICE] Using SendGrid for password recovery email"
+      );
+      const sendGridResult = await SendGridService.sendPasswordRecoveryEmail(
+        to,
+        resetToken,
+        username
+      );
+
+      if (sendGridResult.success) {
+        return sendGridResult;
+      } else {
+        console.log(
+          `⚠️ SendGrid failed, falling back to Gmail SMTP: ${sendGridResult.error}`
+        );
+      }
+    } else {
+      console.log(
+        "📧 [EMAIL SERVICE] SendGrid not configured, using Gmail SMTP"
+      );
+    }
+
+    // Fallback to Gmail SMTP
+    console.log(
+      "📧 [EMAIL SERVICE] Using Gmail SMTP fallback for password recovery email"
+    );
+    try {
+      // Get the correct frontend URL based on environment
+      const frontendUrl =
+        process.env.FRONTEND_URL ||
+        (process.env.NODE_ENV === "production"
+          ? "https://www.countryside-steakhouse.site"
+          : "http://localhost:8080");
+      const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       // Add delay between attempts (except for first attempt)
@@ -701,30 +837,70 @@ class EmailService {
     password,
     loginUrl = null
   ) {
-    const maxRetries = 2;
-    let lastError;
+    // Try SendGrid first (recommended for production)
+    if (SendGridService.isConfigured()) {
+      console.log(
+        "📧 [EMAIL SERVICE] Using SendGrid for employee welcome email"
+      );
+      const sendGridResult = await SendGridService.sendEmployeeWelcomeEmail(
+        to,
+        employeeName,
+        email,
+        password,
+        loginUrl
+      );
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      // Add delay between attempts (except for first attempt)
-      if (attempt > 1) {
-        const delay = attempt * 2000; // 2s, 4s delays
-        console.log(`⏳ Waiting ${delay}ms before retry...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+      if (sendGridResult.success) {
+        return sendGridResult;
+      } else {
+        console.log(
+          `⚠️ SendGrid failed, falling back to Gmail SMTP: ${sendGridResult.error}`
+        );
       }
-      
-      try {
-        console.log(`📧 Attempt ${attempt}/${maxRetries} - Sending employee welcome email to ${email}`);
+    } else {
+      console.log(
+        "📧 [EMAIL SERVICE] SendGrid not configured, using Gmail SMTP"
+      );
+    }
 
-        const defaultLoginUrl = `${process.env.FRONTEND_URL || "http://localhost:8080"}/login`;
-        const loginLink = loginUrl || defaultLoginUrl;
+    // Fallback to Gmail SMTP
+    console.log(
+      "📧 [EMAIL SERVICE] Using Gmail SMTP fallback for employee welcome email"
+    );
+    try {
+      // Get the correct frontend URL based on environment
+      const frontendUrl =
+        process.env.FRONTEND_URL ||
+        (process.env.NODE_ENV === "production"
+          ? "https://www.countryside-steakhouse.site"
+          : "http://localhost:8080");
+      const defaultLoginUrl = `${frontendUrl}/login`;
+      const loginLink = loginUrl || defaultLoginUrl;
 
-        const emailData = {
-          to: to,
-          subject: "Welcome aboard to COUNTRYSIDE-STEAKHOUSE!",
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
-              <!-- Main Email Container -->
-              <div style="background-color: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+      const mailOptions = {
+        from: '"COUNTRYSIDE-STEAKHOUSE" <mailcountrysidesteakhouse@gmail.com>',
+        to: to,
+        subject: "Welcome aboard to COUNTRYSIDE-STEAKHOUSE!",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
+            <!-- Main Email Container -->
+            <div style="background-color: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+              
+              <!-- Header -->
+              <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #466114;">
+                <!-- Logo -->
+                <div style="margin-bottom: 15px;">
+                  <img src="${frontendUrl}/logo1.png" 
+                       alt="Countryside Steakhouse Logo" 
+                       style="max-height: 60px; width: auto; margin: 0 auto; display: block;" />
+                </div>
+                <h1 style="color: #2c3e50; margin: 0; font-size: 28px; font-weight: bold;">Countryside Steakhouse</h1>
+                <p style="color: #466114; margin: 5px 0 0 0; font-size: 16px; font-weight: 500;">Ang Paborito ng Bayan</p>
+              </div>
+              
+              <!-- Main Content -->
+              <div style="margin-bottom: 30px;">
+                <h2 style="color: #2c3e50; margin-bottom: 20px; font-size: 24px; font-weight: bold;">Your Account Has Been Created</h2>
                 
                 <!-- Header -->
                 <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #466114;">
@@ -838,23 +1014,49 @@ class EmailService {
           `,
         };
 
-        // Use the SendGrid-first approach with SMTP fallback
-        const result = await this.sendEmailWithFallback(emailData);
-        
-        if (result.success) {
-          console.log(`✅ Employee welcome email sent (attempt ${attempt}):`, result.messageId);
-          return result;
-        } else {
-          throw new Error(result.error);
-        }
-      } catch (error) {
-        lastError = error;
-        console.error(`❌ Error sending employee welcome email (attempt ${attempt}):`, error.message);
+      // Try primary transporter first, then fallback
+      let info;
+      this.logEmailAttempt("Employee Welcome Email", email);
 
-        if (attempt < maxRetries) {
-          const retryDelay = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s
-          console.log(`⏳ Retrying in ${retryDelay / 1000} seconds...`);
-          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      try {
+        info = await this.withTimeout(
+          transporter.sendMail(mailOptions),
+          25000 // Reduced timeout for Railway
+        );
+      } catch (primaryError) {
+        console.log(`❌ Primary transporter failed: ${primaryError.message}`);
+        if (this.isProduction()) {
+          console.log(
+            `🌐 [PRODUCTION] SMTP connection may be blocked by Railway`
+          );
+        }
+        console.log(
+          `📧 Trying fallback transporter for employee welcome email`
+        );
+        try {
+          info = await this.withTimeout(
+            fallbackTransporter.sendMail(mailOptions),
+            25000 // Reduced timeout for Railway
+          );
+        } catch (fallbackError) {
+          console.error(
+            `❌ Both transporters failed in ${this.isProduction() ? "PRODUCTION" : "DEVELOPMENT"}`
+          );
+          console.error(`Primary error: ${primaryError.message}`);
+          console.error(`Fallback error: ${fallbackError.message}`);
+
+          // In production, if both fail, we should still return success for employee creation
+          if (this.isProduction()) {
+            console.log(
+              `⚠️ [PRODUCTION] Email sending failed but continuing with employee creation`
+            );
+            return {
+              success: false,
+              error: `Email sending failed in production: ${fallbackError.message}`,
+              productionWarning: true,
+            };
+          }
+          throw fallbackError;
         }
       }
     }

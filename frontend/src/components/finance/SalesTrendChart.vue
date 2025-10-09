@@ -1,6 +1,7 @@
 <script setup>
   import { ref, computed, watch, onMounted } from 'vue';
   import { usePOSStore } from '../../stores/posStore.js';
+  import { getCurrentPhilippineTime } from '../../utils/timezoneUtils.js';
 
   const props = defineProps({
     branchId: { type: [Number, String], required: true },
@@ -9,6 +10,8 @@
     autoLoad: { type: Boolean, default: true },
     // When period === 'customMonth', expect YYYY-MM (e.g., '2025-09')
     customMonth: { type: String, default: '' },
+    // When viewing a specific remittance, provide its date range
+    remittanceDateRange: { type: Object, default: null }, // { dateFrom, dateTo }
   });
 
   const posStore = usePOSStore();
@@ -17,7 +20,20 @@
   const series = ref([]);
 
   const getDateRange = (period) => {
-    const now = new Date();
+    // If we have a remittance date range, use it instead of calculating from period
+    if (
+      props.remittanceDateRange &&
+      props.remittanceDateRange.dateFrom &&
+      props.remittanceDateRange.dateTo
+    ) {
+      return {
+        dateFrom: props.remittanceDateRange.dateFrom,
+        dateTo: props.remittanceDateRange.dateTo,
+        bucket: 'day', // Use day bucket for remittance-specific ranges
+      };
+    }
+
+    const now = getCurrentPhilippineTime();
     let start,
       end,
       bucket = 'auto';
@@ -110,36 +126,97 @@
     try {
       const { dateFrom, dateTo, bucket } = getDateRange(props.period);
 
-      const data = await posStore.fetchSalesTrends(props.branchId, {
-        dateFrom,
-        dateTo,
-        period: props.period === 'customMonth' ? 'month' : props.period,
-        bucket,
-      });
+      // For remitted data, fetch actual remittance records instead of sales trends
+      if (props.metric === 'remitted') {
+        const { data: remittances } = await posStore.fetchRemittances({
+          branchId: props.branchId,
+          status: 'approved',
+          limit: 1000,
+        });
 
-      const trendLabels = Array.isArray(data.labels) ? data.labels : [];
-      const seriesMap = {
-        refunds: data.refunds || data.refunded_amount || [],
-        disposed: data.disposed || [],
-        net: data.net_sales || [],
-        remitted: data.remitted_amount || [],
-      };
+        // Group remittances by date and aggregate amounts
+        const dailyMap = new Map();
+        (remittances || []).forEach((r) => {
+          const approvedAt = new Date(
+            r.approved_at || r.created_at || r.date_to || r.date_from
+          );
+          const startDate = new Date(dateFrom);
+          const endDate = new Date(dateTo);
 
-      const key =
-        props.metric === 'refunds'
-          ? 'refunds'
-          : props.metric === 'disposed'
-            ? 'disposed'
-            : props.metric === 'net'
-              ? 'net'
-              : 'remitted';
+          if (approvedAt >= startDate && approvedAt <= endDate) {
+            // Convert to Philippine timezone for date key
+            const phDate = new Date(
+              approvedAt.toLocaleString('en-US', { timeZone: 'Asia/Manila' })
+            );
+            const dateKey = phDate.toISOString().split('T')[0];
+            const prev = dailyMap.get(dateKey) || 0;
+            dailyMap.set(dateKey, prev + Number(r.remitted_amount || 0));
+          }
+        });
 
-      const trendSeries = seriesMap[key] || [];
+        const sortedDates = Array.from(dailyMap.keys()).sort((a, b) => {
+          // Sort dates chronologically, not alphabetically
+          return new Date(a) - new Date(b);
+        });
+        labels.value = sortedDates;
+        series.value = sortedDates.map((date) =>
+          Number(dailyMap.get(date) || 0)
+        );
+      } else {
+        // For all other metrics, use remittance data (not sales trends)
+        // Since this is the "Remitted Sales" page, ALL data should come from remittances
+        const { data: remittances } = await posStore.fetchRemittances({
+          branchId: props.branchId,
+          status: 'approved',
+          limit: 1000,
+        });
 
-      labels.value = trendLabels;
-      series.value = trendLabels.map((_, i) =>
-        Math.round(Number(trendSeries[i] || 0))
-      );
+        // Group remittances by date and aggregate the requested metric
+        const dailyMap = new Map();
+        (remittances || []).forEach((r) => {
+          const approvedAt = new Date(
+            r.approved_at || r.created_at || r.date_to || r.date_from
+          );
+          const startDate = new Date(dateFrom);
+          const endDate = new Date(dateTo);
+
+          if (approvedAt >= startDate && approvedAt <= endDate) {
+            // Convert to Philippine timezone for date key
+            const phDate = new Date(
+              approvedAt.toLocaleString('en-US', { timeZone: 'Asia/Manila' })
+            );
+            const dateKey = phDate.toISOString().split('T')[0];
+
+            // Get the current amount for this date
+            const current = dailyMap.get(dateKey) || 0;
+
+            // Add the appropriate metric based on props.metric
+            let metricAmount = 0;
+            if (props.metric === 'refunds') {
+              metricAmount = Number(r.refunded_amount || 0);
+            } else if (props.metric === 'disposed') {
+              metricAmount = Number(r.disposed || 0);
+            } else if (props.metric === 'net') {
+              metricAmount = Number(r.net_sales || 0);
+            } else {
+              // Fallback to remitted amount
+              metricAmount = Number(r.remitted_amount || 0);
+            }
+
+            dailyMap.set(dateKey, current + metricAmount);
+          }
+        });
+
+        const sortedDates = Array.from(dailyMap.keys()).sort((a, b) => {
+          // Sort dates chronologically, not alphabetically
+          return new Date(a) - new Date(b);
+        });
+
+        labels.value = sortedDates;
+        series.value = sortedDates.map((date) =>
+          Number(dailyMap.get(date) || 0)
+        );
+      }
     } catch (err) {
       console.error('Failed to load trend data:', err);
       labels.value = [];
@@ -151,7 +228,12 @@
 
   // Auto-load when component mounts or props change
   watch(
-    [() => props.branchId, () => props.period, () => props.metric],
+    [
+      () => props.branchId,
+      () => props.period,
+      () => props.metric,
+      () => props.remittanceDateRange,
+    ],
     () => {
       if (props.autoLoad) {
         loadTrendData();

@@ -76,7 +76,25 @@ export const usePOSStore = defineStore('pos', () => {
 
   const orderSubtotal = computed(() => {
     return currentOrder.value.items.reduce((total, item) => {
-      return total + item.price * item.quantity;
+      // Calculate discounted price if promo applies
+      let itemPrice = item.price;
+      if (
+        item.promo_info &&
+        item.promo_info.is_active &&
+        item.quantity >= item.promo_info.minimum_quantity
+      ) {
+        if (item.promo_info.discount_type === 'percentage') {
+          const discountAmount =
+            item.price * (item.promo_info.discount_percentage / 100);
+          itemPrice = Math.max(0, item.price - discountAmount);
+        } else if (item.promo_info.discount_type === 'fixed_amount') {
+          itemPrice = Math.max(
+            0,
+            item.price - parseFloat(item.promo_info.discount_amount || 0)
+          );
+        }
+      }
+      return total + itemPrice * item.quantity;
     }, 0);
   });
 
@@ -172,11 +190,14 @@ export const usePOSStore = defineStore('pos', () => {
           item_type: it.item_type || 'production', // Track if it's production or scm
           unit: it.unit || null, // For SCM items
           preparation_time_minutes: it.preparation_time_minutes || 0, // SCM items have 0 prep time
+          // Include promo information
+          promo_info: it.promo_info || null,
         };
       });
 
       // Merge or reset list based on options.reset
       const cleaned = mapped.filter((m) => m.stock_quantity >= 0);
+
       if (reset) {
         menuItems.value = cleaned;
       } else {
@@ -238,8 +259,8 @@ export const usePOSStore = defineStore('pos', () => {
     }
   };
 
-  const addItemToOrder = (menuItem) => {
-    if (menuItem.stock_quantity <= 0) {
+  const addItemToOrder = (menuItem, quantity = 1) => {
+    if (menuItem.stock_quantity < quantity || quantity <= 0) {
       return false;
     }
 
@@ -248,21 +269,22 @@ export const usePOSStore = defineStore('pos', () => {
     );
 
     if (existingItem) {
-      existingItem.quantity += 1;
+      existingItem.quantity += quantity;
     } else {
       currentOrder.value.items.push({
         id: menuItem.id,
         name: menuItem.name,
         price: parseFloat(menuItem.price),
-        quantity: 1,
+        quantity: quantity,
         image: menuItem.image_url,
         category: menuItem.category,
         stock_quantity: menuItem.stock_quantity,
+        promo_info: menuItem.promo_info, // Include promo discount information
       });
     }
 
     // Update stock quantity
-    menuItem.stock_quantity -= 1;
+    menuItem.stock_quantity -= quantity;
 
     return true;
   };
@@ -393,19 +415,40 @@ export const usePOSStore = defineStore('pos', () => {
         total_amount: orderTotal.value,
         amount_paid: currentOrder.value.amountPaid,
         change_amount: orderChange.value,
-        items: currentOrder.value.items.map((item) => ({
-          id: item.id, // Keep the original ID for reference
-          // Only set menu_item_id for production items; handle numeric IDs safely
-          menu_item_id:
-            typeof item.id === 'string' && item.id.startsWith('scm_')
-              ? null
-              : item.id,
-          item_name: item.name,
-          quantity: item.quantity,
-          unit_price: item.price,
-          total_price: item.price * item.quantity,
-          notes: item.notes || null,
-        })),
+        items: currentOrder.value.items.map((item) => {
+          // Calculate discounted price if promo applies
+          let itemPrice = item.price;
+          if (
+            item.promo_info &&
+            item.promo_info.is_active &&
+            item.quantity >= item.promo_info.minimum_quantity
+          ) {
+            if (item.promo_info.discount_type === 'percentage') {
+              const discountAmount =
+                item.price * (item.promo_info.discount_percentage / 100);
+              itemPrice = Math.max(0, item.price - discountAmount);
+            } else if (item.promo_info.discount_type === 'fixed_amount') {
+              itemPrice = Math.max(
+                0,
+                item.price - parseFloat(item.promo_info.discount_amount || 0)
+              );
+            }
+          }
+
+          return {
+            id: item.id, // Keep the original ID for reference
+            // Only set menu_item_id for production items; handle numeric IDs safely
+            menu_item_id:
+              typeof item.id === 'string' && item.id.startsWith('scm_')
+                ? null
+                : item.id,
+            item_name: item.name,
+            quantity: item.quantity,
+            unit_price: itemPrice, // Use discounted price
+            total_price: itemPrice * item.quantity, // Use discounted price
+            notes: item.notes || null,
+          };
+        }),
         notes: currentOrder.value.notes || null,
       };
 
@@ -582,6 +625,7 @@ export const usePOSStore = defineStore('pos', () => {
         offset = 0,
         date_from = null,
         date_to = null,
+        remittance_id = null,
       } = filters;
 
       const url = getApiUrl('/pos/orders');
@@ -592,6 +636,7 @@ export const usePOSStore = defineStore('pos', () => {
       if (offset) params.append('offset', offset);
       if (date_from) params.append('date_from', date_from);
       if (date_to) params.append('date_to', date_to);
+      if (remittance_id) params.append('remittance_id', remittance_id);
 
       const { data: response } = await axios.get(
         `${url}?${params.toString()}`,

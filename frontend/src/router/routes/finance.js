@@ -24,7 +24,12 @@ export default [
     component: () => import('../../views/finance/Sales.vue'),
     meta: { title: 'Sales' },
   },
-
+  {
+    path: 'cash-management',
+    name: 'CashManagement',
+    component: () => import('../../views/finance/CashManagement.vue'),
+    meta: { title: 'Cash Management' },
+  },
   {
     path: 'attendance',
     name: 'FinanceAttendance',
@@ -37,5 +42,4 @@ export default [
     component: () => import('../../views/common/DepartmentProfile.vue'),
     meta: { title: 'Finance Profile' },
   },
-
 ];

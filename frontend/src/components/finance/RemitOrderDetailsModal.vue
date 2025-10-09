@@ -2,13 +2,22 @@
   import { ref, watch, computed, onMounted } from 'vue';
   import { usePOSStore } from '../../stores/posStore.js';
   import { useBranchContextStore } from '../../stores/branchContextStore.js';
+  import {
+    createPhilippineDate,
+    formatForAPI,
+  } from '../../utils/timezoneUtils.js';
 
   const props = defineProps({
     show: { type: Boolean, default: false },
-    period: { type: String, default: 'today' }, // today | week | month | year
+    period: { type: String, default: 'today' }, // today | week | month | year | dateRange
     branchId: { type: [Number, String], default: null },
     // When period === 'customMonth', expects YYYY-MM
     customMonth: { type: String, default: '' },
+    // When period === 'dateRange', expect YYYY-MM-DD
+    startDate: { type: String, default: '' },
+    endDate: { type: String, default: '' },
+    // Optional: target a specific remittance_id
+    remittanceId: { type: [Number, String], default: null },
   });
 
   const emit = defineEmits(['close']);
@@ -19,16 +28,24 @@
   const orders = ref([]);
   const loading = ref(false);
   const activeTab = ref('today'); // today | thisWeek | thisMonth | customMonth
+  const remittanceDetails = ref(null); // Store actual remittance record data
 
-  const tabs = computed(() =>
-    props.period === 'customMonth'
-      ? [{ id: 'customMonth', label: 'Custom Month' }]
-      : [
-          { id: 'today', label: 'Today' },
-          { id: 'thisWeek', label: 'This Week' },
-          { id: 'thisMonth', label: 'This Month' },
-        ]
-  );
+  const tabs = computed(() => {
+    if (props.remittanceId !== null && props.remittanceId !== undefined) {
+      return [{ id: 'remittance', label: 'Remittance' }];
+    }
+    if (props.period === 'customMonth') {
+      return [{ id: 'customMonth', label: 'Custom Month' }];
+    }
+    if (props.period === 'dateRange') {
+      return [{ id: 'dateRange', label: 'Date Range' }];
+    }
+    return [
+      { id: 'today', label: 'Today' },
+      { id: 'thisWeek', label: 'This Week' },
+      { id: 'thisMonth', label: 'This Month' },
+    ];
+  });
 
   // Pagination
   const page = ref(1);
@@ -98,6 +115,21 @@
   };
 
   const summaryTotals = computed(() => {
+    // If we have specific remittance details, use those for accurate totals
+    if (props.remittanceId && remittanceDetails.value) {
+      const remittance = remittanceDetails.value;
+      return {
+        totalSales: Number(remittance.gross_sales) || 0,
+        refunds: Number(remittance.refunded_amount) || 0,
+        loss: Number(remittance.voided_amount) || 0,
+        netSales: Number(remittance.net_sales) || 0,
+        remitted: Number(remittance.remitted_amount) || 0,
+        transactions: orders.value?.length || 0,
+        voidedCount: Number(remittance.disposed) || 0,
+      };
+    }
+
+    // Fallback to calculating from individual orders
     const totals = {
       totalSales: 0,
       refunds: 0,
@@ -129,6 +161,12 @@
   const getDateRange = (period) => {
     const now = new Date();
     let from, to;
+    // When targeting a specific remittance, ignore date windows altogether
+    if (props.remittanceId !== null && props.remittanceId !== undefined) {
+      from = new Date('1970-01-01T00:00:00.000Z');
+      to = new Date('2100-01-01T00:00:00.000Z');
+      return { dateFrom: from.toISOString(), dateTo: to.toISOString() };
+    }
     if (period === 'today') {
       from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       from.setHours(0, 0, 0, 0);
@@ -158,6 +196,32 @@
           : new Date(now.getFullYear(), now.getMonth() + 1, 0);
       end.setHours(23, 59, 59, 999);
       to = end;
+    } else if (period === 'dateRange') {
+      const [sy, sm, sd] = String(props.startDate || '')
+        .split('-')
+        .map((v) => Number(v));
+      const [ey, em, ed] = String(props.endDate || '')
+        .split('-')
+        .map((v) => Number(v));
+      const today = new Date();
+      from =
+        Number.isFinite(sy) && Number.isFinite(sm) && Number.isFinite(sd)
+          ? createPhilippineDate(sy, sm, sd, 0, 0, 0)
+          : new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      from.setHours(0, 0, 0, 0);
+      const fallbackEnd = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        23,
+        59,
+        59,
+        999
+      );
+      to =
+        Number.isFinite(ey) && Number.isFinite(em) && Number.isFinite(ed)
+          ? createPhilippineDate(ey, em, ed, 23, 59, 59)
+          : fallbackEnd;
     } else if (period === 'month') {
       from = new Date(now.getFullYear(), now.getMonth(), 1);
       from.setHours(0, 0, 0, 0);
@@ -176,7 +240,11 @@
       to = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       to.setHours(23, 59, 59, 999);
     }
-    return { dateFrom: from.toISOString(), dateTo: to.toISOString() };
+    return {
+      dateFrom:
+        period === 'dateRange' ? formatForAPI(from) : from.toISOString(),
+      dateTo: period === 'dateRange' ? formatForAPI(to) : to.toISOString(),
+    };
   };
 
   const loadOrders = async () => {
@@ -185,81 +253,85 @@
     loading.value = true;
     try {
       page.value = 1;
+
+      // If targeting a specific remittance, fetch the remittance details first
+      if (props.remittanceId !== null && props.remittanceId !== undefined) {
+        try {
+          const { data: remittances } = await posStore.fetchRemittances({
+            branchId: branchId,
+            limit: 1000, // Get enough to find our specific remittance
+          });
+          const targetRemittance = remittances.find(
+            (r) => r.id == props.remittanceId
+          );
+          if (targetRemittance) {
+            remittanceDetails.value = targetRemittance;
+          }
+        } catch (error) {
+          console.error('Failed to fetch remittance details:', error);
+        }
+      }
+
       const periodMap = {
         today: 'today',
         thisWeek: 'week',
         thisMonth: 'month',
         customMonth: 'customMonth',
+        dateRange: 'dateRange',
       };
       const effectivePeriod =
         periodMap[activeTab.value] || props.period || 'today';
       const { dateFrom, dateTo } = getDateRange(effectivePeriod);
+
       // Some backends default to excluding completed orders unless status is set.
       // Fetch both completed and void to reflect remit totals.
+      const fetchParams = {
+        branch_id: branchId,
+        date_from: dateFrom,
+        date_to: dateTo,
+        limit: 1000,
+      };
+
+      // Add remittance_id filter if targeting specific remittance
+      if (props.remittanceId !== null && props.remittanceId !== undefined) {
+        fetchParams.remittance_id = props.remittanceId;
+      }
+
       const [completedResp, voidResp] = await Promise.all([
         posStore.fetchOrderHistory({
-          branch_id: branchId,
+          ...fetchParams,
           status: 'completed',
-          date_from: dateFrom,
-          date_to: dateTo,
-          limit: 1000,
         }),
         posStore.fetchOrderHistory({
-          branch_id: branchId,
+          ...fetchParams,
           status: 'void',
-          date_from: dateFrom,
-          date_to: dateTo,
-          limit: 1000,
         }),
       ]);
       const a = Array.isArray(completedResp?.data) ? completedResp.data : [];
       const b = Array.isArray(voidResp?.data) ? voidResp.data : [];
 
-      // Fetch approved remittance windows for stricter filtering: only show orders that
-      // were actually included in approved remittances for this branch/period
-      const desiredTypeMap = {
-        today: 'today',
-        week: 'week',
-        month: 'month',
-      };
-      // For customMonth, accept ANY period_type (daily/weekly/monthly) that overlaps
-      const desiredType =
-        effectivePeriod === 'customMonth'
-          ? null
-          : desiredTypeMap[effectivePeriod] || null;
-      const { data: remitList } = await posStore.fetchRemittances({
-        branchId,
-        status: 'approved',
-        limit: 1000,
+      // Show only orders that are actually remitted (have remittance_id or remitted_at)
+      const fromMs = new Date(dateFrom).getTime();
+      const toMs = new Date(dateTo).getTime();
+      const merged = [...a, ...b].filter((o) => {
+        // Only include orders that are actually remitted
+        const isRemitted = o.remittance_id !== null || o.remitted_at !== null;
+        if (!isRemitted) return false;
+
+        // If targeting a specific remittance, the backend already filtered by remittance_id
+        // so we don't need to apply additional date filtering
+        if (props.remittanceId !== null && props.remittanceId !== undefined) {
+          return true; // Backend already filtered by remittance_id, so include all returned orders
+        }
+
+        // For general filtering, check if order falls within the date range
+        const t = new Date(
+          o.completed_at || o.processed_at || o.created_at
+        ).getTime();
+        if (!Number.isFinite(t) || t < fromMs || t > toMs) return false;
+
+        return true;
       });
-      const remitWindows = (Array.isArray(remitList) ? remitList : [])
-        .filter((r) => (desiredType ? r.period_type === desiredType : true))
-        .filter((r) => {
-          const fromMs = r.date_from ? new Date(r.date_from).getTime() : NaN;
-          const toMs = r.date_to ? new Date(r.date_to).getTime() : fromMs;
-          const selFrom = new Date(dateFrom).getTime();
-          const selTo = new Date(dateTo).getTime();
-          if (Number.isFinite(fromMs) && Number.isFinite(toMs)) {
-            // include only remittances overlapping the selected window
-            return toMs >= selFrom && fromMs <= selTo;
-          }
-          return false;
-        })
-        .map((r) => ({
-          fromMs: new Date(r.date_from).getTime(),
-          toMs: new Date(r.date_to || r.date_from).getTime(),
-        }));
-
-      const fallsInAnyWindow = (iso) => {
-        // Only show orders that fall into at least one approved remittance window
-        if (!remitWindows.length) return false;
-        const t = new Date(iso).getTime();
-        return remitWindows.some((w) => t >= w.fromMs && t <= w.toMs);
-      };
-
-      const merged = [...a, ...b].filter((o) =>
-        fallsInAnyWindow(o.completed_at || o.processed_at || o.created_at)
-      );
 
       orders.value = merged.sort(
         (x, y) => new Date(x.created_at) - new Date(y.created_at)
@@ -286,11 +358,17 @@
         if (dlg?.showModal) dlg.showModal();
         // Initialize activeTab from incoming prop
         activeTab.value =
-          props.period === 'week'
-            ? 'thisWeek'
-            : props.period === 'month'
-              ? 'thisMonth'
-              : 'today';
+          props.remittanceId !== null && props.remittanceId !== undefined
+            ? 'remittance'
+            : props.period === 'week'
+              ? 'thisWeek'
+              : props.period === 'month'
+                ? 'thisMonth'
+                : props.period === 'customMonth'
+                  ? 'customMonth'
+                  : props.period === 'dateRange'
+                    ? 'dateRange'
+                    : 'today';
         await loadOrders();
       } else if (dlg?.close) {
         dlg.close();
@@ -312,7 +390,7 @@
 
 <template>
   <dialog id="remit_order_details_modal" class="modal">
-    <div class="modal-box max-w-5xl">
+    <div class="modal-box max-w-5xl max-h-[90vh] overflow-y-auto">
       <div class="flex items-center justify-between mb-4">
         <h3 class="card-title text-primaryColor">
           <font-awesome-icon icon="fa-solid fa-receipt" class="!w-5 !h-5" />
@@ -328,8 +406,8 @@
       </div>
 
       <div v-else>
-        <!-- Period Tabs -->
-        <div class="tabs tabs-boxed mb-4">
+        <!-- Period Tabs - Only show when not targeting specific remittance -->
+        <div v-if="!remittanceId" class="tabs tabs-boxed mb-4">
           <button
             v-for="t in tabs"
             :key="t.id"
@@ -342,6 +420,12 @@
           >
             {{ t.label }}
           </button>
+        </div>
+
+        <!-- Specific Remittance Info -->
+        <div v-if="remittanceId" class="alert alert-info mb-4">
+          <font-awesome-icon icon="fa-solid fa-info-circle" class="mr-2" />
+          Showing orders for Remittance ID: {{ remittanceId }}
         </div>
         <!-- Summary Cards -->
         <div class="grid grid-cols-1 md:grid-cols-6 gap-3 mb-4">

@@ -14,6 +14,78 @@ const AuditLogger = require("../models/AuditLogger");
 const InventoryService = require("../services/InventoryService");
 const { authenticateToken } = require("../middleware/rbac");
 
+// ==================== PUBLIC ROUTES (NO AUTHENTICATION REQUIRED) ====================
+
+/**
+ * @swagger
+ * /api/menu/public/items:
+ *   get:
+ *     summary: Get all available menu items for public display
+ *     tags: [Menu Items]
+ *     parameters:
+ *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *         description: Filter by category
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         description: Limit number of results
+ *     responses:
+ *       200:
+ *         description: List of available menu items
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       name:
+ *                         type: string
+ *                       description:
+ *                         type: string
+ *                       price:
+ *                         type: number
+ *                       category:
+ *                         type: string
+ *                       image_url:
+ *                         type: string
+ *                       is_available:
+ *                         type: boolean
+ */
+router.get("/public/items", async (req, res) => {
+  try {
+    const filters = {
+      is_available: true,
+      category: req.query.category,
+      limit: req.query.limit ? parseInt(req.query.limit) : 12,
+    };
+
+    const menuItems = await MenuItem.getAll(filters);
+
+    res.json({
+      success: true,
+      data: menuItems,
+    });
+  } catch (error) {
+    console.error("Error fetching public menu items:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch menu items",
+    });
+  }
+});
+
 // ==================== MENU ROUTES ====================
 
 /**

@@ -50,7 +50,7 @@
               <th class="border border-black">Unit</th>
               <th class="border border-black">Type</th>
               <th class="border border-black">Unit Price</th>
-              <th class="border border-black">Amount (₱)</th>
+              <th class="border border-black">Amount</th>
             </tr>
           </thead>
           <tbody>
@@ -67,14 +67,18 @@
               <td class="border border-black">
                 ₱{{ Number(item.item_unit_price).toFixed(2) }}
               </td>
-              <td class="border border-black">
-                ₱{{
-                  Number(
-                    item.item_amount ||
-                      item.item_quantity * item.item_unit_price
-                  ).toFixed(2)
-                }}
-              </td>
+<td class="border border-black">
+  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+  {{
+    Number(
+      item.item_amount || item.item_quantity * item.item_unit_price
+    ).toLocaleString('en-PH', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })
+  }}
+</td>
+
             </tr>
             <tr class="border border-black">
               <td
@@ -83,13 +87,16 @@
               >
                 Total
               </td>
-              <td class="font-semibold border border-black">
-                ₱{{
-                  Number(cashRequestReceipt.receipt?.total_amount || 0).toFixed(
-                    2
-                  )
-                }}
-              </td>
+<td class="font-semibold border border-black">
+  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+  {{
+    Number(cashRequestReceipt.receipt?.total_amount || 0).toLocaleString('en-PH', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })
+  }}
+</td>
+
             </tr>
           </tbody>
         </table>

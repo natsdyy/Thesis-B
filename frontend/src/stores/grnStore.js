@@ -36,6 +36,18 @@ export const useGRNStore = defineStore('grn', () => {
   const pendingInspectionGRNs = computed(() => stats.value.pending_inspection);
   const completedGRNs = computed(() => stats.value.completed);
 
+  // Helper getter for GRNs with supplier product information
+  const grnsWithSupplierProducts = computed(() => {
+    return grns.value.filter(
+      (grn) => grn.items && grn.items.some((item) => item.supplier_product_id)
+    );
+  });
+
+  // Helper getter for GRNs by supplier
+  const grnsBySupplier = computed(() => (supplierId) => {
+    return grns.value.filter((grn) => grn.supplier_id === supplierId);
+  });
+
   // Check if cache is still valid
   const isCacheValid = computed(() => {
     return (
@@ -425,6 +437,8 @@ export const useGRNStore = defineStore('grn', () => {
     draftGRNs,
     pendingInspectionGRNs,
     completedGRNs,
+    grnsWithSupplierProducts,
+    grnsBySupplier,
 
     // Actions
     fetchGRNs,

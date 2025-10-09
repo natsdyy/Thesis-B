@@ -1013,7 +1013,7 @@
         <div v-else class="overflow-x-auto">
           <table class="table table-zebra">
             <thead>
-              <tr class="bg-primaryColor text-white">
+              <tr class="">
                 <th class="whitespace-nowrap">Name</th>
                 <th class="whitespace-nowrap">Email</th>
                 <th class="whitespace-nowrap">Phone</th>
@@ -1243,7 +1243,7 @@
         <div v-else class="overflow-x-auto">
           <table class="table table-zebra">
             <thead>
-              <tr class="bg-primaryColor text-white">
+              <tr class="">
                 <th class="whitespace-nowrap">Name</th>
                 <th class="whitespace-nowrap">Email</th>
                 <th class="whitespace-nowrap">Phone</th>
@@ -1497,7 +1497,7 @@
         <div v-else class="overflow-x-auto">
           <table class="table table-zebra">
             <thead>
-              <tr class="bg-primaryColor text-white">
+              <tr class="">
                 <th class="whitespace-nowrap">Name</th>
                 <th class="whitespace-nowrap">Email</th>
                 <th class="whitespace-nowrap">Phone</th>

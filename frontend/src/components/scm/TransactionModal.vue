@@ -372,10 +372,128 @@
     }
   };
 
+  // Export state
+  const isExporting = ref(false);
+
   // Export function
-  const exportTransactions = () => {
-    // TODO: Implement export functionality
-    console.log('Export transactions');
+  const exportTransactions = async () => {
+    if (isExporting.value) return;
+
+    isExporting.value = true;
+    try {
+      // Get current transaction data
+      const currentTransactions = transactions.value || [];
+
+      // Create CSV content
+      const headers = [
+        'Type',
+        'Item',
+        'Category',
+        'Audit Action',
+        'Quantity',
+        'Unit of Measure',
+        'Value',
+        'Disposal Cost',
+        'Date',
+        'Performed By',
+        'Reference Number',
+        'Reason',
+        'Batch Number',
+      ];
+
+      // Format data for CSV
+      const csvData = currentTransactions.map((transaction) => {
+        const typeInfo = getTransactionTypeInfo(
+          transaction.transaction_type,
+          transaction.adjustment_type
+        );
+
+        return [
+          typeInfo.label,
+          transaction.item_name || transaction.item_type_name || '',
+          transaction.category_name || '',
+          transaction.audit_action || '',
+          parseFloat(transaction.quantity || 0).toLocaleString(),
+          transaction.unit_of_measure || '',
+          `PHP ${parseFloat(transaction.total_value || 0).toLocaleString()}`,
+          transaction.disposal_cost
+            ? `PHP ${parseFloat(transaction.disposal_cost).toLocaleString()}`
+            : '',
+          transaction.transaction_date
+            ? new Date(transaction.transaction_date).toISOString().split('T')[0]
+            : '',
+          transaction.performed_by || '',
+          transaction.reference_number || '',
+          transaction.reason || '',
+          transaction.batch_number || '',
+        ];
+      });
+
+      // Add summary information
+      const summaryRows = [
+        [],
+        ['SUMMARY'],
+        ['Total Transactions', totalTransactions.value],
+        ['Export Date', new Date().toISOString().split('T')[0]],
+        [
+          'Date Range',
+          `${filters.value.date_from || 'All'} - ${filters.value.date_to || 'All'}`,
+        ],
+        ['Transaction Type', filters.value.transaction_type || 'All Types'],
+        [
+          'Category',
+          filters.value.category_id
+            ? categories.value.find((c) => c.id == filters.value.category_id)
+                ?.name || 'All Categories'
+            : 'All Categories',
+        ],
+        [
+          'Item Type',
+          filters.value.item_type_id
+            ? filteredItemTypes.value.find(
+                (t) => t.id == filters.value.item_type_id
+              )?.name || 'All Item Types'
+            : 'All Item Types',
+        ],
+        ['Audit Action', filters.value.audit_action || 'All Audit Actions'],
+      ];
+
+      // Combine headers, data, and summary
+      const csvContent = [headers, ...csvData, ...summaryRows]
+        .map((row) =>
+          row.map((field) => `"${String(field).replace(/"/g, '""')}"`).join(',')
+        )
+        .join('\n');
+
+      // Create and download file
+      const filterSuffix = [];
+      if (filters.value.transaction_type)
+        filterSuffix.push(filters.value.transaction_type);
+      if (filters.value.date_from)
+        filterSuffix.push(`from-${filters.value.date_from}`);
+      if (filters.value.date_to)
+        filterSuffix.push(`to-${filters.value.date_to}`);
+
+      const filename = `Transaction_History${filterSuffix.length ? '_' + filterSuffix.join('_') : ''}_${new Date().toISOString().split('T')[0]}.csv`;
+
+      // Add BOM for proper UTF-8 encoding in Excel
+      const csvWithBOM = '\uFEFF' + csvContent;
+      const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      console.log(`Transaction data exported as ${filename}`);
+    } catch (error) {
+      console.error('Error exporting transaction data:', error);
+    } finally {
+      isExporting.value = false;
+    }
   };
 
   // Navigation to Production Execution
@@ -597,10 +715,14 @@
             <button
               @click="exportTransactions"
               class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
-              :disabled="loading"
+              :disabled="loading || isExporting"
             >
-              <Download class="w-4 h-4 mr-1" />
-              Export
+              <span
+                v-if="isExporting"
+                class="loading loading-spinner loading-xs mr-1"
+              ></span>
+              <Download v-else class="w-4 h-4 mr-1" />
+              {{ isExporting ? 'Exporting...' : 'Export' }}
             </button>
           </div>
         </div>

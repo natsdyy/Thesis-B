@@ -351,7 +351,11 @@ export const useEmployeeStore = defineStore('employee', {
           this.employeeStats.active_employees += 1;
           this.employeeStats.new_this_month += 1;
 
-          return data.data;
+          // Return both employee data and email status
+          return {
+            ...data.data,
+            emailStatus: data.emailStatus || { sent: false, error: null },
+          };
         } else {
           throw new Error(data.message || 'Failed to create employee');
         }
@@ -393,7 +397,12 @@ export const useEmployeeStore = defineStore('employee', {
             this.employeeStats.active_employees += 1;
           }
           this.employeeStats.new_this_month += 1;
-          return data.data;
+
+          // Return both employee data and email status
+          return {
+            ...data.data,
+            emailStatus: data.emailStatus || { sent: false, error: null },
+          };
         } else {
           throw new Error(data.message || 'Failed to create employee');
         }

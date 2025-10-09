@@ -22,6 +22,7 @@ class POSOrder {
         order_type = null,
         date_from = null,
         date_to = null,
+        remittance_id = null,
         limit = 20,
         offset = 0,
       } = filters;
@@ -67,6 +68,10 @@ class POSOrder {
 
       if (date_to) {
         query = query.where("pso.created_at", "<=", date_to);
+      }
+
+      if (remittance_id) {
+        query = query.where("pso.remittance_id", remittance_id);
       }
 
       // Get total count
@@ -135,10 +140,11 @@ class POSOrder {
     const trx = await db.transaction();
     try {
       const now = new Date();
-      // Update only completed orders in range that are not yet linked
+      // Update completed and void orders in range that are not yet linked
+      // Include void orders for complete record-keeping
       await trx("pos_sales_orders")
         .where("branch_id", branchId)
-        .where("status", "completed")
+        .whereIn("status", ["completed", "void"])
         .whereNull("remittance_id")
         .modify((qb) => {
           if (dateFrom) qb.where("created_at", ">=", dateFrom);
@@ -259,7 +265,10 @@ class POSOrder {
       const voidMap = toMap(voidRows);
       const remittedMap = toMap(remittedRows);
 
-      const allLabels = Array.from(labelsSet).sort();
+      const allLabels = Array.from(labelsSet).sort((a, b) => {
+        // Sort dates chronologically, not alphabetically
+        return new Date(a) - new Date(b);
+      });
 
       const gross = allLabels.map((l) => Number(grossMap.get(l) || 0));
       const refunds = allLabels.map((l) => Number(refundMap.get(l) || 0));
@@ -902,6 +911,8 @@ class POSOrder {
         .first();
 
       // Get refunded orders to adjust total sales
+      // Only deduct voided orders that were completed first (actual refunds)
+      // Orders cancelled before completion should not be deducted
       let refundedAmount = 0;
       try {
         const refundedQuery = db("pos_sales_orders")
@@ -918,7 +929,8 @@ class POSOrder {
             "Duplicate Order",
             "Payment Issue",
             "System Error",
-          ]);
+          ])
+          .whereNotNull("completed_at"); // Only include orders that were completed first
 
         if (dateFrom) {
           refundedQuery.where("voided_at", ">=", dateFrom);
@@ -941,6 +953,8 @@ class POSOrder {
 
       try {
         // Single query to get both voided orders count and loss profit
+        // Only count orders that were completed first as "disposed" (actual disposals)
+        // Orders cancelled before completion should not be counted as disposed
         const disposalQuery = db("pos_sales_orders")
           .leftJoin(
             "loss_profit_records",
@@ -948,7 +962,8 @@ class POSOrder {
             "loss_profit_records.order_id"
           )
           .where("pos_sales_orders.branch_id", branchId)
-          .where("pos_sales_orders.status", "void");
+          .where("pos_sales_orders.status", "void")
+          .whereNotNull("pos_sales_orders.completed_at"); // Only include orders that were completed first
 
         if (dateFrom) {
           disposalQuery.where("pos_sales_orders.voided_at", ">=", dateFrom);
@@ -1154,7 +1169,10 @@ class POSOrder {
       // 5) Build aligned arrays using labels; if labels empty (no range), fall back to rows' labels
       if (labels.length === 0) {
         const unique = new Set([...disposedMap.keys(), ...lossMap.keys()]);
-        labels = Array.from(unique).sort();
+        labels = Array.from(unique).sort((a, b) => {
+          // Sort dates chronologically, not alphabetically
+          return new Date(a) - new Date(b);
+        });
       }
 
       const disposed = labels.map((l) => disposedMap.get(l) || 0);

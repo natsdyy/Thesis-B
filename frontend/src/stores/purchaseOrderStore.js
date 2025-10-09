@@ -62,6 +62,21 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     );
   });
 
+  // Helper getter for purchase orders with supplier products
+  const ordersWithSupplierProducts = computed(() => {
+    return purchaseOrders.value.filter(
+      (order) =>
+        order.items && order.items.some((item) => item.supplier_product_id)
+    );
+  });
+
+  // Helper getter for purchase orders by supplier
+  const ordersBySupplier = computed(() => (supplierId) => {
+    return purchaseOrders.value.filter(
+      (order) => order.supplier_id === supplierId
+    );
+  });
+
   // Check if cache is still valid
   const isCacheValid = computed(() => {
     return (
@@ -665,6 +680,30 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     }
   };
 
+  const updateItemReturn = async (returnId, updateData) => {
+    try {
+      loading.value = true;
+      const response = await axios.put(
+        `${apiConfig.baseURL}/item-returns/${returnId}`,
+        updateData
+      );
+
+      if (response.data.success) {
+        // Refresh the item returns list
+        await fetchItemReturns();
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (error) {
+      throw new Error(
+        error.response?.data?.message || 'Failed to update item return'
+      );
+    } finally {
+      loading.value = false;
+    }
+  };
+
   // Add these methods for supplier rating
   const checkPurchaseOrderRating = async (purchaseOrderId) => {
     try {
@@ -732,6 +771,71 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     lastStatsFetchTime.value = null;
   };
 
+  // NEW: Get comprehensive order statistics including ordered vs received quantities
+  const fetchOrderStatistics = async (purchaseOrderId) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.get(
+        `${apiConfig.baseURL}/purchase-orders/${purchaseOrderId}/statistics`
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message || 'Failed to fetch order statistics'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to fetch order statistics';
+      console.error('Error fetching order statistics:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // NEW: Get supplier product fulfillment rates
+  const fetchSupplierProductFulfillment = async (
+    supplierId,
+    productId = null
+  ) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      let url = `${apiConfig.baseURL}/purchase-orders/supplier/${supplierId}/product-fulfillment`;
+      if (productId) {
+        url += `?productId=${productId}`;
+      }
+
+      const response = await axios.get(url);
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(
+          response.data.message ||
+            'Failed to fetch supplier product fulfillment'
+        );
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message ||
+        err.message ||
+        'Failed to fetch supplier product fulfillment';
+      console.error('Error fetching supplier product fulfillment:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   return {
     // State
     purchaseOrders,
@@ -746,6 +850,8 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     pendingOrders,
     draftOrders,
     itemReturnsByStatus, // Add this
+    ordersWithSupplierProducts,
+    ordersBySupplier,
 
     // Actions
     fetchPurchaseOrders,
@@ -765,11 +871,14 @@ export const usePurchaseOrderStore = defineStore('purchaseOrder', () => {
     processItemReturn,
     completeItemReturn,
     cancelItemReturn,
+    updateItemReturn, // NEW: Update item return
     checkPurchaseOrderRating,
     submitSupplierRating,
     updateSupplierRating,
     clearCaches,
     clearPOCache,
     clearStatsCache,
+    fetchOrderStatistics, // NEW: Order statistics with ordered vs received
+    fetchSupplierProductFulfillment, // NEW: Supplier product fulfillment rates
   };
 });

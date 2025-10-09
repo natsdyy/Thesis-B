@@ -545,6 +545,7 @@ router.post("/", authenticateToken, async (req, res) => {
     const newEmployee = await Employee.create(employeeData, createdBy);
 
     // Send welcome email to employee if email is provided
+    let emailStatus = { sent: false, error: null };
     if (newEmployee.email) {
       try {
         const employeeName = `${newEmployee.first_name} ${newEmployee.last_name}`;
@@ -559,14 +560,24 @@ router.post("/", authenticateToken, async (req, res) => {
 
         if (emailResult.success) {
           console.log(`✅ Welcome email sent to ${newEmployee.email}`);
+          emailStatus.sent = true;
         } else {
           console.error(
             `❌ Failed to send welcome email to ${newEmployee.email}:`,
             emailResult.error
           );
+          emailStatus.error = emailResult.error;
+
+          // Check if it's a production warning (SMTP blocked)
+          if (emailResult.productionWarning) {
+            console.log(
+              `⚠️ [PRODUCTION] Email service unavailable - employee created successfully`
+            );
+          }
         }
       } catch (emailError) {
         console.error("❌ Error sending welcome email:", emailError);
+        emailStatus.error = emailError.message;
         // Don't fail the employee creation if email fails
       }
     }
@@ -575,6 +586,7 @@ router.post("/", authenticateToken, async (req, res) => {
       success: true,
       data: newEmployee,
       message: "Employee created successfully",
+      emailStatus: emailStatus, // Include email status in response
     });
   } catch (error) {
     console.error("Error creating employee:", error);
@@ -648,6 +660,7 @@ router.post(
       );
 
       // Send welcome email to employee if email is provided
+      let emailStatus = { sent: false, error: null };
       if (employee.email) {
         try {
           const employeeName = `${employee.first_name} ${employee.last_name}`;
@@ -662,14 +675,24 @@ router.post(
 
           if (emailResult.success) {
             console.log(`✅ Welcome email sent to ${employee.email}`);
+            emailStatus.sent = true;
           } else {
             console.error(
               `❌ Failed to send welcome email to ${employee.email}:`,
               emailResult.error
             );
+            emailStatus.error = emailResult.error;
+
+            // Check if it's a production warning (SMTP blocked)
+            if (emailResult.productionWarning) {
+              console.log(
+                `⚠️ [PRODUCTION] Email service unavailable - employee created successfully`
+              );
+            }
           }
         } catch (emailError) {
           console.error("❌ Error sending welcome email:", emailError);
+          emailStatus.error = emailError.message;
           // Don't fail the employee creation if email fails
         }
       }
@@ -678,6 +701,7 @@ router.post(
         success: true,
         data: employee,
         message: "Employee created with photo successfully",
+        emailStatus: emailStatus, // Include email status in response
       });
     } catch (error) {
       console.error("Error uploading photo or creating employee:", error);

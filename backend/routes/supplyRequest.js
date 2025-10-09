@@ -90,6 +90,22 @@ const BudgetRelease = require("../models/BudgetRelease");
  *           type: number
  *           format: decimal
  *           description: Total amount (quantity * unit_price)
+ *         supplier_id:
+ *           type: integer
+ *           nullable: true
+ *           description: Optional supplier header linkage
+ *         supplier_product_id:
+ *           type: integer
+ *           nullable: true
+ *           description: Optional supplier product linkage
+ *         item_sku:
+ *           type: string
+ *           nullable: true
+ *           description: Optional supplier SKU
+ *         source:
+ *           type: string
+ *           nullable: true
+ *           description: Source of item (e.g., 'supplier')
  */
 
 /**
@@ -421,6 +437,16 @@ router.post("/", async (req, res) => {
         return res.status(400).json({
           success: false,
           message: "All item fields are required",
+        });
+      }
+      // Optional supplier fields
+      if (
+        item.supplier_product_id &&
+        !Number.isFinite(Number(item.supplier_product_id))
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "supplier_product_id must be numeric when provided",
         });
       }
     }

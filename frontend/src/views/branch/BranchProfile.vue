@@ -19,6 +19,7 @@
   } from 'lucide-vue-next';
   import { useBranchContextStore } from '../../stores/branchContextStore';
   import { useAuthStore } from '../../stores/authStore';
+  import { formatImageUrl } from '../../config/api.js';
 
   const branchContextStore = useBranchContextStore();
   const authStore = useAuthStore();
@@ -97,12 +98,8 @@
     });
     if (!url) return null;
     if (/^https?:\/\//i.test(url)) return url;
-    // Handle relative URLs from the backend - images are served by backend on port 5000
-    const backendOrigin = 'http://localhost:5000';
-    const path = url.startsWith('/') ? url : `/${url}`;
-    const fullUrl = `${backendOrigin}${path}`;
-    console.log('Constructed full URL:', fullUrl);
-    return fullUrl;
+    // Use formatImageUrl for production compatibility
+    return formatImageUrl(url);
   });
 
   const canEditProfile = computed(() => true); // All users can edit their own profile

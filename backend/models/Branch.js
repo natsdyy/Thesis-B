@@ -174,6 +174,7 @@ class Branch {
           branchData.is_active !== undefined ? branchData.is_active : true,
         opening_hours: branchData.opening_hours || null,
         description: branchData.description?.trim() || null,
+        image_url: branchData.image_url || null,
         // Respect provided coordinates if supplied by the client
         latitude:
           branchData.latitude !== undefined ? branchData.latitude : null,
@@ -266,6 +267,10 @@ class Branch {
             : existingBranch.is_active,
         opening_hours: branchData.opening_hours || null,
         description: branchData.description?.trim() || null,
+        image_url:
+          branchData.image_url !== undefined
+            ? branchData.image_url
+            : existingBranch.image_url,
         updated_at: new Date(),
       };
 

@@ -38,6 +38,11 @@
   import InventoryTrendsChart from '../../components/production/InventoryTrendsChart.vue';
   import ProductionTransactionModal from '../../components/production/ProductionTransactionModal.vue';
   import { apiConfig, formatImageUrl } from '../../config/api.js';
+  import {
+    getCurrentPhilippineTime,
+    formatForAPI,
+    parseFromAPI,
+  } from '../../utils/timezoneUtils.js';
 
   const productionStore = useProductionStore();
   const authStore = useAuthStore();
@@ -321,6 +326,19 @@
     };
   });
 
+  // Format image URLs to full URLs
+  const formattedInventory = computed(() => {
+    return productionInventory.value.map((item) => {
+      if (item.image_url) {
+        return {
+          ...item,
+          image_url: formatImageUrl(item.image_url),
+        };
+      }
+      return item;
+    });
+  });
+
   const filteredInventory = computed(() => {
     let filtered = formattedInventory.value;
 
@@ -573,19 +591,6 @@
     };
   });
 
-  // Format image URLs to full URLs
-  const formattedInventory = computed(() => {
-    return productionInventory.value.map((item) => {
-      if (item.image_url) {
-        return {
-          ...item,
-          image_url: formatImageUrl(item.image_url),
-        };
-      }
-      return item;
-    });
-  });
-
   // Helper functions
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-PH', {
@@ -701,12 +706,13 @@
     if (diffDays < 7) return `${diffDays}d ago`;
 
     // For older dates, show the actual date and time
-    return date.toLocaleDateString('en-PH', {
+    return parseFromAPI(date).toLocaleDateString('en-PH', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      timeZone: 'Asia/Manila',
     });
   };
 
@@ -811,10 +817,11 @@
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-PH', {
+    return parseFromAPI(dateString).toLocaleDateString('en-PH', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
+      timeZone: 'Asia/Manila',
     });
   };
 
@@ -1332,10 +1339,6 @@
           Items below reorder point
         </div>
       </div>
-
-
-
- 
     </div>
 
     <!-- Action Buttons -->
@@ -1556,7 +1559,26 @@
                       <span class="badge badge-sm bg-gray-100 text-gray-600">
                         {{ item.category }}
                       </span>
-               
+                      <!-- Promo Discount Badge -->
+                      <span
+                        v-if="item.promo_info"
+                        class="badge badge-sm"
+                        :class="
+                          item.promo_info.is_active
+                            ? 'bg-success/20 text-success border border-success/30'
+                            : 'bg-gray/20 text-gray-600 border border-gray/30'
+                        "
+                        :title="
+                          item.promo_info.is_active
+                            ? 'Active promotional discount available'
+                            : 'Promotional discount (inactive)'
+                        "
+                      >
+                        <Star class="w-3 h-3 mr-1" />
+                        {{
+                          item.promo_info.is_active ? 'Promo Active' : 'Promo'
+                        }}
+                      </span>
                     </div>
                   </div>
                   <div class="text-right">
@@ -1591,9 +1613,7 @@
                               )
                             )
                       "
-                    >
-                 
-                    </div>
+                    ></div>
                   </div>
                   <div class="text-right text-sm text-gray-600">
                     <div>Last produced:</div>
@@ -2433,9 +2453,7 @@
                       @click="distributionCurrentPage = page"
                       :class="[
                         'btn btn-sm join-item',
-                        page === distributionCurrentPage
-                          ? ''
-                          : 'btn-outline',
+                        page === distributionCurrentPage ? '' : 'btn-outline',
                       ]"
                     >
                       {{ page }}
@@ -3514,6 +3532,80 @@
             </div>
           </div>
 
+          <!-- Promo Discount Information -->
+          <div
+            v-if="
+              selectedItem?.promo_info && selectedItem?.promo_info.is_active
+            "
+          >
+            <h4 class="font-semibold text-primaryColor mb-3">
+              <Star class="w-4 h-4 inline mr-1" />
+              Active Promotion
+            </h4>
+            <div class="bg-success/10 border border-success/30 p-4 rounded-lg">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <div class="font-medium text-success mb-1">
+                    Discount Details
+                  </div>
+                  <p
+                    v-if="
+                      selectedItem.promo_info.discount_type === 'percentage'
+                    "
+                  >
+                    <strong
+                      >{{
+                        selectedItem.promo_info.discount_percentage
+                      }}%</strong
+                    >
+                    off
+                  </p>
+                  <p v-else>
+                    <strong
+                      >₱{{ selectedItem.promo_info.discount_amount }}</strong
+                    >
+                    off
+                  </p>
+                  <p class="text-xs text-success/70">
+                    Minimum quantity:
+                    {{ selectedItem.promo_info.minimum_quantity }} items
+                  </p>
+                </div>
+                <div>
+                  <div class="font-medium text-success mb-1">Valid Period</div>
+                  <p class="text-xs text-success/70">
+                    <span v-if="selectedItem.promo_info.start_date">
+                      From:
+                      {{
+                        parseFromAPI(
+                          selectedItem.promo_info.start_date
+                        ).toLocaleDateString('en-PH', {
+                          timeZone: 'Asia/Manila',
+                        })
+                      }}
+                    </span>
+                    <span v-if="selectedItem.promo_info.end_date">
+                      Until:
+                      {{
+                        parseFromAPI(
+                          selectedItem.promo_info.end_date
+                        ).toLocaleDateString('en-PH', {
+                          timeZone: 'Asia/Manila',
+                        })
+                      }}
+                    </span>
+                  </p>
+                </div>
+              </div>
+              <div v-if="selectedItem.promo_info.description" class="mt-3">
+                <div class="font-medium text-success mb-1">Description</div>
+                <p class="text-sm text-success/80">
+                  {{ selectedItem.promo_info.description }}
+                </p>
+              </div>
+            </div>
+          </div>
+
           <!-- Production History -->
           <div
             class="bg-secondaryColor/10 border border-primaryColor/20 p-4 rounded-xl"
@@ -3685,7 +3777,6 @@
           >
             Close
           </button>
-
         </div>
       </div>
       <form method="dialog" class="modal-backdrop">

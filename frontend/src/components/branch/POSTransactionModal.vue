@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, watch, computed, onMounted } from 'vue';
+  import { ref, watch, onMounted, onUnmounted } from 'vue';
   import {
     X,
     Search,
@@ -42,6 +42,8 @@
   const itemsPerPage = ref(10);
   const totalPages = ref(1);
   const totalTransactions = ref(0);
+  const lastRefreshTime = ref(null);
+  const autoRefreshInterval = ref(null);
 
   // Manager PIN verification
   const showManagerPinModal = ref(false);
@@ -285,9 +287,9 @@
     emit('close');
   };
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = async (showLoading = true) => {
     if (!context.currentBranch?.id) return;
-    loading.value = true;
+    if (showLoading) loading.value = true;
     try {
       // Calculate offset for pagination
       const offset = (currentPage.value - 1) * itemsPerPage.value;
@@ -383,13 +385,16 @@
         totalTransactions.value = 0;
         totalPages.value = 1;
       }
+
+      // Update last refresh time
+      lastRefreshTime.value = new Date();
     } catch (e) {
       console.error('Failed to load POS transactions', e);
       transactions.value = [];
       totalTransactions.value = 0;
       totalPages.value = 1;
     } finally {
-      loading.value = false;
+      if (showLoading) loading.value = false;
     }
   };
 
@@ -404,6 +409,47 @@
     };
     currentPage.value = 1;
     fetchTransactions();
+  };
+
+  // Auto-refresh functionality
+  const startAutoRefresh = () => {
+    // Clear existing interval
+    if (autoRefreshInterval.value) {
+      clearInterval(autoRefreshInterval.value);
+    }
+
+    // Set new interval (refresh every 30 seconds)
+    autoRefreshInterval.value = setInterval(() => {
+      if (props.show) {
+        fetchTransactions(false); // Silent refresh
+      }
+    }, 30000);
+  };
+
+  const stopAutoRefresh = () => {
+    if (autoRefreshInterval.value) {
+      clearInterval(autoRefreshInterval.value);
+      autoRefreshInterval.value = null;
+    }
+  };
+
+  // Manual refresh function
+  const refreshTransactions = () => {
+    fetchTransactions();
+  };
+
+  // Format last refresh time
+  const formatLastRefreshTime = () => {
+    if (!lastRefreshTime.value) return 'Never';
+    const now = new Date();
+    const diffMs = now - lastRefreshTime.value;
+    const diffSecs = Math.floor(diffMs / 1000);
+
+    if (diffSecs < 60) return `${diffSecs}s ago`;
+    const diffMins = Math.floor(diffSecs / 60);
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    return `${diffHours}h ago`;
   };
 
   const nextPage = () => {
@@ -428,15 +474,25 @@
         Object.assign(filters.value, props.initialFilter || {});
         currentPage.value = 1;
         fetchTransactions();
+        startAutoRefresh(); // Start auto-refresh when modal opens
         if (dlg?.showModal) dlg.showModal();
-      } else if (dlg?.close) {
-        dlg.close();
+      } else {
+        stopAutoRefresh(); // Stop auto-refresh when modal closes
+        if (dlg?.close) dlg.close();
       }
     }
   );
 
   onMounted(() => {
-    if (props.show) fetchTransactions();
+    if (props.show) {
+      fetchTransactions();
+      startAutoRefresh();
+    }
+  });
+
+  // Cleanup on unmount
+  onUnmounted(() => {
+    stopAutoRefresh();
   });
 
   // Date range helpers
@@ -629,13 +685,15 @@
 
     try {
       await posStore.completeOrder(posStore.selectedTransaction.id);
-      await fetchTransactions(); // Refresh the list
+
+      // Refresh the transaction list immediately
+      await fetchTransactions(false); // Silent refresh
 
       // Close modal and clear store
       showCompleteModal.value = false;
       posStore.clearSelectedTransaction();
 
-      // Refresh POS data only; do not reopen the transactions modal
+      // Refresh POS data
       emit('refresh');
 
       showSuccess('Order completed successfully');
@@ -724,6 +782,9 @@
         { refund_on_completed: isRefundReason && isOrderCompleted }
       );
 
+      // Refresh the transaction list immediately
+      await fetchTransactions(false); // Silent refresh
+
       // Close void modal and reopen transaction modal
       closeVoidModal();
       emit('reopen');
@@ -770,13 +831,28 @@
   <dialog id="pos_transaction_modal" class="modal">
     <div class="modal-box max-w-7xl max-h-[80vh] overflow-y-auto">
       <div class="flex items-center justify-between mb-4">
-        <h3 class="card-title text-primaryColor">
-          <ShoppingCart class="w-5 h-5 mr-2" />
-          Recent Transactions
-        </h3>
-        <button class="btn btn-ghost btn-sm" @click="closeModal">
-          <X class="w-4 h-4" />
-        </button>
+        <div>
+          <h3 class="card-title text-primaryColor">
+            <ShoppingCart class="w-5 h-5 mr-2" />
+            Recent Transactions
+          </h3>
+          <p class="text-xs text-gray-500 mt-1">
+            Last updated: {{ formatLastRefreshTime() }}
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button
+            class="btn btn-ghost btn-sm"
+            @click="refreshTransactions"
+            :disabled="loading"
+            title="Refresh transactions"
+          >
+            <RefreshCcw class="w-4 h-4" :class="{ 'animate-spin': loading }" />
+          </button>
+          <button class="btn btn-ghost btn-sm" @click="closeModal">
+            <X class="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       <div
@@ -1175,8 +1251,6 @@
 
       <!-- Transaction Details -->
       <div class="space-y-4 mb-6">
- 
-
         <!-- Manager PIN Input -->
         <div class="space-y-2">
           <label class="text-sm font-medium text-gray-700">

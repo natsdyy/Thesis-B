@@ -1,25 +1,22 @@
-/**
- * @param { import("knex").Knex } knex
- * @returns { Promise<void> }
- */
-exports.up = function(knex) {
-  return knex.schema.alterTable('finance_balances', function(table) {
-    table.dropForeign('branch_id');
-    table.dropColumn('branch_id');
-    table.dropIndex(['branch_id', 'balance_date']);
-    table.dropUnique(['branch_id', 'balance_date']);
+// backend/migrations/20250131000002_remove_branch_id_from_finance_balances.js
+exports.up = function (knex) {
+  return knex.schema.alterTable("finance_balances", function (table) {
+    // Drop foreign key constraint first
+    table.dropForeign("branch_id");
+    // Drop the branch_id column
+    table.dropColumn("branch_id");
   });
 };
 
-/**
- * @param { import("knex").Knex } knex
- * @returns { Promise<void> }
- */
-exports.down = function(knex) {
-  return knex.schema.alterTable('finance_balances', function(table) {
-    table.integer('branch_id').unsigned().notNullable();
-    table.foreign('branch_id').references('id').inTable('branches');
-    table.index(['branch_id', 'balance_date']);
-    table.unique(['branch_id', 'balance_date']);
+exports.down = function (knex) {
+  return knex.schema.alterTable("finance_balances", function (table) {
+    // Add branch_id column back
+    table.integer("branch_id").unsigned().notNullable();
+    // Add foreign key constraint back
+    table
+      .foreign("branch_id")
+      .references("id")
+      .inTable("branches")
+      .onDelete("CASCADE");
   });
 };

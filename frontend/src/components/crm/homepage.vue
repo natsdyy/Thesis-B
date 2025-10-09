@@ -257,10 +257,10 @@
                 <video
                   :src="currentReel"
                   class="w-full h-full object-contain"
-                  autoplay
                   loop
                   playsinline
                   ref="videoPlayer"
+                  muted
                 ></video>
 
                 <!-- Play/Pause Button for Hero Video -->
@@ -625,10 +625,10 @@
               <div class="relative rounded-2xl overflow-hidden shadow-2xl">
                 <video
                   class="w-full h-auto rounded-2xl"
-                  autoplay
                   loop
                   playsinline
                   ref="deliveryVideo"
+                  muted
                 >
                   <source src="/video/foodgrab.mp4" type="video/mp4" />
                   Your browser does not support the video tag.
@@ -685,12 +685,12 @@
         <!-- Additional Delivery Info -->
         <div class="mt-12 text-center">
           <div
-            class="bg-white/10 backdrop-blur-lg rounded-2xl p-6 max-w-2xl mx-auto border border-white/30"
+            class="bg-white/10 backdrop-blur-lg rounded-2xl p-6 w-full border border-white/30"
           >
             <div class="flex items-center justify-center mb-4">
-              <div class="w-36 h-0.5 bg-green-200"></div>
+              <div class="w-70 h-0.5 bg-green-200"></div>
               <h4 class="text-xl text-green-200 mx-3">Delivery Information</h4>
-              <div class="w-36 h-0.5 bg-green-200"></div>
+              <div class="w-70 h-0.5 bg-green-200"></div>
             </div>
             <div class="grid md:grid-cols-3 gap-4 text-sm text-gray-200">
               <div>
@@ -699,7 +699,13 @@
               </div>
               <div>
                 <font-awesome-icon icon="fa-solid fa-coins" />
-                <p>Delivery Fee: ₱50-₱80</p>
+                <p>
+                  Delivery Fee:
+                  <span><font-awesome-icon icon="fa-solid fa-peso-sign" /></span
+                  >50 -
+                  <span><font-awesome-icon icon="fa-solid fa-peso-sign" /></span
+                  >80
+                </p>
               </div>
               <div>
                 <font-awesome-icon icon="fa-solid fa-location-dot" />
@@ -707,17 +713,6 @@
               </div>
             </div>
           </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Our stores Banner -->
-    <section class="bg-white py-4">
-      <div class="container mx-auto px-6 text-center">
-        <div class="flex items-center justify-center">
-          <div class="w-12 h-0.5 bg-orange-400"></div>
-          <h2 class="text-2xl font-bold text-green-800 mx-4">Our stores!</h2>
-          <div class="w-12 h-0.5 bg-orange-400"></div>
         </div>
       </div>
     </section>
@@ -732,136 +727,68 @@
             <div class="w-20 h-0.5 bg-orange-400"></div>
           </div>
         </div>
-        <div class="grid md:grid-cols-3 gap-8">
-          <!-- Burol Main Branch -->
-          <div
-            class="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover"
-          >
-            <div class="h-48 overflow-hidden">
-              <img
-                src="/src/assets/crm/Countryside Burol Main Branch.png"
-                alt="Countryside Burol Main Branch"
-                class="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
-              />
-            </div>
-            <div class="p-6">
-              <h3 class="text-xl font-bold text-green-800 mb-2">
-                Countryside Burol Main Branch
-              </h3>
-              <p class="text-gray-600 text-sm mb-3">COUNTRYSIDE STEAKHOUSE</p>
-              <p class="text-gray-500 text-xs mb-4">
-                T-BONE • CHICKEN WINGS • PORKSTEAK • TAPSILOG • SISIG
-              </p>
-              <div class="flex items-center text-sm text-gray-600 mb-3">
-                <font-awesome-icon
-                  icon="fa-solid fa-location-dot"
-                  class="mr-2 text-green-600"
-                />
-                <span>Burol, Main Street</span>
-              </div>
-              <div class="flex items-center text-sm text-gray-600 mb-4">
-                <font-awesome-icon
-                  icon="fa-solid fa-clock"
-                  class="mr-2 text-green-600"
-                />
-                <span>Open Daily 10AM-10PM</span>
-              </div>
-              <button
-                class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
-              >
-                Get Directions
-              </button>
-            </div>
-          </div>
+        <!-- Loading State -->
+        <div
+          v-if="isLoadingBranches"
+          class="flex justify-center items-center py-12"
+        >
+          <div class="loading loading-spinner loading-lg text-green-600"></div>
+        </div>
 
-          <!-- Malihan Main Branch -->
+        <!-- Branches Grid -->
+        <div v-else-if="branches.length > 0" class="grid md:grid-cols-3 gap-8">
           <div
+            v-for="branch in branches.slice(0, 3)"
+            :key="branch.id"
             class="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover"
           >
             <div class="h-48 overflow-hidden">
               <img
-                src="/src/assets/crm/Country Malihan Branch.png"
-                alt="Countryside Malihan Branch"
+                :src="
+                  resolvePublicUrl(branch.image_url) ||
+                  '/src/assets/crm/default-branch.png'
+                "
+                :alt="branch.name"
                 class="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
               />
             </div>
             <div class="p-6">
               <h3 class="text-xl font-bold text-green-800 mb-2">
-                Countryside Malihan Main Branch
+                {{ branch.name }}
               </h3>
-              <p class="text-gray-600 text-sm mb-3">
-                P&N COUNTRYSIDE STEAKHOUSE
-              </p>
-              <div class="flex items-center text-sm text-gray-600 mb-3">
-                <font-awesome-icon
-                  icon="fa-solid fa-location-dot"
-                  class="mr-2 text-green-600"
-                />
-                <span>Malihan, Central District</span>
-              </div>
-              <div class="flex items-center text-sm text-gray-600 mb-4">
-                <font-awesome-icon
-                  icon="fa-solid fa-clock"
-                  class="mr-2 text-green-600"
-                />
-                <span>Open Daily 10AM-10PM</span>
-              </div>
-              <button
-                class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
+              <div
+                class="flex items-start text-sm text-gray-600 mb-3 leading-tight"
               >
-                Get Directions
-              </button>
-            </div>
-          </div>
-
-          <!-- Imus Branch -->
-          <div
-            class="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover"
-          >
-            <div class="h-48 overflow-hidden">
-              <img
-                src="/src/assets/crm/Countryside Imus Branch.png"
-                alt="Countryside Imus Branch"
-                class="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
-              />
-            </div>
-            <div class="p-6">
-              <h3 class="text-xl font-bold text-green-800 mb-2">
-                Countryside Imus Branch
-              </h3>
-              <p class="text-gray-600 text-sm mb-3">COUNTRYSIDE STEAKHOUSE</p>
-              <div class="flex items-center text-sm text-gray-600 mb-3">
                 <font-awesome-icon
                   icon="fa-solid fa-location-dot"
-                  class="mr-2 text-green-600"
+                  class="mr-2 text-green-600 mt-1"
                 />
-                <span>Imus, Business District</span>
+                <span class="whitespace-normal">{{ branch.address }}</span>
               </div>
-              <div class="flex items-center text-sm text-gray-600 mb-4">
+
+              <div
+                class="flex items-center text-sm text-gray-600 mb-4"
+                v-if="branch.phone"
+              >
                 <font-awesome-icon
-                  icon="fa-solid fa-clock"
+                  icon="fa-solid fa-phone"
                   class="mr-2 text-green-600"
                 />
-                <span>Open Daily 10AM-10PM</span>
+                <span>{{ branch.phone }}</span>
               </div>
               <button
                 class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
+                @click="getDirections(branch)"
               >
                 Get Directions
               </button>
             </div>
           </div>
         </div>
-      </div>
-    </section>
 
-    <!-- Food Gallery Banner -->
-    <section class="bg-green-800 py-4">
-      <div class="container mx-auto px-6 text-center">
-        <div class="flex items-center justify-center">
-          <div class="w-12 h-0.5 bg-orange-400"></div>
-          <h2 class="text-2xl font-bold text-white mx-4">Our Menu</h2>
-          <div class="w-12 h-0.5 bg-orange-400"></div>
+        <!-- No Branches State -->
+        <div v-else class="text-center py-12">
+          <p class="text-gray-500">No branches available at the moment.</p>
         </div>
       </div>
     </section>
@@ -883,39 +810,57 @@
           </p>
         </div>
 
+        <!-- Loading State -->
+        <div
+          v-if="isLoadingMenu"
+          class="flex justify-center items-center py-12"
+        >
+          <div class="loading loading-spinner loading-lg text-orange-500"></div>
+        </div>
+
         <!-- Signature Dishes Grid -->
-        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div
+          v-else-if="signatureDishes.length > 0"
+          class="grid md:grid-cols-2 lg:grid-cols-4 gap-6"
+        >
           <div
             v-for="item in signatureDishes"
             :key="item.name"
-            class="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2"
+            class="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300"
           >
-            <div class="h-48 overflow-hidden">
+            <div class="h-48 overflow-hidden group">
               <img
                 :src="item.image"
                 :alt="item.name"
-                class="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
+                class="w-full h-full object-cover transform transition-transform duration-500 ease-in-out group-hover:scale-110"
               />
             </div>
             <div class="p-6">
               <h3 class="text-xl font-bold text-green-800 mb-2">
                 {{ item.name }}
               </h3>
-              <p class="text-gray-600 text-sm mb-3">{{ item.description }}</p>
               <div class="flex justify-between items-center">
-                <span class="text-orange-500 font-bold text-lg"
-                  >₱{{ item.price.toFixed(2) }}</span
-                >
+                <span class="text-orange-500 font-bold text-lg">
+                  <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                  {{ item.price.toFixed(2) }}
+                </span>
               </div>
             </div>
           </div>
         </div>
 
+        <!-- No Menu Items State -->
+        <div v-else class="text-center py-12">
+          <p class="text-white/70">
+            No signature dishes available at the moment.
+          </p>
+        </div>
+
         <!-- Full Menu Button -->
-        <div class="text-center mt-12 flex justify-endx`">
+        <div class="text-center mt-12 flex justify-end">
           <router-link
             to="/menu"
-            class="bg-orange-500 text-white px-8 py-3 rounded-lg font-thin transition-all duration-300 shadow-lg flex items-center justify-center cursor-pointer hover:bg-orange-400"
+            class="btn btn-sm border-none border bg-orange-500 hover:bg-orange-400 text-white px-8 py-3 rounded-md font-thin lg:mx-0 shadow-none"
           >
             <span>View Full Menu</span>
             <font-awesome-icon
@@ -929,65 +874,79 @@
 
     <!-- Contact Section -->
     <section id="contact" class="py-20 bg-gray-50">
-      <div class="container mx-auto px-6">
+      <div class="container mx-auto px-6 lg:px-8">
+        <!-- Section Header -->
         <div class="text-center mb-16">
           <div class="flex items-center justify-center">
-            <div class="w-12 h-0.5 bg-green-600"></div>
-            <h2 class="text-4xl font-bold text-green-800 mx-4">Get In Touch</h2>
-            <div class="w-12 h-0.5 bg-green-600"></div>
+            <div class="w-10 sm:w-12 h-0.5 bg-green-600"></div>
+            <h2
+              class="text-3xl sm:text-4xl font-bold text-green-800 mx-3 sm:mx-4"
+            >
+              Get In Touch
+            </h2>
+            <div class="w-10 sm:w-12 h-0.5 bg-green-600"></div>
           </div>
-          <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+          <p class="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto mt-4">
             Have questions or want to make a reservation? We'd love to hear from
             you!
           </p>
         </div>
 
-        <div class="grid lg:grid-cols-2 gap-12">
+        <!-- Grid Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16">
+          <!-- Contact Info -->
           <div>
-            <h3 class="text-2xl font-bold text-green-800 mb-6">
+            <h3
+              class="text-2xl font-bold text-green-800 mb-6 text-center lg:text-left"
+            >
               Contact Information
             </h3>
-            <div class="space-y-4">
-              <div class="flex items-center">
+            <div class="space-y-5">
+              <!-- Phone -->
+              <div class="flex items-center justify-center lg:justify-start">
                 <div
-                  class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4"
+                  class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4 flex-shrink-0"
                 >
                   <font-awesome-icon
                     icon="fa-solid fa-phone"
                     class="text-white text-md"
                   />
                 </div>
-                <div>
+                <div class="text-center lg:text-left">
                   <div class="font-semibold text-gray-800">Phone</div>
                   <div class="text-gray-600">+63 912 345 6789</div>
                 </div>
               </div>
-              <div class="flex items-center">
+
+              <!-- Email -->
+              <div class="flex items-center justify-center lg:justify-start">
                 <div
-                  class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4"
+                  class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4 flex-shrink-0"
                 >
                   <font-awesome-icon
                     icon="fa-solid fa-envelope"
                     class="text-white text-md"
                   />
                 </div>
-                <div>
+                <div class="text-center lg:text-left">
                   <div class="font-semibold text-gray-800">Email</div>
-                  <div class="text-gray-600">
+                  <div class="text-gray-600 break-all">
                     countryside_steakhouse@yahoo.com.ph
                   </div>
                 </div>
               </div>
-              <div class="flex items-center">
+
+              <!-- Address -->
+              <div class="flex items-center justify-center lg:justify-start">
                 <div
-                  class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4"
+                  class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4 flex-shrink-0"
                 >
                   <font-awesome-icon
                     icon="fa-solid fa-location-dot"
                     class="text-white text-md"
                   />
                 </div>
-                <div>
+                <div class="text-center lg:text-left">
                   <div class="font-semibold text-gray-800">Main Office</div>
                   <div class="text-gray-600">
                     Burol Main Street, Countryside City
@@ -997,42 +956,49 @@
             </div>
           </div>
 
-          <div class="bg-white rounded-2xl p-8 shadow-lg">
-            <h3 class="text-2xl font-bold text-green-800 mb-6">
+          <!-- Feedback Form -->
+          <div class="bg-white rounded-2xl p-6 sm:p-8 shadow-xl">
+            <h3
+              class="text-2xl font-bold text-green-800 mb-6 text-center lg:text-left"
+            >
               Send us a Message
             </h3>
+
             <form @submit.prevent="submitFeedback" class="space-y-4">
-              <div>
-                <input
-                  v-model="feedbackForm.name"
-                  type="text"
-                  placeholder="Your Name"
-                  required
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
-                />
-              </div>
-              <div>
-                <input
-                  v-model="feedbackForm.email"
-                  type="email"
-                  placeholder="Your Email"
-                  required
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
-                />
-              </div>
-              <div>
-                <input
-                  v-model="feedbackForm.phone"
-                  type="tel"
-                  placeholder="Your Phone (Optional)"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
-                />
-              </div>
+              <!-- Name -->
+              <input
+                v-model="feedbackForm.name"
+                type="text"
+                placeholder="Your Name"
+                required
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
+              />
+
+              <!-- Email -->
+              <input
+                v-model="feedbackForm.email"
+                type="email"
+                placeholder="Your Email"
+                required
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
+              />
+
+              <!-- Phone -->
+              <input
+                v-model="feedbackForm.phone"
+                type="tel"
+                placeholder="Your Phone (Optional)"
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
+              />
+
+              <!-- Rating -->
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-3"
                   >Rating (Optional)</label
                 >
-                <div class="flex items-center space-x-1 star-rating">
+                <div
+                  class="flex flex-wrap items-center space-x-1 star-rating justify-center lg:justify-start"
+                >
                   <button
                     v-for="star in 5"
                     :key="star"
@@ -1041,13 +1007,12 @@
                     @mouseenter="hoveredRating = star"
                     @mouseleave="hoveredRating = 0"
                     :class="[
-                      'relative w-10 h-10 flex items-center justify-center transition-all duration-300 ease-out transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2',
+                      'relative w-10 h-10 flex items-center justify-center transition-all duration-300 ease-out transform hover:scale-110 focus:outline-none',
                       feedbackForm.rating >= star || hoveredRating >= star
                         ? 'text-yellow-400'
                         : 'text-gray-300',
                     ]"
                   >
-                    <!-- Star Icon with SVG for better quality -->
                     <svg
                       class="w-8 h-8 transition-all duration-300"
                       :class="[
@@ -1062,22 +1027,9 @@
                         d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
                       />
                     </svg>
-
-                    <!-- Glow effect for selected stars -->
-                    <div
-                      v-if="feedbackForm.rating >= star"
-                      class="absolute inset-0 bg-yellow-400 rounded-full opacity-20 blur-sm animate-pulse"
-                    ></div>
-
-                    <!-- Hover effect -->
-                    <div
-                      v-if="hoveredRating >= star && feedbackForm.rating < star"
-                      class="absolute inset-0 bg-yellow-300 rounded-full opacity-30 blur-sm animate-pulse"
-                    ></div>
                   </button>
 
-                  <!-- Rating text display -->
-                  <div class="ml-4 text-sm text-gray-600">
+                  <div class="ml-3 text-sm text-gray-600 mt-2 sm:mt-0">
                     <span
                       v-if="feedbackForm.rating > 0"
                       class="font-medium text-green-600"
@@ -1088,10 +1040,9 @@
                   </div>
                 </div>
 
-                <!-- Rating description -->
                 <div
                   v-if="feedbackForm.rating > 0"
-                  class="mt-2 text-xs text-gray-500 animate-fade-in"
+                  class="mt-2 text-xs text-gray-500 text-center lg:text-left"
                 >
                   <span v-if="feedbackForm.rating === 1">Poor</span>
                   <span v-else-if="feedbackForm.rating === 2">Fair</span>
@@ -1100,17 +1051,17 @@
                   <span v-else-if="feedbackForm.rating === 5">Excellent</span>
                 </div>
               </div>
-              <div>
-                <textarea
-                  v-model="feedbackForm.message"
-                  rows="4"
-                  placeholder="Your Message"
-                  required
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg resize-none placeholder:text-gray-600"
-                ></textarea>
-              </div>
 
-              <!-- Image Upload Section -->
+              <!-- Message -->
+              <textarea
+                v-model="feedbackForm.message"
+                rows="4"
+                placeholder="Your Message"
+                required
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg resize-none placeholder:text-gray-600"
+              ></textarea>
+
+              <!-- Image Upload -->
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-3">
                   <font-awesome-icon
@@ -1118,26 +1069,74 @@
                     class="text-green-600 mr-2"
                   />
                   Share Your Food Experience
-                  <span class="text-red-500">*</span>
                 </label>
+
                 <div class="space-y-3">
-                  <!-- File Input -->
-                  <div class="relative">
-                    <input
-                      @change="handleImageUpload"
-                      type="file"
-                      accept="image/*"
-                      class="hidden"
-                      ref="imageInput"
-                      id="feedback-image"
-                    />
-                    <label
-                      for="feedback-image"
-                      class="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-400 hover:bg-green-50 transition-all duration-300"
-                    >
-                      <div class="text-center">
+                  <label
+                    for="feedback-image"
+                    class="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-400 hover:bg-green-50 transition-all duration-300"
+                  >
+                    <div class="text-center">
+                      <svg
+                        class="mx-auto h-8 w-8 text-gray-400 mb-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                        ></path>
+                      </svg>
+                      <span class="text-sm text-gray-700">
+                        <span
+                          class="font-medium text-green-600 hover:text-green-500"
+                          >Click to upload</span
+                        >
+                        or drag and drop
+                      </span>
+                      <p class="text-xs text-gray-600 mt-1">
+                        PNG, JPG, GIF up to 5MB
+                      </p>
+                    </div>
+                  </label>
+                  <input
+                    @change="handleImageUpload"
+                    type="file"
+                    accept="image/*"
+                    class="hidden"
+                    ref="imageInput"
+                    id="feedback-image"
+                  />
+
+                  <div
+                    v-if="feedbackForm.image"
+                    class="relative bg-gray-50 rounded-lg p-4 shadow-sm"
+                  >
+                    <div class="flex items-center space-x-3">
+                      <img
+                        :src="feedbackForm.image.preview"
+                        alt="Preview"
+                        class="w-16 h-16 object-cover rounded-lg border border-gray-300"
+                      />
+                      <div class="flex-1">
+                        <p class="text-sm font-medium text-gray-900">
+                          {{ feedbackForm.image.name }}
+                        </p>
+                        <p class="text-xs text-gray-500">
+                          {{ formatFileSize(feedbackForm.image.size) }}
+                        </p>
+                      </div>
+                      <button
+                        @click="removeImage"
+                        type="button"
+                        class="text-red-500 hover:text-red-700 transition-colors duration-200"
+                        title="Remove image"
+                      >
                         <svg
-                          class="mx-auto h-8 w-8 text-gray-400 mb-2"
+                          class="w-5 h-5"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -1146,69 +1145,20 @@
                             stroke-linecap="round"
                             stroke-linejoin="round"
                             stroke-width="2"
-                            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                          ></path>
+                            d="M6 18L18 6M6 6l12 12"
+                          />
                         </svg>
-                        <span class="text-sm text-gray-700">
-                          <span
-                            class="font-medium text-green-600 hover:text-green-500"
-                            >Click to upload</span
-                          >
-                          or drag and drop
-                        </span>
-                        <p class="text-xs text-gray-600 mt-1">
-                          PNG, JPG, GIF up to 5MB
-                        </p>
-                      </div>
-                    </label>
-                  </div>
-
-                  <!-- Image Preview -->
-                  <div v-if="feedbackForm.image" class="relative">
-                    <div class="bg-gray-100 rounded-lg p-4">
-                      <div class="flex items-center space-x-3">
-                        <img
-                          :src="feedbackForm.image.preview"
-                          alt="Preview"
-                          class="w-16 h-16 object-cover rounded-lg border border-gray-300"
-                        />
-                        <div class="flex-1">
-                          <p class="text-sm font-medium text-gray-900">
-                            {{ feedbackForm.image.name }}
-                          </p>
-                          <p class="text-xs text-gray-500">
-                            {{ formatFileSize(feedbackForm.image.size) }}
-                          </p>
-                        </div>
-                        <button
-                          @click="removeImage"
-                          type="button"
-                          class="text-red-500 hover:text-red-700 transition-colors duration-200"
-                          title="Remove image"
-                        >
-                          <svg
-                            class="w-5 h-5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              stroke-width="2"
-                              d="M6 18L18 6M6 6l12 12"
-                            ></path>
-                          </svg>
-                        </button>
-                      </div>
+                      </button>
                     </div>
                   </div>
                 </div>
               </div>
+
+              <!-- Submit Button -->
               <button
                 type="submit"
                 :disabled="isSubmitting"
-                class="w-full bg-green-600 text-white py-3 rounded-lg font-thin hover:bg-green-500 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transform hover:scale-[1.02] active:scale-[0.98] shadow-lg hover:shadow-xl cursor-pointer"
+                class="w-full bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-500 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transform hover:scale-[1.02] active:scale-[0.98] shadow-lg hover:shadow-xl cursor-pointer"
               >
                 <span
                   v-if="isSubmitting"
@@ -1221,11 +1171,11 @@
               </button>
             </form>
 
-            <!-- Success/Error Messages -->
+            <!-- Feedback Messages -->
             <div
               v-if="feedbackMessage.show"
               :class="[
-                'mt-4 p-4 rounded-lg',
+                'mt-4 p-4 rounded-lg text-center',
                 feedbackMessage.type === 'success'
                   ? 'bg-green-100 text-green-800 border border-green-200'
                   : 'bg-red-100 text-red-800 border border-red-200',
@@ -1238,27 +1188,117 @@
       </div>
     </section>
 
-    <!-- Footer -->
-    <footer class="bg-orange-500 text-white py-12">
-      <div class="container mx-auto px-6">
-        <div class="flex flex-col md:flex-row justify-between items-center">
-          <div class="flex space-x-6 mb-4 md:mb-0">
-            <a href="#" class="hover:text-green-200 transition-colors"
-              >PRIVACY POLICY</a
+    <footer class="bg-orange-500 text-white p-8">
+      <div
+        class="container mx-auto flex flex-col sm:flex-row justify-between items-center sm:items-start space-y-8 sm:space-y-0 sm:space-x-8"
+      >
+        <!-- Logo + Description -->
+        <aside
+          class="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left space-x-0 sm:space-x-4 space-y-2 sm:space-y-0"
+        >
+          <img
+            src="/logo1.png"
+            alt="Countryside Steakhouse Logo"
+            class="w-14 h-14 object-contain"
+          />
+          <p>
+            <span class="font-bold text-lg block">Countryside Steakhouse</span>
+            Serving quality steaks since 1984
+            <font-awesome-icon icon="fa-solid fa-utensils" class="ml-1" />
+          </p>
+        </aside>
+
+        <!-- Follow Us Section -->
+        <nav class="flex flex-col items-center sm:items-start space-y-3">
+          <h6
+            class="footer-title text-sm text-white font-thin uppercase tracking-wide"
+          >
+            Follow Us
+          </h6>
+          <div class="flex space-x-6">
+            <!-- Twitter -->
+            <a
+              href="https://www.facebook.com/PNCountryside"
+              class="hover:text-green-200 transition-transform transform hover:scale-110"
             >
-            <a href="#" class="hover:text-green-200 transition-colors"
-              >PRIVACY POLICY</a
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                class="fill-current"
+              >
+                <path
+                  d="M24 4.557c-.883.392-1.832.656-2.828.775 
+              1.017-.609 1.798-1.574 2.165-2.724
+              -.951.564-2.005.974-3.127 1.195
+              -.897-.957-2.178-1.555-3.594-1.555
+              -3.179 0-5.515 2.966-4.797 6.045
+              -4.091-.205-7.719-2.165-10.148-5.144
+              -1.29 2.213-.669 5.108 1.523 6.574
+              -.806-.026-1.566-.247-2.229-.616
+              -.054 2.281 1.581 4.415 3.949 4.89
+              -.693.188-1.452.232-2.224.084
+              .626 1.956 2.444 3.379 4.6 3.419
+              -2.07 1.623-4.678 2.348-7.29 2.04
+              2.179 1.397 4.768 2.212 7.548 2.212
+              9.142 0 14.307-7.721 13.995-14.646
+              .962-.695 1.797-1.562 2.457-2.549z"
+                ></path>
+              </svg>
+            </a>
+
+            <!-- YouTube -->
+            <a
+              href="https://www.facebook.com/PNCountryside"
+              class="hover:text-green-200 transition-transform transform hover:scale-110"
             >
-            <a href="#" class="hover:text-green-200 transition-colors"
-              >CONTACT US</a
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                class="fill-current"
+              >
+                <path
+                  d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0
+              -3.897.266-4.356 2.62-4.385 8.816
+              .029 6.185.484 8.549 4.385 8.816
+              3.6.245 11.626.246 15.23 0
+              3.897-.266 4.356-2.62 4.385-8.816
+              -.029-6.185-.484-8.549-4.385-8.816zm-10.615
+              12.816v-8l8 3.993-8 4.007z"
+                ></path>
+              </svg>
+            </a>
+
+            <!-- Facebook -->
+            <a
+              href="https://www.facebook.com/PNCountryside"
+              class="hover:text-green-200 transition-transform transform hover:scale-110"
             >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                class="fill-current"
+              >
+                <path
+                  d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667
+              c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808
+              c-3.596 0-5.192 1.583-5.192 4.615v3.385z"
+                ></path>
+              </svg>
+            </a>
           </div>
-          <div class="text-center md:text-right">
-            <p class="text-sm">
-              © 2025 COUNTRYSIDE STEAKHOUSE. All rights reserved.
-            </p>
-          </div>
-        </div>
+        </nav>
+      </div>
+
+      <!-- Divider -->
+      <div class="border-t border-white/20 mt-8 pt-4 text-center text-sm">
+        © {{ new Date().getFullYear() }} Countryside Steakhouse. All rights
+        reserved.
       </div>
     </footer>
   </div>
@@ -1270,10 +1310,48 @@
   import FoodpandaOrderModal from './FoodpandaOrderModal.vue';
   import GrabfoodOrderModal from './GrabfoodOrderModal.vue';
   import feedbackService from '../../services/feedbackService.js';
+  import branchService from '../../services/branchService.js';
+  import menuService from '../../services/menuService.js';
+  import { formatImageUrl, apiConfig } from '../../config/api.js';
+
+  // Backend base derived from api config (strip /api)
+  const API_BASE_URL = (apiConfig?.baseURL || '').replace(/\/?api\/?$/, '');
 
   const router = useRouter();
   const isScrolled = ref(false);
   const currentHeroIndex = ref(0);
+
+  // Real data from API
+  const branches = ref([]);
+  const menuItems = ref([]);
+  const signatureDishes = ref([]);
+  const isLoadingBranches = ref(false);
+  const isLoadingMenu = ref(false);
+
+  // User interaction tracking for video autoplay
+  const hasUserInteracted = ref(false);
+
+  // Debounce mechanism to prevent rapid video changes
+  let videoChangeTimeout = null;
+
+  // Resolve backend public file URLs that may be relative (e.g., /uploads/..)
+  const resolvePublicUrl = (url) => {
+    if (!url) return url;
+
+    // Prefer shared formatter used across production views
+    const formatted = formatImageUrl(url);
+    if (formatted) return formatted;
+
+    // Fallbacks
+    if (url.startsWith('http')) return url;
+    if (API_BASE_URL) return `${API_BASE_URL}${url}`;
+    const protocol = window.location?.protocol || 'http:';
+    const host = window.location?.hostname || 'localhost';
+    const backendPort = (
+      import.meta.env.VITE_BACKEND_PORT || '5000'
+    ).toString();
+    return `${protocol}//${host}:${backendPort}${url}`;
+  };
 
   // Reels carousel state
   const currentReelIndex = ref(0);
@@ -1323,42 +1401,147 @@
   };
 
   // Reels carousel functions
-  const playReel = (index) => {
-    currentReelIndex.value = index;
-    if (videoPlayer.value) {
-      videoPlayer.value.load();
-      videoPlayer.value.play();
-      isHeroVideoPlaying.value = true;
+  const playReel = async (index) => {
+    hasUserInteracted.value = true; // Mark user interaction
+
+    // Clear any pending video changes
+    if (videoChangeTimeout) {
+      clearTimeout(videoChangeTimeout);
     }
+
+    // Debounce video changes
+    videoChangeTimeout = setTimeout(async () => {
+      currentReelIndex.value = index;
+      if (videoPlayer.value) {
+        // Wait for load to complete before attempting to play
+        videoPlayer.value.load();
+
+        // Wait for the video to be ready
+        await new Promise((resolve) => {
+          if (videoPlayer.value.readyState >= 2) {
+            resolve();
+          } else {
+            videoPlayer.value.addEventListener('canplay', resolve, {
+              once: true,
+            });
+          }
+        });
+
+        if (hasUserInteracted.value) {
+          try {
+            await videoPlayer.value.play();
+            isHeroVideoPlaying.value = true;
+          } catch (error) {
+            if (error.name !== 'AbortError') {
+              console.log('Video play failed:', error);
+            }
+            isHeroVideoPlaying.value = false;
+          }
+        } else {
+          isHeroVideoPlaying.value = false;
+        }
+      }
+    }, 100); // 100ms debounce
+
     // Pause auto-scroll when user manually navigates
     pauseReelsAutoScroll();
     // Resume auto-scroll after 10 seconds of inactivity
     setTimeout(resumeReelsAutoScroll, 10000);
   };
 
-  const nextReel = () => {
-    currentReelIndex.value = (currentReelIndex.value + 1) % reels.length;
-    if (videoPlayer.value) {
-      videoPlayer.value.load();
-      videoPlayer.value.play();
-      isHeroVideoPlaying.value = true;
+  const nextReel = async () => {
+    hasUserInteracted.value = true; // Mark user interaction
+
+    // Clear any pending video changes
+    if (videoChangeTimeout) {
+      clearTimeout(videoChangeTimeout);
     }
+
+    // Debounce video changes
+    videoChangeTimeout = setTimeout(async () => {
+      currentReelIndex.value = (currentReelIndex.value + 1) % reels.length;
+      if (videoPlayer.value) {
+        // Wait for load to complete before attempting to play
+        videoPlayer.value.load();
+
+        // Wait for the video to be ready
+        await new Promise((resolve) => {
+          if (videoPlayer.value.readyState >= 2) {
+            resolve();
+          } else {
+            videoPlayer.value.addEventListener('canplay', resolve, {
+              once: true,
+            });
+          }
+        });
+
+        if (hasUserInteracted.value) {
+          try {
+            await videoPlayer.value.play();
+            isHeroVideoPlaying.value = true;
+          } catch (error) {
+            if (error.name !== 'AbortError') {
+              console.log('Video play failed:', error);
+            }
+            isHeroVideoPlaying.value = false;
+          }
+        } else {
+          isHeroVideoPlaying.value = false;
+        }
+      }
+    }, 100); // 100ms debounce
+
     // Pause auto-scroll when user manually navigates
     pauseReelsAutoScroll();
     // Resume auto-scroll after 10 seconds of inactivity
     setTimeout(resumeReelsAutoScroll, 10000);
   };
 
-  const previousReel = () => {
-    currentReelIndex.value =
-      currentReelIndex.value === 0
-        ? reels.length - 1
-        : currentReelIndex.value - 1;
-    if (videoPlayer.value) {
-      videoPlayer.value.load();
-      videoPlayer.value.play();
-      isHeroVideoPlaying.value = true;
+  const previousReel = async () => {
+    hasUserInteracted.value = true; // Mark user interaction
+
+    // Clear any pending video changes
+    if (videoChangeTimeout) {
+      clearTimeout(videoChangeTimeout);
     }
+
+    // Debounce video changes
+    videoChangeTimeout = setTimeout(async () => {
+      currentReelIndex.value =
+        currentReelIndex.value === 0
+          ? reels.length - 1
+          : currentReelIndex.value - 1;
+      if (videoPlayer.value) {
+        // Wait for load to complete before attempting to play
+        videoPlayer.value.load();
+
+        // Wait for the video to be ready
+        await new Promise((resolve) => {
+          if (videoPlayer.value.readyState >= 2) {
+            resolve();
+          } else {
+            videoPlayer.value.addEventListener('canplay', resolve, {
+              once: true,
+            });
+          }
+        });
+
+        if (hasUserInteracted.value) {
+          try {
+            await videoPlayer.value.play();
+            isHeroVideoPlaying.value = true;
+          } catch (error) {
+            if (error.name !== 'AbortError') {
+              console.log('Video play failed:', error);
+            }
+            isHeroVideoPlaying.value = false;
+          }
+        } else {
+          isHeroVideoPlaying.value = false;
+        }
+      }
+    }, 100); // 100ms debounce
+
     // Pause auto-scroll when user manually navigates
     pauseReelsAutoScroll();
     // Resume auto-scroll after 10 seconds of inactivity
@@ -1366,19 +1549,28 @@
   };
 
   // Video play/pause toggle methods
-  const toggleHeroVideo = () => {
+  const toggleHeroVideo = async () => {
+    hasUserInteracted.value = true; // Mark user interaction
     if (videoPlayer.value) {
       if (isHeroVideoPlaying.value) {
         videoPlayer.value.pause();
         isHeroVideoPlaying.value = false;
       } else {
-        videoPlayer.value.play();
-        isHeroVideoPlaying.value = true;
+        try {
+          await videoPlayer.value.play();
+          isHeroVideoPlaying.value = true;
+        } catch (error) {
+          if (error.name !== 'AbortError') {
+            console.log('Video play failed:', error);
+          }
+          isHeroVideoPlaying.value = false;
+        }
       }
     }
   };
 
-  const toggleDeliveryVideo = () => {
+  const toggleDeliveryVideo = async () => {
+    hasUserInteracted.value = true; // Mark user interaction
     const deliveryVideo =
       document.querySelector('#deliveryVideo') ||
       document.querySelector('video[ref="deliveryVideo"]');
@@ -1387,8 +1579,15 @@
         deliveryVideo.pause();
         isDeliveryVideoPlaying.value = false;
       } else {
-        deliveryVideo.play();
-        isDeliveryVideoPlaying.value = true;
+        try {
+          await deliveryVideo.play();
+          isDeliveryVideoPlaying.value = true;
+        } catch (error) {
+          if (error.name !== 'AbortError') {
+            console.log('Delivery video play failed:', error);
+          }
+          isDeliveryVideoPlaying.value = false;
+        }
       }
     }
   };
@@ -1489,8 +1688,8 @@
 
   // Start reels auto-scrolling
   const startReelsAutoScroll = () => {
-    reelsAutoScrollInterval = setInterval(() => {
-      nextReel();
+    reelsAutoScrollInterval = setInterval(async () => {
+      await nextReel();
     }, 8000); // Change reel every 8 seconds
   };
 
@@ -1533,6 +1732,20 @@
     startReelsAutoScroll();
     preloadImages(); // Preload images on mount
 
+    // Fetch real data from API
+    fetchBranches();
+    fetchMenuItems();
+
+    // Add user interaction listener for video autoplay
+    const enableVideoAutoplay = () => {
+      hasUserInteracted.value = true;
+      document.removeEventListener('click', enableVideoAutoplay);
+      document.removeEventListener('touchstart', enableVideoAutoplay);
+    };
+
+    document.addEventListener('click', enableVideoAutoplay);
+    document.addEventListener('touchstart', enableVideoAutoplay);
+
     // Add video event listeners after component is mounted
     nextTick(() => {
       if (videoPlayer.value) {
@@ -1550,6 +1763,11 @@
     window.removeEventListener('scroll', handleScroll);
     stopAutoScroll();
     stopReelsAutoScroll();
+
+    // Clear any pending video changes
+    if (videoChangeTimeout) {
+      clearTimeout(videoChangeTimeout);
+    }
   });
 
   const goToLogin = () => {
@@ -1743,7 +1961,74 @@
     heroImages[index].loaded = false;
   };
 
-  // Menu Categories and Items
+  // Fetch real data from API
+  const fetchBranches = async () => {
+    try {
+      isLoadingBranches.value = true;
+      const response = await branchService.getPublicBranches();
+
+      if (response.success) {
+        branches.value = response.data;
+      }
+    } catch (error) {
+      console.error('Error fetching branches:', error);
+      // Fallback to empty array or show error message
+      branches.value = [];
+    } finally {
+      isLoadingBranches.value = false;
+    }
+  };
+
+  const fetchMenuItems = async () => {
+    try {
+      isLoadingMenu.value = true;
+      const response = await menuService.getFeaturedMenuItems(4);
+
+      if (response.success) {
+        const items = Array.isArray(response.data)
+          ? response.data.slice(0, 4)
+          : [];
+        signatureDishes.value = items.map((item) => ({
+          name:
+            item.item_name ||
+            item.menu_item_name ||
+            item.name ||
+            'Unnamed Item',
+          description:
+            item.description ||
+            item.menu_item_description ||
+            'No description available',
+          price: parseFloat(item.selling_price || item.price || 0),
+          image:
+            resolvePublicUrl(item.image_url) ||
+            '/src/assets/crm/default-menu.png',
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching menu items:', error);
+      // Fallback to empty array or show error message
+      signatureDishes.value = [];
+    } finally {
+      isLoadingMenu.value = false;
+    }
+  };
+
+  // Get directions to branch
+  const getDirections = (branch) => {
+    if (branch.latitude && branch.longitude) {
+      // Open in Google Maps with coordinates
+      const url = `https://www.google.com/maps?q=${branch.latitude},${branch.longitude}`;
+      window.open(url, '_blank');
+    } else if (branch.address) {
+      // Open in Google Maps with address
+      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(branch.address)}`;
+      window.open(url, '_blank');
+    } else {
+      alert('Location information not available for this branch.');
+    }
+  };
+
+  // Menu Categories and Items (keeping for potential future use)
   const menuCategories = [
     'All',
     'Sizzling Plates',
@@ -1754,103 +2039,6 @@
   ];
 
   const selectedCategory = ref('All');
-
-  const menuItems = [
-    // Sizzling Plates
-    {
-      name: 'Sizzling Tenderloin Steak',
-      description: 'Tender beef served on a hot sizzling plate',
-      price: 299.99,
-      category: 'Sizzling Plates',
-      image: '/src/assets/crm/Sizzling Tenderloin Steak.png',
-    },
-    {
-      name: 'Sizzling T-Bone Steak',
-      description: 'Classic T-Bone steak with signature sizzle',
-      price: 349.99,
-      category: 'Sizzling Plates',
-      image: '/src/assets/crm/Sizzling T-Bone Steak1.png',
-    },
-    {
-      name: 'Sizzling Porksteak',
-      description: 'Juicy pork steak with special marinade',
-      price: 249.99,
-      category: 'Sizzling Plates',
-      image: '/src/assets/crm/Sizzling Picture.png',
-    },
-
-    // Steaks
-    {
-      name: 'Ribeye Steak',
-      description: 'Premium cut ribeye, perfectly grilled',
-      price: 499.99,
-      category: 'Steaks',
-      image: '/src/assets/crm/T-Bone Steak.png',
-    },
-
-    // Breakfast
-    {
-      name: 'Tapsilog',
-      description: 'Traditional Filipino breakfast with tapa',
-      price: 199.99,
-      category: 'Breakfast',
-      image: '/src/assets/crm/Silog Food.png',
-    },
-
-    // Sides
-    {
-      name: 'Chicken Wings',
-      description: 'Crispy and flavorful chicken wings',
-      price: 179.99,
-      category: 'Sides',
-      image: '/src/assets/crm/Menu 1.png',
-    },
-
-    // Beverages
-    {
-      name: 'Countryside Special Drink',
-      description: 'House special refreshing beverage',
-      price: 99.99,
-      category: 'Beverages',
-      image: '/src/assets/crm/Menu 2.png',
-    },
-  ];
-
-  // Computed property to filter menu items
-  const filteredMenuItems = computed(() => {
-    if (selectedCategory.value === 'All') {
-      return menuItems;
-    }
-    return menuItems.filter((item) => item.category === selectedCategory.value);
-  });
-
-  // Signature dishes for the teaser
-  const signatureDishes = [
-    {
-      name: 'Sizzling Tenderloin Steak',
-      description: 'Tender beef served on a hot sizzling plate',
-      price: 299.99,
-      image: '/src/assets/crm/Sizzling Tenderloin Steak.png',
-    },
-    {
-      name: 'Sizzling T-Bone Steak',
-      description: 'Classic T-Bone steak with signature sizzle',
-      price: 349.99,
-      image: '/src/assets/crm/Sizzling T-Bone Steak1.png',
-    },
-    {
-      name: 'Sizzling Porksteak',
-      description: 'Juicy pork steak with special marinade',
-      price: 249.99,
-      image: '/src/assets/crm/Sizzling Picture.png',
-    },
-    {
-      name: 'Ribeye Steak',
-      description: 'Premium cut ribeye, perfectly grilled',
-      price: 499.99,
-      image: '/src/assets/crm/T-Bone Steak.png',
-    },
-  ];
 </script>
 
 <style scoped>

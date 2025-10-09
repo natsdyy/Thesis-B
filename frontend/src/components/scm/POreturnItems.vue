@@ -17,6 +17,7 @@
     EllipsisVertical,
   } from 'lucide-vue-next';
   import { usePurchaseOrderStore } from '../../stores/purchaseOrderStore.js';
+  import { useAuthStore } from '../../stores/authStore.js';
 
   // Props
   const props = defineProps({
@@ -39,10 +40,22 @@
     'return-processed',
     'return-cancelled',
     'viewReturnDetails',
+    'return-sent-to-supplier',
   ]);
 
   // Store
   const purchaseOrderStore = usePurchaseOrderStore();
+  const authStore = useAuthStore();
+
+  const currentEmployeeName = computed(() => {
+    const u = authStore?.user || {};
+    return (
+      u.name ||
+      `${u.first_name || ''} ${u.last_name || ''}`.trim() ||
+      u.email ||
+      'Employee'
+    );
+  });
 
   // Local state
   const loading = ref(false);
@@ -69,6 +82,45 @@
     setTimeout(() => {
       toast.value.show = false;
     }, 3000);
+  };
+
+  // Confirmation modal state/helpers
+  const confirmDialog = ref({
+    show: false,
+    title: 'Please Confirm',
+    message: '',
+    confirmText: 'OK',
+    cancelText: 'Cancel',
+    _resolver: null,
+  });
+
+  const askConfirm = (message, options = {}) => {
+    return new Promise((resolve) => {
+      confirmDialog.value = {
+        show: true,
+        title: options.title || 'Please Confirm',
+        message,
+        confirmText: options.confirmText || 'OK',
+        cancelText: options.cancelText || 'Cancel',
+        _resolver: resolve,
+      };
+      // Open native <dialog> programmatically in case it's not open via :open binding
+      setTimeout(() => {
+        document.getElementById('po_confirm_modal')?.showModal?.();
+      }, 0);
+    });
+  };
+
+  const confirmYes = () => {
+    confirmDialog.value.show = false;
+    document.getElementById('po_confirm_modal')?.close?.();
+    confirmDialog.value._resolver?.(true);
+  };
+
+  const confirmNo = () => {
+    confirmDialog.value.show = false;
+    document.getElementById('po_confirm_modal')?.close?.();
+    confirmDialog.value._resolver?.(false);
   };
 
   // Helper functions
@@ -107,6 +159,14 @@
       Other: 'text-neutral',
     };
     return colors[reason] || 'text-neutral';
+  };
+
+  // Determine if a return has been marked as sent to supplier
+  const isMarkedForSupplier = (returnItem) => {
+    if (!returnItem) return false;
+    if (returnItem.sent_to_supplier) return true; // backend support if present
+    const text = String(returnItem.notes || '').toLowerCase();
+    return text.includes('sent to supplier');
   };
 
   // Date helpers for filtration
@@ -470,7 +530,22 @@
       return;
     }
 
+    // Enforce supplier sending before completion
+    if (!isMarkedForSupplier(returnItem)) {
+      showToast(
+        'error',
+        'Send this return to the supplier first before completing.'
+      );
+      return;
+    }
+
     try {
+      // Ensure processed_by is set to current employee before completing
+      if (!returnItem.processed_by) {
+        await purchaseOrderStore.updateItemReturn(returnItem.id, {
+          processed_by: currentEmployeeName.value,
+        });
+      }
       await purchaseOrderStore.completeItemReturn(returnItem.id);
       showToast('success', 'Return completed successfully');
       emit('return-processed', returnItem);
@@ -491,6 +566,45 @@
       emit('return-cancelled', returnItem);
     } catch (error) {
       showToast('error', error.message || 'Failed to cancel return');
+    }
+  };
+
+  // NEW: Send return to supplier
+  const sendToSupplier = async (returnItem) => {
+    if (!['Pending', 'Processed'].includes(returnItem.status)) {
+      showToast(
+        'error',
+        'Only pending or processed returns can be sent to supplier'
+      );
+      return;
+    }
+
+    const confirmed = await askConfirm(
+      `Send this return to the supplier?\n\nItem: ${returnItem.item_name}\nQuantity: ${returnItem.return_quantity}\n\nThe supplier will be notified to arrange pickup.`,
+      { title: 'Send to Supplier', confirmText: 'Send', cancelText: 'Cancel' }
+    );
+    if (!confirmed) return;
+
+    try {
+      // Mark as Processed if currently Pending
+      if (returnItem.status === 'Pending') {
+        await purchaseOrderStore.processItemReturn(returnItem.id);
+      }
+
+      // Add note and set processed_by to the current employee
+      await purchaseOrderStore.updateItemReturn(returnItem.id, {
+        notes:
+          (returnItem.notes || '') +
+          '\n[Sent to Supplier for pickup/processing]',
+        sent_to_supplier: true,
+        processed_by: currentEmployeeName.value,
+      });
+
+      showToast('success', 'Return marked for supplier pickup');
+      emit('return-sent-to-supplier', returnItem);
+      await loadItemReturns();
+    } catch (error) {
+      showToast('error', error.message || 'Failed to send return to supplier');
     }
   };
 
@@ -850,18 +964,31 @@
                 </div>
               </td>
               <td>
-                <div class="dropdown dropdown-left">
+                <div class="dropdown dropdown-left dropdown-center">
                   <label tabindex="0" class="btn btn-ghost btn-xs">
                     <EllipsisVertical class="w-4 h-4" />
                   </label>
                   <ul
                     tabindex="0"
-                    class="dropdown-content menu p-2 shadow bg-white rounded-box w-32 border border-black/10"
+                    class="dropdown-content menu p-2 shadow bg-white rounded-box w-48 border border-black/10"
                   >
-                    <!-- Complete Return (Pending or Processed) -->
+                    <!-- Send to Supplier (Pending or Processed) -->
                     <li
                       v-if="
                         ['Pending', 'Processed'].includes(returnItem.status)
+                      "
+                    >
+                      <a @click="sendToSupplier(returnItem)" class="text-info">
+                        <Package class="w-4 h-4" />
+                        Send to Supplier
+                      </a>
+                    </li>
+
+                    <!-- Complete Return (Pending or Processed) -->
+                    <li
+                      v-if="
+                        ['Pending', 'Processed'].includes(returnItem.status) &&
+                        isMarkedForSupplier(returnItem)
                       "
                     >
                       <a
@@ -880,7 +1007,7 @@
                       </a>
                     </li>
 
-                    <!-- Add a “View Receipt” action for completed returns -->
+                    <!-- Add a "View Receipt" action for completed returns -->
                     <li v-if="returnItem.status === 'Completed'">
                       <a
                         @click="openReturnReceipt(returnItem)"
@@ -949,6 +1076,30 @@
       <span>{{ toast.message }}</span>
     </div>
   </div>
+
+  <!-- Confirmation Modal -->
+  <dialog id="po_confirm_modal" class="modal" :open="confirmDialog.show">
+    <div class="modal-box bg-accentColor text-black/70 shadow-lg max-w-md">
+      <h3 class="font-bold text-lg text-black mb-2">
+        {{ confirmDialog.title }}
+      </h3>
+      <p class="whitespace-pre-line text-sm">{{ confirmDialog.message }}</p>
+      <div class="modal-action">
+        <button
+          class="btn btn-sm bg-gray-200 text-black/60 font-thin border-none hover:bg-gray-300"
+          @click="confirmNo"
+        >
+          {{ confirmDialog.cancelText }}
+        </button>
+        <button
+          class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
+          @click="confirmYes"
+        >
+          {{ confirmDialog.confirmText }}
+        </button>
+      </div>
+    </div>
+  </dialog>
 
   <!-- NEW: Return Receipt Modal -->
   <dialog id="return_receipt_modal" class="modal">

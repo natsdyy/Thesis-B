@@ -37,6 +37,15 @@ class POSModel {
           "mi.tags",
           "mi.sequence_order",
           "mi.image_url",
+          // Promo discount fields
+          "mi.has_promo_discount",
+          "mi.promo_minimum_quantity",
+          "mi.promo_discount_percentage",
+          "mi.promo_discount_amount",
+          "mi.promo_discount_type",
+          "mi.promo_description",
+          "mi.promo_start_date",
+          "mi.promo_end_date",
           db.raw("COALESCE(pi.available_quantity, 0) as production_stock"),
           db.raw("'production' as item_type")
         )
@@ -167,15 +176,27 @@ class POSModel {
       const paginatedResults = combinedResults.slice(startIndex, endIndex);
 
       // Normalize the results to ensure consistent field names
-      const normalizedResults = paginatedResults.map((item) => ({
-        ...item,
-        menu_item_name: item.item_name || item.menu_item_name,
-        stock_quantity: item.branch_stock || item.production_stock || 0,
-        is_expired: item.branch_expiry_date
-          ? new Date(item.branch_expiry_date).toISOString().split("T")[0] <=
-            new Date().toISOString().split("T")[0]
-          : false,
-      }));
+      const normalizedResults = paginatedResults.map((item) => {
+        const normalizedItem = {
+          ...item,
+          menu_item_name: item.item_name || item.menu_item_name,
+          stock_quantity: item.branch_stock || item.production_stock || 0,
+          is_expired: item.branch_expiry_date
+            ? new Date(item.branch_expiry_date).toISOString().split("T")[0] <=
+              new Date().toISOString().split("T")[0]
+            : false,
+        };
+
+        // Calculate promo_info for production items only (SCM items don't have promo)
+        if (item.item_type === "production") {
+          const MenuItem = require("./MenuItem");
+          normalizedItem.promo_info = MenuItem.calculatePromoInfo(item);
+        } else {
+          normalizedItem.promo_info = null;
+        }
+
+        return normalizedItem;
+      });
 
       return { rows: normalizedResults, total };
     } catch (error) {

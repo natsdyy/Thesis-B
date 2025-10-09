@@ -25,6 +25,8 @@ const supplyRequestRoutes = require("./routes/supplyRequest");
 const budgetReleaseRoutes = require("./routes/budgetRelease");
 const purchaseOrderRoutes = require("./routes/purchaseOrders");
 const supplierRoutes = require("./routes/suppliers");
+const supplierAuthRoutes = require("./routes/supplierAuth");
+const supplierProductsRoutes = require("./routes/supplierProducts");
 const itemReturnRoutes = require("./routes/itemReturns");
 const supplierRatingsRoutes = require("./routes/supplierRatings");
 const inventoryRoutes = require("./routes/inventory");
@@ -49,6 +51,8 @@ const posRoutes = require("./routes/pos");
 const overtimeRoutes = require("./routes/overtime");
 const leaveRoutes = require("./routes/leave");
 const financeRoutes = require("./routes/finance");
+const cashMovementRoutes = require("./routes/cashMovements");
+const financeBalanceRoutes = require("./routes/financeBalances");
 
 const app = express();
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 5000;
@@ -144,6 +148,8 @@ app.use("/api/supply-requests", supplyRequestRoutes);
 app.use("/api/budget-releases", budgetReleaseRoutes);
 app.use("/api/purchase-orders", purchaseOrderRoutes);
 app.use("/api/suppliers", supplierRoutes);
+app.use("/api/supplier-auth", supplierAuthRoutes);
+app.use("/api/supplier-products", supplierProductsRoutes);
 app.use("/api/item-returns", itemReturnRoutes);
 app.use("/api/supplier-ratings", supplierRatingsRoutes);
 app.use("/api/inventory", inventoryRoutes);
@@ -167,6 +173,8 @@ app.use("/api/pos", posRoutes);
 app.use("/api/overtime", overtimeRoutes);
 app.use("/api/leave", leaveRoutes);
 app.use("/api/finance", financeRoutes);
+app.use("/api/cash-movements", cashMovementRoutes);
+app.use("/api/finance-balances", financeBalanceRoutes);
 
 // Auto-expire job
 async function autoExpireJob() {

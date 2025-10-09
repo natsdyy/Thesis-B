@@ -505,6 +505,8 @@
       closeConfirmModal();
 
       let newEmployee;
+      let emailStatus = { sent: false, error: null };
+
       if (photoFile.value) {
         const formData = new FormData();
         Object.entries(employeeForm.value).forEach(([key, val]) => {
@@ -513,7 +515,9 @@
         formData.append('photo', photoFile.value);
 
         if (typeof employeeStore.createEmployeeWithPhoto === 'function') {
-          newEmployee = await employeeStore.createEmployeeWithPhoto(formData);
+          const result = await employeeStore.createEmployeeWithPhoto(formData);
+          newEmployee = result;
+          emailStatus = result.emailStatus || { sent: false, error: null };
         } else {
           // Fallback direct multipart request if store method isn't available (HMR/desync safety)
           const res = await fetch(`${apiConfig.baseURL}/employees/upload`, {
@@ -530,15 +534,36 @@
             );
           }
           newEmployee = data.data;
+          emailStatus = data.emailStatus || { sent: false, error: null };
         }
       } else {
-        newEmployee = await employeeStore.createEmployee(employeeForm.value);
+        const result = await employeeStore.createEmployee(employeeForm.value);
+        newEmployee = result;
+        emailStatus = result.emailStatus || { sent: false, error: null };
       }
 
-      showSuccess(
-        'Employee added successfully! Welcome email has been sent to the employee.',
-        'Employee Created Successfully'
-      );
+      // Show appropriate success message based on email status
+      let successMessage = 'Employee added successfully!';
+      if (emailStatus.sent) {
+        successMessage += ' Welcome email has been sent to the employee.';
+      } else if (emailStatus.error) {
+        successMessage +=
+          ' Note: Welcome email could not be sent due to email service issues.';
+        console.warn('Email sending failed:', emailStatus.error);
+
+        // Show additional info for production email issues
+        if (
+          emailStatus.error.includes('production') ||
+          emailStatus.error.includes('SMTP')
+        ) {
+          showWarning(
+            'Email service is currently unavailable in production. The employee has been created successfully.',
+            'Email Service Notice'
+          );
+        }
+      }
+
+      showSuccess(successMessage, 'Employee Created Successfully');
       openSuccessModal(newEmployee);
 
       // Reset form
@@ -1045,7 +1070,7 @@
                   >Age <span class="text-red-500">*</span></span
                 >
                 <span class="text-xs text-gray-500 ml-2"
-                  >(Auto-calculated from birthday)</span
+                  >(Auto-calculated)</span
                 >
               </label>
               <input

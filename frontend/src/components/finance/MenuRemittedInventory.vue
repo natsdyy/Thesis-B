@@ -96,12 +96,43 @@
       list.forEach((it) => {
         const key = Number(it.menu_item_id || it.id);
         const name = it.menu_item_name || it.item_name || `Item ${key}`;
-        if (!unique.has(key)) unique.set(key, { id: key, name });
+
+        // Filter out Item 0 and SCM items from products list
+        const isProductionItem =
+          key !== 0 &&
+          key !== '0' &&
+          name !== 'Item 0' &&
+          name !== 'item 0' &&
+          name !== 'Item0' &&
+          name !== 'item0' &&
+          name !== '0' &&
+          it.item_type === 'production' &&
+          it.item_type !== 'scm' &&
+          it.category !== 'SCM' &&
+          it.category !== 'scm' &&
+          it.category !== 'Beverage' &&
+          it.category !== 'beverage' &&
+          !it.category?.toLowerCase().includes('beverage') &&
+          !name?.toLowerCase().includes('drink') &&
+          !name?.toLowerCase().includes('juice') &&
+          !name?.toLowerCase().includes('water') &&
+          !name?.toLowerCase().includes('coffee') &&
+          !name?.toLowerCase().includes('tea') &&
+          !name?.toLowerCase().includes('soda') &&
+          !name?.toLowerCase().includes('coke') &&
+          !name?.toLowerCase().includes('pepsi') &&
+          !name?.toLowerCase().includes('sprite') &&
+          !name?.toLowerCase().includes('item 0') &&
+          !name?.toLowerCase().includes('item0');
+
+        if (isProductionItem && !unique.has(key)) {
+          unique.set(key, { id: key, name });
+        }
       });
       const arr = Array.from(unique.values()).sort((a, b) =>
         String(a.name).localeCompare(String(b.name))
       );
-      products.value = [{ id: 'all', name: 'All Products' }, ...arr];
+      products.value = [{ id: 'all', name: 'All Production Items' }, ...arr];
       if (
         !products.value.find((p) => p.id === selectedProduct.value) &&
         selectedProduct.value !== 'all'
@@ -152,6 +183,7 @@
           date_to: endDate.toISOString(),
         });
         const orders = Array.isArray(hist?.data) ? hist.data : [];
+
         const remittedOnly = orders.filter((o) => {
           const hasRemit = o && o.remittance_id != null;
           const status = String(o?.remittance_status || '').toLowerCase();
@@ -162,11 +194,43 @@
         const byItem = new Map();
         remittedOnly.forEach((o) => {
           const items = Array.isArray(o.items) ? o.items : [];
-          const filtered = items.filter((it) =>
-            selectedProduct.value === 'all'
-              ? true
-              : Number(it.menu_item_id) === Number(selectedProduct.value)
-          );
+
+          const filtered = items.filter((it) => {
+            // First check if it matches the selected product filter
+            const matchesProduct =
+              selectedProduct.value === 'all'
+                ? true
+                : Number(it.menu_item_id) === Number(selectedProduct.value);
+
+            // Then apply production item filtering - exclude Item 0 and SCM items
+            // Note: POS order items don't have item_type/category fields, so we filter by name patterns
+            const isProductionItem =
+              it.menu_item_id !== 0 &&
+              it.menu_item_id !== '0' &&
+              it.item_name !== 'Item 0' &&
+              it.item_name !== 'item 0' &&
+              it.item_name !== 'Item0' &&
+              it.item_name !== 'item0' &&
+              it.item_name !== '0' &&
+              it.item_name !== null &&
+              it.item_name !== undefined &&
+              !it.item_name?.toLowerCase().includes('drink') &&
+              !it.item_name?.toLowerCase().includes('juice') &&
+              !it.item_name?.toLowerCase().includes('water') &&
+              !it.item_name?.toLowerCase().includes('coffee') &&
+              !it.item_name?.toLowerCase().includes('tea') &&
+              !it.item_name?.toLowerCase().includes('soda') &&
+              !it.item_name?.toLowerCase().includes('coke') &&
+              !it.item_name?.toLowerCase().includes('pepsi') &&
+              !it.item_name?.toLowerCase().includes('sprite') &&
+              !it.item_name?.toLowerCase().includes('mineral water') &&
+              !it.item_name?.toLowerCase().includes('bottles') &&
+              !it.item_name?.toLowerCase().includes('item 0') &&
+              !it.item_name?.toLowerCase().includes('item0');
+
+            return matchesProduct && isProductionItem;
+          });
+
           filtered.forEach((it) => {
             const key = Number(it.menu_item_id);
             if (!byItem.has(key))
@@ -263,7 +327,10 @@
       currentPage.value = 1;
 
       // Build trend arrays (oldest -> newest)
-      const labelsSorted = Array.from(perDayTotals.keys()).sort();
+      const labelsSorted = Array.from(perDayTotals.keys()).sort((a, b) => {
+        // Sort dates chronologically, not alphabetically
+        return new Date(a) - new Date(b);
+      });
       trendLabels.value = labelsSorted;
       trendData.value = labelsSorted.map((d) =>
         Math.round(Number(perDayTotals.get(d) || 0))
@@ -291,6 +358,7 @@
       await generateMenuForecast?.();
       await generateAllMenuForecasts?.();
       await buildDSSRecommendations();
+      await generatePromoSuggestions();
     } finally {
       loading.value = false;
     }
@@ -509,6 +577,14 @@
 
   // ---------------- DSS Recommendations ----------------
   const recommendations = ref([]);
+
+  // ---------------- Intelligent Promo Suggestions ----------------
+  const promoSuggestions = ref([]);
+  const promoLoading = ref(false);
+  const promoSuggestionsCurrentPage = ref(1);
+  const promoSuggestionsItemsPerPage = ref(5);
+  const promoSuggestionsViewMode = ref('card'); // 'card' or 'list'
+
   const getCurrentPhilippineSeason = () => {
     const m = getCurrentPhilippineTime().getMonth() + 1; // 1-12
     if (m >= 3 && m <= 5) return 'summer';
@@ -574,13 +650,13 @@
         return Math.max(0, Math.round((now - last) / (1000 * 60 * 60 * 24)));
       })();
 
-      // Tunable thresholds
+      // Comprehensive analysis thresholds
       const isPopularAllSeason =
-        tags.includes('popular') &&
-        tags.includes('all-season') &&
-        dailyAvg >= 0.5;
+        dailyAvg >= 2.0 && // High daily average (top 20% of items)
+        dailyAvg >= globalAvg * 1.5; // Significantly above global average
       const isPopularSeason =
-        tags.includes('popular') && tags.includes(season) && dailyAvg >= 0.4;
+        dailyAvg >= 1.5 && // Good daily average
+        dailyAvg >= globalAvg * 1.2; // Above global average
       const isSignature = tags.includes('signature');
       const isLowDemand = dailyAvg < Math.max(0.3, 0.5 * globalAvg);
       const isOverstock =
@@ -589,7 +665,61 @@
         dailyAvg < 1 &&
         daysSinceActivity >= 3;
 
+      // Additional comprehensive analysis using actual available tags
+      const isHighGrowth = dailyAvg >= globalAvg * 1.3 && dailyAvg >= 1.0;
+      const isDeclining = dailyAvg < globalAvg * 0.7 && dailyAvg > 0;
+      const isStagnant = dailyAvg >= 0.1 && dailyAvg <= globalAvg * 0.8;
+      const isOutOfStock = availableQty <= 0 && dailyAvg > 0;
+      const isUnderstocked = availableQty > 0 && availableQty < dailyAvg * 3;
+      const isWellStocked = availableQty >= dailyAvg * 7;
+      const isNewItem =
+        tags.includes('new') || (daysSinceActivity <= 7 && dailyAvg > 0);
+      const isLowDemandTag = tags.includes('low-demand');
+      const isPopularTag = tags.includes('popular');
+
+      // Seasonality tags
+      const isSummer = tags.includes('summer');
+      const isRainy = tags.includes('rainy');
+      const isChristmas = tags.includes('christmas');
+      const isAllSeason = tags.includes('all-season');
+      const isSeasonalPeak =
+        (isSummer || isRainy || isChristmas) && dailyAvg >= globalAvg;
+
+      // Protein/Category tags
+      const isPork = tags.includes('pork');
+      const isBeef = tags.includes('beef');
+      const isChicken = tags.includes('chicken');
+      const isFish = tags.includes('fish');
+      const isVegetarian = tags.includes('vegetarian');
+
+      // Special tags
+      const isGroupMeal = tags.includes('group-meal');
+      const isQuickServe = tags.includes('quick-serve');
+
+      // Meal time detection based on name patterns
+      const isBreakfast =
+        name.toLowerCase().includes('silog') ||
+        name.toLowerCase().includes('breakfast');
+      const isLunch =
+        name.toLowerCase().includes('lunch') ||
+        name.toLowerCase().includes('main');
+      const isDinner =
+        name.toLowerCase().includes('dinner') ||
+        name.toLowerCase().includes('heavy');
+
       const best = chooseBest([
+        // Critical Issues (Priority 1-3)
+        isOutOfStock
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Out of Stock',
+              action: 'URGENT: Restock immediately',
+              note: `Item is out of stock but has demand (${dailyAvg.toFixed(1)} avg/day). Lost sales opportunity.`,
+              priority: 1,
+            }
+          : null,
         isOverstock
           ? {
               itemId,
@@ -598,7 +728,31 @@
               rule: 'Overstock Risk',
               action: 'Run promo to clear stock',
               note: `Available ${availableQty} > 40% of produced ${totalProduced} with slow sales; last activity ${daysSinceActivity} day(s) ago.`,
-              priority: 1,
+              priority: 2,
+            }
+          : null,
+        isUnderstocked
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Understocked',
+              action: 'Increase production to meet demand',
+              note: `Only ${availableQty} units available for ${dailyAvg.toFixed(1)} daily demand. Risk of stockout in ${Math.ceil(availableQty / dailyAvg)} days.`,
+              priority: 3,
+            }
+          : null,
+
+        // Performance Issues (Priority 4-6)
+        isDeclining
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Declining Performance',
+              action: 'Investigate and revitalize',
+              note: `Sales declining (${dailyAvg.toFixed(1)} avg/day vs ${globalAvg.toFixed(1)} global avg). Check quality, pricing, or marketing.`,
+              priority: 4,
             }
           : null,
         isLowDemand
@@ -608,8 +762,229 @@
               branchName: branchLabel,
               rule: 'Low-Demand',
               action: 'Consider promo/rebranding or phase-out',
-              note: 'Low sales in recent period; evaluate marketing or removal.',
-              priority: 2,
+              note: `Very low sales (${dailyAvg.toFixed(1)} avg/day). Evaluate marketing strategy or consider removal.`,
+              priority: 5,
+            }
+          : null,
+        isStagnant
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Stagnant Sales',
+              action: 'Boost marketing or adjust strategy',
+              note: `Consistent but low sales (${dailyAvg.toFixed(1)} avg/day). Consider promotional campaigns or menu positioning.`,
+              priority: 6,
+            }
+          : null,
+
+        // Growth Opportunities (Priority 7-9)
+        isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'High Growth Potential',
+              action: 'Scale up production and marketing',
+              note: `Strong performance (${dailyAvg.toFixed(1)} avg/day). Consider increasing production capacity and marketing investment.`,
+              priority: 7,
+            }
+          : null,
+        isNewItem
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'New Item Launch',
+              action: 'Monitor and promote actively',
+              note: `New item showing promise (${dailyAvg.toFixed(1)} avg/day). Focus on customer feedback and marketing.`,
+              priority: 8,
+            }
+          : null,
+        isSeasonalPeak
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: `Seasonal Peak (${season})`,
+              action: 'Maximize seasonal opportunity',
+              note: `Peak season performance (${dailyAvg.toFixed(1)} avg/day). Increase production and marketing during this period.`,
+              priority: 9,
+            }
+          : null,
+
+        // Category-Specific Recommendations (Priority 10-15)
+        isBreakfast && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Breakfast Champion',
+              action: 'Expand breakfast menu presence',
+              note: `Top breakfast performer (${dailyAvg.toFixed(1)} avg/day). Consider breakfast combo deals or early bird promotions.`,
+              priority: 10,
+            }
+          : null,
+        isLunch && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Lunch Leader',
+              action: 'Optimize lunch service',
+              note: `Strong lunch performance (${dailyAvg.toFixed(1)} avg/day). Focus on quick service and lunch combos.`,
+              priority: 11,
+            }
+          : null,
+        isDinner && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Dinner Star',
+              action: 'Enhance dinner experience',
+              note: `Excellent dinner performance (${dailyAvg.toFixed(1)} avg/day). Consider premium presentation and dinner specials.`,
+              priority: 12,
+            }
+          : null,
+
+        // Protein-Specific Recommendations (Priority 13-17)
+        isPork && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Pork Powerhouse',
+              action: 'Leverage pork popularity',
+              note: `Strong pork item performance (${dailyAvg.toFixed(1)} avg/day). Consider pork combo meals and family packs.`,
+              priority: 13,
+            }
+          : null,
+        isBeef && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Beef Champion',
+              action: 'Premium beef positioning',
+              note: `Excellent beef item performance (${dailyAvg.toFixed(1)} avg/day). Focus on quality and premium pricing.`,
+              priority: 14,
+            }
+          : null,
+        isChicken && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Chicken Star',
+              action: 'Expand chicken offerings',
+              note: `Top chicken performer (${dailyAvg.toFixed(1)} avg/day). Consider chicken variations and healthy options.`,
+              priority: 15,
+            }
+          : null,
+        isFish && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Fish Favorite',
+              action: 'Promote healthy fish options',
+              note: `Strong fish item performance (${dailyAvg.toFixed(1)} avg/day). Emphasize health benefits and freshness.`,
+              priority: 16,
+            }
+          : null,
+        isVegetarian && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Vegetarian Victory',
+              action: 'Cater to health-conscious customers',
+              note: `Growing vegetarian demand (${dailyAvg.toFixed(1)} avg/day). Expand plant-based menu options.`,
+              priority: 17,
+            }
+          : null,
+
+        // Special Category Recommendations (Priority 18-22)
+        isGroupMeal && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Group Meal Success',
+              action: 'Promote family/group dining',
+              note: `Popular group meal option (${dailyAvg.toFixed(1)} avg/day). Focus on family deals and bulk orders.`,
+              priority: 18,
+            }
+          : null,
+        isQuickServe && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Quick-Serve Winner',
+              action: 'Streamline operations',
+              note: `Fast-moving quick-serve item (${dailyAvg.toFixed(1)} avg/day). Optimize preparation time and service efficiency.`,
+              priority: 19,
+            }
+          : null,
+        isWellStocked && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Well-Managed Stock',
+              action: 'Maintain current strategy',
+              note: `Good stock levels (${availableQty} units) with strong demand (${dailyAvg.toFixed(1)} avg/day). Current strategy is working well.`,
+              priority: 20,
+            }
+          : null,
+
+        // Tag-Based Performance Analysis (Priority 21-25)
+        isLowDemandTag && isLowDemand
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Tagged Low-Demand Confirmed',
+              action: 'Consider removal or major rebranding',
+              note: `Item correctly tagged as low-demand (${dailyAvg.toFixed(1)} avg/day). Consider phase-out or complete menu redesign.`,
+              priority: 21,
+            }
+          : null,
+        isPopularTag && !isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Popular Tag Mismatch',
+              action: 'Review and update tags',
+              note: `Tagged as popular but underperforming (${dailyAvg.toFixed(1)} avg/day). Update tags to reflect actual performance.`,
+              priority: 22,
+            }
+          : null,
+        isNewItem && isHighGrowth
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'New Item Success',
+              action: 'Scale up and promote',
+              note: `New item exceeding expectations (${dailyAvg.toFixed(1)} avg/day). Increase production and marketing investment.`,
+              priority: 23,
+            }
+          : null,
+
+        // Legacy Categories (Priority 24-26)
+        isPopularAllSeason
+          ? {
+              itemId,
+              name,
+              branchName: branchLabel,
+              rule: 'Popular & All-Season',
+              action: 'Always stock high',
+              note: `Top seller all year (${dailyAvg.toFixed(1)} avg/day) — maintain strong stock levels.`,
+              priority: 24,
             }
           : null,
         isPopularSeason
@@ -619,19 +994,8 @@
               branchName: branchLabel,
               rule: `Popular in ${season}`,
               action: 'Boost production (seasonal peak)',
-              note: `Increase output during ${season} season to meet demand.`,
-              priority: 3,
-            }
-          : null,
-        isPopularAllSeason
-          ? {
-              itemId,
-              name,
-              branchName: branchLabel,
-              rule: 'Popular & All-Season',
-              action: 'Always stock high',
-              note: 'Top seller all year — maintain strong stock levels.',
-              priority: 4,
+              note: `Seasonal favorite (${dailyAvg.toFixed(1)} avg/day). Increase output during ${season} season.`,
+              priority: 25,
             }
           : null,
         isSignature
@@ -639,10 +1003,10 @@
               itemId,
               name,
               branchName: branchLabel,
-              rule: 'Signature',
+              rule: 'Signature Item',
               action: 'Always available; keep minimum stock',
-              note: 'Do not remove from menu; ensure baseline inventory.',
-              priority: 5,
+              note: `Brand signature item. Do not remove from menu; ensure baseline inventory.`,
+              priority: 26,
             }
           : null,
       ]);
@@ -657,6 +1021,191 @@
     recommendations.value = out;
   };
 
+  // Generate intelligent promo suggestions based on sales trends and inventory levels
+  const generatePromoSuggestions = async () => {
+    promoLoading.value = true;
+    try {
+      const suggestions = [];
+
+      if (!rows.value?.length) {
+        promoSuggestions.value = [];
+        return;
+      }
+
+      const branches =
+        selectedBranch.value === 'all'
+          ? (branchStore.activeBranches || []).map((b) => b.id)
+          : [parseInt(selectedBranch.value)];
+
+      // Track unique suggestions to avoid duplicates
+      const uniqueSuggestions = new Set();
+
+      for (const branchId of branches) {
+        const branchResults = rows.value.filter((r) => r.branchId === branchId);
+
+        for (const item of branchResults) {
+          const itemSuggestions = [];
+          const inv = inventoryByItemId.value.get(item.itemId) || {};
+          const availableQty = Number(inv.available_quantity || 0);
+          const totalProduced = Number(inv.total_produced || 0);
+          const dailyConsumption = Number(item.dailyAvgQty || 0);
+          const daysSinceActivity = (() => {
+            if (!item.lastActivity) return Infinity;
+            const now = getCurrentPhilippineTime();
+            const last = new Date(item.lastActivity);
+            return Math.max(
+              0,
+              Math.round((now - last) / (1000 * 60 * 60 * 24))
+            );
+          })();
+
+          // 1. High Stock + Low Demand = Clearance Promo
+          if (availableQty > totalProduced * 0.4 && dailyConsumption < 0.5) {
+            itemSuggestions.push({
+              type: 'clearance',
+              priority: 'high',
+              title: 'Clearance Sale Opportunity',
+              reason: `High stock (${availableQty} units) with low daily sales (${dailyConsumption.toFixed(1)} units/day)`,
+              recommendation: `Run a 20-30% clearance promo to reduce excess inventory`,
+              discountType: 'percentage',
+              discountValue: 25,
+              duration: '1-2 weeks',
+              expectedImpact: 'Reduce stock by 40-60%',
+              icon: 'fa-solid fa-tags',
+              color: 'text-warning',
+            });
+          }
+
+          // 2. Low Demand + Near Expiry = Urgent Promo
+          const daysUntilStockout =
+            availableQty > 0
+              ? Math.ceil(availableQty / Math.max(dailyConsumption, 0.1))
+              : 0;
+          if (daysUntilStockout <= 5 && dailyConsumption < 1.0) {
+            itemSuggestions.push({
+              type: 'urgent',
+              priority: 'critical',
+              title: 'Urgent Stock Clearance',
+              reason: `Only ${daysUntilStockout} days until stockout with low demand`,
+              recommendation: `Launch immediate 15-25% discount to boost sales`,
+              discountType: 'percentage',
+              discountValue: 20,
+              duration: '3-5 days',
+              expectedImpact: `Clear ${Math.min(availableQty * 0.8, availableQty)} units`,
+              icon: 'fa-solid fa-exclamation-triangle',
+              color: 'text-error',
+            });
+          }
+
+          // 3. Declining Sales Trend = Boost Promo
+          if (dailyConsumption < 0.3 && availableQty > 10) {
+            itemSuggestions.push({
+              type: 'boost',
+              priority: 'medium',
+              title: 'Sales Boost Campaign',
+              reason: `Declining sales trend (${dailyConsumption.toFixed(1)} units/day) with adequate stock`,
+              recommendation: `Run a 10-15% promotional campaign to stimulate demand`,
+              discountType: 'percentage',
+              discountValue: 12,
+              duration: '1-2 weeks',
+              expectedImpact: 'Increase daily sales by 50-100%',
+              icon: 'fa-solid fa-chart-line',
+              color: 'text-info',
+            });
+          }
+
+          // 4. Seasonal/Weather-based Promo Suggestions
+          const currentMonth = new Date().getMonth() + 1;
+          const isSummer = currentMonth >= 3 && currentMonth <= 5;
+          const isRainy = currentMonth >= 6 && currentMonth <= 10;
+          const isChristmas = currentMonth >= 11 || currentMonth <= 1;
+
+          if (isSummer && dailyConsumption < 0.8) {
+            itemSuggestions.push({
+              type: 'seasonal',
+              priority: 'medium',
+              title: 'Summer Promotion',
+              reason: 'Summer season with lower demand patterns',
+              recommendation: `Launch "Summer Special" with 10-15% discount`,
+              discountType: 'percentage',
+              discountValue: 12,
+              duration: '2-3 weeks',
+              expectedImpact: 'Maintain sales during low season',
+              icon: 'fa-solid fa-sun',
+              color: 'text-warning',
+            });
+          }
+
+          if (isChristmas && dailyConsumption > 1.5) {
+            itemSuggestions.push({
+              type: 'seasonal',
+              priority: 'high',
+              title: 'Holiday Bundle Promotion',
+              reason: 'High demand during Christmas season',
+              recommendation: `Create bundle deals or volume discounts`,
+              discountType: 'percentage',
+              discountValue: 15,
+              duration: '1 month',
+              expectedImpact: 'Maximize holiday sales revenue',
+              icon: 'fa-solid fa-gift',
+              color: 'text-success',
+            });
+          }
+
+          // 5. High Stock Turnover = Volume Promo
+          if (dailyConsumption > 2.0 && availableQty > 20) {
+            itemSuggestions.push({
+              type: 'volume',
+              priority: 'medium',
+              title: 'Volume Discount Promotion',
+              reason: `High demand (${dailyConsumption.toFixed(1)} units/day) with good stock levels`,
+              recommendation: `Offer "Buy More, Save More" volume discounts`,
+              discountType: 'percentage',
+              discountValue: 10,
+              duration: '2 weeks',
+              expectedImpact: 'Increase average order value by 30%',
+              icon: 'fa-solid fa-shopping-cart',
+              color: 'text-primaryColor',
+            });
+          }
+
+          // Add suggestions to the main array, but only if they're unique
+          itemSuggestions.forEach((suggestion) => {
+            const suggestionKey = `${suggestion.type}-${item.branchId}-${item.itemId}`;
+
+            if (!uniqueSuggestions.has(suggestionKey)) {
+              uniqueSuggestions.add(suggestionKey);
+              suggestions.push({
+                ...suggestion,
+                branchId: item.branchId,
+                branchName: item.branchName,
+                itemId: item.itemId,
+                itemName: item.itemName,
+                currentStock: availableQty,
+                dailyConsumption: dailyConsumption,
+                unit: 'units',
+                daysUntilStockout: daysUntilStockout,
+              });
+            }
+          });
+        }
+      }
+
+      // Sort suggestions by priority and type
+      suggestions.sort((a, b) => {
+        const priorityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
+        return priorityOrder[b.priority] - priorityOrder[a.priority];
+      });
+
+      promoSuggestions.value = suggestions;
+    } catch (error) {
+      console.error('Error generating promo suggestions:', error);
+      promoSuggestions.value = [];
+    } finally {
+      promoLoading.value = false;
+    }
+  };
+
   const totalPages = computed(() =>
     Math.max(
       1,
@@ -666,6 +1215,26 @@
   const pagedRows = computed(() => {
     const start = (currentPage.value - 1) * itemsPerPage.value;
     return rows.value.slice(start, start + itemsPerPage.value);
+  });
+
+  // Pagination for promo suggestions
+  const promoSuggestionsTotalPages = computed(() =>
+    Math.max(
+      1,
+      Math.ceil(
+        (promoSuggestions.value.length || 0) /
+          promoSuggestionsItemsPerPage.value
+      )
+    )
+  );
+  const pagedPromoSuggestions = computed(() => {
+    const start =
+      (promoSuggestionsCurrentPage.value - 1) *
+      promoSuggestionsItemsPerPage.value;
+    return promoSuggestions.value.slice(
+      start,
+      start + promoSuggestionsItemsPerPage.value
+    );
   });
 
   onMounted(async () => {
@@ -841,7 +1410,6 @@
             </div>
           </div>
 
-
           <div class="overflow-x-auto">
             <table class="table w-full">
               <thead>
@@ -925,8 +1493,6 @@
           />
         </div>
         <div v-else>
-
-
           <BarChartJS
             :labels="perMenuLabels"
             :data="perMenuData"
@@ -977,6 +1543,406 @@
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Intelligent Promo Suggestions -->
+    <div class="card bg-white shadow border border-black/10">
+      <div class="card-body">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-sm font-medium text-gray-700">
+            <font-awesome-icon icon="fa-solid fa-bullseye" />
+            Intelligent Promo Suggestions
+          </h3>
+          <div class="flex items-center gap-2">
+            <div class="badge badge-sm bg-primaryColor/10 text-primaryColor">
+              {{ promoSuggestions.length }} Suggestions
+            </div>
+            <button
+              class="btn btn-xs bg-gray-100 text-gray-800 hover:bg-gray-200"
+              @click="generatePromoSuggestions"
+              :disabled="promoLoading"
+            >
+              <font-awesome-icon
+                icon="fa-solid fa-sync-alt"
+                :class="{ 'animate-spin': promoLoading }"
+                class="mr-1"
+              />
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <!-- View Controls -->
+        <div
+          v-if="promoSuggestions.length > 0"
+          class="flex items-center justify-between mb-4"
+        >
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-gray-600">View:</span>
+            <div class="btn-group btn-group-xs gap-2 flex flex-row">
+              <div class="">
+                <button
+                  class="btn btn-xs font-thin"
+                  :class="
+                    promoSuggestionsViewMode === 'card'
+                      ? 'bg-primaryColor text-white'
+                      : 'bg-gray-100 text-gray-800'
+                  "
+                  @click="promoSuggestionsViewMode = 'card'"
+                >
+                  <font-awesome-icon icon="fa-solid fa-th" class="mr-1" />
+                  Cards
+                </button>
+              </div>
+              <div class="">
+                <button
+                  class="btn btn-xs font-thin"
+                  :class="
+                    promoSuggestionsViewMode === 'list'
+                      ? 'bg-primaryColor text-white'
+                      : 'bg-gray-100 text-gray-800'
+                  "
+                  @click="promoSuggestionsViewMode = 'list'"
+                >
+                  <font-awesome-icon icon="fa-solid fa-list" class="mr-1" />
+                  List
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-gray-600">Items per page:</span>
+            <select
+              class="select select-bordered select-xs"
+              :value="promoSuggestionsItemsPerPage"
+              @change="
+                promoSuggestionsItemsPerPage = parseInt($event.target.value);
+                promoSuggestionsCurrentPage = 1;
+              "
+            >
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="20">20</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Promo Suggestions Display -->
+        <div v-if="promoSuggestions.length > 0">
+          <!-- Card View -->
+          <div
+            v-if="promoSuggestionsViewMode === 'card'"
+            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+          >
+            <div
+              v-for="suggestion in pagedPromoSuggestions"
+              :key="`${suggestion.branchId}-${suggestion.itemId}-${suggestion.type}`"
+              class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-4 border-l-4"
+              :class="{
+                'border-error': suggestion.priority === 'critical',
+                'border-warning': suggestion.priority === 'high',
+                'border-primaryColor': suggestion.priority === 'medium',
+                'border-secondary': suggestion.priority === 'low',
+              }"
+            >
+              <!-- Header -->
+              <div class="flex items-start justify-between mb-3">
+                <div class="flex items-center gap-2">
+                  <font-awesome-icon
+                    :icon="suggestion.icon"
+                    :class="suggestion.color"
+                    class="text-lg"
+                  />
+                  <div>
+                    <h4 class="text-sm font-semibold text-gray-800">
+                      {{ suggestion.title }}
+                    </h4>
+                    <div class="text-xs text-gray-600">
+                      {{ suggestion.branchName }} • {{ suggestion.itemName }}
+                    </div>
+                  </div>
+                </div>
+                <div
+                  class="badge badge-xs"
+                  :class="{
+                    'bg-error/10 text-error':
+                      suggestion.priority === 'critical',
+                    'bg-warning/10 text-warning':
+                      suggestion.priority === 'high',
+                    'bg-primaryColor/10 text-primaryColor':
+                      suggestion.priority === 'medium',
+                    'bg-gray-100 text-gray-800': suggestion.priority === 'low',
+                  }"
+                >
+                  {{ suggestion.priority.toUpperCase() }}
+                </div>
+              </div>
+
+              <!-- Reason -->
+              <div class="mb-3">
+                <p class="text-xs text-gray-700 font-medium mb-1">Reason:</p>
+                <p class="text-xs text-gray-600">{{ suggestion.reason }}</p>
+              </div>
+
+              <!-- Recommendation -->
+              <div class="mb-3">
+                <p class="text-xs text-gray-700 font-medium mb-1">
+                  Recommendation:
+                </p>
+                <p class="text-xs text-gray-800">
+                  {{ suggestion.recommendation }}
+                </p>
+              </div>
+
+              <!-- Promo Details -->
+              <div class="bg-white rounded-md p-3 mb-3">
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span class="text-gray-600">Discount:</span>
+                    <div class="font-semibold text-primaryColor">
+                      {{ suggestion.discountValue }}%
+                      {{
+                        suggestion.discountType === 'percentage'
+                          ? 'off'
+                          : 'fixed'
+                      }}
+                    </div>
+                  </div>
+                  <div>
+                    <span class="text-gray-600">Duration:</span>
+                    <div class="font-semibold">{{ suggestion.duration }}</div>
+                  </div>
+                  <div>
+                    <span class="text-gray-600">Current Stock:</span>
+                    <div class="font-semibold">
+                      {{ suggestion.currentStock }} {{ suggestion.unit }}
+                    </div>
+                  </div>
+                  <div>
+                    <span class="text-gray-600">Daily Sales:</span>
+                    <div class="font-semibold">
+                      {{ suggestion.dailyConsumption }}
+                      {{ suggestion.unit }}/day
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Expected Impact -->
+              <div class="mb-3">
+                <p class="text-xs text-gray-700 font-medium mb-1">
+                  Expected Impact:
+                </p>
+                <p class="text-xs text-green-700 font-medium">
+                  {{ suggestion.expectedImpact }}
+                </p>
+              </div>
+
+              <!-- Action Buttons -->
+              <div class="flex gap-2">
+                <button
+                  class="btn btn-xs bg-primaryColor text-white flex-1 font-thin"
+                >
+                  <font-awesome-icon icon="fa-solid fa-plus" class="mr-1" />
+                  Create Promo
+                </button>
+                <button
+                  class="btn btn-xs font-thin border-gray-300 text-gray-600"
+                  :title="`Detailed analysis for ${suggestion.itemName}: ${suggestion.reason}`"
+                >
+                  <font-awesome-icon icon="fa-solid fa-info-circle" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- List View -->
+          <div
+            v-else-if="promoSuggestionsViewMode === 'list'"
+            class="space-y-3"
+          >
+            <div
+              v-for="suggestion in pagedPromoSuggestions"
+              :key="`${suggestion.branchId}-${suggestion.itemId}-${suggestion.type}`"
+              class="bg-white border rounded-lg p-4 border-l-4"
+              :class="{
+                'border-error': suggestion.priority === 'critical',
+                'border-warning': suggestion.priority === 'high',
+                'border-primaryColor': suggestion.priority === 'medium',
+                'border-secondary': suggestion.priority === 'low',
+              }"
+            >
+              <div class="flex items-start justify-between">
+                <div class="flex items-center gap-3">
+                  <font-awesome-icon
+                    :icon="suggestion.icon"
+                    :class="suggestion.color"
+                    class="text-lg"
+                  />
+                  <div>
+                    <h4 class="text-sm font-semibold text-gray-800">
+                      {{ suggestion.title }}
+                    </h4>
+                    <div class="text-xs text-gray-600">
+                      {{ suggestion.branchName }} • {{ suggestion.itemName }}
+                    </div>
+                  </div>
+                </div>
+                <div
+                  class="badge badge-xs"
+                  :class="{
+                    'bg-red-100 text-red-800':
+                      suggestion.priority === 'critical',
+                    'bg-orange-100 text-orange-800':
+                      suggestion.priority === 'high',
+                    'bg-blue-100 text-blue-800':
+                      suggestion.priority === 'medium',
+                    'bg-gray-100 text-gray-800': suggestion.priority === 'low',
+                  }"
+                >
+                  {{ suggestion.priority.toUpperCase() }}
+                </div>
+              </div>
+
+              <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <p class="text-xs text-gray-700 font-medium mb-1">Reason:</p>
+                  <p class="text-xs text-gray-600">{{ suggestion.reason }}</p>
+                </div>
+                <div>
+                  <p class="text-xs text-gray-700 font-medium mb-1">
+                    Recommendation:
+                  </p>
+                  <p class="text-xs text-gray-800">
+                    {{ suggestion.recommendation }}
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs text-gray-700 font-medium mb-1">
+                    Expected Impact:
+                  </p>
+                  <p class="text-xs text-green-700 font-medium">
+                    {{ suggestion.expectedImpact }}
+                  </p>
+                </div>
+              </div>
+
+              <div class="mt-3 flex items-center justify-between">
+                <div class="flex items-center gap-4 text-xs">
+                  <div>
+                    <span class="text-gray-600">Discount:</span>
+                    <span class="font-semibold text-primaryColor ml-1">
+                      {{ suggestion.discountValue }}%
+                      {{
+                        suggestion.discountType === 'percentage'
+                          ? 'off'
+                          : 'fixed'
+                      }}
+                    </span>
+                  </div>
+                  <div>
+                    <span class="text-gray-600">Duration:</span>
+                    <span class="font-semibold ml-1">{{
+                      suggestion.duration
+                    }}</span>
+                  </div>
+                  <div>
+                    <span class="text-gray-600">Stock:</span>
+                    <span class="font-semibold ml-1"
+                      >{{ suggestion.currentStock }} {{ suggestion.unit }}</span
+                    >
+                  </div>
+                  <div>
+                    <span class="text-gray-600">Daily Sales:</span>
+                    <span class="font-semibold ml-1"
+                      >{{ suggestion.dailyConsumption }}
+                      {{ suggestion.unit }}/day</span
+                    >
+                  </div>
+                </div>
+                <div class="flex gap-2">
+                  <button
+                    class="btn btn-xs bg-primaryColor text-white font-thin"
+                  >
+                    <font-awesome-icon icon="fa-solid fa-plus" class="mr-1" />
+                    Create Promo
+                  </button>
+                  <button
+                    class="btn btn-xs font-thin border-gray-300 text-gray-600"
+                    :title="`Detailed analysis for ${suggestion.itemName}: ${suggestion.reason}`"
+                  >
+                    <font-awesome-icon icon="fa-solid fa-info-circle" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pagination -->
+          <div
+            v-if="promoSuggestionsTotalPages > 1"
+            class="mt-4 flex items-center justify-between text-sm"
+          >
+            <div class="text-gray-600">
+              Page {{ promoSuggestionsCurrentPage }} of
+              {{ promoSuggestionsTotalPages }} ({{ promoSuggestions.length }}
+              total suggestions)
+            </div>
+            <div class="join">
+              <button
+                class="btn btn-xs join-item"
+                :disabled="promoSuggestionsCurrentPage <= 1"
+                @click="
+                  promoSuggestionsCurrentPage = Math.max(
+                    1,
+                    promoSuggestionsCurrentPage - 1
+                  )
+                "
+              >
+                Prev
+              </button>
+              <button
+                class="btn btn-xs join-item"
+                :disabled="
+                  promoSuggestionsCurrentPage >= promoSuggestionsTotalPages
+                "
+                @click="
+                  promoSuggestionsCurrentPage = Math.min(
+                    promoSuggestionsTotalPages,
+                    promoSuggestionsCurrentPage + 1
+                  )
+                "
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- No Suggestions State -->
+        <div v-else-if="!promoLoading" class="text-center py-8 text-gray-500">
+          <font-awesome-icon
+            icon="fa-solid fa-lightbulb"
+            class="text-4xl mb-4 text-gray-300"
+          />
+          <div class="space-y-2">
+            <div class="text-sm font-medium">
+              No Promo Suggestions Available
+            </div>
+            <div class="text-xs">
+              All menu items are performing well or have adequate stock levels.
+            </div>
+          </div>
+        </div>
+
+        <!-- Loading State -->
+        <div v-else class="text-center py-8">
+          <div class="loading loading-spinner loading-md text-purple-600"></div>
+          <div class="text-sm text-gray-600 mt-2">
+            Analyzing promo opportunities...
+          </div>
         </div>
       </div>
     </div>

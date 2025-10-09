@@ -598,14 +598,6 @@ class EmailService {
     console.log(
       "📧 [EMAIL SERVICE] Using Gmail SMTP fallback for password recovery email"
     );
-    try {
-      // Get the correct frontend URL based on environment
-      const frontendUrl =
-        process.env.FRONTEND_URL ||
-        (process.env.NODE_ENV === "production"
-          ? "https://www.countryside-steakhouse.site"
-          : "http://localhost:8080");
-      const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       // Add delay between attempts (except for first attempt)
@@ -867,17 +859,17 @@ class EmailService {
     console.log(
       "📧 [EMAIL SERVICE] Using Gmail SMTP fallback for employee welcome email"
     );
-    try {
-      // Get the correct frontend URL based on environment
-      const frontendUrl =
-        process.env.FRONTEND_URL ||
-        (process.env.NODE_ENV === "production"
-          ? "https://www.countryside-steakhouse.site"
-          : "http://localhost:8080");
-      const defaultLoginUrl = `${frontendUrl}/login`;
-      const loginLink = loginUrl || defaultLoginUrl;
+    
+    // Get the correct frontend URL based on environment
+    const frontendUrl =
+      process.env.FRONTEND_URL ||
+      (process.env.NODE_ENV === "production"
+        ? "https://www.countryside-steakhouse.site"
+        : "http://localhost:8080");
+    const defaultLoginUrl = `${frontendUrl}/login`;
+    const loginLink = loginUrl || defaultLoginUrl;
 
-      const mailOptions = {
+    const mailOptions = {
         from: '"COUNTRYSIDE-STEAKHOUSE" <mailcountrysidesteakhouse@gmail.com>',
         to: to,
         subject: "Welcome aboard to COUNTRYSIDE-STEAKHOUSE!",
@@ -1059,10 +1051,10 @@ class EmailService {
           throw fallbackError;
         }
       }
-    }
-
-    console.error("❌ All attempts failed for employee welcome email");
-    return { success: false, error: lastError.message };
+    
+    // If we reach here, email was sent successfully
+    this.logEmailSuccess("Employee Welcome Email", email, info);
+    return { success: true, messageId: info.messageId };
   }
 
   /**

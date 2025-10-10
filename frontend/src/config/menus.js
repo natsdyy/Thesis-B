@@ -180,12 +180,6 @@ export const menuItems = [
     department: 'CRM',
   },
   {
-    name: 'Customers',
-    icon: Users,
-    route: '/crm/customers',
-    department: 'CRM',
-  },
-  {
     name: 'Customers Feedback',
     icon: Users,
     route: '/crm/customers-feedback',

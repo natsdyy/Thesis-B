@@ -153,11 +153,13 @@ router.get("/orders/:id", authenticateToken, async (req, res) => {
 router.get("/orders/public/:orderNumber", async (req, res) => {
   try {
     const orderNumber = req.params.orderNumber;
+    console.log("Fetching order details for order number:", orderNumber);
 
     // Get order by order number (not ID)
     const order = await POSOrder.getByOrderNumber(orderNumber);
 
     if (!order) {
+      console.log("Order not found:", orderNumber);
       return res.status(404).json({
         success: false,
         message: "Order not found",

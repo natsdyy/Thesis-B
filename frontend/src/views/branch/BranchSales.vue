@@ -177,14 +177,17 @@
       return [];
     }
 
+    // Filter out items with 0 sales first
+    const soldItems = topSellingItems.value.filter((item) => item.quantity > 0);
+
     if (showLeastSelling.value) {
       // Return items sorted by quantity ascending (least selling first)
-      return [...topSellingItems.value]
+      return [...soldItems]
         .sort((a, b) => a.quantity - b.quantity)
         .slice(0, 10);
     } else {
       // Return items sorted by quantity descending (top selling first)
-      return [...topSellingItems.value]
+      return [...soldItems]
         .sort((a, b) => b.quantity - a.quantity)
         .slice(0, 10);
     }

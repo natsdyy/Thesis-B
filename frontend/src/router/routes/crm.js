@@ -12,6 +12,12 @@ export default [
     meta: { title: 'Feedback Management' },
   },
   {
+    path: 'customers-feedback',
+    name: 'CustomersFeedback',
+    component: () => import('../../views/crm/CustomersFeedback.vue'),
+    meta: { title: 'Customers Feedback' },
+  },
+  {
     path: 'analytics',
     name: 'CRMAnalytics',
     component: () => import('../../views/crm/Analytics.vue'),

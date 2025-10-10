@@ -802,26 +802,55 @@ class EmailService {
 
   /**
    * Send feedback reply email to customer
+   * Tries SendGrid first, falls back to Gmail SMTP
    * @param {string} customerEmail - Customer's email address
    * @param {string} customerName - Customer's name
    * @param {string} originalMessage - Original feedback message
    * @param {string} replyMessage - Reply message from restaurant
    * @param {number} rating - Customer's rating (if any)
+   * @param {string} orderNumber - Order number (optional)
    */
   static async sendFeedbackReplyEmail(
     customerEmail,
     customerName,
     originalMessage,
     replyMessage,
-    rating = null
+    rating = null,
+    orderNumber = null
   ) {
+    // Try SendGrid first (recommended for production)
+    if (SendGridService.isConfigured()) {
+      console.log("📧 [EMAIL SERVICE] Using SendGrid for feedback reply email");
+      const sendGridResult = await SendGridService.sendFeedbackReplyEmail(
+        customerEmail,
+        customerName,
+        originalMessage,
+        replyMessage,
+        rating,
+        orderNumber
+      );
+
+      if (sendGridResult.success) {
+        return sendGridResult;
+      } else {
+        console.log(
+          `⚠️ SendGrid failed, falling back to Gmail SMTP: ${sendGridResult.error}`
+        );
+      }
+    } else {
+      console.log(
+        "📧 [EMAIL SERVICE] SendGrid not configured, using Gmail SMTP"
+      );
+    }
+
+    // Fallback to Gmail SMTP
     const maxRetries = 2;
     let lastError;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         console.log(
-          `📧 Attempt ${attempt}/${maxRetries} - Sending feedback reply to ${customerEmail}`
+          `📧 Attempt ${attempt}/${maxRetries} - Sending feedback reply to ${customerEmail} via Gmail SMTP`
         );
 
         const ratingText = rating ? `${rating}/5 stars` : "No rating provided";
@@ -851,6 +880,7 @@ class EmailService {
               <!-- Original Feedback Section -->
               <div style="background-color: #e8f4f8; border-left: 4px solid #3498db; padding: 15px; margin: 20px 0; border-radius: 5px;">
                 <h4 style="color: #2c3e50; margin-top: 0; margin-bottom: 10px;">Your Feedback:</h4>
+                ${orderNumber ? `<p style="color: #666; font-size: 14px; margin: 0 0 10px 0;"><strong>Order Number:</strong> ${orderNumber}</p>` : ""}
                 <p style="color: #555; font-style: italic; margin: 0;">"${originalMessage}"</p>
                 ${rating ? `<p style="color: #f39c12; margin: 10px 0 0 0; font-weight: bold;">Rating: ${ratingText}</p>` : ""}
               </div>
@@ -897,6 +927,7 @@ class EmailService {
           Thank you for taking the time to share your experience with us. We truly appreciate your feedback and value your input.
           
           Your Feedback:
+          ${orderNumber ? `Order Number: ${orderNumber}` : ""}
           "${originalMessage}"
           ${rating ? `Rating: ${ratingText}` : ""}
           

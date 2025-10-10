@@ -583,6 +583,164 @@ class SendGridService {
   }
 
   /**
+   * Send feedback reply email using SendGrid
+   * @param {string} to - Customer email address
+   * @param {string} customerName - Customer's name
+   * @param {string} originalMessage - Customer's original feedback message
+   * @param {string} replyMessage - Staff's reply message
+   * @param {number} rating - Customer's original rating (optional)
+   * @param {string} orderNumber - Order number (optional)
+   */
+  static async sendFeedbackReplyEmail(
+    to,
+    customerName,
+    originalMessage,
+    replyMessage,
+    rating = null,
+    orderNumber = null
+  ) {
+    try {
+      if (!this.isConfigured()) {
+        console.log("⚠️ SendGrid not configured, skipping email");
+        return {
+          success: false,
+          error: "SendGrid API key not configured",
+          skipEmail: true,
+        };
+      }
+
+      const msg = {
+        to: to,
+        from: {
+          email: "mailcountrysidesteakhouse@gmail.com",
+          name: "Countryside Steakhouse",
+        },
+        subject: "Thank you for your feedback - Countryside Steakhouse",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
+            <!-- Main Email Container -->
+            <div style="background-color: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+              
+              <!-- Header -->
+              <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #466114;">
+                <h1 style="color: #2c3e50; margin: 0; font-size: 28px; font-weight: bold;">Countryside Steakhouse</h1>
+                <p style="color: #466114; margin: 5px 0 0 0; font-size: 16px; font-weight: 500;">Ang Paborito ng Bayan</p>
+              </div>
+              
+              <!-- Main Content -->
+              <div style="margin-bottom: 30px;">
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
+                  Dear <strong>${customerName}</strong>,
+                </p>
+                
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
+                  Thank you for taking the time to share your feedback with us. We truly appreciate your input and the opportunity to improve our service.
+                </p>
+                
+                <!-- Original Feedback Section -->
+                <div style="background-color: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                  <h3 style="color: #2c3e50; margin-top: 0; font-size: 18px; font-weight: bold; margin-bottom: 15px;">Your Feedback:</h3>
+                  ${orderNumber ? `<p style="color: #666; font-size: 14px; margin: 0 0 10px 0;"><strong>Order Number:</strong> ${orderNumber}</p>` : ""}
+                  ${rating ? `<p style="color: #666; font-size: 14px; margin: 0 0 15px 0;"><strong>Rating:</strong> ${rating}/5 ⭐</p>` : ""}
+                  <div style="background-color: white; padding: 15px; border-radius: 5px; border-left: 4px solid #466114;">
+                    <p style="color: #555; font-size: 15px; line-height: 1.6; margin: 0; font-style: italic;">
+                      "${originalMessage || "No comments provided"}"
+                    </p>
+                  </div>
+                </div>
+                
+                <!-- Reply Section -->
+                <div style="background-color: rgba(170,211,109,0.1); border: 2px solid #466114; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                  <h3 style="color: #466114; margin-top: 0; font-size: 18px; font-weight: bold; margin-bottom: 15px;">Our Response:</h3>
+                  <div style="background-color: white; padding: 15px; border-radius: 5px;">
+                    <p style="color: #2c3e50; font-size: 15px; line-height: 1.6; margin: 0;">
+                      ${replyMessage}
+                    </p>
+                  </div>
+                </div>
+                
+                <!-- Thank You Message -->
+                <div style="background-color: rgba(170,211,109,0.1); border-left: 4px solid #466114; padding: 20px; border-radius: 5px; margin: 20px 0;">
+                  <h4 style="color: #466114; margin-top: 0; margin-bottom: 15px; font-size: 16px; font-weight: bold;">We Value Your Feedback</h4>
+                  <p style="color: #2c3e50; margin: 0; font-size: 15px; line-height: 1.6;">
+                    Your feedback helps us continuously improve our service and maintain the high standards that make Countryside Steakhouse "Ang Paborito ng Bayan." 
+                    We look forward to serving you again soon!
+                  </p>
+                </div>
+                
+                <p style="color: #555; font-size: 16px; margin-top: 25px; line-height: 1.6;">
+                  Thank you for choosing Countryside Steakhouse!<br>
+                  <strong style="color: #466114;">The Countryside Team</strong>
+                </p>
+              </div>
+              
+              <!-- Footer -->
+              <div style="text-align: center; color: #666; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                <p style="margin: 0;">©2025 COUNTRYSIDE-STEAKHOUSE. All rights reserved.</p>
+                <p style="margin: 5px 0 0 0;">This is an automated message. Please do not reply to this email.</p>
+              </div>
+            </div>
+          </div>
+        `,
+        text: `
+          Countryside Steakhouse - Thank you for your feedback
+          
+          Dear ${customerName},
+          
+          Thank you for taking the time to share your feedback with us. We truly appreciate your input and the opportunity to improve our service.
+          
+          YOUR FEEDBACK:
+          ${orderNumber ? `Order Number: ${orderNumber}` : ""}
+          ${rating ? `Rating: ${rating}/5 stars` : ""}
+          "${originalMessage || "No comments provided"}"
+          
+          OUR RESPONSE:
+          ${replyMessage}
+          
+          We Value Your Feedback
+          Your feedback helps us continuously improve our service and maintain the high standards that make Countryside Steakhouse "Ang Paborito ng Bayan." We look forward to serving you again soon!
+          
+          Thank you for choosing Countryside Steakhouse!
+          The Countryside Team
+          
+          ©2025 COUNTRYSIDE-STEAKHOUSE. All rights reserved.
+          This is an automated message. Please do not reply to this email.
+        `,
+      };
+
+      console.log(`📧 [SENDGRID] Sending feedback reply email to ${to}`);
+      const response = await sgMail.send(msg);
+
+      console.log(
+        "✅ SendGrid feedback reply email sent:",
+        response[0].headers["x-message-id"]
+      );
+      return {
+        success: true,
+        messageId: response[0].headers["x-message-id"],
+        provider: "SendGrid",
+      };
+    } catch (error) {
+      console.error("❌ SendGrid feedback reply error:", error);
+
+      if (error.response) {
+        console.error("SendGrid API Error:", error.response.body);
+        return {
+          success: false,
+          error: `SendGrid API Error: ${error.response.body.errors?.[0]?.message || error.message}`,
+          provider: "SendGrid",
+        };
+      }
+
+      return {
+        success: false,
+        error: error.message,
+        provider: "SendGrid",
+      };
+    }
+  }
+
+  /**
    * Send password recovery email using SendGrid
    */
   static async sendPasswordRecoveryEmail(to, resetToken, username = "User") {
@@ -653,7 +811,7 @@ class SendGridService {
             </div>
             
             <div style="text-align: center; color: #666; font-size: 12px; margin-top: 20px;">
-              <p>© 2024 Countryside Steak House. All rights reserved.</p>
+              <p>© 2025 Countryside Steak House. All rights reserved.</p>
               <p>This is an automated message, please do not reply to this email.</p>
             </div>
           </div>

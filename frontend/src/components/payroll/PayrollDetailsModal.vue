@@ -5,15 +5,17 @@
     @click.self="closeModal"
   >
     <div
-      class="bg-accentColor rounded-lg shadow-xl max-w-7xl w-full max-h-[90vh] overflow-y-auto border border-black/10"
+      class="bg-accentColor rounded-lg shadow-xl max-w-7xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto border border-black/10"
     >
       <!-- Header -->
       <div
-        class="flex items-center justify-between px-6 py-4 bg-primaryColor text-white border-b border-black/10"
+        class="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 bg-primaryColor text-white border-b border-black/10"
       >
-        <div>
-          <h2 class="text-2xl font-bold">{{ payrollPeriod?.period_name }}</h2>
-          <p class="text-sm text-white/80 mt-1">
+        <div class="flex-1 min-w-0 pr-2">
+          <h2 class="text-lg sm:text-2xl font-bold truncate">
+            {{ payrollPeriod?.period_name }}
+          </h2>
+          <p class="text-xs sm:text-sm text-white/80 mt-1 truncate">
             {{
               formatDateRange(payrollPeriod?.date_from, payrollPeriod?.date_to)
             }}
@@ -21,10 +23,10 @@
         </div>
         <button
           @click="closeModal"
-          class="text-white hover:bg-white/20 rounded-full p-2 transition-colors"
+          class="text-white hover:bg-white/20 rounded-full p-2 transition-colors flex-shrink-0"
         >
           <svg
-            class="w-6 h-6"
+            class="w-5 h-5 sm:w-6 sm:h-6"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -40,25 +42,28 @@
       </div>
 
       <!-- Status Timeline -->
-      <div class="px-6 py-4 bg-accentColor border-b border-black/10">
-        <div class="flex items-center justify-between">
-          <div
-            v-for="(step, index) in statusSteps"
-            :key="step.status"
-            class="flex items-center flex-1"
-          >
-            <div class="flex flex-col items-center flex-1">
+      <div
+        class="px-3 sm:px-6 py-3 sm:py-4 bg-accentColor border-b border-black/10"
+      >
+        <!-- Mobile: Horizontal scroll -->
+        <div class="block sm:hidden">
+          <div class="flex overflow-x-auto pb-2 space-x-4">
+            <div
+              v-for="(step, index) in statusSteps"
+              :key="step.status"
+              class="flex-shrink-0 flex flex-col items-center min-w-[80px]"
+            >
               <div
                 :class="[
-                  'w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-all duration-200',
+                  'w-8 h-8 rounded-full flex items-center justify-center font-semibold transition-all duration-200',
                   isStepActive(step.status)
-                    ? 'bg-primaryColor text-white ring-4 ring-primaryColor/30'
+                    ? 'bg-primaryColor text-white ring-2 ring-primaryColor/30'
                     : 'bg-gray-200 text-gray-500',
                 ]"
               >
                 <svg
                   v-if="isStepActive(step.status)"
-                  class="w-6 h-6"
+                  class="w-4 h-4"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -70,11 +75,11 @@
                     d="M5 13l4 4L19 7"
                   ></path>
                 </svg>
-                <span v-else>{{ index + 1 }}</span>
+                <span v-else class="text-xs">{{ index + 1 }}</span>
               </div>
               <p
                 :class="[
-                  'text-xs mt-2 text-center font-medium',
+                  'text-xs mt-1 text-center font-medium',
                   isStepActive(step.status)
                     ? 'text-primaryColor'
                     : 'text-gray-500',
@@ -83,15 +88,63 @@
                 {{ step.label }}
               </p>
             </div>
+          </div>
+        </div>
+
+        <!-- Desktop: Full timeline -->
+        <div class="hidden sm:block">
+          <div class="flex items-center justify-between">
             <div
-              v-if="index < statusSteps.length - 1"
-              :class="[
-                'h-1 flex-1 mx-2 transition-all duration-300',
-                isStepActive(statusSteps[index + 1].status)
-                  ? 'bg-primaryColor'
-                  : 'bg-gray-200',
-              ]"
-            ></div>
+              v-for="(step, index) in statusSteps"
+              :key="step.status"
+              class="flex items-center flex-1"
+            >
+              <div class="flex flex-col items-center flex-1">
+                <div
+                  :class="[
+                    'w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-all duration-200',
+                    isStepActive(step.status)
+                      ? 'bg-primaryColor text-white ring-4 ring-primaryColor/30'
+                      : 'bg-gray-200 text-gray-500',
+                  ]"
+                >
+                  <svg
+                    v-if="isStepActive(step.status)"
+                    class="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M5 13l4 4L19 7"
+                    ></path>
+                  </svg>
+                  <span v-else>{{ index + 1 }}</span>
+                </div>
+                <p
+                  :class="[
+                    'text-xs mt-2 text-center font-medium',
+                    isStepActive(step.status)
+                      ? 'text-primaryColor'
+                      : 'text-gray-500',
+                  ]"
+                >
+                  {{ step.label }}
+                </p>
+              </div>
+              <div
+                v-if="index < statusSteps.length - 1"
+                :class="[
+                  'h-1 flex-1 mx-2 transition-all duration-300',
+                  isStepActive(statusSteps[index + 1].status)
+                    ? 'bg-primaryColor'
+                    : 'bg-gray-200',
+                ]"
+              ></div>
+            </div>
           </div>
         </div>
       </div>
@@ -99,37 +152,45 @@
       <!-- Balance Summary (Finance Only) -->
       <div
         v-if="showBalanceSummary"
-        class="px-6 py-4 bg-white border-b border-black/10"
+        class="px-3 sm:px-6 py-3 sm:py-4 bg-white border-b border-black/10"
       >
         <div v-if="balanceLoading" class="flex justify-center py-4">
           <span class="loading loading-spinner loading-md"></span>
         </div>
         <div v-else>
-          <h3 class="text-lg font-semibold text-gray-800 mb-4">
+          <h3
+            class="text-base sm:text-lg font-semibold text-gray-800 mb-3 sm:mb-4"
+          >
             Financial Summary
           </h3>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div
+            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4"
+          >
             <!-- Current Balance -->
-            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div
+              class="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4"
+            >
               <p class="text-xs text-blue-600 font-medium mb-1">
                 Current Balance
               </p>
-              <p class="text-2xl font-bold text-blue-700">
+              <p class="text-lg sm:text-2xl font-bold text-blue-700">
                 <i class="fas fa-peso-sign mr-1"></i
                 >{{ formatCurrency(currentBalance) }}
               </p>
             </div>
 
             <!-- Total Payroll Amount -->
-            <div class="bg-orange-50 border border-orange-200 rounded-lg p-4">
+            <div
+              class="bg-orange-50 border border-orange-200 rounded-lg p-3 sm:p-4"
+            >
               <p class="text-xs text-orange-600 font-medium mb-1">
                 Total Payroll Amount
               </p>
-              <p class="text-2xl font-bold text-orange-700">
+              <p class="text-lg sm:text-2xl font-bold text-orange-700">
                 <i class="fas fa-peso-sign mr-1"></i
                 >{{ formatCurrency(totalPayrollAmount) }}
               </p>
-              <p class="text-xs text-gray-600 mt-1">
+              <p class="text-xs text-gray-600 mt-1 hidden sm:block">
                 (Net Salary + Employer Contributions)
               </p>
             </div>
@@ -137,7 +198,7 @@
             <!-- Remaining Balance -->
             <div
               :class="[
-                'border rounded-lg p-4',
+                'border rounded-lg p-3 sm:p-4 sm:col-span-2 lg:col-span-1',
                 isSufficientBalance
                   ? 'bg-green-50 border-green-200'
                   : 'bg-red-50 border-red-200',
@@ -153,7 +214,7 @@
               </p>
               <p
                 :class="[
-                  'text-2xl font-bold',
+                  'text-lg sm:text-2xl font-bold',
                   isSufficientBalance ? 'text-green-700' : 'text-red-700',
                 ]"
               >
@@ -208,10 +269,10 @@
           <!-- Warning for insufficient balance -->
           <div
             v-if="!isSufficientBalance"
-            class="mt-4 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start"
+            class="mt-3 sm:mt-4 bg-red-50 border border-red-200 rounded-lg p-3 sm:p-4 flex items-start"
           >
             <svg
-              class="w-5 h-5 text-red-600 mr-3 mt-0.5 flex-shrink-0"
+              class="w-4 h-4 sm:w-5 sm:h-5 text-red-600 mr-2 sm:mr-3 mt-0.5 flex-shrink-0"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -224,10 +285,10 @@
               ></path>
             </svg>
             <div>
-              <p class="text-sm font-semibold text-red-800 mb-1">
+              <p class="text-xs sm:text-sm font-semibold text-red-800 mb-1">
                 Insufficient Balance Warning
               </p>
-              <p class="text-sm text-red-700">
+              <p class="text-xs sm:text-sm text-red-700">
                 The current balance is insufficient to cover this payroll.
                 Please ensure adequate funds are available before proceeding
                 with approval and budget release.
@@ -237,128 +298,234 @@
         </div>
       </div>
 
-      <!-- Payroll Records Table -->
+      <!-- Payroll Records -->
       <div class="overflow-y-auto" style="max-height: calc(90vh - 400px)">
-        <table class="table table-zebra w-full !able-xs">
-          <thead class="">
-            <tr>
-              <th
-                class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase"
-              >
-                Employee
-              </th>
-              <th
-                class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase"
-              >
-                Department
-              </th>
-              <th
-                class="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase"
-              >
-                Hours
-              </th>
-              <th
-                class="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase"
-              >
-                OT Hours
-              </th>
-              <th
-                class="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase"
-              >
-                Gross Salary
-              </th>
-              <th
-                class="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase"
-              >
-                Deductions
-              </th>
-              <th
-                class="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase"
-              >
-                Net Salary
-              </th>
-              <th
-                class="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase"
-              >
-                Status
-              </th>
-              <th
-                class="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase"
-              >
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody class="bg-white divide-y divide-gray-200">
-            <tr
+        <!-- Mobile/Tablet: Card Layout -->
+        <div class="block lg:hidden">
+          <div class="p-3 sm:p-4 space-y-3 sm:space-y-4">
+            <div
               v-for="record in payrollRecords"
               :key="record.id"
-              class="hover:bg-gray-50"
+              class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm"
             >
-              <td class="px-4 py-3">
-                <div class="text-sm font-medium text-gray-900">
-                  {{ record.employee_name }}
+              <!-- Employee Info -->
+              <div class="flex items-start justify-between mb-3">
+                <div class="flex-1 min-w-0">
+                  <h4 class="text-sm font-semibold text-gray-900 truncate">
+                    {{ record.employee_name }}
+                  </h4>
+                  <p class="text-xs text-gray-500">{{ record.role_name }}</p>
+                  <p class="text-xs text-gray-600 mt-1">
+                    {{ record.department }}
+                  </p>
                 </div>
-                <div class="text-xs text-gray-500">{{ record.role_name }}</div>
-              </td>
-              <td class="px-4 py-3 text-sm text-gray-700">
-                {{ record.department }}
-              </td>
-              <td class="px-4 py-3 text-sm text-right text-gray-700">
-                {{ record.hours_worked }}
-              </td>
-              <td class="px-4 py-3 text-sm text-right text-gray-700">
-                {{ record.overtime_hours }}
-              </td>
-              <td
-                class="px-4 py-3 text-sm text-right font-medium text-gray-700"
-              >
-                <i class="fas fa-peso-sign mr-1"></i
-                >{{ formatCurrency(record.gross_salary) }}
-              </td>
-              <td
-                class="px-4 py-3 text-sm text-right font-medium text-gray-700"
-              >
-                <i class="fas fa-peso-sign mr-1"></i
-                >{{ formatCurrency(record.total_deductions) }}
-              </td>
-              <td class="px-4 py-3 text-sm text-right font-bold text-gray-700">
-                <i class="fas fa-peso-sign mr-1"></i
-                >{{ formatCurrency(record.net_salary) }}
-              </td>
-              <td class="px-4 py-3 text-center">
-                <span
-                  :class="[
-                    'badge px-3 py-1 text-sm badge-sm',
-                    getStatusBadgeClass(record.status),
-                  ]"
+                <div class="flex flex-col items-end">
+                  <span
+                    :class="[
+                      'badge px-2 py-1 text-xs badge-sm',
+                      getStatusBadgeClass(record.status),
+                    ]"
+                  >
+                    {{ record.status }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Hours -->
+              <div class="grid grid-cols-2 gap-3 mb-3">
+                <div class="text-center bg-gray-50 rounded-lg p-2">
+                  <p class="text-xs text-gray-600 mb-1">Hours</p>
+                  <p class="text-sm font-semibold text-gray-900">
+                    {{ record.hours_worked }}
+                  </p>
+                </div>
+                <div class="text-center bg-gray-50 rounded-lg p-2">
+                  <p class="text-xs text-gray-600 mb-1">OT Hours</p>
+                  <p class="text-sm font-semibold text-gray-900">
+                    {{ record.overtime_hours }}
+                  </p>
+                </div>
+              </div>
+
+              <!-- Financial Info -->
+              <div class="space-y-2 mb-3">
+                <div class="flex justify-between items-center">
+                  <span class="text-xs text-gray-600">Gross Salary:</span>
+                  <span class="text-sm font-medium text-gray-900">
+                    <i class="fas fa-peso-sign mr-1"></i
+                    >{{ formatCurrency(record.gross_salary) }}
+                  </span>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-xs text-gray-600">Deductions:</span>
+                  <span class="text-sm font-medium text-gray-900">
+                    <i class="fas fa-peso-sign mr-1"></i
+                    >{{ formatCurrency(record.total_deductions) }}
+                  </span>
+                </div>
+                <div
+                  class="flex justify-between items-center pt-2 border-t border-gray-200"
                 >
-                  {{ record.status }}
-                </span>
-              </td>
-              <td class="px-4 py-3 text-center">
+                  <span class="text-xs font-semibold text-gray-800"
+                    >Net Salary:</span
+                  >
+                  <span class="text-sm font-bold text-gray-900">
+                    <i class="fas fa-peso-sign mr-1"></i
+                    >{{ formatCurrency(record.net_salary) }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Actions -->
+              <div
+                class="flex justify-end space-x-2 pt-2 border-t border-gray-200"
+              >
                 <button
                   @click="viewRecordDetails(record)"
-                  class="text-gray-600 hover:text-gray-800 text-sm font-medium cursor-pointer"
+                  class="text-xs text-primaryColor hover:text-primaryColor/80 font-medium"
                 >
-                  View
+                  View Details
                 </button>
                 <button
                   v-if="canEdit && record.status === 'pending'"
                   @click="editRecord(record)"
-                  class="ml-2 text-gray-600 hover:text-gray-800 text-sm font-medium cursor-pointer"
+                  class="text-xs text-gray-600 hover:text-gray-800 font-medium"
                 >
                   Edit
                 </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Desktop: Table Layout -->
+        <div class="hidden lg:block">
+          <table class="table table-zebra w-full !table-xs">
+            <thead class="">
+              <tr>
+                <th
+                  class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase"
+                >
+                  Employee
+                </th>
+                <th
+                  class="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase"
+                >
+                  Department
+                </th>
+                <th
+                  class="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase"
+                >
+                  Hours
+                </th>
+                <th
+                  class="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase"
+                >
+                  OT Hours
+                </th>
+                <th
+                  class="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase"
+                >
+                  Gross Salary
+                </th>
+                <th
+                  class="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase"
+                >
+                  Deductions
+                </th>
+                <th
+                  class="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase"
+                >
+                  Net Salary
+                </th>
+                <th
+                  class="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase"
+                >
+                  Status
+                </th>
+                <th
+                  class="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase"
+                >
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+              <tr
+                v-for="record in payrollRecords"
+                :key="record.id"
+                class="hover:bg-gray-50"
+              >
+                <td class="px-4 py-3">
+                  <div class="text-sm font-medium text-gray-900">
+                    {{ record.employee_name }}
+                  </div>
+                  <div class="text-xs text-gray-500">
+                    {{ record.role_name }}
+                  </div>
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-700">
+                  {{ record.department }}
+                </td>
+                <td class="px-4 py-3 text-sm text-right text-gray-700">
+                  {{ record.hours_worked }}
+                </td>
+                <td class="px-4 py-3 text-sm text-right text-gray-700">
+                  {{ record.overtime_hours }}
+                </td>
+                <td
+                  class="px-4 py-3 text-sm text-right font-medium text-gray-700"
+                >
+                  <i class="fas fa-peso-sign mr-1"></i
+                  >{{ formatCurrency(record.gross_salary) }}
+                </td>
+                <td
+                  class="px-4 py-3 text-sm text-right font-medium text-gray-700"
+                >
+                  <i class="fas fa-peso-sign mr-1"></i
+                  >{{ formatCurrency(record.total_deductions) }}
+                </td>
+                <td
+                  class="px-4 py-3 text-sm text-right font-bold text-gray-700"
+                >
+                  <i class="fas fa-peso-sign mr-1"></i
+                  >{{ formatCurrency(record.net_salary) }}
+                </td>
+                <td class="px-4 py-3 text-center">
+                  <span
+                    :class="[
+                      'badge px-3 py-1 text-sm badge-sm',
+                      getStatusBadgeClass(record.status),
+                    ]"
+                  >
+                    {{ record.status }}
+                  </span>
+                </td>
+                <td class="px-4 py-3 text-center">
+                  <button
+                    @click="viewRecordDetails(record)"
+                    class="text-gray-600 hover:text-gray-800 text-sm font-medium cursor-pointer"
+                  >
+                    View
+                  </button>
+                  <button
+                    v-if="canEdit && record.status === 'pending'"
+                    @click="editRecord(record)"
+                    class="ml-2 text-gray-600 hover:text-gray-800 text-sm font-medium cursor-pointer"
+                  >
+                    Edit
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <!-- Footer Actions -->
-      <div class="px-6 py-4 bg-gray-50 flex justify-between items-center">
-        <div class="text-sm text-gray-600">
+      <div class="px-3 sm:px-6 py-3 sm:py-4 bg-gray-50">
+        <!-- Approval Info -->
+        <div class="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-0">
           <span v-if="payrollPeriod?.finance_approved_by">
             Approved by:
             <strong>{{
@@ -369,89 +536,100 @@
             {{ formatDate(payrollPeriod.finance_approved_at) }}
           </span>
         </div>
-        <div class="flex gap-3">
+
+        <!-- Action Buttons -->
+        <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
+          <!-- Close Button - Always visible -->
           <button
             @click="closeModal"
             :disabled="actionLoading"
-            class="btn bg-gray-300 text-gray-700 hover:bg-gray-400 font-medium transition-colors px-6 py-2 btn-sm"
+            class="btn bg-gray-300 text-gray-700 hover:bg-gray-400 font-medium transition-colors px-4 sm:px-6 py-2 btn-sm order-last sm:order-first"
           >
             Close
           </button>
-          <button
-            v-if="canSubmitToFinance"
-            @click="submitToFinance"
-            :disabled="actionLoading"
-            class="btn bg-primaryColor text-white hover:bg-primaryColor/90 font-medium transition-colors px-6 py-2 btn-sm"
-          >
-            <span
-              v-if="
+
+          <!-- Action Buttons -->
+          <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 flex-1">
+            <button
+              v-if="canSubmitToFinance"
+              @click="submitToFinance"
+              :disabled="actionLoading"
+              class="btn bg-primaryColor text-white hover:bg-primaryColor/90 font-medium transition-colors px-4 sm:px-6 py-2 btn-sm flex-1 sm:flex-none"
+            >
+              <span
+                v-if="
+                  actionLoading &&
+                  actionLoadingText === 'Submitting to Finance...'
+                "
+                class="loading loading-spinner loading-xs mr-2"
+              ></span>
+              {{
                 actionLoading &&
                 actionLoadingText === 'Submitting to Finance...'
-              "
-              class="loading loading-spinner loading-xs mr-2"
-            ></span>
-            {{
-              actionLoading && actionLoadingText === 'Submitting to Finance...'
-                ? 'Submitting...'
-                : 'Submit to Finance'
-            }}
-          </button>
-          <button
-            v-if="canApprove"
-            @click="approvePayroll"
-            :disabled="actionLoading"
-            class="btn bg-primaryColor text-white hover:bg-primaryColor/90 font-medium transition-colors px-6 py-2 btn-sm"
-          >
-            <span
-              v-if="
+                  ? 'Submitting...'
+                  : 'Submit to Finance'
+              }}
+            </button>
+
+            <button
+              v-if="canApprove"
+              @click="approvePayroll"
+              :disabled="actionLoading"
+              class="btn bg-primaryColor text-white hover:bg-primaryColor/90 font-medium transition-colors px-4 sm:px-6 py-2 btn-sm flex-1 sm:flex-none"
+            >
+              <span
+                v-if="
+                  actionLoading && actionLoadingText === 'Approving Payroll...'
+                "
+                class="loading loading-spinner loading-xs mr-2"
+              ></span>
+              {{
                 actionLoading && actionLoadingText === 'Approving Payroll...'
-              "
-              class="loading loading-spinner loading-xs mr-2"
-            ></span>
-            {{
-              actionLoading && actionLoadingText === 'Approving Payroll...'
-                ? 'Approving...'
-                : 'Approve Payroll'
-            }}
-          </button>
-          <button
-            v-if="canSendToBudgetRelease"
-            @click="sendToBudgetRelease"
-            :disabled="actionLoading"
-            class="btn bg-primaryColor text-white hover:bg-primaryColor/90 font-medium transition-colors px-6 py-2 btn-sm"
-          >
-            <span
-              v-if="
+                  ? 'Approving...'
+                  : 'Approve Payroll'
+              }}
+            </button>
+
+            <button
+              v-if="canSendToBudgetRelease"
+              @click="sendToBudgetRelease"
+              :disabled="actionLoading"
+              class="btn bg-primaryColor text-white hover:bg-primaryColor/90 font-medium transition-colors px-4 sm:px-6 py-2 btn-sm flex-1 sm:flex-none"
+            >
+              <span
+                v-if="
+                  actionLoading &&
+                  actionLoadingText === 'Sending to Budget Release...'
+                "
+                class="loading loading-spinner loading-xs mr-2"
+              ></span>
+              {{
                 actionLoading &&
                 actionLoadingText === 'Sending to Budget Release...'
-              "
-              class="loading loading-spinner loading-xs mr-2"
-            ></span>
-            {{
-              actionLoading &&
-              actionLoadingText === 'Sending to Budget Release...'
-                ? 'Sending...'
-                : 'Send to Budget Release'
-            }}
-          </button>
-          <button
-            v-if="canRelease"
-            @click="releasePayroll"
-            :disabled="actionLoading"
-            class="btn bg-primaryColor text-white hover:bg-primaryColor/90 font-medium transition-colors px-6 py-2 btn-sm"
-          >
-            <span
-              v-if="
+                  ? 'Sending...'
+                  : 'Send to Budget Release'
+              }}
+            </button>
+
+            <button
+              v-if="canRelease"
+              @click="releasePayroll"
+              :disabled="actionLoading"
+              class="btn bg-primaryColor text-white hover:bg-primaryColor/90 font-medium transition-colors px-4 sm:px-6 py-2 btn-sm flex-1 sm:flex-none"
+            >
+              <span
+                v-if="
+                  actionLoading && actionLoadingText === 'Releasing Payroll...'
+                "
+                class="loading loading-spinner loading-xs mr-2"
+              ></span>
+              {{
                 actionLoading && actionLoadingText === 'Releasing Payroll...'
-              "
-              class="loading loading-spinner loading-xs mr-2"
-            ></span>
-            {{
-              actionLoading && actionLoadingText === 'Releasing Payroll...'
-                ? 'Releasing...'
-                : 'Release Payroll'
-            }}
-          </button>
+                  ? 'Releasing...'
+                  : 'Release Payroll'
+              }}
+            </button>
+          </div>
         </div>
       </div>
     </div>

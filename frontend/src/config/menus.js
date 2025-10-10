@@ -103,12 +103,6 @@ export const menuItems = [
   },
 
   // Finance Department
-  {
-    name: 'Dashboard',
-    icon: LayoutDashboard,
-    route: '/finance/dashboard',
-    department: 'Finance',
-  },
 
   {
     name: 'Financial Management',
@@ -116,7 +110,7 @@ export const menuItems = [
     route: '/finance/financial-management',
     department: 'Finance',
     subItems: [
-      { name: 'Approval Request', route: '/finance/request-approval' },
+      { name: 'Supply Request', route: '/finance/request-approval' },
       { name: 'Payroll Approval', route: '/finance/payroll-approval' },
       { name: 'Budget Release', route: '/finance/budget-release' },
       { name: 'Cash Management', route: '/finance/cash-management' },
@@ -189,6 +183,12 @@ export const menuItems = [
     name: 'Customers',
     icon: Users,
     route: '/crm/customers',
+    department: 'CRM',
+  },
+  {
+    name: 'Customers Feedback',
+    icon: Users,
+    route: '/crm/customers-feedback',
     department: 'CRM',
   },
   {

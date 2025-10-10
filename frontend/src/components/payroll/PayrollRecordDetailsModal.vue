@@ -9,7 +9,7 @@
     >
       <!-- Header -->
       <div
-        class="flex items-center justify-between px-6 py-4 bg-primaryColor text-white border-b border-black/10"
+        class="flex items-center justify-between px-6 py-4 bg-primaryColor text-white border-b border-black/10 "
       >
         <h2 class="text-md font-thin">
           Payroll Details - {{ record?.employee_name }}
@@ -76,26 +76,26 @@
               record?.philhealth_number ||
               record?.pagibig_number
             "
-            class="bg-blue-50 border border-blue-200 rounded-xl p-4"
+            class="bg-white border border-primaryColor/10 rounded-xl p-4"
           >
-            <h3 class="text-md font-semibold text-blue-800 mb-3">
+            <h3 class="text-md font-semibold text-primaryColor mb-3">
               Government Benefit Numbers
             </h3>
             <div class="grid grid-cols-3 gap-4">
               <div v-if="record?.sss_number">
-                <p class="text-sm text-blue-600">SSS</p>
+                <p class="text-sm text-gray-600">SSS</p>
                 <p class="font-medium text-gray-700 font-mono text-sm">
                   {{ record.sss_number }}
                 </p>
               </div>
               <div v-if="record?.philhealth_number">
-                <p class="text-sm text-blue-600">PhilHealth</p>
+                <p class="text-sm text-gray-600">PhilHealth</p>
                 <p class="font-medium text-gray-700 font-mono text-sm">
                   {{ record.philhealth_number }}
                 </p>
               </div>
               <div v-if="record?.pagibig_number">
-                <p class="text-sm text-blue-600">Pag-IBIG</p>
+                <p class="text-sm text-gray-600">Pag-IBIG</p>
                 <p class="font-medium text-gray-700 font-mono text-sm">
                   {{ record.pagibig_number }}
                 </p>

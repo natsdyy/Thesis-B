@@ -125,6 +125,11 @@ export const useSupplyRequestStore = defineStore('supplyRequest', () => {
     error.value = null;
 
     try {
+      // Check if requestId is valid before making the API call
+      if (!requestId || requestId === 'null' || requestId === 'undefined') {
+        throw new Error('Invalid request ID provided');
+      }
+
       const response = await axios.get(
         `${apiConfig.baseURL}/supply-requests/request/${requestId}`
       );

@@ -1,10 +1,10 @@
 <script setup>
   import { ref, onMounted, computed, watch } from 'vue';
-  import axios from 'axios';
   import { useFinanceBalanceStore } from '../../stores/financeBalanceStore.js';
   import { useBranchContextStore } from '../../stores/branchContextStore.js';
   import { usePOSStore } from '../../stores/posStore.js';
   import { useCashMovementStore } from '../../stores/cashMovementStore.js';
+  import { usePayrollStore } from '../../stores/payrollStore.js';
   import { useCustomToast } from '../../composables/useCustomToast.js';
   import { apiConfig } from '../../config/api.js';
   import {
@@ -17,6 +17,7 @@
   const branchContext = useBranchContextStore();
   const posStore = usePOSStore();
   const cashMovementStore = useCashMovementStore();
+  const payrollStore = usePayrollStore();
   const { showToast } = useCustomToast();
 
   const loading = ref(false);
@@ -30,6 +31,7 @@
     employeeContributions: 0,
     total: 0,
   }); // Payroll expense breakdown
+  const payrollEmployeeDetails = ref([]); // Individual employee payroll details
   const currentPage = ref(1);
   const pageSize = ref(10);
   const totalPages = computed(() => {
@@ -288,6 +290,71 @@
         disposalLosses.value = [];
       }
 
+      // Fetch payroll employee details for the period using store
+      try {
+        // For payroll, we want to find periods that were PAID during the selected period
+        // regardless of when they were generated, so we don't use date_from/date_to filters
+        const payrollPeriods = await payrollStore.fetchPayrollPeriods({
+          status: 'paid',
+          limit: 9999,
+        });
+
+        // Filter payroll periods by paid_at date to match the selected period
+        const filteredPayrollPeriods = payrollPeriods.filter((period) => {
+          if (!period.paid_at) return false;
+          const paidAt = new Date(period.paid_at);
+          return paidAt >= start && paidAt <= end;
+        });
+
+        // Flatten all employee records from all payroll periods
+        const allEmployeeRecords = [];
+
+        // If no records are included in the periods, fetch them individually
+        if (
+          filteredPayrollPeriods.length > 0 &&
+          (!filteredPayrollPeriods[0].records ||
+            filteredPayrollPeriods[0].records.length === 0)
+        ) {
+          for (const period of filteredPayrollPeriods) {
+            try {
+              const periodDetails = await payrollStore.fetchPeriodDetails(
+                period.id
+              );
+
+              if (periodDetails.records && periodDetails.records.length > 0) {
+                periodDetails.records.forEach((record) => {
+                  allEmployeeRecords.push({
+                    ...record,
+                    period_name: period.period_name,
+                    period_date_from: period.date_from,
+                    period_date_to: period.date_to,
+                  });
+                });
+              }
+            } catch (detailErr) {}
+          }
+        } else {
+          // Records are already included in the periods
+          filteredPayrollPeriods.forEach((period) => {
+            if (period.records && period.records.length > 0) {
+              period.records.forEach((record) => {
+                allEmployeeRecords.push({
+                  ...record,
+                  period_name: period.period_name,
+                  period_date_from: period.date_from,
+                  period_date_to: period.date_to,
+                });
+              });
+            }
+          });
+        }
+
+        payrollEmployeeDetails.value = allEmployeeRecords;
+      } catch (err) {
+        console.error('Failed to fetch payroll employee details:', err);
+        payrollEmployeeDetails.value = [];
+      }
+
       // Fetch branch breakdown from remittances
       const { data: remittances } = await posStore.fetchRemittances({
         dateFrom: start.toISOString(),
@@ -475,92 +542,144 @@
 
   <!-- Payroll Expenses Breakdown -->
   <div
-    v-if="payrollExpenses.total > 0"
+    v-if="payrollEmployeeDetails.length > 0 || loading"
     class="card mt-4 bg-white shadow border border-black/10"
   >
     <div class="card-body">
-      <h3 class="text-sm font-medium text-gray-700 mb-3">
-        Payroll Expenses Breakdown
-      </h3>
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <div class="stats shadow border border-gray-200">
-          <div class="stat p-3">
-            <div class="stat-title text-xs">Net Salary Paid</div>
-            <div class="stat-value text-lg text-purple-600">
-              <font-awesome-icon
-                icon="fa-solid fa-peso-sign"
-                class="!w-4 !h-4"
-              />
-              {{
-                Number(payrollExpenses.netSalary).toLocaleString('en-PH', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })
-              }}
-            </div>
-            <div class="stat-desc text-xs">Employee salaries</div>
-          </div>
+      <div
+        class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-2"
+      >
+        <h3 class="text-sm font-medium text-gray-700">
+          Payroll Expenses Breakdown
+        </h3>
+        <div class="flex items-center gap-2 text-xs text-gray-500">
+          <span>Total Employees: {{ payrollEmployeeDetails.length }}</span>
+          <span>•</span>
+          <span
+            >Total Net Salary:
+            <font-awesome-icon icon="fa-solid fa-peso-sign" class="!w-3 !h-3" />
+            {{
+              Number(
+                payrollEmployeeDetails.reduce(
+                  (sum, emp) => sum + Number(emp.net_salary || 0),
+                  0
+                )
+              ).toLocaleString('en-PH', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })
+            }}
+          </span>
         </div>
-        <div class="stats shadow border border-gray-200">
-          <div class="stat p-3">
-            <div class="stat-title text-xs">Employer Contributions</div>
-            <div class="stat-value text-lg text-orange-600">
-              <font-awesome-icon
-                icon="fa-solid fa-peso-sign"
-                class="!w-4 !h-4"
-              />
-              {{
-                Number(payrollExpenses.employerContributions).toLocaleString(
-                  'en-PH',
-                  {
+      </div>
+      <div v-if="loading" class="flex justify-center py-8">
+        <div class="loading loading-spinner loading-md text-primaryColor"></div>
+      </div>
+      <div v-else class="overflow-x-auto">
+        <table class="table w-full text-sm table-zebra">
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>Department</th>
+              <th>Position</th>
+              <th>Period</th>
+              <th>Days Worked</th>
+              <th>Hours Worked</th>
+              <th>Basic Salary</th>
+              <th>Overtime Pay</th>
+              <th>Gross Salary</th>
+              <th>Deductions</th>
+              <th>Net Salary</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="!payrollEmployeeDetails.length">
+              <td colspan="11" class="text-center text-gray-500">
+                No payroll data available
+              </td>
+            </tr>
+            <tr
+              v-for="employee in payrollEmployeeDetails"
+              :key="`${employee.payroll_period_id}-${employee.employee_id}`"
+            >
+              <td>
+                <div class="flex flex-col">
+                  <span class="font-medium">{{ employee.employee_name }}</span>
+                </div>
+              </td>
+              <td>{{ employee.department }}</td>
+              <td>{{ employee.role_name }}</td>
+              <td>
+                <div class="flex flex-col">
+                  <span class="text-xs">{{ employee.period_name }}</span>
+
+                </div>
+              </td>
+              <td>{{ employee.days_worked }}</td>
+              <td>{{ employee.hours_worked }}</td>
+              <td>
+                <font-awesome-icon
+                  icon="fa-solid fa-peso-sign"
+                  class="!w-3 !h-3"
+                />
+                {{
+                  Number(employee.basic_salary || 0).toLocaleString('en-PH', {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
-                  }
-                )
-              }}
-            </div>
-            <div class="stat-desc text-xs">SSS, PhilHealth, Pag-IBIG</div>
-          </div>
-        </div>
-        <div class="stats shadow border border-gray-200">
-          <div class="stat p-3">
-            <div class="stat-title text-xs">Employee Contributions</div>
-            <div class="stat-value text-lg text-blue-600">
-              <font-awesome-icon
-                icon="fa-solid fa-peso-sign"
-                class="!w-4 !h-4"
-              />
-              {{
-                Number(payrollExpenses.employeeContributions).toLocaleString(
-                  'en-PH',
-                  {
+                  })
+                }}
+              </td>
+              <td>
+                <font-awesome-icon
+                  icon="fa-solid fa-peso-sign"
+                  class="!w-3 !h-3"
+                />
+                {{
+                  Number(employee.overtime_pay || 0).toLocaleString('en-PH', {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
-                  }
-                )
-              }}
-            </div>
-            <div class="stat-desc text-xs">To be remitted</div>
-          </div>
-        </div>
-        <div class="stats shadow border border-gray-200">
-          <div class="stat p-3">
-            <div class="stat-title text-xs">Total Payroll Expense</div>
-            <div class="stat-value text-lg text-error">
-              <font-awesome-icon
-                icon="fa-solid fa-peso-sign"
-                class="!w-4 !h-4"
-              />
-              {{
-                Number(payrollExpenses.total).toLocaleString('en-PH', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })
-              }}
-            </div>
-            <div class="stat-desc text-xs">Total payroll cost</div>
-          </div>
-        </div>
+                  })
+                }}
+              </td>
+              <td>
+                <font-awesome-icon
+                  icon="fa-solid fa-peso-sign"
+                  class="!w-3 !h-3"
+                />
+                {{
+                  Number(employee.gross_salary || 0).toLocaleString('en-PH', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })
+                }}
+              </td>
+              <td class="">
+                <font-awesome-icon
+                  icon="fa-solid fa-peso-sign"
+                  class="!w-3 !h-3"
+                />
+                {{
+                  Number(employee.total_deductions || 0).toLocaleString(
+                    'en-PH',
+                    { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+                  )
+                }}
+              </td>
+              <td class="">
+                <font-awesome-icon
+                  icon="fa-solid fa-peso-sign"
+                  class="!w-3 !h-3"
+                />
+                {{
+                  Number(employee.net_salary || 0).toLocaleString('en-PH', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })
+                }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>

@@ -246,12 +246,13 @@
 </script>
 
 <template>
-  <div class="container mx-auto p-4 sm:p-6 max-w-7xl">
+  <div class=" p-4 sm:p-6">
     <!-- Header -->
     <div class="mb-6">
       <div class="flex items-center gap-3 mb-4">
         <div class="p-3 rounded-lg bg-primaryColor/10 text-primaryColor">
-          <DollarSign class="w-6 h-6" />
+           <font-awesome-icon icon="fa-solid fa-peso-sign"/>
+
         </div>
         <div>
           <h1 class="text-2xl sm:text-3xl font-bold text-primaryColor">
@@ -264,7 +265,7 @@
       </div>
 
       <!-- Stats Cards -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         <!-- Pending Approval -->
         <div
           class="card bg-white border border-black/10 shadow-sm hover:shadow-md transition-shadow"
@@ -312,7 +313,9 @@
               <div>
                 <p class="text-xs text-black/60 mb-1">Pending Amount</p>
                 <p class="text-lg font-bold text-error">
-                  ₱{{ formatCurrency(stats.totalAmount) }}
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" class="mr-1" />
+
+                  {{ formatCurrency(stats.totalAmount) }}
                 </p>
               </div>
               <div class="p-3 rounded-lg bg-error/10">
@@ -322,29 +325,11 @@
           </div>
         </div>
 
-        <!-- Total Periods -->
-        <div
-          class="card bg-white border border-black/10 shadow-sm hover:shadow-md transition-shadow"
-        >
-          <div class="card-body p-4">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-xs text-black/60 mb-1">Total Periods</p>
-                <p class="text-2xl font-bold text-primaryColor">
-                  {{ stats.total }}
-                </p>
-              </div>
-              <div class="p-3 rounded-lg bg-primaryColor/10">
-                <FileText class="w-6 h-6 text-primaryColor" />
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
 
     <!-- Tabs -->
-    <div class="tabs tabs-boxed mb-4 justify-start w-full bg-white">
+    <div class="tabs tabs-boxed mb-4 justify-start w-full">
       <button
         @click="setActiveTab('pending')"
         class="tab"
@@ -513,11 +498,14 @@
                 <td class="text-sm text-center">
                   {{ period.employee_count || period.records?.length || 0 }}
                 </td>
-                <td class="text-sm font-medium text-success">
-                  ₱{{ formatCurrency(period.total_gross_amount) }}
+                <td class="text-sm font-medium">
+                             <font-awesome-icon icon="fa-solid fa-peso-sign"/>
+
+                  {{ formatCurrency(period.total_gross_amount) }}
                 </td>
-                <td class="text-sm font-medium text-primaryColor">
-                  ₱{{ formatCurrency(period.total_net_amount) }}
+                <td class="text-sm font-medium">
+                  <font-awesome-icon icon="fa-solid fa-peso-sign"/>
+                  {{ formatCurrency(period.total_net_amount) }}
                 </td>
                 <td>
                   <span

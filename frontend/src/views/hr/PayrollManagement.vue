@@ -498,11 +498,11 @@
                 <td class="text-sm">
                   {{ period.employee_count || period.records?.length || 0 }}
                 </td>
-                <td class="text-sm font-medium text-success">
+                <td class="text-sm font-medium">
                   <font-awesome-icon icon="fa-solid fa-peso-sign" />
                   {{ formatCurrency(period.total_gross_amount) }}
                 </td>
-                <td class="text-sm font-medium text-primaryColor">
+                <td class="text-sm font-medium ">
                   <font-awesome-icon icon="fa-solid fa-peso-sign" />
                   {{ formatCurrency(period.total_net_amount) }}
                 </td>

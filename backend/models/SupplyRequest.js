@@ -193,8 +193,10 @@ class SupplyRequest {
   // Get supply request by request_id with items
   static async getByRequestId(requestId) {
     try {
-      if (!requestId) {
-        throw new Error("Invalid request ID provided");
+      // Check if requestId is valid (not null, undefined, or "null" string)
+      if (!requestId || requestId === "null" || requestId === "undefined") {
+        console.log("Invalid request_id provided:", requestId);
+        return null;
       }
 
       const request = await db("supply_requests as sr")

@@ -279,9 +279,9 @@
               </td>
               <td
                 :class="{
-                  'text-error font-semibold text-xs':
+                  'text-error  text-xs':
                     movement.movement_type === 'out',
-                  'text-success font-semibold text-xs':
+                  'text-success  text-xs':
                     movement.movement_type === 'in',
                 }"
               >

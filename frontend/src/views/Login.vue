@@ -532,13 +532,13 @@
       />
     </div>
 
-    <!-- Back Button - positioned outside the card -->
+    <!-- Back Button - positioned outside the card (Desktop only) -->
     <button
       @click="goBackHome"
-      class="absolute top-8 left-8 text-gray-600 hover:text-gray-800 transition-colors z-10 cursor-pointer flex items-center space-x-2 hover:bg-white/20 rounded-lg px-3 py-2"
+      class="absolute top-8 left-8 text-gray-600 hover:text-gray-800 transition-colors z-10 cursor-pointer items-center space-x-2 hover:bg-white/20 rounded-lg px-3 py-2 hidden lg:flex"
     >
       <ArrowLeft class="w-5 h-5" />
-      <span class="text-sm font-medium">Back to Home</span>
+      <span class="text-sm font-medium ">Back to Home</span>
     </button>
 
     <!-- Desktop QR Scanner Button -->
@@ -1102,7 +1102,7 @@
       </div>
       
       <!-- Mobile QR Scanner Button - Fixed Position -->
-      <div class="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 lg:hidden">
+      <div class="fixed bottom-0 left-1/2 transform -translate-x-1/2 z-50 lg:hidden">
         <div class="relative group">
           <!-- Tooltip -->
           <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
@@ -1115,16 +1115,16 @@
           <!-- QR Button -->
           <button
             @click="openScanner"
-            class="relative bg-gradient-to-r from-primaryColor to-primaryColor/80 hover:from-primaryColor/90 hover:to-primaryColor/70 text-white rounded-full p-4 shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center justify-center transform hover:scale-105 active:scale-95 border-2 border-white/20 hover:border-white/30"
+            class="relative bg-gradient-to-r from-primaryColor to-primaryColor/80 hover:from-primaryColor/90 hover:to-primaryColor/70 text-white shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center justify-center transform hover:scale-105 active:scale-95 border-2 border-white/20 hover:border-white/30 half-circle-button"
           >
             <!-- Animated pulse ring -->
-            <div class="absolute inset-0 rounded-full bg-primaryColor/30 animate-ping"></div>
+            <div class="absolute inset-0 bg-primaryColor/30 animate-ping half-circle-pulse"></div>
             
             <!-- Icon -->
             <QrCode class="w-6 h-6 relative z-10" />
             
             <!-- Glow effect -->
-            <div class="absolute inset-0 rounded-full bg-white/10 opacity-0 hover:opacity-100 transition-opacity duration-300"></div>
+            <div class="absolute inset-0 bg-white/10 opacity-0 hover:opacity-100 transition-opacity duration-300 half-circle-glow"></div>
           </button>
         </div>
       </div>
@@ -1155,7 +1155,7 @@
     color: var(--color-neutralColor, #000000);
     background: transparent !important;
     border: none !important;
-    border-bottom: 2px solid #d1d5db !important;
+    border-bottom: 3px solid #d1d5db !important;
     border-radius: 0 !important;
     padding-left: 0 !important;
     padding-right: 0 !important;
@@ -1165,6 +1165,32 @@
     border-bottom-color: var(--primaryColor, #466114) !important;
     outline: none !important;
     box-shadow: none !important;
+  }
+
+  /* Half Circle Button Styles */
+  .half-circle-button {
+    width: 80px;
+    height: 40px;
+    border-radius: 40px 40px 0 0;
+    padding: 8px 16px;
+    border-bottom: none;
+    border-left: 2px solid rgba(255, 255, 255, 0.2);
+    border-right: 2px solid rgba(255, 255, 255, 0.2);
+    border-top: 2px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .half-circle-button:hover {
+    border-left: 2px solid rgba(255, 255, 255, 0.3);
+    border-right: 2px solid rgba(255, 255, 255, 0.3);
+    border-top: 2px solid rgba(255, 255, 255, 0.3);
+  }
+
+  .half-circle-pulse {
+    border-radius: 40px 40px 0 0;
+  }
+
+  .half-circle-glow {
+    border-radius: 40px 40px 0 0;
   }
 
   /* Mobile specific styles */

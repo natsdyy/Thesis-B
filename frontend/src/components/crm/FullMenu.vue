@@ -1,53 +1,148 @@
 <template>
   <div class="bg-gray-50 min-h-screen">
     <!-- Header -->
-    <header class="text-white shadow-lg fixed top-0 left-0 right-0 z-50 bg-green-800">
-      <div class="container mx-auto px-6 py-4">
+    <header class="text-white shadow-lg fixed top-0 left-0 right-0 z-50 bg-green-800 transition-all duration-300">
+      <div class="container mx-auto px-3 sm:px-4 py-3 sm:py-4">
         <div class="flex items-center justify-between">
-          <!-- Logo and Brand -->
-          <div class="flex items-center space-x-4 cursor-pointer group" @click="goToHome" title="Click to go to home">
-            <div class="w-16 h-16 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
-              <img src="/src/assets/crm/Logo.png" alt="Countryside Logo" class="w-full h-full object-contain" />
-            </div>
-            <h1 class="text-2xl font-bold transition-all duration-300 group-hover:text-orange-300 group-hover:drop-shadow-lg">Countryside Steakhouse</h1>
-            <!-- Subtle home indicator -->
-            <div class="opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-orange-300 text-sm">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
-              </svg>
+          <!-- Left Side: Mobile Menu Button + Logo and Brand -->
+          <div class="flex items-center space-x-2 sm:space-x-4">
+            <!-- Mobile Menu Button -->
+            <button
+              @click="toggleMobileMenu"
+              class="mobile-menu-container md:hidden flex items-center justify-center w-10 h-10 text-white hover:text-orange-300 transition-colors duration-300"
+              aria-label="Toggle mobile menu"
+            >
+              <!-- Hamburger Icon -->
+              <div class="relative w-6 h-6">
+                <span
+                  :class="[
+                    'absolute block h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out',
+                    isMobileMenuOpen ? 'rotate-45 translate-y-2.5' : 'translate-y-0'
+                  ]"
+                ></span>
+                <span
+                  :class="[
+                    'absolute block h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out translate-y-2.5',
+                    isMobileMenuOpen ? 'opacity-0' : 'opacity-100'
+                  ]"
+                ></span>
+                <span
+                  :class="[
+                    'absolute block h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out',
+                    isMobileMenuOpen ? '-rotate-45 translate-y-2.5' : 'translate-y-5'
+                  ]"
+                ></span>
+              </div>
+            </button>
+
+            <!-- Logo and Brand -->
+            <div
+              class="flex items-center space-x-2 sm:space-x-4 cursor-pointer group"
+              @click="scrollToHome"
+              title="Click to go to top"
+            >
+              <div
+                class="w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center transition-transform duration-300 group-hover:scale-110"
+              >
+                <img
+                  src="/logo1.png"
+                  alt="Countryside Logo"
+                  class="w-full h-full object-contain"
+                />
+              </div>
+              <h1
+                class="text-lg sm:text-xl md:text-2xl font-bold transition-all duration-300 group-hover:text-orange-300 group-hover:drop-shadow-lg"
+              >
+                Countryside Steakhouse
+              </h1>
             </div>
           </div>
-          
-          <!-- Navigation -->
-          <nav class="hidden md:flex items-center space-x-10">
-            <a href="/#home" class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium">
-              <span class="relative z-10">Home</span>
-              <span class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"></span>
-            </a>
-            <router-link to="/menu" class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium">
+
+          <!-- Desktop Navigation -->
+             <nav class="hidden md:flex items-center space-x-10">
+               <router-link
+              to="/menu"
+              class="relative group py-2 px-1 text-orange-300 transition-all duration-300 font-medium"
+            >
               <span class="relative z-10">Menu</span>
-              <span class="absolute bottom-0 left-0 w-full h-0.5 bg-orange-400"></span>
+              <span
+                class="absolute bottom-0 left-0 w-full h-0.5 bg-orange-400"
+              ></span>
             </router-link>
-          
-            <a href="/stores" class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium">
-              <span class="relative z-10">Store Directory</span>
-              <span class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"></span>
-            </a>
-            <a href="/#contact" class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium">
-              <span class="relative z-10">Feedbacks</span>
-              <span class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"></span>
-            </a>
+
+            <router-link
+              to="/stores"
+              class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
+            >
+              <span class="relative z-10">Store's</span>
+              <span
+                class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
+              ></span>
+            </router-link>
+               <a
+                 href="/#contact"
+                 class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
+               >
+                 <span class="relative z-10">Contact Us</span>
+                 <span
+                   class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
+                 ></span>
+               </a>
           </nav>
-          
+
           <!-- Login Button -->
-          <div class="flex items-center space-x-4">
-            <button @click="goToLogin" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5">
+          <div class="flex items-center space-x-2 sm:space-x-4">
+            <button
+              @click="goToLogin"
+              class="border border-white text-white px-3 sm:px-4 md:px-6 py-1.5 sm:py-2 rounded-sm cursor-pointer transition-all duration-300 shadow-md font-thin text-sm sm:text-base"
+            >
               Login
             </button>
           </div>
         </div>
       </div>
     </header>
+
+    <!-- Mobile Menu Dropdown -->
+    <div
+      :class="[
+        'mobile-menu-container fixed top-16 sm:top-20 left-0 right-0 bg-green-800 shadow-lg z-40 transform transition-all duration-300 ease-in-out md:hidden',
+        isMobileMenuOpen ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'
+      ]"
+    >
+         <nav class="py-3 sm:py-4 px-3 sm:px-4 space-y-1 sm:space-y-2">
+           <router-link
+          to="/menu"
+          @click="closeMobileMenu()"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-orange-300 hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <font-awesome-icon icon="fa-solid fa-utensils" class="w-4 h-4 sm:w-5 sm:h-5 mr-3" />
+            Menu
+          </span>
+        </router-link>
+        <router-link
+          to="/stores"
+          @click="closeMobileMenu()"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <font-awesome-icon icon="fa-solid fa-store" class="w-4 h-4 sm:w-5 sm:h-5 mr-3" />
+            Store's
+          </span>
+        </router-link>
+           <a
+             href="/#contact"
+             @click="closeMobileMenu()"
+             class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+           >
+             <span class="flex items-center">
+               <font-awesome-icon icon="fa-solid fa-phone" class="w-4 h-4 sm:w-5 sm:h-5 mr-3" />
+               Contact Us
+             </span>
+           </a>
+      </nav>
+    </div>
 
     <div class="container mx-auto px-6 py-12 pt-24">
       <div class="text-center mb-12">
@@ -146,7 +241,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 
 const menuCategories = [
   'All', 'Sizzling Plates', 'Steaks', 'Breakfast', 'Sides', 'Beverages'
@@ -155,6 +250,45 @@ const menuCategories = [
 const selectedCategory = ref('All');
 const currentPage = ref(1);
 const itemsPerPage = 8;
+
+// Mobile menu state
+const isMobileMenuOpen = ref(false);
+const isScrolled = ref(false);
+
+const handleScroll = () => {
+  isScrolled.value = window.scrollY > 50;
+};
+
+// Mobile menu functions
+const toggleMobileMenu = () => {
+  isMobileMenuOpen.value = !isMobileMenuOpen.value;
+};
+
+const closeMobileMenu = () => {
+  isMobileMenuOpen.value = false;
+};
+
+// Click outside handler for mobile menu
+const handleClickOutside = (event) => {
+  if (isMobileMenuOpen.value && !event.target.closest('.mobile-menu-container')) {
+    closeMobileMenu();
+  }
+};
+
+// Smooth scroll to home section
+const scrollToHome = () => {
+  window.location.href = '/';
+};
+
+onMounted(() => {
+  window.addEventListener('scroll', handleScroll);
+  document.addEventListener('click', handleClickOutside);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('scroll', handleScroll);
+  document.removeEventListener('click', handleClickOutside);
+});
 
 const menuItems = [
   // Sizzling Plates

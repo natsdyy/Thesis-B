@@ -548,60 +548,79 @@
     <!-- Attendance Scanner Modal (DaisyUI dialog for consistency) -->
     <dialog id="attendance_scanner_modal" class="modal">
       <div
-        class="modal-box bg-accentColor text-black/50 shadow-lg max-w-1xl w-full max-h-[90vh] overflow-y-auto"
+        class="modal-box bg-accentColor text-black/50 shadow-lg w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-4xl xl:max-w-5xl max-h-[95vh] sm:max-h-[90vh] md:max-h-[85vh] lg:max-h-[80vh] overflow-y-auto p-3 sm:p-4 md:p-6 lg:p-8"
       >
-        <div class="flex items-center justify-between mb-3">
-          <h3 class="font-bold text-lg text-primaryColor">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-3 sm:mb-4">
+          <h3
+            class="font-bold text-base sm:text-lg md:text-xl lg:text-2xl text-primaryColor"
+          >
             Attendance Scanner
           </h3>
           <button
             @click="closeScanner"
-            class="btn btn-xs shadow-none font-thin hover:bg-black/10 border-none"
+            class="btn btn-xs sm:btn-sm shadow-none font-thin hover:bg-black/10 border-none"
           >
             ✕
           </button>
         </div>
 
-        <p class="text-sm mb-3">
+        <!-- Instructions -->
+        <p class="text-xs sm:text-sm md:text-base mb-3 sm:mb-4">
           Position the QR code within the frame. The scan will happen
           automatically.
         </p>
 
-        <!-- Real-time info bar -->
+        <!-- Real-time info bar - Responsive layout -->
         <div
-          class="flex flex-wrap items-center gap-2 text-xs mb-3 justify-between flex-col"
+          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mb-3 sm:mb-4"
         >
-          <div class="">
-            <h1 class="text-lg font-bold text-primaryColor">
+          <div class="text-center sm:text-left">
+            <div class="text-xs sm:text-sm font-medium text-gray-600">Date</div>
+            <h1
+              class="text-sm sm:text-base md:text-lg font-bold text-primaryColor"
+            >
               {{ formattedDate }}
             </h1>
           </div>
-          <div class="">
-            <h1 class="text-lg font-bold text-primaryColor">
+          <div class="text-center sm:text-left">
+            <div class="text-xs sm:text-sm font-medium text-gray-600">
+              Duration
+            </div>
+            <h1
+              class="text-sm sm:text-base md:text-lg font-bold text-primaryColor"
+            >
               {{ formatDuration(elapsedSeconds) }}
             </h1>
           </div>
-
-          <div class="">
-            <h1 class="text-sm font-bold text-primaryColor">
-              Scans: {{ scanCount }}
+          <div class="text-center sm:text-left">
+            <div class="text-xs sm:text-sm font-medium text-gray-600">
+              Scans
+            </div>
+            <h1
+              class="text-sm sm:text-base md:text-lg font-bold text-primaryColor"
+            >
+              {{ scanCount }}
             </h1>
           </div>
-          <div v-if="lastScanAt" class="">
-            <h1 class="text-sm font-bold text-primaryColor">
-              Last scan: {{ lastScanAt.toLocaleTimeString() }}
+          <div v-if="lastScanAt" class="text-center sm:text-left">
+            <div class="text-xs sm:text-sm font-medium text-gray-600">
+              Last Scan
+            </div>
+            <h1 class="text-xs sm:text-sm font-bold text-primaryColor">
+              {{ lastScanAt.toLocaleTimeString() }}
             </h1>
           </div>
         </div>
 
         <!-- Camera selection -->
-        <div v-if="availableCameras.length > 1" class="mb-2">
-          <label class="label mb-1"
-            ><span class="label-text text-sm">Camera:</span></label
-          >
+        <div v-if="availableCameras.length > 1" class="mb-3 sm:mb-4">
+          <label class="label mb-1">
+            <span class="label-text text-xs sm:text-sm">Camera:</span>
+          </label>
           <select
             v-model="selectedDeviceId"
-            class="select select-sm select-bordered w-full"
+            class="select select-sm sm:select-md select-bordered w-full text-xs sm:text-sm"
           >
             <option
               v-for="cam in availableCameras"
@@ -613,13 +632,21 @@
           </select>
         </div>
 
-        <div v-if="scanError" class="alert alert-error text-sm mb-3">
+        <!-- Error Alert -->
+        <div
+          v-if="scanError"
+          class="alert alert-error text-xs sm:text-sm mb-3 sm:mb-4"
+        >
           {{ scanError }}
         </div>
 
-        <div class="card bg-white border border-black/10 mb-3">
-          <div class="card-body p-2">
-            <div class="relative rounded-lg overflow-hidden border">
+        <!-- Camera Section - Responsive -->
+        <div class="card bg-white border border-black/10 mb-3 sm:mb-4">
+          <div class="card-body p-2 sm:p-3 md:p-4">
+            <!-- Camera Container with responsive aspect ratio -->
+            <div
+              class="relative rounded-lg overflow-hidden border mx-auto w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg xl:max-w-xl aspect-[4/3] sm:aspect-[16/10] md:aspect-[16/9]"
+            >
               <QrcodeStream
                 :constraints="
                   selectedDeviceId
@@ -630,12 +657,17 @@
                 @init="onInit"
                 @detect="onDetect"
                 @camera-on="onCameraOn"
+                class="w-full h-full object-cover"
               />
             </div>
-            <div class="flex items-center justify-between mt-2">
-              <div class="flex items-center gap-2">
+
+            <!-- Camera Controls -->
+            <div
+              class="flex flex-col sm:flex-row items-center justify-between mt-2 sm:mt-3 gap-2"
+            >
+              <div class="flex flex-col sm:flex-row items-center gap-2">
                 <button
-                  class="btn btn-sm"
+                  class="btn btn-xs sm:btn-sm text-xs sm:text-sm"
                   :class="torchOn ? 'btn-warning' : ''"
                   :disabled="!torchSupported"
                   @click="toggleTorch"
@@ -648,37 +680,49 @@
                       : 'Torch not supported'
                   }}
                 </button>
-                <span class="text-xs" v-if="isScanning">Camera active…</span>
+                <span class="text-xs text-gray-600" v-if="isScanning">
+                  Camera active…
+                </span>
               </div>
             </div>
           </div>
         </div>
 
-        <div v-if="scanResult" class="card bg-white border border-black/10">
-          <div class="card-body p-3">
-            <div class="text-sm font-medium text-primaryColor mb-1">
+        <!-- Scan Result Section - Responsive -->
+        <div
+          v-if="scanResult"
+          class="card bg-white border border-black/10 mb-3 sm:mb-4"
+        >
+          <div class="card-body p-3 sm:p-4">
+            <div class="text-xs sm:text-sm font-medium text-primaryColor mb-2">
               Last scanned code
             </div>
-            <div class="text-sm break-all">{{ scanResultDisplay }}</div>
-            <div class="mt-2 text-xs">
+            <div
+              class="text-xs sm:text-sm break-all bg-gray-50 p-2 rounded mb-2"
+            >
+              {{ scanResultDisplay }}
+            </div>
+            <div class="text-xs text-gray-600 mb-3">
               Scanned at: {{ lastScanAt?.toLocaleString?.() }}
             </div>
-            <div class="mt-3 flex gap-2">
+
+            <!-- Action Buttons - Responsive layout -->
+            <div class="flex flex-col sm:flex-row gap-2">
               <button
                 @click="processAttendance"
                 :disabled="isProcessingAttendance"
-                class="btn btn-primary btn-sm bg-primaryColor hover:bg-primaryColor/80 border-none shadow-none font-thin"
+                class="btn btn-primary btn-sm sm:btn-md bg-primaryColor hover:bg-primaryColor/80 border-none shadow-none font-thin flex-1"
               >
                 {{ isProcessingAttendance ? 'Processing...' : 'Use this scan' }}
               </button>
               <button
-                class="btn btn-outline btn-sm shadow-none font-thin"
+                class="btn btn-outline btn-sm sm:btn-md shadow-none font-thin flex-1"
                 @click="scanResult = ''"
               >
                 Scan again
               </button>
               <button
-                class="btn btn-ghost btn-sm shadow-none font-thin hover:bg-black/1"
+                class="btn btn-ghost btn-sm sm:btn-md shadow-none font-thin hover:bg-black/10 flex-1"
                 @click="copyScanResult"
                 :disabled="isCopying"
               >
@@ -689,14 +733,15 @@
         </div>
 
         <!-- Current time footer -->
-        <div class="mt-3 text-center text-xs text-gray-600">
+        <div class="text-center text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
           Time: {{ nowTime.toLocaleTimeString() }}
         </div>
 
+        <!-- Modal Actions -->
         <div class="modal-action">
           <button
             @click="closeScanner"
-            class="btn btn-sm btn-outline font-thin"
+            class="btn btn-sm sm:btn-md btn-outline font-thin w-full sm:w-auto"
           >
             Close
           </button>
@@ -709,9 +754,11 @@
 
     <!-- Attendance Result Modal (dialog above scanner) -->
     <dialog ref="resultDialogRef" id="attendance_result_modal" class="modal">
-      <div class="modal-box max-w-md">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="font-bold text-lg">
+      <div
+        class="modal-box w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl"
+      >
+        <div class="flex items-center justify-between mb-3 sm:mb-4">
+          <h3 class="font-bold text-base sm:text-lg md:text-xl">
             {{
               attendanceResult?.success
                 ? 'Attendance Recorded'
@@ -720,7 +767,7 @@
           </h3>
           <button
             @click="closeAttendanceResult"
-            class="btn btn-xs btn-circle btn-ghost"
+            class="btn btn-xs sm:btn-sm btn-circle btn-ghost"
           >
             ✕
           </button>
@@ -729,17 +776,21 @@
         <!-- Success State -->
         <div v-if="attendanceResult?.success" class="text-center">
           <div
-            class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4"
+            class="w-12 h-12 sm:w-16 sm:h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4"
           >
-            <CheckCircle class="w-8 h-8 text-green-600" />
+            <CheckCircle class="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
           </div>
-          <h4 class="text-lg font-semibold text-green-600 mb-2">Success!</h4>
-          <p class="text-gray-700 mb-4">{{ attendanceResult.message }}</p>
+          <h4 class="text-base sm:text-lg font-semibold text-green-600 mb-2">
+            Success!
+          </h4>
+          <p class="text-xs sm:text-sm text-gray-700 mb-3 sm:mb-4">
+            {{ attendanceResult.message }}
+          </p>
 
           <!-- Show additional data if available -->
           <div
             v-if="attendanceResult.data"
-            class="bg-gray-50 rounded-lg p-3 text-sm text-left"
+            class="bg-gray-50 rounded-lg p-2 sm:p-3 text-xs sm:text-sm text-left"
           >
             <div v-if="attendanceResult.data.employee" class="mb-2">
               <span class="font-medium">Employee:</span>
@@ -764,7 +815,7 @@
         <div v-else class="text-center">
           <div
             :class="[
-              'w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4',
+              'w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4',
               isScheduleError(attendanceResult?.message)
                 ? 'bg-orange-100'
                 : 'bg-red-100',
@@ -772,7 +823,7 @@
           >
             <XCircle
               :class="[
-                'w-8 h-8',
+                'w-6 h-6 sm:w-8 sm:h-8',
                 isScheduleError(attendanceResult?.message)
                   ? 'text-orange-600'
                   : 'text-red-600',
@@ -781,7 +832,7 @@
           </div>
           <h4
             :class="[
-              'text-lg font-semibold mb-2',
+              'text-base sm:text-lg font-semibold mb-2',
               isScheduleError(attendanceResult?.message)
                 ? 'text-orange-600'
                 : 'text-red-600',
@@ -793,17 +844,19 @@
                 : 'Error'
             }}
           </h4>
-          <p class="text-gray-700 mb-4">
+          <p class="text-xs sm:text-sm text-gray-700 mb-3 sm:mb-4">
             {{ attendanceResult?.message || 'Failed to process attendance' }}
           </p>
 
           <!-- Additional info for schedule errors -->
           <div
             v-if="isScheduleError(attendanceResult?.message)"
-            class="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-left"
+            class="bg-orange-50 border border-orange-200 rounded-lg p-2 sm:p-3 text-xs sm:text-sm text-left"
           >
             <div class="flex items-start space-x-2">
-              <Clock class="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
+              <Clock
+                class="w-3 h-3 sm:w-4 sm:h-4 text-orange-600 mt-0.5 flex-shrink-0"
+              />
               <div>
                 <p class="font-medium text-orange-800">Schedule Information</p>
                 <p class="text-orange-700 text-xs mt-1">
@@ -816,7 +869,10 @@
         </div>
 
         <div class="modal-action">
-          <button @click="closeAttendanceResult" class="btn bg-gray-200 btn-sm">
+          <button
+            @click="closeAttendanceResult"
+            class="btn bg-gray-200 btn-sm sm:btn-md w-full sm:w-auto"
+          >
             {{ attendanceResult?.success ? 'Close' : 'Try Again' }}
           </button>
         </div>
@@ -1310,6 +1366,117 @@
     .mobile-logo {
       width: 7rem;
       height: 7rem;
+    }
+  }
+
+  /* Attendance Scanner Modal Responsive Enhancements */
+
+  /* Modal backdrop and positioning */
+  .modal-box {
+    margin: 0.5rem;
+    max-height: calc(100vh - 1rem);
+  }
+
+  @media (min-width: 640px) {
+    .modal-box {
+      margin: 1rem;
+      max-height: calc(100vh - 2rem);
+    }
+  }
+
+  @media (min-width: 768px) {
+    .modal-box {
+      margin: 1.5rem;
+      max-height: calc(100vh - 3rem);
+    }
+  }
+
+  /* Camera aspect ratio improvements */
+  .aspect-\[4\/3\] {
+    aspect-ratio: 4 / 3;
+  }
+
+  .aspect-\[16\/10\] {
+    aspect-ratio: 16 / 10;
+  }
+
+  .aspect-\[16\/9\] {
+    aspect-ratio: 16 / 9;
+  }
+
+  /* Ensure camera stream fills container properly */
+  .QrcodeStream {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  /* Better touch targets for mobile */
+  @media (max-width: 640px) {
+    .modal .btn {
+      min-height: 44px;
+      padding: 0.75rem 1rem;
+    }
+
+    .modal .btn-xs {
+      min-height: 36px;
+      padding: 0.5rem 0.75rem;
+    }
+  }
+
+  /* Improved grid responsiveness */
+  @media (max-width: 639px) {
+    .grid.grid-cols-1 {
+      gap: 0.5rem;
+    }
+  }
+
+  @media (min-width: 640px) and (max-width: 1023px) {
+    .grid.grid-cols-2 {
+      gap: 0.75rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .grid.grid-cols-4 {
+      gap: 1rem;
+    }
+  }
+
+  /* Better text wrapping and overflow handling */
+  .break-all {
+    word-break: break-all;
+    overflow-wrap: break-word;
+    hyphens: auto;
+  }
+
+  /* Enhanced button responsiveness */
+  @media (max-width: 640px) {
+    .flex.flex-col.gap-2 .btn {
+      width: 100%;
+    }
+  }
+
+  /* Modal action button improvements */
+  .modal-action .btn {
+    min-width: 120px;
+  }
+
+  @media (max-width: 640px) {
+    .modal-action .btn {
+      width: 100%;
+      min-width: auto;
+    }
+  }
+
+  /* Better spacing for mobile */
+  @media (max-width: 640px) {
+    .modal-box > * {
+      margin-bottom: 0.75rem;
+    }
+
+    .modal-box > *:last-child {
+      margin-bottom: 0;
     }
   }
 </style>

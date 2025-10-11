@@ -74,6 +74,15 @@ class SendGridService {
           name: "Countryside Steakhouse",
         },
         subject: "Welcome to Countryside Supplier Portal",
+        trackingSettings: {
+          clickTracking: {
+            enable: false,
+            enableText: false,
+          },
+          openTracking: {
+            enable: false,
+          },
+        },
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
             <div style="background-color: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
@@ -190,6 +199,15 @@ class SendGridService {
           name: "Countryside Steakhouse",
         },
         subject: "Welcome aboard to COUNTRYSIDE-STEAKHOUSE!",
+        trackingSettings: {
+          clickTracking: {
+            enable: false,
+            enableText: false,
+          },
+          openTracking: {
+            enable: false,
+          },
+        },
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
             <!-- Main Email Container -->
@@ -616,6 +634,15 @@ class SendGridService {
           name: "Countryside Steakhouse",
         },
         subject: "Thank you for your feedback - Countryside Steakhouse",
+        trackingSettings: {
+          clickTracking: {
+            enable: false,
+            enableText: false,
+          },
+          openTracking: {
+            enable: false,
+          },
+        },
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
             <!-- Main Email Container -->

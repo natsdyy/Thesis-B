@@ -62,9 +62,10 @@ export const useOvertimeStore = defineStore('overtime', {
         const rows = Array.isArray(json?.data) ? json.data : [];
         this.myRequests = rows.map((r) => {
           const datePart = this.ymdPH(r.ot_date || '');
-          const startAt = `${datePart}T${r.start_time}`;
+          // Construct proper datetime strings with timezone info
+          const startAt = `${datePart}T${r.start_time}+08:00`;
           // If end_time is <= start_time, treat as next day for display
-          let endAt = `${datePart}T${r.end_time}`;
+          let endAt = `${datePart}T${r.end_time}+08:00`;
           try {
             const s = new Date(startAt);
             const e = new Date(endAt);

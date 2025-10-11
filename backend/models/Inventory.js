@@ -1152,33 +1152,37 @@ class Inventory {
 
       const scaleFactor = batchSize ? batchSize / recipe.batch_size : 1;
 
-      const availability = await Promise.all(
-        ingredients.map(async (ingredient) => {
-          const requiredQuantity =
-            parseFloat(ingredient.quantity_required) * scaleFactor;
+      // OPTIMIZATION: Get all inventory data in one query instead of N+1
+      const inventoryItemIds = ingredients.map((ing) => ing.inventory_item_id);
+      const inventoryData = await db("inventory_items as ii")
+        .select("ii.id", db.raw("SUM(ii.quantity) as total_available"))
+        .whereIn("ii.id", inventoryItemIds)
+        .where("ii.quantity", ">", 0)
+        .where("ii.status", "available")
+        .groupBy("ii.id");
 
-          // Get current available inventory for this ingredient
-          const currentStock = await db("inventory_items as ii")
-            .select(db.raw("SUM(ii.quantity) as total_available"))
-            .where("ii.id", ingredient.inventory_item_id)
-            .where("ii.quantity", ">", 0)
-            .where("ii.status", "available")
-            .first();
+      // Create a map for O(1) lookup
+      const inventoryMap = new Map();
+      inventoryData.forEach((item) => {
+        inventoryMap.set(item.id, parseFloat(item.total_available || 0));
+      });
 
-          const availableQuantity = parseFloat(
-            currentStock?.total_available || 0
-          );
-          const isAvailable = availableQuantity >= requiredQuantity;
+      const availability = ingredients.map((ingredient) => {
+        const requiredQuantity =
+          parseFloat(ingredient.quantity_required) * scaleFactor;
 
-          return {
-            ...ingredient,
-            required_quantity: requiredQuantity,
-            available_quantity: availableQuantity,
-            is_available: isAvailable,
-            shortage: isAvailable ? 0 : requiredQuantity - availableQuantity,
-          };
-        })
-      );
+        const availableQuantity =
+          inventoryMap.get(ingredient.inventory_item_id) || 0;
+        const isAvailable = availableQuantity >= requiredQuantity;
+
+        return {
+          ...ingredient,
+          required_quantity: requiredQuantity,
+          available_quantity: availableQuantity,
+          is_available: isAvailable,
+          shortage: isAvailable ? 0 : requiredQuantity - availableQuantity,
+        };
+      });
 
       const allAvailable = availability.every((ing) => ing.is_available);
 
@@ -1296,62 +1300,107 @@ class Inventory {
             null
           : productionBatchId;
       const batchIdText = batchIdScalar != null ? String(batchIdScalar) : "";
-      const consumptionRecords = [];
 
+      // OPTIMIZATION: Get all inventory items in one query instead of N+1
+      const inventoryItemIds = ingredientConsumption.map(
+        (c) => c.inventory_item_id
+      );
+      const inventoryItems = await trx("inventory_items")
+        .whereIn("id", inventoryItemIds)
+        .select("*");
+
+      // Create a map for O(1) lookup
+      const inventoryMap = new Map();
+      inventoryItems.forEach((item) => {
+        inventoryMap.set(item.id, item);
+      });
+
+      // Validate all items exist
       for (const consumption of ingredientConsumption) {
-        // Get inventory item first to get unit cost
-        const inventoryItem = await trx("inventory_items")
-          .where("id", consumption.inventory_item_id)
-          .first();
-
-        if (!inventoryItem) {
+        if (!inventoryMap.has(consumption.inventory_item_id)) {
           throw new Error(
             `Inventory item ${consumption.inventory_item_id} not found`
           );
         }
+      }
 
-        // Create consumption transaction
+      // Prepare batch data for transactions and updates
+      const transactionData = [];
+      const updateData = [];
+      const consumptionRecords = [];
+
+      for (const consumption of ingredientConsumption) {
+        const inventoryItem = inventoryMap.get(consumption.inventory_item_id);
         const quantityConsumed = parseFloat(consumption.quantity_consumed);
         const unitCost = parseFloat(inventoryItem.unit_cost || 0);
         const totalValue = quantityConsumed * unitCost;
-
-        const [transaction] = await trx("inventory_transactions")
-          .insert({
-            inventory_item_id: consumption.inventory_item_id,
-            transaction_type: "production_consumption",
-            quantity: -quantityConsumed,
-            unit_cost: unitCost,
-            total_value: totalValue,
-            reference_number: `BATCH-${batchIdText}`,
-            reason: "Production ingredient consumption",
-            notes: `Consumed for production batch ${batchIdText}`,
-            performed_by: consumption.performed_by || "Production System",
-            transaction_date: new Date(),
-          })
-          .returning("*");
-
         const newQuantity =
-          parseFloat(inventoryItem.quantity) -
-          parseFloat(consumption.quantity_consumed);
+          parseFloat(inventoryItem.quantity) - quantityConsumed;
 
         if (newQuantity < 0) {
           throw new Error(
-            `Insufficient inventory for item ${inventoryItem.item_name}`
+            `Insufficient inventory for item ${inventoryItem.item_name}. Available: ${inventoryItem.quantity}, Required: ${quantityConsumed}`
           );
         }
 
-        await trx("inventory_items")
-          .where("id", consumption.inventory_item_id)
-          .update({
-            quantity: newQuantity,
-            updated_at: new Date(),
-          });
+        // Prepare transaction data
+        transactionData.push({
+          inventory_item_id: consumption.inventory_item_id,
+          transaction_type: "production_consumption",
+          quantity: -quantityConsumed,
+          unit_cost: unitCost,
+          total_value: totalValue,
+          reference_number: `BATCH-${batchIdText}`,
+          reason: "Production ingredient consumption",
+          notes: `Consumed for production batch ${batchIdText}`,
+          performed_by: consumption.performed_by || "Production System",
+          transaction_date: new Date(),
+        });
+
+        // Prepare update data
+        updateData.push({
+          id: consumption.inventory_item_id,
+          quantity: newQuantity,
+          updated_at: new Date(),
+        });
 
         consumptionRecords.push({
           ...consumption,
-          transaction_id: transaction.id,
           new_quantity: newQuantity,
         });
+      }
+
+      // OPTIMIZATION: Insert all transactions in one query
+      const transactions = await trx("inventory_transactions")
+        .insert(transactionData)
+        .returning("*");
+
+      // Add transaction IDs to consumption records
+      transactions.forEach((transaction, index) => {
+        consumptionRecords[index].transaction_id = transaction.id;
+      });
+
+      // OPTIMIZATION: Update all inventory items in one query using CASE statements
+      if (updateData.length > 0) {
+        const caseStatements = {
+          quantity: trx.raw(
+            `CASE id ${updateData
+              .map((update) => `WHEN ${update.id} THEN ${update.quantity}`)
+              .join(" ")} END`
+          ),
+          updated_at: trx.raw(
+            `CASE id ${updateData
+              .map(
+                (update) =>
+                  `WHEN ${update.id} THEN '${update.updated_at.toISOString()}'`
+              )
+              .join(" ")} END`
+          ),
+        };
+
+        await trx("inventory_items")
+          .whereIn("id", inventoryItemIds)
+          .update(caseStatements);
       }
 
       await trx.commit();

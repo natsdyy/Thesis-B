@@ -462,12 +462,33 @@
     if (!timeString) return 'N/A';
     try {
       let input = String(timeString);
-      // If lacks timezone info, assume PH
+
+      // Handle time-only strings (HH:MM:SS or HH:MM)
+      if (/^\d{1,2}:\d{2}(?::\d{2})?$/.test(input)) {
+        // Convert time-only string to a full datetime for formatting
+        const today = new Date();
+        const [hours, minutes, seconds = '00'] = input.split(':');
+        today.setHours(
+          parseInt(hours),
+          parseInt(minutes),
+          parseInt(seconds),
+          0
+        );
+        return today.toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+          timeZone: 'Asia/Manila',
+        });
+      }
+
+      // Handle full datetime strings
       if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(input)) {
         if (!/[Zz]|[\+\-]\d{2}:?\d{2}$/.test(input)) {
           input = input.replace(/$/, ':00+08:00');
         }
       }
+
       return new Date(input).toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',

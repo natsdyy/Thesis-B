@@ -2038,6 +2038,7 @@ export const useProductionStore = defineStore('production', () => {
   // Fetch all transactions with filters and pagination
   const fetchAllTransactions = async (params = {}) => {
     try {
+      console.log('🔍 fetchAllTransactions called with params:', params);
       const queryParams = new URLSearchParams();
 
       // Add all parameters to query string
@@ -2051,70 +2052,116 @@ export const useProductionStore = defineStore('production', () => {
         }
       });
 
-      // Fetch both audit logs and production batch transactions
-      const [auditLogsResponse, productionBatchesResponse] = await Promise.all([
-        axios.get(
-          `${apiConfig.baseURL}/menu/production-inventory/audit-logs?${queryParams.toString()}`
-        ),
-        axios.get(
-          `${apiConfig.baseURL}/production/batches?${queryParams.toString()}`
-        ),
-      ]);
+      console.log('📅 Query params:', queryParams.toString());
+
+      // Fetch recent activity (which includes both audit logs and production execution data)
+      const recentActivityResponse = await axios.get(
+        `${apiConfig.baseURL}/menu/production-inventory/recent-activity?${queryParams.toString()}`
+      );
 
       let allTransactions = [];
 
-      // Process audit logs
-      if (auditLogsResponse.data.success) {
-        const auditLogs = auditLogsResponse.data.data.map((log) => ({
-          ...log,
-          transaction_type: 'audit_log',
-          source: 'audit',
-        }));
-        allTransactions = [...allTransactions, ...auditLogs];
-      }
+      // Process recent activity (includes both audit logs and production execution data)
+      console.log('🔄 Recent activity response:', recentActivityResponse.data);
+      console.log(
+        '📊 Recent activity data count:',
+        recentActivityResponse.data.data?.length || 0
+      );
+      console.log(
+        '📋 Action types in recent activity:',
+        recentActivityResponse.data.data?.map((a) => a.action_type) || []
+      );
+      console.log('📅 Date range from params:', {
+        date_from: params.date_from,
+        date_to: params.date_to,
+        date_range: params.date_range,
+      });
 
-      // Process production batches
-      if (productionBatchesResponse.data.success) {
-        const productionBatches = productionBatchesResponse.data.data.map(
-          (batch) => ({
-            id: batch.id,
-            action_type: batch.status,
-            item_name: batch.menu_item_name,
-            menu_item_id: batch.menu_item_id,
-            created_at: batch.updated_at,
-            performed_by: batch.assigned_to_name,
-            notes: batch.notes,
-            transaction_type: 'production_batch',
-            source: 'production',
-            batch_number: batch.batch_number,
-            batch_size: batch.batch_size,
-            quantity_produced: batch.quantity_produced,
-            production_date: batch.production_date,
-            start_time: batch.start_time,
-            end_time: batch.end_time,
+      if (recentActivityResponse.data.success) {
+        const recentActivity = recentActivityResponse.data.data.map(
+          (activity) => ({
+            id: activity.id,
+            action_type: activity.action_type,
+            item_name: activity.item_name,
+            menu_item_id: activity.menu_item_id,
+            created_at: activity.created_at,
+            performed_by: activity.performed_by,
+            notes: activity.notes,
+            action_details: activity.action_details,
+            transaction_type:
+              activity.activity_source === 'production'
+                ? 'production_batch'
+                : 'audit_log',
+            source: activity.activity_source || 'audit',
+            batch_number: activity.batch_number,
+            batch_size: activity.batch_size,
+            quantity_produced: activity.quantity_produced,
+            description: activity.description,
           })
         );
-        allTransactions = [...allTransactions, ...productionBatches];
+        allTransactions = [...allTransactions, ...recentActivity];
+        console.log(`✅ Added ${recentActivity.length} recent activity items`);
+      } else {
+        console.log(
+          '❌ Recent activity response failed:',
+          recentActivityResponse.data
+        );
       }
 
-      // Sort by date (most recent first)
+      // Sort by date (most recent first) BEFORE filtering
       allTransactions.sort(
         (a, b) => new Date(b.created_at) - new Date(a.created_at)
       );
 
-      // Apply pagination
+      console.log(
+        `📊 Total transactions before filtering: ${allTransactions.length}`
+      );
+
+      // Apply date filtering on frontend (since backend doesn't support it for recent activity)
+      if (params.date_from || params.date_to) {
+        const filteredTransactions = allTransactions.filter((transaction) => {
+          const transactionDate = new Date(transaction.created_at);
+          const dateFrom = params.date_from ? new Date(params.date_from) : null;
+          const dateTo = params.date_to ? new Date(params.date_to) : null;
+
+          if (dateFrom && transactionDate < dateFrom) return false;
+          if (dateTo && transactionDate > dateTo) return false;
+          return true;
+        });
+
+        allTransactions = filteredTransactions;
+        console.log(`📅 Date filtered transactions: ${allTransactions.length}`);
+      }
+
+      console.log(
+        `📊 Total transactions after filtering: ${allTransactions.length}`
+      );
+      console.log(
+        '📅 Sample transaction dates:',
+        allTransactions.slice(0, 3).map((t) => ({
+          id: t.id,
+          action_type: t.action_type,
+          created_at: t.created_at,
+          item_name: t.item_name,
+        }))
+      );
+
+      // Apply pagination AFTER filtering
       const page = parseInt(params.page) || 1;
       const limit = parseInt(params.limit) || 10;
       const startIndex = (page - 1) * limit;
       const endIndex = startIndex + limit;
       const paginatedTransactions = allTransactions.slice(startIndex, endIndex);
 
-      return {
+      const result = {
         data: paginatedTransactions,
         total: allTransactions.length,
         page: page,
         totalPages: Math.ceil(allTransactions.length / limit),
       };
+
+      console.log('🎯 Final result:', result);
+      return result;
     } catch (error) {
       console.error('Error fetching transactions:', error);
       error.value =

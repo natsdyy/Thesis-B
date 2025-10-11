@@ -2206,52 +2206,7 @@
           <div
             class="stats shadow w-full mb-4 sm:mb-6 bg-accentColor border border-black/10 stats-vertical lg:stats-horizontal xl:stats-horizontal rounded-lg"
           >
-            <div
-              class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-            >
-              <div class="stat-figure">
-                <Package
-                  class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-primaryColor"
-                />
-              </div>
-              <div class="stat-title text-black/50 !text-xs sm:text-sm">
-                Total Items
-              </div>
-              <div
-                class="stat-value text-primaryColor text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-              >
-                {{ inventoryStats.totalItems + productionStats.totalItems }}
-              </div>
-              <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-                Unique item types
-              </div>
-            </div>
 
-            <div
-              class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-            >
-              <div class="stat-figure">
-                <CheckCircle
-                  class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-success"
-                />
-              </div>
-              <div class="stat-title text-black/50 text-xs sm:text-sm">
-                Available
-              </div>
-              <div
-                class="stat-value text-success text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-              >
-                {{
-                  inventoryStats.totalItems +
-                  productionStats.totalItems -
-                  (inventoryStats.outOfStockItems +
-                    productionStats.outOfStockItems)
-                }}
-              </div>
-              <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-                Stock entries
-              </div>
-            </div>
 
             <div
               class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"

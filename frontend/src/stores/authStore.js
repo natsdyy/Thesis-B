@@ -324,6 +324,57 @@ export const useAuthStore = defineStore('auth', () => {
     }
   };
 
+  // Password reset methods
+  const forgotPassword = async (email) => {
+    try {
+      const response = await axios.post(
+        `${apiConfig.baseURL}/auth/forgot-password`,
+        { email }
+      );
+      if (response.data?.success) {
+        return response.data;
+      }
+      throw new Error(response.data?.message || 'Failed to send reset email');
+    } catch (error) {
+      console.error('forgotPassword error:', error);
+      throw error;
+    }
+  };
+
+  const validateResetToken = async (token) => {
+    try {
+      const response = await axios.post(
+        `${apiConfig.baseURL}/auth/validate-reset-token`,
+        { token }
+      );
+      if (response.data?.success) {
+        return response.data.data;
+      }
+      throw new Error(
+        response.data?.message || 'Invalid or expired reset token'
+      );
+    } catch (error) {
+      console.error('validateResetToken error:', error);
+      throw error;
+    }
+  };
+
+  const resetPassword = async (token, newPassword) => {
+    try {
+      const response = await axios.post(
+        `${apiConfig.baseURL}/auth/reset-password`,
+        { token, new_password: newPassword }
+      );
+      if (response.data?.success) {
+        return response.data;
+      }
+      throw new Error(response.data?.message || 'Failed to reset password');
+    } catch (error) {
+      console.error('resetPassword error:', error);
+      throw error;
+    }
+  };
+
   const initializeAuth = async () => {
     const storedUser = localStorage.getItem('user');
     const storedAuth = localStorage.getItem('isAuthenticated');
@@ -383,5 +434,8 @@ export const useAuthStore = defineStore('auth', () => {
     updateMyProfile,
     changeMyPassword,
     uploadMyPhoto,
+    forgotPassword,
+    validateResetToken,
+    resetPassword,
   };
 });

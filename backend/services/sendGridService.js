@@ -70,10 +70,19 @@ class SendGridService {
       const msg = {
         to: to,
         from: {
-          email: "mailcountrysidesteakhouse@gmail.com",
+          email: "noreply@countryside-steakhouse.site",
           name: "Countryside Steakhouse",
         },
         subject: "Welcome to Countryside Supplier Portal",
+        trackingSettings: {
+          clickTracking: {
+            enable: false,
+            enableText: false,
+          },
+          openTracking: {
+            enable: false,
+          },
+        },
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
             <div style="background-color: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
@@ -186,10 +195,19 @@ class SendGridService {
       const msg = {
         to: to,
         from: {
-          email: "mailcountrysidesteakhouse@gmail.com",
+          email: "noreply@countryside-steakhouse.site",
           name: "Countryside Steakhouse",
         },
         subject: "Welcome aboard to COUNTRYSIDE-STEAKHOUSE!",
+        trackingSettings: {
+          clickTracking: {
+            enable: false,
+            enableText: false,
+          },
+          openTracking: {
+            enable: false,
+          },
+        },
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
             <!-- Main Email Container -->
@@ -354,7 +372,7 @@ class SendGridService {
       const msg = {
         to: to,
         from: {
-          email: "mailcountrysidesteakhouse@gmail.com",
+          email: "noreply@countryside-steakhouse.site",
           name: "Countryside Steakhouse",
         },
         subject: `Payroll Statement - ${payrollData.period_name}`,
@@ -612,10 +630,19 @@ class SendGridService {
       const msg = {
         to: to,
         from: {
-          email: "mailcountrysidesteakhouse@gmail.com",
+          email: "noreply@countryside-steakhouse.site",
           name: "Countryside Steakhouse",
         },
         subject: "Thank you for your feedback - Countryside Steakhouse",
+        trackingSettings: {
+          clickTracking: {
+            enable: false,
+            enableText: false,
+          },
+          openTracking: {
+            enable: false,
+          },
+        },
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
             <!-- Main Email Container -->
@@ -742,6 +769,9 @@ class SendGridService {
 
   /**
    * Send password recovery email using SendGrid
+   * @param {string} to - Recipient email address
+   * @param {string} resetToken - Password reset token
+   * @param {string} username - Employee's name
    */
   static async sendPasswordRecoveryEmail(to, resetToken, username = "User") {
     try {
@@ -754,6 +784,7 @@ class SendGridService {
         };
       }
 
+      // Get the correct frontend URL based on environment
       const frontendUrl =
         process.env.FRONTEND_URL ||
         (process.env.NODE_ENV === "production"
@@ -764,57 +795,109 @@ class SendGridService {
       const msg = {
         to: to,
         from: {
-          email: "mailcountrysidesteakhouse@gmail.com",
+          email: "noreply@countryside-steakhouse.site",
           name: "Countryside Steakhouse",
         },
-        subject: "Password Recovery - Countryside Steak House",
+        subject: "Reset Your Password - Countryside Steakhouse",
+        trackingSettings: {
+          clickTracking: {
+            enable: false,
+            enableText: false,
+          },
+          openTracking: {
+            enable: false,
+          },
+        },
         html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="text-align: center; margin-bottom: 30px;">
-              <h1 style="color: #2c3e50; margin-bottom: 10px;">Countryside Steak House</h1>
-              <h2 style="color: #e74c3c; margin: 0;">Ang Paborito ng Bayan</h2>
-            </div>
-            
-            <div style="background-color: #f8f9fa; padding: 30px; border-radius: 10px; margin-bottom: 20px;">
-              <h3 style="color: #2c3e50; margin-top: 0;">Password Recovery Request</h3>
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
+            <!-- Main Email Container -->
+            <div style="background-color: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
               
-              <p style="color: #555; font-size: 16px; line-height: 1.6;">
-                Hello ${username},
-              </p>
-              
-              <p style="color: #555; font-size: 16px; line-height: 1.6;">
-                We received a request to reset your password for your Countryside Steak House account. 
-                If you made this request, click the button below to reset your password:
-              </p>
-              
-              <div style="text-align: center; margin: 30px 0;">
-                <a href="${resetUrl}" 
-                   style="background-color: #e74c3c; color: white; padding: 15px 30px; 
-                          text-decoration: none; border-radius: 5px; font-weight: bold; 
-                          display: inline-block; font-size: 16px;">
-                  Reset My Password
-                </a>
+              <!-- Header -->
+              <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #466114;">
+                <h1 style="color: #2c3e50; margin: 0; font-size: 28px; font-weight: bold;">Countryside Steakhouse</h1>
+                <p style="color: #466114; margin: 5px 0 0 0; font-size: 16px; font-weight: 500;">Ang Paborito ng Bayan</p>
               </div>
               
-              <p style="color: #666; font-size: 14px; line-height: 1.5;">
-                If the button doesn't work, copy and paste this link into your browser:<br>
-                <a href="${resetUrl}" style="color: #e74c3c; word-break: break-all;">${resetUrl}</a>
-              </p>
-              
-              <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; 
-                          padding: 15px; border-radius: 5px; margin-top: 20px;">
-                <p style="color: #856404; margin: 0; font-size: 14px;">
-                  <strong>Security Note:</strong> This link will expire in 1 hour for your security. 
-                  If you didn't request this password reset, please ignore this email.
+              <!-- Main Content -->
+              <div style="margin-bottom: 30px;">
+                <h2 style="color: #2c3e50; margin-bottom: 20px; font-size: 24px; font-weight: bold;">Password Recovery Request</h2>
+                
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
+                  Hello <strong>${username}</strong>,
                 </p>
+                
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
+                  We received a request to reset your password for your Countryside Steakhouse employee account. 
+                  If you made this request, click the button below to reset your password:
+                </p>
+                
+                <!-- Reset Button -->
+                <div style="text-align: center; margin: 30px 0;">
+                  <a href="${resetUrl}" 
+                     style="background-color: #466114; color: white; padding: 15px 30px; 
+                            text-decoration: none; border-radius: 6px; font-weight: bold; 
+                            display: inline-block; font-size: 16px; box-shadow: 0 2px 5px rgba(70,97,20,0.3);
+                            transition: background-color 0.3s ease;"
+                     onmouseover="this.style.backgroundColor='#3a5211'"
+                     onmouseout="this.style.backgroundColor='#466114'">
+                    Reset My Password
+                  </a>
+                </div>
+                
+                <!-- Alternative Link -->
+                <p style="color: #666; font-size: 14px; line-height: 1.5; margin-bottom: 25px;">
+                  If the button doesn't work, copy and paste this link into your browser:<br>
+                  <a href="${resetUrl}" style="color: #466114; word-break: break-all; text-decoration: underline;">${resetUrl}</a>
+                </p>
+                
+                <!-- Security Note -->
+                <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; 
+                            padding: 15px; border-radius: 5px; margin-top: 25px;">
+                  <p style="color: #856404; margin: 0; font-size: 14px; font-weight: 500;">
+                    <strong>Security Note:</strong> This link will expire in 1 hour for your security. 
+                    If you didn't request this password reset, please ignore this email and your password will remain unchanged.
+                  </p>
+                </div>
+                
+                <!-- Additional Information -->
+                <div style="background-color: rgba(170,211,109,0.1); border-left: 4px solid #466114; 
+                            padding: 20px; border-radius: 5px; margin-top: 25px;">
+                  <h4 style="color: #466114; margin-top: 0; margin-bottom: 15px; font-size: 16px; font-weight: bold;">Need Help?</h4>
+                  <p style="color: #2c3e50; margin: 0; font-size: 15px; line-height: 1.6;">
+                    If you're having trouble accessing your account or didn't request this password reset, 
+                    please contact your administrator or the HR department for assistance.
+                  </p>
+                </div>
               </div>
-            </div>
-            
-            <div style="text-align: center; color: #666; font-size: 12px; margin-top: 20px;">
-              <p>© 2025 Countryside Steak House. All rights reserved.</p>
-              <p>This is an automated message, please do not reply to this email.</p>
+              
+              <!-- Footer -->
+              <div style="text-align: center; color: #666; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                <p style="margin: 0;">©2025 COUNTRYSIDE-STEAKHOUSE. All rights reserved.</p>
+                <p style="margin: 5px 0 0 0;">This is an automated message, please do not reply to this email.</p>
+              </div>
             </div>
           </div>
+        `,
+        text: `
+          Password Recovery - Countryside Steakhouse
+          
+          Hello ${username},
+          
+          We received a request to reset your password for your Countryside Steakhouse employee account.
+          If you made this request, click the link below to reset your password:
+          
+          ${resetUrl}
+          
+          Security Note: This link will expire in 1 hour for your security.
+          If you didn't request this password reset, please ignore this email and your password will remain unchanged.
+          
+          Need Help?
+          If you're having trouble accessing your account or didn't request this password reset, 
+          please contact your administrator or the HR department for assistance.
+          
+          ©2025 COUNTRYSIDE-STEAKHOUSE. All rights reserved.
+          This is an automated message, please do not reply to this email.
         `,
       };
 
@@ -832,6 +915,17 @@ class SendGridService {
       };
     } catch (error) {
       console.error("❌ SendGrid password recovery error:", error);
+
+      // Handle SendGrid specific errors
+      if (error.response) {
+        console.error("SendGrid API Error:", error.response.body);
+        return {
+          success: false,
+          error: `SendGrid API Error: ${error.response.body.errors?.[0]?.message || error.message}`,
+          provider: "SendGrid",
+        };
+      }
+
       return {
         success: false,
         error: error.message,

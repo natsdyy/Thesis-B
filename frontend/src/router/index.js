@@ -21,7 +21,6 @@ import HomePage from '../views/HomePage.vue';
 import NotFound from '../views/NotFound.vue';
 import Login from '../views/Login.vue';
 import ForgotPassword from '../views/ForgotPassword.vue';
-import VerifyOTP from '../views/VerifyOTP.vue';
 import ResetPassword from '../views/ResetPassword.vue';
 
 // Import supplier components
@@ -63,6 +62,19 @@ const routes = [
     name: 'Login',
     component: Login,
     meta: { title: 'Login' },
+  },
+  // Password reset routes
+  {
+    path: '/forgot-password',
+    name: 'ForgotPassword',
+    component: ForgotPassword,
+    meta: { title: 'Forgot Password' },
+  },
+  {
+    path: '/reset-password',
+    name: 'ResetPassword',
+    component: ResetPassword,
+    meta: { title: 'Reset Password' },
   },
   // Supplier routes
   {
@@ -292,7 +304,6 @@ router.beforeEach(async (to, from, next) => {
     '/',
     '/login',
     '/forgot-password',
-    '/verify-otp',
     '/reset-password',
     '/home',
     '/menu',

@@ -39,6 +39,14 @@
   const itemsPerPage = ref(10);
   const totalPages = ref(1);
   const totalTransactions = ref(0);
+  const isExporting = ref(false);
+
+  // Custom month picker state
+  const showCustomMonthPicker = ref(false);
+  const customMonthPicker = ref({
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+  });
 
   // Receipt modal state
   const showReceiptModal = ref(false);
@@ -49,9 +57,8 @@
   const filters = ref({
     search: '',
     status: '', // pending | processing | completed | void
-    date_from: '',
-    date_to: '',
     date_range: 'this_week',
+    custom_month: '', // YYYY-MM format for custom month selection
   });
 
   const statusOptions = [
@@ -170,6 +177,9 @@
     if (!context.currentBranch?.id) return;
     loading.value = true;
     try {
+      // Apply date range to get date_from and date_to
+      applyDateRange();
+
       // Calculate offset for pagination
       const offset = (currentPage.value - 1) * itemsPerPage.value;
 
@@ -279,10 +289,10 @@
     filters.value = {
       search: '',
       status: '',
-      date_from: '',
-      date_to: '',
       date_range: 'this_week',
+      custom_month: '',
     };
+    showCustomMonthPicker.value = false;
     currentPage.value = 1;
     fetchTransactions();
   };
@@ -329,37 +339,308 @@
   const applyDateRange = () => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
     if (filters.value.date_range === 'today') {
-      filters.value.date_from = toYmd(today);
-      filters.value.date_to = toYmd(today);
+      // For today, use full day range (00:00:00 to 23:59:59)
+      const startOfDay = new Date(today);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(today);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      filters.value.date_from = startOfDay.toISOString();
+      filters.value.date_to = endOfDay.toISOString();
     } else if (filters.value.date_range === 'this_week') {
       const day = today.getDay();
       const mondayOffset = day === 0 ? -6 : 1 - day;
       const weekStart = new Date(today);
       weekStart.setDate(today.getDate() + mondayOffset);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 6);
-      filters.value.date_from = toYmd(weekStart);
-      filters.value.date_to = toYmd(weekEnd);
+      weekStart.setHours(0, 0, 0, 0);
+
+      const weekEnd = new Date(today);
+      weekEnd.setHours(23, 59, 59, 999);
+
+      filters.value.date_from = weekStart.toISOString();
+      filters.value.date_to = weekEnd.toISOString();
     } else if (filters.value.date_range === 'this_month') {
       const start = new Date(today.getFullYear(), today.getMonth(), 1);
-      const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-      filters.value.date_from = toYmd(start);
-      filters.value.date_to = toYmd(end);
+      start.setHours(0, 0, 0, 0);
+
+      const end = new Date(today);
+      end.setHours(23, 59, 59, 999);
+
+      filters.value.date_from = start.toISOString();
+      filters.value.date_to = end.toISOString();
     } else if (filters.value.date_range === 'custom_month') {
-      const base = filters.value.date_from
-        ? new Date(filters.value.date_from)
-        : new Date(today.getFullYear(), today.getMonth(), 1);
-      const start = new Date(base.getFullYear(), base.getMonth(), 1);
-      const end = new Date(base.getFullYear(), base.getMonth() + 1, 0);
-      filters.value.date_from = toYmd(start);
-      filters.value.date_to = toYmd(end);
+      // For custom month, use the selected month or current month as fallback
+      let year, month;
+      if (filters.value.custom_month) {
+        [year, month] = filters.value.custom_month.split('-').map(Number);
+        month -= 1; // JavaScript months are 0-indexed
+      } else {
+        year = today.getFullYear();
+        month = today.getMonth();
+      }
+      const start = new Date(year, month, 1);
+      start.setHours(0, 0, 0, 0);
+
+      const end = new Date(year, month + 1, 0);
+      end.setHours(23, 59, 59, 999);
+
+      filters.value.date_from = start.toISOString();
+      filters.value.date_to = end.toISOString();
     }
   };
 
-  const exportTransactions = () => {
-    // TODO: Implement export functionality
-    console.log('Export sales transactions');
+  // Custom month picker methods
+  const toggleCustomMonthPicker = () => {
+    showCustomMonthPicker.value = !showCustomMonthPicker.value;
+    if (showCustomMonthPicker.value) {
+      filters.value.date_range = 'custom_month';
+    }
+  };
+
+  const applyCustomMonthFilter = () => {
+    const month = String(customMonthPicker.value.month).padStart(2, '0');
+    const year = customMonthPicker.value.year;
+    filters.value.custom_month = `${year}-${month}`;
+    filters.value.date_range = 'custom_month';
+    showCustomMonthPicker.value = false;
+    currentPage.value = 1;
+    fetchTransactions();
+  };
+
+  // Get display text for current filter
+  const getFilterDisplayText = () => {
+    switch (filters.value.date_range) {
+      case 'today':
+        return 'Today';
+      case 'this_week':
+        return 'This Week';
+      case 'this_month':
+        return 'This Month';
+      case 'custom_month':
+        if (filters.value.custom_month) {
+          const [year, month] = filters.value.custom_month.split('-');
+          const monthName = new Date(year, month - 1).toLocaleDateString(
+            'en-US',
+            {
+              month: 'long',
+              year: 'numeric',
+            }
+          );
+          return monthName;
+        }
+        return 'Custom Month';
+      default:
+        return 'Today';
+    }
+  };
+
+  // Month options for custom picker
+  const months = [
+    { value: 1, label: 'January' },
+    { value: 2, label: 'February' },
+    { value: 3, label: 'March' },
+    { value: 4, label: 'April' },
+    { value: 5, label: 'May' },
+    { value: 6, label: 'June' },
+    { value: 7, label: 'July' },
+    { value: 8, label: 'August' },
+    { value: 9, label: 'September' },
+    { value: 10, label: 'October' },
+    { value: 11, label: 'November' },
+    { value: 12, label: 'December' },
+  ];
+
+  // Export function - exports all transactions based on current filter, not just current page
+  const exportTransactions = async () => {
+    if (isExporting.value) return;
+
+    isExporting.value = true;
+    try {
+      if (!context.currentBranch?.id) {
+        throw new Error('No branch selected');
+      }
+
+      // Apply date range to get proper date filters
+      applyDateRange();
+
+      // Fetch ALL transactions for the current filter (not paginated)
+      const response = await posStore.fetchOrderHistory({
+        branch_id: context.currentBranch.id,
+        limit: 10000, // Large limit to get all transactions
+        offset: 0,
+        status: filters.value.status,
+        date_from: filters.value.date_from,
+        date_to: filters.value.date_to,
+      });
+
+      const allTransactions = response.data || [];
+      console.log(`Exporting ${allTransactions.length} transactions`);
+
+      // Create CSV content
+      const headers = [
+        'Order Number',
+        'Date',
+        'Time',
+        'Order Type',
+        'Status',
+        'Items',
+        'Subtotal',
+        'Tax Amount',
+        'Total Amount',
+        'Amount Paid',
+        'Change Amount',
+        'Cashier',
+        'Manager',
+        'Remittance Status',
+        'Created At',
+      ];
+
+      // Format data for CSV
+      const csvData = allTransactions.map((transaction) => {
+        const formatDate = (dateString) => {
+          if (!dateString) return 'N/A';
+          try {
+            return new Date(dateString).toLocaleDateString('en-PH', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+            });
+          } catch {
+            return dateString;
+          }
+        };
+
+        const formatTime = (dateString) => {
+          if (!dateString) return 'N/A';
+          try {
+            return new Date(dateString).toLocaleTimeString('en-US', {
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+          } catch {
+            return dateString;
+          }
+        };
+
+        const formatItems = (items) => {
+          if (!items || !Array.isArray(items)) return 'No items';
+          return items
+            .map(
+              (item) =>
+                `${item.menu_item_name || item.item_name} (${item.quantity}x)`
+            )
+            .join(', ');
+        };
+
+        return [
+          transaction.order_number || '',
+          formatDate(transaction.created_at),
+          formatTime(transaction.created_at),
+          transaction.order_type || '',
+          transaction.status || '',
+          formatItems(transaction.items),
+          transaction.subtotal || '',
+          transaction.tax_amount || '',
+          transaction.total_amount || '',
+          transaction.amount_paid || '',
+          transaction.change_amount || '',
+          `${transaction.cashier_first_name || ''} ${transaction.cashier_last_name || ''}`.trim(),
+          `${transaction.manager_first_name || ''} ${transaction.manager_last_name || ''}`.trim(),
+          transaction.remittance_status || '',
+          transaction.created_at || '',
+        ];
+      });
+
+      // Add summary data
+      const summaryRows = [
+        [],
+        ['SUMMARY'],
+        ['Total Orders', allTransactions.length],
+        [
+          'Completed Orders',
+          allTransactions.filter((t) => t.status === 'completed').length,
+        ],
+        [
+          'Void Orders',
+          allTransactions.filter((t) => t.status === 'void').length,
+        ],
+        [
+          'Total Sales Amount',
+          `P${allTransactions.reduce((sum, t) => sum + parseFloat(t.total_amount || 0), 0).toFixed(2)}`,
+        ],
+        [
+          'Total Amount Paid',
+          `P${allTransactions.reduce((sum, t) => sum + parseFloat(t.amount_paid || 0), 0).toFixed(2)}`,
+        ],
+        [
+          'Total Change Given',
+          `P${allTransactions.reduce((sum, t) => sum + parseFloat(t.change_amount || 0), 0).toFixed(2)}`,
+        ],
+        [],
+        ['BY ORDER TYPE'],
+      ];
+
+      // Group by order type
+      const typeGroups = allTransactions.reduce((acc, t) => {
+        const type = t.order_type || 'Unknown';
+        if (!acc[type]) acc[type] = [];
+        acc[type].push(t);
+        return acc;
+      }, {});
+
+      Object.entries(typeGroups).forEach(([type, orders]) => {
+        const totalAmount = orders.reduce(
+          (sum, t) => sum + parseFloat(t.total_amount || 0),
+          0
+        );
+        const totalPaid = orders.reduce(
+          (sum, t) => sum + parseFloat(t.amount_paid || 0),
+          0
+        );
+        summaryRows.push([
+          `${type}`,
+          `${orders.length} orders`,
+          `P${totalAmount.toFixed(2)}`,
+          `P${totalPaid.toFixed(2)}`,
+        ]);
+      });
+
+      // Combine headers, data, and summary
+      const csvContent = [headers, ...csvData, ...summaryRows]
+        .map((row) =>
+          row.map((field) => `"${String(field).replace(/"/g, '""')}"`).join(',')
+        )
+        .join('\n');
+
+      // Create filename based on current filter
+      const periodName = getFilterDisplayText();
+      const filename = `Sales_Transactions_${periodName.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+
+      // Create and download file with BOM for better Excel compatibility
+      const BOM = '\uFEFF';
+      const blob = new Blob([BOM + csvContent], {
+        type: 'text/csv;charset=utf-8;',
+      });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      console.log(
+        `Successfully exported ${allTransactions.length} transactions to ${filename}`
+      );
+    } catch (error) {
+      console.error('Error exporting transactions:', error);
+      alert('Failed to export transactions. Please try again.');
+    } finally {
+      isExporting.value = false;
+    }
   };
 
   // Function to get the correct base URL for QR codes
@@ -658,7 +939,7 @@
         </button>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-6 gap-2 mb-3">
+      <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-3">
         <label class="input input-bordered flex items-center gap-2 col-span-2">
           <Search class="w-4 h-4" />
           <input
@@ -686,25 +967,114 @@
         <select
           v-model="filters.date_range"
           @change="
-            applyDateRange();
-            fetchTransactions();
+            if (filters.date_range !== 'custom_month') {
+              applyDateRange();
+              fetchTransactions();
+            }
           "
           class="select select-bordered select-sm sm:select-md"
         >
           <option value="today">Today</option>
           <option value="this_week">This Week</option>
           <option value="this_month">This Month</option>
-          <option value="custom_month">Custom Month</option>
+          <option value="custom_month">{{ getFilterDisplayText() }}</option>
         </select>
+      </div>
 
-        <label class="input input-bordered flex items-center gap-2">
-          <Calendar class="w-4 h-4" />
-          <input v-model="filters.date_from" type="date" class="grow" />
-        </label>
-        <label class="input input-bordered flex items-center gap-2">
-          <Calendar class="w-4 h-4" />
-          <input v-model="filters.date_to" type="date" class="grow" />
-        </label>
+      <!-- Custom Month Selection - Only show when Custom Month is selected -->
+      <div
+        v-if="filters.date_range === 'custom_month'"
+        class="flex justify-between items-center gap-2 mb-3"
+      >
+        <!-- Current Filter Display -->
+        <div v-if="filters.custom_month" class="text-sm text-gray-600">
+          <span class="font-medium">Selected:</span>
+          <span class="text-primaryColor">{{ getFilterDisplayText() }}</span>
+        </div>
+        <div v-else class="text-sm text-gray-600">
+          <span class="font-medium">Select a month:</span>
+        </div>
+
+        <div class="relative">
+          <button
+            class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+            :class="{
+              'bg-primaryColor/10': filters.date_range === 'custom_month',
+            }"
+            @click="toggleCustomMonthPicker"
+          >
+            <Calendar class="w-4 h-4 mr-1" />
+            {{ filters.custom_month ? 'Change Month' : 'Select Month' }}
+          </button>
+
+          <!-- Custom Month Picker -->
+          <div
+            v-if="showCustomMonthPicker"
+            class="absolute top-full right-0 mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10 p-3 min-w-64"
+          >
+            <div class="flex items-center justify-between mb-3">
+              <h4 class="text-sm font-medium text-gray-700">Select Month</h4>
+              <button
+                @click="showCustomMonthPicker = false"
+                class="btn btn-xs btn-ghost"
+              >
+                <X class="w-3 h-3" />
+              </button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="label label-text-alt text-gray-600">Month</label>
+                <select
+                  v-model="customMonthPicker.month"
+                  class="select select-bordered select-sm w-full"
+                >
+                  <option
+                    v-for="month in months"
+                    :key="month.value"
+                    :value="month.value"
+                  >
+                    {{ month.label }}
+                  </option>
+                </select>
+              </div>
+
+              <div>
+                <label class="label label-text-alt text-gray-600">Year</label>
+                <select
+                  v-model="customMonthPicker.year"
+                  class="select select-bordered select-sm w-full"
+                >
+                  <option
+                    v-for="year in Array.from(
+                      { length: 5 },
+                      (_, i) => new Date().getFullYear() - 2 + i
+                    )"
+                    :key="year"
+                    :value="year"
+                  >
+                    {{ year }}
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            <div class="flex justify-end gap-2 mt-3">
+              <button
+                @click="showCustomMonthPicker = false"
+                class="btn btn-sm btn-ghost"
+              >
+                Cancel
+              </button>
+              <button
+                @click="applyCustomMonthFilter"
+                class="btn btn-sm bg-primaryColor text-white"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="flex justify-end gap-2 mb-3">
@@ -715,19 +1085,24 @@
           Clear
         </button>
         <button
+          class="btn btn-outline btn-sm font-thin"
+          @click="exportTransactions"
+          :disabled="isExporting || loading"
+        >
+          <span
+            v-if="isExporting"
+            class="loading loading-spinner loading-xs mr-1"
+          ></span>
+          <Download v-else class="w-4 h-4 mr-1" />
+          {{ isExporting ? 'Exporting...' : 'Export' }}
+        </button>
+        <button
           class="btn bg-primaryColor text-white btn-sm font-thin hover:bg-primaryColor/80"
           :disabled="loading"
           @click="fetchTransactions"
         >
           <Filter class="w-4 h-4 mr-1" />
           Apply
-        </button>
-        <button
-          class="btn btn-outline btn-sm font-thin"
-          @click="exportTransactions"
-        >
-          <Download class="w-4 h-4 mr-1" />
-          Export
         </button>
       </div>
 

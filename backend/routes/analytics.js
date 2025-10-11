@@ -47,9 +47,20 @@ router.get("/overview", async (req, res) => {
       `,
         params
       );
-      console.log("Customer stats:", customerStats[0][0]);
+      console.log("Customer stats:", customerStats[0]?.[0] || "No data");
     } catch (error) {
       console.log("Customers table error:", error.message);
+      customerStats = [
+        [
+          {
+            total_customers: 0,
+            active_customers: 0,
+            overall_average_rating: 0,
+            total_revenue: 0,
+            average_customer_value: 0,
+          },
+        ],
+      ];
     }
 
     // Get feedback statistics
@@ -76,9 +87,19 @@ router.get("/overview", async (req, res) => {
       `,
         params
       );
-      console.log("Feedback stats:", feedbackStats[0][0]);
+      console.log("Feedback stats:", feedbackStats[0]?.[0] || "No data");
     } catch (error) {
       console.log("Feedback table error:", error.message);
+      feedbackStats = [
+        [
+          {
+            total_feedback: 0,
+            average_feedback_rating: 0,
+            positive_feedback: 0,
+            negative_feedback: 0,
+          },
+        ],
+      ];
     }
 
     // Get order rating statistics
@@ -105,9 +126,19 @@ router.get("/overview", async (req, res) => {
       `,
         params
       );
-      console.log("Rating stats:", ratingStats[0][0]);
+      console.log("Rating stats:", ratingStats[0]?.[0] || "No data");
     } catch (error) {
       console.log("Order ratings table error:", error.message);
+      ratingStats = [
+        [
+          {
+            total_ratings: 0,
+            average_order_rating: 0,
+            positive_ratings: 0,
+            negative_ratings: 0,
+          },
+        ],
+      ];
     }
 
     // Get sales statistics
@@ -126,9 +157,12 @@ router.get("/overview", async (req, res) => {
       `,
         params
       );
-      console.log("Sales stats:", salesStats[0][0]);
+      console.log("Sales stats:", salesStats[0]?.[0] || "No data");
     } catch (error) {
       console.log("Sales data error:", error.message);
+      salesStats = [
+        [{ total_orders: 0, total_sales: 0, average_order_value: 0 }],
+      ];
     }
 
     res.json({

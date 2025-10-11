@@ -553,60 +553,79 @@
     <!-- Attendance Scanner Modal (DaisyUI dialog for consistency) -->
     <dialog id="attendance_scanner_modal" class="modal">
       <div
-        class="modal-box bg-accentColor text-black/50 shadow-lg max-w-1xl w-full max-h-[90vh] overflow-y-auto"
+        class="modal-box bg-accentColor text-black/50 shadow-lg w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-4xl xl:max-w-5xl max-h-[95vh] sm:max-h-[90vh] md:max-h-[85vh] lg:max-h-[80vh] overflow-y-auto p-3 sm:p-4 md:p-6 lg:p-8"
       >
-        <div class="flex items-center justify-between mb-3">
-          <h3 class="font-bold text-lg text-primaryColor">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-3 sm:mb-4">
+          <h3
+            class="font-bold text-base sm:text-lg md:text-xl lg:text-2xl text-primaryColor"
+          >
             Attendance Scanner
           </h3>
           <button
             @click="closeScanner"
-            class="btn btn-xs shadow-none font-thin hover:bg-black/10 border-none"
+            class="btn btn-xs sm:btn-sm shadow-none font-thin hover:bg-black/10 border-none"
           >
             ✕
           </button>
         </div>
 
-        <p class="text-sm mb-3">
+        <!-- Instructions -->
+        <p class="text-xs sm:text-sm md:text-base mb-3 sm:mb-4">
           Position the QR code within the frame. The scan will happen
           automatically.
         </p>
 
-        <!-- Real-time info bar -->
+        <!-- Real-time info bar - Responsive layout -->
         <div
-          class="flex flex-wrap items-center gap-2 text-xs mb-3 justify-between flex-col"
+          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mb-3 sm:mb-4"
         >
-          <div class="">
-            <h1 class="text-lg font-bold text-primaryColor">
+          <div class="text-center sm:text-left">
+            <div class="text-xs sm:text-sm font-medium text-gray-600">Date</div>
+            <h1
+              class="text-sm sm:text-base md:text-lg font-bold text-primaryColor"
+            >
               {{ formattedDate }}
             </h1>
           </div>
-          <div class="">
-            <h1 class="text-lg font-bold text-primaryColor">
+          <div class="text-center sm:text-left">
+            <div class="text-xs sm:text-sm font-medium text-gray-600">
+              Duration
+            </div>
+            <h1
+              class="text-sm sm:text-base md:text-lg font-bold text-primaryColor"
+            >
               {{ formatDuration(elapsedSeconds) }}
             </h1>
           </div>
-
-          <div class="">
-            <h1 class="text-sm font-bold text-primaryColor">
-              Scans: {{ scanCount }}
+          <div class="text-center sm:text-left">
+            <div class="text-xs sm:text-sm font-medium text-gray-600">
+              Scans
+            </div>
+            <h1
+              class="text-sm sm:text-base md:text-lg font-bold text-primaryColor"
+            >
+              {{ scanCount }}
             </h1>
           </div>
-          <div v-if="lastScanAt" class="">
-            <h1 class="text-sm font-bold text-primaryColor">
-              Last scan: {{ lastScanAt.toLocaleTimeString() }}
+          <div v-if="lastScanAt" class="text-center sm:text-left">
+            <div class="text-xs sm:text-sm font-medium text-gray-600">
+              Last Scan
+            </div>
+            <h1 class="text-xs sm:text-sm font-bold text-primaryColor">
+              {{ lastScanAt.toLocaleTimeString() }}
             </h1>
           </div>
         </div>
 
         <!-- Camera selection -->
-        <div v-if="availableCameras.length > 1" class="mb-2">
-          <label class="label mb-1"
-            ><span class="label-text text-sm">Camera:</span></label
-          >
+        <div v-if="availableCameras.length > 1" class="mb-3 sm:mb-4">
+          <label class="label mb-1">
+            <span class="label-text text-xs sm:text-sm">Camera:</span>
+          </label>
           <select
             v-model="selectedDeviceId"
-            class="select select-sm select-bordered w-full"
+            class="select select-sm sm:select-md select-bordered w-full text-xs sm:text-sm"
           >
             <option
               v-for="cam in availableCameras"
@@ -618,13 +637,21 @@
           </select>
         </div>
 
-        <div v-if="scanError" class="alert alert-error text-sm mb-3">
+        <!-- Error Alert -->
+        <div
+          v-if="scanError"
+          class="alert alert-error text-xs sm:text-sm mb-3 sm:mb-4"
+        >
           {{ scanError }}
         </div>
 
-        <div class="card bg-white border border-black/10 mb-3">
-          <div class="card-body p-2">
-            <div class="relative rounded-lg overflow-hidden border">
+        <!-- Camera Section - Responsive -->
+        <div class="card bg-white border border-black/10 mb-3 sm:mb-4">
+          <div class="card-body p-2 sm:p-3 md:p-4">
+            <!-- Camera Container with responsive aspect ratio -->
+            <div
+              class="relative rounded-lg overflow-hidden border mx-auto w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg xl:max-w-xl aspect-[4/3] sm:aspect-[16/10] md:aspect-[16/9]"
+            >
               <QrcodeStream
                 v-if="isScannerOpen"
                 :constraints="
@@ -636,15 +663,20 @@
                 @init="onInit"
                 @detect="onDetect"
                 @camera-on="onCameraOn"
+                class="w-full h-full object-cover"
               />
               <div v-else class="flex items-center justify-center h-64 bg-gray-100 text-gray-500">
                 <p>Scanner will start when modal opens</p>
               </div>
             </div>
-            <div class="flex items-center justify-between mt-2">
-              <div class="flex items-center gap-2">
+
+            <!-- Camera Controls -->
+            <div
+              class="flex flex-col sm:flex-row items-center justify-between mt-2 sm:mt-3 gap-2"
+            >
+              <div class="flex flex-col sm:flex-row items-center gap-2">
                 <button
-                  class="btn btn-sm"
+                  class="btn btn-xs sm:btn-sm text-xs sm:text-sm"
                   :class="torchOn ? 'btn-warning' : ''"
                   :disabled="!torchSupported"
                   @click="toggleTorch"
@@ -657,37 +689,49 @@
                       : 'Torch not supported'
                   }}
                 </button>
-                <span class="text-xs" v-if="isScanning">Camera active…</span>
+                <span class="text-xs text-gray-600" v-if="isScanning">
+                  Camera active…
+                </span>
               </div>
             </div>
           </div>
         </div>
 
-        <div v-if="scanResult" class="card bg-white border border-black/10">
-          <div class="card-body p-3">
-            <div class="text-sm font-medium text-primaryColor mb-1">
+        <!-- Scan Result Section - Responsive -->
+        <div
+          v-if="scanResult"
+          class="card bg-white border border-black/10 mb-3 sm:mb-4"
+        >
+          <div class="card-body p-3 sm:p-4">
+            <div class="text-xs sm:text-sm font-medium text-primaryColor mb-2">
               Last scanned code
             </div>
-            <div class="text-sm break-all">{{ scanResultDisplay }}</div>
-            <div class="mt-2 text-xs">
+            <div
+              class="text-xs sm:text-sm break-all bg-gray-50 p-2 rounded mb-2"
+            >
+              {{ scanResultDisplay }}
+            </div>
+            <div class="text-xs text-gray-600 mb-3">
               Scanned at: {{ lastScanAt?.toLocaleString?.() }}
             </div>
-            <div class="mt-3 flex gap-2">
+
+            <!-- Action Buttons - Responsive layout -->
+            <div class="flex flex-col sm:flex-row gap-2">
               <button
                 @click="processAttendance"
                 :disabled="isProcessingAttendance"
-                class="btn btn-primary btn-sm bg-primaryColor hover:bg-primaryColor/80 border-none shadow-none font-thin"
+                class="btn btn-primary btn-sm sm:btn-md bg-primaryColor hover:bg-primaryColor/80 border-none shadow-none font-thin flex-1"
               >
                 {{ isProcessingAttendance ? 'Processing...' : 'Use this scan' }}
               </button>
               <button
-                class="btn btn-outline btn-sm shadow-none font-thin"
+                class="btn btn-outline btn-sm sm:btn-md shadow-none font-thin flex-1"
                 @click="scanResult = ''"
               >
                 Scan again
               </button>
               <button
-                class="btn btn-ghost btn-sm shadow-none font-thin hover:bg-black/1"
+                class="btn btn-ghost btn-sm sm:btn-md shadow-none font-thin hover:bg-black/10 flex-1"
                 @click="copyScanResult"
                 :disabled="isCopying"
               >
@@ -698,14 +742,15 @@
         </div>
 
         <!-- Current time footer -->
-        <div class="mt-3 text-center text-xs text-gray-600">
+        <div class="text-center text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
           Time: {{ nowTime.toLocaleTimeString() }}
         </div>
 
+        <!-- Modal Actions -->
         <div class="modal-action">
           <button
             @click="closeScanner"
-            class="btn btn-sm btn-outline font-thin"
+            class="btn btn-sm sm:btn-md btn-outline font-thin w-full sm:w-auto"
           >
             Close
           </button>
@@ -718,9 +763,11 @@
 
     <!-- Attendance Result Modal (dialog above scanner) -->
     <dialog ref="resultDialogRef" id="attendance_result_modal" class="modal">
-      <div class="modal-box max-w-md">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="font-bold text-lg">
+      <div
+        class="modal-box w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl"
+      >
+        <div class="flex items-center justify-between mb-3 sm:mb-4">
+          <h3 class="font-bold text-base sm:text-lg md:text-xl">
             {{
               attendanceResult?.success
                 ? 'Attendance Recorded'
@@ -729,7 +776,7 @@
           </h3>
           <button
             @click="closeAttendanceResult"
-            class="btn btn-xs btn-circle btn-ghost"
+            class="btn btn-xs sm:btn-sm btn-circle btn-ghost"
           >
             ✕
           </button>
@@ -738,17 +785,21 @@
         <!-- Success State -->
         <div v-if="attendanceResult?.success" class="text-center">
           <div
-            class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4"
+            class="w-12 h-12 sm:w-16 sm:h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4"
           >
-            <CheckCircle class="w-8 h-8 text-green-600" />
+            <CheckCircle class="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
           </div>
-          <h4 class="text-lg font-semibold text-green-600 mb-2">Success!</h4>
-          <p class="text-gray-700 mb-4">{{ attendanceResult.message }}</p>
+          <h4 class="text-base sm:text-lg font-semibold text-green-600 mb-2">
+            Success!
+          </h4>
+          <p class="text-xs sm:text-sm text-gray-700 mb-3 sm:mb-4">
+            {{ attendanceResult.message }}
+          </p>
 
           <!-- Show additional data if available -->
           <div
             v-if="attendanceResult.data"
-            class="bg-gray-50 rounded-lg p-3 text-sm text-left"
+            class="bg-gray-50 rounded-lg p-2 sm:p-3 text-xs sm:text-sm text-left"
           >
             <div v-if="attendanceResult.data.employee" class="mb-2">
               <span class="font-medium">Employee:</span>
@@ -773,7 +824,7 @@
         <div v-else class="text-center">
           <div
             :class="[
-              'w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4',
+              'w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4',
               isScheduleError(attendanceResult?.message)
                 ? 'bg-orange-100'
                 : 'bg-red-100',
@@ -781,7 +832,7 @@
           >
             <XCircle
               :class="[
-                'w-8 h-8',
+                'w-6 h-6 sm:w-8 sm:h-8',
                 isScheduleError(attendanceResult?.message)
                   ? 'text-orange-600'
                   : 'text-red-600',
@@ -790,7 +841,7 @@
           </div>
           <h4
             :class="[
-              'text-lg font-semibold mb-2',
+              'text-base sm:text-lg font-semibold mb-2',
               isScheduleError(attendanceResult?.message)
                 ? 'text-orange-600'
                 : 'text-red-600',
@@ -802,17 +853,19 @@
                 : 'Error'
             }}
           </h4>
-          <p class="text-gray-700 mb-4">
+          <p class="text-xs sm:text-sm text-gray-700 mb-3 sm:mb-4">
             {{ attendanceResult?.message || 'Failed to process attendance' }}
           </p>
 
           <!-- Additional info for schedule errors -->
           <div
             v-if="isScheduleError(attendanceResult?.message)"
-            class="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-left"
+            class="bg-orange-50 border border-orange-200 rounded-lg p-2 sm:p-3 text-xs sm:text-sm text-left"
           >
             <div class="flex items-start space-x-2">
-              <Clock class="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
+              <Clock
+                class="w-3 h-3 sm:w-4 sm:h-4 text-orange-600 mt-0.5 flex-shrink-0"
+              />
               <div>
                 <p class="font-medium text-orange-800">Schedule Information</p>
                 <p class="text-orange-700 text-xs mt-1">
@@ -825,7 +878,10 @@
         </div>
 
         <div class="modal-action">
-          <button @click="closeAttendanceResult" class="btn bg-gray-200 btn-sm">
+          <button
+            @click="closeAttendanceResult"
+            class="btn bg-gray-200 btn-sm sm:btn-md w-full sm:w-auto"
+          >
             {{ attendanceResult?.success ? 'Close' : 'Try Again' }}
           </button>
         </div>
@@ -841,7 +897,7 @@
     >
       <!-- Left Side - Logo/Branding -->
       <div
-        class="w-1/2 flex items-center bg-secondaryColor justify-center p-8 h-full"
+        class="w-1/2 flex items-center bg-secondaryColor justify-center p-6 lg:p-8 h-full"
         style="height: 600px"
       >
         <img
@@ -852,11 +908,13 @@
       </div>
 
       <!-- Right Side - Login Form -->
-      <div class="w-1/2 p-12 flex items-center justify-center">
-        <div class="w-full max-w-sm">
+      <div class="w-1/2 p-6 lg:p-12 flex items-center justify-center">
+        <div class="w-full max-w-sm lg:max-w-md xl:max-w-lg">
           <!-- Welcome Section -->
-          <div class="text-center mb-8">
-            <h1 class="text-3xl font-bold text-primaryColor mb-2 font-poppins">
+          <div class="text-center mb-6 lg:mb-8">
+            <h1
+              class="text-2xl lg:text-3xl font-bold text-primaryColor mb-2 font-poppins"
+            >
               Welcome
             </h1>
             <p class="text-gray-500 text-sm font-roboto">
@@ -865,103 +923,148 @@
           </div>
 
           <!-- Login Form -->
-          <form @submit.prevent="login" class="space-y-8 mt-10">
-            <!-- Email Field with Floating Label -->
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text sr-only">Email</span>
-              </label>
-              <div class="relative">
+          <form
+            @submit.prevent="login"
+            class="space-y-6 lg:space-y-8 mt-8 lg:mt-10"
+          >
+            <!-- Email Field -->
+            <div class="relative w-full">
+              <label
+                class="input validator flex items-center gap-3 w-full h-12"
+                :class="{
+                  '!border-primaryColor !focus-within:border-primaryColor': true,
+                  '!border-error': errorMessage,
+                }"
+              >
+                <!-- Email Icon -->
+                <svg
+                  class="h-5 w-5 opacity-50 flex-shrink-0"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                >
+                  <g
+                    stroke-linejoin="round"
+                    stroke-linecap="round"
+                    stroke-width="2.5"
+                    fill="none"
+                    stroke="currentColor"
+                  >
+                    <rect width="20" height="16" x="2" y="4" rx="2"></rect>
+                    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
+                  </g>
+                </svg>
+
+                <!-- Input -->
                 <input
-                  id="email"
                   v-model="email"
+                  id="email"
                   type="email"
                   name="email"
+                  placeholder="Email"
+                  required
                   autocomplete="username"
-                  class="input input-bordered w-full peer !border-0 !border-b-2 !border-gray-300 !rounded-none bg-transparent focus:!border-primaryColor focus:!outline-none px-0 py-3 placeholder-transparent"
-                  :class="{ '!border-red-500': errorMessage }"
-                  placeholder="johnmarco@gmail.com"
+                  class="flex-1 bg-transparent focus:outline-none text-base"
+                  :class="{ 'text-error placeholder-error': errorMessage }"
                 />
-                <label
-                  for="email"
-                  class="absolute left-0 -top-3.5 text-gray-600 text-sm font-poppins transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-focus:-top-3.5 peer-focus:text-primaryColor peer-focus:text-sm"
-                >
-                  Email
-                </label>
-              </div>
+              </label>
             </div>
 
-            <!-- Password Field with Floating Label -->
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text sr-only">Password</span>
-              </label>
-              <div class="relative">
+            <!-- Validation Hint -->
+            <div
+              v-if="errorMessage"
+              class="validator-hint text-error text-sm mt-1 text-center"
+            >
+              Enter a valid email address
+            </div>
+
+            <!-- Password Field -->
+            <div class="relative w-full">
+              <label
+                class="input validator flex items-center gap-3 w-full h-12"
+                :class="{
+                  '!border-primaryColor !focus-within:border-primaryColor': true,
+                  '!border-error': errorMessage,
+                }"
+              >
+                <!-- Password Icon -->
+                <svg
+                  class="h-5 w-5 opacity-50 flex-shrink-0"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="2.5"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M12 15v2m-6 4h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-1V9a5 5 0 0 0-10 0v2H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2z"
+                  />
+                </svg>
+
+                <!-- Input -->
                 <input
-                  id="password"
                   v-model="password"
                   :type="showPassword ? 'text' : 'password'"
+                  id="password"
                   name="password"
+                  placeholder="Password"
+                  required
                   autocomplete="current-password"
-                  class="input input-bordered w-full peer !border-0 !border-b-2 !border-gray-300 !rounded-none bg-transparent focus:!border-primaryColor focus:!outline-none px-0 py-3 pr-10 placeholder-transparent"
-                  :class="{ '!border-red-500': errorMessage }"
-                  placeholder="lovekosi_e"
+                  class="flex-1 bg-transparent focus:outline-none text-base pr-10"
+                  :class="{ 'text-error placeholder-error': errorMessage }"
                 />
-                <label
-                  for="password"
-                  class="absolute left-0 -top-3.5 text-gray-600 text-sm font-poppins transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-focus:-top-3.5 peer-focus:text-primaryColor peer-focus:text-sm"
-                >
-                  Password
-                </label>
+
+                <!-- Toggle Eye -->
                 <button
                   type="button"
                   @click="togglePasswordVisibility"
-                  class="absolute right-0 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+                  class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0 cursor-pointer"
                 >
                   <Eye v-if="showPassword" class="w-5 h-5" />
                   <EyeOff v-else class="w-5 h-5" />
                 </button>
-              </div>
+              </label>
+            </div>
 
-              <!-- Forgot Password Link -->
-              <div class="mt-3 text-right">
-                <router-link
-                  to="/forgot-password"
-                  class="text-sm text-primaryColor hover:text-primaryColor/80 transition-colors font-poppins"
-                >
-                  recover password
-                </router-link>
-              </div>
+            <!-- Forgot Password -->
+            <div class="text-right">
+              <router-link
+                to="/forgot-password"
+                class="text-sm text-primaryColor hover:text-primaryColor/80 transition-colors font-poppins"
+              >
+                Forgot password
+              </router-link>
             </div>
 
             <!-- Error Message -->
             <div
               v-if="errorMessage"
-              class="text-red-500 text-sm text-center mt-2 font-poppins"
+              class="text-error text-sm text-center mt-2 font-poppins"
             >
               {{ errorMessage }}
             </div>
 
             <!-- Login Button -->
-            <div class="mt-8 flex justify-center">
+            <div class="mt-6 lg:mt-8 flex justify-center">
               <button
                 type="submit"
                 :disabled="isLoading"
-                class="btn bg-primaryColor border-none hover:bg-primaryColor/80 font-poppins disabled:bg-primaryColor/50 text-white font-medium py-3 px-6 rounded-full transition-colors flex items-center justify-center shadow-lg cursor-pointer w-[50%]"
+                class="btn bg-primaryColor border-none hover:bg-primaryColor/80 font-poppins disabled:bg-primaryColor/50 text-white font-medium py-3 px-6 rounded-full transition-colors flex items-center justify-center shadow-lg cursor-pointer w-full sm:w-[80%] lg:w-[60%] xl:w-[50%]"
               >
                 <template v-if="isLoading">
                   <span
                     class="loading loading-spinner loading-sm text-white mr-2"
                   ></span>
-                  <span class="font-poppins">Logging in...</span>
+                  <span>Logging in...</span>
                 </template>
                 <template v-else>
-                  <span class="font-poppins">Login</span>
+                  <span>Login</span>
                 </template>
               </button>
             </div>
 
-            <!-- Supplier Login Link -->
+            <!-- Supplier Login -->
             <div class="mt-6 text-center">
               <p class="text-sm text-gray-600 font-poppins">
                 Are you a supplier?
@@ -979,118 +1082,175 @@
     </div>
 
     <!-- Mobile Layout -->
-    <div class="relative z-10 w-full max-w-md mx-auto lg:hidden mt-10">
-      <div class="flex justify-center">
+    <div
+      class="relative z-10 w-full max-w-sm sm:max-w-md mx-auto lg:hidden mt-4 sm:mt-6 lg:mt-10"
+    >
+      <div class="flex justify-center mb-4">
         <img
           src="/logo1.png"
           alt=""
-          class="w-70 h-70 object-cover object-center"
+          class="mobile-logo w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 object-contain object-center"
         />
       </div>
       <!-- Mobile Login Card -->
-      <div class="bg-white rounded-2xl shadow-xl p-8 h-[500px] mt-10">
+      <div
+        class="bg-white rounded-2xl shadow-xl p-4 sm:p-6 lg:p-8 min-h-[400px] sm:min-h-[450px] mt-4 sm:mt-6"
+      >
         <!-- Welcome Section -->
-        <div class="text-center mb-8">
-          <h1 class="text-2xl font-bold text-primaryColor mb-2 font-poppins">
+        <div class="text-center mb-6 sm:mb-8">
+          <h1
+            class="text-xl sm:text-2xl font-bold text-primaryColor mb-2 font-poppins"
+          >
             Welcome
           </h1>
-          <p class="text-gray-500 text-sm font-roboto">
+          <p class="text-gray-500 text-xs sm:text-sm font-roboto">
             Fill your data to continue. Thank You!
           </p>
         </div>
 
         <!-- Login Form -->
-        <form @submit.prevent="login" class="space-y-6">
-          <!-- Email Field with Floating Label -->
-          <div class="form-control mt-10">
-            <div class="relative">
+        <form
+          @submit.prevent="login"
+          class="space-y-4 sm:space-y-6 mt-6 sm:mt-8"
+        >
+          <!-- Email Field -->
+          <div class="relative w-full">
+            <label
+              class="input validator flex items-center gap-3 w-full h-12"
+              :class="{
+                '!border-primaryColor !focus-within:border-primaryColor': true,
+                '!border-error': errorMessage,
+              }"
+            >
+              <!-- Email Icon -->
+              <svg
+                class="h-5 w-5 opacity-50 flex-shrink-0"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+              >
+                <g
+                  stroke-linejoin="round"
+                  stroke-linecap="round"
+                  stroke-width="2.5"
+                  fill="none"
+                  stroke="currentColor"
+                >
+                  <rect width="20" height="16" x="2" y="4" rx="2"></rect>
+                  <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
+                </g>
+              </svg>
+
+              <!-- Input -->
               <input
                 id="email-mobile"
                 v-model="email"
                 type="email"
                 name="email"
+                placeholder="Email"
+                required
                 autocomplete="username"
-                class="input input-bordered w-full peer !border-0 !border-b-2 !border-gray-300 !rounded-none bg-transparent focus:!border-primaryColor focus:!outline-none px-0 py-3 placeholder-transparent"
-                :class="{ '!border-red-500': errorMessage }"
-                placeholder="johnmarco@gmail.com"
+                class="flex-1 bg-transparent focus:outline-none text-base"
+                :class="{ 'text-error placeholder-error': errorMessage }"
               />
-              <label
-                for="email-mobile"
-                class="absolute left-0 -top-3.5 text-gray-600 text-sm font-poppins transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-focus:-top-3.5 peer-focus:text-primaryColor peer-focus:text-sm"
-              >
-                Email
-              </label>
-            </div>
+            </label>
           </div>
 
-          <!-- Password Field with Floating Label -->
-          <div class="form-control mt-10">
-            <div class="relative">
+          <!-- Validation Hint -->
+          <div
+            v-if="errorMessage"
+            class="validator-hint text-error text-sm mt-1 text-center"
+          >
+            Enter a valid email address
+          </div>
+
+          <!-- Password Field -->
+          <div class="relative w-full">
+            <label
+              class="input validator flex items-center gap-3 w-full h-12"
+              :class="{
+                '!border-primaryColor !focus-within:border-primaryColor': true,
+                '!border-error': errorMessage,
+              }"
+            >
+              <!-- Password Icon -->
+              <svg
+                class="h-5 w-5 opacity-50 flex-shrink-0"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="2.5"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M12 15v2m-6 4h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-1V9a5 5 0 0 0-10 0v2H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2z"
+                />
+              </svg>
+
+              <!-- Input -->
               <input
                 id="password-mobile"
                 v-model="password"
                 :type="showPassword ? 'text' : 'password'"
                 name="password"
+                placeholder="Password"
+                required
                 autocomplete="current-password"
-                class="input input-bordered w-full peer !border-0 !border-b-2 !border-gray-300 !rounded-none bg-transparent focus:!border-primaryColor focus:!outline-none px-0 py-3 pr-10 placeholder-transparent"
-                :class="{ '!border-red-500': errorMessage }"
-                placeholder="lovekosi_e"
+                class="flex-1 bg-transparent focus:outline-none text-base pr-10"
+                :class="{ 'text-error placeholder-error': errorMessage }"
               />
-              <label
-                for="password-mobile"
-                class="absolute left-0 -top-3.5 text-gray-600 text-sm font-poppins transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-focus:-top-3.5 peer-focus:text-primaryColor peer-focus:text-sm"
-              >
-                Password
-              </label>
+
+              <!-- Toggle Password -->
               <button
                 type="button"
                 @click="togglePasswordVisibility"
-                class="absolute right-0 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
               >
                 <Eye v-if="showPassword" class="w-5 h-5" />
                 <EyeOff v-else class="w-5 h-5" />
               </button>
-            </div>
+            </label>
+          </div>
 
-            <!-- Forgot Password Link -->
-            <div class="mt-3 text-right">
-              <router-link
-                to="/forgot-password"
-                class="text-sm text-primaryColor hover:text-primaryColor/80 transition-colors font-poppins"
-              >
-                recover password
-              </router-link>
-            </div>
+          <!-- Forgot Password -->
+          <div class="text-right">
+            <router-link
+              to="/forgot-password"
+              class="text-sm text-primaryColor hover:text-primaryColor/80 transition-colors font-poppins"
+            >
+              Forgot password
+            </router-link>
           </div>
 
           <!-- Error Message -->
           <div
             v-if="errorMessage"
-            class="text-red-500 text-sm text-center mt-2 font-poppins"
+            class="text-error text-sm text-center mt-2 font-poppins"
           >
             {{ errorMessage }}
           </div>
 
           <!-- Login Button -->
-          <div class="mt-8 flex justify-center">
+          <div class="mt-6 sm:mt-8 flex justify-center">
             <button
               type="submit"
               :disabled="isLoading"
-              class="btn bg-primaryColor border-none hover:bg-primaryColor/80 font-poppins disabled:bg-primaryColor/50 text-white font-medium py-3 px-6 rounded-full transition-colors flex items-center justify-center shadow-lg cursor-pointer w-[50%]"
+              class="btn bg-primaryColor border-none hover:bg-primaryColor/80 font-poppins disabled:bg-primaryColor/50 text-white font-medium py-3 px-6 rounded-full transition-colors flex items-center justify-center shadow-lg cursor-pointer w-full sm:w-[80%]"
             >
               <template v-if="isLoading">
                 <span
                   class="loading loading-spinner loading-sm text-white mr-2"
                 ></span>
-                <span class="font-poppins">Logging in...</span>
+                <span>Logging in...</span>
               </template>
               <template v-else>
-                <span class="font-poppins">Login</span>
+                <span>Login</span>
               </template>
             </button>
           </div>
 
-          <!-- Supplier Login Link -->
+          <!-- Supplier Login -->
           <div class="mt-6 text-center">
             <p class="text-sm text-gray-600 font-poppins">
               Are you a supplier?
@@ -1149,14 +1309,14 @@
   /* Custom floating label styles */
   .input:focus ~ label,
   .input:not(:placeholder-shown) ~ label {
-    transform: translateY(-1.5rem) scale(0.9);
-    color: var(--primaryColor, #466114);
+    transform: translateY(-1.5rem) scale(0.9) !important;
+    color: var(--primaryColor, #466114) !important;
   }
 
   /* Override DaisyUI input styles for floating labels */
   .input.input-bordered {
     font-family: Roboto;
-    color: var(--color-neutralColor, #000000);
+    color: var(--color-neutralColor, #000000) !important;
     background: transparent !important;
     border: none !important;
     border-bottom: 3px solid #d1d5db !important;
@@ -1202,6 +1362,184 @@
     /* Let the overlay image handle the background visuals */
     .min-h-screen {
       background-image: none;
+    }
+  }
+
+  /* Enhanced responsive input styles */
+  .input {
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+  }
+
+  @media (max-width: 640px) {
+    .input {
+      min-height: 44px;
+    }
+  }
+
+  /* Ensure proper text wrapping and overflow handling */
+  .input input {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.5;
+  }
+
+  /* Better touch targets for mobile */
+  @media (max-width: 768px) {
+    button {
+      min-height: 44px;
+    }
+  }
+
+  /* Perfect alignment for input elements */
+  .input svg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .input input {
+    display: flex;
+    align-items: center;
+    height: 100%;
+  }
+
+  /* Ensure consistent spacing */
+  .input {
+    padding: 0 12px;
+  }
+
+  /* Mobile logo responsive sizing */
+  @media (max-width: 375px) {
+    .mobile-logo {
+      width: 10rem;
+      height: 10rem;
+    }
+  }
+
+  @media (min-width: 376px) and (max-width: 640px) {
+    .mobile-logo {
+      width: 6rem;
+      height: 6rem;
+    }
+  }
+
+  @media (min-width: 641px) and (max-width: 768px) {
+    .mobile-logo {
+      width: 7rem;
+      height: 7rem;
+    }
+  }
+
+  /* Attendance Scanner Modal Responsive Enhancements */
+
+  /* Modal backdrop and positioning */
+  .modal-box {
+    margin: 0.5rem;
+    max-height: calc(100vh - 1rem);
+  }
+
+  @media (min-width: 640px) {
+    .modal-box {
+      margin: 1rem;
+      max-height: calc(100vh - 2rem);
+    }
+  }
+
+  @media (min-width: 768px) {
+    .modal-box {
+      margin: 1.5rem;
+      max-height: calc(100vh - 3rem);
+    }
+  }
+
+  /* Camera aspect ratio improvements */
+  .aspect-\[4\/3\] {
+    aspect-ratio: 4 / 3;
+  }
+
+  .aspect-\[16\/10\] {
+    aspect-ratio: 16 / 10;
+  }
+
+  .aspect-\[16\/9\] {
+    aspect-ratio: 16 / 9;
+  }
+
+  /* Ensure camera stream fills container properly */
+  .QrcodeStream {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  /* Better touch targets for mobile */
+  @media (max-width: 640px) {
+    .modal .btn {
+      min-height: 44px;
+      padding: 0.75rem 1rem;
+    }
+
+    .modal .btn-xs {
+      min-height: 36px;
+      padding: 0.5rem 0.75rem;
+    }
+  }
+
+  /* Improved grid responsiveness */
+  @media (max-width: 639px) {
+    .grid.grid-cols-1 {
+      gap: 0.5rem;
+    }
+  }
+
+  @media (min-width: 640px) and (max-width: 1023px) {
+    .grid.grid-cols-2 {
+      gap: 0.75rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .grid.grid-cols-4 {
+      gap: 1rem;
+    }
+  }
+
+  /* Better text wrapping and overflow handling */
+  .break-all {
+    word-break: break-all;
+    overflow-wrap: break-word;
+    hyphens: auto;
+  }
+
+  /* Enhanced button responsiveness */
+  @media (max-width: 640px) {
+    .flex.flex-col.gap-2 .btn {
+      width: 100%;
+    }
+  }
+
+  /* Modal action button improvements */
+  .modal-action .btn {
+    min-width: 120px;
+  }
+
+  @media (max-width: 640px) {
+    .modal-action .btn {
+      width: 100%;
+      min-width: auto;
+    }
+  }
+
+  /* Better spacing for mobile */
+  @media (max-width: 640px) {
+    .modal-box > * {
+      margin-bottom: 0.75rem;
+    }
+
+    .modal-box > *:last-child {
+      margin-bottom: 0;
     }
   }
 </style>

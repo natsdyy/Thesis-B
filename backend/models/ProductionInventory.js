@@ -621,9 +621,9 @@ class ProductionInventory {
   }
 
   // Get recent activity for production inventory
-  static async getRecentActivity(limit = 10) {
+  static async getRecentActivity(limit = null) {
     try {
-      // Get inventory update activities
+      // Get all audit log activities (not just INVENTORY_UPDATED)
       const inventoryActivities = await db.raw(
         `
         SELECT 
@@ -641,11 +641,9 @@ class ProductionInventory {
         LEFT JOIN menu_items mi ON mal.menu_item_id = mi.id AND mi.deleted_at IS NULL
         LEFT JOIN production_inventory pi ON mal.menu_item_id = pi.menu_item_id
         LEFT JOIN employees e ON mal.employee_id = e.id
-        WHERE mal.action_type = ?
+        WHERE mal.action_type IN ('CREATED', 'UPDATED', 'INVENTORY_UPDATED', 'SAMPLE_PLANNED', 'SAMPLE_STARTED', 'SAMPLE_COMPLETED', 'QUALITY_INSPECTION', 'QUALITY_PASSED', 'QUALITY_FAILED', 'APPROVED_FOR_PRODUCTION', 'ADDED_TO_INVENTORY', 'DELETED')
         ORDER BY mal.created_at DESC
-        LIMIT ?
-      `,
-        ["INVENTORY_UPDATED", limit]
+      `
       );
 
       // Get production batch activities
@@ -670,18 +668,14 @@ class ProductionInventory {
         LEFT JOIN employees e ON pb.assigned_to = e.id
         WHERE pb.status IN ('In Progress', 'Completed', 'Quality Check', 'Failed')
         ORDER BY pb.updated_at DESC
-        LIMIT ?
-      `,
-        [limit]
+      `
       );
 
       // Combine and sort activities
       const allActivities = [
         ...inventoryActivities.rows,
         ...productionActivities.rows,
-      ]
-        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-        .slice(0, limit);
+      ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
       // Parse and format activities
       return allActivities.map((activity) => {
@@ -748,87 +742,79 @@ class ProductionInventory {
 
       const offset = (page - 1) * limit;
 
-      // Build WHERE conditions dynamically
-      const whereConditions = [];
-      const queryParams = [];
+      // Build base query using Knex query builder
+      let query = db("menu_item_audit_log as mal")
+        .select(
+          "mal.id",
+          "mal.action_type",
+          "mal.action_details",
+          "mal.notes",
+          "mal.created_at",
+          "mal.employee_id as user_id",
+          "mal.menu_item_id",
+          db.raw("COALESCE(mi.menu_item_name, 'Unknown Item') as item_name"),
+          db.raw("COALESCE(pi.available_quantity, 0) as available_quantity"),
+          db.raw(
+            "COALESCE(COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,''), 'Unknown Employee') as performed_by"
+          )
+        )
+        .leftJoin("menu_items as mi", function () {
+          this.on("mal.menu_item_id", "=", "mi.id").andOnNull("mi.deleted_at");
+        })
+        .leftJoin(
+          "production_inventory as pi",
+          "mal.menu_item_id",
+          "pi.menu_item_id"
+        )
+        .leftJoin("employees as e", "mal.employee_id", "e.id");
 
-      // Base condition
-      whereConditions.push("1=1");
-
-      // Search filter
+      // Apply filters
       if (search) {
-        whereConditions.push(`(
-          mi.menu_item_name ILIKE $${queryParams.length + 1} OR
-          e.name ILIKE $${queryParams.length + 1} OR
-          mal.notes ILIKE $${queryParams.length + 1}
-        )`);
-        queryParams.push(`%${search}%`);
+        query = query.where(function () {
+          this.whereILike("mi.menu_item_name", `%${search}%`)
+            .orWhereILike(
+              db.raw(
+                "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'')"
+              ),
+              `%${search}%`
+            )
+            .orWhereILike("mal.notes", `%${search}%`);
+        });
       }
 
-      // Action type filter
       if (action_type) {
-        whereConditions.push(`mal.action_type = $${queryParams.length + 1}`);
-        queryParams.push(action_type);
+        query = query.where("mal.action_type", action_type);
       }
 
-      // Date filters
       if (date_from) {
-        whereConditions.push(`mal.created_at >= $${queryParams.length + 1}`);
-        queryParams.push(date_from);
+        query = query.where("mal.created_at", ">=", date_from);
       }
 
       if (date_to) {
-        whereConditions.push(`mal.created_at <= $${queryParams.length + 1}`);
-        queryParams.push(date_to);
+        query = query.where("mal.created_at", "<=", date_to);
       }
 
-      // Menu item filter
       if (menu_item_id) {
-        whereConditions.push(`mal.menu_item_id = $${queryParams.length + 1}`);
-        queryParams.push(menu_item_id);
+        query = query.where("mal.menu_item_id", menu_item_id);
       }
 
-      const whereClause = whereConditions.join(" AND ");
+      // Get total count
+      const countQuery = query
+        .clone()
+        .clearSelect()
+        .clearOrder()
+        .count("* as count");
+      const countResult = await countQuery.first();
+      const total = parseInt(countResult.count);
 
-      // Get total count with optimized query
-      const countQuery = `
-        SELECT COUNT(*) as count
-        FROM menu_item_audit_log mal
-        LEFT JOIN menu_items mi ON mal.menu_item_id = mi.id AND mi.deleted_at IS NULL
-        LEFT JOIN employees e ON mal.employee_id = e.id
-        WHERE ${whereClause}
-      `;
-
-      const countResult = await db.raw(countQuery, queryParams);
-      const total = parseInt(countResult.rows[0].count);
-
-      // Get paginated results with optimized query
-      const dataQuery = `
-        SELECT 
-          mal.id,
-          mal.action_type,
-          mal.action_details,
-          mal.notes,
-          mal.created_at,
-          mal.employee_id as user_id,
-          mal.menu_item_id,
-          COALESCE(mi.menu_item_name, 'Unknown Item') as item_name,
-          COALESCE(pi.available_quantity, 0) as available_quantity,
-          COALESCE(COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,''), 'Unknown Employee') as performed_by
-        FROM menu_item_audit_log mal
-        LEFT JOIN menu_items mi ON mal.menu_item_id = mi.id AND mi.deleted_at IS NULL
-        LEFT JOIN production_inventory pi ON mal.menu_item_id = pi.menu_item_id
-        LEFT JOIN employees e ON mal.employee_id = e.id
-        WHERE ${whereClause}
-        ORDER BY mal.created_at DESC
-        LIMIT ? OFFSET ?
-      `;
-
-      const dataParams = [...queryParams, limit, offset];
-      const activitiesResult = await db.raw(dataQuery, dataParams);
+      // Get paginated results
+      const activities = await query
+        .orderBy("mal.created_at", "desc")
+        .limit(limit)
+        .offset(offset);
 
       // Parse action_details and add quantity information
-      const processedActivities = activitiesResult.rows.map((activity) => {
+      const processedActivities = activities.map((activity) => {
         const details = activity.action_details
           ? JSON.parse(activity.action_details)
           : {};

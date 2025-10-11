@@ -515,7 +515,11 @@ router.post("/forgot-password", async (req, res) => {
     }
 
     // Check if employee is active
-    if (employee.deleted_at || !employee.is_active || employee.status !== "Active") {
+    if (
+      employee.deleted_at ||
+      !employee.is_active ||
+      employee.status !== "Active"
+    ) {
       return res.json({
         success: true,
         message: "If the email exists, a password reset link has been sent",
@@ -524,17 +528,15 @@ router.post("/forgot-password", async (req, res) => {
     }
 
     // Generate reset token
-    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetToken = crypto.randomBytes(32).toString("hex");
     const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour from now
 
     // Store reset token in database
-    await db('employees')
-      .where('id', employee.id)
-      .update({
-        reset_token: resetToken,
-        reset_token_expiry: resetTokenExpiry,
-        updated_at: new Date()
-      });
+    await db("employees").where("id", employee.id).update({
+      reset_token: resetToken,
+      reset_token_expiry: resetTokenExpiry,
+      updated_at: new Date(),
+    });
 
     // Send password recovery email
     const emailResult = await EmailService.sendPasswordRecoveryEmail(
@@ -544,7 +546,10 @@ router.post("/forgot-password", async (req, res) => {
     );
 
     if (!emailResult.success) {
-      console.error('Failed to send password recovery email:', emailResult.error);
+      console.error(
+        "Failed to send password recovery email:",
+        emailResult.error
+      );
       // Don't reveal email sending failure to user for security
     }
 
@@ -553,12 +558,12 @@ router.post("/forgot-password", async (req, res) => {
       message: "If the email exists, a password reset link has been sent",
       code: "RESET_EMAIL_SENT",
     });
-
   } catch (error) {
     console.error("Forgot password error:", error);
     res.status(500).json({
       success: false,
-      message: "Password reset service is temporarily unavailable. Please try again.",
+      message:
+        "Password reset service is temporarily unavailable. Please try again.",
       code: "INTERNAL_SERVER_ERROR",
     });
   }
@@ -616,12 +621,12 @@ router.post("/reset-password", async (req, res) => {
     }
 
     // Find employee with valid reset token
-    const employee = await db('employees')
-      .where('reset_token', token)
-      .where('reset_token_expiry', '>', new Date())
-      .whereNull('deleted_at')
-      .where('is_active', true)
-      .where('status', 'Active')
+    const employee = await db("employees")
+      .where("reset_token", token)
+      .where("reset_token_expiry", ">", new Date())
+      .whereNull("deleted_at")
+      .where("is_active", true)
+      .where("status", "Active")
       .first();
 
     if (!employee) {
@@ -633,27 +638,25 @@ router.post("/reset-password", async (req, res) => {
     }
 
     // Update password and clear reset token
-    await Employee.setPassword(employee.id, new_password);
-    
-    await db('employees')
-      .where('id', employee.id)
-      .update({
-        reset_token: null,
-        reset_token_expiry: null,
-        updated_at: new Date()
-      });
+    await Employee.setPassword(employee.employee_id, new_password);
+
+    await db("employees").where("id", employee.id).update({
+      reset_token: null,
+      reset_token_expiry: null,
+      updated_at: new Date(),
+    });
 
     res.json({
       success: true,
       message: "Password has been reset successfully",
       code: "PASSWORD_RESET_SUCCESS",
     });
-
   } catch (error) {
     console.error("Reset password error:", error);
     res.status(500).json({
       success: false,
-      message: "Password reset service is temporarily unavailable. Please try again.",
+      message:
+        "Password reset service is temporarily unavailable. Please try again.",
       code: "INTERNAL_SERVER_ERROR",
     });
   }
@@ -697,12 +700,12 @@ router.post("/validate-reset-token", async (req, res) => {
     }
 
     // Check if token exists and is not expired
-    const employee = await db('employees')
-      .where('reset_token', token)
-      .where('reset_token_expiry', '>', new Date())
-      .whereNull('deleted_at')
-      .where('is_active', true)
-      .where('status', 'Active')
+    const employee = await db("employees")
+      .where("reset_token", token)
+      .where("reset_token_expiry", ">", new Date())
+      .whereNull("deleted_at")
+      .where("is_active", true)
+      .where("status", "Active")
       .first();
 
     if (!employee) {
@@ -719,15 +722,15 @@ router.post("/validate-reset-token", async (req, res) => {
       code: "TOKEN_VALID",
       data: {
         email: employee.email,
-        name: `${employee.first_name} ${employee.last_name}`
-      }
+        name: `${employee.first_name} ${employee.last_name}`,
+      },
     });
-
   } catch (error) {
     console.error("Validate reset token error:", error);
     res.status(500).json({
       success: false,
-      message: "Token validation service is temporarily unavailable. Please try again.",
+      message:
+        "Token validation service is temporarily unavailable. Please try again.",
       code: "INTERNAL_SERVER_ERROR",
     });
   }

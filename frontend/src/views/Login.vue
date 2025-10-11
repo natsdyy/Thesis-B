@@ -532,19 +532,20 @@
       />
     </div>
 
-    <!-- Back Button - positioned outside the card (Desktop only) -->
-    <button
-      @click="goBackHome"
-      class="absolute top-8 left-8 text-gray-600 hover:text-gray-800 transition-colors z-10 cursor-pointer items-center space-x-2 hover:bg-white/20 rounded-lg px-3 py-2 hidden lg:flex"
-    >
-      <ArrowLeft class="w-5 h-5" />
-      <span class="text-sm font-medium ">Back to Home</span>
-    </button>
+<!-- Back Button -->
+<button
+  @click="goBackHome"
+  class="absolute top-8 left-8 text-gray-600 hover:text-gray-800 transition-colors z-10 cursor-pointer items-center space-x-2 hover:bg-white/20 rounded-lg px-3 py-2 flex"
+>
+  <ArrowLeft class="w-5 h-5" />
+  <span class="text-sm font-medium hidden lg:inline">Back to Home</span>
+</button>
+
 
     <!-- Desktop QR Scanner Button -->
     <button
       @click="openScanner"
-      class="absolute top-8 right-8 text-white hover:text-white transition-all duration-300 z-10 cursor-pointer flex items-center space-x-2 bg-primaryColor/90 hover:bg-primaryColor rounded-full px-4 py-2 text-sm shadow-lg hover:shadow-xl transform hover:scale-105 hidden lg:flex backdrop-blur-sm"
+      class="btn btn-sm absolute top-8 right-8 text-white hover:text-white z-10 cursor-pointer bg-primaryColor/90 hover:bg-primaryColor rounded-full px-4 py-2 text-sm shadow-lg hidden lg:flex backdrop-blur-sm"
     >
       <QrCode class="w-4 h-4" />
       <span class="font-medium">Scan for Attendance</span>

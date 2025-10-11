@@ -801,11 +801,17 @@
 
 <template>
   <dialog id="branch_remit_sales_modal" class="modal">
-    <div class="modal-box max-w-6xl max-h-[90vh] overflow-y-auto">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="card-title text-primaryColor">
-          <font-awesome-icon icon="fa-solid fa-receipt" class="!w-5 !h-5" />
-          Remit Sales Report
+    <div
+      class="modal-box w-11/12 sm:w-5/6 md:max-w-6xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto p-2 sm:p-6"
+    >
+      <div class="flex items-center justify-between mb-3 sm:mb-4">
+        <h3 class="card-title text-primaryColor text-base sm:text-lg">
+          <font-awesome-icon
+            icon="fa-solid fa-receipt"
+            class="!w-4 !h-4 sm:!w-5 sm:!h-5"
+          />
+          <span class="hidden sm:inline">Remit Sales Report</span>
+          <span class="sm:hidden">Sales Report</span>
         </h3>
         <button class="btn btn-ghost btn-sm" @click="closeModal">
           <X class="w-4 h-4" />
@@ -813,27 +819,52 @@
       </div>
 
       <!-- Tabs -->
-      <div class="tabs tabs-boxed mb-6">
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          @click="activeTab = tab.id"
-          class="tab"
-          :class="{ 'tab-active': activeTab === tab.id }"
-        >
-          <component :is="tab.icon" class="w-4 h-4 mr-2" />
-          {{ tab.label }}
-        </button>
+      <div class="mb-4 sm:mb-6">
+        <!-- Mobile: Horizontal scroll -->
+        <div class="block sm:hidden">
+          <div class="flex overflow-x-auto pb-2 space-x-2">
+            <button
+              v-for="tab in tabs"
+              :key="tab.id"
+              @click="activeTab = tab.id"
+              class="flex-shrink-0 px-3 py-2 text-xs font-medium rounded-lg border transition-colors"
+              :class="
+                activeTab === tab.id
+                  ? 'bg-primaryColor text-white border-primaryColor'
+                  : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'
+              "
+            >
+              <component :is="tab.icon" class="w-3 h-3 mr-1" />
+              {{ tab.label }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Desktop: Full tabs -->
+        <div class="hidden sm:block">
+          <div class="tabs tabs-boxed">
+            <button
+              v-for="tab in tabs"
+              :key="tab.id"
+              @click="activeTab = tab.id"
+              class="tab"
+              :class="{ 'tab-active': activeTab === tab.id }"
+            >
+              <component :is="tab.icon" class="w-4 h-4 mr-2" />
+              {{ tab.label }}
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Custom Month Input -->
-      <div v-if="activeTab === 'customMonth'" class="mb-4">
-        <label class="label">
-          <span class="label-text">Select Month</span>
+      <div v-if="activeTab === 'customMonth'" class="mb-3 sm:mb-4">
+        <label class="label py-1">
+          <span class="label-text text-sm">Select Month</span>
         </label>
         <input
           type="month"
-          class="input input-bordered input-sm max-w-xs"
+          class="input input-bordered input-sm w-full sm:max-w-xs"
           v-model="customMonth"
           @change="fetchRemitData('customMonth')"
         />
@@ -849,7 +880,7 @@
       <div v-else class="space-y-6">
         <!-- Sales Summary Stats -->
         <div
-          class="stats shadow w-full bg-accentColor border border-black/10 stats-vertical lg:stats-horizontal rounded-lg"
+          class="stats shadow w-full bg-accentColor border border-black/10 stats-vertical sm:stats-horizontal rounded-lg"
         >
           <div class="stat">
             <div class="stat-figure">
@@ -921,42 +952,148 @@
 
         <!-- Orders Details Table -->
         <div class="card bg-white shadow-lg">
-          <div class="card-body">
-            <div class="flex items-center justify-between mb-4">
-              <h3 class="card-title text-gray-700">
-                <ShoppingCart class="w-5 h-5" />
+          <div class="card-body p-3 sm:p-6">
+            <!-- Header -->
+            <div
+              class="flex flex-col sm:flex-row sm:items-center justify-between mb-3 sm:mb-4 gap-3"
+            >
+              <h3 class="card-title text-gray-700 text-base sm:text-lg">
+                <ShoppingCart class="w-4 h-4 sm:w-5 sm:h-5" />
                 Order Details
               </h3>
-              <div class="flex items-center gap-2">
+              <div
+                class="flex flex-col sm:flex-row items-start sm:items-center gap-2"
+              >
                 <div class="badge bg-info/20 text-info badge-sm">
                   {{ totalOrders }} Orders
                 </div>
-                <div class="text-sm text-gray-500">
+                <div class="text-xs sm:text-sm text-gray-500">
                   Page {{ currentPage }} of {{ totalPages }}
-                </div>
-                <div class="flex items-center gap-4 text-xs">
-                  <div class="flex items-center gap-1">
-                    <div
-                      class="w-3 h-3 bg-blue-50 border border-blue-200 rounded"
-                    ></div>
-                    <span>Unremitted ({{ allUnremittedOrdersCount }})</span>
-                  </div>
-                  <div class="flex items-center gap-1">
-                    <div
-                      class="w-3 h-3 bg-gray-50 border border-gray-200 rounded"
-                    ></div>
-                    <span>Already Remitted</span>
-                  </div>
                 </div>
               </div>
             </div>
 
+            <!-- Legend -->
+            <div
+              class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 text-xs mb-4"
+            >
+              <div class="flex items-center gap-1">
+                <div
+                  class="w-3 h-3 bg-blue-50 border border-blue-200 rounded"
+                ></div>
+                <span>Unremitted ({{ allUnremittedOrdersCount }})</span>
+              </div>
+              <div class="flex items-center gap-1">
+                <div
+                  class="w-3 h-3 bg-gray-50 border border-gray-200 rounded"
+                ></div>
+                <span>Already Remitted</span>
+              </div>
+            </div>
+
+            <!-- Mobile/Tablet: Card Layout -->
             <div
               v-if="
                 currentData.ordersDetails &&
                 currentData.ordersDetails.length > 0
               "
-              class="overflow-x-auto"
+              class="block lg:hidden"
+            >
+              <div class="space-y-3">
+                <div
+                  v-for="order in paginatedOrders"
+                  :key="order.id"
+                  class="border rounded-lg p-3"
+                  :class="{
+                    'bg-blue-50 border-blue-200': !order.remittance_id,
+                    'bg-gray-50 border-gray-200': order.remittance_id,
+                  }"
+                >
+                  <!-- Order Header -->
+                  <div class="flex items-start justify-between mb-2">
+                    <div class="flex-1 min-w-0">
+                      <h4
+                        class="font-mono text-sm font-semibold text-gray-900 truncate"
+                      >
+                        {{ order.order_number }}
+                      </h4>
+                      <p class="text-xs text-gray-500">
+                        {{ formatDate(order.created_at) }}
+                      </p>
+                    </div>
+                    <div class="flex flex-col items-end gap-1">
+                      <span
+                        :class="[
+                          'badge badge-xs font-medium',
+                          getRemittedInfo(order).cls,
+                        ]"
+                      >
+                        {{ getRemittedInfo(order).label }}
+                      </span>
+                      <span
+                        :class="[
+                          'badge badge-xs font-medium',
+                          order.status === 'completed'
+                            ? 'bg-success/10 text-success border'
+                            : order.status === 'void'
+                              ? 'bg-error/10 text-error border'
+                              : 'bg-warning/10 text-warning border',
+                        ]"
+                      >
+                        {{ order.status }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- Order Details -->
+                  <div class="space-y-2">
+                    <div class="flex justify-between items-center">
+                      <span class="text-xs text-gray-600">Type:</span>
+                      <span class="text-xs font-medium">{{
+                        order.order_type
+                      }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                      <span class="text-xs text-gray-600">Cashier:</span>
+                      <span class="text-xs font-medium">
+                        {{ order.cashier_first_name }}
+                        {{ order.cashier_last_name }}
+                      </span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                      <span class="text-xs text-gray-600">Total:</span>
+                      <span class="text-sm font-bold text-gray-900">
+                        ₱{{
+                          parseFloat(order.total_amount || 0).toLocaleString(
+                            'en-US',
+                            {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            }
+                          )
+                        }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- Items -->
+                  <div class="mt-2 pt-2 border-t border-gray-200">
+                    <p class="text-xs text-gray-600 mb-1">Items:</p>
+                    <div class="text-xs text-gray-700 whitespace-pre-line">
+                      {{ formatItems(order) }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Desktop: Table Layout -->
+            <div
+              v-if="
+                currentData.ordersDetails &&
+                currentData.ordersDetails.length > 0
+              "
+              class="hidden lg:block overflow-x-auto"
             >
               <table class="table table-zebra w-full">
                 <thead>
@@ -1072,9 +1209,11 @@
             <!-- Pagination Controls -->
             <div
               v-if="totalPages > 1"
-              class="flex items-center justify-between mt-4 pt-4 border-t border-gray-200"
+              class="flex flex-col sm:flex-row items-center justify-between mt-4 pt-4 border-t border-gray-200 gap-3"
             >
-              <div class="text-sm text-gray-500">
+              <div
+                class="text-xs sm:text-sm text-gray-500 text-center sm:text-left"
+              >
                 Showing {{ (currentPage - 1) * itemsPerPage + 1 }} to
                 {{ Math.min(currentPage * itemsPerPage, totalOrders) }} of
                 {{ totalOrders }} orders
@@ -1088,13 +1227,14 @@
                   class="btn btn-sm btn-outline"
                   :class="{ 'btn-disabled': currentPage === 1 }"
                 >
-                  Previous
+                  <span class="hidden sm:inline">Previous</span>
+                  <span class="sm:hidden">Prev</span>
                 </button>
 
                 <!-- Page Numbers -->
                 <div class="flex items-center gap-1">
                   <button
-                    v-for="page in Math.min(5, totalPages)"
+                    v-for="page in Math.min(3, totalPages)"
                     :key="page"
                     @click="goToPage(page)"
                     class="btn btn-sm"
@@ -1107,10 +1247,12 @@
                     {{ page }}
                   </button>
 
-                  <span v-if="totalPages > 5" class="text-gray-500">...</span>
+                  <span v-if="totalPages > 3" class="text-gray-500 text-xs"
+                    >...</span
+                  >
 
                   <button
-                    v-if="totalPages > 5 && currentPage < totalPages - 2"
+                    v-if="totalPages > 3 && currentPage < totalPages - 1"
                     @click="goToPage(totalPages)"
                     class="btn btn-sm btn-outline"
                   >
@@ -1125,7 +1267,8 @@
                   class="btn btn-sm btn-outline"
                   :class="{ 'btn-disabled': currentPage === totalPages }"
                 >
-                  Next
+                  <span class="hidden sm:inline">Next</span>
+                  <span class="sm:hidden">Next</span>
                 </button>
               </div>
             </div>
@@ -1133,52 +1276,72 @@
         </div>
 
         <!-- Action Buttons -->
-        <div class="flex justify-between items-center">
-          <div
-            v-if="allUnremittedOrdersCount === 0"
-            class="text-sm text-gray-500 flex items-center gap-2"
-          >
-            <AlertCircle class="w-4 h-4" />
-            <span>All orders in this period have already been remitted</span>
-          </div>
-          <div v-else class="text-sm text-gray-600 flex items-center gap-2">
-            <CheckCircle class="w-4 h-4" />
-            <span
-              >{{ allUnremittedOrdersCount }} unremitted order{{
-                allUnremittedOrdersCount !== 1 ? 's' : ''
-              }}
-              ready for remittance</span
+        <div
+          class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3"
+        >
+          <!-- Status Message -->
+          <div class="flex-1 min-w-0">
+            <div
+              v-if="allUnremittedOrdersCount === 0"
+              class="text-xs sm:text-sm text-gray-500 flex items-center gap-2"
             >
+              <AlertCircle class="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+              <span class="truncate"
+                >All orders in this period have already been remitted</span
+              >
+            </div>
+            <div
+              v-else
+              class="text-xs sm:text-sm text-gray-600 flex items-center gap-2"
+            >
+              <CheckCircle class="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+              <span class="truncate"
+                >{{ allUnremittedOrdersCount }} unremitted order{{
+                  allUnremittedOrdersCount !== 1 ? 's' : ''
+                }}
+                ready for remittance</span
+              >
+            </div>
           </div>
 
-          <div class="flex gap-2">
+          <!-- Action Buttons -->
+          <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <div class="flex gap-2">
+              <button
+                class="btn btn-outline btn-sm font-thin flex-1 sm:flex-none"
+                @click="refreshData"
+                :disabled="posStore.loading"
+              >
+                <RefreshCcw class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                <span class="hidden sm:inline">Refresh</span>
+                <span class="sm:hidden">Refresh</span>
+              </button>
+              <button
+                class="btn btn-outline btn-sm font-thin flex-1 sm:flex-none"
+                @click="exportRemitData"
+                :disabled="isExporting || posStore.loading"
+              >
+                <span
+                  v-if="isExporting"
+                  class="loading loading-spinner loading-xs mr-1"
+                ></span>
+                <Download v-else class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                <span class="hidden sm:inline">{{
+                  isExporting ? 'Exporting...' : 'Export'
+                }}</span>
+                <span class="sm:hidden">{{
+                  isExporting ? 'Export...' : 'Export'
+                }}</span>
+              </button>
+            </div>
             <button
-              class="btn btn-outline btn-sm font-thin"
-              @click="refreshData"
-              :disabled="posStore.loading"
-            >
-              <RefreshCcw class="w-4 h-4 mr-1" />
-              Refresh
-            </button>
-            <button
-              class="btn btn-outline btn-sm font-thin"
-              @click="exportRemitData"
-              :disabled="isExporting || posStore.loading"
-            >
-              <span
-                v-if="isExporting"
-                class="loading loading-spinner loading-xs mr-1"
-              ></span>
-              <Download v-else class="w-4 h-4 mr-1" />
-              {{ isExporting ? 'Exporting...' : 'Export' }}
-            </button>
-            <button
-              class="btn bg-primaryColor text-white hover:bg-primaryColor/80 btn-sm font-thin"
+              class="btn bg-primaryColor text-white hover:bg-primaryColor/80 btn-sm font-thin w-full sm:w-auto"
               @click="showConfirmRemit = true"
               :disabled="posStore.loading || allUnremittedOrdersCount === 0"
             >
-              <CheckCircle class="w-4 h-4 mr-1" />
-              Remit to Finance
+              <CheckCircle class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+              <span class="hidden sm:inline">Remit to Finance</span>
+              <span class="sm:hidden">Remit</span>
               <span
                 v-if="allUnremittedOrdersCount > 0"
                 class="badge badge-xs ml-1 bg-white/80 text-primaryColor font-thin"
@@ -1191,7 +1354,7 @@
       </div>
 
       <div class="modal-action">
-        <button class="btn" @click="closeModal">Close</button>
+        <button class="btn w-full sm:w-auto" @click="closeModal">Close</button>
       </div>
     </div>
     <form method="dialog" class="modal-backdrop"><button>close</button></form>

@@ -1,10 +1,10 @@
 <script setup>
   import { ref, onMounted, computed, watch } from 'vue';
-  import axios from 'axios';
   import { useFinanceBalanceStore } from '../../stores/financeBalanceStore.js';
   import { useBranchContextStore } from '../../stores/branchContextStore.js';
   import { usePOSStore } from '../../stores/posStore.js';
   import { useCashMovementStore } from '../../stores/cashMovementStore.js';
+  import { usePayrollStore } from '../../stores/payrollStore.js';
   import { useCustomToast } from '../../composables/useCustomToast.js';
   import { apiConfig } from '../../config/api.js';
   import {
@@ -17,6 +17,7 @@
   const branchContext = useBranchContextStore();
   const posStore = usePOSStore();
   const cashMovementStore = useCashMovementStore();
+  const payrollStore = usePayrollStore();
   const { showToast } = useCustomToast();
 
   const loading = ref(false);
@@ -24,6 +25,13 @@
   const branchBreakdown = ref([]);
   const totalExpenses = ref(0); // Total outflows from cash movements
   const disposalLosses = ref([]); // Disposal losses by branch
+  const payrollExpenses = ref({
+    netSalary: 0,
+    employerContributions: 0,
+    employeeContributions: 0,
+    total: 0,
+  }); // Payroll expense breakdown
+  const payrollEmployeeDetails = ref([]); // Individual employee payroll details
   const currentPage = ref(1);
   const pageSize = ref(10);
   const totalPages = computed(() => {
@@ -228,13 +236,32 @@
           limit: 9999,
         });
 
-        // Calculate total from outflow movements
-        totalExpenses.value = cashMovementStore.outflowMovements.reduce(
-          (sum, movement) => {
-            return sum + Number(movement.amount || 0);
-          },
-          0
-        );
+        // Calculate total from outflow movements and break down payroll expenses
+        totalExpenses.value = 0;
+        payrollExpenses.value = {
+          netSalary: 0,
+          employerContributions: 0,
+          employeeContributions: 0,
+          total: 0,
+        };
+
+        cashMovementStore.outflowMovements.forEach((movement) => {
+          const amount = Number(movement.amount || 0);
+          totalExpenses.value += amount;
+
+          // Track payroll-specific expenses
+          const source = (movement.source || '').toLowerCase();
+          if (source === 'payroll') {
+            payrollExpenses.value.netSalary += amount;
+            payrollExpenses.value.total += amount;
+          } else if (source === 'payroll_employer_contributions') {
+            payrollExpenses.value.employerContributions += amount;
+            payrollExpenses.value.total += amount;
+          } else if (source === 'payroll_employee_contributions') {
+            payrollExpenses.value.employeeContributions += amount;
+            payrollExpenses.value.total += amount;
+          }
+        });
       } catch (err) {
         console.error('Failed to fetch expenses:', err);
         totalExpenses.value = 0;
@@ -261,6 +288,71 @@
       } catch (err) {
         console.error('Failed to fetch disposal losses:', err);
         disposalLosses.value = [];
+      }
+
+      // Fetch payroll employee details for the period using store
+      try {
+        // For payroll, we want to find periods that were PAID during the selected period
+        // regardless of when they were generated, so we don't use date_from/date_to filters
+        const payrollPeriods = await payrollStore.fetchPayrollPeriods({
+          status: 'paid',
+          limit: 9999,
+        });
+
+        // Filter payroll periods by paid_at date to match the selected period
+        const filteredPayrollPeriods = payrollPeriods.filter((period) => {
+          if (!period.paid_at) return false;
+          const paidAt = new Date(period.paid_at);
+          return paidAt >= start && paidAt <= end;
+        });
+
+        // Flatten all employee records from all payroll periods
+        const allEmployeeRecords = [];
+
+        // If no records are included in the periods, fetch them individually
+        if (
+          filteredPayrollPeriods.length > 0 &&
+          (!filteredPayrollPeriods[0].records ||
+            filteredPayrollPeriods[0].records.length === 0)
+        ) {
+          for (const period of filteredPayrollPeriods) {
+            try {
+              const periodDetails = await payrollStore.fetchPeriodDetails(
+                period.id
+              );
+
+              if (periodDetails.records && periodDetails.records.length > 0) {
+                periodDetails.records.forEach((record) => {
+                  allEmployeeRecords.push({
+                    ...record,
+                    period_name: period.period_name,
+                    period_date_from: period.date_from,
+                    period_date_to: period.date_to,
+                  });
+                });
+              }
+            } catch (detailErr) {}
+          }
+        } else {
+          // Records are already included in the periods
+          filteredPayrollPeriods.forEach((period) => {
+            if (period.records && period.records.length > 0) {
+              period.records.forEach((record) => {
+                allEmployeeRecords.push({
+                  ...record,
+                  period_name: period.period_name,
+                  period_date_from: period.date_from,
+                  period_date_to: period.date_to,
+                });
+              });
+            }
+          });
+        }
+
+        payrollEmployeeDetails.value = allEmployeeRecords;
+      } catch (err) {
+        console.error('Failed to fetch payroll employee details:', err);
+        payrollEmployeeDetails.value = [];
       }
 
       // Fetch branch breakdown from remittances
@@ -444,6 +536,150 @@
             })
           }}
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Payroll Expenses Breakdown -->
+  <div
+    v-if="payrollEmployeeDetails.length > 0 || loading"
+    class="card mt-4 bg-white shadow border border-black/10"
+  >
+    <div class="card-body">
+      <div
+        class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-2"
+      >
+        <h3 class="text-sm font-medium text-gray-700">
+          Payroll Expenses Breakdown
+        </h3>
+        <div class="flex items-center gap-2 text-xs text-gray-500">
+          <span>Total Employees: {{ payrollEmployeeDetails.length }}</span>
+          <span>•</span>
+          <span
+            >Total Net Salary:
+            <font-awesome-icon icon="fa-solid fa-peso-sign" class="!w-3 !h-3" />
+            {{
+              Number(
+                payrollEmployeeDetails.reduce(
+                  (sum, emp) => sum + Number(emp.net_salary || 0),
+                  0
+                )
+              ).toLocaleString('en-PH', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })
+            }}
+          </span>
+        </div>
+      </div>
+      <div v-if="loading" class="flex justify-center py-8">
+        <div class="loading loading-spinner loading-md text-primaryColor"></div>
+      </div>
+      <div v-else class="overflow-x-auto">
+        <table class="table w-full text-sm table-zebra">
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>Department</th>
+              <th>Position</th>
+              <th>Period</th>
+              <th>Days Worked</th>
+              <th>Hours Worked</th>
+              <th>Basic Salary</th>
+              <th>Overtime Pay</th>
+              <th>Gross Salary</th>
+              <th>Deductions</th>
+              <th>Net Salary</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="!payrollEmployeeDetails.length">
+              <td colspan="11" class="text-center text-gray-500">
+                No payroll data available
+              </td>
+            </tr>
+            <tr
+              v-for="employee in payrollEmployeeDetails"
+              :key="`${employee.payroll_period_id}-${employee.employee_id}`"
+            >
+              <td>
+                <div class="flex flex-col">
+                  <span class="font-medium">{{ employee.employee_name }}</span>
+                </div>
+              </td>
+              <td>{{ employee.department }}</td>
+              <td>{{ employee.role_name }}</td>
+              <td>
+                <div class="flex flex-col">
+                  <span class="text-xs">{{ employee.period_name }}</span>
+
+                </div>
+              </td>
+              <td>{{ employee.days_worked }}</td>
+              <td>{{ employee.hours_worked }}</td>
+              <td>
+                <font-awesome-icon
+                  icon="fa-solid fa-peso-sign"
+                  class="!w-3 !h-3"
+                />
+                {{
+                  Number(employee.basic_salary || 0).toLocaleString('en-PH', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })
+                }}
+              </td>
+              <td>
+                <font-awesome-icon
+                  icon="fa-solid fa-peso-sign"
+                  class="!w-3 !h-3"
+                />
+                {{
+                  Number(employee.overtime_pay || 0).toLocaleString('en-PH', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })
+                }}
+              </td>
+              <td>
+                <font-awesome-icon
+                  icon="fa-solid fa-peso-sign"
+                  class="!w-3 !h-3"
+                />
+                {{
+                  Number(employee.gross_salary || 0).toLocaleString('en-PH', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })
+                }}
+              </td>
+              <td class="">
+                <font-awesome-icon
+                  icon="fa-solid fa-peso-sign"
+                  class="!w-3 !h-3"
+                />
+                {{
+                  Number(employee.total_deductions || 0).toLocaleString(
+                    'en-PH',
+                    { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+                  )
+                }}
+              </td>
+              <td class="">
+                <font-awesome-icon
+                  icon="fa-solid fa-peso-sign"
+                  class="!w-3 !h-3"
+                />
+                {{
+                  Number(employee.net_salary || 0).toLocaleString('en-PH', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })
+                }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>

@@ -105,8 +105,38 @@
     'Other',
   ];
 
+  // Map adjustment types to their relevant reasons
+  const adjustmentTypeReasons = {
+    set_quantity: ['Physical Count Discrepancy', 'Data Entry Error', 'Other'],
+    add_quantity: [
+      'Received Additional Stock',
+      'Physical Count Discrepancy',
+      'Data Entry Error',
+      'Other',
+    ],
+    reduce_quantity: [
+      'Physical Count Discrepancy',
+      'Theft/Loss',
+      'Damage',
+      'Data Entry Error',
+      'Transfer to Another Location',
+      'Other',
+    ],
+    mark_expired: ['Expiry'],
+    mark_damaged: ['Damage'],
+    set_expiry_date: ['Expiry'],
+    disposal: ['Expiry', 'Damage', 'Theft/Loss', 'Other'],
+  };
+
   const availableReasons = computed(() => {
-    return isExpiredItem.value ? ['Expiry'] : allReasons;
+    // If item is expired, only allow Expiry
+    if (isExpiredItem.value) return ['Expiry'];
+
+    // If no adjustment type selected, show all reasons
+    if (!form.value.adjustment_type) return allReasons;
+
+    // Return relevant reasons based on adjustment type
+    return adjustmentTypeReasons[form.value.adjustment_type] || allReasons;
   });
 
   // Force reason to Expiry for expired items
@@ -139,7 +169,18 @@
         form.value.reason = 'Expiry';
         return;
       }
-      form.value.reason = defaultReasonByAdjustment[type] || '';
+
+      // Get the default reason for this adjustment type
+      const defaultReason = defaultReasonByAdjustment[type];
+
+      // Check if the default reason is available in the filtered reasons
+      const availableReasonsForType = adjustmentTypeReasons[type] || [];
+      if (defaultReason && availableReasonsForType.includes(defaultReason)) {
+        form.value.reason = defaultReason;
+      } else {
+        // If default reason is not available, clear the selection
+        form.value.reason = '';
+      }
     }
   );
 
@@ -354,6 +395,7 @@
             >
               <option value="">Select Item Type</option>
               <option
+                
                 v-for="itemType in filteredItemTypes"
                 :key="itemType.id"
                 :value="itemType.id"
@@ -424,20 +466,7 @@
                     parseFloat(selectedStock.quantity).toLocaleString()
                   }}</span>
                 </div>
-                <div class="flex justify-between text-sm overflow-x-auto">
-                  <span class="text-sm">Current Value:</span>
-                  <span
-                    >₱{{
-                      parseFloat(
-                        selectedStock.total_value || 0
-                      ).toLocaleString()
-                    }}</span
-                  >
-                </div>
-                <div class="flex justify-between text-sm overflow-x-auto">
-                  <span class="text-sm">Batch:</span>
-                  <span>{{ selectedStock.batch_number || 'N/A' }}</span>
-                </div>
+ 
                 <div
                   v-if="isExpiredItem"
                   class="flex justify-between text-sm overflow-x-auto"

@@ -53,7 +53,7 @@ export const menuItems = [
   {
     name: 'Payroll',
     icon: PhilippinePeso,
-    route: '/hr/payroll',
+    route: '/hr/payroll-management',
     department: 'Human Resource',
   },
 
@@ -103,12 +103,6 @@ export const menuItems = [
   },
 
   // Finance Department
-  {
-    name: 'Dashboard',
-    icon: LayoutDashboard,
-    route: '/finance/dashboard',
-    department: 'Finance',
-  },
 
   {
     name: 'Financial Management',
@@ -116,7 +110,8 @@ export const menuItems = [
     route: '/finance/financial-management',
     department: 'Finance',
     subItems: [
-      { name: 'Approval Request', route: '/finance/request-approval' },
+      { name: 'Supply Request', route: '/finance/request-approval' },
+      { name: 'Payroll Approval', route: '/finance/payroll-approval' },
       { name: 'Budget Release', route: '/finance/budget-release' },
       { name: 'Cash Management', route: '/finance/cash-management' },
     ],
@@ -185,9 +180,9 @@ export const menuItems = [
     department: 'CRM',
   },
   {
-    name: 'Customers',
+    name: 'Customers Feedback',
     icon: Users,
-    route: '/crm/customers',
+    route: '/crm/customers-feedback',
     department: 'CRM',
   },
   {

@@ -33,6 +33,7 @@
   import { useBudgetReleaseStore } from '../../stores/budgetReleaseStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
   import { useFinanceBalanceStore } from '../../stores/financeBalanceStore.js';
+  import { usePayrollStore } from '../../stores/payrollStore.js';
   import cashRequestReceiptModal from '../../components/scm/cashRequestReceiptModal.vue';
 
   // Stores
@@ -40,6 +41,7 @@
   const budgetReleaseStore = useBudgetReleaseStore();
   const authStore = useAuthStore();
   const financeBalanceStore = useFinanceBalanceStore();
+  const payrollStore = usePayrollStore();
 
   // Local state
   const loading = ref(false);
@@ -323,8 +325,8 @@
       ...filteredBudgetHistory.value.map((release) =>
         [
           release.release_id,
-          release.request_id,
-          `"${release.request_description.replace(/"/g, '""')}"`,
+          release.request_id || 'N/A',
+          `"${(release.payroll_period_name || release.request_description).replace(/"/g, '""')}"`,
           release.released_amount,
           release.released_at,
           release.released_by,
@@ -378,11 +380,21 @@
     };
 
     if (type === 'viewRequest' && request) {
-      // Fetch the full request details with items
-      const fullRequest = await supplyRequestStore.fetchRequestByRequestId(
-        request.request_id
-      );
-      modal.value.request = fullRequest;
+      // Check if request_id is valid before fetching
+      if (
+        request.request_id &&
+        request.request_id !== 'null' &&
+        request.request_id !== null
+      ) {
+        // Fetch the full request details with items
+        const fullRequest = await supplyRequestStore.fetchRequestByRequestId(
+          request.request_id
+        );
+        modal.value.request = fullRequest;
+      } else {
+        console.log('No valid request_id found for request:', request);
+        modal.value.request = request;
+      }
     } else {
       modal.value.request = request;
     }
@@ -525,13 +537,53 @@
   // Receipt modal function
   const showReceiptModal = async (release) => {
     try {
-      // Fetch the full request details for the receipt
-      const fullRequest = await supplyRequestStore.fetchRequestByRequestId(
-        release.request_id
+      console.log('Release data received:', release);
+      console.log(
+        'Release has payroll_period_id:',
+        !!release.payroll_period_id
       );
-      receiptData.value = fullRequest;
+      console.log('Release has request_id:', !!release.request_id);
+
+      // Check if this is a payroll release (has payroll_period_id)
+      if (release.payroll_period_id) {
+        console.log(
+          'Fetching payroll data for period:',
+          release.payroll_period_id
+        );
+        try {
+          // Fetch the full payroll period details with records
+          const payrollData = await payrollStore.fetchPeriodDetails(
+            release.payroll_period_id
+          );
+          console.log('Payroll data fetched:', payrollData);
+          receiptData.value = payrollData;
+        } catch (payrollError) {
+          console.error('Error fetching payroll data:', payrollError);
+          // Fallback to release data if payroll fetch fails
+          receiptData.value = release;
+        }
+      }
+      // Check if request_id is valid for supply request releases
+      else if (
+        release.request_id &&
+        release.request_id !== 'null' &&
+        release.request_id !== null
+      ) {
+        // Fetch the full request details for the receipt
+        const fullRequest = await supplyRequestStore.fetchRequestByRequestId(
+          release.request_id
+        );
+        receiptData.value = fullRequest;
+      } else {
+        console.log(
+          'No valid request_id or payroll_period_id found for release:',
+          release
+        );
+        // For releases without valid IDs, use the release data directly
+        receiptData.value = release;
+      }
     } catch (error) {
-      console.error('Error fetching request details:', error);
+      console.error('Error fetching receipt details:', error);
       // Fallback to basic release data
       receiptData.value = release;
     }
@@ -772,6 +824,7 @@
       filtered = filtered.filter(
         (r) =>
           (r.request_description || '').toLowerCase().includes(q) ||
+          (r.payroll_period_name || '').toLowerCase().includes(q) ||
           (r.request_id || '').toString().toLowerCase().includes(q) ||
           (r.release_id || '').toString().toLowerCase().includes(q)
       );
@@ -1349,19 +1402,39 @@
                       <td class="max-w-xs">
                         <div
                           class="tooltip tooltip-top"
-                          :data-tip="release.request_description"
+                          :data-tip="
+                            release.payroll_period_name ||
+                            release.request_description
+                          "
                         >
                           <p class="truncate font-medium">
-                            {{ release.request_description }}
+                            {{
+                              release.payroll_period_name ||
+                              release.request_description
+                            }}
+                          </p>
+                          <p
+                            v-if="release.payroll_period_name"
+                            class="text-xs text-purple-600"
+                          >
+                            Payroll Release
                           </p>
                         </div>
                       </td>
 
                       <td class="font-semibold text-left">
-                        ₱{{
-                          release.released_amount.toLocaleString('en-PH', {
-                            minimumFractionDigits: 2,
-                          })
+                        <font-awesome-icon
+                          icon="fa-solid fa-peso-sign"
+                          class="mr-1"
+                        />
+                        {{
+                          Number(release.released_amount).toLocaleString(
+                            'en-PH',
+                            {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            }
+                          )
                         }}
                       </td>
 
@@ -1725,7 +1798,7 @@
                   remainingAfterRelease >= 0 ? 'text-success' : 'text-error'
                 "
               >
-              <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
+                <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
                   Math.max(remainingAfterRelease, 0).toLocaleString('en-PH', {
                     minimumFractionDigits: 2,
                   })

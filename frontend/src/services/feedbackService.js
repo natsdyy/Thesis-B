@@ -105,6 +105,29 @@ class FeedbackService {
   }
 
   /**
+   * Get order details by order number
+   * @param {string} orderNumber
+   */
+  async getOrderDetails(orderNumber) {
+    try {
+      console.log('Original order number:', orderNumber);
+
+      // URL encode the order number to handle special characters like #
+      const encodedOrderNumber = encodeURIComponent(orderNumber);
+      console.log('Encoded order number:', encodedOrderNumber);
+
+      const url = `${API_BASE_URL}/pos/orders/public/${encodedOrderNumber}`;
+      console.log('API URL:', url);
+
+      const response = await axios.get(url);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching order details:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get aggregated stats for order ratings
    */
   async getOrderRatingStats(filters = {}) {
@@ -171,6 +194,50 @@ class FeedbackService {
       return response.data;
     } catch (error) {
       console.error('Error sending feedback reply:', error);
+      console.error('Error details:', {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Send reply to order rating
+   * @param {number} ratingId - The order rating ID to reply to
+   * @param {string} message - Reply message to send to customer
+   * @param {string} [internalNote] - Optional internal note (not visible to customer)
+   * @returns {Promise<Object>} API response
+   */
+  async sendOrderRatingReply(ratingId, message, internalNote = '') {
+    try {
+      console.log('Sending reply to order rating ID:', ratingId);
+      console.log('Reply message:', message);
+      console.log(
+        'API URL:',
+        `${API_BASE_URL}/feedback/ratings/${ratingId}/reply`
+      );
+
+      const response = await axios.post(
+        `${API_BASE_URL}/feedback/ratings/${ratingId}/reply`,
+        {
+          message,
+          internal_note: internalNote,
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          timeout: 15000, // 15 second timeout (reduced from 30s)
+        }
+      );
+
+      console.log('Order rating reply sent successfully:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error sending order rating reply:', error);
       console.error('Error details:', {
         message: error.message,
         status: error.response?.status,

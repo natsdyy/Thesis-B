@@ -10,6 +10,7 @@
     CheckCircle,
     XCircle,
     Clock,
+    QrCode,
   } from 'lucide-vue-next';
   import { nextTick } from 'vue';
   import { QrcodeStream } from 'vue-qrcode-reader';
@@ -399,9 +400,11 @@
   const errorMessage = ref('');
   const isLoading = ref(false);
 
+
   const togglePasswordVisibility = () => {
     showPassword.value = !showPassword.value;
   };
+
 
   // Enhanced error message mapping
   const getErrorMessage = (error) => {
@@ -538,11 +541,13 @@
       <span class="text-sm font-medium">Back to Home</span>
     </button>
 
+    <!-- Desktop QR Scanner Button -->
     <button
       @click="openScanner"
-      class="absolute top-8 right-8 text-gray-600 hover:text-gray-800 transition-colors z-10 cursor-pointer flex items-center space-x-2 hover:bg-white/20 rounded-lg px-3 py-2 hover:underline text-sm"
+      class="absolute top-8 right-8 text-white hover:text-white transition-all duration-300 z-10 cursor-pointer flex items-center space-x-2 bg-primaryColor/90 hover:bg-primaryColor rounded-full px-4 py-2 text-sm shadow-lg hover:shadow-xl transform hover:scale-105 hidden lg:flex backdrop-blur-sm"
     >
-      Scan for Attendance
+      <QrCode class="w-4 h-4" />
+      <span class="font-medium">Scan for Attendance</span>
     </button>
 
     <!-- Attendance Scanner Modal (DaisyUI dialog for consistency) -->
@@ -1094,6 +1099,34 @@
             </p>
           </div>
         </form>
+      </div>
+      
+      <!-- Mobile QR Scanner Button - Fixed Position -->
+      <div class="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 lg:hidden">
+        <div class="relative group">
+          <!-- Tooltip -->
+          <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+            <div class="bg-gray-900 text-white text-xs font-medium px-3 py-2 rounded-lg whitespace-nowrap">
+              Scan for Attendance
+              <div class="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+            </div>
+          </div>
+          
+          <!-- QR Button -->
+          <button
+            @click="openScanner"
+            class="relative bg-gradient-to-r from-primaryColor to-primaryColor/80 hover:from-primaryColor/90 hover:to-primaryColor/70 text-white rounded-full p-4 shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center justify-center transform hover:scale-105 active:scale-95 border-2 border-white/20 hover:border-white/30"
+          >
+            <!-- Animated pulse ring -->
+            <div class="absolute inset-0 rounded-full bg-primaryColor/30 animate-ping"></div>
+            
+            <!-- Icon -->
+            <QrCode class="w-6 h-6 relative z-10" />
+            
+            <!-- Glow effect -->
+            <div class="absolute inset-0 rounded-full bg-white/10 opacity-0 hover:opacity-100 transition-opacity duration-300"></div>
+          </button>
+        </div>
       </div>
     </div>
   </div>

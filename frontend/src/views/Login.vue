@@ -626,6 +626,7 @@
           <div class="card-body p-2">
             <div class="relative rounded-lg overflow-hidden border">
               <QrcodeStream
+                v-if="isScannerOpen"
                 :constraints="
                   selectedDeviceId
                     ? { deviceId: { exact: selectedDeviceId } }
@@ -636,6 +637,9 @@
                 @detect="onDetect"
                 @camera-on="onCameraOn"
               />
+              <div v-else class="flex items-center justify-center h-64 bg-gray-100 text-gray-500">
+                <p>Scanner will start when modal opens</p>
+              </div>
             </div>
             <div class="flex items-center justify-between mt-2">
               <div class="flex items-center gap-2">

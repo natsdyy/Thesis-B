@@ -771,7 +771,16 @@ class SendGridService {
           email: "noreply@countryside-steakhouse.site",
           name: "Countryside Steakhouse",
         },
-        subject: "Password Recovery - Countryside Steakhouse",
+        subject: "Reset Your Password - Countryside Steakhouse",
+        trackingSettings: {
+          clickTracking: {
+            enable: false,
+            enableText: false,
+          },
+          openTracking: {
+            enable: false,
+          },
+        },
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
             <!-- Main Email Container -->

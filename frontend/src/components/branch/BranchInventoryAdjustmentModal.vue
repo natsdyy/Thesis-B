@@ -79,9 +79,6 @@
       return [{ value: 'disposal', label: 'Dispose Item' }];
     }
     const base = [
-      { value: 'set_quantity', label: 'Set Exact Quantity' },
-      { value: 'add_quantity', label: 'Add Quantity' },
-      { value: 'reduce_quantity', label: 'Reduce Quantity' },
       { value: 'mark_expired', label: 'Mark as Expired' },
       { value: 'mark_damaged', label: 'Mark as Damaged' },
       { value: 'set_expiry_date', label: 'Set Expiry Date' },
@@ -107,21 +104,6 @@
 
   // Map adjustment types to their relevant reasons
   const adjustmentTypeReasons = {
-    set_quantity: ['Physical Count Discrepancy', 'Data Entry Error', 'Other'],
-    add_quantity: [
-      'Received Additional Stock',
-      'Physical Count Discrepancy',
-      'Data Entry Error',
-      'Other',
-    ],
-    reduce_quantity: [
-      'Physical Count Discrepancy',
-      'Theft/Loss',
-      'Damage',
-      'Data Entry Error',
-      'Transfer to Another Location',
-      'Other',
-    ],
     mark_expired: ['Expiry'],
     mark_damaged: ['Damage'],
     set_expiry_date: ['Expiry'],
@@ -152,9 +134,6 @@
 
   // Auto-populate reason based on selected adjustment type
   const defaultReasonByAdjustment = {
-    set_quantity: 'Physical Count Discrepancy',
-    add_quantity: 'Received Additional Stock',
-    reduce_quantity: 'Physical Count Discrepancy',
     mark_expired: 'Expiry',
     mark_damaged: 'Damage',
     set_expiry_date: 'Expiry',
@@ -185,9 +164,7 @@
   );
 
   const requiresQuantityInput = computed(() => {
-    return ['set_quantity', 'add_quantity', 'reduce_quantity'].includes(
-      form.value.adjustment_type
-    );
+    return false; // No quantity adjustments available
   });
 
   const requiresDateInput = computed(
@@ -213,12 +190,9 @@
     return true;
   });
 
-  const getMinQuantity = () =>
-    form.value.adjustment_type === 'set_quantity' ? 0 : 0.001;
-  const getMaxQuantity = () =>
-    form.value.adjustment_type === 'reduce_quantity' && selectedStock.value
-      ? parseFloat(selectedStock.value.quantity)
-      : 999999;
+  // Quantity validation functions no longer needed
+  // const getMinQuantity = () => 0;
+  // const getMaxQuantity = () => 999999;
 
   const resetForm = () => {
     form.value = {
@@ -240,32 +214,21 @@
     const baseQty = parseFloat(selectedStock.value?.quantity || 0);
     let finalQuantity = baseQty;
     switch (form.value.adjustment_type) {
-      case 'set_quantity':
-        finalQuantity = parseFloat(form.value.new_quantity);
-        break;
-      case 'add_quantity':
-        finalQuantity = baseQty + parseFloat(form.value.new_quantity || 0);
-        break;
-      case 'reduce_quantity':
-        finalQuantity = baseQty - parseFloat(form.value.new_quantity || 0);
-        break;
       case 'mark_expired':
       case 'mark_damaged':
       case 'disposal':
         finalQuantity = 0;
+        break;
+      case 'set_expiry_date':
+        // Keep the same quantity, just update expiry date
+        finalQuantity = baseQty;
         break;
     }
 
     emit('submit', {
       inventory_item_id: form.value.inventory_item_id,
       adjustment_type: form.value.adjustment_type,
-      new_quantity: [
-        'set_quantity',
-        'add_quantity',
-        'reduce_quantity',
-      ].includes(form.value.adjustment_type)
-        ? parseFloat(form.value.new_quantity)
-        : null,
+      new_quantity: null, // No quantity adjustments available
       new_expiry_date:
         form.value.adjustment_type === 'set_expiry_date'
           ? form.value.expiry_date
@@ -395,7 +358,6 @@
             >
               <option value="">Select Item Type</option>
               <option
-                
                 v-for="itemType in filteredItemTypes"
                 :key="itemType.id"
                 :value="itemType.id"
@@ -466,7 +428,7 @@
                     parseFloat(selectedStock.quantity).toLocaleString()
                   }}</span>
                 </div>
- 
+
                 <div
                   v-if="isExpiredItem"
                   class="flex justify-between text-sm overflow-x-auto"

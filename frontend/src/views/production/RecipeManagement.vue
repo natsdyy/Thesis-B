@@ -62,6 +62,11 @@
     sequence_order: 1,
   });
 
+  // Search functionality for ingredients
+  const ingredientSearchQuery = ref('');
+  const showIngredientDropdown = ref(false);
+  const selectedIngredientName = ref('');
+
   // Auto-populate ingredient details when selected
   const handleIngredientSelection = (inventoryItemId) => {
     if (!inventoryItemId) {
@@ -83,8 +88,48 @@
       const availableStock = selectedItem.quantity || 0;
       ingredientForm.value.quantity_required = Math.min(1, availableStock);
 
+      // Set selected ingredient name for display
+      selectedIngredientName.value = selectedItem.item_name;
+
       console.log('Populated form:', ingredientForm.value); // Debug log
     }
+  };
+
+  // Handle ingredient selection from search dropdown
+  const selectIngredient = (ingredient) => {
+    ingredientForm.value.inventory_item_id = ingredient.id;
+    selectedIngredientName.value = ingredient.item_name;
+    ingredientSearchQuery.value = ingredient.item_name;
+    showIngredientDropdown.value = false;
+
+    // Auto-populate ingredient details
+    handleIngredientSelection(ingredient.id);
+  };
+
+  // Handle search input changes
+  const handleIngredientSearch = (event) => {
+    ingredientSearchQuery.value = event.target.value;
+    showIngredientDropdown.value = true;
+
+    // Clear selection if search query doesn't match selected ingredient
+    if (
+      selectedIngredientName.value &&
+      !selectedIngredientName.value
+        .toLowerCase()
+        .includes(ingredientSearchQuery.value.toLowerCase())
+    ) {
+      ingredientForm.value.inventory_item_id = '';
+      selectedIngredientName.value = '';
+    }
+  };
+
+  // Clear ingredient search and selection
+  const clearIngredientSelection = () => {
+    ingredientForm.value.inventory_item_id = '';
+    selectedIngredientName.value = '';
+    ingredientSearchQuery.value = '';
+    showIngredientDropdown.value = false;
+    resetIngredientForm();
   };
 
   const ingredients = ref([]);
@@ -217,11 +262,11 @@
   const foodIngredients = computed(() => {
     if (!itemTypes.value || itemTypes.value.length === 0) return [];
 
-    // Food-related category names: "Beverages" and "Materials"
-    const foodCategoryNames = ['Beverages', 'Materials'];
+    // Only include "Materials" category for recipe ingredients (exclude beverages)
+    const foodCategoryNames = ['Materials'];
 
     const filtered = itemTypes.value.filter((item) => {
-      // Only include food-related categories
+      // Only include Materials category (actual cooking ingredients)
       const isFoodCategory = foodCategoryNames.includes(item.category_name);
 
       // Exclude expired items
@@ -239,6 +284,18 @@
     });
 
     return filtered;
+  });
+
+  // Filtered ingredients based on search query
+  const filteredIngredients = computed(() => {
+    if (!ingredientSearchQuery.value.trim()) {
+      return foodIngredients.value;
+    }
+
+    const query = ingredientSearchQuery.value.toLowerCase().trim();
+    return foodIngredients.value.filter((ingredient) =>
+      ingredient.item_name.toLowerCase().includes(query)
+    );
   });
 
   // Methods
@@ -506,6 +563,11 @@
       is_optional: false,
       sequence_order: ingredients.value.length + 1,
     };
+
+    // Reset search state
+    ingredientSearchQuery.value = '';
+    selectedIngredientName.value = '';
+    showIngredientDropdown.value = false;
   };
 
   // CRUD operations
@@ -1713,23 +1775,77 @@
                 >(Food ingredients only)</span
               >
             </label>
-            <select
-              v-model="ingredientForm.inventory_item_id"
-              @change="
-                handleIngredientSelection(ingredientForm.inventory_item_id)
-              "
-              class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-              required
-            >
-              <option value="">Select ingredient</option>
-              <option
-                v-for="itemType in foodIngredients"
-                :key="itemType.id"
-                :value="itemType.id"
+            <!-- Searchable Ingredient Dropdown -->
+            <div class="relative">
+              <input
+                v-model="ingredientSearchQuery"
+                @input="handleIngredientSearch"
+                @focus="showIngredientDropdown = true"
+                @blur="setTimeout(() => (showIngredientDropdown = false), 200)"
+                type="text"
+                placeholder="Search and select ingredient..."
+                class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+                required
+              />
+
+              <!-- Clear button -->
+              <button
+                v-if="ingredientSearchQuery || selectedIngredientName"
+                @click="clearIngredientSelection"
+                type="button"
+                class="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
               >
-                {{ itemType.item_name }}
-              </option>
-            </select>
+                <X class="w-4 h-4" />
+              </button>
+
+              <!-- Dropdown Results -->
+              <div
+                v-if="showIngredientDropdown && filteredIngredients.length > 0"
+                class="absolute z-50 w-full mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+              >
+                <div
+                  v-for="ingredient in filteredIngredients"
+                  :key="ingredient.id"
+                  @click="selectIngredient(ingredient)"
+                  class="px-3 py-2 hover:bg-primaryColor/10 cursor-pointer text-sm border-b border-gray-100 last:border-b-0"
+                >
+                  <div class="font-medium text-black/80">
+                    {{ ingredient.item_name }}
+                  </div>
+                  <div class="text-xs text-gray-500">
+                    Stock: {{ ingredient.quantity || 0 }}
+                    {{ ingredient.unit_of_measure || 'units' }} • ₱{{
+                      ingredient.unit_cost || 0
+                    }}
+                    per {{ ingredient.unit_of_measure || 'unit' }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- No results message -->
+              <div
+                v-if="
+                  showIngredientDropdown &&
+                  ingredientSearchQuery &&
+                  filteredIngredients.length === 0
+                "
+                class="absolute z-50 w-full mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg p-3 text-center text-sm text-gray-500"
+              >
+                No ingredients found for "{{ ingredientSearchQuery }}"
+              </div>
+
+              <!-- Loading state -->
+              <div
+                v-if="
+                  showIngredientDropdown &&
+                  !ingredientSearchQuery &&
+                  foodIngredients.length === 0
+                "
+                class="absolute z-50 w-full mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg p-3 text-center text-sm text-gray-500"
+              >
+                Loading ingredients...
+              </div>
+            </div>
 
             <!-- Loading state -->
             <div v-if="loading" class="text-xs text-blue-500 mt-1">
@@ -1969,7 +2085,8 @@
               type="number"
               step="0.01"
               placeholder="0.00"
-              class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
+              class="input input-sm sm:input-md input-bordered w-full bg-gray-50 border-primaryColor/30 text-black/70 cursor-not-allowed"
+              readonly
             />
           </div>
 

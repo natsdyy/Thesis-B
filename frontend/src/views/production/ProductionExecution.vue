@@ -32,14 +32,12 @@
   import { useProductionStore } from '../../stores/productionStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
   import { useUserStore } from '../../stores/userStore.js';
-  import { useInventoryStore } from '../../stores/inventoryStore.js';
   import { useRouter } from 'vue-router';
   import ProductionTransactionModal from '../../components/production/ProductionTransactionModal.vue';
 
   const productionStore = useProductionStore();
   const authStore = useAuthStore();
   const userStore = useUserStore();
-  const inventoryStore = useInventoryStore();
   const router = useRouter();
 
   // Reactive state
@@ -169,6 +167,31 @@
     return Array.from(categories).sort();
   });
 
+  // Check if an item is already in production
+  const isItemInProduction = (item) => {
+    return activeBatches.value.some(
+      (batch) =>
+        batch.menu_item_id === item.menu_item_id ||
+        batch.recipe_id === item.recipe_id
+    );
+  };
+
+  // Get production status for an item
+  const getItemProductionStatus = (item) => {
+    const activeBatch = activeBatches.value.find(
+      (batch) =>
+        batch.menu_item_id === item.menu_item_id ||
+        batch.recipe_id === item.recipe_id
+    );
+    return activeBatch
+      ? {
+          status: activeBatch.status,
+          batchNumber: activeBatch.batch_number,
+          progress: activeBatch.progress,
+        }
+      : null;
+  };
+
   // Pagination methods (consistent with TransactionModal pattern)
   const goToPage = (page) => {
     if (page >= 1 && page <= totalPages.value) {
@@ -241,6 +264,28 @@
 
   // Production methods
   const startProduction = async (item) => {
+    // Check if item is already in production
+    if (isItemInProduction(item)) {
+      const productionStatus = getItemProductionStatus(item);
+      if (productionStatus) {
+        showToast(
+          'warning',
+          `This item is already in production (Batch #${productionStatus.batchNumber})`
+        );
+
+        // Find and show the active batch details
+        const activeBatch = activeBatches.value.find(
+          (batch) =>
+            batch.menu_item_id === item.menu_item_id ||
+            batch.recipe_id === item.recipe_id
+        );
+        if (activeBatch) {
+          viewDetails(activeBatch, 'batch');
+        }
+      }
+      return;
+    }
+
     selectedItem.value = item;
     executionForm.value.batch_size = item.batch_size || 1;
     showExecutionModal.value = true;
@@ -260,10 +305,15 @@
         executionForm.value.batch_size
       );
       ingredientRequirements.value = response;
+      console.log('Ingredient requirements loaded successfully:', response);
     } catch (err) {
       error.value = 'Failed to load ingredient requirements';
       console.error('Error loading ingredients:', err);
-      showToast('error', 'Failed to load ingredient requirements');
+
+      // Only show error toast if it's not a timeout (timeout might be expected)
+      if (!err.message?.includes('timeout')) {
+        showToast('error', 'Failed to load ingredient requirements');
+      }
     } finally {
       ingredientLoading.value = false;
     }
@@ -626,57 +676,54 @@
           Active production batches
         </div>
       </div>
-
-
     </div>
 
     <!-- Action Buttons -->
-    <div
-      class="flex flex-wrap gap-2 mb-4 sm:mb-6 justify-center sm:justify-start"
-    >
+    <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 mb-4 sm:mb-6 w-full">
       <button
         @click="refreshData"
-        class="btn btn-sm bg-primaryColor text-white font-thin hover:bg-primaryColor/80 hover:border-none hover:shadow-none"
+        class="btn btn-sm sm:btn-md bg-primaryColor text-white font-thin hover:bg-primaryColor/80 hover:border-none hover:shadow-none w-full sm:w-auto"
         :disabled="loading"
       >
-        <RefreshCcw class="w-4 h-4 mr-1" />
-        Refresh
-      </button>
-      <button
-        @click="openTransactionModal"
-        class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
-      >
-        <BarChart3 class="w-4 h-4 mr-1" />
-        View Transactions
+        <RefreshCcw class="w-4 h-4 mr-1 sm:mr-2" />
+        <span class="hidden sm:inline">Refresh</span>
+        <span class="sm:hidden">Refresh Data</span>
       </button>
     </div>
 
     <!-- Tab Navigation -->
-    <div class="tabs tabs-boxed mb-4 sm:mb-6 justify-center sm:justify-start">
-      <button
-        @click="activeTab = 'ready'"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'ready' }"
-      >
-        <Package class="w-4 h-4 mr-1" />
-        Ready for Production
-      </button>
-      <button
-        @click="activeTab = 'batches'"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'batches' }"
-      >
-        <Activity class="w-4 h-4 mr-1" />
-        Active Batches
-      </button>
-      <button
-        @click="activeTab = 'history'"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'history' }"
-      >
-        <Clock class="w-4 h-4 mr-1" />
-        Production History
-      </button>
+    <div
+      class="tabs tabs-boxed mb-4 sm:mb-6 justify-center sm:justify-start overflow-x-auto"
+    >
+      <div class="flex flex-nowrap gap-1 min-w-max">
+        <button
+          @click="activeTab = 'ready'"
+          class="tab tab-sm sm:tab-md whitespace-nowrap"
+          :class="{ 'tab-active': activeTab === 'ready' }"
+        >
+          <Package class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+          <span class="hidden sm:inline">Ready for Production</span>
+          <span class="sm:hidden">Ready</span>
+        </button>
+        <button
+          @click="activeTab = 'batches'"
+          class="tab tab-sm sm:tab-md whitespace-nowrap"
+          :class="{ 'tab-active': activeTab === 'batches' }"
+        >
+          <Activity class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+          <span class="hidden sm:inline">Active Batches</span>
+          <span class="sm:hidden">Batches</span>
+        </button>
+        <button
+          @click="activeTab = 'history'"
+          class="tab tab-sm sm:tab-md whitespace-nowrap"
+          :class="{ 'tab-active': activeTab === 'history' }"
+        >
+          <Clock class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+          <span class="hidden sm:inline">Production History</span>
+          <span class="sm:hidden">History</span>
+        </button>
+      </div>
     </div>
 
     <!-- Tab Content -->
@@ -713,8 +760,9 @@
           </div>
 
           <!-- Search and Filters -->
-          <div class="flex flex-col sm:flex-row gap-4 mb-6">
-            <div class="flex-1">
+          <div class="space-y-4 mb-6">
+            <!-- Search Bar -->
+            <div class="w-full">
               <div class="relative">
                 <Search
                   class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"
@@ -723,12 +771,17 @@
                   v-model="searchQuery"
                   type="text"
                   placeholder="Search menu items, recipes..."
-                  class="input input-bordered w-full pl-10"
+                  class="input input-sm sm:input-md input-bordered w-full pl-10 bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
                 />
               </div>
             </div>
-            <div class="flex gap-2">
-              <select v-model="categoryFilter" class="select select-bordered">
+
+            <!-- Filter Controls -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <select
+                v-model="categoryFilter"
+                class="select select-sm sm:select-md select-bordered bg-white border-primaryColor/30 text-black/70"
+              >
                 <option value="">All Categories</option>
                 <option
                   v-for="category in availableCategories"
@@ -738,25 +791,33 @@
                   {{ category }}
                 </option>
               </select>
-              <select v-model="statusFilter" class="select select-bordered">
+
+              <select
+                v-model="statusFilter"
+                class="select select-sm sm:select-md select-bordered bg-white border-primaryColor/30 text-black/70"
+              >
                 <option value="">All Status</option>
                 <option value="Approved">Approved</option>
                 <option value="Under Review">Under Review</option>
               </select>
+
               <button
-                class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
+                class="btn btn-outline btn-sm sm:btn-md text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
                 @click="clearFilters"
                 :disabled="loading"
               >
                 <X class="w-4 h-4 mr-1" />
-                Clear
+                <span class="hidden sm:inline">Clear</span>
+                <span class="sm:hidden">Clear</span>
               </button>
+
               <button
-                class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10"
+                class="btn btn-outline btn-sm sm:btn-md text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
                 @click="openTransactionModal"
               >
                 <BarChart3 class="w-4 h-4 mr-1" />
-                View Transactions
+                <span class="hidden sm:inline">View Transactions</span>
+                <span class="sm:hidden">Transactions</span>
               </button>
             </div>
           </div>
@@ -785,7 +846,7 @@
           <!-- Items Grid -->
           <div
             v-else
-            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6"
           >
             <div
               v-for="item in paginatedReadyItems"
@@ -793,47 +854,92 @@
               class="card bg-white border border-gray-200 hover:shadow-xl duration-300 cursor-pointer"
               @click="viewDetails(item, 'ready')"
             >
-              <div class="card-body p-6">
-                <div class="flex items-start justify-between mb-4">
-                  <div class="flex-1">
+              <div class="card-body p-4 sm:p-6">
+                <div
+                  class="flex flex-col sm:flex-row items-start justify-between mb-4 gap-3"
+                >
+                  <div class="flex-1 min-w-0">
                     <h3
-                      class="card-title text-lg font-bold text-primaryColor mb-2"
+                      class="card-title text-base sm:text-lg font-bold text-primaryColor mb-2 truncate"
                     >
                       {{ item.menu_item_name }}
                     </h3>
 
                     <div
-                      class="flex items-center justify-start gap-2 text-sm text-gray-600 mb-1"
+                      class="flex flex-col sm:flex-row items-start sm:items-center gap-2 text-xs sm:text-sm text-gray-600"
                     >
-                      <span :class="getStatusColor(item.quality_status)">
+                      <span
+                        :class="getStatusColor(item.quality_status)"
+                        class="text-xs"
+                      >
                         {{ item.quality_status }}
                       </span>
-                      <span class="badge badge-sm bg-gray-100 text-gray-600">
+                      <span
+                        class="badge badge-xs sm:badge-sm bg-gray-100 text-gray-600"
+                      >
                         Stock: {{ item.available_quantity }}
+                      </span>
+                      <!-- Production Status Indicator -->
+                      <span
+                        v-if="isItemInProduction(item)"
+                        class="badge badge-xs sm:badge-sm bg-warning/20 text-warning border-warning/30"
+                      >
+                        <Activity class="w-3 h-3 mr-1" />
+                        In Production
                       </span>
                     </div>
                   </div>
-                  <div class="text-right">
-                    <div class="text-lg font-bold text-primaryColor">
+                  <div class="text-right self-end sm:self-start">
+                    <div
+                      class="text-base sm:text-lg font-bold text-primaryColor"
+                    >
                       ₱{{ item.selling_price || 0 }}
                     </div>
                   </div>
                 </div>
 
-                <div class="flex gap-2">
+                <div class="flex flex-col sm:flex-row gap-2">
                   <button
                     @click.stop="startProduction(item)"
-                    class="btn btn-sm bg-primaryColor text-white font-thin hover:bg-primaryColor/80 hover:border-none hover:shadow-none flex-1"
-                    :disabled="!isUserAuthenticated || loading"
+                    class="btn btn-sm sm:btn-md text-white font-thin hover:border-none hover:shadow-none flex-1 min-h-[44px]"
+                    :class="
+                      isItemInProduction(item)
+                        ? 'bg-gray-400 cursor-not-allowed'
+                        : 'bg-primaryColor hover:bg-primaryColor/80'
+                    "
+                    :disabled="
+                      !isUserAuthenticated ||
+                      loading ||
+                      isItemInProduction(item)
+                    "
+                    :title="
+                      isItemInProduction(item)
+                        ? 'Item is already in production'
+                        : 'Start production for this item'
+                    "
                   >
-                    <Play class="w-4 h-4 mr-1" />
-                    Start Production
+                    <Play
+                      v-if="!isItemInProduction(item)"
+                      class="w-4 h-4 mr-1 sm:mr-2"
+                    />
+                    <Activity v-else class="w-4 h-4 mr-1 sm:mr-2" />
+                    <span class="hidden sm:inline">
+                      {{
+                        isItemInProduction(item)
+                          ? 'In Production'
+                          : 'Start Production'
+                      }}
+                    </span>
+                    <span class="sm:hidden">
+                      {{ isItemInProduction(item) ? 'Active' : 'Start' }}
+                    </span>
                   </button>
                   <button
-                    class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin border border-none shadow-none"
+                    class="btn btn-sm sm:btn-md btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin border border-none shadow-none min-h-[44px] px-3 sm:px-4"
                     @click.stop="viewDetails(item, 'ready')"
                   >
                     <Eye class="w-4 h-4" />
+                    <span class="hidden sm:inline ml-1">View</span>
                   </button>
                 </div>
               </div>
@@ -935,30 +1041,34 @@
             </p>
           </div>
 
-          <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
             <div
               v-for="batch in activeBatches"
               :key="batch.id"
               class="card bg-white border border-gray-200 hover:shadow-xl duration-300"
             >
-              <div class="card-body p-6">
-                <div class="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 class="font-semibold text-lg text-primaryColor">
+              <div class="card-body p-4 sm:p-6">
+                <div
+                  class="flex flex-col sm:flex-row justify-between items-start mb-4 gap-3"
+                >
+                  <div class="flex-1 min-w-0">
+                    <h3
+                      class="font-semibold text-base sm:text-lg text-primaryColor truncate"
+                    >
                       {{ batch.menu_item_name }}
                     </h3>
-                    <p class="text-sm text-gray-600">
-                      Batch #{{ batch.batch_number }}
-                    </p>
-                    <p class="text-xs text-gray-500">{{ batch.recipe_name }}</p>
                   </div>
-                  <span :class="getStatusColor(batch.status)">{{
-                    batch.status
-                  }}</span>
+                  <span
+                    :class="getStatusColor(batch.status)"
+                    class="text-xs sm:text-sm"
+                    >{{ batch.status }}</span
+                  >
                 </div>
 
                 <div class="mb-4">
-                  <div class="flex justify-between text-sm text-gray-600 mb-2">
+                  <div
+                    class="flex justify-between text-xs sm:text-sm text-gray-600 mb-2"
+                  >
                     <span>Progress</span>
                     <span>{{ batch.progress }}%</span>
                   </div>
@@ -970,34 +1080,38 @@
                   </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-4">
+                <div
+                  class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-xs sm:text-sm text-gray-600 mb-4"
+                >
                   <div>
-                    <span class="block">Batch Size:</span>
+                    <span class="block text-gray-500">Batch Size:</span>
                     <span class="font-medium text-gray-800">{{
                       batch.batch_size
                     }}</span>
                   </div>
                   <div>
-                    <span class="block">Assigned To:</span>
-                    <span class="font-medium text-gray-800">{{
+                    <span class="block text-gray-500">Assigned To:</span>
+                    <span class="font-medium text-gray-800 truncate">{{
                       batch.assigned_to_name
                     }}</span>
                   </div>
                 </div>
 
-                <div class="flex gap-2">
+                <div class="flex flex-col sm:flex-row gap-2">
                   <button
                     @click="updateBatchStatus(batch)"
-                    class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 flex-1 font-thin border border-none shadow-none"
+                    class="btn btn-sm sm:btn-md btn-outline text-primaryColor hover:bg-primaryColor/10 flex-1 font-thin border border-none shadow-none min-h-[44px]"
                   >
-                    <Settings class="w-4 h-4 mr-1" />
-                    Update Status
+                    <Settings class="w-4 h-4 mr-1 sm:mr-2" />
+                    <span class="hidden sm:inline">Update Status</span>
+                    <span class="sm:hidden">Update</span>
                   </button>
                   <button
-                    class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin border border-none shadow-none"
+                    class="btn btn-sm sm:btn-md btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin border border-none shadow-none min-h-[44px] px-3 sm:px-4"
                     @click="viewDetails(batch, 'batch')"
                   >
                     <Eye class="w-4 h-4" />
+                    <span class="hidden sm:inline ml-1">View</span>
                   </button>
                 </div>
               </div>
@@ -1043,7 +1157,59 @@
           </div>
 
           <div v-else class="overflow-x-auto">
-            <table class="table table-zebra w-full">
+            <!-- Mobile Card Layout -->
+            <div class="block sm:hidden space-y-4">
+              <div
+                v-for="history in productionHistory"
+                :key="history.id"
+                class="card bg-white border border-gray-200 p-4"
+              >
+                <div class="flex justify-between items-start mb-3">
+                  <div class="flex-1 min-w-0">
+                    <div class="font-medium text-sm text-gray-800 truncate">
+                      {{ history.menu_item_name }}
+                    </div>
+                    <div class="text-xs text-gray-600">
+                      {{ history.item_code }}
+                    </div>
+                  </div>
+                  <span
+                    :class="getStatusColor(history.status)"
+                    class="text-xs"
+                    >{{ history.status }}</span
+                  >
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 text-xs text-gray-600 mb-3">
+                  <div>
+                    <span class="block text-gray-500">Batch #</span>
+                    <span class="font-medium">{{ history.batch_number }}</span>
+                  </div>
+                  <div>
+                    <span class="block text-gray-500">Quantity</span>
+                    <span class="font-medium"
+                      >{{ history.quantity_produced }} {{ history.unit }}</span
+                    >
+                  </div>
+                </div>
+
+                <div class="flex justify-between items-center">
+                  <span class="text-xs text-gray-500">{{
+                    formatDate(history.production_date)
+                  }}</span>
+                  <button
+                    class="btn btn-xs btn-outline text-primaryColor hover:bg-primaryColor/10 border border-none shadow-none min-h-[36px]"
+                    @click="viewDetails(history, 'history')"
+                  >
+                    <Eye class="w-3 h-3 mr-1" />
+                    View
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Desktop Table Layout -->
+            <table class="table table-zebra w-full hidden sm:table">
               <thead>
                 <tr class="text-gray-700">
                   <th>Item</th>
@@ -1092,7 +1258,7 @@
       <!-- Production Execution Modal -->
       <dialog id="execution_modal" class="modal">
         <div
-          class="modal-box max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-black/10 bg-white/95 shadow-lg"
+          class="modal-box max-w-4xl w-full mx-4 sm:mx-0 max-h-[90vh] overflow-y-auto rounded-2xl border border-black/10 bg-white/95 shadow-lg"
         >
           <h3
             class="font-bold text-xl text-primaryColor mb-4 border-b border-black/10 pb-3"
@@ -1103,7 +1269,7 @@
           <form @submit.prevent="executeProduction" class="space-y-6">
             <!-- Production Details Form -->
             <div
-              class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
+              class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 bg-white border border-black/10 p-4 rounded-xl"
             >
               <div class="form-control">
                 <label class="label mb-1">
@@ -1263,21 +1429,23 @@
 
             <!-- Modal Actions -->
             <div class="modal-action border-t border-black/10 pt-4 mt-6">
-              <button
-                type="submit"
-                class="btn btn-sm font-thin border border-none shadow-none text-white bg-primaryColor hover:bg-primaryColor/90"
-                :disabled="!canExecuteProduction || loading"
-              >
-                <Play class="w-4 h-4 mr-2" />
-                {{ loading ? 'Starting...' : 'Execute Production' }}
-              </button>
-              <button
-                type="button"
-                @click="closeExecutionModal"
-                class="btn btn-sm font-thin border border-none shadow-none text-black/70"
-              >
-                Cancel
-              </button>
+              <div class="flex flex-col sm:flex-row gap-3 w-full">
+                <button
+                  type="submit"
+                  class="btn btn-sm sm:btn-md font-thin border border-none shadow-none text-white bg-primaryColor hover:bg-primaryColor/90 flex-1 min-h-[44px]"
+                  :disabled="!canExecuteProduction || loading"
+                >
+                  <Play class="w-4 h-4 mr-2" />
+                  {{ loading ? 'Starting...' : 'Execute Production' }}
+                </button>
+                <button
+                  type="button"
+                  @click="closeExecutionModal"
+                  class="btn btn-sm sm:btn-md font-thin border border-none shadow-none text-black/70 min-h-[44px]"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </form>
         </div>
@@ -1289,7 +1457,7 @@
       <!-- Batch Status Update Modal -->
       <dialog id="batch_modal" class="modal">
         <div
-          class="modal-box max-w-md rounded-2xl border border-black/10 bg-white/95 shadow-lg"
+          class="modal-box max-w-md w-full mx-4 sm:mx-0 rounded-2xl border border-black/10 bg-white/95 shadow-lg"
         >
           <h3
             class="font-bold text-xl text-primaryColor mb-4 border-b border-black/10 pb-3"
@@ -1327,11 +1495,11 @@
                   >
                 </label>
                 <input
-                disabled
+                  disabled
                   v-model="batchStatusForm.quantity_produced"
                   type="number"
                   :min="0"
-                  class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor "
+                  class="input input-sm sm:input-md input-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
                 />
               </div>
 
@@ -1353,21 +1521,22 @@
 
             <!-- Modal Actions -->
             <div class="modal-action border-t border-black/10 pt-4 mt-6">
-              <button
-                type="button"
-                @click="closeBatchModal"
-                class="btn btn-sm font-thin border border-none shadow-none text-black/70"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                class="btn btn-sm font-thin border border-none shadow-none text-white bg-primaryColor hover:bg-primaryColor/90"
-                :disabled="!batchStatusForm.status || loading"
-              >
-                {{ loading ? 'Updating...' : 'Update Status' }}
-              </button>
-
+              <div class="flex flex-col sm:flex-row gap-3 w-full">
+                <button
+                  type="button"
+                  @click="closeBatchModal"
+                  class="btn btn-sm sm:btn-md font-thin border border-none shadow-none text-black/70 min-h-[44px]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  class="btn btn-sm sm:btn-md font-thin border border-none shadow-none text-white bg-primaryColor hover:bg-primaryColor/90 flex-1 min-h-[44px]"
+                  :disabled="!batchStatusForm.status || loading"
+                >
+                  {{ loading ? 'Updating...' : 'Update Status' }}
+                </button>
+              </div>
             </div>
           </form>
         </div>
@@ -1379,7 +1548,7 @@
       <!-- Batch Details Modal -->
       <dialog id="details_modal" class="modal">
         <div
-          class="modal-box max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-black/10 bg-white/95 shadow-lg"
+          class="modal-box max-w-2xl w-full mx-4 sm:mx-0 max-h-[90vh] overflow-y-auto rounded-2xl border border-black/10 bg-white/95 shadow-lg"
         >
           <h3
             class="font-bold text-xl text-primaryColor mb-4 border-b border-black/10 pb-3"
@@ -1393,7 +1562,7 @@
               <h4 class="font-semibold text-lg text-black/80 mb-3">
                 Basic Information
               </h4>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label class="text-sm text-black/60">Product Name</label>
                   <p class="font-medium text-black/80">
@@ -1426,7 +1595,7 @@
               <h4 class="font-semibold text-lg text-black/80 mb-3">
                 Production Details
               </h4>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label class="text-sm text-black/60">Batch Size</label>
                   <p class="font-medium text-black/80">
@@ -1479,7 +1648,7 @@
                     ></div>
                   </div>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div v-if="selectedBatchForDetails.start_time">
                     <label class="text-sm text-black/60">Start Time</label>
                     <p class="font-medium text-black/80">
@@ -1517,7 +1686,7 @@
             <button
               type="button"
               @click="closeDetailsModal"
-              class="btn btn-sm font-thin border border-none shadow-none text-white bg-primaryColor hover:bg-primaryColor/90"
+              class="btn btn-sm sm:btn-md font-thin border border-none shadow-none text-white bg-primaryColor hover:bg-primaryColor/90 w-full min-h-[44px]"
             >
               Close
             </button>

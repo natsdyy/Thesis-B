@@ -832,7 +832,7 @@
     >
       <!-- Left Side - Logo/Branding -->
       <div
-        class="w-1/2 flex items-center bg-secondaryColor justify-center p-8 h-full"
+        class="w-1/2 flex items-center bg-secondaryColor justify-center p-6 lg:p-8 h-full"
         style="height: 600px"
       >
         <img
@@ -843,11 +843,13 @@
       </div>
 
       <!-- Right Side - Login Form -->
-      <div class="w-1/2 p-12 flex items-center justify-center">
-        <div class="w-full max-w-sm">
+      <div class="w-1/2 p-6 lg:p-12 flex items-center justify-center">
+        <div class="w-full max-w-sm lg:max-w-md xl:max-w-lg">
           <!-- Welcome Section -->
-          <div class="text-center mb-8">
-            <h1 class="text-3xl font-bold text-primaryColor mb-2 font-poppins">
+          <div class="text-center mb-6 lg:mb-8">
+            <h1
+              class="text-2xl lg:text-3xl font-bold text-primaryColor mb-2 font-poppins"
+            >
               Welcome
             </h1>
             <p class="text-gray-500 text-sm font-roboto">
@@ -856,103 +858,148 @@
           </div>
 
           <!-- Login Form -->
-          <form @submit.prevent="login" class="space-y-8 mt-10">
-            <!-- Email Field with Floating Label -->
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text sr-only">Email</span>
-              </label>
-              <div class="relative">
+          <form
+            @submit.prevent="login"
+            class="space-y-6 lg:space-y-8 mt-8 lg:mt-10"
+          >
+            <!-- Email Field -->
+            <div class="relative w-full">
+              <label
+                class="input validator flex items-center gap-3 w-full h-12"
+                :class="{
+                  '!border-primaryColor !focus-within:border-primaryColor': true,
+                  '!border-error': errorMessage,
+                }"
+              >
+                <!-- Email Icon -->
+                <svg
+                  class="h-5 w-5 opacity-50 flex-shrink-0"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                >
+                  <g
+                    stroke-linejoin="round"
+                    stroke-linecap="round"
+                    stroke-width="2.5"
+                    fill="none"
+                    stroke="currentColor"
+                  >
+                    <rect width="20" height="16" x="2" y="4" rx="2"></rect>
+                    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
+                  </g>
+                </svg>
+
+                <!-- Input -->
                 <input
-                  id="email"
                   v-model="email"
+                  id="email"
                   type="email"
                   name="email"
+                  placeholder="Email"
+                  required
                   autocomplete="username"
-                  class="input input-bordered w-full peer !border-0 !border-b-2 !border-gray-300 !rounded-none bg-transparent focus:!border-primaryColor focus:!outline-none px-0 py-3 placeholder-transparent"
-                  :class="{ '!border-red-500': errorMessage }"
-                  placeholder="johnmarco@gmail.com"
+                  class="flex-1 bg-transparent focus:outline-none text-base"
+                  :class="{ 'text-error placeholder-error': errorMessage }"
                 />
-                <label
-                  for="email"
-                  class="absolute left-0 -top-3.5 text-gray-600 text-sm font-poppins transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-focus:-top-3.5 peer-focus:text-primaryColor peer-focus:text-sm"
-                >
-                  Email
-                </label>
-              </div>
+              </label>
             </div>
 
-            <!-- Password Field with Floating Label -->
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text sr-only">Password</span>
-              </label>
-              <div class="relative">
+            <!-- Validation Hint -->
+            <div
+              v-if="errorMessage"
+              class="validator-hint text-error text-sm mt-1 text-center"
+            >
+              Enter a valid email address
+            </div>
+
+            <!-- Password Field -->
+            <div class="relative w-full">
+              <label
+                class="input validator flex items-center gap-3 w-full h-12"
+                :class="{
+                  '!border-primaryColor !focus-within:border-primaryColor': true,
+                  '!border-error': errorMessage,
+                }"
+              >
+                <!-- Password Icon -->
+                <svg
+                  class="h-5 w-5 opacity-50 flex-shrink-0"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="2.5"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M12 15v2m-6 4h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-1V9a5 5 0 0 0-10 0v2H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2z"
+                  />
+                </svg>
+
+                <!-- Input -->
                 <input
-                  id="password"
                   v-model="password"
                   :type="showPassword ? 'text' : 'password'"
+                  id="password"
                   name="password"
+                  placeholder="Password"
+                  required
                   autocomplete="current-password"
-                  class="input input-bordered w-full peer !border-0 !border-b-2 !border-gray-300 !rounded-none bg-transparent focus:!border-primaryColor focus:!outline-none px-0 py-3 pr-10 placeholder-transparent"
-                  :class="{ '!border-red-500': errorMessage }"
-                  placeholder="lovekosi_e"
+                  class="flex-1 bg-transparent focus:outline-none text-base pr-10"
+                  :class="{ 'text-error placeholder-error': errorMessage }"
                 />
-                <label
-                  for="password"
-                  class="absolute left-0 -top-3.5 text-gray-600 text-sm font-poppins transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-focus:-top-3.5 peer-focus:text-primaryColor peer-focus:text-sm"
-                >
-                  Password
-                </label>
+
+                <!-- Toggle Eye -->
                 <button
                   type="button"
                   @click="togglePasswordVisibility"
-                  class="absolute right-0 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+                  class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0 cursor-pointer"
                 >
                   <Eye v-if="showPassword" class="w-5 h-5" />
                   <EyeOff v-else class="w-5 h-5" />
                 </button>
-              </div>
+              </label>
+            </div>
 
-              <!-- Forgot Password Link -->
-              <div class="mt-3 text-right">
-                <a
-                  href="#"
-                  class="text-sm text-primaryColor hover:text-primaryColor/80 transition-colors font-poppins"
-                >
-                  recover password
-                </a>
-              </div>
+            <!-- Forgot Password -->
+            <div class="text-right">
+              <router-link
+                to="/forgot-password"
+                class="text-sm text-primaryColor hover:text-primaryColor/80 transition-colors font-poppins"
+              >
+                Forgot password
+              </router-link>
             </div>
 
             <!-- Error Message -->
             <div
               v-if="errorMessage"
-              class="text-red-500 text-sm text-center mt-2 font-poppins"
+              class="text-error text-sm text-center mt-2 font-poppins"
             >
               {{ errorMessage }}
             </div>
 
             <!-- Login Button -->
-            <div class="mt-8 flex justify-center">
+            <div class="mt-6 lg:mt-8 flex justify-center">
               <button
                 type="submit"
                 :disabled="isLoading"
-                class="btn bg-primaryColor border-none hover:bg-primaryColor/80 font-poppins disabled:bg-primaryColor/50 text-white font-medium py-3 px-6 rounded-full transition-colors flex items-center justify-center shadow-lg cursor-pointer w-[50%]"
+                class="btn bg-primaryColor border-none hover:bg-primaryColor/80 font-poppins disabled:bg-primaryColor/50 text-white font-medium py-3 px-6 rounded-full transition-colors flex items-center justify-center shadow-lg cursor-pointer w-full sm:w-[80%] lg:w-[60%] xl:w-[50%]"
               >
                 <template v-if="isLoading">
                   <span
                     class="loading loading-spinner loading-sm text-white mr-2"
                   ></span>
-                  <span class="font-poppins">Logging in...</span>
+                  <span>Logging in...</span>
                 </template>
                 <template v-else>
-                  <span class="font-poppins">Login</span>
+                  <span>Login</span>
                 </template>
               </button>
             </div>
 
-            <!-- Supplier Login Link -->
+            <!-- Supplier Login -->
             <div class="mt-6 text-center">
               <p class="text-sm text-gray-600 font-poppins">
                 Are you a supplier?
@@ -970,118 +1017,175 @@
     </div>
 
     <!-- Mobile Layout -->
-    <div class="relative z-10 w-full max-w-md mx-auto lg:hidden mt-10">
-      <div class="flex justify-center">
+    <div
+      class="relative z-10 w-full max-w-sm sm:max-w-md mx-auto lg:hidden mt-4 sm:mt-6 lg:mt-10"
+    >
+      <div class="flex justify-center mb-4">
         <img
           src="/logo1.png"
           alt=""
-          class="w-70 h-70 object-cover object-center"
+          class="mobile-logo w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 object-contain object-center"
         />
       </div>
       <!-- Mobile Login Card -->
-      <div class="bg-white rounded-2xl shadow-xl p-8 h-[500px] mt-10">
+      <div
+        class="bg-white rounded-2xl shadow-xl p-4 sm:p-6 lg:p-8 min-h-[400px] sm:min-h-[450px] mt-4 sm:mt-6"
+      >
         <!-- Welcome Section -->
-        <div class="text-center mb-8">
-          <h1 class="text-2xl font-bold text-primaryColor mb-2 font-poppins">
+        <div class="text-center mb-6 sm:mb-8">
+          <h1
+            class="text-xl sm:text-2xl font-bold text-primaryColor mb-2 font-poppins"
+          >
             Welcome
           </h1>
-          <p class="text-gray-500 text-sm font-roboto">
+          <p class="text-gray-500 text-xs sm:text-sm font-roboto">
             Fill your data to continue. Thank You!
           </p>
         </div>
 
         <!-- Login Form -->
-        <form @submit.prevent="login" class="space-y-6">
-          <!-- Email Field with Floating Label -->
-          <div class="form-control mt-10">
-            <div class="relative">
+        <form
+          @submit.prevent="login"
+          class="space-y-4 sm:space-y-6 mt-6 sm:mt-8"
+        >
+          <!-- Email Field -->
+          <div class="relative w-full">
+            <label
+              class="input validator flex items-center gap-3 w-full h-12"
+              :class="{
+                '!border-primaryColor !focus-within:border-primaryColor': true,
+                '!border-error': errorMessage,
+              }"
+            >
+              <!-- Email Icon -->
+              <svg
+                class="h-5 w-5 opacity-50 flex-shrink-0"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+              >
+                <g
+                  stroke-linejoin="round"
+                  stroke-linecap="round"
+                  stroke-width="2.5"
+                  fill="none"
+                  stroke="currentColor"
+                >
+                  <rect width="20" height="16" x="2" y="4" rx="2"></rect>
+                  <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
+                </g>
+              </svg>
+
+              <!-- Input -->
               <input
                 id="email-mobile"
                 v-model="email"
                 type="email"
                 name="email"
+                placeholder="Email"
+                required
                 autocomplete="username"
-                class="input input-bordered w-full peer !border-0 !border-b-2 !border-gray-300 !rounded-none bg-transparent focus:!border-primaryColor focus:!outline-none px-0 py-3 placeholder-transparent"
-                :class="{ '!border-red-500': errorMessage }"
-                placeholder="johnmarco@gmail.com"
+                class="flex-1 bg-transparent focus:outline-none text-base"
+                :class="{ 'text-error placeholder-error': errorMessage }"
               />
-              <label
-                for="email-mobile"
-                class="absolute left-0 -top-3.5 text-gray-600 text-sm font-poppins transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-focus:-top-3.5 peer-focus:text-primaryColor peer-focus:text-sm"
-              >
-                Email
-              </label>
-            </div>
+            </label>
           </div>
 
-          <!-- Password Field with Floating Label -->
-          <div class="form-control mt-10">
-            <div class="relative">
+          <!-- Validation Hint -->
+          <div
+            v-if="errorMessage"
+            class="validator-hint text-error text-sm mt-1 text-center"
+          >
+            Enter a valid email address
+          </div>
+
+          <!-- Password Field -->
+          <div class="relative w-full">
+            <label
+              class="input validator flex items-center gap-3 w-full h-12"
+              :class="{
+                '!border-primaryColor !focus-within:border-primaryColor': true,
+                '!border-error': errorMessage,
+              }"
+            >
+              <!-- Password Icon -->
+              <svg
+                class="h-5 w-5 opacity-50 flex-shrink-0"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="2.5"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M12 15v2m-6 4h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-1V9a5 5 0 0 0-10 0v2H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2z"
+                />
+              </svg>
+
+              <!-- Input -->
               <input
                 id="password-mobile"
                 v-model="password"
                 :type="showPassword ? 'text' : 'password'"
                 name="password"
+                placeholder="Password"
+                required
                 autocomplete="current-password"
-                class="input input-bordered w-full peer !border-0 !border-b-2 !border-gray-300 !rounded-none bg-transparent focus:!border-primaryColor focus:!outline-none px-0 py-3 pr-10 placeholder-transparent"
-                :class="{ '!border-red-500': errorMessage }"
-                placeholder="lovekosi_e"
+                class="flex-1 bg-transparent focus:outline-none text-base pr-10"
+                :class="{ 'text-error placeholder-error': errorMessage }"
               />
-              <label
-                for="password-mobile"
-                class="absolute left-0 -top-3.5 text-gray-600 text-sm font-poppins transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-focus:-top-3.5 peer-focus:text-primaryColor peer-focus:text-sm"
-              >
-                Password
-              </label>
+
+              <!-- Toggle Password -->
               <button
                 type="button"
                 @click="togglePasswordVisibility"
-                class="absolute right-0 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
               >
                 <Eye v-if="showPassword" class="w-5 h-5" />
                 <EyeOff v-else class="w-5 h-5" />
               </button>
-            </div>
+            </label>
+          </div>
 
-            <!-- Forgot Password Link -->
-            <div class="mt-3 text-right">
-              <a
-                href="#"
-                class="text-sm text-primaryColor hover:text-primaryColor/80 transition-colors font-poppins"
-              >
-                recover password
-              </a>
-            </div>
+          <!-- Forgot Password -->
+          <div class="text-right">
+            <router-link
+              to="/forgot-password"
+              class="text-sm text-primaryColor hover:text-primaryColor/80 transition-colors font-poppins"
+            >
+              Forgot password
+            </router-link>
           </div>
 
           <!-- Error Message -->
           <div
             v-if="errorMessage"
-            class="text-red-500 text-sm text-center mt-2 font-poppins"
+            class="text-error text-sm text-center mt-2 font-poppins"
           >
             {{ errorMessage }}
           </div>
 
           <!-- Login Button -->
-          <div class="mt-8 flex justify-center">
+          <div class="mt-6 sm:mt-8 flex justify-center">
             <button
               type="submit"
               :disabled="isLoading"
-              class="btn bg-primaryColor border-none hover:bg-primaryColor/80 font-poppins disabled:bg-primaryColor/50 text-white font-medium py-3 px-6 rounded-full transition-colors flex items-center justify-center shadow-lg cursor-pointer w-[50%]"
+              class="btn bg-primaryColor border-none hover:bg-primaryColor/80 font-poppins disabled:bg-primaryColor/50 text-white font-medium py-3 px-6 rounded-full transition-colors flex items-center justify-center shadow-lg cursor-pointer w-full sm:w-[80%]"
             >
               <template v-if="isLoading">
                 <span
                   class="loading loading-spinner loading-sm text-white mr-2"
                 ></span>
-                <span class="font-poppins">Logging in...</span>
+                <span>Logging in...</span>
               </template>
               <template v-else>
-                <span class="font-poppins">Login</span>
+                <span>Login</span>
               </template>
             </button>
           </div>
 
-          <!-- Supplier Login Link -->
+          <!-- Supplier Login -->
           <div class="mt-6 text-center">
             <p class="text-sm text-gray-600 font-poppins">
               Are you a supplier?
@@ -1112,14 +1216,14 @@
   /* Custom floating label styles */
   .input:focus ~ label,
   .input:not(:placeholder-shown) ~ label {
-    transform: translateY(-1.5rem) scale(0.9);
-    color: var(--primaryColor, #466114);
+    transform: translateY(-1.5rem) scale(0.9) !important;
+    color: var(--primaryColor, #466114) !important;
   }
 
   /* Override DaisyUI input styles for floating labels */
   .input.input-bordered {
     font-family: Roboto;
-    color: var(--color-neutralColor, #000000);
+    color: var(--color-neutralColor, #000000) !important;
     background: transparent !important;
     border: none !important;
     border-bottom: 2px solid #d1d5db !important;
@@ -1139,6 +1243,73 @@
     /* Let the overlay image handle the background visuals */
     .min-h-screen {
       background-image: none;
+    }
+  }
+
+  /* Enhanced responsive input styles */
+  .input {
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+  }
+
+  @media (max-width: 640px) {
+    .input {
+      min-height: 44px;
+    }
+  }
+
+  /* Ensure proper text wrapping and overflow handling */
+  .input input {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.5;
+  }
+
+  /* Better touch targets for mobile */
+  @media (max-width: 768px) {
+    button {
+      min-height: 44px;
+    }
+  }
+
+  /* Perfect alignment for input elements */
+  .input svg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .input input {
+    display: flex;
+    align-items: center;
+    height: 100%;
+  }
+
+  /* Ensure consistent spacing */
+  .input {
+    padding: 0 12px;
+  }
+
+  /* Mobile logo responsive sizing */
+  @media (max-width: 375px) {
+    .mobile-logo {
+      width: 10rem;
+      height: 10rem;
+    }
+  }
+
+  @media (min-width: 376px) and (max-width: 640px) {
+    .mobile-logo {
+      width: 6rem;
+      height: 6rem;
+    }
+  }
+
+  @media (min-width: 641px) and (max-width: 768px) {
+    .mobile-logo {
+      width: 7rem;
+      height: 7rem;
     }
   }
 </style>

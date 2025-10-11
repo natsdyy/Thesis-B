@@ -20,6 +20,8 @@ import SupplierLayout from '../layouts/SupplierLayout.vue';
 import HomePage from '../views/HomePage.vue';
 import NotFound from '../views/NotFound.vue';
 import Login from '../views/Login.vue';
+import ForgotPassword from '../views/ForgotPassword.vue';
+import ResetPassword from '../views/ResetPassword.vue';
 
 // Import supplier components
 import SupplierLogin from '../views/supplier/SupplierLogin.vue';
@@ -60,6 +62,19 @@ const routes = [
     name: 'Login',
     component: Login,
     meta: { title: 'Login' },
+  },
+  // Password reset routes
+  {
+    path: '/forgot-password',
+    name: 'ForgotPassword',
+    component: ForgotPassword,
+    meta: { title: 'Forgot Password' },
+  },
+  {
+    path: '/reset-password',
+    name: 'ResetPassword',
+    component: ResetPassword,
+    meta: { title: 'Reset Password' },
   },
   // Supplier routes
   {
@@ -288,6 +303,8 @@ router.beforeEach(async (to, from, next) => {
   const publicRoutes = [
     '/',
     '/login',
+    '/forgot-password',
+    '/reset-password',
     '/home',
     '/menu',
     '/stores',

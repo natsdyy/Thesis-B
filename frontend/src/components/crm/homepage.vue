@@ -3,10 +3,10 @@
     <!-- Foodpanda Order Modal -->
     <FoodpandaOrderModal
       :isOpen="isFoodpandaModalOpen"
-      @close="closeFoodpandaModal"
-    />
+        @close="closeFoodpandaModal"
+      />
 
-    <!-- Grabfood Order Modal -->
+      <!-- Grabfood Order Modal -->
     <GrabfoodOrderModal
       :isOpen="isGrabfoodModalOpen"
       @close="closeGrabfoodModal"
@@ -16,45 +16,68 @@
     <header
       :class="[
         'text-white shadow-lg fixed top-0 left-0 right-0 z-50 transition-all duration-300',
-        isScrolled ? 'bg-green-800' : 'bg-transparent',
+        isMobileMenuOpen || isScrolled ? 'bg-green-800' : 'bg-transparent',
       ]"
     >
-      <div class="container mx-auto px-4 py-4">
+      <div class="container mx-auto px-3 sm:px-4 py-3 sm:py-4">
         <div class="flex items-center justify-between">
-          <!-- Logo and Brand -->
-          <div
-            class="flex items-center space-x-4 cursor-pointer group"
-            @click="scrollToHome"
-            title="Click to go to top"
-          >
+          <!-- Left Side: Mobile Menu Button + Logo and Brand -->
+          <div class="flex items-center space-x-2 sm:space-x-4">
+            <!-- Mobile Menu Button -->
+            <button
+              @click="toggleMobileMenu"
+              class="mobile-menu-container md:hidden flex items-center justify-center w-10 h-10 text-white hover:text-orange-300 transition-colors duration-300"
+              aria-label="Toggle mobile menu"
+            >
+              <!-- Hamburger Icon -->
+              <div class="relative w-6 h-6">
+                <span
+                  :class="[
+                    'absolute block h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out',
+                    isMobileMenuOpen ? 'rotate-45 translate-y-2.5' : 'translate-y-0'
+                  ]"
+                ></span>
+                <span
+                  :class="[
+                    'absolute block h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out translate-y-2.5',
+                    isMobileMenuOpen ? 'opacity-0' : 'opacity-100'
+                  ]"
+                ></span>
+                <span
+                  :class="[
+                    'absolute block h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out',
+                    isMobileMenuOpen ? '-rotate-45 translate-y-2.5' : 'translate-y-5'
+                  ]"
+                ></span>
+              </div>
+            </button>
+
+            <!-- Logo and Brand -->
             <div
-              class="w-16 h-16 flex items-center justify-center transition-transform duration-300 group-hover:scale-110"
+              class="flex items-center space-x-2 sm:space-x-4 cursor-pointer group"
+              @click="scrollToHome"
+              title="Click to go to top"
             >
-              <img
-                src="/logo1.png"
-                alt="Countryside Logo"
-                class="w-full h-full object-contain"
-              />
+              <div
+                class="w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center transition-transform duration-300 group-hover:scale-110"
+              >
+                <img
+                  src="/logo1.png"
+                  alt="Countryside Logo"
+                  class="w-full h-full object-contain"
+                />
+              </div>
+              <h1
+                class="text-lg sm:text-xl md:text-2xl font-bold transition-all duration-300 group-hover:text-orange-300 group-hover:drop-shadow-lg"
+              >
+                Countryside Steakhouse
+              </h1>
             </div>
-            <h1
-              class="text-2xl font-bold transition-all duration-300 group-hover:text-orange-300 group-hover:drop-shadow-lg"
-            >
-              Countryside Steakhouse
-            </h1>
           </div>
 
-          <!-- Navigation -->
-          <nav class="hidden md:flex items-center space-x-10">
-            <a
-              @click="scrollToHome"
-              class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium cursor-pointer"
-            >
-              <span class="relative z-10">Home</span>
-              <span
-                class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
-              ></span>
-            </a>
-            <router-link
+          <!-- Desktop Navigation -->
+             <nav class="hidden md:flex items-center space-x-10">
+               <router-link
               to="/menu"
               class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
             >
@@ -73,22 +96,22 @@
                 class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
               ></span>
             </router-link>
-            <a
-              href="#contact"
-              class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
-            >
-              <span class="relative z-10">Feedbacks</span>
-              <span
-                class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
-              ></span>
-            </a>
+               <a
+                 href="#contact"
+                 class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
+               >
+                 <span class="relative z-10">Contact Us</span>
+                 <span
+                   class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
+                 ></span>
+               </a>
           </nav>
 
           <!-- Login Button -->
-          <div class="flex items-center space-x-4">
+          <div class="flex items-center space-x-2 sm:space-x-4">
             <button
               @click="goToLogin"
-              class="border border-white text-white px-6 py-2 rounded-sm cursor-pointer transition-all duration-300 shadow-md font-thin"
+              class="border border-white text-white px-3 sm:px-4 md:px-6 py-1.5 sm:py-2 rounded-sm cursor-pointer transition-all duration-300 shadow-md font-thin text-sm sm:text-base"
             >
               Login
             </button>
@@ -97,10 +120,51 @@
       </div>
     </header>
 
+    <!-- Mobile Menu Dropdown -->
+    <div
+      :class="[
+        'mobile-menu-container fixed top-16 sm:top-20 left-0 right-0 bg-green-800 shadow-lg z-40 transform transition-all duration-300 ease-in-out md:hidden',
+        isMobileMenuOpen ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'
+      ]"
+    >
+         <nav class="py-3 sm:py-4 px-3 sm:px-4 space-y-1 sm:space-y-2">
+           <router-link
+          to="/menu"
+          @click="closeMobileMenu()"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <font-awesome-icon icon="fa-solid fa-utensils" class="w-4 h-4 sm:w-5 sm:h-5 mr-3" />
+            Menu
+          </span>
+        </router-link>
+        <router-link
+          to="/stores"
+          @click="closeMobileMenu()"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <font-awesome-icon icon="fa-solid fa-store" class="w-4 h-4 sm:w-5 sm:h-5 mr-3" />
+            Store's
+          </span>
+        </router-link>
+           <a
+             href="#contact"
+             @click="closeMobileMenu()"
+             class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+           >
+             <span class="flex items-center">
+               <font-awesome-icon icon="fa-solid fa-phone" class="w-4 h-4 sm:w-5 sm:h-5 mr-3" />
+               Contact Us
+             </span>
+           </a>
+      </nav>
+    </div>
+
     <!-- Hero Section -->
     <section
       id="home"
-      class="relative min-h-screen flex items-center pt-20 hero-section overflow-hidden lg:px-20 px-4"
+      class="relative min-h-screen flex items-center pt-16 sm:pt-20 hero-section overflow-hidden lg:px-20 px-3 sm:px-4"
     >
       <!-- Auto-scrolling Hero Carousel -->
       <div class="absolute inset-0 w-full h-full">
@@ -155,7 +219,7 @@
       <!-- Previous/Next Navigation -->
       <button
         @click="previousHero"
-        class="absolute left-6 top-1/2 transform -translate-y-1/2 z-20 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full p-3 text-white hover:bg-white/20 transition-all duration-300 group cursor-pointer"
+        class="hidden lg:block absolute left-6 top-1/2 transform -translate-y-1/2 z-20 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full p-3 text-white hover:bg-white/20 transition-all duration-300 group cursor-pointer"
       >
         <font-awesome-icon
           icon="fa-solid fa-chevron-left"
@@ -165,7 +229,7 @@
 
       <button
         @click="nextHero"
-        class="absolute right-6 top-1/2 transform -translate-y-1/2 z-20 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full p-3 text-white hover:bg-white/20 transition-all duration-300 group cursor-pointer"
+        class="hidden lg:block absolute right-6 top-1/2 transform -translate-y-1/2 z-20 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full p-3 text-white hover:bg-white/20 transition-all duration-300 group cursor-pointer"
       >
         <font-awesome-icon
           icon="fa-solid fa-chevron-right"
@@ -174,39 +238,38 @@
       </button>
 
       <!-- Rest of the hero content -->
-      <div class="relative z-30 container mx-auto px-6">
-        <div class="grid lg:grid-cols-2 gap-12 items-center min-h-[80vh]">
+      <div class="relative z-30 container mx-auto px-3 sm:px-6">
+        <div class="grid lg:grid-cols-2 gap-8 sm:gap-12 items-center min-h-[75vh] sm:min-h-[80vh]">
           <!-- Left Side - Main Content -->
-          <div class="text-left space-y-8">
+          <div class="text-center lg:text-left space-y-6 sm:space-y-8 order-1 lg:order-1">
+            <!-- Main Heading -->
+            <h1 class="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight">
+              Ang Paborito ng
+              <span class="text-orange-400 block mt-1 sm:mt-2">Bayan</span>
+            </h1>
             <!-- Brand Badge -->
             <div
-              class="inline-flex items-center bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-6 py-3 text-white mb-6 mt-6"
+              class="inline-flex items-center bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 sm:px-6 py-2 sm:py-3 text-white mb-4 sm:mb-6 mt-4 sm:mt-6"
             >
-              <span class="text-sm font-medium">
+              <span class="text-xs sm:text-sm font-medium">
                 <font-awesome-icon icon="fa-solid fa-trophy" />
                 Since 1984</span
               >
             </div>
 
-            <!-- Main Heading -->
-            <h1 class="text-5xl lg:text-6xl font-bold text-white leading-tight">
-              Ang Paborito ng
-              <span class="text-orange-400 block mt-2">Bayan</span>
-            </h1>
-
             <!-- Subtitle -->
             <p
-              class="text-xl lg:text-1xl text-white/90 max-w-lg leading-relaxed"
+              class="text-base sm:text-lg md:text-xl lg:text-1xl text-white/90 max-w-lg leading-relaxed mx-auto lg:mx-0"
             >
               Sabi nga nila, sa unang tikim pa lang, alam mong babalik-balikan
               mo! Experience the authentic taste that made us famous.
             </p>
 
             <!-- CTA Buttons -->
-            <div class="flex flex-col sm:flex-row gap-4 pt-2">
+            <div class="flex flex-row gap-3 sm:gap-4 pt-2 justify-center lg:justify-start">
               <router-link
                 to="/menu"
-                class="group bg-orange-500 hover:bg-orange-400 text-white px-8 py-4 rounded-md text-sm transition-all duration-300 flex items-center justify-center font-thin btn btn-md border border-none shadow-none"
+                class="group bg-orange-500 hover:bg-orange-400 text-white px-6 sm:px-10 py-3 sm:py-4 rounded-md text-sm sm:text-base transition-all duration-300 flex items-center justify-center font-thin btn btn-md border border-none shadow-none"
               >
                 <span>View Menu</span>
                 <font-awesome-icon
@@ -216,7 +279,7 @@
               </router-link>
               <router-link
                 to="/stores"
-                class="group bg-transparent border-2 border-white text-white hover:bg-white hover:text-gray-800 px-8 py-4 rounded-md font-thin text-sm transition-all duration-300 flex items-center justify-center btn btn-md shadow-none"
+                class="group bg-transparent border-2 border-white text-white hover:bg-white hover:text-gray-800 px-6 sm:px-8 py-3 sm:py-4 rounded-md font-thin text-sm sm:text-base transition-all duration-300 flex items-center justify-center btn btn-md shadow-none"
               >
                 <span>Find Stores</span>
                 <font-awesome-icon
@@ -227,31 +290,31 @@
             </div>
 
             <!-- Quick Stats -->
-            <div class="flex items-center space-x-8 pt-6">
+            <div class="flex items-center justify-center lg:justify-start space-x-4 sm:space-x-6 lg:space-x-8 pt-4 sm:pt-6">
               <div class="text-center">
-                <div class="text-2xl font-bold text-orange-400">40+</div>
-                <div class="text-sm text-white/70">Years of Excellence</div>
+                <div class="text-xl sm:text-2xl font-bold text-orange-400">40+</div>
+                <div class="text-xs sm:text-sm text-white/70">Years of Excellence</div>
               </div>
               <div class="text-center">
-                <div class="text-2xl font-bold text-orange-400">3</div>
-                <div class="text-sm text-white/70">Branches</div>
+                <div class="text-xl sm:text-2xl font-bold text-orange-400">3</div>
+                <div class="text-xs sm:text-sm text-white/70">Branches</div>
               </div>
               <div class="text-center">
-                <div class="text-2xl font-bold text-orange-400">1000+</div>
-                <div class="text-sm text-white/70">Happy Customers</div>
+                <div class="text-xl sm:text-2xl font-bold text-orange-400">1000+</div>
+                <div class="text-xs sm:text-sm text-white/70">Happy Customers</div>
               </div>
             </div>
           </div>
-
+          
           <!-- Right Side - Professional Reels Carousel - Enhanced Layout with Right Alignment -->
           <div
-            class="text-center lg:text-right space-y-8 lg:space-y-10 lg:flex lg:flex-col lg:items-end"
+            class="hidden lg:block text-center lg:text-right space-y-6 sm:space-y-8 lg:space-y-10 lg:flex lg:flex-col lg:items-end mt-8 lg:mt-0 order-2 lg:order-2"
           >
             <!-- Reels Carousel Container -->
             <div class="relative">
-              <!-- Enhanced Video Display Area - Wider to Show All Content -->
+              <!-- Enhanced Video Display Area - Responsive sizing -->
               <div
-                class="relative w-80 !h-[30rem] lg:w-[32rem] lg:h-[32rem] mx-auto lg:mx-0 lg:ml-auto rounded-5xl shadow-2xl overflow-hidden video-player-container"
+                class="relative w-72 sm:w-80 md:w-96 lg:w-[32rem] h-[24rem] sm:h-[28rem] md:h-[30rem] lg:h-[32rem] mx-auto lg:mx-0 lg:ml-auto rounded-3xl sm:rounded-5xl shadow-2xl overflow-hidden video-player-container"
               >
                 <!-- Current Video -->
                 <video
@@ -324,22 +387,22 @@
               </div>
 
               <!-- Enhanced Reel Counter and Info - White Text for Better Visibility -->
-              <div class="text-center mt-6 space-y-3">
-                <div class="flex items-center justify-center space-x-3">
-                  <span class="text-base font-semibold text-white"
+              <div class="text-center mt-4 sm:mt-6 space-y-2 sm:space-y-3">
+                <div class="flex items-center justify-center space-x-2 sm:space-x-3">
+                  <span class="text-sm sm:text-base font-semibold text-white"
                     >{{ currentReelIndex + 1 }} of {{ reels.length }}</span
                   >
-                  <span class="text-sm text-white/70">•</span>
-                  <span class="text-sm text-orange-400 font-bold">{{
+                  <span class="text-xs sm:text-sm text-white/70">•</span>
+                  <span class="text-xs sm:text-sm text-orange-400 font-bold">{{
                     getReelTitle(currentReelIndex)
                   }}</span>
                 </div>
-                <p class="text-sm text-white/90 font-medium">
+                <p class="text-xs sm:text-sm text-white/90 font-medium px-4">
                   {{ getReelDescription(currentReelIndex) }}
                 </p>
 
                 <!-- Auto-scroll indicator -->
-                <div class="flex items-center justify-center space-x-2 mt-2">
+                <div class="flex items-center justify-center space-x-2 mt-1 sm:mt-2">
                   <div
                     :class="[
                       'w-2 h-2 rounded-full transition-all duration-300',
@@ -364,31 +427,31 @@
 
       <!-- Scroll Indicator -->
       <div
-        class="absolute bottom-24 left-1/2 transform -translate-x-1/2 animate-bounce"
+        class="absolute bottom-16 sm:bottom-20 lg:bottom-24 left-1/2 transform -translate-x-1/2 animate-bounce"
       >
         <div
-          class="w-6 h-10 border-2 border-white rounded-full flex justify-center"
+          class="w-5 h-8 sm:w-6 sm:h-10 border-2 border-white rounded-full flex justify-center"
         >
-          <div class="w-1 h-3 bg-white rounded-full mt-2 animate-pulse"></div>
+          <div class="w-1 h-2 sm:h-3 bg-white rounded-full mt-1.5 sm:mt-2 animate-pulse"></div>
         </div>
       </div>
     </section>
 
     <!-- About the Countryside Section -->
-    <section class="py-20 bg-white">
-      <div class="container mx-auto px-6">
+    <section class="py-12 sm:py-16 lg:py-20 bg-white">
+      <div class="container mx-auto px-4 sm:px-6">
         <!-- Section Title -->
-        <div class="text-center mb-16">
-          <div class="flex items-center justify-center mb-6">
-            <div class="w-60 h-0.5 bg-orange-400"></div>
-            <h2 class="text-4xl font-bold text-green-800 mx-6">About Us</h2>
-            <div class="w-60 h-0.5 bg-orange-400"></div>
+        <div class="text-center mb-12 sm:mb-16">
+          <div class="flex items-center justify-center mb-4 sm:mb-6">
+            <div class="w-20 sm:w-40 lg:w-60 h-0.5 bg-orange-400"></div>
+            <h2 class="text-2xl sm:text-3xl lg:text-4xl font-bold text-green-800 mx-3 sm:mx-6">About Us</h2>
+            <div class="w-20 sm:w-40 lg:w-60 h-0.5 bg-orange-400"></div>
           </div>
         </div>
 
-        <div class="grid lg:grid-cols-2 gap-16 items-center">
+        <div class="grid lg:grid-cols-2 gap-8 sm:gap-12 lg:gap-16 items-center">
           <!-- Left Side - Image -->
-          <div class="relative">
+          <div class="relative order-1 lg:order-2">
             <div class="relative rounded-2xl overflow-hidden shadow-2xl">
               <img
                 src="/images/other/about.png"
@@ -413,22 +476,22 @@
           </div>
 
           <!-- Right Side - Content -->
-          <div class="space-y-8">
+          <div class="space-y-6 sm:space-y-8 order-2 lg:order-1">
             <!-- Main Heading -->
             <div>
               <h2
-                class="text-4xl lg:text-5xl font-bold text-green-800 mb-6 leading-tight"
+                class="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold text-green-800 mb-4 sm:mb-6 leading-tight"
               >
                 Serving Sizzling Steaks Since 1984!<font-awesome-icon
                   icon="fa-solid fa-fire"
                   class="text-orange-600"
                 />
               </h2>
-              <div class="w-20 h-1 bg-orange-400 rounded-full"></div>
+              <div class="w-16 sm:w-20 h-1 bg-orange-400 rounded-full"></div>
             </div>
 
             <!-- Main Description -->
-            <div class="space-y-6 text-lg text-gray-700 leading-relaxed">
+            <div class="space-y-4 sm:space-y-6 text-base sm:text-lg text-gray-700 leading-relaxed">
               <p>
                 Welcome to
                 <span class="font-semibold text-green-700"
@@ -460,15 +523,15 @@
 
             <!-- Branches Section -->
             <div
-              class="bg-white rounded-xl p-6 shadow-lg border-l-4 border-green-600"
+              class="bg-white rounded-xl p-4 sm:p-6 shadow-lg border-l-4 border-green-600"
             >
-              <h3 class="text-xl font-bold text-green-800 mb-4">
+              <h3 class="text-lg sm:text-xl font-bold text-green-800 mb-3 sm:mb-4">
                 🌿 Growing Across Cavite
               </h3>
-              <p class="text-gray-600 mb-4">
+              <p class="text-sm sm:text-base text-gray-600 mb-3 sm:mb-4">
                 We're proud to serve our community across multiple locations:
               </p>
-              <div class="grid grid-cols-2 gap-2 text-sm text-gray-700">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-1 sm:gap-2 text-xs sm:text-sm text-gray-700">
                 <div class="flex items-center">
                   <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
                   Tanza, Philippines
@@ -505,25 +568,24 @@
             </div>
 
             <!-- Call to Action -->
-            <div class="flex flex-col sm:flex-row gap-4">
+            <div class="flex flex-col sm:flex-row gap-3 sm:gap-4">
               <router-link
                 to="/menu"
-                class="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md"
+                class="bg-green-600 hover:bg-green-700 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md text-sm sm:text-base"
               >
                 <span>Explore our menu</span>
                 <font-awesome-icon
                   icon="fa-solid fa-arrow-right"
-                  class="ml-4 group-hover:translate-x-1 transition-transform"
+                  class="ml-3 sm:ml-4 group-hover:translate-x-1 transition-transform"
                 />
               </router-link>
 
               <router-link
                 to="/stores"
-                class="bg-orange-500 hover:bg-orange-400 text-white px-8 py-3 rounded-lg font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md"
+                class="bg-orange-500 hover:bg-orange-400 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md text-sm sm:text-base"
               >
                 <span>Find your branch</span>
                 <font-awesome-icon
-                  ome-icon
                   icon="fa-solid fa-location-dot"
                   class="ml-2 group-hover:translate-x-1 transition-transform"
                 />
@@ -1321,6 +1383,9 @@
   const isScrolled = ref(false);
   const currentHeroIndex = ref(0);
 
+  // Mobile menu state
+  const isMobileMenuOpen = ref(false);
+
   // Real data from API
   const branches = ref([]);
   const menuItems = ref([]);
@@ -1746,6 +1811,9 @@
     document.addEventListener('click', enableVideoAutoplay);
     document.addEventListener('touchstart', enableVideoAutoplay);
 
+    // Add click outside handler for mobile menu
+    document.addEventListener('click', handleClickOutside);
+
     // Add video event listeners after component is mounted
     nextTick(() => {
       if (videoPlayer.value) {
@@ -1768,10 +1836,29 @@
     if (videoChangeTimeout) {
       clearTimeout(videoChangeTimeout);
     }
+
+    // Remove click outside handler
+    document.removeEventListener('click', handleClickOutside);
   });
 
   const goToLogin = () => {
     router.push('/login');
+  };
+
+  // Mobile menu functions
+  const toggleMobileMenu = () => {
+    isMobileMenuOpen.value = !isMobileMenuOpen.value;
+  };
+
+  const closeMobileMenu = () => {
+    isMobileMenuOpen.value = false;
+  };
+
+  // Click outside handler for mobile menu
+  const handleClickOutside = (event) => {
+    if (isMobileMenuOpen.value && !event.target.closest('.mobile-menu-container')) {
+      closeMobileMenu();
+    }
   };
 
   // Smooth scroll to home section

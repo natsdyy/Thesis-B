@@ -400,7 +400,9 @@ class EmailService {
           20000 // 20 second timeout for SendGrid
         );
         if (sendGridResult.success) {
-          console.log("✅ SendGrid email sent successfully (Railway-compatible)");
+          console.log(
+            "✅ SendGrid email sent successfully (Railway-compatible)"
+          );
           return sendGridResult;
         }
         console.log("❌ SendGrid failed, falling back to SMTP...");

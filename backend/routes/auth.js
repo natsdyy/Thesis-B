@@ -545,13 +545,13 @@ router.post("/forgot-password", async (req, res) => {
         resetToken,
         `${employee.first_name} ${employee.last_name}`
       );
-      
+
       // Add 30-second timeout for email sending
       const emailResult = await Promise.race([
         emailPromise,
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Email sending timeout')), 30000)
-        )
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Email sending timeout")), 30000)
+        ),
       ]);
 
       if (!emailResult.success) {
@@ -562,10 +562,7 @@ router.post("/forgot-password", async (req, res) => {
         // Don't reveal email sending failure to user for security
       }
     } catch (emailError) {
-      console.error(
-        "Email sending failed or timed out:",
-        emailError.message
-      );
+      console.error("Email sending failed or timed out:", emailError.message);
       // Don't reveal email sending failure to user for security
     }
 
@@ -816,7 +813,11 @@ router.post("/send-otp", async (req, res) => {
     }
 
     // Check if employee is active
-    if (employee.deleted_at || !employee.is_active || employee.status !== "Active") {
+    if (
+      employee.deleted_at ||
+      !employee.is_active ||
+      employee.status !== "Active"
+    ) {
       return res.json({
         success: true,
         message: "If the email exists, an OTP code has been sent",
@@ -829,7 +830,8 @@ router.post("/send-otp", async (req, res) => {
     if (hasValidOTP.success && hasValidOTP.hasValidOTP) {
       return res.status(429).json({
         success: false,
-        message: "An OTP has already been sent. Please wait before requesting another one.",
+        message:
+          "An OTP has already been sent. Please wait before requesting another one.",
         code: "OTP_ALREADY_SENT",
       });
     }
@@ -837,7 +839,7 @@ router.post("/send-otp", async (req, res) => {
     // Generate and store OTP
     const otpResult = await OTP.create(trimmedEmail);
     if (!otpResult.success) {
-      console.error('Failed to create OTP:', otpResult.error);
+      console.error("Failed to create OTP:", otpResult.error);
       return res.status(500).json({
         success: false,
         message: "Failed to generate OTP. Please try again.",
@@ -853,7 +855,7 @@ router.post("/send-otp", async (req, res) => {
     );
 
     if (!emailResult.success) {
-      console.error('Failed to send OTP email:', emailResult.error);
+      console.error("Failed to send OTP email:", emailResult.error);
       // Don't reveal email sending failure to user for security
     }
 
@@ -862,7 +864,6 @@ router.post("/send-otp", async (req, res) => {
       message: "If the email exists, an OTP code has been sent",
       code: "OTP_SENT",
     });
-
   } catch (error) {
     console.error("Send OTP error:", error);
     res.status(500).json({
@@ -951,12 +952,12 @@ router.post("/verify-otp", async (req, res) => {
       message: "OTP verified successfully",
       code: "OTP_VERIFIED",
     });
-
   } catch (error) {
     console.error("Verify OTP error:", error);
     res.status(500).json({
       success: false,
-      message: "OTP verification service is temporarily unavailable. Please try again.",
+      message:
+        "OTP verification service is temporarily unavailable. Please try again.",
       code: "INTERNAL_SERVER_ERROR",
     });
   }
@@ -1074,12 +1075,12 @@ router.post("/reset-password-with-otp", async (req, res) => {
       message: "Password has been reset successfully",
       code: "PASSWORD_RESET_SUCCESS",
     });
-
   } catch (error) {
     console.error("Reset password with OTP error:", error);
     res.status(500).json({
       success: false,
-      message: "Password reset service is temporarily unavailable. Please try again.",
+      message:
+        "Password reset service is temporarily unavailable. Please try again.",
       code: "INTERNAL_SERVER_ERROR",
     });
   }
@@ -1114,7 +1115,6 @@ router.get("/otp-stats", async (req, res) => {
       code: "STATS_RETRIEVED",
       data: statsResult.data,
     });
-
   } catch (error) {
     console.error("OTP stats error:", error);
     res.status(500).json({
@@ -1156,7 +1156,6 @@ router.post("/cleanup-otp", async (req, res) => {
         deletedCount: cleanupResult.deletedCount,
       },
     });
-
   } catch (error) {
     console.error("OTP cleanup error:", error);
     res.status(500).json({

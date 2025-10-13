@@ -194,37 +194,24 @@ export const menuItems = [
 
   // Admin Department (Super Admin only)
   {
-    name: 'Dashboard',
+    name: 'Executive Dashboard',
     icon: LayoutDashboard,
-    route: '/admin/dashboard',
+    route: '/super-admin',
     department: 'Administration',
     superAdminOnly: true,
   },
   {
-    name: 'User Management',
-    icon: Users,
-    route: '/admin/users',
+    name: 'Financial Statement',
+    icon: BarChart3,
+    route: '/super-admin/financial-statement',
     department: 'Administration',
     superAdminOnly: true,
   },
-  {
-    name: 'Role Management',
-    icon: UserCog,
-    route: '/admin/roles',
-    department: 'Administration',
-    superAdminOnly: true,
-  },
+
   {
     name: 'Branch Management',
     icon: Store,
     route: '/admin/branch-manager',
-    department: 'Administration',
-    superAdminOnly: true,
-  },
-  {
-    name: 'System Settings',
-    icon: Settings,
-    route: '/admin/settings',
     department: 'Administration',
     superAdminOnly: true,
   },

@@ -704,6 +704,25 @@ class MenuItem {
         // Create production inventory entry using the new direct approval method
         await ProductionInventory.createFromMenuApproval(id, userId);
 
+        // Safely resolve batch size for reporting purposes
+        let batchSize = 0;
+        try {
+          if (
+            menuItem.recipe_batch_size &&
+            Number(menuItem.recipe_batch_size) > 0
+          ) {
+            batchSize = Number(menuItem.recipe_batch_size);
+          } else if (menuItem.recipe_id) {
+            const recipe = await db("recipes")
+              .select("batch_size")
+              .where("id", menuItem.recipe_id)
+              .first();
+            batchSize = Number(recipe?.batch_size || 0);
+          }
+        } catch (_) {
+          batchSize = 0;
+        }
+
         // Log the approval action
         await AuditLogger.log({
           menu_item_id: id,
@@ -716,7 +735,7 @@ class MenuItem {
             profit_margin: menuItem.profit_margin,
             initial_stock: 0, // Now starts with 0 stock
             reorder_point: ProductionInventory.calculateDynamicReorderPoint(0), // Dynamic reorder point
-            maximum_stock: batchSize * 2,
+            maximum_stock: batchSize > 0 ? batchSize * 2 : 0,
           },
           notes: `Menu item "${menuItem.menu_item_name}" approved for production - Production inventory created with 0 initial stock`,
         });

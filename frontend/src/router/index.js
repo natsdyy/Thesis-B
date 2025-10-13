@@ -18,6 +18,8 @@ import SupplierLayout from '../layouts/SupplierLayout.vue';
 
 // Import page components
 import HomePage from '../views/HomePage.vue';
+import SuperAdminHome from '../views/SuperAdminHome.vue';
+import FinancialStatement from '../views/FinancialStatement.vue';
 import NotFound from '../views/NotFound.vue';
 import Login from '../views/Login.vue';
 import ForgotPassword from '../views/ForgotPassword.vue';
@@ -123,6 +125,33 @@ const routes = [
         name: 'Home',
         component: HomePage,
         meta: { title: 'Dashboard', requiresAuth: true },
+      },
+    ],
+  },
+  // Super Admin Executive Dashboard
+  {
+    path: '/super-admin',
+    component: DashboardLayout,
+    children: [
+      {
+        path: '',
+        name: 'SuperAdminHome',
+        component: SuperAdminHome,
+        meta: {
+          title: 'Executive Dashboard',
+          requiresAuth: true,
+          requiresRole: ['Super Admin'],
+        },
+      },
+      {
+        path: 'financial-statement',
+        name: 'FinancialStatement',
+        component: FinancialStatement,
+        meta: {
+          title: 'Financial Statement',
+          requiresAuth: true,
+          requiresRole: ['Super Admin'],
+        },
       },
     ],
   },
@@ -336,6 +365,17 @@ router.beforeEach(async (to, from, next) => {
   const userRole = authStore.userRole;
   const userDepartment = authStore.userDepartment;
 
+  // Enforce route meta role requirement
+  if (to.meta?.requiresRole && Array.isArray(to.meta.requiresRole)) {
+    if (!to.meta.requiresRole.includes(userRole)) {
+      // If user is Super Admin, always allow
+      if (userRole !== 'Super Admin') {
+        next('/dashboard');
+        return;
+      }
+    }
+  }
+
   // Check if route requires authentication
   if (to.meta.requiresAuth && (!authStore.isAuthenticated || !authStore.user)) {
     next('/login');
@@ -372,6 +412,17 @@ router.beforeEach(async (to, from, next) => {
       );
 
       next(userDashboard);
+      return;
+    }
+  }
+
+  // If Super Admin navigates to /dashboard root, redirect to executive dashboard for consistency
+  if (
+    to.path === '/dashboard' ||
+    (to.name === 'Home' && userRole === 'Super Admin')
+  ) {
+    if (userRole === 'Super Admin') {
+      next('/super-admin');
       return;
     }
   }

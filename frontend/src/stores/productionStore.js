@@ -1097,9 +1097,6 @@ export const useProductionStore = defineStore('production', () => {
     }
   };
 
-
-
-
   // Quality Inspection Actions
   const fetchQualityInspections = async (filters = {}) => {
     loading.value = true;
@@ -1131,9 +1128,6 @@ export const useProductionStore = defineStore('production', () => {
       loading.value = false;
     }
   };
-
-
-
 
   const createQualityInspection = async (inspectionData) => {
     loading.value = true;
@@ -1393,6 +1387,82 @@ export const useProductionStore = defineStore('production', () => {
       }
     } catch (err) {
       console.error('Error fetching production inventory stats:', err);
+    }
+  };
+
+  // Compute weighted-average unit cost per produced item based on completed production batches
+  const fetchWeightedAverageCosts = async (filters = {}) => {
+    try {
+      const params = new URLSearchParams(filters).toString();
+      const response = await axios.get(
+        `${apiConfig.baseURL}/production/costs/weighted-average?${params}`
+      );
+      if (response.data?.success) {
+        // Expected shape: [{ menu_item_id, unit_cost }]
+        return Array.isArray(response.data.data) ? response.data.data : [];
+      }
+      return [];
+    } catch (err) {
+      console.error('Error fetching weighted average costs:', err);
+      return [];
+    }
+  };
+
+  // End-to-end COGS computation across Supply->PO->MainInventory->Menu->Production
+  // Returns { total_cogs, by_item: [{ menu_item_id, quantity_sold, unit_cost, cogs }] }
+  const fetchCOGSByPeriod = async ({
+    date_from,
+    date_to,
+    branch_ids = [],
+  } = {}) => {
+    try {
+      // 1) Weighted-average cost per produced item during/preceding period
+      const unitCosts = await fetchWeightedAverageCosts({ date_from, date_to });
+      const costMap = new Map(
+        (unitCosts || []).map((c) => [
+          String(c.menu_item_id),
+          Number(c.unit_cost || 0),
+        ])
+      );
+
+      // 2) Pull distributions delivered/completed to branches within window as proxy for availability
+      // This supports mapping when POS itemized sales are unavailable.
+      const distributionsResp = await fetchAllDistributions({
+        date_from,
+        date_to,
+      });
+      const distributions = Array.isArray(distributionsResp)
+        ? distributionsResp
+        : [];
+      const qtyByMenuItem = new Map();
+      distributions.forEach((d) => {
+        if (branch_ids.length && !branch_ids.includes(d.branch_id)) return;
+        const key = String(d.menu_item_id);
+        qtyByMenuItem.set(
+          key,
+          (qtyByMenuItem.get(key) || 0) + Number(d.quantity_distributed || 0)
+        );
+      });
+
+      // 3) Compute COGS = unit_cost × quantity_sold (using distributed qty as proxy)
+      const by_item = [];
+      let total_cogs = 0;
+      qtyByMenuItem.forEach((qty, id) => {
+        const unit_cost = costMap.get(id) || 0;
+        const cogs = unit_cost * qty;
+        total_cogs += cogs;
+        by_item.push({
+          menu_item_id: Number(id),
+          quantity_sold: qty,
+          unit_cost,
+          cogs,
+        });
+      });
+
+      return { total_cogs, by_item };
+    } catch (err) {
+      console.error('Error computing COGS by period:', err);
+      return { total_cogs: 0, by_item: [] };
     }
   };
 
@@ -2136,6 +2206,8 @@ export const useProductionStore = defineStore('production', () => {
     fetchMenuItemStats,
     fetchQualityInspectionStats,
     fetchProductionInventoryStats,
+    fetchWeightedAverageCosts,
+    fetchCOGSByPeriod,
     fetchAvailableRecipes,
     fetchRecipeCategories,
     fetchMenusByCategory,

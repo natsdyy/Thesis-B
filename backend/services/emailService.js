@@ -255,6 +255,15 @@ let emailServiceReady = false;
 
 const verifyTransporter = () => {
   verificationAttempts++;
+  
+  // Check if SendGrid is available - skip SMTP verification if it is
+  const sendGridKey = process.env.SENDGRID_API_KEY || process.env.SENDGRID_API_KEY_2;
+  if (sendGridKey && sendGridKey.startsWith("SG.") && sendGridKey !== "your-sendgrid-api-key-here") {
+    console.log("📧 SendGrid detected - skipping SMTP verification (Railway-compatible)");
+    emailServiceReady = true;
+    return;
+  }
+  
   console.log(
     `📧 Verifying email service (attempt ${verificationAttempts}/${maxVerificationAttempts})`
   );

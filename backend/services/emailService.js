@@ -391,15 +391,17 @@ class EmailService {
     // Try SendGrid first if API key is available (Railway recommended)
     const sendGridKey =
       process.env.SENDGRID_API_KEY || process.env.SENDGRID_API_KEY_2;
-    
+
     console.log("🔍 SendGrid Debug:", {
       hasSendGridKey: !!sendGridKey,
-      sendGridKeyPrefix: sendGridKey ? sendGridKey.substring(0, 10) + "..." : "undefined",
+      sendGridKeyPrefix: sendGridKey
+        ? sendGridKey.substring(0, 10) + "..."
+        : "undefined",
       isValidFormat: sendGridKey && sendGridKey.startsWith("SG."),
       keyLength: sendGridKey ? sendGridKey.length : 0,
-      isNotDefault: sendGridKey !== "your-sendgrid-api-key-here"
+      isNotDefault: sendGridKey !== "your-sendgrid-api-key-here",
     });
-    
+
     if (
       sendGridKey &&
       sendGridKey !== "your-sendgrid-api-key-here" &&
@@ -429,7 +431,7 @@ class EmailService {
         console.log("🔍 SendGrid key detected but invalid format:", {
           hasKey: !!sendGridKey,
           startsWithSG: sendGridKey.startsWith("SG."),
-          isDefault: sendGridKey === "your-sendgrid-api-key-here"
+          isDefault: sendGridKey === "your-sendgrid-api-key-here",
         });
       } else {
         console.log("🔍 No SendGrid key found in environment variables");

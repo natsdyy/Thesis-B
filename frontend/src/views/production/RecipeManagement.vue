@@ -1528,7 +1528,7 @@
                   Cost per Batch
                 </span>
                 <span class="text-xs text-gray-500 ml-2">
-                  (Auto-calculated from ingredients)
+                  (Auto-calculated)
                 </span>
               </label>
               <div class="relative">
@@ -1538,11 +1538,7 @@
                   readonly
                   class="input input-sm sm:input-md input-bordered w-full bg-gray-50 border-primaryColor/30 text-black/70 cursor-not-allowed"
                 />
-                <div
-                  class="absolute right-3 top-1/2 transform -translate-y-1/2"
-                >
-                  <span class="text-primaryColor font-semibold">₱</span>
-                </div>
+ 
               </div>
               <div class="text-xs text-gray-500 mt-1">
                 Total cost based on {{ ingredients.length }} ingredient{{
@@ -1876,17 +1872,26 @@
                 <div class="flex justify-between">
                   <span class="font-medium">Cost per Unit:</span>
                   <span class="ml-1 font-bold">
-                    ₱{{ ingredientForm.cost_per_unit || '0.00' }}
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" class="mr-1" />
+                    {{ ingredientForm.cost_per_unit || '0.00' }}
                   </span>
                 </div>
                 <div class="flex justify-between">
                   <span class="font-medium">Total Value:</span>
+
                   <span class="ml-1 font-bold">
-                    ₱{{
+                    <font-awesome-icon
+                      icon="fa-solid fa-peso-sign"
+                      class="mr-1"
+                    />
+                    {{
                       (
                         (getSelectedIngredientStock() || 0) *
                         (ingredientForm.cost_per_unit || 0)
-                      ).toFixed(2)
+                      ).toLocaleString('en-PH', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
                     }}
                   </span>
                 </div>
@@ -1995,11 +2000,6 @@
                 >
                   Quantity <span class="text-red-500">*</span>
                 </span>
-                <span class="text-xs text-gray-500 ml-2">
-                  (Max:
-                  {{ Number(getSelectedIngredientStock()).toFixed(2) || 0 }}
-                  {{ ingredientForm.unit || 'units' }})
-                </span>
               </label>
               <input
                 v-model="ingredientForm.quantity_required"
@@ -2057,7 +2057,6 @@
                 <span class="text-black/70 font-medium text-sm sm:text-base">
                   Unit <span class="text-red-500">*</span>
                 </span>
-                <span class="text-xs text-gray-500 ml-2">(From inventory)</span>
               </label>
               <input
                 v-model="ingredientForm.unit"

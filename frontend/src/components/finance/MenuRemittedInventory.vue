@@ -583,7 +583,7 @@
   const promoLoading = ref(false);
   const promoSuggestionsCurrentPage = ref(1);
   const promoSuggestionsItemsPerPage = ref(5);
-  const promoSuggestionsViewMode = ref('card'); // 'card' or 'list'
+  const promoSuggestionsViewMode = ref('list'); // 'card' or 'list'
 
   const getCurrentPhilippineSeason = () => {
     const m = getCurrentPhilippineTime().getMonth() + 1; // 1-12
@@ -1059,14 +1059,47 @@
             );
           })();
 
-          // 1. High Stock + Low Demand = Clearance Promo
-          if (availableQty > totalProduced * 0.4 && dailyConsumption < 0.5) {
+          // Realistic metrics
+          const daysOfCover =
+            availableQty > 0
+              ? Math.ceil(availableQty / Math.max(dailyConsumption, 0.1))
+              : 0;
+          const daysUntilStockout = daysOfCover;
+          const forecastEntry = (allForecasts.value || []).find(
+            (f) => Number(f.id) === Number(item.itemId)
+          );
+          const trendDirection = forecastEntry?.trendDirection || 'stable';
+
+          // 1) URGENT: very low days-of-cover regardless of trend
+          if (availableQty > 0 && daysOfCover <= 3) {
+            itemSuggestions.push({
+              type: 'urgent',
+              priority: 'critical',
+              title: 'Urgent Stock Clearance',
+              reason: `Very low days of cover (${daysOfCover}d) with current sales of ${dailyConsumption.toFixed(1)}/day`,
+              recommendation: `Launch immediate 15-25% discount to accelerate sell-through`,
+              discountType: 'percentage',
+              discountValue: 20,
+              duration: '3-5 days',
+              expectedImpact: `Clear ${Math.min(Math.round(availableQty * 0.8), availableQty)} units`,
+              icon: 'fa-solid fa-exclamation-triangle',
+              color: 'text-error',
+            });
+          }
+
+          // 2) CLEARANCE: overstocked or long days-of-cover, esp. with flat/down trend
+          if (
+            availableQty >= 200 &&
+            (daysOfCover >= 25 ||
+              (availableQty > totalProduced * 0.4 && dailyConsumption < 1.0) ||
+              (trendDirection === 'down' && daysOfCover >= 15))
+          ) {
             itemSuggestions.push({
               type: 'clearance',
               priority: 'high',
               title: 'Clearance Sale Opportunity',
-              reason: `High stock (${availableQty} units) with low daily sales (${dailyConsumption.toFixed(1)} units/day)`,
-              recommendation: `Run a 20-30% clearance promo to reduce excess inventory`,
+              reason: `Overstocked: ${availableQty} units (~${daysOfCover} days of cover)`,
+              recommendation: `Run 20-30% markdown to reduce excess inventory`,
               discountType: 'percentage',
               discountValue: 25,
               duration: '1-2 weeks',
@@ -1076,39 +1109,22 @@
             });
           }
 
-          // 2. Low Demand + Near Expiry = Urgent Promo
-          const daysUntilStockout =
-            availableQty > 0
-              ? Math.ceil(availableQty / Math.max(dailyConsumption, 0.1))
-              : 0;
-          if (daysUntilStockout <= 5 && dailyConsumption < 1.0) {
-            itemSuggestions.push({
-              type: 'urgent',
-              priority: 'critical',
-              title: 'Urgent Stock Clearance',
-              reason: `Only ${daysUntilStockout} days until stockout with low demand`,
-              recommendation: `Launch immediate 15-25% discount to boost sales`,
-              discountType: 'percentage',
-              discountValue: 20,
-              duration: '3-5 days',
-              expectedImpact: `Clear ${Math.min(availableQty * 0.8, availableQty)} units`,
-              icon: 'fa-solid fa-exclamation-triangle',
-              color: 'text-error',
-            });
-          }
-
-          // 3. Declining Sales Trend = Boost Promo
-          if (dailyConsumption < 0.3 && availableQty > 10) {
+          // 3) BOOST: demand soft / declining but inventory is adequate
+          if (
+            (trendDirection === 'down' || dailyConsumption <= 1.0) &&
+            daysOfCover >= 7 &&
+            daysOfCover <= 25
+          ) {
             itemSuggestions.push({
               type: 'boost',
               priority: 'medium',
               title: 'Sales Boost Campaign',
-              reason: `Declining sales trend (${dailyConsumption.toFixed(1)} units/day) with adequate stock`,
-              recommendation: `Run a 10-15% promotional campaign to stimulate demand`,
+              reason: `Soft demand (${dailyConsumption.toFixed(1)}/day) with ${daysOfCover}d cover`,
+              recommendation: `Run a 10-15% promo to stimulate demand`,
               discountType: 'percentage',
               discountValue: 12,
               duration: '1-2 weeks',
-              expectedImpact: 'Increase daily sales by 50-100%',
+              expectedImpact: 'Increase daily sales by 30-70%',
               icon: 'fa-solid fa-chart-line',
               color: 'text-info',
             });
@@ -1152,13 +1168,19 @@
             });
           }
 
-          // 5. High Stock Turnover = Volume Promo
-          if (dailyConsumption > 2.0 && availableQty > 20) {
+          // 5) VOLUME: strong trend up, healthy stock, reasonable days-of-cover
+          if (
+            trendDirection === 'up' &&
+            dailyConsumption >= 2.0 &&
+            availableQty >= Math.max(20, Math.round(dailyConsumption * 7)) &&
+            daysOfCover >= 5 &&
+            daysOfCover <= 15
+          ) {
             itemSuggestions.push({
               type: 'volume',
               priority: 'medium',
               title: 'Volume Discount Promotion',
-              reason: `High demand (${dailyConsumption.toFixed(1)} units/day) with good stock levels`,
+              reason: `High demand (${dailyConsumption.toFixed(1)}/day), ${daysOfCover}d cover, trend up`,
               recommendation: `Offer "Buy More, Save More" volume discounts`,
               discountType: 'percentage',
               discountValue: 10,
@@ -1586,20 +1608,6 @@
                 <button
                   class="btn btn-xs font-thin"
                   :class="
-                    promoSuggestionsViewMode === 'card'
-                      ? 'bg-primaryColor text-white'
-                      : 'bg-gray-100 text-gray-800'
-                  "
-                  @click="promoSuggestionsViewMode = 'card'"
-                >
-                  <font-awesome-icon icon="fa-solid fa-th" class="mr-1" />
-                  Cards
-                </button>
-              </div>
-              <div class="">
-                <button
-                  class="btn btn-xs font-thin"
-                  :class="
                     promoSuggestionsViewMode === 'list'
                       ? 'bg-primaryColor text-white'
                       : 'bg-gray-100 text-gray-800'
@@ -1608,6 +1616,20 @@
                 >
                   <font-awesome-icon icon="fa-solid fa-list" class="mr-1" />
                   List
+                </button>
+              </div>
+              <div class="">
+                <button
+                  class="btn btn-xs font-thin"
+                  :class="
+                    promoSuggestionsViewMode === 'card'
+                      ? 'bg-primaryColor text-white'
+                      : 'bg-gray-100 text-gray-800'
+                  "
+                  @click="promoSuggestionsViewMode = 'card'"
+                >
+                  <font-awesome-icon icon="fa-solid fa-th" class="mr-1" />
+                  Cards
                 </button>
               </div>
             </div>

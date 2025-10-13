@@ -32,13 +32,14 @@
   import { useProductionStore } from '../../stores/productionStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
   import { useUserStore } from '../../stores/userStore.js';
-  import { useRouter } from 'vue-router';
+  import { useRouter, useRoute } from 'vue-router';
   import ProductionTransactionModal from '../../components/production/ProductionTransactionModal.vue';
 
   const productionStore = useProductionStore();
   const authStore = useAuthStore();
   const userStore = useUserStore();
   const router = useRouter();
+  const route = useRoute();
 
   // Reactive state
   const activeTab = ref('ready');
@@ -616,6 +617,32 @@
     await loadActiveBatches();
     await loadProductionHistory();
     await loadProductionStaff();
+
+    // Handle navigation from Production Inventory with specific menu item
+    const menuItemId = route.query.menuItemId;
+    const itemName = route.query.itemName;
+
+    if (menuItemId && readyForProduction.value.length > 0) {
+      // Find the item in the ready for production list
+      const targetItem = readyForProduction.value.find(
+        (item) => item.menu_item_id == menuItemId
+      );
+
+      if (targetItem) {
+        // Automatically open the production execution modal
+        setTimeout(() => {
+          startProduction(targetItem);
+        }, 500); // Small delay to ensure UI is ready
+
+        // Clear the query parameters after handling
+        router.replace({ path: route.path });
+      } else {
+        showToast(
+          'warning',
+          `Menu item "${itemName}" not found in ready for production list`
+        );
+      }
+    }
   });
 </script>
 

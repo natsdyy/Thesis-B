@@ -144,7 +144,6 @@ export const menuItems = [
     department: 'Production',
     subItems: [
       { name: 'Menu Creation', route: '/production/menu-creation' },
-      { name: 'Sample Planning', route: '/production/sample-planning' },
       { name: 'Quality Inspection', route: '/production/quality-inspection' },
       {
         name: 'Production Execution',

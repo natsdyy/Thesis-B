@@ -113,124 +113,6 @@ router.get("/menu-item-approvals", authenticateToken, async (req, res) => {
 
 /**
  * @swagger
- * /api/menu/analytics/sample-production-trends:
- *   get:
- *     summary: Get sample production trends analytics
- *     tags: [Analytics]
- *     parameters:
- *       - in: query
- *         name: days
- *         schema:
- *           type: integer
- *           default: 30
- */
-router.get("/sample-production-trends", authenticateToken, async (req, res) => {
-  try {
-    const { days = 30 } = req.query;
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - parseInt(days));
-
-    // Get sample production trends
-    const trendsData = await db("sample_productions as sp")
-      .select(
-        db.raw("DATE(sp.created_at) as date"),
-        db.raw("COUNT(*) as total_samples"),
-        db.raw(
-          "COUNT(CASE WHEN sp.status = 'Completed' THEN 1 END) as successful_samples"
-        ),
-        db.raw("ROUND(AVG(sp.quantity_produced), 1) as average_yield"),
-        db.raw(
-          "ROUND(AVG(EXTRACT(EPOCH FROM (sp.actual_end_date - sp.actual_start_date))/3600), 1) as avg_production_time"
-        ),
-        db.raw("COUNT(CASE WHEN sp.status = 'Planned' THEN 1 END) as planned"),
-        db.raw(
-          "COUNT(CASE WHEN sp.status = 'In Progress' THEN 1 END) as in_progress"
-        ),
-        db.raw(
-          "COUNT(CASE WHEN sp.status = 'Completed' THEN 1 END) as completed"
-        ),
-        db.raw("COUNT(CASE WHEN sp.status = 'Failed' THEN 1 END) as failed")
-      )
-      .where("sp.created_at", ">=", startDate)
-      .groupBy(db.raw("DATE(sp.created_at)"))
-      .orderBy("date");
-
-    // Get top performing menu items
-    const topPerformingItems = await db("sample_productions as sp")
-      .leftJoin("menu_items as mi", "sp.menu_item_id", "mi.id")
-      .select(
-        "mi.menu_item_name",
-        db.raw("COUNT(*) as total_samples"),
-        db.raw(
-          "COUNT(CASE WHEN sp.status = 'Completed' THEN 1 END) as successful_samples"
-        ),
-        db.raw(
-          "ROUND(COUNT(CASE WHEN sp.status = 'Completed' THEN 1 END) * 100.0 / COUNT(*), 1) as success_rate"
-        )
-      )
-      .where("sp.created_at", ">=", startDate)
-      .groupBy("mi.id", "mi.menu_item_name")
-      .having(db.raw("COUNT(*) >= 3"))
-      .orderBy("success_rate", "desc")
-      .limit(10);
-
-    res.json({
-      success: true,
-      data: {
-        trends: trendsData,
-        topPerformingItems: topPerformingItems,
-        summaryStats: {
-          totalSamples: trendsData.reduce(
-            (sum, item) => sum + parseInt(item.total_samples),
-            0
-          ),
-          successRate:
-            trendsData.length > 0
-              ? Math.round(
-                  (trendsData.reduce(
-                    (sum, item) => sum + parseInt(item.successful_samples),
-                    0
-                  ) /
-                    trendsData.reduce(
-                      (sum, item) => sum + parseInt(item.total_samples),
-                      0
-                    )) *
-                    100
-                )
-              : 0,
-          averageYield:
-            trendsData.length > 0
-              ? Math.round(
-                  trendsData.reduce(
-                    (sum, item) => sum + parseFloat(item.average_yield || 0),
-                    0
-                  ) / trendsData.length
-                )
-              : 0,
-          averageProductionTime:
-            trendsData.length > 0
-              ? Math.round(
-                  trendsData.reduce(
-                    (sum, item) =>
-                      sum + parseFloat(item.avg_production_time || 0),
-                    0
-                  ) / trendsData.length
-                )
-              : 0,
-        },
-      },
-    });
-  } catch (error) {
-    console.error("Error fetching sample production trends:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message || "Failed to fetch production trends",
-    });
-  }
-});
-
-/**
- * @swagger
  * /api/menu/analytics/production-metrics:
  *   get:
  *     summary: Get production metrics analytics
@@ -271,18 +153,12 @@ router.get("/production-metrics", authenticateToken, async (req, res) => {
       .groupBy(db.raw("DATE(mqi.created_at)"))
       .orderBy("date");
 
-    // Calculate efficiency metrics
-    const efficiencyMetrics = await db("sample_productions as sp")
-      .select(
-        db.raw(
-          "ROUND(AVG(EXTRACT(EPOCH FROM (sp.actual_end_date - sp.actual_start_date))/3600), 1) as avg_production_time"
-        ),
-        db.raw("ROUND(AVG(sp.production_cost), 2) as avg_cost"),
-        db.raw("ROUND(AVG(sp.quantity_produced), 1) as avg_yield")
-      )
-      .where("sp.created_at", ">=", startDate)
-      .whereNotNull("sp.actual_end_date")
-      .first();
+    // Efficiency metrics are no longer available since sample productions were removed
+    const efficiencyMetrics = {
+      avg_production_time: 0,
+      avg_cost: 0,
+      avg_yield: 0,
+    };
 
     // Calculate real metrics from actual data
     const totalProduction = productionTrends.reduce(

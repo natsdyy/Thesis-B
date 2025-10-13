@@ -34,6 +34,7 @@
               unit_price: Number(it.unit_price || 0),
               quantity: Number(it.quantity || 0),
               branch_id: preload.branch_id,
+              mode: 'set',
             });
           } catch (e) {
             // skip invalid items
@@ -100,6 +101,8 @@
     Info,
     Truck,
     Building2,
+    Grid3X3,
+    List,
   } from 'lucide-vue-next';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
   import { useBranchStore } from '../../stores/branchStore.js';
@@ -305,6 +308,7 @@
   const activeTab = ref('overview');
   const alertTab = ref('expiring');
   const currentPage = ref(1);
+  const viewMode = ref('list'); // Add view mode for overview tab - default to cards
 
   const itemsPerPage = ref(10);
   const searchQuery = ref('');
@@ -494,6 +498,22 @@
       month: 'short',
       day: 'numeric',
     });
+  };
+
+  const formatTimeAgo = (dateString) => {
+    if (!dateString) return 'N/A';
+
+    const now = new Date();
+    const date = new Date(dateString);
+    const diffTime = now.getTime() - date.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+    if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+    return `${Math.floor(diffDays / 365)} years ago`;
   };
 
   const getDaysUntilExpiry = (expiryDate) => {
@@ -1978,6 +1998,7 @@
           unit_price: unitPrice,
           quantity: Number(distributionData.quantity || 0),
           branch_id: distributionData.branch_id,
+          mode: 'set',
         });
       } catch (error) {
         showToast('error', error.message);
@@ -2489,183 +2510,471 @@
             </div>
           </div>
 
-          <!-- Enhanced Category Summary -->
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <!-- View Toggle -->
+          <div
+            class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4"
+          >
             <div
-              v-for="summary in inventorySummary"
-              :key="summary.category_id"
-              class="card bg-gradient-to-br from-base-100 to-base-50 border border-gray-200 hover:shadow-xl duration-300 cursor-pointer"
+              class="flex flex-col sm:flex-row items-start sm:items-center gap-4"
             >
-              <div class="card-body p-6">
-                <!-- Header with Icon and Title -->
-                <div class="flex items-center justify-between mb-4">
-                  <div class="flex items-center gap-3">
-                    <div
-                      class="w-12 h-12 rounded-full flex items-center justify-center"
-                      :class="{
-                        'bg-success/10': summary.category_status === 'active',
-                        'bg-warning/10':
-                          summary.category_status === 'low_stock',
-                        'bg-error/10':
-                          summary.category_status === 'out_of_stock',
-                        'bg-gray-100': summary.category_status === 'empty',
-                        'bg-error/10': summary.category_status === 'disabled',
-                      }"
-                    >
-                      <component
-                        :is="
-                          getCategoryStatusInfo(summary.category_status).icon
-                        "
-                        class="w-6 h-6"
-                        :class="
-                          getCategoryStatusInfo(summary.category_status).color
-                        "
-                      />
-                    </div>
-                    <div>
-                      <h3
-                        class="card-title text-lg font-bold text-primaryColor"
-                      >
-                        {{ summary.category_name }}
-                      </h3>
-                      <p class="text-xs text-gray-500">Category Overview</p>
-                      <div
-                        class="tooltip tooltip-right"
-                        :data-tip="
-                          summary.status_description ||
-                          getCategoryStatusInfo(summary.category_status)
-                            .description
-                        "
-                      >
-                        <Info class="w-3 h-3 text-gray-400 cursor-help" />
-                      </div>
-                    </div>
-                  </div>
-                  <div
-                    class="badge-sm border-none font-medium badge"
-                    :class="{
-                      'bg-success/20 text-success':
-                        summary.category_status === 'active',
-                      'bg-warning/20 text-warning':
-                        summary.category_status === 'low_stock',
-                      'bg-error/20 text-error':
-                        summary.category_status === 'out_of_stock',
-                      'bg-gray-100 text-gray-600':
-                        summary.category_status === 'empty',
-                      'bg-error/20 text-error':
-                        summary.category_status === 'disabled',
-                    }"
-                  >
-                    {{ getCategoryStatusInfo(summary.category_status).label }}
-                  </div>
-                </div>
-
-                <!-- Main Stats Grid -->
-                <div class="grid grid-cols-2 gap-4 mb-4">
-                  <div
-                    class="stat bg-white/50 rounded-lg p-3 border border-gray-100"
-                  >
-                    <div class="stat-title text-xs text-gray-600">
-                      Total Items
-                    </div>
-                    <div class="stat-value text-lg font-bold text-primaryColor">
-                      {{ summary.unique_items }}
-                    </div>
-                    <div class="stat-desc text-xs text-gray-500">
-                      Unique types
-                    </div>
-                  </div>
-
-                  <div
-                    class="stat bg-white/50 rounded-lg p-3 border border-gray-100"
-                  >
-                    <div class="stat-title text-xs text-gray-600">
-                      Total Quantity
-                    </div>
-                    <div class="stat-value text-lg font-bold text-success">
-                      {{
-                        parseFloat(summary.total_quantity || 0).toLocaleString()
-                      }}
-                    </div>
-                    <div class="stat-desc text-xs text-gray-500">
-                      Units in stock
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Additional Metrics -->
-                <div class="space-y-2">
-                  <div class="flex justify-between items-center text-xs">
-                    <span class="text-gray-600">Stock Level:</span>
-                    <span
-                      class="font-medium"
-                      :class="{
-                        'text-success': summary.category_status === 'active',
-                        'text-warning': summary.category_status === 'low_stock',
-                        'text-error':
-                          summary.category_status === 'out_of_stock',
-                        'text-gray-500': summary.category_status === 'empty',
-                        'text-error': summary.category_status === 'disabled',
-                      }"
-                    >
-                      {{
-                        summary.category_status === 'active'
-                          ? 'Good'
-                          : summary.category_status === 'low_stock'
-                            ? 'Low'
-                            : summary.category_status === 'out_of_stock'
-                              ? 'Out of Stock'
-                              : summary.category_status === 'empty'
-                                ? 'No Items'
-                                : 'Disabled'
-                      }}
-                    </span>
-                  </div>
-                  <div class="flex justify-between items-center text-xs">
-                    <span class="text-gray-600">Last Updated:</span>
-                    <span class="font-medium">Today</span>
-                  </div>
-                </div>
-
-                <!-- Item Type Breakdown -->
-                <div
-                  v-if="
-                    summary.item_breakdown && summary.item_breakdown.length > 0
-                  "
-                  class="mt-4 pt-4 border-t border-gray-200"
+              <h3 class="text-base sm:text-lg font-medium text-gray-900">
+                Inventory Categories
+              </h3>
+              <div class="flex items-center space-x-1 sm:space-x-2">
+                <button
+                  @click="viewMode = 'list'"
+                  :class="[
+                    'px-2 sm:px-3 py-1 rounded-md text-xs sm:text-sm font-medium transition-colors cursor-pointer flex items-center',
+                    viewMode === 'list'
+                      ? 'bg-primaryColor/10 text-primaryColor'
+                      : 'text-gray-500 hover:text-gray-700',
+                  ]"
                 >
-                  <div class="text-xs text-gray-600 font-medium mb-3">
-                    Item Breakdown:
-                  </div>
-                  <div class="space-y-2 max-h-32 overflow-y-auto">
-                    <div
-                      v-for="item in summary.item_breakdown"
-                      :key="item.item_type_id"
-                      class="flex justify-between items-center text-xs bg-gray-50 rounded-lg p-2"
-                    >
-                      <div class="flex-1 min-w-0">
-                        <div class="font-medium text-gray-800 truncate">
-                          {{ item.item_type_name }}
-                        </div>
-                        <div class="text-gray-500">
-                          {{ parseFloat(item.quantity).toLocaleString() }}
-                          {{ item.unit_of_measure }}
+                  <List class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                  <span class="hidden sm:inline">List</span>
+                </button>
+                <button
+                  @click="viewMode = 'cards'"
+                  :class="[
+                    'px-2 sm:px-3 py-1 rounded-md text-xs sm:text-sm font-medium transition-colors cursor-pointer flex items-center',
+                    viewMode === 'cards'
+                      ? 'bg-primaryColor/10 text-primaryColor'
+                      : 'text-gray-500 hover:text-gray-700',
+                  ]"
+                >
+                  <Grid3X3 class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                  <span class="hidden sm:inline">Cards</span>
+                </button>
+              </div>
+            </div>
+            <div class="text-xs sm:text-sm text-gray-500">
+              {{ inventorySummary.length }} categories
+            </div>
+          </div>
+
+          <!-- Card View -->
+          <div v-if="viewMode === 'cards'" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div
+                v-for="summary in inventorySummary"
+                :key="summary.category_id"
+                class="card bg-gradient-to-br from-base-100 to-base-50 border border-gray-200 hover:shadow-xl duration-300 cursor-pointer"
+              >
+                <div class="card-body p-6">
+                  <!-- Header with Icon and Title -->
+                  <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-3">
+                      <div
+                        class="w-12 h-12 rounded-full flex items-center justify-center"
+                        :class="{
+                          'bg-success/10': summary.category_status === 'active',
+                          'bg-warning/10':
+                            summary.category_status === 'low_stock',
+                          'bg-error/10':
+                            summary.category_status === 'out_of_stock',
+                          'bg-gray-100': summary.category_status === 'empty',
+                          'bg-error/10': summary.category_status === 'disabled',
+                        }"
+                      >
+                        <component
+                          :is="
+                            getCategoryStatusInfo(summary.category_status).icon
+                          "
+                          class="w-6 h-6"
+                          :class="
+                            getCategoryStatusInfo(summary.category_status).color
+                          "
+                        />
+                      </div>
+                      <div>
+                        <h3
+                          class="card-title text-lg font-bold text-primaryColor"
+                        >
+                          {{ summary.category_name }}
+                        </h3>
+                        <p class="text-xs text-gray-500">Category Overview</p>
+                        <div
+                          class="tooltip tooltip-right"
+                          :data-tip="
+                            summary.status_description ||
+                            getCategoryStatusInfo(summary.category_status)
+                              .description
+                          "
+                        >
+                          <Info class="w-3 h-3 text-gray-400 cursor-help" />
                         </div>
                       </div>
-                      <div class="text-right ml-2">
-                        <div class="font-medium text-success">
-                          ₱{{ parseFloat(item.total_value).toLocaleString() }}
+                    </div>
+                    <div
+                      class="badge-sm border-none font-medium badge"
+                      :class="{
+                        'bg-success/20 text-success':
+                          summary.category_status === 'active',
+                        'bg-warning/20 text-warning':
+                          summary.category_status === 'low_stock',
+                        'bg-error/20 text-error':
+                          summary.category_status === 'out_of_stock',
+                        'bg-gray-100 text-gray-600':
+                          summary.category_status === 'empty',
+                        'bg-error/20 text-error':
+                          summary.category_status === 'disabled',
+                      }"
+                    >
+                      {{ getCategoryStatusInfo(summary.category_status).label }}
+                    </div>
+                  </div>
+
+                  <!-- Main Stats Grid -->
+                  <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div
+                      class="stat bg-white/50 rounded-lg p-3 border border-gray-100"
+                    >
+                      <div class="stat-title text-xs text-gray-600">
+                        Total Items
+                      </div>
+                      <div
+                        class="stat-value text-lg font-bold text-primaryColor"
+                      >
+                        {{ summary.unique_items }}
+                      </div>
+                      <div class="stat-desc text-xs text-gray-500">
+                        Unique types
+                      </div>
+                    </div>
+
+                    <div
+                      class="stat bg-white/50 rounded-lg p-3 border border-gray-100"
+                    >
+                      <div class="stat-title text-xs text-gray-600">
+                        Total Quantity
+                      </div>
+                      <div class="stat-value text-lg font-bold text-success">
+                        {{
+                          parseFloat(
+                            summary.total_quantity || 0
+                          ).toLocaleString()
+                        }}
+                      </div>
+                      <div class="stat-desc text-xs text-gray-500">
+                        Units in stock
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Additional Metrics -->
+                  <div class="space-y-2">
+                    <div class="flex justify-between items-center text-xs">
+                      <span class="text-gray-600">Stock Level:</span>
+                      <span
+                        class="font-medium"
+                        :class="{
+                          'text-success': summary.category_status === 'active',
+                          'text-warning':
+                            summary.category_status === 'low_stock',
+                          'text-error':
+                            summary.category_status === 'out_of_stock',
+                          'text-gray-500': summary.category_status === 'empty',
+                          'text-error': summary.category_status === 'disabled',
+                        }"
+                      >
+                        {{
+                          summary.category_status === 'active'
+                            ? 'Good'
+                            : summary.category_status === 'low_stock'
+                              ? 'Low'
+                              : summary.category_status === 'out_of_stock'
+                                ? 'Out of Stock'
+                                : summary.category_status === 'empty'
+                                  ? 'No Items'
+                                  : 'Disabled'
+                        }}
+                      </span>
+                    </div>
+                    <div class="flex justify-between items-center text-xs">
+                      <span class="text-gray-600">Last Updated:</span>
+                      <span class="font-medium">{{
+                        formatTimeAgo(summary.last_updated)
+                      }}</span>
+                    </div>
+                  </div>
+
+                  <!-- Item Type Breakdown -->
+                  <div
+                    v-if="
+                      summary.item_breakdown &&
+                      summary.item_breakdown.length > 0
+                    "
+                    class="mt-4 pt-4 border-t border-gray-200"
+                  >
+                    <div class="text-xs text-gray-600 font-medium mb-3">
+                      Item Breakdown:
+                    </div>
+                    <div class="space-y-2 max-h-32 overflow-y-auto">
+                      <div
+                        v-for="item in summary.item_breakdown"
+                        :key="item.item_type_id"
+                        class="flex justify-between items-center text-xs bg-gray-50 rounded-lg p-2"
+                      >
+                        <div class="flex-1 min-w-0">
+                          <div class="font-medium text-gray-800 truncate">
+                            {{ item.item_type_name }}
+                          </div>
+                          <div class="text-gray-500">
+                            {{ parseFloat(item.quantity).toLocaleString() }}
+                            {{ item.unit_of_measure }}
+                          </div>
                         </div>
-                        <div class="text-gray-500">
-                          {{ item.batch_count }} batch{{
-                            item.batch_count !== 1 ? 'es' : ''
-                          }}
+                        <div class="text-right ml-2">
+                          <div class="font-medium text-success">
+                            ₱{{ parseFloat(item.total_value).toLocaleString() }}
+                          </div>
+                          <div class="text-gray-500">
+                            {{ item.batch_count }} batch{{
+                              item.batch_count !== 1 ? 'es' : ''
+                            }}
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <!-- List View -->
+          <div
+            v-if="viewMode === 'list'"
+            class="bg-white rounded-lg shadow overflow-hidden"
+          >
+            <div class="overflow-x-auto">
+              <!-- Mobile Card Layout (hidden on larger screens) -->
+              <div class="block sm:hidden space-y-3 p-4">
+                <div
+                  v-for="summary in inventorySummary"
+                  :key="summary.category_id"
+                  class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+                >
+                  <div class="flex items-start space-x-3">
+                    <!-- Category Icon -->
+                    <div class="flex-shrink-0">
+                      <div
+                        class="w-12 h-12 rounded-full flex items-center justify-center"
+                        :class="{
+                          'bg-success/10': summary.category_status === 'active',
+                          'bg-warning/10':
+                            summary.category_status === 'low_stock',
+                          'bg-error/10':
+                            summary.category_status === 'out_of_stock',
+                          'bg-gray-100': summary.category_status === 'empty',
+                          'bg-error/10': summary.category_status === 'disabled',
+                        }"
+                      >
+                        <Package
+                          class="w-6 h-6"
+                          :class="{
+                            'text-success':
+                              summary.category_status === 'active',
+                            'text-warning':
+                              summary.category_status === 'low_stock',
+                            'text-error':
+                              summary.category_status === 'out_of_stock',
+                            'text-gray-500':
+                              summary.category_status === 'empty',
+                            'text-error':
+                              summary.category_status === 'disabled',
+                          }"
+                        />
+                      </div>
+                    </div>
+
+                    <!-- Category Details -->
+                    <div class="flex-1 min-w-0">
+                      <h3 class="text-sm font-medium text-gray-900 truncate">
+                        {{ summary.category_name }}
+                      </h3>
+                      <p class="text-xs text-gray-500 truncate">
+                        {{ summary.total_items }} items
+                      </p>
+
+                      <!-- Stock and Status Info -->
+                      <div class="mt-2 space-y-1">
+                        <div class="flex items-center justify-between text-xs">
+                          <span class="text-gray-600">Total Quantity:</span>
+                          <span class="font-medium"
+                            >{{ summary.total_quantity }} units</span
+                          >
+                        </div>
+                        <div class="flex items-center justify-between text-xs">
+                          <span class="text-gray-600">Status:</span>
+                          <span
+                            class="font-medium px-2 py-1 rounded-full text-xs"
+                            :class="{
+                              'bg-success/20 text-success':
+                                summary.category_status === 'active',
+                              'bg-warning/20 text-warning':
+                                summary.category_status === 'low_stock',
+                              'bg-error/20 text-error':
+                                summary.category_status === 'out_of_stock',
+                              'bg-gray-100 text-gray-600':
+                                summary.category_status === 'empty',
+                              'bg-error/20 text-error':
+                                summary.category_status === 'disabled',
+                            }"
+                          >
+                            {{
+                              summary.category_status === 'active'
+                                ? 'Active'
+                                : summary.category_status === 'low_stock'
+                                  ? 'Low Stock'
+                                  : summary.category_status === 'out_of_stock'
+                                    ? 'Out of Stock'
+                                    : summary.category_status === 'empty'
+                                      ? 'Empty'
+                                      : 'Disabled'
+                            }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Desktop Table Layout (hidden on mobile) -->
+              <table
+                class="min-w-full divide-y divide-gray-200 hidden sm:table"
+              >
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Category
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Items
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell"
+                    >
+                      Total Quantity
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Status
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell"
+                    >
+                      Last Updated
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                  <tr
+                    v-for="summary in inventorySummary"
+                    :key="summary.category_id"
+                    class="hover:bg-gray-50 cursor-pointer"
+                  >
+                    <td class="px-3 sm:px-6 py-4 whitespace-nowrap">
+                      <div class="flex items-center">
+                        <div class="flex-shrink-0 h-10 w-10 sm:h-12 sm:w-12">
+                          <div
+                            class="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center"
+                            :class="{
+                              'bg-success/10':
+                                summary.category_status === 'active',
+                              'bg-warning/10':
+                                summary.category_status === 'low_stock',
+                              'bg-error/10':
+                                summary.category_status === 'out_of_stock',
+                              'bg-gray-100':
+                                summary.category_status === 'empty',
+                              'bg-error/10':
+                                summary.category_status === 'disabled',
+                            }"
+                          >
+                            <Package
+                              class="w-5 h-5 sm:w-6 sm:h-6"
+                              :class="{
+                                'text-success':
+                                  summary.category_status === 'active',
+                                'text-warning':
+                                  summary.category_status === 'low_stock',
+                                'text-error':
+                                  summary.category_status === 'out_of_stock',
+                                'text-gray-500':
+                                  summary.category_status === 'empty',
+                                'text-error':
+                                  summary.category_status === 'disabled',
+                              }"
+                            />
+                          </div>
+                        </div>
+                        <div class="ml-3 sm:ml-4">
+                          <div
+                            class="text-sm font-medium text-gray-900 truncate"
+                          >
+                            {{ summary.category_name }}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="px-3 sm:px-6 py-4 whitespace-nowrap">
+                      <div class="text-sm font-medium text-gray-900">
+                        {{ summary.total_items }}
+                      </div>
+                      <div class="text-xs text-gray-500">unique items</div>
+                    </td>
+                    <td
+                      class="px-3 sm:px-6 py-4 whitespace-nowrap hidden md:table-cell"
+                    >
+                      <div class="text-sm font-medium text-gray-900">
+                        {{ summary.total_quantity }}
+                      </div>
+                      <div class="text-xs text-gray-500">total units</div>
+                    </td>
+                    <td class="px-3 sm:px-6 py-4 whitespace-nowrap">
+                      <span
+                        class="badge badge-xs sm:badge-sm"
+                        :class="{
+                          'bg-success/20 text-success':
+                            summary.category_status === 'active',
+                          'bg-warning/20 text-warning':
+                            summary.category_status === 'low_stock',
+                          'bg-error/20 text-error':
+                            summary.category_status === 'out_of_stock',
+                          'bg-gray-100 text-gray-600':
+                            summary.category_status === 'empty',
+                          'bg-error/20 text-error':
+                            summary.category_status === 'disabled',
+                        }"
+                      >
+                        {{
+                          summary.category_status === 'active'
+                            ? 'Active'
+                            : summary.category_status === 'low_stock'
+                              ? 'Low Stock'
+                              : summary.category_status === 'out_of_stock'
+                                ? 'Out of Stock'
+                                : summary.category_status === 'empty'
+                                  ? 'Empty'
+                                  : 'Disabled'
+                        }}
+                      </span>
+                    </td>
+                    <td
+                      class="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden lg:table-cell"
+                    >
+                      {{ formatTimeAgo(summary.last_updated) }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -3580,69 +3889,6 @@
             </div>
           </div>
 
-          <!-- Distribution Statistics -->
-          <div
-            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6"
-          >
-            <div class="stat bg-base-100 border border-gray-200 rounded-lg">
-              <div class="stat-figure text-primaryColor">
-                <Package class="w-8 h-8" />
-              </div>
-              <div class="stat-title">Total Items</div>
-              <div class="stat-value text-primaryColor">
-                {{ filteredDistributionInventory.length }}
-              </div>
-              <div class="stat-desc">
-                {{
-                  distributionInventoryType === 'production'
-                    ? 'Production Items'
-                    : 'SCM Items'
-                }}
-              </div>
-            </div>
-
-            <div class="stat bg-base-100 border border-gray-200 rounded-lg">
-              <div class="stat-figure text-success">
-                <CheckCircle class="w-8 h-8" />
-              </div>
-              <div class="stat-title">Available Stock</div>
-              <div class="stat-value text-success">
-                {{
-                  filteredDistributionInventory
-                    .reduce((sum, item) => {
-                      const qty =
-                        distributionInventoryType === 'production'
-                          ? item.available_quantity || 0
-                          : parseFloat(item.quantity) || 0;
-                      return sum + qty;
-                    }, 0)
-                    .toLocaleString()
-                }}
-              </div>
-              <div class="stat-desc">Total units available</div>
-            </div>
-
-            <div class="stat bg-base-100 border border-gray-200 rounded-lg">
-              <div class="stat-figure text-black/80">
-                <Building2 class="w-8 h-8" />
-              </div>
-              <div class="stat-title">Branches</div>
-              <div class="stat-value text-black/80">{{ branches.length }}</div>
-              <div class="stat-desc">Available branches</div>
-            </div>
-
-            <div class="stat bg-base-100 border border-gray-200 rounded-lg">
-              <div class="stat-figure text-warning">
-                <Truck class="w-8 h-8" />
-              </div>
-              <div class="stat-title">Categories</div>
-              <div class="stat-value text-warning">
-                {{ availableDistributionCategories.length }}
-              </div>
-              <div class="stat-desc">Item categories</div>
-            </div>
-          </div>
-
           <!-- Filters -->
           <div class="card bg-base-100 border border-gray-200">
             <div class="card-body p-4">
@@ -3755,11 +4001,7 @@
                   style="min-height: 36px"
                 >
                   <div v-if="item.category || item.category_name" class="mb-1">
-                    <span class="font-medium">Category:</span>
                     {{ item.category || item.category_name }}
-                  </div>
-                  <div v-if="item.item_code" class="mb-1">
-                    <span class="font-medium">Code:</span> {{ item.item_code }}
                   </div>
                   <div
                     v-if="
@@ -3768,9 +4010,7 @@
                     "
                     class="mb-1"
                   >
-                    <span class="font-medium">Price:</span> ₱{{
-                      parseFloat(item.selling_price).toLocaleString()
-                    }}
+                    ₱{{ parseFloat(item.selling_price).toLocaleString() }}
                   </div>
                 </div>
 
@@ -3889,7 +4129,7 @@
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Reference</th>
+
                 <th>Branch</th>
                 <th>Prepared By</th>
                 <th class="text-right">Total</th>
@@ -3902,12 +4142,22 @@
                 <td>
                   {{ new Date(dist.created_at).toLocaleString('en-PH') }}
                 </td>
-                <td class="font-mono">{{ dist.reference }}</td>
+
                 <td>{{ dist.branch_name || 'Branch' }}</td>
                 <td>{{ dist.prepared_by }}</td>
                 <td class="text-right">
-                  ₱{{ Number(dist.total_amount || 0).toFixed(2) }}
+                  <font-awesome-icon
+                    icon="fa-solid fa-peso-sign"
+                    class="mr-1"
+                  />
+                  {{
+                    Number(dist.total_amount || 0).toLocaleString('en-PH', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  }}
                 </td>
+
                 <td>
                   <span
                     class="badge badge-sm border-none font-medium"
@@ -3935,17 +4185,6 @@
                     @click="openHistoryReceipt(dist.id)"
                   >
                     View
-                  </button>
-                  <button
-                    class="btn btn-ghost btn-xs"
-                    @click="
-                      (() => {
-                        openHistoryReceipt(dist.id);
-                        setTimeout(() => window.print(), 300);
-                      })()
-                    "
-                  >
-                    Print
                   </button>
                 </td>
               </tr>

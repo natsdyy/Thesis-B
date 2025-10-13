@@ -1541,7 +1541,7 @@
         : ' (Production)';
 
       showSuccess(
-        `Reply sent successfully! The customer will receive an email shortly.${environmentText}`,
+        `Reply sent successfully! The customer will receive an email shortly.`,
         'Reply Delivered!'
       );
 

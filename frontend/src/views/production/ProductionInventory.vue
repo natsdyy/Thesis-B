@@ -29,13 +29,12 @@
     Handshake,
     Minus,
     Settings,
+    Grid3X3,
+    List,
   } from 'lucide-vue-next';
   import { useProductionStore } from '../../stores/productionStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
-  import MenuItemApprovalChart from '../../components/production/MenuItemApprovalChart.vue';
-  import SampleProductionTrendsChart from '../../components/production/SampleProductionTrendsChart.vue';
-  import ProductionMetricsChart from '../../components/production/ProductionMetricsChart.vue';
-  import InventoryTrendsChart from '../../components/production/InventoryTrendsChart.vue';
+  import { useRouter } from 'vue-router';
   import ProductionTransactionModal from '../../components/production/ProductionTransactionModal.vue';
   import { apiConfig, formatImageUrl } from '../../config/api.js';
   import {
@@ -46,9 +45,11 @@
 
   const productionStore = useProductionStore();
   const authStore = useAuthStore();
+  const router = useRouter();
 
   // Reactive state
   const activeTab = ref('inventory');
+  const viewMode = ref('list'); // Add view mode for inventory items - default to list
   const searchQuery = ref('');
   const categoryFilter = ref('');
   const statusFilter = ref('');
@@ -1150,15 +1151,40 @@
     }
   };
 
+  // Helper function to check if item is ready to produce
+  const isReadyToProduce = (item) => {
+    // Item is ready to produce if:
+    // 1. Available quantity is 0 (needs production)
+    // 2. OR available quantity is below reorder point
+    // 3. OR no reorder point is set (default to ready)
+    const currentStock = item.available_quantity || 0;
+    const reorderPoint = item.reorder_point || 0;
+
+    return (
+      currentStock === 0 || currentStock <= reorderPoint || reorderPoint === 0
+    );
+  };
+
   const configureInventory = async (item) => {
     try {
-      await productionStore.updateInitialStockFromRecipe(item.id);
+      // Navigate to Production Execution page
+      router.push({
+        path: '/production/production-execution',
+        query: {
+          menuItemId: item.menu_item_id,
+          itemName: item.menu_item_name,
+        },
+      });
+
       showToast(
-        'success',
-        `Production inventory configured - Stock remains at 0 until actual production`
+        'info',
+        `Navigating to Production Execution for ${item.menu_item_name}`
       );
     } catch (error) {
-      showToast('error', error.message || 'Failed to configure inventory');
+      showToast(
+        'error',
+        error.message || 'Failed to navigate to production execution'
+      );
     }
   };
 
@@ -1304,25 +1330,6 @@
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
       >
         <div class="stat-figure">
-          <Target class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-success" />
-        </div>
-        <div class="stat-title text-black/50 text-xs sm:text-sm">
-          Total Stock
-        </div>
-        <div
-          class="stat-value text-success text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ realTimeStats.total_quantity || 0 }}
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Units available
-        </div>
-      </div>
-
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
           <AlertTriangle
             class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-warning"
           />
@@ -1364,14 +1371,6 @@
       >
         <Package class="w-4 h-4 mr-1" />
         Inventory
-      </button>
-      <button
-        @click="activeTab = 'analytics'"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'analytics' }"
-      >
-        <BarChart3 class="w-4 h-4 mr-1" />
-        Analytics
       </button>
       <button
         @click="activeTab = 'distributions'"
@@ -1423,6 +1422,48 @@
             </div>
           </div>
 
+          <!-- View Toggle -->
+          <div
+            class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4"
+          >
+            <div
+              class="flex flex-col sm:flex-row items-start sm:items-center gap-4"
+            >
+              <h3 class="text-base sm:text-lg font-medium text-gray-900">
+                Inventory Items
+              </h3>
+              <div class="flex items-center space-x-1 sm:space-x-2">
+                <button
+                  @click="viewMode = 'list'"
+                  :class="[
+                    'px-2 sm:px-3 py-1 rounded-md text-xs sm:text-sm font-medium transition-colors cursor-pointer flex items-center',
+                    viewMode === 'list'
+                      ? 'bg-primaryColor/10 text-primaryColor'
+                      : 'text-gray-500 hover:text-gray-700',
+                  ]"
+                >
+                  <List class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                  <span class="hidden sm:inline">List</span>
+                </button>
+                <button
+                  @click="viewMode = 'cards'"
+                  :class="[
+                    'px-2 sm:px-3 py-1 rounded-md text-xs sm:text-sm font-medium transition-colors cursor-pointer flex items-center',
+                    viewMode === 'cards'
+                      ? 'bg-primaryColor/10 text-primaryColor'
+                      : 'text-gray-500 hover:text-gray-700',
+                  ]"
+                >
+                  <Grid3X3 class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                  <span class="hidden sm:inline">Cards</span>
+                </button>
+              </div>
+            </div>
+            <div class="text-xs sm:text-sm text-gray-500">
+              {{ paginatedInventory.length }} inventory items
+            </div>
+          </div>
+
           <!-- Search and Filters -->
           <div class="flex flex-col sm:flex-row gap-4 mb-6">
             <div class="flex-1">
@@ -1461,13 +1502,16 @@
               >
                 <option value="">All Status</option>
                 <option value="low_stock">Low Stock</option>
-                <option value="featured">Featured</option>
               </select>
             </div>
           </div>
 
           <!-- Inventory Grid -->
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <!-- Cards View -->
+          <div
+            v-if="viewMode === 'cards'"
+            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+          >
             <!-- Loading State - Skeleton Cards -->
             <div
               v-if="loading"
@@ -1546,9 +1590,7 @@
                     >
                       {{ item.item_name }}
                     </h3>
-                    <p class="text-sm text-gray-600 mb-2">
-                      {{ item.recipe_name }}
-                    </p>
+   
                     <div class="flex items-center gap-2 mb-3">
                       <span
                         class="badge"
@@ -1584,12 +1626,6 @@
                   <div class="text-right">
                     <div class="text-lg font-bold text-primaryColor">
                       {{ item.available_quantity }}
-                    </div>
-                    <div class="text-xs text-gray-500">
-                      {{ item.unit_of_measure }}
-                    </div>
-                    <div class="text-xs text-gray-500 mt-1">
-                      Reproduce: {{ item.reorder_point || 0 }}
                     </div>
                   </div>
                 </div>
@@ -1657,16 +1693,16 @@
 
                 <div class="flex gap-2">
                   <button
-                    v-if="item.available_quantity === 0"
+                    v-if="isReadyToProduce(item)"
                     @click.stop="configureInventory(item)"
-                    class="btn btn-ghost btn-xs text-warning hover:bg-warning/10 flex-1"
+                    class="btn bg-primaryColor btn-sm flex-1 text-white font-thin hover:border-none hover:shadow-none hover:bg-primaryColor/90"
                     :disabled="loading"
                   >
                     <RefreshCcw
                       class="w-4 h-4 mr-1"
                       :class="{ 'animate-spin': loading }"
                     />
-                    Configure Inventory
+                    Proceed to Execution
                   </button>
                 </div>
               </div>
@@ -1686,6 +1722,302 @@
                   searchQuery || categoryFilter || statusFilter
                     ? 'Try adjusting your filters'
                     : 'No approved menu items in inventory yet. Complete quality inspections to add items.'
+                }}
+              </p>
+            </div>
+          </div>
+
+          <!-- List View -->
+          <div
+            v-else-if="viewMode === 'list'"
+            class="bg-white rounded-lg shadow overflow-hidden"
+          >
+            <!-- Loading State for List -->
+            <div v-if="loading" class="p-6">
+              <div class="space-y-4">
+                <div
+                  v-for="n in 5"
+                  :key="`skeleton-list-${n}`"
+                  class="animate-pulse"
+                >
+                  <div class="flex items-center space-x-4">
+                    <div class="w-16 h-16 bg-gray-200 rounded"></div>
+                    <div class="flex-1 space-y-2">
+                      <div class="h-4 bg-gray-200 rounded w-1/4"></div>
+                      <div class="h-3 bg-gray-200 rounded w-1/2"></div>
+                    </div>
+                    <div class="w-20 h-8 bg-gray-200 rounded"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- List Content -->
+            <div
+              v-else-if="paginatedInventory.length > 0"
+              class="overflow-x-auto"
+            >
+              <!-- Mobile Card Layout (hidden on larger screens) -->
+              <div class="block sm:hidden space-y-3 p-4">
+                <div
+                  v-for="item in paginatedInventory"
+                  :key="item.id"
+                  class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+                  @click="openDetailsModal(item)"
+                >
+                  <div class="flex items-start space-x-3">
+                    <!-- Item Image -->
+                    <div class="flex-shrink-0">
+                      <img
+                        v-if="item.image_url"
+                        :src="item.image_url"
+                        :alt="item.item_name"
+                        class="h-16 w-16 rounded-lg object-cover"
+                      />
+                      <div
+                        v-else
+                        class="h-16 w-16 rounded-lg bg-gray-200 flex items-center justify-center"
+                      >
+                        <Package class="w-8 h-8 text-gray-400" />
+                      </div>
+                    </div>
+
+                    <!-- Item Details -->
+                    <div class="flex-1 min-w-0">
+                      <h3 class="text-sm font-medium text-gray-900 truncate">
+                        {{ item.item_name }}
+                      </h3>
+                      <p class="text-xs text-gray-500 truncate">
+                        {{ item.recipe_name }}
+                      </p>
+
+                      <!-- Stock and Price Info -->
+                      <div class="mt-2 space-y-1">
+                        <div class="flex items-center justify-between text-xs">
+                          <span class="text-gray-600">Stock:</span>
+                          <span class="font-medium"
+                            >{{ item.available_quantity }}
+                            {{ item.unit_of_measure }}</span
+                          >
+                        </div>
+                        <div class="flex items-center justify-between text-xs">
+                          <span class="text-gray-600">Price:</span>
+                          <span class="font-medium text-primaryColor"
+                            >₱{{ item.selling_price || 0 }}</span
+                          >
+                        </div>
+                      </div>
+
+                      <!-- Badges -->
+                      <div class="flex items-center gap-2 mt-2">
+                        <span
+                          class="badge badge-xs"
+                          :class="getStockLevelBadgeClass(item)"
+                        >
+                          {{ getStockLevelText(item) }}
+                        </span>
+                        <span class="badge badge-xs bg-gray-100 text-gray-600">
+                          {{ item.category }}
+                        </span>
+                        <span
+                          v-if="item.promo_info"
+                          class="badge badge-xs"
+                          :class="
+                            item.promo_info.is_active
+                              ? 'bg-success/20 text-success'
+                              : 'bg-gray/20 text-gray-600'
+                          "
+                        >
+                          <Star class="w-3 h-3 mr-1" />
+                          Promo
+                        </span>
+                      </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="flex flex-col space-y-1">
+                      <button
+                        @click.stop="openDetailsModal(item)"
+                        class="text-primaryColor hover:text-primaryColor/80 p-1"
+                        title="View Details"
+                      >
+                        <Eye class="w-4 h-4" />
+                      </button>
+                      <button
+                        v-if="isReadyToProduce(item)"
+                        @click.stop="configureInventory(item)"
+                        class="text-warning hover:text-warning/80 p-1"
+                        title="Proceed to Execution"
+                      >
+                        <Settings class="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Desktop Table Layout (hidden on mobile) -->
+              <table
+                class="min-w-full divide-y divide-gray-200 hidden sm:table"
+              >
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Item
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Stock
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell"
+                    >
+                      Price
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Status
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell"
+                    >
+                      Last Produced
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                  <tr
+                    v-for="item in paginatedInventory"
+                    :key="item.id"
+                    class="hover:bg-gray-50 cursor-pointer"
+                    @click="openDetailsModal(item)"
+                  >
+                    <td class="px-3 sm:px-6 py-4 whitespace-nowrap">
+                      <div class="flex items-center">
+                        <div class="flex-shrink-0 h-10 w-10 sm:h-12 sm:w-12">
+                          <img
+                            v-if="item.image_url"
+                            :src="item.image_url"
+                            :alt="item.item_name"
+                            class="h-10 w-10 sm:h-12 sm:w-12 rounded-lg object-cover"
+                          />
+                          <div
+                            v-else
+                            class="h-10 w-10 sm:h-12 sm:w-12 rounded-lg bg-gray-200 flex items-center justify-center"
+                          >
+                            <Package
+                              class="w-5 h-5 sm:w-6 sm:h-6 text-gray-400"
+                            />
+                          </div>
+                        </div>
+                        <div class="ml-3 sm:ml-4">
+                          <div
+                            class="text-sm font-medium text-gray-900 truncate"
+                          >
+                            {{ item.item_name }}
+                          </div>
+  
+                          <div class="flex items-center gap-1 sm:gap-2 mt-1">
+
+                            <span
+                              class="badge badge-xs bg-gray-100 text-gray-600"
+                            >
+                              {{ item.category }}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="px-3 sm:px-6 py-4 whitespace-nowrap">
+                      <div class="text-sm font-medium text-gray-900">
+                        {{ item.available_quantity }} {{ item.unit_of_measure }}
+                      </div>
+           
+                    </td>
+                    <td
+                      class="px-3 sm:px-6 py-4 whitespace-nowrap hidden md:table-cell"
+                    >
+                      <div class="text-sm font-medium text-gray-900">
+                        ₱{{ item.selling_price || 0 }}
+                      </div>
+            
+                    </td>
+                    <td class="px-3 sm:px-6 py-4 whitespace-nowrap">
+                      <span
+                        class="badge badge-xs sm:badge-sm"
+                        :class="getStockLevelBadgeClass(item)"
+                      >
+                        {{ getStockLevelText(item) }}
+                      </span>
+                      <div v-if="item.promo_info" class="mt-1">
+                        <span
+                          class="badge badge-xs"
+                          :class="
+                            item.promo_info.is_active
+                              ? 'bg-success/20 text-success'
+                              : 'bg-gray/20 text-gray-600'
+                          "
+                        >
+                          <Star class="w-3 h-3 mr-1" />
+                          Promo
+                        </span>
+                      </div>
+                    </td>
+                    <td
+                      class="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden lg:table-cell"
+                    >
+                      {{
+                        item.last_produced_date
+                          ? formatDate(item.last_produced_date)
+                          : 'Never'
+                      }}
+                    </td>
+                    <td
+                      class="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium"
+                    >
+                      <div class="flex space-x-1 sm:space-x-2">
+                        <button
+                          @click.stop="openDetailsModal(item)"
+                          class="text-primaryColor hover:text-primaryColor/80"
+                          title="View Details"
+                        >
+                          <Eye class="w-4 h-4" />
+                        </button>
+                        <button
+                          v-if="isReadyToProduce(item)"
+                          @click.stop="configureInventory(item)"
+                          class="text-warning hover:text-warning/80"
+                          title="Proceed to Execution"
+                        >
+                          <Settings class="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Empty State for List -->
+            <div v-else class="text-center py-12">
+              <Package class="w-16 h-16 mx-auto text-gray-400 mb-4" />
+              <h3 class="text-lg font-medium text-gray-900 mb-2">
+                No inventory items found
+              </h3>
+              <p class="text-gray-500 mb-4">
+                {{
+                  searchQuery || categoryFilter || statusFilter
+                    ? 'Try adjusting your filters'
+                    : 'No approved menu items in inventory yet.'
                 }}
               </p>
             </div>
@@ -1814,40 +2146,6 @@
                 Next »
               </button>
             </div>
-          </div>
-        </div>
-
-        <!-- Analytics Tab -->
-        <div v-if="activeTab === 'analytics'" class="space-y-6">
-          <div
-            class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6"
-          >
-            <div>
-              <h2
-                class="card-title text-primaryColor text-lg sm:text-xl lg:text-2xl mb-2"
-              >
-                Production Analytics Dashboard
-              </h2>
-              <p class="text-sm text-gray-600">
-                Comprehensive analytics for menu management, production
-                efficiency, and inventory performance.
-              </p>
-            </div>
-          </div>
-
-          <!-- Analytics Components -->
-          <div class="space-y-6">
-            <!-- Menu Item Approval Chart -->
-            <MenuItemApprovalChart />
-
-            <!-- Sample Production Trends Chart -->
-            <SampleProductionTrendsChart />
-
-            <!-- Production Metrics Chart -->
-            <ProductionMetricsChart />
-
-            <!-- Inventory Trends Chart -->
-            <InventoryTrendsChart />
           </div>
         </div>
 
@@ -3308,7 +3606,7 @@
         'modal-open': showDetailsModal && selectedItem && selectedItem.id,
       }"
     >
-      <div class="modal-box max-w-4xl">
+      <div class="modal-box max-w-4xl max-h-[90vh] overflow-y-auto">
         <h3 class="font-bold text-lg text-primaryColor mb-6">
           {{ selectedItem?.item_name }} Details
         </h3>

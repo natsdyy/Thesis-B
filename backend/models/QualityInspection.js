@@ -3,14 +3,12 @@ const AuditLogger = require("./AuditLogger");
 
 // Quality Inspection Types
 const INSPECTION_TYPES = {
-  SAMPLE_TEST: "Sample Test",
-  SPOT_CHECK: "Spot Check",
   DIRECT_INSPECTION: "Direct Inspection",
+  SPOT_CHECK: "Spot Check",
   COMPLAINT_INVESTIGATION: "Complaint Investigation",
   SUPPLIER_CHANGE: "Supplier Change",
   PRODUCTION_CHECK: "Production Check",
   SEASONAL_CHECK: "Seasonal Check",
-  RETEST: "Retest",
 };
 
 // Inspection Result Types
@@ -23,7 +21,7 @@ const INSPECTION_RESULTS = {
 
 // Quality Score Requirements by Inspection Type
 const QUALITY_SCORE_REQUIREMENTS = {
-  [INSPECTION_TYPES.SAMPLE_TEST]: {
+  [INSPECTION_TYPES.DIRECT_INSPECTION]: {
     taste_score: true,
     appearance_score: true,
     texture_score: true,
@@ -35,13 +33,6 @@ const QUALITY_SCORE_REQUIREMENTS = {
     appearance_score: false,
     texture_score: false,
     overall_score: false,
-    findings: true,
-  },
-  [INSPECTION_TYPES.DIRECT_INSPECTION]: {
-    taste_score: true,
-    appearance_score: true,
-    texture_score: true,
-    overall_score: true,
     findings: true,
   },
   [INSPECTION_TYPES.COMPLAINT_INVESTIGATION]: {
@@ -72,13 +63,6 @@ const QUALITY_SCORE_REQUIREMENTS = {
     overall_score: true,
     findings: true,
   },
-  [INSPECTION_TYPES.RETEST]: {
-    taste_score: true,
-    appearance_score: true,
-    texture_score: true,
-    overall_score: true,
-    findings: true,
-  },
 };
 
 class QualityInspection {
@@ -93,30 +77,12 @@ class QualityInspection {
 
   // Validate inspection data based on type
   static validateInspectionData(inspectionData) {
-    const { inspection_type, sample_production_id, menu_item_id } =
-      inspectionData;
+    const { inspection_type, menu_item_id } = inspectionData;
     const requirements = QUALITY_SCORE_REQUIREMENTS[inspection_type];
 
-    // For sample-based inspections, sample_production_id is required
-    if ([INSPECTION_TYPES.SAMPLE_TEST].includes(inspection_type)) {
-      if (!sample_production_id) {
-        throw new Error(
-          "Sample production is required for this inspection type"
-        );
-      }
-    }
-
-    // For direct inspections, menu_item_id is required
-    if (
-      [
-        INSPECTION_TYPES.DIRECT_INSPECTION,
-        INSPECTION_TYPES.SPOT_CHECK,
-        INSPECTION_TYPES.COMPLAINT_INVESTIGATION,
-      ].includes(inspection_type)
-    ) {
-      if (!menu_item_id) {
-        throw new Error("Menu item is required for this inspection type");
-      }
+    // For all inspection types, menu_item_id is required
+    if (!menu_item_id) {
+      throw new Error("Menu item is required for this inspection type");
     }
 
     // Validate required fields based on inspection type
@@ -135,7 +101,6 @@ class QualityInspection {
           "qi.*",
           "mi.menu_item_name as item_name",
           "mi.item_code",
-          "sp.sample_batch_number",
           db.raw(
             "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as inspector_name"
           ),
@@ -144,11 +109,6 @@ class QualityInspection {
           )
         )
         .leftJoin("menu_items as mi", "qi.menu_item_id", "mi.id")
-        .leftJoin(
-          "sample_productions as sp",
-          "qi.sample_production_id",
-          "sp.id"
-        )
         .leftJoin("employees as e", "qi.inspector_id", "e.id")
         .leftJoin("employees as ae", "qi.approved_by", "ae.id")
         .whereNull("qi.deleted_at");
@@ -176,9 +136,11 @@ class QualityInspection {
 
       if (filters.search) {
         query = query.where(function () {
-          this.where("qi.inspection_number", "ilike", `%${filters.search}%`)
-            .orWhere("mi.menu_item_name", "ilike", `%${filters.search}%`)
-            .orWhere("sp.sample_batch_number", "ilike", `%${filters.search}%`);
+          this.where(
+            "qi.inspection_number",
+            "ilike",
+            `%${filters.search}%`
+          ).orWhere("mi.menu_item_name", "ilike", `%${filters.search}%`);
         });
       }
 
@@ -202,10 +164,6 @@ class QualityInspection {
           "mi.description as menu_item_description",
           "mi.selling_price",
           "mi.cost_price",
-          "sp.sample_batch_number",
-          "sp.batch_size",
-          "sp.batch_unit",
-          "sp.production_cost",
           "r.recipe_name",
           db.raw(
             "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as inspector_name"
@@ -215,11 +173,6 @@ class QualityInspection {
           )
         )
         .leftJoin("menu_items as mi", "qi.menu_item_id", "mi.id")
-        .leftJoin(
-          "sample_productions as sp",
-          "qi.sample_production_id",
-          "sp.id"
-        )
         .leftJoin("recipes as r", "mi.recipe_id", "r.id")
         .leftJoin("employees as e", "qi.inspector_id", "e.id")
         .leftJoin("employees as ae", "qi.approved_by", "ae.id")
@@ -280,32 +233,14 @@ class QualityInspection {
       const timestamp = Date.now();
       const inspectionNumber = `QI${timestamp}`;
 
-      // Handle different inspection types first
-      let menuItemId = inspectionData.menu_item_id;
-      let sampleProduction = null;
+      // Ensure menu item exists
+      const menuItem = await trx("menu_items")
+        .where("id", inspectionData.menu_item_id)
+        .select("id", "menu_item_name")
+        .first();
 
-      if (inspectionData.sample_production_id) {
-        // For sample-based inspections
-        sampleProduction = await trx("sample_productions")
-          .where("id", inspectionData.sample_production_id)
-          .select("sample_batch_number", "menu_item_id")
-          .first();
-        menuItemId = sampleProduction?.menu_item_id || menuItemId;
-      } else if (inspectionData.menu_item_id) {
-        // For direct inspections - ensure menu item exists
-        const menuItem = await trx("menu_items")
-          .where("id", inspectionData.menu_item_id)
-          .select("id", "menu_item_name")
-          .first();
-
-        if (!menuItem) {
-          throw new Error("Menu item not found");
-        }
-      }
-
-      // Ensure we have a menu_item_id for the inspection
-      if (!menuItemId) {
-        throw new Error("Menu item ID is required for quality inspection");
+      if (!menuItem) {
+        throw new Error("Menu item not found");
       }
 
       // Prepare data for insertion
@@ -318,8 +253,8 @@ class QualityInspection {
         inspection_time: inspectionData.inspection_time || trx.fn.now(),
         retest_date: this.convertDateFormat(inspectionData.retest_date),
         // Convert empty strings to null for integer fields
-        sample_production_id: inspectionData.sample_production_id || null,
-        menu_item_id: menuItemId, // Use the resolved menuItemId
+        sample_production_id: null, // No longer used
+        menu_item_id: inspectionData.menu_item_id,
         inspector_id: inspectionData.inspector_id || null,
         approved_by: inspectionData.approved_by || null,
         // Convert empty strings to null and decimal values to integers for numeric fields
@@ -374,8 +309,8 @@ class QualityInspection {
       // Log the quality inspection action (after transaction commit)
       try {
         await AuditLogger.log({
-          menu_item_id: menuItemId,
-          sample_production_id: inspectionData.sample_production_id,
+          menu_item_id: inspectionData.menu_item_id,
+          sample_production_id: null,
           quality_inspection_id: inspectionId,
           employee_id: inspectionData.inspector_id,
           action_type: "QUALITY_INSPECTION",
@@ -384,10 +319,9 @@ class QualityInspection {
             inspection_type: inspectionData.inspection_type,
             result: inspectionData.result,
             overall_quality_score: inspectionData.overall_quality_score,
-            sample_batch_number: sampleProduction?.sample_batch_number,
             requires_retest: inspectionData.requires_retest,
           },
-          notes: `Quality inspection completed${sampleProduction?.sample_batch_number ? ` for batch ${sampleProduction.sample_batch_number}` : ""} - Result: ${inspectionData.result}`,
+          notes: `Quality inspection completed for ${menuItem.menu_item_name} - Result: ${inspectionData.result}`,
         });
       } catch (auditError) {
         console.warn("Failed to create audit log:", auditError.message);
@@ -445,7 +379,7 @@ class QualityInspection {
       // Log the update action
       await AuditLogger.log({
         menu_item_id: currentInspection.menu_item_id,
-        sample_production_id: currentInspection.sample_production_id,
+        sample_production_id: null,
         quality_inspection_id: id,
         employee_id: userId,
         action_type: "QUALITY_INSPECTION",
@@ -527,13 +461,12 @@ class QualityInspection {
       try {
         await AuditLogger.log({
           menu_item_id: inspection.menu_item_id,
-          sample_production_id: inspection.sample_production_id,
+          sample_production_id: null,
           quality_inspection_id: id,
           employee_id: approvedByUserId,
           action_type: "QUALITY_PASSED",
           action_details: {
             inspection_number: currentInspection.inspection_number,
-            sample_batch_number: currentInspection.sample_batch_number,
             menu_item_name: currentInspection.menu_item_name,
             overall_quality_score: currentInspection.overall_quality_score,
           },
@@ -593,13 +526,12 @@ class QualityInspection {
       // Log the failure action
       await AuditLogger.log({
         menu_item_id: currentInspection.menu_item_id,
-        sample_production_id: currentInspection.sample_production_id,
+        sample_production_id: null,
         quality_inspection_id: id,
         employee_id: userId,
         action_type: "QUALITY_FAILED",
         action_details: {
           inspection_number: currentInspection.inspection_number,
-          sample_batch_number: currentInspection.sample_batch_number,
           menu_item_name: currentInspection.menu_item_name,
           overall_quality_score: currentInspection.overall_quality_score,
           findings: findings,
@@ -635,13 +567,12 @@ class QualityInspection {
       // Log the retest action
       await AuditLogger.log({
         menu_item_id: currentInspection.menu_item_id,
-        sample_production_id: currentInspection.sample_production_id,
+        sample_production_id: null,
         quality_inspection_id: id,
         employee_id: userId,
         action_type: "QUALITY_INSPECTION",
         action_details: {
           inspection_number: currentInspection.inspection_number,
-          sample_batch_number: currentInspection.sample_batch_number,
           menu_item_name: currentInspection.item_name,
           result: "Retest Required",
           retest_date: retestDate,
@@ -705,15 +636,9 @@ class QualityInspection {
           "qi.*",
           db.raw(
             "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as inspector_name"
-          ),
-          "sp.sample_batch_number"
+          )
         )
         .leftJoin("employees as e", "qi.inspector_id", "e.id")
-        .leftJoin(
-          "sample_productions as sp",
-          "qi.sample_production_id",
-          "sp.id"
-        )
         .where("qi.menu_item_id", menuItemId)
         .whereNull("qi.deleted_at")
         .orderBy("qi.created_at", "desc");
@@ -729,19 +654,13 @@ class QualityInspection {
       return await db("menu_quality_inspections as qi")
         .select(
           "qi.*",
-          "mi.item_name",
+          "mi.menu_item_name as item_name",
           "mi.item_code",
-          "sp.sample_batch_number",
           db.raw(
             "COALESCE(e.first_name,'') || ' ' || COALESCE(e.last_name,'') as inspector_name"
           )
         )
         .leftJoin("menu_items as mi", "qi.menu_item_id", "mi.id")
-        .leftJoin(
-          "sample_productions as sp",
-          "qi.sample_production_id",
-          "sp.id"
-        )
         .leftJoin("employees as e", "qi.inspector_id", "e.id")
         .where("qi.result", "Pending")
         .whereNull("qi.deleted_at")
@@ -767,14 +686,13 @@ class QualityInspection {
       // Log the deletion action
       await AuditLogger.log({
         menu_item_id: currentInspection.menu_item_id,
-        sample_production_id: currentInspection.sample_production_id,
+        sample_production_id: null,
         quality_inspection_id: id,
         employee_id: userId,
         action_type: "DELETED",
         action_details: {
           inspection_number: currentInspection.inspection_number,
           menu_item_name: currentInspection.item_name,
-          sample_batch_number: currentInspection.sample_batch_number,
         },
         notes: `Quality inspection deleted for "${currentInspection.item_name}"`,
       });

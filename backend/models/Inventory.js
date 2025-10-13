@@ -193,7 +193,7 @@ class Inventory {
   // Get inventory summary by category with detailed breakdown
   static async getInventorySummary() {
     try {
-      // Get category-level summary
+      // Get category-level summary with last updated timestamp
       const categorySummary = await db("inventory_items as ii")
         .leftJoin("inventory_item_types as it", "ii.item_type_id", "it.id")
         .leftJoin("inventory_categories as ic", "it.category_id", "ic.id")
@@ -204,7 +204,8 @@ class Inventory {
           db.raw("COUNT(DISTINCT ii.item_type_id) as unique_items"),
           db.raw("SUM(ii.quantity) as total_quantity"),
           db.raw("SUM(ii.total_value) as total_value"),
-          db.raw("COUNT(ii.id) as total_entries")
+          db.raw("COUNT(ii.id) as total_entries"),
+          db.raw("MAX(ii.updated_at) as last_updated")
         )
         .whereNull("ii.deleted_at")
         .where("ii.status", "available")
@@ -1388,14 +1389,8 @@ class Inventory {
               .map((update) => `WHEN ${update.id} THEN ${update.quantity}`)
               .join(" ")} END`
           ),
-          updated_at: trx.raw(
-            `CASE id ${updateData
-              .map(
-                (update) =>
-                  `WHEN ${update.id} THEN '${update.updated_at.toISOString()}'`
-              )
-              .join(" ")} END`
-          ),
+          // Use database-generated timestamp to avoid type mismatch with timestamptz
+          updated_at: trx.fn.now(),
         };
 
         await trx("inventory_items")

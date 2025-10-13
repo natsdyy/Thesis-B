@@ -169,11 +169,6 @@ class AuditLogger {
         .leftJoin("employees as u", "al.employee_id", "u.id")
         .leftJoin("menu_items as mi", "al.menu_item_id", "mi.id")
         .leftJoin(
-          "sample_productions as sp",
-          "al.sample_production_id",
-          "sp.id"
-        )
-        .leftJoin(
           "menu_quality_inspections as qi",
           "al.quality_inspection_id",
           "qi.id"
@@ -183,7 +178,6 @@ class AuditLogger {
           db.raw("concat(u.first_name,' ',u.last_name) as user_name"),
           "u.email as user_email",
           "mi.menu_item_name",
-          "sp.sample_batch_number",
           "qi.inspection_number"
         )
         .orderBy("al.created_at", "desc");

@@ -46,8 +46,12 @@ const EMAIL_CONFIG = {
 const hasValidEmailConfig = () => {
   // More lenient SendGrid detection
   const hasSendGrid =
-    (process.env.SENDGRID_API_KEY && process.env.SENDGRID_API_KEY.startsWith('SG.') && process.env.SENDGRID_API_KEY.length > 10) ||
-    (process.env.SENDGRID_API_KEY_2 && process.env.SENDGRID_API_KEY_2.startsWith('SG.') && process.env.SENDGRID_API_KEY_2.length > 10);
+    (process.env.SENDGRID_API_KEY &&
+      process.env.SENDGRID_API_KEY.startsWith("SG.") &&
+      process.env.SENDGRID_API_KEY.length > 10) ||
+    (process.env.SENDGRID_API_KEY_2 &&
+      process.env.SENDGRID_API_KEY_2.startsWith("SG.") &&
+      process.env.SENDGRID_API_KEY_2.length > 10);
 
   // More lenient SMTP detection
   const hasSMTP = process.env.SMTP_PASS && process.env.SMTP_PASS.length > 5;
@@ -69,6 +73,9 @@ const hasValidEmailConfig = () => {
     sendGridKey: process.env.SENDGRID_API_KEY
       ? `${process.env.SENDGRID_API_KEY.substring(0, 10)}...`
       : "undefined",
+    sendGridKey2: process.env.SENDGRID_API_KEY_2
+      ? `${process.env.SENDGRID_API_KEY_2.substring(0, 10)}...`
+      : "undefined",
     smtpPass: process.env.SMTP_PASS
       ? `${process.env.SMTP_PASS.substring(0, 5)}...`
       : "undefined",
@@ -78,6 +85,8 @@ const hasValidEmailConfig = () => {
     allEnvVars: Object.keys(process.env).filter(
       (key) => key.includes("SMTP") || key.includes("SENDGRID")
     ),
+    nodeEnv: process.env.NODE_ENV,
+    railwayEnv: process.env.RAILWAY_ENVIRONMENT,
   });
 
   // In Railway, if we have any email config, consider it valid
@@ -382,6 +391,15 @@ class EmailService {
     // Try SendGrid first if API key is available (Railway recommended)
     const sendGridKey =
       process.env.SENDGRID_API_KEY || process.env.SENDGRID_API_KEY_2;
+    
+    console.log("🔍 SendGrid Debug:", {
+      hasSendGridKey: !!sendGridKey,
+      sendGridKeyPrefix: sendGridKey ? sendGridKey.substring(0, 10) + "..." : "undefined",
+      isValidFormat: sendGridKey && sendGridKey.startsWith("SG."),
+      keyLength: sendGridKey ? sendGridKey.length : 0,
+      isNotDefault: sendGridKey !== "your-sendgrid-api-key-here"
+    });
+    
     if (
       sendGridKey &&
       sendGridKey !== "your-sendgrid-api-key-here" &&
@@ -408,7 +426,13 @@ class EmailService {
         "⚠️  SendGrid not configured - Railway email may fail due to SMTP port blocking"
       );
       if (sendGridKey) {
-        console.log("🔍 SendGrid key detected but invalid format");
+        console.log("🔍 SendGrid key detected but invalid format:", {
+          hasKey: !!sendGridKey,
+          startsWithSG: sendGridKey.startsWith("SG."),
+          isDefault: sendGridKey === "your-sendgrid-api-key-here"
+        });
+      } else {
+        console.log("🔍 No SendGrid key found in environment variables");
       }
     }
 

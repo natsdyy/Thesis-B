@@ -4,8 +4,9 @@ const SendGridService = require("./sendGridService");
 require("dotenv").config();
 
 // Initialize SendGrid if API key is available
+// Try SENDGRID_API_KEY_2 first since SENDGRID_API_KEY appears to be invalid
 const sendGridKey =
-  process.env.SENDGRID_API_KEY || process.env.SENDGRID_API_KEY_2;
+  process.env.SENDGRID_API_KEY_2 || process.env.SENDGRID_API_KEY;
 if (
   sendGridKey &&
   sendGridKey !== "your-sendgrid-api-key-here" &&
@@ -405,8 +406,9 @@ class EmailService {
     }
 
     // Try SendGrid first if API key is available (Railway recommended)
+    // Try SENDGRID_API_KEY_2 first since SENDGRID_API_KEY appears to be invalid
     const sendGridKey =
-      process.env.SENDGRID_API_KEY || process.env.SENDGRID_API_KEY_2;
+      process.env.SENDGRID_API_KEY_2 || process.env.SENDGRID_API_KEY;
 
     console.log("🔍 SendGrid Debug:", {
       hasSendGridKey: !!sendGridKey,

@@ -538,17 +538,33 @@ router.post("/forgot-password", async (req, res) => {
       updated_at: new Date(),
     });
 
-    // Send password recovery email
-    const emailResult = await EmailService.sendPasswordRecoveryEmail(
-      trimmedEmail,
-      resetToken,
-      `${employee.first_name} ${employee.last_name}`
-    );
+    // Send password recovery email with timeout
+    try {
+      const emailPromise = EmailService.sendPasswordRecoveryEmail(
+        trimmedEmail,
+        resetToken,
+        `${employee.first_name} ${employee.last_name}`
+      );
+      
+      // Add 30-second timeout for email sending
+      const emailResult = await Promise.race([
+        emailPromise,
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Email sending timeout')), 30000)
+        )
+      ]);
 
-    if (!emailResult.success) {
+      if (!emailResult.success) {
+        console.error(
+          "Failed to send password recovery email:",
+          emailResult.error
+        );
+        // Don't reveal email sending failure to user for security
+      }
+    } catch (emailError) {
       console.error(
-        "Failed to send password recovery email:",
-        emailResult.error
+        "Email sending failed or timed out:",
+        emailError.message
       );
       // Don't reveal email sending failure to user for security
     }

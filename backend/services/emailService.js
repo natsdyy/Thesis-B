@@ -394,12 +394,19 @@ class EmailService {
       sendGridKey.startsWith("SG.")
     ) {
       console.log("📧 Attempting to send via SendGrid (Railway-compatible)...");
-      const sendGridResult = await this.sendViaSendGrid(emailData);
-      if (sendGridResult.success) {
-        console.log("✅ SendGrid email sent successfully (Railway-compatible)");
-        return sendGridResult;
+      try {
+        const sendGridResult = await this.withTimeout(
+          this.sendViaSendGrid(emailData),
+          20000 // 20 second timeout for SendGrid
+        );
+        if (sendGridResult.success) {
+          console.log("✅ SendGrid email sent successfully (Railway-compatible)");
+          return sendGridResult;
+        }
+        console.log("❌ SendGrid failed, falling back to SMTP...");
+      } catch (sendGridError) {
+        console.log("❌ SendGrid timed out or failed:", sendGridError.message);
       }
-      console.log("❌ SendGrid failed, falling back to SMTP...");
     } else {
       console.log(
         "⚠️  SendGrid not configured - Railway email may fail due to SMTP port blocking"
@@ -411,7 +418,15 @@ class EmailService {
 
     // Fallback to SMTP (may fail on Railway due to port blocking)
     console.log("📧 Sending via SMTP fallback (may timeout on Railway)...");
-    return await this.sendViaSMTP(emailData);
+    try {
+      return await this.withTimeout(
+        this.sendViaSMTP(emailData),
+        25000 // 25 second timeout for SMTP
+      );
+    } catch (smtpError) {
+      console.error("❌ All email methods failed:", smtpError.message);
+      return { success: false, error: "Email service unavailable" };
+    }
   }
 
   /**
@@ -507,9 +522,9 @@ class EmailService {
   /**
    * Wrapper to add timeout to email operations
    * @param {Promise} emailPromise - The email promise
-   * @param {number} timeoutMs - Timeout in milliseconds (default: 30000 for production)
+   * @param {number} timeoutMs - Timeout in milliseconds (default: 25000 for production)
    */
-  static async withTimeout(emailPromise, timeoutMs = 30000) {
+  static async withTimeout(emailPromise, timeoutMs = 25000) {
     return Promise.race([
       emailPromise,
       new Promise((_, reject) =>

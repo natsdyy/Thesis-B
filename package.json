@@ -29,7 +29,8 @@
   "dependencies": {
     "@sendgrid/mail": "^8.1.6",
     "@tailwindcss/vite": "^4.1.11",
-    "lucide-vue-next": "^0.539.0"
+    "lucide-vue-next": "^0.539.0",
+    "vue3-print-nb": "^0.1.4"
   },
   "engines": {
     "node": "18.20.5",

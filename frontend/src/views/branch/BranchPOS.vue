@@ -25,6 +25,8 @@
   import { apiConfig } from '../../config/api.js';
   import QRCodeGenerator from '../../components/common/QRCodeGenerator.vue';
   import POSTransactionModal from '../../components/branch/POSTransactionModal.vue';
+  
+
 
   const branchContextStore = useBranchContextStore();
   const authStore = useAuthStore();
@@ -408,6 +410,12 @@
 
   const showReceipt = () => {
     if (orderCompleteData.value) {
+      // Calculate VAT breakdown for visualization
+      const totalAmount = parseFloat(orderCompleteData.value.total_amount || 0);
+      const vatRate = 0.12; // 12% VAT
+      const subtotalBeforeVat = totalAmount / (1 + vatRate);
+      const vatAmount = totalAmount - subtotalBeforeVat;
+
       receiptData.value = {
         ...orderCompleteData.value,
         cashierName: user.value?.name,
@@ -417,6 +425,10 @@
         orderType: confirmationOrderType.value,
         timestamp: new Date().toLocaleString(),
         qrData: `${getQRBaseUrl()}/rate-order?order=${encodeURIComponent(orderCompleteData.value.order_number)}`,
+        // VAT breakdown for visualization
+        subtotalBeforeVat: subtotalBeforeVat,
+        vatAmount: vatAmount,
+        vatRate: vatRate,
       };
       showReceiptModal.value = true;
     }
@@ -428,20 +440,136 @@
   };
 
   const printReceipt = () => {
-    try {
-      if (typeof window !== 'undefined' && window.print) {
-        window.print();
-        closeReceiptModal();
-      } else {
-        console.warn('Print function not available');
-        // Fallback: just close modal
-        closeReceiptModal();
-      }
-    } catch (error) {
-      console.error('Error printing receipt:', error);
-      // Fallback: just close modal
-      closeReceiptModal();
+    const printArea = document.getElementById('print-area');
+    if (!printArea) {
+      console.error('Print area not found');
+      return;
     }
+
+    // Extract QR image (if rendered as canvas)
+    let qrImgHtml = '';
+    try {
+      const qrCanvas = printArea.querySelector('canvas');
+      if (qrCanvas && typeof qrCanvas.toDataURL === 'function') {
+        const dataUrl = qrCanvas.toDataURL('image/png');
+        qrImgHtml = `<div style="text-align:center;margin-top:8px"><img src="${dataUrl}" alt="QR" style="width:120px;height:120px;object-fit:contain"/></div>`;
+      }
+    } catch {}
+
+    const r = receiptData.value || {};
+    const items = Array.isArray(r.items) ? r.items : [];
+
+    const currency = (n) => `₱${(parseFloat(n || 0)).toFixed(2)}`;
+
+    const itemsRows = items
+      .map((it) => {
+        const name = it.item_name || it.name || '';
+        const qty = it.quantity || 0;
+        const total = it.total_price != null ? it.total_price : (it.price || 0) * qty;
+        return `<tr>
+          <td style="padding:4px 0;word-break:break-word">${name}</td>
+          <td style="padding:4px 0;text-align:center">${qty} ×</td>
+          <td style="padding:4px 0;text-align:right">${currency(total)}</td>
+        </tr>`;
+      })
+      .join('');
+
+    const html = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Receipt</title>
+    <style>
+      @page { margin: 5mm; }
+      html, body { height: 100%; }
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol'; margin: 0; color: #111; }
+      .receipt { max-width: 80mm; width: 100%; margin: 0 auto; padding: 4mm 0; }
+      .h { text-align: center; }
+      .h .title { font-size: 16px; font-weight: 700; margin: 0 0 2mm; }
+      .h .muted { font-size: 12px; }
+      .meta { font-size: 11px; color: #444; display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; }
+      .section { margin-top: 3mm; }
+      .line { border-top: 1px dashed #bbb; margin: 3mm 0; }
+      table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      th, td { font-weight: 600; }
+      .totals table td { padding: 3px 0; }
+      .muted { color: #555; font-weight: 500; }
+      .center { text-align: center; }
+      .thanks { margin-top: 6mm; font-size: 11px; text-align: center; color: #333; }
+      .note { font-size: 10px; color: #666; text-align: center; margin-top: 2mm; }
+      /* Ensure single-page print */
+      .receipt, .section, table, tr, td { page-break-inside: avoid; }
+    </style>
+  </head>
+  <body>
+    <div class="receipt">
+      <div class="h">
+        <div class="title">Countryside Steak House</div>
+        <div class="muted">${r.branchName || ''}</div>
+        <div class="muted">${r.branchLocation || ''}</div>
+        <div class="muted">${r.timestamp || ''}</div>
+      </div>
+
+      <div class="section meta">
+        <div>Order #:</div><div>${r.order_number || ''}</div>
+        <div>Type:</div><div>${r.orderType || ''}</div>
+        <div>Cashier:</div><div>${r.cashierName || ''}</div>
+      </div>
+
+      <div class="line"></div>
+
+      <div class="section">
+        <table>
+          <thead>
+            <tr>
+              <td class="muted">Item</td>
+              <td class="muted" style="text-align:center">Qty</td>
+              <td class="muted" style="text-align:right">Total</td>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsRows}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="line"></div>
+
+      <div class="section totals">
+        <table>
+          <tr><td>Subtotal:</td><td style="text-align:right">${currency(r.subtotalBeforeVat)}</td></tr>
+          <tr><td>Tax (${((r.vatRate || 0) * 100).toFixed(0)}%):</td><td style="text-align:right">${currency(r.vatAmount)}</td></tr>
+          <tr><td><strong>Total Amount:</strong></td><td style="text-align:right"><strong>${currency(r.total_amount)}</strong></td></tr>
+          <tr><td>Amount Paid:</td><td style="text-align:right">${currency(r.amount_paid)}</td></tr>
+          <tr><td><strong>Change:</strong></td><td style="text-align:right"><strong>${currency(r.change_amount)}</strong></td></tr>
+        </table>
+      </div>
+
+      <div class="line"></div>
+
+      <div class="note" style="margin-top:4mm">Tell us about your visit. Scan the QR code below and share your experience!</div>
+      ${qrImgHtml}
+
+      <div class="thanks">Thank you, please come again!</div>
+    </div>
+  </body>
+  </html>`;
+
+    const printWindow = window.open('', '_blank', 'width=480,height=800');
+    if (!printWindow) {
+      console.error('Unable to open print window');
+      return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.onload = () => {
+      printWindow.print();
+      printWindow.close();
+    };
+
+    closeReceiptModal();
   };
 
   const resetOrder = () => {
@@ -1529,115 +1657,131 @@
         <div
           class="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
         >
-          <!-- Receipt Header -->
-          <div class="text-center mb-6">
-            <h2 class="text-2xl font-bold text-gray-900 mb-2">
-              Countryside Steak House
-            </h2>
-            <p class="text-sm text-gray-600 mb-1">
-              {{ receiptData?.branchName }}
-            </p>
-            <p class="text-xs text-gray-500 mb-4">
-              {{ receiptData?.branchLocation }}
-            </p>
-            <div class="border-t border-gray-300 pt-2">
-              <p class="text-xs text-gray-600">
-                {{ receiptData?.timestamp }}
+          <div id="print-area">
+            <!-- Receipt Header -->
+            <div class="text-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900 mb-2">
+                Countryside Steak House
+              </h2>
+              <p class="text-sm text-gray-600 mb-1">
+                {{ receiptData?.branchName }}
               </p>
-            </div>
-          </div>
-
-          <!-- Order Details -->
-          <div class="space-y-4 mb-6">
-            <!-- Order Info -->
-            <div class="text-sm">
-              <div class="flex justify-between mb-2">
-                <span class="font-medium">Order #:</span>
-                <span>{{ receiptData?.order_number }}</span>
-              </div>
-              <div class="flex justify-between mb-2">
-                <span class="font-medium">Type:</span>
-                <span>{{ receiptData?.orderType }}</span>
-              </div>
-              <div class="flex justify-between mb-2">
-                <span class="font-medium">Cashier:</span>
-                <span>{{ receiptData?.cashierName }}</span>
+              <p class="text-xs text-gray-500 mb-4">
+                {{ receiptData?.branchLocation }}
+              </p>
+              <div class="border-t border-gray-300 pt-2">
+                <p class="text-xs text-gray-600">
+                  {{ receiptData?.timestamp }}
+                </p>
               </div>
             </div>
 
-            <!-- Order Items -->
-            <div class="border-t border-gray-300 pt-4">
-              <div class="space-y-2">
-                <div
-                  v-for="item in receiptData?.items"
-                  :key="item.id"
-                  class="flex justify-between text-sm"
-                >
-                  <div class="flex flex- row gap-3">
-                    <p class="font-medium">{{ item.item_name }}</p>
-                    <p class="text-gray-600">
-                      {{ item.quantity }}
-                      <font-awesome-icon
-                        icon="fa-solid fa-xmark"
-                        class="!w-3 !h-3"
-                      />
-                    </p>
+            <!-- Order Details -->
+            <div class="space-y-4 mb-6">
+              <!-- Order Info -->
+              <div class="text-sm">
+                <div class="flex justify-between mb-2">
+                  <span class="font-medium">Order #:</span>
+                  <span>{{ receiptData?.order_number }}</span>
+                </div>
+                <div class="flex justify-between mb-2">
+                  <span class="font-medium">Type:</span>
+                  <span>{{ receiptData?.orderType }}</span>
+                </div>
+                <div class="flex justify-between mb-2">
+                  <span class="font-medium">Cashier:</span>
+                  <span>{{ receiptData?.cashierName }}</span>
+                </div>
+              </div>
+
+              <!-- Order Items -->
+              <div class="border-t border-gray-300 pt-4">
+                <div class="space-y-2">
+                  <div
+                    v-for="item in receiptData?.items"
+                    :key="item.id"
+                    class="flex justify-between text-sm"
+                  >
+                    <div class="flex flex- row gap-3">
+                      <p class="font-medium">{{ item.item_name }}</p>
+                      <p class="text-gray-600">
+                        {{ item.quantity }}
+                        <font-awesome-icon
+                          icon="fa-solid fa-xmark"
+                          class="!w-3 !h-3"
+                        />
+                      </p>
+                    </div>
+                    <div class="text-right">
+                      <p class="font-semibold">
+                        <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                        {{ parseFloat(item.total_price || 0).toFixed(2) }}
+                      </p>
+                    </div>
                   </div>
-                  <div class="text-right">
-                    <p class="font-semibold">
+                </div>
+              </div>
+
+              <!-- Payment Summary -->
+              <div class="border-t border-gray-300 pt-4">
+                <div class="space-y-1 text-sm">
+                  <div class="flex justify-between">
+                    <span>Subtotal:</span>
+                    <span>
                       <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                      {{ parseFloat(item.total_price || 0).toFixed(2) }}
-                    </p>
+                      {{ parseFloat(receiptData?.subtotalBeforeVat || 0).toFixed(2) }}
+                    </span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span>Tax ({{ (receiptData?.vatRate * 100 || 0).toFixed(0) }}%):</span>
+                    <span>
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{ parseFloat(receiptData?.vatAmount || 0).toFixed(2) }}
+                    </span>
+                  </div>
+                  <div class="flex justify-between font-semibold border-t border-gray-300 pt-1">
+                    <span>Total Amount:</span>
+                    <span>
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{ parseFloat(receiptData?.total_amount || 0).toFixed(2) }}
+                    </span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span>Amount Paid:</span>
+                    <span>
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{ parseFloat(receiptData?.amount_paid || 0).toFixed(2) }}
+                    </span>
+                  </div>
+                  <div
+                    class="flex justify-between font-semibold text-primaryColor border-t border-gray-300 pt-2"
+                  >
+                    <span>Change:</span>
+                    <span>
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{ parseFloat(receiptData?.change_amount || 0).toFixed(2) }}
+                    </span>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <!-- Payment Summary -->
-            <div class="border-t border-gray-300 pt-4">
-              <div class="space-y-1 text-sm">
-                <div class="flex justify-between">
-                  <span>Subtotal:</span>
-                  <span>
-                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                    {{ parseFloat(receiptData?.total_amount || 0).toFixed(2) }}
-                  </span>
+              <!-- QR Code -->
+              <div class="border-t border-gray-300 pt-3 text-center">
+                <p class="text-xs text-gray-500">
+                  Tell us about your visit. Scan the QR code below and share your
+                  experience!
+                </p>
+                <div class="mb-2 flex justify-center">
+                  <div class="w-32 h-32 flex items-center justify-center">
+                    <QRCodeGenerator
+                      :data="receiptData?.qrData"
+                      :size="120"
+                      class="max-w-full max-h-full"
+                    />
+                  </div>
                 </div>
-                <div class="flex justify-between">
-                  <span>Amount Paid:</span>
-                  <span>
-                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                    {{ parseFloat(receiptData?.amount_paid || 0).toFixed(2) }}
-                  </span>
-                </div>
-                <div
-                  class="flex justify-between font-semibold text-primaryColor border-t border-gray-300 pt-2"
-                >
-                  <span>Change:</span>
-                  <span>
-                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                    {{ parseFloat(receiptData?.change_amount || 0).toFixed(2) }}
-                  </span>
-                </div>
+                <p class="text-xs text-gray-500">Thank you, please come again!</p>
               </div>
-            </div>
-
-            <!-- QR Code -->
-            <div class="border-t border-gray-300 pt-3 text-center">
-              <p class="text-xs text-gray-500">
-                Tell us about your visit. Scan the QR code below and share your
-                experience!
-              </p>
-              <div class="mb-2 flex justify-center">
-                <div class="w-32 h-32 flex items-center justify-center">
-                  <QRCodeGenerator
-                    :data="receiptData?.qrData"
-                    :size="120"
-                    class="max-w-full max-h-full"
-                  />
-                </div>
-              </div>
-              <p class="text-xs text-gray-500">Thank you, please come again!</p>
             </div>
           </div>
 
@@ -1916,6 +2060,45 @@
   @media (max-width: 768px) and (orientation: landscape) {
     .max-h-96 {
       max-height: 50vh;
+    }
+  }
+
+  /* Print styles for receipt */
+  @media print {
+    .fixed {
+      position: static !important;
+    }
+    
+    .bg-black\/50,
+    .backdrop-blur-sm {
+      background: transparent !important;
+      backdrop-filter: none !important;
+    }
+    
+    .rounded-lg {
+      border-radius: 0 !important;
+    }
+    
+    .shadow-lg,
+    .shadow-sm {
+      box-shadow: none !important;
+    }
+    
+    .max-w-md {
+      max-width: none !important;
+    }
+    
+    .max-h-\[90vh\] {
+      max-height: none !important;
+    }
+    
+    .overflow-y-auto {
+      overflow: visible !important;
+    }
+    
+    /* Hide action buttons in print */
+    .flex.flex-col.sm\:flex-row.space-y-2 {
+      display: none !important;
     }
   }
 </style>

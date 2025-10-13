@@ -7,6 +7,7 @@
   import SalesTrendsChart from '../branch/SalesTrendsChart.vue';
   import BarChartJS from '../finance/BarChartJS.vue';
   import SalesForecastChart from '../finance/SalesForecastChart.vue';
+  import { useFeedbackStore } from '@/stores/feedbackStore.js';
   import {
     getCurrentPhilippineTime,
     convertUTCToPhilippine,
@@ -22,6 +23,7 @@
   const branchStore = useBranchStore();
   const posStore = usePOSStore();
   const productionStore = useProductionStore();
+  const feedbackStore = useFeedbackStore();
 
   // Controls
   const selectedBranch = ref('all');
@@ -48,6 +50,39 @@
     analysis: null,
   });
   const allForecasts = ref([]);
+
+  // Feedback aggregates keyed by menu_item_id
+  const feedbackByItemId = ref(new Map());
+  const rebuildFeedbackAggregates = () => {
+    const map = new Map();
+    const list = Array.isArray(feedbackStore.orderRatings)
+      ? feedbackStore.orderRatings
+      : [];
+    list.forEach((fb) => {
+      const itemRatings = fb?.item_ratings || {};
+      Object.entries(itemRatings).forEach(([itemIdStr, ratingObj]) => {
+        const itemId = Number(itemIdStr);
+        if (!Number.isFinite(itemId)) return;
+        const rec = map.get(itemId) || {
+          count: 0,
+          sum: 0,
+          negativeCount: 0,
+          positiveCount: 0,
+          comments: [],
+        };
+        const r = Number(ratingObj?.rating || 0);
+        rec.count += 1;
+        rec.sum += r;
+        if (r <= 2) rec.negativeCount += 1;
+        if (r >= 4) rec.positiveCount += 1;
+        if (ratingObj?.comment && rec.comments.length < 3) {
+          rec.comments.push(String(ratingObj.comment));
+        }
+        map.set(itemId, rec);
+      });
+    });
+    feedbackByItemId.value = map;
+  };
 
   const itemIdToTags = ref(new Map());
   const inventoryByItemId = ref(new Map());
@@ -154,6 +189,19 @@
       startDate.setDate(
         endDate.getDate() - Math.max(1, parseInt(lookbackDays.value || 30))
       );
+
+      // Load customer feedback within the same window to enrich promo suggestions
+      try {
+        await feedbackStore.fetchOrderRatings({
+          date_from: startDate.toISOString(),
+          date_to: endDate.toISOString(),
+          limit: 500,
+          offset: 0,
+        });
+        rebuildFeedbackAggregates();
+      } catch (e) {
+        feedbackByItemId.value = new Map();
+      }
 
       // Which branches
       let branchIds = [];
@@ -1049,6 +1097,14 @@
           const availableQty = Number(inv.available_quantity || 0);
           const totalProduced = Number(inv.total_produced || 0);
           const dailyConsumption = Number(item.dailyAvgQty || 0);
+          const fbAgg = feedbackByItemId.value.get(Number(item.itemId));
+          const ratingCount = fbAgg?.count || 0;
+          const ratingAvg = ratingCount
+            ? Math.round((fbAgg.sum / ratingCount) * 10) / 10
+            : null;
+          const negativeRate = ratingCount
+            ? fbAgg.negativeCount / ratingCount
+            : 0;
           const daysSinceActivity = (() => {
             if (!item.lastActivity) return Infinity;
             const now = getCurrentPhilippineTime();
@@ -1069,6 +1125,24 @@
             (f) => Number(f.id) === Number(item.itemId)
           );
           const trendDirection = forecastEntry?.trendDirection || 'stable';
+
+          // QUALITY: High proportion of recent low ratings
+          if (ratingCount >= 3 && negativeRate >= 0.4) {
+            itemSuggestions.push({
+              type: 'quality',
+              priority: 'high',
+              title: 'Quality Check Recommended',
+              reason: `Customer feedback shows ${(negativeRate * 100).toFixed(0)}% low ratings${ratingAvg != null ? ` (avg ${ratingAvg}/5)` : ''}`,
+              recommendation:
+                'Investigate quality/consistency; pause discounts',
+              discountType: 'none',
+              discountValue: 0,
+              duration: 'asap',
+              expectedImpact: 'Improve satisfaction and retention',
+              icon: 'fa-solid fa-exclamation-triangle',
+              color: 'text-warning',
+            });
+          }
 
           // 1) URGENT: very low days-of-cover regardless of trend
           if (availableQty > 0 && daysOfCover <= 3) {

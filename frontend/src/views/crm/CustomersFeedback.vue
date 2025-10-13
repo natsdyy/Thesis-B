@@ -187,19 +187,7 @@
         <div class="flex items-center space-x-4">
           <h3 class="text-lg font-medium text-gray-900">Order Ratings</h3>
           <div class="flex items-center space-x-2">
-            <button
-              @click="viewMode = 'cards'"
-              :class="[
-                'px-3 py-1 rounded-md text-sm font-medium transition-colors cusrsor-pointer',
-                viewMode === 'cards'
-                  ? 'bg-primaryColor/10 text-primaryColor'
-                  : 'text-gray-500 hover:text-gray-700',
-              ]"
-            >
-              <font-awesome-icon icon="fa-solid fa-th-large" class="mr-1" />
-              Cards
-            </button>
-            <button
+                        <button
               @click="viewMode = 'list'"
               :class="[
                 'px-3 py-1 rounded-md text-sm font-medium transition-colors cursor-pointer',
@@ -211,6 +199,19 @@
               <font-awesome-icon icon="fa-solid fa-list" class="mr-1" />
               List
             </button>
+            <button
+              @click="viewMode = 'cards'"
+              :class="[
+                'px-3 py-1 rounded-md text-sm font-medium transition-colors !cusrsor-pointer',
+                viewMode === 'cards'
+                  ? 'bg-primaryColor/10 text-primaryColor'
+                  : 'text-gray-500 hover:text-gray-700',
+              ]"
+            >
+              <font-awesome-icon icon="fa-solid fa-th-large" class="mr-1" />
+              Cards
+            </button>
+
           </div>
         </div>
         <div class="text-sm text-gray-500">
@@ -1258,7 +1259,7 @@
   } = useCustomToast();
 
   // Local component state
-  const viewMode = ref('cards');
+  const viewMode = ref('list');
   const showImageModal = ref(false);
   const selectedImage = ref('');
   const showReplyModal = ref(false);

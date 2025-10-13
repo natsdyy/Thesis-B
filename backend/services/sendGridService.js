@@ -70,7 +70,7 @@ class SendGridService {
       const msg = {
         to: to,
         from: {
-          email: "noreply@countryside-steakhouse.site",
+          email: "mailcountrysidesteakhouse@gmail.com",
           name: "Countryside Steakhouse",
         },
         subject: "Welcome to Countryside Supplier Portal",
@@ -195,7 +195,7 @@ class SendGridService {
       const msg = {
         to: to,
         from: {
-          email: "noreply@countryside-steakhouse.site",
+          email: "mailcountrysidesteakhouse@gmail.com",
           name: "Countryside Steakhouse",
         },
         subject: "Welcome aboard to COUNTRYSIDE-STEAKHOUSE!",
@@ -372,7 +372,7 @@ class SendGridService {
       const msg = {
         to: to,
         from: {
-          email: "noreply@countryside-steakhouse.site",
+          email: "mailcountrysidesteakhouse@gmail.com",
           name: "Countryside Steakhouse",
         },
         subject: `Payroll Statement - ${payrollData.period_name}`,
@@ -630,7 +630,7 @@ class SendGridService {
       const msg = {
         to: to,
         from: {
-          email: "noreply@countryside-steakhouse.site",
+          email: "mailcountrysidesteakhouse@gmail.com",
           name: "Countryside Steakhouse",
         },
         subject: "Thank you for your feedback - Countryside Steakhouse",
@@ -795,7 +795,7 @@ class SendGridService {
       const msg = {
         to: to,
         from: {
-          email: "noreply@countryside-steakhouse.site",
+          email: "mailcountrysidesteakhouse@gmail.com",
           name: "Countryside Steakhouse",
         },
         subject: "Reset Your Password - Countryside Steakhouse",

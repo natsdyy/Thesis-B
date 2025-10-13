@@ -46,12 +46,8 @@ const EMAIL_CONFIG = {
 const hasValidEmailConfig = () => {
   // More lenient SendGrid detection
   const hasSendGrid =
-    process.env.SENDGRID_API_KEY &&
-    process.env.SENDGRID_API_KEY !==
-      "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" &&
-    process.env.SENDGRID_API_KEY_2 !==
-      "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" &&
-    process.env.SENDGRID_API_KEY.length > 10; // Reduced from 20 to 10
+    (process.env.SENDGRID_API_KEY && process.env.SENDGRID_API_KEY.startsWith('SG.') && process.env.SENDGRID_API_KEY.length > 10) ||
+    (process.env.SENDGRID_API_KEY_2 && process.env.SENDGRID_API_KEY_2.startsWith('SG.') && process.env.SENDGRID_API_KEY_2.length > 10);
 
   // More lenient SMTP detection
   const hasSMTP = process.env.SMTP_PASS && process.env.SMTP_PASS.length > 5;
@@ -351,9 +347,7 @@ class EmailService {
     try {
       const msg = {
         to: emailData.to,
-        from:
-          emailData.from ||
-          '"Countryside Steak House" <mailcountrysidesteakhouse@gmail.com>',
+        from: emailData.from || "mailcountrysidesteakhouse@gmail.com",
         subject: emailData.subject,
         text: emailData.text,
         html: emailData.html,
@@ -439,9 +433,7 @@ class EmailService {
   static async sendViaSMTP(emailData) {
     try {
       const mailOptions = {
-        from:
-          emailData.from ||
-          '"Countryside Steak House" <mailcountrysidesteakhouse@gmail.com>',
+        from: emailData.from || "mailcountrysidesteakhouse@gmail.com",
         to: emailData.to,
         subject: emailData.subject,
         html: emailData.html,

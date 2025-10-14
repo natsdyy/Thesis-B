@@ -54,6 +54,7 @@ const financeRoutes = require("./routes/finance");
 const cashMovementRoutes = require("./routes/cashMovements");
 const financeBalanceRoutes = require("./routes/financeBalances");
 const payrollRoutes = require("./routes/payroll");
+const executiveRoutes = require("./routes/executive");
 
 const app = express();
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 5000;
@@ -177,6 +178,7 @@ app.use("/api/finance", financeRoutes);
 app.use("/api/cash-movements", cashMovementRoutes);
 app.use("/api/finance-balances", financeBalanceRoutes);
 app.use("/api/payroll", payrollRoutes);
+app.use("/api/executive", executiveRoutes);
 
 // Auto-expire job
 async function autoExpireJob() {
@@ -223,8 +225,13 @@ app.get("/api/health", (req, res) => {
 // Debug endpoint for Railway environment variables
 app.get("/api/debug-env", (req, res) => {
   const emailVars = {};
-  Object.keys(process.env).forEach(key => {
-    if (key.includes('SMTP') || key.includes('SENDGRID') || key.includes('RAILWAY') || key.includes('NODE')) {
+  Object.keys(process.env).forEach((key) => {
+    if (
+      key.includes("SMTP") ||
+      key.includes("SENDGRID") ||
+      key.includes("RAILWAY") ||
+      key.includes("NODE")
+    ) {
       const value = process.env[key];
       if (value && value.length > 10) {
         emailVars[key] = `${value.substring(0, 10)}...`;
@@ -233,44 +240,47 @@ app.get("/api/debug-env", (req, res) => {
       }
     }
   });
-  
+
   res.json({
     environment: process.env.NODE_ENV,
     railwayEnvironment: process.env.RAILWAY_ENVIRONMENT,
     emailVariables: emailVars,
-    allEmailKeys: Object.keys(process.env).filter(key => key.includes('SMTP') || key.includes('SENDGRID'))
+    allEmailKeys: Object.keys(process.env).filter(
+      (key) => key.includes("SMTP") || key.includes("SENDGRID")
+    ),
   });
 });
 
 // Email test endpoint
 app.get("/api/test-email", async (req, res) => {
   try {
-    const EmailService = require('./services/emailService');
-    
+    const EmailService = require("./services/emailService");
+
     // Test email data
     const testEmailData = {
-      to: 'test@example.com', // This will fail but we can see the error
-      subject: 'Test Email from Countryside Steak House',
-      html: '<h1>Test Email</h1><p>This is a test email to verify email service functionality.</p>',
-      text: 'Test Email - This is a test email to verify email service functionality.'
+      to: "test@example.com", // This will fail but we can see the error
+      subject: "Test Email from Countryside Steak House",
+      html: "<h1>Test Email</h1><p>This is a test email to verify email service functionality.</p>",
+      text: "Test Email - This is a test email to verify email service functionality.",
     };
 
-    console.log('🧪 Testing email service...');
+    console.log("🧪 Testing email service...");
     const result = await EmailService.sendEmailWithFallback(testEmailData);
-    
+
     res.json({
       success: true,
-      message: 'Email test completed',
+      message: "Email test completed",
       emailServiceReady: EmailService.isEmailServiceReady(),
-      result: result
+      result: result,
     });
   } catch (error) {
-    console.error('❌ Email test failed:', error.message);
+    console.error("❌ Email test failed:", error.message);
     res.status(500).json({
       success: false,
-      message: 'Email test failed',
+      message: "Email test failed",
       error: error.message,
-      emailServiceReady: require('./services/emailService').isEmailServiceReady()
+      emailServiceReady:
+        require("./services/emailService").isEmailServiceReady(),
     });
   }
 });

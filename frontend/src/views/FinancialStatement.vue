@@ -911,7 +911,7 @@
           Financial Statement
         </h1>
         <p class="text-gray-600 mt-1">
-          Organization-wide summary (placeholder)
+          Organization-wide summary
         </p>
       </div>
       <div class="flex items-center gap-2">

@@ -284,7 +284,41 @@
   });
 
   const isActiveRoute = (menuRoute) => {
-    return route.path === menuRoute || route.path.startsWith(menuRoute + '/');
+    // Exact match
+    if (route.path === menuRoute) {
+      return true;
+    }
+
+    // Check if current path starts with menu route followed by a slash
+    // This ensures we don't match parent routes when on a child route
+    if (route.path.startsWith(menuRoute + '/')) {
+      // Get all menu routes to check for more specific matches
+      const allMenuRoutes = [];
+      Object.values(availableMenus.value).forEach((menus) => {
+        menus.forEach((menu) => {
+          if (menu.route) allMenuRoutes.push(menu.route);
+          if (menu.subItems) {
+            menu.subItems.forEach((subItem) => {
+              if (subItem.route) allMenuRoutes.push(subItem.route);
+            });
+          }
+        });
+      });
+
+      // Check if there's a more specific route that also matches
+      const hasMoreSpecificMatch = allMenuRoutes.some((otherRoute) => {
+        return (
+          otherRoute !== menuRoute &&
+          route.path.startsWith(otherRoute) &&
+          otherRoute.length > menuRoute.length
+        );
+      });
+
+      // Only highlight if there's no more specific match
+      return !hasMoreSpecificMatch;
+    }
+
+    return false;
   };
 
   // Methods

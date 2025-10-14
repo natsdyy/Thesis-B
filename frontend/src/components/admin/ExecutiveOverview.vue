@@ -8,12 +8,182 @@
     AlertTriangle,
     CheckCircle,
   } from 'lucide-vue-next';
+  import { ref, computed, onMounted, watch } from 'vue';
+  import SalesTrendsChart from '../branch/SalesTrendsChart.vue';
+  import { usePOSStore } from '../../stores/posStore';
+  import { useBranchStore } from '../../stores/branchStore';
+  import { getCurrentPhilippineTime } from '../../utils/timezoneUtils';
 
   const props = defineProps({
     kpis: { type: Object, required: true },
     topBranches: { type: Array, default: () => [] },
     alerts: { type: Array, default: () => [] },
+    period: { type: String, default: 'month' },
+    customMonth: { type: String, default: '' },
   });
+
+  const posStore = usePOSStore();
+  const branchStore = useBranchStore();
+
+  // Sales trend data
+  const salesTrendLoading = ref(false);
+  const salesTrendData = ref({
+    labels: [],
+    data: [],
+  });
+
+  // Calculate date range based on period
+  const getDateRange = () => {
+    const now = getCurrentPhilippineTime();
+    const build = (start, end) => ({ start, end });
+
+    if (props.period === 'today') {
+      const start = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        0,
+        0,
+        0,
+        0
+      );
+      const end = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        23,
+        59,
+        59,
+        999
+      );
+      return build(start, end);
+    }
+
+    if (props.period === 'week') {
+      const jsDay = now.getDay();
+      const daysSinceMonday = (jsDay + 6) % 7;
+      const startTmp = new Date(now);
+      startTmp.setDate(now.getDate() - daysSinceMonday);
+      const start = new Date(
+        startTmp.getFullYear(),
+        startTmp.getMonth(),
+        startTmp.getDate(),
+        0,
+        0,
+        0,
+        0
+      );
+      const end = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        23,
+        59,
+        59,
+        999
+      );
+      return build(start, end);
+    }
+
+    if (props.period === 'customMonth') {
+      const ym = String(props.customMonth || '').trim();
+      const [yStr, mStr] = ym.split('-');
+      const year = Number(yStr);
+      const monthIndex = Number(mStr) - 1;
+      const start = new Date(year, monthIndex, 1, 0, 0, 0, 0);
+      const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+      const end = new Date(year, monthIndex, lastDay, 23, 59, 59, 999);
+      return build(start, end);
+    }
+
+    // default this month
+    const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    const end = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      23,
+      59,
+      59,
+      999
+    );
+    return build(start, end);
+  };
+
+  // Fetch sales trend based on selected period
+  const fetchSalesTrend = async () => {
+    try {
+      salesTrendLoading.value = true;
+
+      // Get all active branches
+      const branches = branchStore.activeBranches || [];
+      if (branches.length === 0) {
+        salesTrendData.value = { labels: [], data: [] };
+        return;
+      }
+
+      // Calculate date range based on period
+      const { start, end } = getDateRange();
+
+      // Aggregate remittances across all branches
+      const dailyMap = new Map();
+
+      for (const branch of branches) {
+        const remittances = await posStore.fetchRemittances({
+          branchId: branch.id,
+          status: 'approved',
+          limit: 1000,
+        });
+
+        // Group remittances by approval date
+        (remittances.data || []).forEach((r) => {
+          const approvedAt = new Date(r.approved_at || r.created_at);
+          if (approvedAt >= start && approvedAt <= end) {
+            const dateKey = approvedAt.toISOString().split('T')[0];
+            const current = dailyMap.get(dateKey) || 0;
+            dailyMap.set(dateKey, current + Number(r.remitted_amount || 0));
+          }
+        });
+      }
+
+      // Sort dates chronologically
+      const sortedDates = Array.from(dailyMap.keys()).sort((a, b) => {
+        return new Date(a) - new Date(b);
+      });
+
+      // Build chart data
+      salesTrendData.value = {
+        labels: sortedDates,
+        data: sortedDates.map((date) => Math.round(dailyMap.get(date) || 0)),
+      };
+    } catch (error) {
+      console.error('Failed to fetch sales trend:', error);
+      salesTrendData.value = { labels: [], data: [] };
+    } finally {
+      salesTrendLoading.value = false;
+    }
+  };
+
+  onMounted(() => {
+    fetchSalesTrend();
+  });
+
+  // Watch for period changes and refetch data
+  watch(
+    () => props.period,
+    () => {
+      fetchSalesTrend();
+    }
+  );
+
+  watch(
+    () => props.customMonth,
+    () => {
+      if (props.period === 'customMonth') {
+        fetchSalesTrend();
+      }
+    }
+  );
 </script>
 
 <template>
@@ -106,34 +276,64 @@
     <!-- Sales Trend Delta -->
     <div class="card bg-white shadow-lg">
       <div class="card-body">
-        <div class="flex items-center justify-between">
-          <div class="text-sm text-gray-500">Sales Trend (Δ last 7 days)</div>
-          <component
-            :is="
-              (props.kpis.salesTrendDeltaPct || 0) >= 0
-                ? TrendingUp
-                : TrendingDown
-            "
-            class="w-4 h-4"
-            :class="
-              (props.kpis.salesTrendDeltaPct || 0) >= 0
-                ? 'text-green-600'
-                : 'text-red-600'
-            "
-          />
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <div class="text-sm font-semibold text-gray-700">
+              Sales Trend ({{
+                period === 'today'
+                  ? 'Today'
+                  : period === 'week'
+                    ? 'This Week'
+                    : period === 'customMonth'
+                      ? customMonth
+                      : 'This Month'
+              }})
+            </div>
+            <component
+              :is="
+                (props.kpis.salesTrendDeltaPct || 0) >= 0
+                  ? TrendingUp
+                  : TrendingDown
+              "
+              class="w-4 h-4"
+              :class="
+                (props.kpis.salesTrendDeltaPct || 0) >= 0
+                  ? 'text-green-600'
+                  : 'text-red-600'
+              "
+            />
+            <span
+              class="text-sm font-semibold"
+              :class="
+                (props.kpis.salesTrendDeltaPct || 0) >= 0
+                  ? 'text-green-700'
+                  : 'text-red-700'
+              "
+            >
+              {{ (props.kpis.salesTrendDeltaPct || 0) >= 0 ? '+' : ''
+              }}{{ Number(props.kpis.salesTrendDeltaPct || 0).toFixed(1) }}%
+            </span>
+          </div>
+        </div>
+
+        <!-- Sales Trend Chart -->
+        <div v-if="salesTrendLoading" class="flex justify-center py-8">
+          <div
+            class="loading loading-spinner loading-md text-primaryColor"
+          ></div>
         </div>
         <div
-          class="text-2xl font-bold"
-          :class="
-            (props.kpis.salesTrendDeltaPct || 0) >= 0
-              ? 'text-green-700'
-              : 'text-red-700'
-          "
+          v-else-if="salesTrendData.labels.length === 0"
+          class="text-center py-8 text-gray-500"
         >
-          {{ (props.kpis.salesTrendDeltaPct || 0) >= 0 ? '+' : ''
-          }}{{ Number(props.kpis.salesTrendDeltaPct || 0).toFixed(1) }}%
+          No sales data available for the last 7 days
         </div>
-        <div class="text-xs text-gray-500">Full chart coming soon</div>
+        <SalesTrendsChart
+          v-else
+          :labels="salesTrendData.labels"
+          :data="salesTrendData.data"
+          :metric="'totalSales'"
+        />
       </div>
     </div>
 
@@ -187,7 +387,13 @@
         <div class="flex items-center justify-between mb-2">
           <h3 class="font-bold text-lg">Alerts</h3>
         </div>
-        <div class="space-y-2">
+        <div
+          v-if="(props.alerts || []).length === 0"
+          class="p-3 rounded-lg bg-gray-50"
+        >
+          <span class="text-sm text-gray-500">No alerts at this time.</span>
+        </div>
+        <div v-else class="space-y-2">
           <div
             v-for="(a, idx) in props.alerts"
             :key="idx"

@@ -821,8 +821,8 @@
 
             <!-- Employee Table -->
             <div v-else-if="paginatedEmployees.length > 0" class="space-y-4">
-              <div class="overflow-x-auto">
-                <table class="table table-zebra w-full">
+              <div class="overflow-x-auto ">
+                <table class="table table-zebra w-full !bg-accentColor">
                   <thead>
                     <tr>
                       <th>Employee</th>

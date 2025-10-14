@@ -36,7 +36,8 @@ export const usePOSStore = defineStore('pos', () => {
   // Getters
   const filteredMenuItems = computed(() => {
     if (selectedCategory.value === 'All') {
-      return menuItems.value;
+      // Exclude Beverages from the default "All" view
+      return menuItems.value.filter((item) => item.category !== 'Beverages');
     }
     return menuItems.value.filter(
       (item) => item.category === selectedCategory.value

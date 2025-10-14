@@ -204,7 +204,7 @@
   });
 </script>
 <template>
-  <div class="min-h-screen bg-base-100">
+  <div class="min-h-screen bg-accentColor">
     <!-- Branch Header -->
     <div class="bg-primaryColor text-white shadow-lg">
       <div class="w-full px-4 py-3">

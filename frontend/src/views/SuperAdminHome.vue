@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, onMounted, watch } from 'vue';
+  import { ref, onMounted, watch, computed } from 'vue';
   import {
     LayoutDashboard,
     PhilippinePeso,
@@ -19,6 +19,7 @@
   } from '../utils/timezoneUtils.js';
   import { useFinanceBalanceStore } from '../stores/financeBalanceStore.js';
   import { useBranchContextStore } from '../stores/branchContextStore.js';
+  import { useExecutiveStore } from '../stores/executiveStore.js';
 
   const isLoading = ref(false);
   const activeTab = ref('overview');
@@ -27,23 +28,14 @@
     `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
   );
 
-  // Executive KPIs (placeholders; replace with real services when ready)
-  const kpis = ref({
-    todaySales: 0,
-    mtdSales: 0,
-    grossMarginPct: 0,
-    cashOnHand: 0,
-    activeBranches: 0,
-    salesTrendDeltaPct: 0,
-    payrollMtd: 0,
-    pendingPayrollApprovals: 0,
-  });
+  const executiveStore = useExecutiveStore();
+  const financeBalanceStore = useFinanceBalanceStore();
+  const branchContext = useBranchContextStore();
 
-  // Top branches (placeholder data)
-  const topBranches = ref([]);
-
-  // Alerts (placeholder)
-  const alerts = ref([]);
+  // Use data from executive store
+  const kpis = computed(() => executiveStore.kpis);
+  const topBranches = computed(() => executiveStore.topBranches);
+  const alerts = computed(() => executiveStore.alerts);
 
   // Placeholder analytics props for nested components
   const analyticsLoading = ref(false);
@@ -54,9 +46,6 @@
     disposed: [],
     net: [],
   });
-
-  const financeBalanceStore = useFinanceBalanceStore();
-  const branchContext = useBranchContextStore();
 
   function getDateRange() {
     const now = getCurrentPhilippineTime();
@@ -143,49 +132,8 @@
   const loadData = async () => {
     isLoading.value = true;
     try {
-      // TODO: Replace with analyticsService/finance APIs
-      await new Promise((r) => setTimeout(r, 500));
-      kpis.value = {
-        todaySales: 154200.5,
-        mtdSales: 2885400.75,
-        grossMarginPct: 42.3,
-        cashOnHand: 920000.0,
-        activeBranches: 5,
-        salesTrendDeltaPct: 7.8,
-        payrollMtd: 812345.67,
-        pendingPayrollApprovals: 2,
-      };
-      topBranches.value = [
-        { name: 'Imus', sales: 612340.12, aov: 356.2, growth: 9.1, oos: 2 },
-        { name: 'Tanza', sales: 598122.32, aov: 341.7, growth: 6.3, oos: 1 },
-        { name: 'Kawit', sales: 521889.5, aov: 329.5, growth: 4.5, oos: 0 },
-        {
-          name: 'Gen. Trias',
-          sales: 489221.87,
-          aov: 312.1,
-          growth: 3.2,
-          oos: 3,
-        },
-        { name: 'Bacoor', sales: 471004.3, aov: 318.8, growth: 2.6, oos: 1 },
-      ];
-      alerts.value = [
-        {
-          type: 'inventory',
-          text: 'Low stock: Beef Steak (Imus, Tanza)',
-          level: 'warning',
-        },
-        {
-          type: 'approval',
-          text: '3 budget releases pending approval',
-          level: 'info',
-        },
-        {
-          type: 'cash',
-          text: 'Cash movement pending confirmation (Finance)',
-          level: 'info',
-        },
-      ];
-      // systemHealth removed per request
+      // Fetch all executive data from the API
+      await executiveStore.fetchAllData(period.value, customMonth.value);
 
       // Optionally align Cash on Hand with finance totals
       try {
@@ -197,9 +145,12 @@
         await financeBalanceStore.fetchTotals();
         const totals = financeBalanceStore.totals || {};
         if (Number.isFinite(Number(totals.total_balance))) {
-          kpis.value.cashOnHand = Number(totals.total_balance);
+          // Update cash on hand in KPIs if needed
+          executiveStore.kpis.cashOnHand = Number(totals.total_balance);
         }
       } catch {}
+    } catch (error) {
+      console.error('Error loading executive data:', error);
     } finally {
       isLoading.value = false;
     }
@@ -284,6 +235,8 @@
           :kpis="kpis"
           :topBranches="topBranches"
           :alerts="alerts"
+          :period="period"
+          :customMonth="customMonth"
         />
       </div>
 

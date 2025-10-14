@@ -25,8 +25,6 @@
   import { apiConfig } from '../../config/api.js';
   import QRCodeGenerator from '../../components/common/QRCodeGenerator.vue';
   import POSTransactionModal from '../../components/branch/POSTransactionModal.vue';
-  
-
 
   const branchContextStore = useBranchContextStore();
   const authStore = useAuthStore();
@@ -300,10 +298,7 @@
 
   // Calculate discounted price for menu items (for display in grid)
   const calculateMenuDiscountedPrice = (item) => {
-    if (
-      !item.promo_info ||
-      !item.promo_info.is_active
-    ) {
+    if (!item.promo_info || !item.promo_info.is_active) {
       return parseFloat(item.price || 0);
     }
 
@@ -312,7 +307,8 @@
 
     if (item.promo_info.discount_type === 'percentage') {
       discountAmount =
-        originalPrice * (parseFloat(item.promo_info.discount_percentage || 0) / 100);
+        originalPrice *
+        (parseFloat(item.promo_info.discount_percentage || 0) / 100);
     } else if (item.promo_info.discount_type === 'fixed_amount') {
       discountAmount = parseFloat(item.promo_info.discount_amount || 0);
     }
@@ -459,13 +455,14 @@
     const r = receiptData.value || {};
     const items = Array.isArray(r.items) ? r.items : [];
 
-    const currency = (n) => `₱${(parseFloat(n || 0)).toFixed(2)}`;
+    const currency = (n) => `₱${parseFloat(n || 0).toFixed(2)}`;
 
     const itemsRows = items
       .map((it) => {
         const name = it.item_name || it.name || '';
         const qty = it.quantity || 0;
-        const total = it.total_price != null ? it.total_price : (it.price || 0) * qty;
+        const total =
+          it.total_price != null ? it.total_price : (it.price || 0) * qty;
         return `<tr>
           <td style="padding:4px 0;word-break:break-word">${name}</td>
           <td style="padding:4px 0;text-align:center">${qty} ×</td>
@@ -1024,7 +1021,7 @@
               <div
                 v-for="item in posStore.filteredMenuItems"
                 :key="item.id"
-                class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer flex p-5 relative"
+                class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer flex flex-col p-4 relative"
                 :class="{
                   'opacity-60 border-red-300 bg-red-50': item.is_expired,
                   'border-orange-300 bg-orange-50':
@@ -1037,13 +1034,15 @@
                   handleAddToOrder(item)
                 "
               >
-                <!-- Item Image -->
-                <div class="w-2/5 bg-gray-100 aspect-square">
+                <!-- Item Image (Top) -->
+                <div
+                  class="w-full bg-gray-100 aspect-square rounded-md overflow-hidden"
+                >
                   <img
                     v-if="item.image_url"
                     :src="item.image_url"
                     :alt="item.name"
-                    class="w-full h-full object-cover rounded-lg"
+                    class="w-full h-full object-cover"
                   />
                   <div
                     v-else
@@ -1076,13 +1075,15 @@
                     EXPIRES SOON
                   </div>
                 </div>
-
-                <!-- Item Details -->
-                <div class="w-3/5 p-3 flex flex-col justify-between">
-                  <div>
-                    <!-- Stock -->
+                <!-- Item Details (Bottom) -->
+                <div class="flex-1 w-full pt-3 flex flex-col">
+                  <div class="flex items-center justify-between">
+                    <h2 class="font-semibold text-gray-900 text-md truncate">
+                      {{ item.name }}
+                    </h2>
+                    <!-- Stock Badge -->
                     <span
-                      class="badge badge-sm border-none mb-1"
+                      class="badge badge-sm border-none"
                       :class="
                         item.is_expired
                           ? 'bg-red-500/20 text-red-600'
@@ -1099,10 +1100,13 @@
                             : `Stock: ${item.stock_quantity}`
                       }}
                     </span>
-                    <!-- Promo Discount Badge -->
+                  </div>
+
+                  <!-- Promo Badge (optional) -->
+                  <div class="mt-2">
                     <span
                       v-if="item.promo_info"
-                      class="badge badge-sm border-none ml-1"
+                      class="badge badge-sm border-none"
                       :class="
                         item.promo_info.is_active
                           ? 'bg-warning/20 text-warning'
@@ -1118,54 +1122,11 @@
                         icon="fa-solid fa-star"
                         class="w-3 h-3 mr-1"
                       />
-                      {{ item.promo_info.is_active ? 'PROMO' : 'PROMO' }}
+                      PROMO
                     </span>
                   </div>
-                  <div class="my-5">
-                    <!-- Name -->
-                    <h2 class="font-semibold text-gray-900 text-md">
-                      {{ item.name }}
-                    </h2>
-                  </div>
 
-                  <div class="">
-                    <!-- Price -->
-                    <div class="mt-2">
-                      <p class="text-lg font-bold text-gray-900">
-                        <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                        {{ parseFloat(item.price).toFixed(2) }}
-                      </p>
-                      <!-- Show discounted price if promo applies -->
-                      <p
-                        v-if="
-                          item.promo_info &&
-                          item.promo_info.is_active &&
-                          item.promo_info.discount_type
-                        "
-                        class="text-sm font-semibold text-success"
-                      >
-                        <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                        {{ calculateMenuDiscountedPrice(item).toFixed(2) }}
-                        <span class="text-xs text-warning ml-1">
-                          (Save ₱{{
-                            (
-                              parseFloat(item.price) -
-                              calculateMenuDiscountedPrice(item)
-                            ).toFixed(2)
-                          }})
-                        </span>
-                        <!-- Show minimum quantity requirement if > 1 -->
-                        <div
-                          v-if="item.promo_info.minimum_quantity > 1"
-                          class="text-xs text-orange-600 mt-1"
-                        >
-                          Min: {{ item.promo_info.minimum_quantity }} pcs
-                        </div>
-                      </p>
-                    </div>
-                  </div>
-
-                  <!-- Order Button -->
+                  <!-- Price Button -->
                   <button
                     @click.stop="handleAddToOrder(item)"
                     :disabled="item.stock_quantity <= 0 || item.is_expired"
@@ -1178,13 +1139,21 @@
                           : 'btn-disabled'
                     "
                   >
-                    {{
-                      item.is_expired
-                        ? 'EXPIRED'
-                        : item.stock_quantity > 0
-                          ? 'Order'
-                          : 'Out of Stock'
-                    }}
+                    <template v-if="item.is_expired">EXPIRED</template>
+                    <template v-else-if="item.stock_quantity <= 0"
+                      >Out of Stock</template
+                    >
+                    <template v-else>
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{
+                        (item.promo_info &&
+                        item.promo_info.is_active &&
+                        item.promo_info.discount_type
+                          ? calculateMenuDiscountedPrice(item)
+                          : parseFloat(item.price || 0)
+                        ).toFixed(2)
+                      }}
+                    </template>
                   </button>
                 </div>
               </div>
@@ -1633,7 +1602,7 @@
             >
               <button
                 @click="closeOrderCompleteModal"
-                class="flex-1 btn btn-outline btn-sm sm:btn-md touch-manipulation font-thin hover:bg-gray-50"
+                class="flex-1 btn  btn-sm sm:btn-md touch-manipulation font-thin hover:bg-gray-50"
               >
                 New Order
               </button>
@@ -1729,21 +1698,33 @@
                     <span>Subtotal:</span>
                     <span>
                       <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                      {{ parseFloat(receiptData?.subtotalBeforeVat || 0).toFixed(2) }}
+                      {{
+                        parseFloat(receiptData?.subtotalBeforeVat || 0).toFixed(
+                          2
+                        )
+                      }}
                     </span>
                   </div>
                   <div class="flex justify-between">
-                    <span>Tax ({{ (receiptData?.vatRate * 100 || 0).toFixed(0) }}%):</span>
+                    <span
+                      >Tax ({{
+                        (receiptData?.vatRate * 100 || 0).toFixed(0)
+                      }}%):</span
+                    >
                     <span>
                       <font-awesome-icon icon="fa-solid fa-peso-sign" />
                       {{ parseFloat(receiptData?.vatAmount || 0).toFixed(2) }}
                     </span>
                   </div>
-                  <div class="flex justify-between font-semibold border-t border-gray-300 pt-1">
+                  <div
+                    class="flex justify-between font-semibold border-t border-gray-300 pt-1"
+                  >
                     <span>Total Amount:</span>
                     <span>
                       <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                      {{ parseFloat(receiptData?.total_amount || 0).toFixed(2) }}
+                      {{
+                        parseFloat(receiptData?.total_amount || 0).toFixed(2)
+                      }}
                     </span>
                   </div>
                   <div class="flex justify-between">
@@ -1759,7 +1740,9 @@
                     <span>Change:</span>
                     <span>
                       <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                      {{ parseFloat(receiptData?.change_amount || 0).toFixed(2) }}
+                      {{
+                        parseFloat(receiptData?.change_amount || 0).toFixed(2)
+                      }}
                     </span>
                   </div>
                 </div>
@@ -1768,8 +1751,8 @@
               <!-- QR Code -->
               <div class="border-t border-gray-300 pt-3 text-center">
                 <p class="text-xs text-gray-500">
-                  Tell us about your visit. Scan the QR code below and share your
-                  experience!
+                  Tell us about your visit. Scan the QR code below and share
+                  your experience!
                 </p>
                 <div class="mb-2 flex justify-center">
                   <div class="w-32 h-32 flex items-center justify-center">
@@ -1780,7 +1763,9 @@
                     />
                   </div>
                 </div>
-                <p class="text-xs text-gray-500">Thank you, please come again!</p>
+                <p class="text-xs text-gray-500">
+                  Thank you, please come again!
+                </p>
               </div>
             </div>
           </div>
@@ -2068,34 +2053,34 @@
     .fixed {
       position: static !important;
     }
-    
+
     .bg-black\/50,
     .backdrop-blur-sm {
       background: transparent !important;
       backdrop-filter: none !important;
     }
-    
+
     .rounded-lg {
       border-radius: 0 !important;
     }
-    
+
     .shadow-lg,
     .shadow-sm {
       box-shadow: none !important;
     }
-    
+
     .max-w-md {
       max-width: none !important;
     }
-    
+
     .max-h-\[90vh\] {
       max-height: none !important;
     }
-    
+
     .overflow-y-auto {
       overflow: visible !important;
     }
-    
+
     /* Hide action buttons in print */
     .flex.flex-col.sm\:flex-row.space-y-2 {
       display: none !important;

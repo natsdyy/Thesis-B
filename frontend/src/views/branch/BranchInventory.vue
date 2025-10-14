@@ -2255,7 +2255,7 @@
           <div
             class="card bg-gradient-to-br from-base-100 to-base-50 border border-gray-200 shadow-lg"
           >
-            <div class="card-body p-6">
+            <div class="card-body p-6 bg-accentColor">
               <div class="flex justify-between items-center mb-6">
                 <div class="flex items-center gap-3">
                   <div

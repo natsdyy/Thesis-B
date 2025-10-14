@@ -270,9 +270,7 @@
           <p
             class="text-sm"
             :class="
-              cashFlowSummary.operatingPositive
-                ? 'text-success'
-                : 'text-error'
+              cashFlowSummary.operatingPositive ? 'text-success' : 'text-error'
             "
           >
             Operating Activities
@@ -280,9 +278,7 @@
           <p
             class="text-lg font-bold"
             :class="
-              cashFlowSummary.operatingPositive
-                ? 'text-success'
-                : 'text-error'
+              cashFlowSummary.operatingPositive ? 'text-success' : 'text-error'
             "
           >
             {{ cashFlowSummary.operatingPositive ? '+' : ''
@@ -292,14 +288,14 @@
 
         <div
           class="p-3 rounded-lg"
-          :class="cashFlowSummary.netFlowPositive ? 'bg-success/10' : 'bg-error/10'"
+          :class="
+            cashFlowSummary.netFlowPositive ? 'bg-success/10' : 'bg-error/10'
+          "
         >
           <p
             class="text-sm"
             :class="
-              cashFlowSummary.netFlowPositive
-                ? 'text-success'
-                : 'text-error'
+              cashFlowSummary.netFlowPositive ? 'text-success' : 'text-error'
             "
           >
             Net Cash Flow
@@ -307,9 +303,7 @@
           <p
             class="text-lg font-bold"
             :class="
-              cashFlowSummary.netFlowPositive
-                ? 'text-success'
-                : 'text-error'
+              cashFlowSummary.netFlowPositive ? 'text-success' : 'text-error'
             "
           >
             {{ cashFlowSummary.netFlowPositive ? '+' : ''

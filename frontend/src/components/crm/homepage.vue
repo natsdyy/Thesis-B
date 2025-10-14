@@ -111,8 +111,8 @@
             </a>
           </nav>
 
-          <!-- Login Button -->
-          <div class="flex items-center space-x-2 sm:space-x-4">
+          <!-- Login Button (hidden on mobile, shown on md+) -->
+          <div class="hidden md:flex items-center space-x-2 sm:space-x-4">
             <button
               @click="goToLogin"
               class="border border-white text-white px-3 sm:px-4 md:px-6 py-1.5 sm:py-2 rounded-sm cursor-pointer transition-all duration-300 shadow-md font-thin text-sm sm:text-base"
@@ -134,6 +134,19 @@
       ]"
     >
       <nav class="py-3 sm:py-4 px-3 sm:px-4 space-y-1 sm:space-y-2">
+        <router-link
+          to="/login"
+          @click="closeMobileMenu()"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <font-awesome-icon
+              icon="fa-solid fa-right-to-bracket"
+              class="w-4 h-4 sm:w-5 sm:h-5 mr-3"
+            />
+            Login
+          </span>
+        </router-link>
         <router-link
           to="/menu"
           @click="closeMobileMenu()"
@@ -962,7 +975,7 @@
                     }}
                   </div>
                   <div
-                    class="text-white/90 text-xs font-thin uppercase tracking-wide mt-1 "
+                    class="text-white/90 text-xs font-thin uppercase tracking-wide mt-1"
                   >
                     OFF
                   </div>

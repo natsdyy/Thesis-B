@@ -287,7 +287,12 @@ function canAccessDepartment(userRole, userDepartment, routeDepartment) {
     return true;
   }
 
-  // Users can only access their own department
+  // Allow access to HR routes for all users (for attendance records)
+  if (routeDepartment === 'Human Resource') {
+    return true;
+  }
+
+  // Users can access their own department routes (both Staff and Manager)
   return userDepartment === routeDepartment;
 }
 

@@ -1192,6 +1192,9 @@
   const currentBranch = computed(() => branchContextStore.currentBranch);
   const userRole = computed(() => branchContextStore.userRole);
   const canEdit = computed(() => branchContextStore.canAccessInventory);
+  const isCook = computed(
+    () => (userRole.value || '').toLowerCase() === 'cook'
+  );
 
   const currentInventoryData = computed(() => {
     const source =
@@ -2071,7 +2074,19 @@
   onMounted(() => {
     // Data will be loaded by the watcher when currentBranch is available
     console.log('BranchInventory mounted, currentBranch:', currentBranch.value);
+    if (isCook.value) {
+      activeTab.value = 'inventory';
+    }
   });
+
+  // Ensure cooks stay on the Inventory List tab
+  watch(
+    isCook,
+    (val) => {
+      if (val) activeTab.value = 'inventory';
+    },
+    { immediate: false }
+  );
 </script>
 
 <template>
@@ -2099,6 +2114,7 @@
     <!-- Tabs -->
     <div class="tabs tabs-boxed mb-4 sm:mb-6 justify-center sm:justify-start">
       <button
+        v-if="!isCook"
         @click="activeTab = 'overview'"
         class="tab"
         :class="{ 'tab-active': activeTab === 'overview' }"
@@ -2115,6 +2131,7 @@
         Inventory List
       </button>
       <button
+        v-if="!isCook"
         @click="activeTab = 'alerts'"
         class="tab"
         :class="{ 'tab-active': activeTab === 'alerts' }"
@@ -2129,6 +2146,7 @@
         </span>
       </button>
       <button
+        v-if="!isCook"
         @click="activeTab = 'pending_distributions'"
         class="tab"
         :class="{ 'tab-active': activeTab === 'pending_distributions' }"
@@ -2143,6 +2161,7 @@
         </span>
       </button>
       <button
+        v-if="!isCook"
         @click="activeTab = 'distribution_history'"
         class="tab"
         :class="{ 'tab-active': activeTab === 'distribution_history' }"
@@ -2151,6 +2170,7 @@
         Distribution History
       </button>
       <button
+        v-if="!isCook"
         @click="activeTab = 'request_supply'"
         class="tab"
         :class="{ 'tab-active': activeTab === 'request_supply' }"
@@ -2159,6 +2179,7 @@
         Supply Request
       </button>
       <button
+        v-if="!isCook"
         @click="activeTab = 'return_items'"
         class="tab"
         :class="{ 'tab-active': activeTab === 'return_items' }"
@@ -2174,7 +2195,7 @@
     >
       <div class="card-body p-3 sm:p-4 lg:p-6">
         <!-- Overview Tab -->
-        <div v-if="activeTab === 'overview'" class="space-y-6">
+        <div v-if="activeTab === 'overview' && !isCook" class="space-y-6">
           <div
             class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6"
           >
@@ -2206,8 +2227,6 @@
           <div
             class="stats shadow w-full mb-4 sm:mb-6 bg-accentColor border border-black/10 stats-vertical lg:stats-horizontal xl:stats-horizontal rounded-lg"
           >
-
-
             <div
               class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
             >
@@ -2767,7 +2786,7 @@
         </div>
 
         <!-- Alerts Tab -->
-        <div v-if="activeTab === 'alerts'" class="space-y-6">
+        <div v-if="activeTab === 'alerts' && !isCook" class="space-y-6">
           <div
             class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
           >
@@ -3024,7 +3043,10 @@
         </div>
 
         <!-- Pending Distributions Tab -->
-        <div v-if="activeTab === 'pending_distributions'" class="space-y-6">
+        <div
+          v-if="activeTab === 'pending_distributions' && !isCook"
+          class="space-y-6"
+        >
           <div
             class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
           >
@@ -3252,7 +3274,10 @@
         </div>
 
         <!-- Distribution History -->
-        <div v-if="activeTab === 'distribution_history'" class="space-y-6">
+        <div
+          v-if="activeTab === 'distribution_history' && !isCook"
+          class="space-y-6"
+        >
           <div class="flex items-center justify-between">
             <h3 class="text-xl font-semibold text-primaryColor">
               Completed Distributions
@@ -3434,7 +3459,7 @@
         </div>
 
         <!-- Return Items Tab -->
-        <div v-if="activeTab === 'return_items'" class="space-y-6">
+        <div v-if="activeTab === 'return_items' && !isCook" class="space-y-6">
           <div
             class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
           >
@@ -3668,7 +3693,7 @@
         </div>
 
         <!-- Request Supply Tab -->
-        <div v-if="activeTab === 'request_supply'" class="space-y-6">
+        <div v-if="activeTab === 'request_supply' && !isCook" class="space-y-6">
           <BranchRequestSupply
             :inventory-type="inventoryType"
             @request-created="handleRequestCreated"

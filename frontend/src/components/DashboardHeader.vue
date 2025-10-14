@@ -192,19 +192,6 @@
             </router-link>
           </li>
 
-          <li>
-            <a
-              :class="[
-                'flex items-center space-x-3 px-3 py-2 rounded-md transition-colors',
-                themeStore.themeClasses.hoverBg,
-              ]"
-            >
-              <Settings class="w-4 h-4 text-primaryColor" />
-              <span :class="['text-sm', themeStore.themeClasses.textSecondary]"
-                >Account Settings</span
-              >
-            </a>
-          </li>
 
           <li>
             <router-link

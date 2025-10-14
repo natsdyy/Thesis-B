@@ -301,6 +301,42 @@ router.get("/history", authenticateToken, async (req, res) => {
   }
 });
 
+// Get comprehensive attendance data for a specific employee (includes OT and leave)
+router.get(
+  "/employee/:employeeId/comprehensive",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { employeeId } = req.params;
+      const { start_date, end_date } = req.query;
+
+      if (!start_date || !end_date) {
+        return res.status(400).json({
+          success: false,
+          message: "Start date and end date are required",
+        });
+      }
+
+      const data = await AttendanceRecord.getComprehensiveAttendanceData(
+        employeeId,
+        start_date,
+        end_date
+      );
+
+      res.json({
+        success: true,
+        data: data,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch comprehensive attendance data",
+        error: error.message,
+      });
+    }
+  }
+);
+
 // Public route for QR code validation (for mobile scanning)
 router.post("/validate-qr", async (req, res) => {
   try {

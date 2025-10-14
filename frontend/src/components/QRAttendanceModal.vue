@@ -8,8 +8,6 @@
         </button>
       </div>
 
-
-
       <!-- Schedule Information -->
       <div class="mb-6">
         <div class="card bg-base-100 shadow-sm border">
@@ -390,20 +388,24 @@
             currentStatus === 'checked-in' ||
             (scheduleValidation &&
               !scheduleValidation.isValid &&
-              scheduleValidation.reason !== 'NO_SCHEDULE')
+              scheduleValidation.reason !== 'NO_SCHEDULE' &&
+              !allowEarlyTimeIn)
           "
           :class="[
             'btn flex-1',
             currentStatus === 'on-leave'
               ? 'btn-outline opacity-50 cursor-not-allowed'
               : currentStatus === 'checked-out' &&
-                  (!scheduleValidation || scheduleValidation.isValid)
+                  (!scheduleValidation ||
+                    scheduleValidation.isValid ||
+                    allowEarlyTimeIn)
                 ? 'bg-primaryColor hover:bg-primaryColor/80 text-white font-thin  border-none'
                 : 'btn-outline',
             scheduleValidation &&
             !scheduleValidation.isValid &&
             scheduleValidation.reason !== 'NO_SCHEDULE' &&
-            currentStatus !== 'on-leave'
+            currentStatus !== 'on-leave' &&
+            !allowEarlyTimeIn
               ? 'opacity-50 cursor-not-allowed'
               : '',
           ]"
@@ -414,7 +416,8 @@
                 ? 'You have already timed in today'
                 : scheduleValidation &&
                     !scheduleValidation.isValid &&
-                    scheduleValidation.reason !== 'NO_SCHEDULE'
+                    scheduleValidation.reason !== 'NO_SCHEDULE' &&
+                    !allowEarlyTimeIn
                   ? 'Time-in is outside scheduled hours'
                   : ''
           "
@@ -861,6 +864,17 @@
   const scheduleInfo = ref(null);
   const scheduleValidation = ref(null);
   const scheduleLoading = ref(false);
+  const allowEarlyTimeIn = computed(() => {
+    const v = scheduleValidation.value;
+    return (
+      !!v &&
+      v.isValid === false &&
+      v.reason === 'OUTSIDE_SCHEDULE' &&
+      v.direction === 'before' &&
+      typeof v.timeDifference === 'number' &&
+      v.timeDifference <= 60
+    );
+  });
   const showSuccessModal = ref(false);
   const successMessage = ref('');
   const successData = ref(null);

@@ -356,6 +356,39 @@ export const useAttendanceStore = defineStore('attendance', () => {
     }
   };
 
+  const getEmployeeComprehensiveAttendance = async (
+    employeeId,
+    startDate,
+    endDate
+  ) => {
+    try {
+      loading.value = true;
+      error.value = null;
+
+      const response = await axios.get(
+        getApiUrl(`/attendance/employee/${employeeId}/comprehensive`),
+        {
+          ...getAuthHeaders(),
+          params: {
+            start_date: startDate,
+            end_date: endDate,
+          },
+        }
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (err) {
+      error.value = err.response?.data?.message || err.message;
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const clearError = () => {
     error.value = null;
   };
@@ -435,6 +468,7 @@ export const useAttendanceStore = defineStore('attendance', () => {
     validateQRCode,
     scanQRCode,
     getAttendanceReport,
+    getEmployeeComprehensiveAttendance,
     fetchMySchedule,
     validateSchedule,
     clearError,

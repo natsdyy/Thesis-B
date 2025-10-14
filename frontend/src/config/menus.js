@@ -20,17 +20,13 @@ import {
 
 export const menuItems = [
   // Human Resource Department
+
   {
-    name: 'Dashboard',
-    icon: LayoutDashboard,
-    route: '/hr/dashboard',
-    department: 'Human Resource',
-  },
-  {
-    name: 'Employees Management',
+    name: 'Employee Management',
     icon: Users,
     route: '/hr/employees',
     department: 'Human Resource',
+    managerOnly: true,
     subItems: [
       { name: 'Employee List', route: '/hr/employee-manager' },
       { name: 'Schedules', route: '/hr/schedules' },
@@ -44,6 +40,7 @@ export const menuItems = [
     icon: UserCheck,
     route: '/hr/approval-management',
     department: 'Human Resource',
+    managerOnly: true,
     subItems: [
       { name: 'Overtime Approvals', route: '/hr/overtime-approval' },
       { name: 'Leave Approvals', route: '/hr/leave-approvals' },
@@ -51,9 +48,16 @@ export const menuItems = [
   },
 
   {
-    name: 'Payroll',
+    name: 'Payroll Management',
     icon: PhilippinePeso,
     route: '/hr/payroll-management',
+    department: 'Human Resource',
+    managerOnly: true,
+  },
+  {
+    name: 'My Attendance',
+    icon: UserCheck,
+    route: '/hr/attendance',
     department: 'Human Resource',
   },
 
@@ -63,35 +67,47 @@ export const menuItems = [
     icon: LayoutDashboard,
     route: '/scm/dashboard',
     department: 'SCM',
+    managerOnly: true,
   },
   {
     name: 'Inventory',
     icon: Package,
     route: '/scm/main-inventory',
     department: 'SCM',
+    managerOnly: true,
   },
   {
     name: 'Supply Request',
     icon: ReceiptText,
     route: '/scm/request-supply',
     department: 'SCM',
+    managerOnly: true,
   },
   {
     name: 'Purchase Order',
     icon: ShoppingBag,
     route: '/scm/purchase-order',
     department: 'SCM',
+    managerOnly: true,
   },
   {
     name: 'Goods Receipt Notes',
     icon: ReceiptText,
     route: '/scm/grn',
     department: 'SCM',
+    managerOnly: true,
   },
   {
     name: 'Suppliers',
     icon: Truck,
     route: '/scm/suppliers',
+    department: 'SCM',
+    managerOnly: true,
+  },
+  {
+    name: 'My Attendance',
+    icon: UserCheck,
+    route: '/scm/attendance',
     department: 'SCM',
   },
   {
@@ -103,14 +119,21 @@ export const menuItems = [
   },
 
   // Finance Department
-
+  {
+    name: 'Dashboard',
+    icon: LayoutDashboard,
+    route: '/finance/dashboard',
+    department: 'Finance',
+    managerOnly: true,
+  },
   {
     name: 'Financial Management',
     icon: PhilippinePeso,
     route: '/finance/financial-management',
     department: 'Finance',
+    managerOnly: true,
     subItems: [
-      { name: 'Supply Request', route: '/finance/request-approval' },
+      { name: 'Request Approval', route: '/finance/request-approval' },
       { name: 'Payroll Approval', route: '/finance/payroll-approval' },
       { name: 'Budget Release', route: '/finance/budget-release' },
       { name: 'Cash Management', route: '/finance/cash-management' },
@@ -120,6 +143,13 @@ export const menuItems = [
     name: 'Sales',
     icon: BarChart3,
     route: '/finance/sales',
+    department: 'Finance',
+    managerOnly: true,
+  },
+  {
+    name: 'My Attendance',
+    icon: UserCheck,
+    route: '/finance/attendance',
     department: 'Finance',
   },
   {
@@ -136,12 +166,14 @@ export const menuItems = [
     icon: LayoutDashboard,
     route: '/production/dashboard',
     department: 'Production',
+    managerOnly: true,
   },
   {
     name: 'Menu Management',
     icon: ChefHat,
     route: '/production/menu-creation',
     department: 'Production',
+    managerOnly: true,
     subItems: [
       { name: 'Menu Creation', route: '/production/menu-creation' },
       { name: 'Quality Inspection', route: '/production/quality-inspection' },
@@ -156,13 +188,22 @@ export const menuItems = [
     icon: BookOpen,
     route: '/production/recipes',
     department: 'Production',
+    managerOnly: true,
   },
   {
     name: 'Production Inventory',
     icon: Package,
     route: '/production/production-inventory',
     department: 'Production',
+    managerOnly: true,
   },
+  {
+    name: 'My Attendance',
+    icon: UserCheck,
+    route: '/production/attendance',
+    department: 'Production',
+  },
+  
   {
     name: 'Employee Schedules',
     icon: Calendar,
@@ -171,17 +212,32 @@ export const menuItems = [
     managerOnly: true,
   },
 
-  // Customer Relationship
+  // Customer Relationship Management
   {
     name: 'Dashboard',
     icon: LayoutDashboard,
     route: '/crm/dashboard',
     department: 'CRM',
+    managerOnly: true,
   },
   {
     name: 'Customers Feedback',
     icon: Users,
     route: '/crm/customers-feedback',
+    department: 'CRM',
+    managerOnly: true,
+  },
+  {
+    name: 'Analytics',
+    icon: BarChart3,
+    route: '/crm/analytics',
+    department: 'CRM',
+    managerOnly: true,
+  },
+  {
+    name: 'My Attendance',
+    icon: UserCheck,
+    route: '/crm/attendance',
     department: 'CRM',
   },
   {

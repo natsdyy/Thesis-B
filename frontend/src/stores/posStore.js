@@ -617,6 +617,47 @@ export const usePOSStore = defineStore('pos', () => {
     }
   };
 
+  // Move an existing order to processing (for kitchen/cook receiving orders)
+  const processOrderById = async (orderId) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const url = getApiUrl(`/pos/orders/${orderId}/process`);
+      const { data: response } = await axios.post(
+        url,
+        {},
+        {
+          baseURL: apiConfig.baseURL,
+          headers: { ...getAuthHeaders() },
+        }
+      );
+
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to receive order');
+      }
+
+      // Update local history state if present
+      const orderIndex = orderHistory.value.findIndex((o) => o.id === orderId);
+      if (orderIndex !== -1) {
+        orderHistory.value[orderIndex].status = 'processing';
+        orderHistory.value[orderIndex].processedAt =
+          response.data?.processed_at || new Date().toISOString();
+      }
+
+      return response.data;
+    } catch (err) {
+      error.value =
+        err?.response?.data?.message ||
+        err.message ||
+        'Failed to receive order';
+      console.error('Error processing order by id:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const fetchOrderHistory = async (filters = {}) => {
     try {
       const {
@@ -1082,6 +1123,7 @@ export const usePOSStore = defineStore('pos', () => {
     cancelOrder,
     voidOrder,
     completeOrder,
+    processOrderById,
     fetchOrderHistory,
     fetchOrderById,
     fetchDailySummary,

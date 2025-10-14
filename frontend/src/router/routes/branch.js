@@ -11,6 +11,7 @@ const rolePermissions = {
     'dashboard',
     'sales',
     'inventory',
+    'kitchen',
     'employees',
     'profile',
     'attendance',
@@ -19,12 +20,13 @@ const rolePermissions = {
     'dashboard',
     'sales',
     'inventory',
+    'kitchen',
     'employees',
     'profile',
     'attendance',
   ],
   Cashier: ['dashboard', 'profile', 'attendance'],
-  Cook: ['dashboard', 'inventory', 'profile', 'attendance'],
+  Cook: ['dashboard', 'kitchen', 'inventory', 'profile', 'attendance'],
   Waiter: ['dashboard', 'profile', 'attendance'],
 };
 
@@ -91,6 +93,17 @@ export default [
       title: 'Sales Management',
       requiresAuth: true,
       operation: 'sales',
+    },
+  },
+  {
+    path: 'kitchen',
+    name: 'BranchKitchen',
+    component: () => import('../../views/branch/BranchKitchen.vue'),
+    beforeEnter: checkBranchAccess,
+    meta: {
+      title: 'Kitchen',
+      requiresAuth: true,
+      operation: 'kitchen',
     },
   },
   {

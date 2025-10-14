@@ -18,6 +18,7 @@
     Building2,
     MapPin,
     DollarSign,
+    Calendar,
   } from 'lucide-vue-next';
   import { useEmployeeStore } from '../../stores/employeeStore.js';
   import { usePositionsStore } from '../../stores/positionsStore.js';
@@ -25,6 +26,7 @@
   import { apiConfig } from '../../config/api.js';
   import { useBranchStore } from '../../stores/branchStore.js';
   import PayrollGenerationModal from '../../components/payroll/PayrollGenerationModal.vue';
+  import EmployeeAttendanceViewer from '../../components/hr/EmployeeAttendanceViewer.vue';
   import {
     PHILIPPINE_TIMEZONE,
     getCurrentPhilippineDate,
@@ -52,6 +54,9 @@
   const activeTab = ref('all');
   const selectedDepartment = ref('');
   const selectedBranch = ref('');
+
+  // View employee modal tab state
+  const viewEmployeeTab = ref('details'); // 'details' or 'attendance'
 
   // Attendance data
   const attendanceData = ref({});
@@ -473,6 +478,7 @@
   const closeView = () => {
     document.getElementById('view_employee_modal')?.close();
     selectedEmployee.value = null;
+    viewEmployeeTab.value = 'details'; // Reset to details tab
   };
 
   // Edit modal state
@@ -1275,7 +1281,7 @@
             <button
               @click="goToNextPage"
               :disabled="currentPage === totalPages"
-              class="btn btn-sm btn-outline"
+              class="btn bg"
             >
               Next
             </button>
@@ -1858,13 +1864,42 @@
   </dialog>
   <!-- View Employee Modal -->
   <dialog id="view_employee_modal" class="modal">
-    <div class="modal-box bg-accentColor text-black/70 max-w-4xl">
+    <div
+      class="modal-box bg-accentColor text-black/70 max-w-6xl max-h-[90vh] overflow-y-auto"
+    >
       <h3
         class="font-bold text-xl text-primaryColor mb-4 border-b border-black/10 pb-3"
       >
         Employee Details
       </h3>
-      <div v-if="selectedEmployee" class="space-y-6">
+
+      <!-- Tabs Navigation -->
+      <div class="tabs tabs-boxed mb-6" role="tablist">
+        <a
+          role="tab"
+          @click="viewEmployeeTab = 'details'"
+          class="tab"
+          :class="{ 'tab-active': viewEmployeeTab === 'details' }"
+        >
+          <Users class="w-4 h-4 mr-2" />
+          Details
+        </a>
+        <a
+          role="tab"
+          @click="viewEmployeeTab = 'attendance'"
+          class="tab"
+          :class="{ 'tab-active': viewEmployeeTab === 'attendance' }"
+        >
+          <Calendar class="w-4 h-4 mr-2" />
+          Attendance
+        </a>
+      </div>
+
+      <!-- Details Tab Content -->
+      <div
+        v-if="selectedEmployee && viewEmployeeTab === 'details'"
+        class="space-y-6"
+      >
         <!-- Basic Info -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
@@ -2083,6 +2118,19 @@
           </div>
         </div>
       </div>
+
+      <!-- Attendance Tab Content -->
+      <div
+        v-if="selectedEmployee && viewEmployeeTab === 'attendance'"
+        class="space-y-4"
+      >
+        <EmployeeAttendanceViewer
+          :employee-id="selectedEmployee.id"
+          :employee-name="`${selectedEmployee.first_name} ${selectedEmployee.last_name}`"
+        />
+      </div>
+
+      <!-- Modal Actions -->
       <div class="modal-action">
         <button
           @click="closeView"
@@ -2091,7 +2139,11 @@
           Close
         </button>
         <button
-          v-if="selectedEmployee && selectedEmployee.status !== 'Terminated'"
+          v-if="
+            selectedEmployee &&
+            selectedEmployee.status !== 'Terminated' &&
+            viewEmployeeTab === 'details'
+          "
           @click="updateEmployee(selectedEmployee)"
           class="btn btn-sm font-thin border-none bg-primaryColor hover:bg-primaryColor/80 text-white"
         >

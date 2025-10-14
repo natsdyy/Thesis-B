@@ -203,7 +203,7 @@ export const menuItems = [
     route: '/production/attendance',
     department: 'Production',
   },
-  
+
   {
     name: 'Employee Schedules',
     icon: Calendar,

@@ -302,6 +302,70 @@ function canAccessAdminRoutes(userRole, userDepartment) {
   return userRole === 'Super Admin' && userDepartment === 'System';
 }
 
+// Helper function to get department from route path
+function getDepartmentFromRoute(routePath) {
+  if (routePath.startsWith('/hr/')) return 'Human Resource';
+  if (routePath.startsWith('/scm/')) return 'SCM';
+  if (routePath.startsWith('/finance/')) return 'Finance';
+  if (routePath.startsWith('/production/')) return 'Production';
+  if (routePath.startsWith('/crm/')) return 'CRM';
+  if (routePath.startsWith('/branch/')) return 'Branch';
+  if (routePath.startsWith('/admin/')) return 'System';
+  return null;
+}
+
+// Helper function to check if route requires manager access
+function requiresManagerAccess(routePath) {
+  const managerOnlyRoutes = [
+    // HR Manager routes
+    '/hr/employee-manager',
+    '/hr/add-employee',
+    '/hr/schedules',
+    '/hr/overtime-approval',
+    '/hr/leave-approvals',
+    '/hr/positions',
+    '/hr/payroll-management',
+    '/hr/attendance-records',
+
+    // SCM Manager routes
+    '/scm/dashboard',
+    '/scm/main-inventory',
+    '/scm/request-supply',
+    '/scm/purchase-order',
+    '/scm/grn',
+    '/scm/suppliers',
+
+    // Finance Manager routes
+    '/finance/dashboard',
+    '/finance/request-approval',
+    '/finance/payroll-approval',
+    '/finance/budget-release',
+    '/finance/cash-management',
+    '/finance/sales',
+
+    // Production Manager routes
+    '/production/dashboard',
+    '/production/menu-creation',
+    '/production/recipes',
+    '/production/quality-inspection',
+    '/production/production-inventory',
+    '/production/production-execution',
+
+    // CRM Manager routes
+    '/crm/dashboard',
+    '/crm/customers-feedback',
+    '/crm/analytics',
+  ];
+
+  return managerOnlyRoutes.some((route) => routePath.startsWith(route));
+}
+
+// Helper function to check manager role access
+function canAccessManagerRoutes(userRole) {
+  // Super Admin and Manager roles can access manager routes
+  return userRole === 'Super Admin' || userRole === 'Manager';
+}
+
 // Add a global navigation guard
 router.beforeEach(async (to, from, next) => {
   // Check for supplier authentication
@@ -405,6 +469,41 @@ router.beforeEach(async (to, from, next) => {
     }
   }
 
+  // Check manager access for manager-only routes
+  if (requiresManagerAccess(to.path)) {
+    if (!canAccessManagerRoutes(userRole)) {
+      // Redirect to their appropriate dashboard
+      const userDashboard = getUserDashboardRoute(userDepartment);
+
+      // Show an error message
+      console.warn(
+        `Access denied: Only Manager and Super Admin roles can access ${to.path}`
+      );
+
+      next(userDashboard);
+      return;
+    }
+
+    // Check department-specific access for managers
+    const routeDepartment = getDepartmentFromRoute(to.path);
+    if (
+      routeDepartment &&
+      routeDepartment !== userDepartment &&
+      userRole !== 'Super Admin'
+    ) {
+      // Redirect to their appropriate dashboard
+      const userDashboard = getUserDashboardRoute(userDepartment);
+
+      // Show an error message
+      console.warn(
+        `Access denied: ${userRole} from ${userDepartment} department cannot access ${routeDepartment} routes`
+      );
+
+      next(userDashboard);
+      return;
+    }
+  }
+
   // Check admin access for admin routes
   if (to.meta.adminOnly) {
     if (!canAccessAdminRoutes(userRole, userDepartment)) {
@@ -438,11 +537,11 @@ router.beforeEach(async (to, from, next) => {
 // Helper function to get user's appropriate dashboard
 function getUserDashboardRoute(userDepartment) {
   const departmentRoutes = {
-    'Human Resource': '/hr/dashboard',
-    Finance: '/finance/dashboard',
-    SCM: '/scm/dashboard',
-    Production: '/production/dashboard',
-    CRM: '/crm/dashboard',
+    'Human Resource': '/hr/attendance',
+    Finance: '/finance/attendance',
+    SCM: '/scm/attendance',
+    Production: '/production/attendance',
+    CRM: '/crm/attendance',
     Branch: '/branch/dashboard',
     System: '/admin/dashboard',
   };

@@ -918,6 +918,31 @@ export const usePOSStore = defineStore('pos', () => {
     }
   };
 
+  // Upload a CSV attachment for a remittance
+  const uploadRemittanceCSV = async (
+    remittanceId,
+    fileBlob,
+    filename = 'remittance.csv'
+  ) => {
+    try {
+      const url = getApiUrl(`/finance/remittances/${remittanceId}/csv`);
+      const form = new FormData();
+      const file =
+        fileBlob instanceof Blob
+          ? fileBlob
+          : new Blob([String(fileBlob || '')], { type: 'text/csv' });
+      form.append('file', file, filename);
+      const { data } = await axios.post(url, form, {
+        baseURL: apiConfig.baseURL,
+        headers: { ...getAuthHeaders(), 'Content-Type': 'multipart/form-data' },
+      });
+      return data?.data || null;
+    } catch (err) {
+      console.error('Error uploading remittance CSV:', err);
+      throw err;
+    }
+  };
+
   // Check if there's already a pending remittance for the same period
   const hasPendingRemittance = async (branchId, dateFrom, dateTo) => {
     try {
@@ -1135,6 +1160,7 @@ export const usePOSStore = defineStore('pos', () => {
     approveRemittance,
     rejectRemittance,
     submitRemittance,
+    uploadRemittanceCSV,
     hasPendingRemittance,
     setSelectedCategory,
     initialize,

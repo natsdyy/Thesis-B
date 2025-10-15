@@ -422,11 +422,7 @@
           </button>
         </div>
 
-        <!-- Specific Remittance Info -->
-        <div v-if="remittanceId" class="alert alert-info mb-4">
-          <font-awesome-icon icon="fa-solid fa-info-circle" class="mr-2" />
-          Showing orders for Remittance ID: {{ remittanceId }}
-        </div>
+
         <!-- Summary Cards -->
         <div class="grid grid-cols-1 md:grid-cols-6 gap-3 mb-4">
           <div class="card bg-white shadow border border-black/10">
@@ -521,9 +517,11 @@
                     {{ formatItems(o) }}
                   </div>
                 </td>
-                <td class="text-xs font-semibold">
-                  ₱{{ parseFloat(o.total_amount || 0).toFixed(2) }}
-                </td>
+                <td class="text-xs font-semibold text-right">
+  <i class="fa-solid fa-peso-sign mr-1"></i>
+  {{ Number(o.total_amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}
+</td>
+
                 <td class="text-xs">
                   {{ o.cashier_first_name }} {{ o.cashier_last_name }}
                 </td>

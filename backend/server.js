@@ -127,6 +127,18 @@ app.use(
   express.static(require("path").join(__dirname, "uploads"))
 );
 
+// Proxy for serving any uploaded files with consistent prefix used by finance route
+app.use(
+  "/api/uploads-proxy",
+  (req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET");
+    res.header("Access-Control-Allow-Headers", "Content-Type");
+    next();
+  },
+  express.static(require("path").join(__dirname))
+);
+
 // Serve frontend static files
 const frontendPath = require("path").join(__dirname, "..", "frontend", "dist");
 app.use(express.static(frontendPath));

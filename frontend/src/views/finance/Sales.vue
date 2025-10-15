@@ -335,6 +335,8 @@
                     : derivedVoided,
                 net_sales: Number(r.net_sales || 0),
                 remitted_amount: Number(r.remitted_amount || 0),
+                csv_url: r.csv_url || null,
+                csv_filename: r.csv_filename || null,
                 cashier_count: 0,
                 submitted_by:
                   `${r.submitted_first_name || ''} ${r.submitted_last_name || ''}`.trim(),
@@ -447,6 +449,8 @@
                     ),
               net_sales: Number(r.net_sales || 0),
               remitted_amount: Number(r.remitted_amount || 0),
+              csv_url: r.csv_url || null,
+              csv_filename: r.csv_filename || null,
               cashier_count: 0,
               submitted_by:
                 `${r.submitted_first_name || ''} ${r.submitted_last_name || ''}`.trim(),
@@ -1576,12 +1580,23 @@
                       }}
                     </td>
                     <td class="text-xs">
-                      <button
-                        class="btn btn-xs btn-outline text-primaryColor"
-                        @click.stop="openRemitForBranch(row, entry)"
-                      >
-                        View Remit
-                      </button>
+                      <div class="flex gap-1">
+                        <button
+                          class="btn btn-xs btn-outline text-primaryColor"
+                          @click.stop="openRemitForBranch(row, entry)"
+                        >
+                          View Remit
+                        </button>
+                        <a
+                          v-if="entry.csv_url"
+                          class="btn btn-xs"
+                          :href="entry.csv_url"
+                          download
+                          @click.stop
+                        >
+                          Download CSV
+                        </a>
+                      </div>
                     </td>
                   </tr>
                 </tbody>

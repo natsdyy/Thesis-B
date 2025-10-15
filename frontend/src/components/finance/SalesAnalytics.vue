@@ -1584,29 +1584,14 @@
 
           <div v-else class="space-y-4">
             <!-- Summary cards -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-1 gap-4">
               <div class="stat bg-gray-50 rounded-lg p-4">
                 <div class="stat-title text-xs">Next 7 Days (All Branches)</div>
                 <div class="stat-value text-lg text-primaryColor">
                   ₱{{ (cashFlow.totals.daily7 || 0).toLocaleString() }}
                 </div>
               </div>
-              <div class="stat bg-gray-50 rounded-lg p-4">
-                <div class="stat-title text-xs">
-                  Next 4 Weeks (All Branches)
-                </div>
-                <div class="stat-value text-lg text-primaryColor">
-                  ₱{{ (cashFlow.totals.weekly4 || 0).toLocaleString() }}
-                </div>
-              </div>
-              <div class="stat bg-gray-50 rounded-lg p-4">
-                <div class="stat-title text-xs">
-                  Next 30 Days (All Branches)
-                </div>
-                <div class="stat-value text-lg text-primaryColor">
-                  ₱{{ (cashFlow.totals.monthly1 || 0).toLocaleString() }}
-                </div>
-              </div>
+
             </div>
 
             <!-- Per-branch table -->
@@ -1616,22 +1601,18 @@
                   <tr>
                     <th class="text-xs">Branch</th>
                     <th class="text-xs">Next 7 Days</th>
-                    <th class="text-xs">Next 4 Weeks</th>
-                    <th class="text-xs">Next 30 Days</th>
+
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="b in cashFlow.byBranch" :key="b.branch_id">
                     <td class="text-xs">{{ b.branch_name }}</td>
-                    <td class="text-xs font-medium">
-                      ₱{{ (b.totals.daily7 || 0).toLocaleString() }}
-                    </td>
-                    <td class="text-xs font-medium">
-                      ₱{{ (b.totals.weekly4 || 0).toLocaleString() }}
-                    </td>
-                    <td class="text-xs font-medium">
-                      ₱{{ (b.totals.monthly1 || 0).toLocaleString() }}
-                    </td>
+<td class="text-xs font-medium text-right">
+  <i class="fa-solid fa-peso-sign mr-1"></i>
+  {{ Number(b.totals.daily7 || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}
+</td>
+
+
                   </tr>
                 </tbody>
               </table>

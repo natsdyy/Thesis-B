@@ -252,7 +252,7 @@
   const router = useRouter();
 
   // Computed properties
-  const { isSuperAdmin, userDepartment, user } = authStore;
+  const { isSuperAdmin, isBoardDirector, userDepartment, user } = authStore;
 
   const availableMenus = computed(() => {
     if (isSuperAdmin) {
@@ -264,13 +264,39 @@
           const isAttendanceByRoute =
             typeof menu.route === 'string' &&
             /\/attendance(\b|\/)/.test(menu.route);
-          return !(isAttendanceByName || isAttendanceByRoute);
+          const isEmployeeSchedulesByName = menu.name === 'Employee Schedules';
+          const isEmployeeSchedulesByRoute =
+            typeof menu.route === 'string' && menu.route === '/hr/schedules';
+          return !(
+            isAttendanceByName ||
+            isAttendanceByRoute ||
+            isEmployeeSchedulesByName ||
+            isEmployeeSchedulesByRoute
+          );
         });
         if (items.length > 0) {
           filtered[dept] = items;
         }
       });
       return filtered;
+    } else if (isBoardDirector) {
+      // Board of Directors: Only Administration menus and only select items
+      const adminMenus = (menusByDepartment['Administration'] || []).filter(
+        (menu) => {
+          // Allow Executive Dashboard, Financial Statement, Organizational Chart
+          const allowedRoutes = [
+            '/super-admin',
+            '/super-admin/financial-statement',
+            '/admin/organizational-chart',
+          ];
+          const isAllowed = allowedRoutes.includes(menu.route);
+          const isEmployeeSchedules =
+            menu.name === 'Employee Schedules' ||
+            menu.route === '/hr/schedules';
+          return isAllowed && !isEmployeeSchedules;
+        }
+      );
+      return adminMenus.length ? { Administration: adminMenus } : {};
     } else if (userDepartment) {
       // Regular users see only their department, excluding super admin only items
       const filteredMenus = {};

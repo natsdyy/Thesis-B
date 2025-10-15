@@ -265,6 +265,16 @@ export const menuItems = [
   },
 
   {
+    name: 'Organizational Chart',
+    icon: Settings,
+    route: '/admin/organizational-chart',
+    department: 'Administration',
+    // Note: visible to Super Admin and Chairman by default; Sidebar logic will also
+    // allow Board of Directors to access this item specifically.
+    superAdminOnly: true,
+  },
+
+  {
     name: 'Branch Management',
     icon: Store,
     route: '/admin/branch-manager',

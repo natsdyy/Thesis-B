@@ -44,6 +44,8 @@
   const showAttendanceResult = ref(false);
   const resultDialogRef = ref(null);
 
+  // Board/Employee toggle removed; auto-detect login via API
+
   const currentCameraLabel = computed(() => {
     const found = availableCameras.value.find(
       (c) => c.id === selectedDeviceId.value
@@ -469,6 +471,9 @@
   const login = async () => {
     errorMessage.value = '';
 
+    // Reset any previous error
+    errorMessage.value = '';
+
     // Client-side validation
     if (!email.value?.trim()) {
       errorMessage.value = 'Please enter your email address';
@@ -491,23 +496,48 @@
     await nextTick();
 
     try {
-      await authStore.login({
-        email: email.value.trim(),
-        password: password.value,
-      });
+      // Try employee login first
+      try {
+        await authStore.login({
+          email: email.value.trim(),
+          password: password.value,
+        });
 
-      // Redirect based on user role/department
-      const userDepartment = authStore.userDepartment;
-      const userRole = authStore.userRole;
+        // Redirect based on user role/department
+        const userDepartment = authStore.userDepartment;
+        const userRole = authStore.userRole;
 
-      if (userRole === 'Super Admin') {
-        router.push('/super-admin');
-      } else if (userDepartment === 'Branch') {
-        // All Branch department users should go to branch dashboard
-        router.push('/branch/dashboard');
-      } else {
-        // All other departments (HR, SCM, Finance, CRM, Admin) go to main dashboard (HomePage)
+        if (userRole === 'Super Admin') {
+          router.push('/super-admin');
+          return;
+        }
+        if (userDepartment === 'Branch') {
+          router.push('/branch/dashboard');
+          return;
+        }
         router.push('/dashboard');
+        return;
+      } catch (primaryError) {
+        // If employee login fails, try board member login
+        try {
+          await authStore.boardLogin({
+            email: email.value.trim(),
+            password: password.value,
+          });
+
+          const userRole = authStore.userRole;
+          if (userRole === 'Chairman of the Board') {
+            router.push('/super-admin');
+          } else {
+            router.push('/admin/organizational-chart');
+          }
+          return;
+        } catch (secondaryError) {
+          // Prefer the more specific message from the board attempt; otherwise fallback
+          errorMessage.value =
+            getErrorMessage(secondaryError) || getErrorMessage(primaryError);
+          return;
+        }
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -923,6 +953,8 @@
             <p class="text-gray-500 text-sm font-roboto">
               Fill your data to continue. Thank You!
             </p>
+
+            <!-- Login type toggle removed: auto-detects based on credentials -->
           </div>
 
           <!-- Login Form -->
@@ -1109,6 +1141,8 @@
           <p class="text-gray-500 text-xs sm:text-sm font-roboto">
             Fill your data to continue. Thank You!
           </p>
+
+          <!-- Login type toggle removed: auto-detects based on credentials -->
         </div>
 
         <!-- Login Form -->

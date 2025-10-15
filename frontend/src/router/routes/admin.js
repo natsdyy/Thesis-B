@@ -20,6 +20,21 @@ export default [
     },
   },
   {
+    path: 'organizational-chart',
+    name: 'AdminOrganizationalChart',
+    component: () => import('../../views/admin/OrganizationalChart.vue'),
+    meta: {
+      title: 'Organizational Chart',
+      permission: 'Manage Organizational Chart',
+      requiresAuth: true,
+      requiresRole: [
+        'Super Admin',
+        'Chairman of the Board',
+        'Board of Directors',
+      ],
+    },
+  },
+  {
     path: 'attendance',
     name: 'AdminAttendance',
     component: () => import('../../views/common/DepartmentAttendance.vue'),

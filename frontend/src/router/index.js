@@ -140,7 +140,12 @@ const routes = [
         meta: {
           title: 'Executive Dashboard',
           requiresAuth: true,
-          requiresRole: ['Super Admin'],
+          requiresRole: [
+            'Super Admin',
+            'Chairman of the Board',
+            'Board of Directors',
+          ],
+          department: 'Administration',
         },
       },
       {
@@ -150,7 +155,12 @@ const routes = [
         meta: {
           title: 'Financial Statement',
           requiresAuth: true,
-          requiresRole: ['Super Admin'],
+          requiresRole: [
+            'Super Admin',
+            'Chairman of the Board',
+            'Board of Directors',
+          ],
+          department: 'Administration',
         },
       },
     ],
@@ -215,17 +225,21 @@ const routes = [
       requiresDepartmentAccess: true,
     },
   },
-  // Admin routes (Super Admin only)
+  // Admin routes (Super Admin, Chairman, and Board of Directors)
   {
     path: '/admin',
     component: DashboardLayout,
     children: adminRoutes,
     meta: {
       title: 'System Administration',
-      department: 'System',
+      department: 'Administration',
       requiresAuth: true,
       requiresDepartmentAccess: true,
-      adminOnly: true, // Only Super Admin
+      requiresRole: [
+        'Super Admin',
+        'Chairman of the Board',
+        'Board of Directors',
+      ],
     },
   },
   // Branch routes
@@ -282,8 +296,16 @@ const router = createRouter({
 
 // Helper function to check department access
 function canAccessDepartment(userRole, userDepartment, routeDepartment) {
-  // Super Admin can access everything
-  if (userRole === 'Super Admin') {
+  // Super Admin and Chairman can access everything
+  if (userRole === 'Super Admin' || userRole === 'Chairman of the Board') {
+    return true;
+  }
+
+  // Board of Directors can access Administration department
+  if (
+    userRole === 'Board of Directors' &&
+    routeDepartment === 'Administration'
+  ) {
     return true;
   }
 
@@ -298,8 +320,12 @@ function canAccessDepartment(userRole, userDepartment, routeDepartment) {
 
 // Helper function to check admin access
 function canAccessAdminRoutes(userRole, userDepartment) {
-  // Only Super Admin can access admin routes
-  return userRole === 'Super Admin' && userDepartment === 'System';
+  // Super Admin, Chairman, and Board of Directors can access admin routes
+  return (
+    (userRole === 'Super Admin' && userDepartment === 'System') ||
+    userRole === 'Chairman of the Board' ||
+    userRole === 'Board of Directors'
+  );
 }
 
 // Helper function to get department from route path
@@ -310,7 +336,7 @@ function getDepartmentFromRoute(routePath) {
   if (routePath.startsWith('/production/')) return 'Production';
   if (routePath.startsWith('/crm/')) return 'CRM';
   if (routePath.startsWith('/branch/')) return 'Branch';
-  if (routePath.startsWith('/admin/')) return 'System';
+  if (routePath.startsWith('/admin/')) return 'Administration';
   return null;
 }
 
@@ -362,8 +388,12 @@ function requiresManagerAccess(routePath) {
 
 // Helper function to check manager role access
 function canAccessManagerRoutes(userRole) {
-  // Super Admin and Manager roles can access manager routes
-  return userRole === 'Super Admin' || userRole === 'Manager';
+  // Super Admin, Chairman, and Manager roles can access manager routes
+  return (
+    userRole === 'Super Admin' ||
+    userRole === 'Chairman of the Board' ||
+    userRole === 'Manager'
+  );
 }
 
 // Add a global navigation guard
@@ -437,8 +467,8 @@ router.beforeEach(async (to, from, next) => {
   // Enforce route meta role requirement
   if (to.meta?.requiresRole && Array.isArray(to.meta.requiresRole)) {
     if (!to.meta.requiresRole.includes(userRole)) {
-      // If user is Super Admin, always allow
-      if (userRole !== 'Super Admin') {
+      // If user is Super Admin or Chairman, always allow
+      if (userRole !== 'Super Admin' && userRole !== 'Chairman of the Board') {
         next('/dashboard');
         return;
       }
@@ -477,7 +507,7 @@ router.beforeEach(async (to, from, next) => {
 
       // Show an error message
       console.warn(
-        `Access denied: Only Manager and Super Admin roles can access ${to.path}`
+        `Access denied: Only Manager, Chairman, and Super Admin roles can access ${to.path}`
       );
 
       next(userDashboard);
@@ -489,7 +519,8 @@ router.beforeEach(async (to, from, next) => {
     if (
       routeDepartment &&
       routeDepartment !== userDepartment &&
-      userRole !== 'Super Admin'
+      userRole !== 'Super Admin' &&
+      userRole !== 'Chairman of the Board'
     ) {
       // Redirect to their appropriate dashboard
       const userDashboard = getUserDashboardRoute(userDepartment);
@@ -520,12 +551,13 @@ router.beforeEach(async (to, from, next) => {
     }
   }
 
-  // If Super Admin navigates to /dashboard root, redirect to executive dashboard for consistency
-  if (
-    to.path === '/dashboard' ||
-    (to.name === 'Home' && userRole === 'Super Admin')
-  ) {
-    if (userRole === 'Super Admin') {
+  // If Super Admin or Board members navigate to /dashboard, redirect to executive dashboard
+  if (to.path === '/dashboard' || to.name === 'Home') {
+    if (
+      userRole === 'Super Admin' ||
+      userRole === 'Chairman of the Board' ||
+      userRole === 'Board of Directors'
+    ) {
       next('/super-admin');
       return;
     }
@@ -544,6 +576,7 @@ function getUserDashboardRoute(userDepartment) {
     CRM: '/crm/attendance',
     Branch: '/branch/dashboard',
     System: '/admin/dashboard',
+    Administration: '/admin/organizational-chart', // Board members go to org chart
   };
 
   return departmentRoutes[userDepartment] || '/dashboard';

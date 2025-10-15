@@ -53,7 +53,7 @@
         class="flex items-center space-x-0.5 sm:space-x-1 md:space-x-2 text-xs sm:text-sm min-w-0"
       >
         <router-link
-          to="/dashboard"
+          :to="homeRoute"
           class="text-primaryColor hover:text-primaryColor/80 transition-colors flex-shrink-0"
         >
           Home
@@ -95,7 +95,7 @@
               class="w-full h-full object-cover"
             />
             <span v-else class="text-xs sm:text-sm font-medium text-white">
-              {{ user?.name?.charAt(0) || 'J' }}
+              {{ getUserInitial() }}
             </span>
           </div>
 
@@ -107,12 +107,12 @@
                 themeStore.themeClasses.textPrimary,
               ]"
             >
-              {{ user?.name || 'John Marco Paja' }}
+              {{ getUserDisplayName() }}
             </span>
             <span
               :class="['text-xs truncate', themeStore.themeClasses.textMuted]"
             >
-              {{ user?.role || 'HR Manager' }}
+              {{ user?.role || 'User' }}
             </span>
           </div>
 
@@ -152,7 +152,7 @@
                   class="w-full h-full object-cover"
                 />
                 <span v-else class="text-sm font-medium text-white">
-                  {{ user?.name?.charAt(0) || 'J' }}
+                  {{ getUserInitial() }}
                 </span>
               </div>
               <div class="min-w-0 flex-1">
@@ -162,7 +162,7 @@
                     themeStore.themeClasses.textPrimary,
                   ]"
                 >
-                  {{ user?.name || 'John Marco Paja' }}
+                  {{ getUserDisplayName() }}
                 </p>
                 <p
                   :class="[
@@ -170,14 +170,14 @@
                     themeStore.themeClasses.textMuted,
                   ]"
                 >
-                  {{ user?.email || 'john.paja@company.com' }}
+                  {{ user?.email || 'user@company.com' }}
                 </p>
               </div>
             </div>
           </li>
 
           <!-- Menu Items -->
-          <li v-if="!isSuperAdmin">
+          <li v-if="!isSuperAdmin && !isBoardMember">
             <router-link
               :to="getProfileRoute()"
               :class="[
@@ -192,7 +192,7 @@
             </router-link>
           </li>
 
-          <li v-if="!isSuperAdmin">
+          <li v-if="!isSuperAdmin && !isBoardMember">
             <router-link
               :to="getAttendanceRoute()"
               :class="[
@@ -257,6 +257,7 @@
 
 <script setup>
   import { ref, computed } from 'vue';
+  import { storeToRefs } from 'pinia';
   import { useRoute, useRouter } from 'vue-router';
   import { useAuthStore } from '../stores/authStore';
   import { useThemeStore } from '../stores/themeStore';
@@ -292,11 +293,43 @@
   const router = useRouter();
 
   // Get user and flags from auth store
-  const { user, isSuperAdmin } = authStore;
+  const { user, isSuperAdmin, isBoardDirector } = storeToRefs(authStore);
+
+  // Computed property for Board member check (includes Chairman and Board Directors)
+  const isBoardMember = computed(() => {
+    // Wait for user data to be available
+    if (!user.value) {
+      console.log('DashboardHeader - No user data available yet');
+      return false;
+    }
+
+    const userRole = user.value?.role;
+    const hasBoardId = user.value?.board_id;
+    const isBoardDirectorRole = isBoardDirector.value;
+
+    // Direct Board member detection (more reliable than relying on auth store computed)
+    const isDirectBoardMember =
+      userRole === 'Chairman of the Board' ||
+      userRole === 'Board of Directors' ||
+      hasBoardId;
+
+    console.log('DashboardHeader - Board member check:', {
+      userRole,
+      hasBoardId,
+      isBoardDirectorRole,
+      isDirectBoardMember,
+      user: user.value,
+      isSuperAdminValue: isSuperAdmin.value,
+      authStoreUser: authStore.user,
+      authStoreIsAuthenticated: authStore.isAuthenticated,
+    });
+
+    return isDirectBoardMember;
+  });
 
   // Build absolute image URL for employee photo
   const profileImageUrl = computed(() => {
-    const url = user?.photo_url || user?.photoUrl || null;
+    const url = user.value?.photo_url || user.value?.photoUrl || null;
     if (!url) return null;
     // If already absolute (e.g., starts with http), use as-is
     if (/^https?:\/\//i.test(url)) return url;
@@ -322,6 +355,20 @@
     }
 
     return 'Dashboard';
+  });
+
+  // Compute where the Home link should go based on role/department
+  const homeRoute = computed(() => {
+    const role = authStore.userRole;
+    if (
+      role === 'Super Admin' ||
+      role === 'Chairman of the Board' ||
+      role === 'Board of Directors'
+    ) {
+      return '/super-admin';
+    }
+    if (authStore.userDepartment === 'Branch') return '/branch/dashboard';
+    return '/dashboard';
   });
 
   // Methods
@@ -360,6 +407,7 @@
       CRM: '/crm/profile',
       Branch: '/branch/profile',
       System: '/admin/profile',
+      Administration: '/admin/profile', // For Board members
     };
     return map[dept] || '/hr/profile';
   };
@@ -375,8 +423,51 @@
       CRM: '/crm/attendance',
       Branch: '/branch/attendance',
       System: '/admin/attendance',
+      Administration: '/admin/attendance', // For Board members
     };
     return map[dept] || '/hr/attendance';
+  };
+
+  // Get user display name (handles both employees and board members)
+  const getUserDisplayName = () => {
+    if (!user.value) return 'User';
+
+    // For Board members, construct name from first_name and last_name
+    if (
+      user.value.board_id ||
+      user.value.role === 'Chairman of the Board' ||
+      user.value.role === 'Board of Directors'
+    ) {
+      const firstName = user.value.first_name || '';
+      const lastName = user.value.last_name || '';
+      if (firstName && lastName) {
+        return `${firstName} ${lastName}`;
+      }
+      if (firstName) return firstName;
+      if (lastName) return lastName;
+    }
+
+    // For employees, use the existing name field
+    return user.value.name || 'User';
+  };
+
+  // Get user initial for avatar
+  const getUserInitial = () => {
+    if (!user.value) return 'U';
+
+    // For Board members, use first name initial
+    if (
+      user.value.board_id ||
+      user.value.role === 'Chairman of the Board' ||
+      user.value.role === 'Board of Directors'
+    ) {
+      const firstName = user.value.first_name || '';
+      if (firstName) return firstName.charAt(0).toUpperCase();
+    }
+
+    // For employees, use existing name logic
+    const name = user.value.name || 'User';
+    return name.charAt(0).toUpperCase();
   };
 </script>
 

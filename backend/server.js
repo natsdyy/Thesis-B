@@ -20,6 +20,7 @@ const roleRoutes = require("./routes/roles");
 const permissionRoutes = require("./routes/permissions");
 const rolePermissionRoutes = require("./routes/rolePermissions");
 const authRoutes = require("./routes/auth");
+const boardAuthRoutes = require("./routes/boardAuth");
 const branchRoutes = require("./routes/branches");
 const supplyRequestRoutes = require("./routes/supplyRequest");
 const budgetReleaseRoutes = require("./routes/budgetRelease");
@@ -55,6 +56,7 @@ const cashMovementRoutes = require("./routes/cashMovements");
 const financeBalanceRoutes = require("./routes/financeBalances");
 const payrollRoutes = require("./routes/payroll");
 const executiveRoutes = require("./routes/executive");
+const adminOrgChartRoutes = require("./routes/adminOrgChart");
 
 const app = express();
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 5000;
@@ -157,6 +159,7 @@ app.use("/api/roles", roleRoutes);
 app.use("/api/permissions", permissionRoutes);
 app.use("/api/role-permissions", rolePermissionRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/board-auth", boardAuthRoutes);
 app.use("/api/branches", branchRoutes);
 app.use("/api/supply-requests", supplyRequestRoutes);
 app.use("/api/budget-releases", budgetReleaseRoutes);
@@ -191,6 +194,7 @@ app.use("/api/cash-movements", cashMovementRoutes);
 app.use("/api/finance-balances", financeBalanceRoutes);
 app.use("/api/payroll", payrollRoutes);
 app.use("/api/executive", executiveRoutes);
+app.use("/api/admin/org-chart", adminOrgChartRoutes);
 
 // Auto-expire job
 async function autoExpireJob() {

@@ -28,6 +28,8 @@ const rolePermissions = {
   Cashier: ['dashboard', 'profile', 'attendance'],
   Cook: ['dashboard', 'kitchen', 'inventory', 'profile', 'attendance'],
   Waiter: ['dashboard', 'profile', 'attendance'],
+  // Allow Kitchen Assistant to access relevant branch areas
+  'Kitchen Assistant': ['dashboard', 'profile', 'attendance'],
 };
 
 // Route guard for role-based access

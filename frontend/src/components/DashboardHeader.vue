@@ -177,7 +177,7 @@
           </li>
 
           <!-- Menu Items -->
-          <li>
+          <li v-if="!isSuperAdmin">
             <router-link
               :to="getProfileRoute()"
               :class="[
@@ -192,8 +192,7 @@
             </router-link>
           </li>
 
-
-          <li>
+          <li v-if="!isSuperAdmin">
             <router-link
               :to="getAttendanceRoute()"
               :class="[
@@ -292,8 +291,8 @@
   const route = useRoute();
   const router = useRouter();
 
-  // Get user from auth store
-  const { user } = authStore;
+  // Get user and flags from auth store
+  const { user, isSuperAdmin } = authStore;
 
   // Build absolute image URL for employee photo
   const profileImageUrl = computed(() => {

@@ -17,6 +17,8 @@
     getCurrentPhilippineTime,
     createPhilippineDate,
   } from '../utils/timezoneUtils.js';
+  import { usePOSStore } from '../stores/posStore.js';
+  import { useBranchStore } from '../stores/branchStore.js';
   import { useFinanceBalanceStore } from '../stores/financeBalanceStore.js';
   import { useBranchContextStore } from '../stores/branchContextStore.js';
   import { useExecutiveStore } from '../stores/executiveStore.js';
@@ -31,6 +33,8 @@
   const executiveStore = useExecutiveStore();
   const financeBalanceStore = useFinanceBalanceStore();
   const branchContext = useBranchContextStore();
+  const posStore = usePOSStore();
+  const branchStore = useBranchStore();
 
   // Use data from executive store
   const kpis = computed(() => executiveStore.kpis);
@@ -46,6 +50,100 @@
     disposed: [],
     net: [],
   });
+
+  const loadSalesAnalytics = async () => {
+    analyticsLoading.value = true;
+    try {
+      // Ensure branch context is ready
+      if (!branchContext.currentBranch) {
+        try {
+          await branchContext.initializeBranchContext();
+        } catch {}
+      }
+      if (
+        !Array.isArray(branchStore.activeBranches) ||
+        branchStore.activeBranches.length === 0
+      ) {
+        try {
+          await branchStore.fetchActiveBranches();
+        } catch {}
+      }
+
+      const range = getDateRange();
+      const from = range.start.toISOString();
+      const to = range.end.toISOString();
+
+      const candidates = (branchStore.activeBranches || []).length
+        ? branchStore.activeBranches
+        : (branchContext.availableBranches || []).length
+          ? branchContext.availableBranches
+          : branchContext.currentBranch
+            ? [branchContext.currentBranch]
+            : [];
+      const branchIds = candidates.map((b) => b.id);
+
+      const results = await Promise.all(
+        branchIds.map((bid) =>
+          posStore.fetchRemittances({
+            branchId: bid,
+            status: 'approved',
+            limit: 1000,
+          })
+        )
+      );
+
+      const daily = new Map();
+      const startDate = new Date(from);
+      const endDate = new Date(to);
+
+      results.forEach((res) => {
+        const remits = res?.data || [];
+        remits.forEach((r) => {
+          const approvedAt = new Date(
+            r.approved_at || r.created_at || r.date_to || r.date_from
+          );
+          if (approvedAt >= startDate && approvedAt <= endDate) {
+            const phDate = new Date(
+              approvedAt.toLocaleString('en-US', { timeZone: 'Asia/Manila' })
+            );
+            const key = phDate.toISOString().split('T')[0];
+            const cur = daily.get(key) || {
+              remitted: 0,
+              refunds: 0,
+              disposed: 0,
+              net: 0,
+            };
+            cur.remitted += Number(r.remitted_amount || 0);
+            cur.refunds += Number(r.refunded_amount || 0);
+            cur.disposed += Number(r.disposed || 0);
+            cur.net += Number(r.net_sales || 0);
+            daily.set(key, cur);
+          }
+        });
+      });
+
+      const labels = Array.from(daily.keys()).sort(
+        (a, b) => new Date(a) - new Date(b)
+      );
+      analyticsData.value = {
+        labels,
+        remitted: labels.map((d) => Math.round(daily.get(d)?.remitted || 0)),
+        refunds: labels.map((d) => Math.round(daily.get(d)?.refunds || 0)),
+        disposed: labels.map((d) => Math.round(daily.get(d)?.disposed || 0)),
+        net: labels.map((d) => Math.round(daily.get(d)?.net || 0)),
+      };
+    } catch (e) {
+      analyticsData.value = {
+        labels: [],
+        remitted: [],
+        refunds: [],
+        disposed: [],
+        net: [],
+      };
+    } finally {
+      analyticsLoading.value = false;
+    }
+  };
 
   function getDateRange() {
     const now = getCurrentPhilippineTime();
@@ -154,6 +252,8 @@
     } finally {
       isLoading.value = false;
     }
+    // Load sales analytics after main KPIs
+    await loadSalesAnalytics();
   };
 
   onMounted(loadData);

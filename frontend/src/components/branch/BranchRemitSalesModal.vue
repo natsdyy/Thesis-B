@@ -1095,7 +1095,7 @@
               "
               class="hidden lg:block overflow-x-auto"
             >
-              <table class="table table-zebra w-full">
+              <table class="table  w-full">
                 <thead>
                   <tr>
                     <th class="text-xs">Order #</th>

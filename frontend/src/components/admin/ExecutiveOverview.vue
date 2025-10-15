@@ -349,9 +349,9 @@
               <tr>
                 <th>Branch</th>
                 <th class="text-right">Sales</th>
-                <th class="text-right">AOV</th>
+                <th class="text-right">Average Transaction</th>
                 <th class="text-right">Growth</th>
-                <th class="text-right">OOS</th>
+                <th class="text-right">Out of Stock</th>
               </tr>
             </thead>
             <tbody>

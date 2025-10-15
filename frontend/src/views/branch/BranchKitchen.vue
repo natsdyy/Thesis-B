@@ -16,6 +16,9 @@
   const autoTimer = ref(null);
   const lastOrderIds = ref(new Set());
   const newOrderIds = ref(new Set());
+  const actionLoadingId = ref(null); // tracks which order action is in-flight
+  const showConfirmComplete = ref(false);
+  const orderToComplete = ref(null);
 
   const currentBranch = computed(() => branchCtx.currentBranch);
 
@@ -96,30 +99,50 @@
     () => filtered.value.filter((o) => o.status === 'processing').length
   );
 
+  // FIFO: only the oldest processing order may be completed
+  const earliestProcessingId = computed(() => {
+    const processing = (orders.value || [])
+      .filter((o) => o.status === 'processing')
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    return processing.length ? processing[0].id : null;
+  });
+  const isCompletable = (order) => {
+    return (
+      order.status === 'processing' && order.id === earliestProcessingId.value
+    );
+  };
+
   const receiveOrder = async (order) => {
     try {
-      loading.value = true;
+      actionLoadingId.value = order.id;
       await posStore.processOrderById(order.id);
       await fetchKitchenOrders();
       showSuccess(`Order ${order.order_number} received`);
     } catch (e) {
       showError('Failed to receive order');
     } finally {
-      loading.value = false;
+      actionLoadingId.value = null;
     }
   };
 
   const completeOrder = async (order) => {
     try {
-      loading.value = true;
+      actionLoadingId.value = order.id;
       await posStore.completeOrder(order.id);
       await fetchKitchenOrders();
       showSuccess(`Order ${order.order_number} completed`);
     } catch (e) {
       showError('Failed to complete order');
     } finally {
-      loading.value = false;
+      actionLoadingId.value = null;
+      showConfirmComplete.value = false;
+      orderToComplete.value = null;
     }
+  };
+
+  const openConfirmComplete = (order) => {
+    orderToComplete.value = order;
+    showConfirmComplete.value = true;
   };
 
   const startAuto = () => {
@@ -293,9 +316,13 @@
                     </span>
                     <button
                       class="btn btn-sm bg-primaryColor text-white border-none sm:self-end"
-                      :disabled="loading"
+                      :disabled="actionLoadingId === o.id"
                       @click="receiveOrder(o)"
                     >
+                      <span
+                        v-if="actionLoadingId === o.id"
+                        class="loading loading-spinner loading-xs mr-2"
+                      ></span>
                       <Timer class="w-4 h-4 mr-1" /> Receive
                     </button>
                   </div>
@@ -372,13 +399,21 @@
                             : o.order_type || 'Order'
                       }}
                     </span>
-                    <button
-                      class="btn btn-sm bg-success/20 text-success border-none sm:self-end"
-                      :disabled="loading"
-                      @click="completeOrder(o)"
-                    >
-                      <CheckCircle class="w-4 h-4 mr-1" /> Complete
-                    </button>
+                    <div class="flex items-center gap-2 sm:self-end">
+                      <button
+                        class="btn btn-sm bg-success/20 text-success border-none"
+                        :disabled="
+                          actionLoadingId === o.id || !isCompletable(o)
+                        "
+                        @click="openConfirmComplete(o)"
+                      >
+                        <span
+                          v-if="actionLoadingId === o.id"
+                          class="loading loading-spinner loading-xs mr-2"
+                        ></span>
+                        <CheckCircle class="w-4 h-4 mr-1" /> Complete
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -396,6 +431,39 @@
       </div>
     </div>
   </div>
+  <!-- Confirm Complete Modal -->
+  <dialog :open="showConfirmComplete" class="modal">
+    <div class="modal-box">
+      <h3 class="font-bold text-lg">Complete order?</h3>
+      <p class="py-2 text-sm text-gray-600">
+        You are about to complete order
+        <span class="font-mono font-semibold"
+          >#{{ orderToComplete?.order_number }}</span
+        >. This action cannot be undone.
+      </p>
+      <div class="modal-action">
+        <form method="dialog" class="flex gap-2">
+          <button
+            class="btn btn-ghost btn-sm"
+            @click.prevent="showConfirmComplete = false"
+          >
+            Cancel
+          </button>
+          <button
+            class="btn btn-success btn-sm"
+            :disabled="actionLoadingId === orderToComplete?.id"
+            @click.prevent="completeOrder(orderToComplete)"
+          >
+            <span
+              v-if="actionLoadingId === orderToComplete?.id"
+              class="loading loading-spinner loading-xs mr-2"
+            ></span>
+            Confirm
+          </button>
+        </form>
+      </div>
+    </div>
+  </dialog>
 </template>
 
 <style scoped></style>

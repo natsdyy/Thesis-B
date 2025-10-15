@@ -1978,7 +1978,7 @@
         >
           <button
             @click="closeItemConfirmationModal"
-            class="flex-1 btn btn-outline btn-sm sm:btn-md touch-manipulation font-thin"
+            class="flex-1 btn bg-gray-200 hover:bg-gray-300 btn-sm sm:btn-md touch-manipulation font-thin"
           >
             Cancel
           </button>

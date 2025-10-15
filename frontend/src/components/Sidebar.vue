@@ -256,8 +256,21 @@
 
   const availableMenus = computed(() => {
     if (isSuperAdmin) {
-      // Super Admin sees all departments
-      return menusByDepartment;
+      // Super Admin sees all departments EXCEPT any attendance-related items
+      const filtered = {};
+      Object.keys(menusByDepartment).forEach((dept) => {
+        const items = menusByDepartment[dept].filter((menu) => {
+          const isAttendanceByName = menu.name === 'My Attendance';
+          const isAttendanceByRoute =
+            typeof menu.route === 'string' &&
+            /\/attendance(\b|\/)/.test(menu.route);
+          return !(isAttendanceByName || isAttendanceByRoute);
+        });
+        if (items.length > 0) {
+          filtered[dept] = items;
+        }
+      });
+      return filtered;
     } else if (userDepartment) {
       // Regular users see only their department, excluding super admin only items
       const filteredMenus = {};
@@ -268,6 +281,16 @@
 
           // Exclude manager-only items for non-managers
           if (menu.managerOnly && user.role !== 'Manager') return false;
+
+          // Hide attendance for Administration (no attendance for admins)
+          if (
+            dept === 'Administration' &&
+            (menu.name === 'My Attendance' ||
+              (typeof menu.route === 'string' &&
+                /\/attendance(\b|\/)/.test(menu.route)))
+          ) {
+            return false;
+          }
 
           return true;
         });

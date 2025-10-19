@@ -19,6 +19,7 @@
     MapPin,
     DollarSign,
     Calendar,
+    ArrowRightLeft,
   } from 'lucide-vue-next';
   import { useEmployeeStore } from '../../stores/employeeStore.js';
   import { usePositionsStore } from '../../stores/positionsStore.js';
@@ -27,6 +28,7 @@
   import { useBranchStore } from '../../stores/branchStore.js';
   import PayrollGenerationModal from '../../components/payroll/PayrollGenerationModal.vue';
   import EmployeeAttendanceViewer from '../../components/hr/EmployeeAttendanceViewer.vue';
+  import EmployeeTransferApprovalsComponent from '../../components/hr/EmployeeTransferApprovalsComponent.vue';
   import {
     PHILIPPINE_TIMEZONE,
     getCurrentPhilippineDate,
@@ -933,6 +935,14 @@
         <MapPin class="w-4 h-4 mr-2" />
         <span>Branch Employees</span>
       </button>
+      <button
+        @click="setActiveTab('transfers')"
+        class="tab"
+        :class="{ 'tab-active': activeTab === 'transfers' }"
+      >
+        <ArrowRightLeft class="w-4 h-4 mr-2" />
+        <span>Transfer Approvals</span>
+      </button>
     </div>
 
     <!-- Department Selection (Department Tab) -->
@@ -997,7 +1007,14 @@
               >
                 <option value="">Choose a branch...</option>
                 <option v-for="b in allBranches" :key="b.id" :value="b.id">
-                  {{ b.name }} {{ b.is_active ? '(Active)' : '(Inactive)' }}
+                  {{ b.name }}
+                  {{
+                    b.is_active === true
+                      ? '(Active)'
+                      : b.is_active === false
+                        ? '(Inactive)'
+                        : '(Unknown Status)'
+                  }}
                 </option>
               </select>
             </div>
@@ -1849,6 +1866,11 @@
       </div>
     </div>
 
+    <!-- Transfer Approvals Tab Content -->
+    <div v-if="activeTab === 'transfers'">
+      <EmployeeTransferApprovalsComponent />
+    </div>
+
     <!-- Toggle for showing deleted employees -->
     <div
       class="flex items-center gap-2 justify-end border-t border-black/10 p-4"
@@ -2384,7 +2406,13 @@
               <option value="">Select branch</option>
               <option v-for="b in allBranches" :key="b.id" :value="b.id">
                 {{ b.name }} ({{ b.code }})
-                {{ b.is_active ? '(Active)' : '(Inactive)' }}
+                {{
+                  b.is_active === true
+                    ? '(Active)'
+                    : b.is_active === false
+                      ? '(Inactive)'
+                      : '(Unknown Status)'
+                }}
               </option>
             </select>
           </div>

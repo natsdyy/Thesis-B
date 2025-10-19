@@ -132,6 +132,7 @@ router.post("/login", async (req, res) => {
         department: employee.department,
         first_name: employee.first_name,
         last_name: employee.last_name,
+        branch_id: employee.branch_id,
       },
       process.env.JWT_SECRET || "your-secret-key",
       {

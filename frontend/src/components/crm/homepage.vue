@@ -628,7 +628,7 @@
             </div>
 
             <!-- Delivery Cards -->
-            <div class="space-y-6">
+            <div class="grid grid-cols-2 gap-3 sm:gap-6">
               <!-- Foodpanda Card -->
               <div
                 class="bg-orange-500 rounded-2xl p-6 text-white text-center transition-all duration-300 shadow-lg card-hover cursor-pointer"

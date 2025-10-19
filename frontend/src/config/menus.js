@@ -120,13 +120,6 @@ export const menuItems = [
 
   // Finance Department
   {
-    name: 'Dashboard',
-    icon: LayoutDashboard,
-    route: '/finance/dashboard',
-    department: 'Finance',
-    managerOnly: true,
-  },
-  {
     name: 'Financial Management',
     icon: PhilippinePeso,
     route: '/finance/financial-management',

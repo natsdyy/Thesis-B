@@ -5,6 +5,7 @@ const BranchRemittance = require("../models/BranchRemittance");
 const CashMovement = require("../models/CashMovement");
 const FinanceBalance = require("../models/FinanceBalance");
 const POSOrder = require("../models/POSOrder");
+const NotificationService = require("../services/NotificationService");
 const { formatForDatabase } = require("../utils/timezoneUtils");
 const fs = require("fs");
 const path = require("path");
@@ -100,6 +101,17 @@ router.post("/remittances", authenticateToken, async (req, res) => {
     } catch (e) {
       console.warn("Failed to mark orders as remitted:", e?.message || e);
       // Non-blocking: remittance still created; orders can be re-linked later
+    }
+
+    // Create notification for Finance department
+    try {
+      await NotificationService.createRemittanceNotification(data.id);
+    } catch (notificationError) {
+      console.error(
+        "Error creating remittance notification:",
+        notificationError
+      );
+      // Don't fail the main request if notification fails
     }
 
     res.status(201).json({ success: true, data });

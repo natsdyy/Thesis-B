@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const PurchaseOrder = require("../models/PurchaseOrder");
 const Supplier = require("../models/Supplier");
+const NotificationService = require("../services/NotificationService");
 const { db } = require("../config/database");
 
 // GET /api/purchase-orders - Get all purchase orders (supports supplier_id filter)
@@ -223,6 +224,19 @@ router.post("/", async (req, res) => {
     const poId = await PurchaseOrder.create(poData, items);
     const purchaseOrder = await PurchaseOrder.getById(poId);
 
+    // Create notification if PO status is "Sent" (notify supplier)
+    if (purchaseOrder.status === "Sent") {
+      try {
+        await NotificationService.createPurchaseOrderNotification(poId, "sent");
+      } catch (notificationError) {
+        console.error(
+          "Error creating purchase order sent notification:",
+          notificationError
+        );
+        // Don't fail the main request if notification fails
+      }
+    }
+
     res.status(201).json({
       success: true,
       message: "Purchase order created successfully",
@@ -291,6 +305,20 @@ router.put("/:id/confirm", async (req, res) => {
 
     const purchaseOrder = await PurchaseOrder.getById(id);
 
+    // Create notification for SCM
+    try {
+      await NotificationService.createPurchaseOrderNotification(
+        id,
+        "confirmed"
+      );
+    } catch (notificationError) {
+      console.error(
+        "Error creating purchase order confirmation notification:",
+        notificationError
+      );
+      // Don't fail the main request if notification fails
+    }
+
     res.json({
       success: true,
       message: "Purchase order confirmed successfully",
@@ -328,6 +356,20 @@ router.put("/:id/in-progress", async (req, res) => {
     }
 
     const purchaseOrder = await PurchaseOrder.getById(id);
+
+    // Create notification for SCM
+    try {
+      await NotificationService.createPurchaseOrderNotification(
+        id,
+        "in_progress"
+      );
+    } catch (notificationError) {
+      console.error(
+        "Error creating purchase order in-progress notification:",
+        notificationError
+      );
+      // Don't fail the main request if notification fails
+    }
 
     res.json({
       success: true,

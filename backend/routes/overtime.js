@@ -5,6 +5,7 @@ const {
   requireAnyPermission,
 } = require("../middleware/rbac");
 const OvertimeRequest = require("../models/OvertimeRequest");
+const NotificationService = require("../services/NotificationService");
 const EmployeeScheduleService = require("../services/EmployeeScheduleService");
 const {
   formatPhilippineTime,
@@ -199,6 +200,21 @@ router.post("/", authenticateToken, async (req, res) => {
       employeeId
     );
 
+    // Create notification for HR managers
+    try {
+      await NotificationService.createOvertimeLeaveNotification(
+        created.id,
+        "requested",
+        "overtime"
+      );
+    } catch (notificationError) {
+      console.error(
+        "Error creating overtime request notification:",
+        notificationError
+      );
+      // Don't fail the main request if notification fails
+    }
+
     res.status(201).json({
       success: true,
       data: created,
@@ -382,6 +398,22 @@ router.post(
           );
         }
       }
+
+      // Create notification for employee
+      try {
+        await NotificationService.createOvertimeLeaveNotification(
+          id,
+          "approved",
+          "overtime"
+        );
+      } catch (notificationError) {
+        console.error(
+          "Error creating overtime approval notification:",
+          notificationError
+        );
+        // Don't fail the main request if notification fails
+      }
+
       res.json({ success: true, data: updated, message: "Overtime approved" });
     } catch (error) {
       console.error("Error approving overtime:", error);

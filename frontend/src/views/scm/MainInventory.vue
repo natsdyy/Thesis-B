@@ -4255,7 +4255,7 @@
 
     <!-- Confirmation Modal (consistent with GRN Manager) -->
     <dialog id="inventory_confirm_modal" class="modal">
-      <div class="modal-box max-w-3xl">
+      <div class="modal-box max-w-1xl">
         <h3 class="font-bold text-lg mb-2">{{ confirmModal.title }}</h3>
         <p v-if="confirmModal.message" class="mb-2">
           {{ confirmModal.message }}

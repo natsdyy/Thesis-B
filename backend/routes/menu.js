@@ -689,8 +689,6 @@ router.post("/items/:id/restore", authenticateToken, async (req, res) => {
   }
 });
 
-
-
 // ==================== QUALITY INSPECTION ROUTES ====================
 
 /**
@@ -1814,8 +1812,6 @@ router.get(
   }
 );
 
-
-
 /**
  * @swagger
  * /api/menu/inventory/low-stock-alerts:
@@ -1954,8 +1950,6 @@ router.get(
     }
   }
 );
-
-
 
 /**
  * @swagger

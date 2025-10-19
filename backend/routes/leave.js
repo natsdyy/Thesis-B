@@ -18,6 +18,7 @@ function normalizePHDateString(input) {
 const { db } = require("../config/database");
 const { authenticateToken } = require("../middleware/rbac");
 const { requireAnyPermission } = require("../middleware/rbac");
+const NotificationService = require("../services/NotificationService");
 
 /**
  * @swagger
@@ -280,6 +281,21 @@ router.post("/", authenticateToken, async (req, res) => {
       },
       createdBy
     );
+
+    // Create notification for HR managers
+    try {
+      await NotificationService.createOvertimeLeaveNotification(
+        leaveRequest.id,
+        "requested",
+        "leave"
+      );
+    } catch (notificationError) {
+      console.error(
+        "Error creating leave request notification:",
+        notificationError
+      );
+      // Don't fail the main request if notification fails
+    }
 
     res.status(201).json({
       success: true,
@@ -621,6 +637,21 @@ router.post(
 
       const updated = await LeaveRequest.approveByManager(id, managerId, notes);
 
+      // Create notification for employee
+      try {
+        await NotificationService.createOvertimeLeaveNotification(
+          id,
+          "approved",
+          "leave"
+        );
+      } catch (notificationError) {
+        console.error(
+          "Error creating leave approval notification:",
+          notificationError
+        );
+        // Don't fail the main request if notification fails
+      }
+
       res.json({
         success: true,
         data: updated,
@@ -685,6 +716,21 @@ router.post(
       const hrId = req.user.id;
 
       const updated = await LeaveRequest.approveByHR(id, hrId, notes);
+
+      // Create notification for employee
+      try {
+        await NotificationService.createOvertimeLeaveNotification(
+          id,
+          "approved",
+          "leave"
+        );
+      } catch (notificationError) {
+        console.error(
+          "Error creating leave approval notification:",
+          notificationError
+        );
+        // Don't fail the main request if notification fails
+      }
 
       res.json({
         success: true,
@@ -774,6 +820,21 @@ router.post(
         rejectedById,
         rejection_reason
       );
+
+      // Create notification for employee
+      try {
+        await NotificationService.createOvertimeLeaveNotification(
+          id,
+          "rejected",
+          "leave"
+        );
+      } catch (notificationError) {
+        console.error(
+          "Error creating leave rejection notification:",
+          notificationError
+        );
+        // Don't fail the main request if notification fails
+      }
 
       res.json({
         success: true,

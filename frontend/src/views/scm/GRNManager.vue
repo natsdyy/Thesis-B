@@ -281,8 +281,7 @@
           <table class="table table-zebra">
             <thead>
               <tr>
-                <th>GRN Number</th>
-                <th>PO Number</th>
+
                 <th>Supplier</th>
                 <th>Received By</th>
                 <th>Status</th>
@@ -292,10 +291,6 @@
             </thead>
             <tbody>
               <tr v-for="grn in paginatedGrns" :key="grn.id">
-                <td>
-                  <div class="font-bold">{{ grn.grn_number || 'N/A' }}</div>
-                </td>
-                <td>{{ grn.po_number || 'N/A' }}</td>
                 <td>{{ grn.supplier_name || 'N/A' }}</td>
                 <td>{{ grn.received_by_name || 'N/A' }}</td>
                 <td>

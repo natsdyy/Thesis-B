@@ -7,6 +7,7 @@ const PayrollService = require("../services/PayrollService");
 const CashMovement = require("../models/CashMovement");
 const FinanceBalance = require("../models/FinanceBalance");
 const EmailService = require("../services/emailService");
+const NotificationService = require("../services/NotificationService");
 const { formatForDatabase } = require("../utils/timezoneUtils");
 
 // POST /api/payroll/generate - Generate payroll for department or branch
@@ -61,6 +62,19 @@ router.post("/generate", authenticateToken, async (req, res) => {
         success: false,
         message: "Invalid type. Must be 'department' or 'branch'",
       });
+    }
+
+    // Create notification for Finance department when HR generates payroll
+    try {
+      if (result && result.id) {
+        await NotificationService.createPayrollNotification(
+          result.id,
+          "submitted"
+        );
+      }
+    } catch (notificationError) {
+      console.error("Error creating payroll notification:", notificationError);
+      // Don't fail the main request if notification fails
     }
 
     res.status(201).json({
@@ -348,6 +362,20 @@ router.post("/periods/:id/approve", authenticateToken, async (req, res) => {
       finance_remarks: remarks || null,
     });
 
+    // Create notification for HR department
+    try {
+      await NotificationService.createPayrollNotification(
+        parseInt(id),
+        "approved"
+      );
+    } catch (notificationError) {
+      console.error(
+        "Error creating payroll approval notification:",
+        notificationError
+      );
+      // Don't fail the main request if notification fails
+    }
+
     res.json({
       success: true,
       data: updatedPeriod,
@@ -389,6 +417,20 @@ router.post("/periods/:id/reject", authenticateToken, async (req, res) => {
       status: "draft",
       finance_remarks: remarks,
     });
+
+    // Create notification for HR department
+    try {
+      await NotificationService.createPayrollNotification(
+        parseInt(id),
+        "rejected"
+      );
+    } catch (notificationError) {
+      console.error(
+        "Error creating payroll rejection notification:",
+        notificationError
+      );
+      // Don't fail the main request if notification fails
+    }
 
     res.json({
       success: true,

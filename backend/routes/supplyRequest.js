@@ -2,6 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const SupplyRequest = require("../models/SupplyRequest");
+const NotificationService = require("../services/NotificationService");
 const BudgetRelease = require("../models/BudgetRelease");
 
 /**
@@ -617,12 +618,40 @@ router.patch("/:id/status", async (req, res) => {
         message: "Supply request not found",
       });
     }
+
+    // Check if status is actually changing
+    if (existingRequest.status === status) {
+      return res.status(400).json({
+        success: false,
+        message: "Status is already set to this value",
+      });
+    }
+
     const updatedRequest = await SupplyRequest.updateStatus(
       id,
       status,
       updated_by,
       remarks
     );
+
+    // Create notification based on status change
+    try {
+      let notificationType = status.toLowerCase();
+      if (notificationType === "sent back") notificationType = "sent_back";
+
+      await NotificationService.createSupplyRequestNotification(
+        id,
+        notificationType,
+        updated_by
+      );
+    } catch (notificationError) {
+      console.error(
+        "Error creating supply request notification:",
+        notificationError
+      );
+      // Don't fail the main request if notification fails
+    }
+
     res.json({
       success: true,
       message: `Request ${status.toLowerCase()} successfully`,

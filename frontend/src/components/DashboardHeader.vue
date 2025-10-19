@@ -74,6 +74,113 @@
     <div
       class="flex items-center space-x-1 sm:space-x-2 md:space-x-4 flex-shrink-0"
     >
+      <!-- Notification Bell Dropdown -->
+      <div class="dropdown dropdown-end">
+        <div tabindex="0" role="button" class="cursor-pointer relative">
+          <font-awesome-icon
+            icon="fa-regular fa-bell"
+            class="!w-5 !h-5 sm:w-5 sm:h-5 md:w-6 md:h-6 text-gray-600 hover:text-gray-800 transition-colors"
+          />
+          <!-- Unread count badge -->
+          <span
+            v-if="notificationStore.unreadCount > 0"
+            class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center min-w-[16px]"
+          >
+            {{
+              notificationStore.unreadCount > 99
+                ? '99+'
+                : notificationStore.unreadCount
+            }}
+          </span>
+        </div>
+
+        <!-- Dropdown content -->
+        <ul
+          tabindex="0"
+          class="dropdown-content menu bg-base-100 rounded-box z-[1] w-80 shadow-lg border border-base-300 max-h-96 overflow-y-auto"
+        >
+          <!-- Header -->
+          <li class="menu-title">
+            <span>Notifications</span>
+            <button
+              v-if="notificationStore.unreadCount > 0"
+              @click="markAllAsRead"
+              class="btn btn-ghost btn-xs"
+              :disabled="notificationStore.loading"
+            >
+              Mark all read
+            </button>
+          </li>
+
+          <!-- Loading state -->
+          <li
+            v-if="
+              notificationStore.loading && visibleNotifications.length === 0
+            "
+          >
+            <div class="flex justify-center py-4">
+              <span class="loading loading-spinner loading-sm"></span>
+            </div>
+          </li>
+
+          <!-- Empty state -->
+          <li v-else-if="visibleNotifications.length === 0" >
+            <div class="text-center flex justify-center items-center py-4 text-base-content/60">
+              <p class="text-sm">No notifications yet</p>
+            </div>
+          </li>
+
+          <!-- Notifications list -->
+          <template v-else>
+            <li
+              v-for="notification in visibleNotifications.slice(0, 10)"
+              :key="notification.id"
+              class="border-b border-base-200 last:border-b-0"
+            >
+              <a
+                @click="handleNotificationClick(notification)"
+                class="block p-3 hover:bg-base-200 transition-colors"
+                :class="{
+                  'bg-primaryColor/10 border-l-4 border-l-primaryColor':
+                    !notification.is_read,
+                }"
+              >
+                <div class="flex flex-col space-y-1">
+                  <div class="flex items-start justify-between">
+                    <h4
+                      class="text-sm font-medium text-base-content"
+                      :class="{ 'font-bold': !notification.is_read }"
+                    >
+                      {{ notification.title }}
+                    </h4>
+                    <span
+                      v-if="!notification.is_read"
+                      class="w-2 h-2 bg-primaryColor rounded-full flex-shrink-0 mt-1"
+                    ></span>
+                  </div>
+                  <p class="text-xs text-base-content/70 line-clamp-2">
+                    {{ notification.message }}
+                  </p>
+                  <span class="text-xs text-base-content/50">
+                    {{ formatTimeAgo(notification.created_at) }}
+                  </span>
+                </div>
+              </a>
+            </li>
+          </template>
+
+          <!-- Load more button (if needed) -->
+          <li v-if="visibleNotifications.length > 10">
+            <button
+              @click="loadMoreNotifications"
+              class="btn btn-ghost btn-sm w-full"
+              :disabled="notificationStore.loading"
+            >
+              Load more
+            </button>
+          </li>
+        </ul>
+      </div>
       <!-- User Profile Dropdown -->
       <div class="dropdown dropdown-end">
         <div
@@ -256,11 +363,12 @@
 </template>
 
 <script setup>
-  import { ref, computed } from 'vue';
+  import { ref, computed, onMounted, onUnmounted } from 'vue';
   import { storeToRefs } from 'pinia';
   import { useRoute, useRouter } from 'vue-router';
   import { useAuthStore } from '../stores/authStore';
   import { useThemeStore } from '../stores/themeStore';
+  import { useNotificationStore } from '../stores/notificationStore';
   import { apiConfig } from '../config/api';
   import {
     Menu,
@@ -289,11 +397,20 @@
   // Stores and router
   const authStore = useAuthStore();
   const themeStore = useThemeStore();
+  const notificationStore = useNotificationStore();
   const route = useRoute();
   const router = useRouter();
 
   // Get user and flags from auth store
   const { user, isSuperAdmin, isBoardDirector } = storeToRefs(authStore);
+
+  // Get notifications from store
+  const { notifications } = storeToRefs(notificationStore);
+
+  // Only show unread notifications in bell dropdown
+  const visibleNotifications = computed(() =>
+    (notifications.value || []).filter((n) => !n.is_read)
+  );
 
   // Computed property for Board member check (includes Chairman and Board Directors)
   const isBoardMember = computed(() => {
@@ -469,6 +586,78 @@
     const name = user.value.name || 'User';
     return name.charAt(0).toUpperCase();
   };
+
+  // Notification methods
+  const handleNotificationClick = async (notification) => {
+    try {
+      // Mark as read if not already read
+      if (!notification.is_read) {
+        await notificationStore.markAsRead(notification.id);
+      }
+
+      // Navigate to action URL if provided
+      if (notification.action_url) {
+        router.push(notification.action_url);
+      }
+    } catch (error) {
+      console.error('Error handling notification click:', error);
+    }
+  };
+
+  const markAllAsRead = async () => {
+    try {
+      await notificationStore.markAllAsRead();
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
+    }
+  };
+
+  const loadMoreNotifications = async () => {
+    try {
+      await notificationStore.fetchNotifications({ limit: 20 });
+    } catch (error) {
+      console.error('Error loading more notifications:', error);
+    }
+  };
+
+  const formatTimeAgo = (dateString) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now - date) / 1000);
+
+    if (diffInSeconds < 60) {
+      return 'Just now';
+    } else if (diffInSeconds < 3600) {
+      const minutes = Math.floor(diffInSeconds / 60);
+      return `${minutes}m ago`;
+    } else if (diffInSeconds < 86400) {
+      const hours = Math.floor(diffInSeconds / 3600);
+      return `${hours}h ago`;
+    } else {
+      const days = Math.floor(diffInSeconds / 86400);
+      return `${days}d ago`;
+    }
+  };
+
+  // Initialize notifications when component mounts
+  onMounted(async () => {
+    if (authStore.isAuthenticated) {
+      try {
+        await Promise.all([
+          notificationStore.fetchNotifications({ limit: 10 }),
+          notificationStore.fetchUnreadCount(),
+        ]);
+        notificationStore.startPolling();
+      } catch (error) {
+        console.error('Error initializing notifications:', error);
+      }
+    }
+  });
+
+  // Clean up polling when component unmounts
+  onUnmounted(() => {
+    notificationStore.stopPolling();
+  });
 </script>
 
 <style scoped>

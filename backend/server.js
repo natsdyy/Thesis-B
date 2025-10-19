@@ -58,6 +58,7 @@ const financeBalanceRoutes = require("./routes/financeBalances");
 const payrollRoutes = require("./routes/payroll");
 const executiveRoutes = require("./routes/executive");
 const adminOrgChartRoutes = require("./routes/adminOrgChart");
+const notificationRoutes = require("./routes/notifications");
 
 const app = express();
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 5000;
@@ -197,6 +198,7 @@ app.use("/api/finance-balances", financeBalanceRoutes);
 app.use("/api/payroll", payrollRoutes);
 app.use("/api/executive", executiveRoutes);
 app.use("/api/admin/org-chart", adminOrgChartRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // Auto-expire job
 async function autoExpireJob() {

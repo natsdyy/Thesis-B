@@ -11,6 +11,7 @@ const rolePermissions = {
     'dashboard',
     'sales',
     'inventory',
+    'kitchen',
     'employees',
     'profile',
     'attendance',
@@ -19,13 +20,16 @@ const rolePermissions = {
     'dashboard',
     'sales',
     'inventory',
+    'kitchen',
     'employees',
     'profile',
     'attendance',
   ],
   Cashier: ['dashboard', 'profile', 'attendance'],
-  Cook: ['dashboard', 'inventory', 'profile', 'attendance'],
+  Cook: ['dashboard', 'kitchen', 'inventory', 'profile', 'attendance'],
   Waiter: ['dashboard', 'profile', 'attendance'],
+  // Allow Kitchen Assistant to access relevant branch areas
+  'Kitchen Assistant': ['dashboard', 'profile', 'attendance'],
 };
 
 // Route guard for role-based access
@@ -91,6 +95,17 @@ export default [
       title: 'Sales Management',
       requiresAuth: true,
       operation: 'sales',
+    },
+  },
+  {
+    path: 'kitchen',
+    name: 'BranchKitchen',
+    component: () => import('../../views/branch/BranchKitchen.vue'),
+    beforeEnter: checkBranchAccess,
+    meta: {
+      title: 'Kitchen',
+      requiresAuth: true,
+      operation: 'kitchen',
     },
   },
   {

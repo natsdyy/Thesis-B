@@ -89,8 +89,37 @@
       </div>
     </div>
 
+    <!-- Tabs: Requests | History (match LeaveApprovals style) -->
+    <div class="tabs tabs-boxed bg-base-200">
+      <button
+        @click="activeTab = 'requests'"
+        :class="['tab tab-lg', activeTab === 'requests' ? 'tab-active' : '']"
+      >
+        Overtime Requests
+        <span
+          v-if="isLoading"
+          class="loading loading-spinner loading-sm ml-2"
+        ></span>
+        <span
+          v-if="!isLoading && pendingRequests.length > 0"
+          class="badge badge-ghost ml-2"
+        >
+          {{ pendingRequests.length }}
+        </span>
+      </button>
+      <button
+        @click="activeTab = 'history'"
+        :class="['tab tab-lg', activeTab === 'history' ? 'tab-active' : '']"
+      >
+        Overtime History
+        <span v-if="historyRows.length > 0" class="badge badge-ghost ml-2">
+          {{ historyRows.length }}
+        </span>
+      </button>
+    </div>
+
     <!-- Overtime Requests Table -->
-    <div class="card bg-base-100 shadow-xl">
+    <div v-if="activeTab === 'requests'" class="card bg-base-100 shadow-xl">
       <div class="card-body">
         <div
           class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4"
@@ -111,7 +140,7 @@
           </h3>
           <button
             @click="refreshData"
-            class="btn btn-sm btn-outline"
+            class="btn bg-gray-100 text-gray-700 hover:bg-gray-200 btn-sm gap-2"
             :disabled="isLoading"
           >
             <svg
@@ -279,7 +308,7 @@
     </div>
 
     <!-- Overtime History -->
-    <div class="card bg-base-100 shadow-xl">
+    <div v-if="activeTab === 'history'" class="card bg-base-100 shadow-xl">
       <div class="card-body">
         <div class="flex justify-between items-center mb-4">
           <h3 class="card-title text-primaryColor">
@@ -288,9 +317,6 @@
           </h3>
           <div class="flex gap-3 items-end">
             <div class="form-control">
-              <label class="label"
-                ><span class="label-text">Status</span></label
-              >
               <select
                 v-model="historyStatus"
                 class="select select-bordered select-sm"
@@ -300,9 +326,6 @@
               </select>
             </div>
             <div class="form-control">
-              <label class="label"
-                ><span class="label-text">Date Range</span></label
-              >
               <select
                 v-model="historyPreset"
                 @change="setPreset(historyPreset)"
@@ -311,7 +334,25 @@
                 <option value="today">Today</option>
                 <option value="week">This Week</option>
                 <option value="month">This Month</option>
+                <option value="custom_month">Custom Month</option>
               </select>
+            </div>
+            <!-- Custom Month Picker -->
+            <div class="form-control" v-if="historyPreset === 'custom_month'">
+              <input
+                type="month"
+                v-model="historyCustomMonth"
+                class="input input-bordered input-sm"
+              />
+            </div>
+            <div class="form-control">
+              <button
+                class="btn bg-gray-100 text-gray-700 hover:bg-gray-200 btn-sm"
+                @click="exportHistoryToCSV"
+                :disabled="historyRows.length === 0"
+              >
+                Export CSV
+              </button>
             </div>
           </div>
         </div>
@@ -658,6 +699,7 @@
   const isLoading = ref(false);
   const isProcessing = ref(false);
   const lastUpdated = ref(new Date());
+  const activeTab = ref('requests'); // 'requests' | 'history'
   const overtimeRequests = ref([]);
   const departments = ref([]);
   const showDetailsModal = ref(false);
@@ -675,9 +717,17 @@
   // History filters
   const historyStatus = ref('approved'); // 'approved' (Completed) or 'rejected'
   const historyPreset = ref('today'); // today | week | month
+  const historyCustomMonth = ref(''); // YYYY-MM
 
   const setPreset = (preset) => {
     historyPreset.value = preset;
+    // If switching to custom month and not set, default to current YYYY-MM
+    if (preset === 'custom_month' && !historyCustomMonth.value) {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      historyCustomMonth.value = `${y}-${m}`;
+    }
   };
 
   // Pagination
@@ -719,6 +769,23 @@
       start.setHours(0, 0, 0, 0);
       end.setMonth(start.getMonth() + 1, 0); // last day of month
       end.setHours(23, 59, 59, 999);
+    } else if (preset === 'custom_month') {
+      // Expect historyCustomMonth as 'YYYY-MM'
+      const [y, m] = (historyCustomMonth.value || '')
+        .split('-')
+        .map((n) => parseInt(n));
+      if (!isNaN(y) && !isNaN(m)) {
+        start.setFullYear(y, m - 1, 1);
+        start.setHours(0, 0, 0, 0);
+        end.setFullYear(y, m, 0);
+        end.setHours(23, 59, 59, 999);
+      } else {
+        // fallback to current month if invalid
+        start.setDate(1);
+        start.setHours(0, 0, 0, 0);
+        end.setMonth(start.getMonth() + 1, 0);
+        end.setHours(23, 59, 59, 999);
+      }
     }
     return { start, end };
   };
@@ -951,6 +1018,51 @@
       hour12: true,
       timeZone: 'Asia/Manila',
     });
+  };
+
+  // Export History CSV (filtered rows)
+  const exportHistoryToCSV = () => {
+    try {
+      const rows = historyRows.value || [];
+      const csv = generateHistoryCSV(rows);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      const today = new Date().toISOString().split('T')[0];
+      link.setAttribute('download', `overtime_history_${today}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (e) {
+      console.error('Failed to export overtime history:', e);
+    }
+  };
+
+  const generateHistoryCSV = (data) => {
+    const safe = (v) => String(v ?? '').replace(/"/g, '""');
+    const headers = [
+      'Employee Name',
+      'Department',
+      'Date',
+      'Start Time',
+      'End Time',
+      'Hours',
+      'Status',
+      'Reason',
+    ];
+    const lines = data.map((r) => [
+      `"${safe(`${r.first_name} ${r.last_name}`)}"`,
+      `"${safe(r.department || 'Department Employee')}"`,
+      `"${safe(formatDate(r.date))}"`,
+      `"${safe(formatTime(r.start_time))}"`,
+      `"${safe(formatTime(r.end_time))}"`,
+      `"${safe(formatHours(r.total_hours))}"`,
+      `"${safe(r.status)}"`,
+      `"${safe(r.reason || '')}"`,
+    ]);
+    return [headers.join(','), ...lines.map((l) => l.join(','))].join('\n');
   };
 
   // Initialize

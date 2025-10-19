@@ -50,7 +50,7 @@
     <!-- Add Attendance -->
     <div v-if="activeTab === 'add'" class="space-y-6">
       <!-- Current Status Card -->
-      <div class="card bg-base-100 shadow-xl">
+      <div class="card bg-accentColor shadow-xl">
         <div class="card-body">
           <h2 class="card-title text-2xl mb-4">
             Current Status
@@ -139,7 +139,7 @@
       <!-- Quick Actions -->
       <div class="grid grid-cols-1 md:grid-cols-1 gap-6">
         <!-- QR Code Generator -->
-        <div class="card bg-base-100 shadow-xl">
+        <div class="card bg-accentColor shadow-xl">
           <div class="card-body">
             <h3 class="card-title">QR Code Attendance</h3>
             <p class="text-sm text-base-content/70 mb-4">
@@ -147,7 +147,7 @@
             </p>
             <button
               @click="openQRModal"
-              class="btn bg-primaryColor text-white font-thin w-full hover:bg-primaryColor/80"
+              class="btn bg-primaryColor text-white font-thin w-full hover:bg-primaryColor/80 border-none"
               :disabled="currentStatus === 'on-leave'"
             >
               <Clock class="w-4 h-4 mr-2" />
@@ -162,7 +162,7 @@
       </div>
 
       <!-- My Attendance History -->
-      <div class="card bg-base-100 shadow-xl">
+      <div class="card bg-accentColor shadow-xl">
         <div class="card-body">
           <div
             class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-4"

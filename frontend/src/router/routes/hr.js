@@ -1,19 +1,5 @@
 export default [
   {
-    path: 'dashboard',
-    name: 'HRDashboard',
-    component: () => import('../../views/hr/Dashboard.vue'),
-    meta: { title: 'HR Dashboard' },
-  },
-
-  {
-    path: 'employee',
-    name: 'HREmployee',
-    component: () => import('../../views/hr/Employee.vue'),
-    meta: { title: 'Employee Management' },
-  },
-
-  {
     path: 'employee-manager',
     name: 'HREmployeeManager',
     component: () => import('../../views/hr/EmployeeManager.vue'),
@@ -27,12 +13,6 @@ export default [
     meta: { title: 'Add Employee' },
   },
 
-  {
-    path: 'attendance-records',
-    name: 'HRAttendanceRecords',
-    component: () => import('../../views/hr/AttendanceRecords.vue'),
-    meta: { title: 'Attendance Records' },
-  },
   {
     path: 'schedules',
     name: 'HRSchedules',

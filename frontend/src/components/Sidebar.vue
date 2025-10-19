@@ -252,12 +252,51 @@
   const router = useRouter();
 
   // Computed properties
-  const { isSuperAdmin, userDepartment, user } = authStore;
+  const { isSuperAdmin, isBoardDirector, userDepartment, user } = authStore;
 
   const availableMenus = computed(() => {
     if (isSuperAdmin) {
-      // Super Admin sees all departments
-      return menusByDepartment;
+      // Super Admin sees all departments EXCEPT any attendance-related items
+      const filtered = {};
+      Object.keys(menusByDepartment).forEach((dept) => {
+        const items = menusByDepartment[dept].filter((menu) => {
+          const isAttendanceByName = menu.name === 'My Attendance';
+          const isAttendanceByRoute =
+            typeof menu.route === 'string' &&
+            /\/attendance(\b|\/)/.test(menu.route);
+          const isEmployeeSchedulesByName = menu.name === 'Employee Schedules';
+          const isEmployeeSchedulesByRoute =
+            typeof menu.route === 'string' && menu.route === '/hr/schedules';
+          return !(
+            isAttendanceByName ||
+            isAttendanceByRoute ||
+            isEmployeeSchedulesByName ||
+            isEmployeeSchedulesByRoute
+          );
+        });
+        if (items.length > 0) {
+          filtered[dept] = items;
+        }
+      });
+      return filtered;
+    } else if (isBoardDirector) {
+      // Board of Directors: Only Administration menus and only select items
+      const adminMenus = (menusByDepartment['Administration'] || []).filter(
+        (menu) => {
+          // Allow Executive Dashboard, Financial Statement, Organizational Chart
+          const allowedRoutes = [
+            '/super-admin',
+            '/super-admin/financial-statement',
+            '/admin/organizational-chart',
+          ];
+          const isAllowed = allowedRoutes.includes(menu.route);
+          const isEmployeeSchedules =
+            menu.name === 'Employee Schedules' ||
+            menu.route === '/hr/schedules';
+          return isAllowed && !isEmployeeSchedules;
+        }
+      );
+      return adminMenus.length ? { Administration: adminMenus } : {};
     } else if (userDepartment) {
       // Regular users see only their department, excluding super admin only items
       const filteredMenus = {};
@@ -268,6 +307,16 @@
 
           // Exclude manager-only items for non-managers
           if (menu.managerOnly && user.role !== 'Manager') return false;
+
+          // Hide attendance for Administration (no attendance for admins)
+          if (
+            dept === 'Administration' &&
+            (menu.name === 'My Attendance' ||
+              (typeof menu.route === 'string' &&
+                /\/attendance(\b|\/)/.test(menu.route)))
+          ) {
+            return false;
+          }
 
           return true;
         });
@@ -284,7 +333,41 @@
   });
 
   const isActiveRoute = (menuRoute) => {
-    return route.path === menuRoute || route.path.startsWith(menuRoute + '/');
+    // Exact match
+    if (route.path === menuRoute) {
+      return true;
+    }
+
+    // Check if current path starts with menu route followed by a slash
+    // This ensures we don't match parent routes when on a child route
+    if (route.path.startsWith(menuRoute + '/')) {
+      // Get all menu routes to check for more specific matches
+      const allMenuRoutes = [];
+      Object.values(availableMenus.value).forEach((menus) => {
+        menus.forEach((menu) => {
+          if (menu.route) allMenuRoutes.push(menu.route);
+          if (menu.subItems) {
+            menu.subItems.forEach((subItem) => {
+              if (subItem.route) allMenuRoutes.push(subItem.route);
+            });
+          }
+        });
+      });
+
+      // Check if there's a more specific route that also matches
+      const hasMoreSpecificMatch = allMenuRoutes.some((otherRoute) => {
+        return (
+          otherRoute !== menuRoute &&
+          route.path.startsWith(otherRoute) &&
+          otherRoute.length > menuRoute.length
+        );
+      });
+
+      // Only highlight if there's no more specific match
+      return !hasMoreSpecificMatch;
+    }
+
+    return false;
   };
 
   // Methods

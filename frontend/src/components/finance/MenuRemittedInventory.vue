@@ -7,6 +7,7 @@
   import SalesTrendsChart from '../branch/SalesTrendsChart.vue';
   import BarChartJS from '../finance/BarChartJS.vue';
   import SalesForecastChart from '../finance/SalesForecastChart.vue';
+  import { useFeedbackStore } from '@/stores/feedbackStore.js';
   import {
     getCurrentPhilippineTime,
     convertUTCToPhilippine,
@@ -22,6 +23,7 @@
   const branchStore = useBranchStore();
   const posStore = usePOSStore();
   const productionStore = useProductionStore();
+  const feedbackStore = useFeedbackStore();
 
   // Controls
   const selectedBranch = ref('all');
@@ -48,6 +50,39 @@
     analysis: null,
   });
   const allForecasts = ref([]);
+
+  // Feedback aggregates keyed by menu_item_id
+  const feedbackByItemId = ref(new Map());
+  const rebuildFeedbackAggregates = () => {
+    const map = new Map();
+    const list = Array.isArray(feedbackStore.orderRatings)
+      ? feedbackStore.orderRatings
+      : [];
+    list.forEach((fb) => {
+      const itemRatings = fb?.item_ratings || {};
+      Object.entries(itemRatings).forEach(([itemIdStr, ratingObj]) => {
+        const itemId = Number(itemIdStr);
+        if (!Number.isFinite(itemId)) return;
+        const rec = map.get(itemId) || {
+          count: 0,
+          sum: 0,
+          negativeCount: 0,
+          positiveCount: 0,
+          comments: [],
+        };
+        const r = Number(ratingObj?.rating || 0);
+        rec.count += 1;
+        rec.sum += r;
+        if (r <= 2) rec.negativeCount += 1;
+        if (r >= 4) rec.positiveCount += 1;
+        if (ratingObj?.comment && rec.comments.length < 3) {
+          rec.comments.push(String(ratingObj.comment));
+        }
+        map.set(itemId, rec);
+      });
+    });
+    feedbackByItemId.value = map;
+  };
 
   const itemIdToTags = ref(new Map());
   const inventoryByItemId = ref(new Map());
@@ -154,6 +189,19 @@
       startDate.setDate(
         endDate.getDate() - Math.max(1, parseInt(lookbackDays.value || 30))
       );
+
+      // Load customer feedback within the same window to enrich promo suggestions
+      try {
+        await feedbackStore.fetchOrderRatings({
+          date_from: startDate.toISOString(),
+          date_to: endDate.toISOString(),
+          limit: 500,
+          offset: 0,
+        });
+        rebuildFeedbackAggregates();
+      } catch (e) {
+        feedbackByItemId.value = new Map();
+      }
 
       // Which branches
       let branchIds = [];
@@ -321,9 +369,73 @@
         });
       }
 
+      // If showing all branches, aggregate data by menu item to avoid redundancy
+      let finalRows = perBranch;
+      if (selectedBranch.value === 'all') {
+        const aggregatedData = new Map();
+
+        perBranch.forEach((item) => {
+          const key = item.itemId;
+          if (!aggregatedData.has(key)) {
+            aggregatedData.set(key, {
+              branchId: 'all',
+              branchName: 'All Branches',
+              itemId: item.itemId,
+              itemName: item.itemName,
+              ordersCount: 0,
+              totalQuantity: 0,
+              totalAmount: 0,
+              dailyAvgQty: 0,
+              dailyAvgAmount: 0,
+              uniqueRemittances: new Set(),
+              remittanceIds: [],
+              lastActivity: '',
+              allBranches: [],
+            });
+          }
+
+          const aggItem = aggregatedData.get(key);
+          aggItem.ordersCount += item.ordersCount;
+          aggItem.totalQuantity += item.totalQuantity;
+          aggItem.totalAmount += item.totalAmount;
+          aggItem.dailyAvgQty += item.dailyAvgQty;
+          aggItem.dailyAvgAmount += item.dailyAvgAmount;
+
+          // Combine remittances
+          item.remittanceIds.forEach((id) => aggItem.uniqueRemittances.add(id));
+
+          // Keep track of most recent activity
+          if (item.lastActivity) {
+            if (
+              !aggItem.lastActivity ||
+              item.lastActivity > aggItem.lastActivity
+            ) {
+              aggItem.lastActivity = item.lastActivity;
+            }
+          }
+
+          // Track which branches this item appears in
+          aggItem.allBranches.push({
+            branchId: item.branchId,
+            branchName: item.branchName,
+            ordersCount: item.ordersCount,
+            totalQuantity: item.totalQuantity,
+            dailyAvgQty: item.dailyAvgQty,
+          });
+        });
+
+        // Convert Set to Array for uniqueRemittances and clean up the data
+        finalRows = Array.from(aggregatedData.values()).map((item) => ({
+          ...item,
+          uniqueRemittances: item.uniqueRemittances.size,
+          remittanceIds: Array.from(item.uniqueRemittances),
+          uniqueRemittances: item.uniqueRemittances.size, // Fix the property
+        }));
+      }
+
       // Sort by daily average quantity desc
-      perBranch.sort((a, b) => b.dailyAvgQty - a.dailyAvgQty);
-      rows.value = perBranch;
+      finalRows.sort((a, b) => b.dailyAvgQty - a.dailyAvgQty);
+      rows.value = finalRows;
       currentPage.value = 1;
 
       // Build trend arrays (oldest -> newest)
@@ -583,7 +695,7 @@
   const promoLoading = ref(false);
   const promoSuggestionsCurrentPage = ref(1);
   const promoSuggestionsItemsPerPage = ref(5);
-  const promoSuggestionsViewMode = ref('card'); // 'card' or 'list'
+  const promoSuggestionsViewMode = ref('list'); // 'card' or 'list'
 
   const getCurrentPhilippineSeason = () => {
     const m = getCurrentPhilippineTime().getMonth() + 1; // 1-12
@@ -1049,6 +1161,14 @@
           const availableQty = Number(inv.available_quantity || 0);
           const totalProduced = Number(inv.total_produced || 0);
           const dailyConsumption = Number(item.dailyAvgQty || 0);
+          const fbAgg = feedbackByItemId.value.get(Number(item.itemId));
+          const ratingCount = fbAgg?.count || 0;
+          const ratingAvg = ratingCount
+            ? Math.round((fbAgg.sum / ratingCount) * 10) / 10
+            : null;
+          const negativeRate = ratingCount
+            ? fbAgg.negativeCount / ratingCount
+            : 0;
           const daysSinceActivity = (() => {
             if (!item.lastActivity) return Infinity;
             const now = getCurrentPhilippineTime();
@@ -1059,14 +1179,65 @@
             );
           })();
 
-          // 1. High Stock + Low Demand = Clearance Promo
-          if (availableQty > totalProduced * 0.4 && dailyConsumption < 0.5) {
+          // Realistic metrics
+          const daysOfCover =
+            availableQty > 0
+              ? Math.ceil(availableQty / Math.max(dailyConsumption, 0.1))
+              : 0;
+          const daysUntilStockout = daysOfCover;
+          const forecastEntry = (allForecasts.value || []).find(
+            (f) => Number(f.id) === Number(item.itemId)
+          );
+          const trendDirection = forecastEntry?.trendDirection || 'stable';
+
+          // QUALITY: High proportion of recent low ratings
+          if (ratingCount >= 3 && negativeRate >= 0.4) {
+            itemSuggestions.push({
+              type: 'quality',
+              priority: 'high',
+              title: 'Quality Check Recommended',
+              reason: `Customer feedback shows ${(negativeRate * 100).toFixed(0)}% low ratings${ratingAvg != null ? ` (avg ${ratingAvg}/5)` : ''}`,
+              recommendation:
+                'Investigate quality/consistency; pause discounts',
+              discountType: 'none',
+              discountValue: 0,
+              duration: 'asap',
+              expectedImpact: 'Improve satisfaction and retention',
+              icon: 'fa-solid fa-exclamation-triangle',
+              color: 'text-warning',
+            });
+          }
+
+          // 1) URGENT: very low days-of-cover regardless of trend
+          if (availableQty > 0 && daysOfCover <= 3) {
+            itemSuggestions.push({
+              type: 'urgent',
+              priority: 'critical',
+              title: 'Urgent Stock Clearance',
+              reason: `Very low days of cover (${daysOfCover}d) with current sales of ${dailyConsumption.toFixed(1)}/day`,
+              recommendation: `Launch immediate 15-25% discount to accelerate sell-through`,
+              discountType: 'percentage',
+              discountValue: 20,
+              duration: '3-5 days',
+              expectedImpact: `Clear ${Math.min(Math.round(availableQty * 0.8), availableQty)} units`,
+              icon: 'fa-solid fa-exclamation-triangle',
+              color: 'text-error',
+            });
+          }
+
+          // 2) CLEARANCE: overstocked or long days-of-cover, esp. with flat/down trend
+          if (
+            availableQty >= 200 &&
+            (daysOfCover >= 25 ||
+              (availableQty > totalProduced * 0.4 && dailyConsumption < 1.0) ||
+              (trendDirection === 'down' && daysOfCover >= 15))
+          ) {
             itemSuggestions.push({
               type: 'clearance',
               priority: 'high',
               title: 'Clearance Sale Opportunity',
-              reason: `High stock (${availableQty} units) with low daily sales (${dailyConsumption.toFixed(1)} units/day)`,
-              recommendation: `Run a 20-30% clearance promo to reduce excess inventory`,
+              reason: `Overstocked: ${availableQty} units (~${daysOfCover} days of cover)`,
+              recommendation: `Run 20-30% markdown to reduce excess inventory`,
               discountType: 'percentage',
               discountValue: 25,
               duration: '1-2 weeks',
@@ -1076,39 +1247,22 @@
             });
           }
 
-          // 2. Low Demand + Near Expiry = Urgent Promo
-          const daysUntilStockout =
-            availableQty > 0
-              ? Math.ceil(availableQty / Math.max(dailyConsumption, 0.1))
-              : 0;
-          if (daysUntilStockout <= 5 && dailyConsumption < 1.0) {
-            itemSuggestions.push({
-              type: 'urgent',
-              priority: 'critical',
-              title: 'Urgent Stock Clearance',
-              reason: `Only ${daysUntilStockout} days until stockout with low demand`,
-              recommendation: `Launch immediate 15-25% discount to boost sales`,
-              discountType: 'percentage',
-              discountValue: 20,
-              duration: '3-5 days',
-              expectedImpact: `Clear ${Math.min(availableQty * 0.8, availableQty)} units`,
-              icon: 'fa-solid fa-exclamation-triangle',
-              color: 'text-error',
-            });
-          }
-
-          // 3. Declining Sales Trend = Boost Promo
-          if (dailyConsumption < 0.3 && availableQty > 10) {
+          // 3) BOOST: demand soft / declining but inventory is adequate
+          if (
+            (trendDirection === 'down' || dailyConsumption <= 1.0) &&
+            daysOfCover >= 7 &&
+            daysOfCover <= 25
+          ) {
             itemSuggestions.push({
               type: 'boost',
               priority: 'medium',
               title: 'Sales Boost Campaign',
-              reason: `Declining sales trend (${dailyConsumption.toFixed(1)} units/day) with adequate stock`,
-              recommendation: `Run a 10-15% promotional campaign to stimulate demand`,
+              reason: `Soft demand (${dailyConsumption.toFixed(1)}/day) with ${daysOfCover}d cover`,
+              recommendation: `Run a 10-15% promo to stimulate demand`,
               discountType: 'percentage',
               discountValue: 12,
               duration: '1-2 weeks',
-              expectedImpact: 'Increase daily sales by 50-100%',
+              expectedImpact: 'Increase daily sales by 30-70%',
               icon: 'fa-solid fa-chart-line',
               color: 'text-info',
             });
@@ -1152,13 +1306,19 @@
             });
           }
 
-          // 5. High Stock Turnover = Volume Promo
-          if (dailyConsumption > 2.0 && availableQty > 20) {
+          // 5) VOLUME: strong trend up, healthy stock, reasonable days-of-cover
+          if (
+            trendDirection === 'up' &&
+            dailyConsumption >= 2.0 &&
+            availableQty >= Math.max(20, Math.round(dailyConsumption * 7)) &&
+            daysOfCover >= 5 &&
+            daysOfCover <= 15
+          ) {
             itemSuggestions.push({
               type: 'volume',
               priority: 'medium',
               title: 'Volume Discount Promotion',
-              reason: `High demand (${dailyConsumption.toFixed(1)} units/day) with good stock levels`,
+              reason: `High demand (${dailyConsumption.toFixed(1)}/day), ${daysOfCover}d cover, trend up`,
               recommendation: `Offer "Buy More, Save More" volume discounts`,
               discountType: 'percentage',
               discountValue: 10,
@@ -1339,7 +1499,7 @@
           </div>
           <div class="flex items-end">
             <button
-              class="btn btn-sm btn-outline w-full"
+              class="btn btn-sm bg-gray-200 hover:bg-gray-300 w-full"
               :disabled="loading"
               @click="buildRemittedMovements"
             >
@@ -1360,6 +1520,12 @@
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-sm font-medium text-gray-700">
             Remitted Menu Movements
+            <span
+              v-if="selectedBranch === 'all'"
+              class="text-xs text-gray-500 ml-2"
+            >
+              (Aggregated across all branches)
+            </span>
           </h3>
           <div class="text-xs text-gray-500">
             Derived from approved remittances only
@@ -1414,7 +1580,9 @@
             <table class="table w-full">
               <thead>
                 <tr>
-                  <th class="text-xs">Branch</th>
+                  <th v-if="selectedBranch !== 'all'" class="text-xs">
+                    Branch
+                  </th>
                   <th class="text-xs">Menu Item</th>
                   <th class="text-xs">
                     Orders <span class="text-gray-400">(count)</span>
@@ -1429,7 +1597,9 @@
               </thead>
               <tbody>
                 <tr v-for="r in pagedRows" :key="`${r.branchId}-${r.itemId}`">
-                  <td class="text-xs">{{ r.branchName }}</td>
+                  <td v-if="selectedBranch !== 'all'" class="text-xs">
+                    {{ r.branchName }}
+                  </td>
                   <td class="text-xs">{{ r.itemName }}</td>
                   <td class="text-xs">{{ r.ordersCount }}</td>
                   <td class="text-xs">{{ r.dailyAvgQty.toLocaleString() }}</td>
@@ -1586,20 +1756,6 @@
                 <button
                   class="btn btn-xs font-thin"
                   :class="
-                    promoSuggestionsViewMode === 'card'
-                      ? 'bg-primaryColor text-white'
-                      : 'bg-gray-100 text-gray-800'
-                  "
-                  @click="promoSuggestionsViewMode = 'card'"
-                >
-                  <font-awesome-icon icon="fa-solid fa-th" class="mr-1" />
-                  Cards
-                </button>
-              </div>
-              <div class="">
-                <button
-                  class="btn btn-xs font-thin"
-                  :class="
                     promoSuggestionsViewMode === 'list'
                       ? 'bg-primaryColor text-white'
                       : 'bg-gray-100 text-gray-800'
@@ -1608,6 +1764,20 @@
                 >
                   <font-awesome-icon icon="fa-solid fa-list" class="mr-1" />
                   List
+                </button>
+              </div>
+              <div class="">
+                <button
+                  class="btn btn-xs font-thin"
+                  :class="
+                    promoSuggestionsViewMode === 'card'
+                      ? 'bg-primaryColor text-white'
+                      : 'bg-gray-100 text-gray-800'
+                  "
+                  @click="promoSuggestionsViewMode = 'card'"
+                >
+                  <font-awesome-icon icon="fa-solid fa-th" class="mr-1" />
+                  Cards
                 </button>
               </div>
             </div>

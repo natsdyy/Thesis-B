@@ -44,6 +44,8 @@
   const showAttendanceResult = ref(false);
   const resultDialogRef = ref(null);
 
+  // Board/Employee toggle removed; auto-detect login via API
+
   const currentCameraLabel = computed(() => {
     const found = availableCameras.value.find(
       (c) => c.id === selectedDeviceId.value
@@ -400,11 +402,9 @@
   const errorMessage = ref('');
   const isLoading = ref(false);
 
-
   const togglePasswordVisibility = () => {
     showPassword.value = !showPassword.value;
   };
-
 
   // Enhanced error message mapping
   const getErrorMessage = (error) => {
@@ -471,6 +471,9 @@
   const login = async () => {
     errorMessage.value = '';
 
+    // Reset any previous error
+    errorMessage.value = '';
+
     // Client-side validation
     if (!email.value?.trim()) {
       errorMessage.value = 'Please enter your email address';
@@ -493,21 +496,48 @@
     await nextTick();
 
     try {
-      await authStore.login({
-        email: email.value.trim(),
-        password: password.value,
-      });
+      // Try employee login first
+      try {
+        await authStore.login({
+          email: email.value.trim(),
+          password: password.value,
+        });
 
-      // Redirect based on user role/department
-      const userDepartment = authStore.userDepartment;
-      const userRole = authStore.userRole;
+        // Redirect based on user role/department
+        const userDepartment = authStore.userDepartment;
+        const userRole = authStore.userRole;
 
-      if (userDepartment === 'Branch') {
-        // All Branch department users should go to branch dashboard
-        router.push('/branch/dashboard');
-      } else {
-        // All other departments (HR, SCM, Finance, CRM, Admin) go to main dashboard (HomePage)
+        if (userRole === 'Super Admin') {
+          router.push('/super-admin');
+          return;
+        }
+        if (userDepartment === 'Branch') {
+          router.push('/branch/dashboard');
+          return;
+        }
         router.push('/dashboard');
+        return;
+      } catch (primaryError) {
+        // If employee login fails, try board member login
+        try {
+          await authStore.boardLogin({
+            email: email.value.trim(),
+            password: password.value,
+          });
+
+          const userRole = authStore.userRole;
+          if (userRole === 'Chairman of the Board') {
+            router.push('/super-admin');
+          } else {
+            router.push('/admin/organizational-chart');
+          }
+          return;
+        } catch (secondaryError) {
+          // Prefer the more specific message from the board attempt; otherwise fallback
+          errorMessage.value =
+            getErrorMessage(secondaryError) || getErrorMessage(primaryError);
+          return;
+        }
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -532,19 +562,19 @@
       />
     </div>
 
-    <!-- Back Button - positioned outside the card (Desktop only) -->
+    <!-- Back Button -->
     <button
       @click="goBackHome"
-      class="absolute top-8 left-8 text-gray-600 hover:text-gray-800 transition-colors z-10 cursor-pointer items-center space-x-2 hover:bg-white/20 rounded-lg px-3 py-2 hidden lg:flex"
+      class="absolute top-8 left-8 text-gray-600 hover:text-gray-800 transition-colors z-10 cursor-pointer items-center space-x-2 hover:bg-white/20 rounded-lg px-3 py-2 flex"
     >
       <ArrowLeft class="w-5 h-5" />
-      <span class="text-sm font-medium ">Back to Home</span>
+      <span class="text-sm font-medium hidden lg:inline">Back to Home</span>
     </button>
 
     <!-- Desktop QR Scanner Button -->
     <button
       @click="openScanner"
-      class="absolute top-8 right-8 text-white hover:text-white transition-all duration-300 z-10 cursor-pointer flex items-center space-x-2 bg-primaryColor/90 hover:bg-primaryColor rounded-full px-4 py-2 text-sm shadow-lg hover:shadow-xl transform hover:scale-105 hidden lg:flex backdrop-blur-sm"
+      class="btn btn-sm absolute top-8 right-8 text-white hover:text-white z-10 cursor-pointer bg-primaryColor/90 hover:bg-primaryColor rounded-full px-4 py-2 text-sm shadow-lg hidden lg:flex backdrop-blur-sm"
     >
       <QrCode class="w-4 h-4" />
       <span class="font-medium">Scan for Attendance</span>
@@ -665,7 +695,10 @@
                 @camera-on="onCameraOn"
                 class="w-full h-full object-cover"
               />
-              <div v-else class="flex items-center justify-center h-64 bg-gray-100 text-gray-500">
+              <div
+                v-else
+                class="flex items-center justify-center h-64 bg-gray-100 text-gray-500"
+              >
                 <p>Scanner will start when modal opens</p>
               </div>
             </div>
@@ -920,6 +953,8 @@
             <p class="text-gray-500 text-sm font-roboto">
               Fill your data to continue. Thank You!
             </p>
+
+            <!-- Login type toggle removed: auto-detects based on credentials -->
           </div>
 
           <!-- Login Form -->
@@ -1106,6 +1141,8 @@
           <p class="text-gray-500 text-xs sm:text-sm font-roboto">
             Fill your data to continue. Thank You!
           </p>
+
+          <!-- Login type toggle removed: auto-detects based on credentials -->
         </div>
 
         <!-- Login Form -->
@@ -1264,31 +1301,43 @@
           </div>
         </form>
       </div>
-      
+
       <!-- Mobile QR Scanner Button - Fixed Position -->
-      <div class="fixed bottom-0 left-1/2 transform -translate-x-1/2 z-50 lg:hidden">
+      <div
+        class="fixed bottom-0 left-1/2 transform -translate-x-1/2 z-50 lg:hidden"
+      >
         <div class="relative group">
           <!-- Tooltip -->
-          <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-            <div class="bg-gray-900 text-white text-xs font-medium px-3 py-2 rounded-lg whitespace-nowrap">
+          <div
+            class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"
+          >
+            <div
+              class="bg-gray-900 text-white text-xs font-medium px-3 py-2 rounded-lg whitespace-nowrap"
+            >
               Scan for Attendance
-              <div class="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+              <div
+                class="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"
+              ></div>
             </div>
           </div>
-          
+
           <!-- QR Button -->
           <button
             @click="openScanner"
             class="relative bg-gradient-to-r from-primaryColor to-primaryColor/80 hover:from-primaryColor/90 hover:to-primaryColor/70 text-white shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center justify-center transform hover:scale-105 active:scale-95 border-2 border-white/20 hover:border-white/30 half-circle-button"
           >
             <!-- Animated pulse ring -->
-            <div class="absolute inset-0 bg-primaryColor/30 animate-ping half-circle-pulse"></div>
-            
+            <div
+              class="absolute inset-0 bg-primaryColor/30 animate-ping half-circle-pulse"
+            ></div>
+
             <!-- Icon -->
             <QrCode class="w-6 h-6 relative z-10" />
-            
+
             <!-- Glow effect -->
-            <div class="absolute inset-0 bg-white/10 opacity-0 hover:opacity-100 transition-opacity duration-300 half-circle-glow"></div>
+            <div
+              class="absolute inset-0 bg-white/10 opacity-0 hover:opacity-100 transition-opacity duration-300 half-circle-glow"
+            ></div>
           </button>
         </div>
       </div>

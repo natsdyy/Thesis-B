@@ -933,7 +933,7 @@
   });
 </script>
 <template>
-  <div class="container mx-auto p-6 max-w-6xl">
+  <div class="container mx-auto p-4">
     <!-- Header -->
     <div class="text-center mb-8">
       <h1 class="text-4xl font-bold text-primaryColor mb-2">
@@ -1091,9 +1091,6 @@
                     />
                     <div>
                       <div class="font-bold">{{ branch.name }}</div>
-                      <div class="text-sm text-base-content/70">
-                        Code: {{ branch.code }}
-                      </div>
                       <div
                         v-if="branch.description"
                         class="text-xs text-base-content/50 mt-1"

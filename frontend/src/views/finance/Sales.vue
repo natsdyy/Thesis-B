@@ -64,6 +64,7 @@
     disposed: [],
     net: [],
   });
+  const pendingCount = ref(0);
 
   // Fallback branches for selector
   const displayBranches = computed(() => {
@@ -87,6 +88,7 @@
       await branchStore.fetchActiveBranches();
     }
     await loadRealRemits();
+    await loadPendingCount();
   };
 
   const loadRealRemits = async () => {
@@ -333,6 +335,8 @@
                     : derivedVoided,
                 net_sales: Number(r.net_sales || 0),
                 remitted_amount: Number(r.remitted_amount || 0),
+                csv_url: r.csv_url || null,
+                csv_filename: r.csv_filename || null,
                 cashier_count: 0,
                 submitted_by:
                   `${r.submitted_first_name || ''} ${r.submitted_last_name || ''}`.trim(),
@@ -445,6 +449,8 @@
                     ),
               net_sales: Number(r.net_sales || 0),
               remitted_amount: Number(r.remitted_amount || 0),
+              csv_url: r.csv_url || null,
+              csv_filename: r.csv_filename || null,
               cashier_count: 0,
               submitted_by:
                 `${r.submitted_first_name || ''} ${r.submitted_last_name || ''}`.trim(),
@@ -563,6 +569,195 @@
       showToast('Failed to load sales data', 'error');
     } finally {
       loading.value = false;
+    }
+  };
+
+  // Load pending remittance count for current filters
+  const loadPendingCount = async () => {
+    try {
+      const branches = (
+        availableBranches.value && availableBranches.value.length
+          ? availableBranches.value
+          : []
+      ).map((b) => ({ id: b.id, name: b.name }));
+
+      const effective = branches.length
+        ? branches
+        : currentBranch.value
+          ? [{ id: currentBranch.value.id, name: currentBranch.value.name }]
+          : [];
+
+      // Reuse date range logic
+      const now = new Date();
+      let start, end;
+      if (period.value === 'today') {
+        start = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          0,
+          0,
+          0,
+          0
+        );
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999
+        );
+      } else if (period.value === 'week') {
+        const dayOfWeek = now.getDay();
+        const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        start = new Date(now);
+        start.setDate(now.getDate() - daysFromMonday);
+        start.setHours(0, 0, 0, 0);
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999
+        );
+      } else if (period.value === 'customMonth') {
+        const ym = String(customMonth.value || '').trim();
+        const [yStr, mStr] = ym.split('-');
+        const year = Number(yStr);
+        const monthIndex = Number(mStr) - 1;
+        start =
+          Number.isFinite(year) && Number.isFinite(monthIndex)
+            ? new Date(year, monthIndex, 1, 0, 0, 0, 0)
+            : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        end =
+          Number.isFinite(year) && Number.isFinite(monthIndex)
+            ? new Date(year, monthIndex + 1, 0, 23, 59, 59, 999)
+            : new Date(
+                now.getFullYear(),
+                now.getMonth() + 1,
+                0,
+                23,
+                59,
+                59,
+                999
+              );
+      } else if (period.value === 'dateRange') {
+        const [sy, sm, sd] = String(startDate.value || '')
+          .split('-')
+          .map((v) => Number(v));
+        const [ey, em, ed] = String(endDate.value || '')
+          .split('-')
+          .map((v) => Number(v));
+        const today = new Date();
+        start =
+          Number.isFinite(sy) && Number.isFinite(sm) && Number.isFinite(sd)
+            ? createPhilippineDate(sy, sm, sd, 0, 0, 0)
+            : new Date(
+                today.getFullYear(),
+                today.getMonth(),
+                today.getDate(),
+                0,
+                0,
+                0,
+                0
+              );
+        end =
+          Number.isFinite(ey) && Number.isFinite(em) && Number.isFinite(ed)
+            ? createPhilippineDate(ey, em, ed, 23, 59, 59)
+            : new Date(
+                today.getFullYear(),
+                today.getMonth(),
+                today.getDate(),
+                23,
+                59,
+                59,
+                999
+              );
+      } else if (period.value === 'month') {
+        start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999
+        );
+      } else {
+        start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999
+        );
+      }
+
+      const from = start.getTime();
+      const to = end.getTime();
+
+      let count = 0;
+      if (effective.length > 0) {
+        const results = await Promise.all(
+          effective.map((br) =>
+            posStore.fetchRemittances({
+              branchId: br.id,
+              status: 'pending',
+              limit: 1000,
+            })
+          )
+        );
+        results.forEach((res) => {
+          const list = res?.data || [];
+          list.forEach((r) => {
+            const t = new Date(
+              r.created_at || r.date_to || r.date_from
+            ).getTime();
+            if (Number.isFinite(t) && t >= from && t <= to) count += 1;
+          });
+        });
+      } else {
+        const { data } = await posStore.fetchRemittances({
+          status: 'pending',
+          limit: 1000,
+        });
+        const list = Array.isArray(data) ? data : [];
+        list.forEach((r) => {
+          const t = new Date(
+            r.created_at || r.date_to || r.date_from
+          ).getTime();
+          if (Number.isFinite(t) && t >= from && t <= to) count += 1;
+        });
+      }
+
+      // If a specific branch is chosen, filter to that branch
+      if (selectedBranchId.value && selectedBranchId.value !== 0) {
+        // Recompute count only for that branch
+        const { data } = await posStore.fetchRemittances({
+          branchId: selectedBranchId.value,
+          status: 'pending',
+          limit: 1000,
+        });
+        const list = Array.isArray(data) ? data : [];
+        count = list.filter((r) => {
+          const t = new Date(
+            r.created_at || r.date_to || r.date_from
+          ).getTime();
+          return Number.isFinite(t) && t >= from && t <= to;
+        }).length;
+      }
+
+      pendingCount.value = count;
+    } catch (e) {
+      pendingCount.value = 0;
     }
   };
 
@@ -1024,6 +1219,11 @@
   watch([branchIdToShow, period], () => {
     page.value = 1;
     overviewPage.value = 1;
+    loadPendingCount();
+  });
+
+  watch([selectedBranchId, customMonth, startDate, endDate], () => {
+    loadPendingCount();
   });
 
   const openRemitForBranch = async (row, specificEntry = null) => {
@@ -1143,11 +1343,17 @@
         <!-- Review Button -->
         <div class="ml-auto">
           <button
-            class="btn btn-sm font-thin hovcer:bg-gray-100"
+            class="btn btn-sm font-thin hover:bg-gray-100 relative"
             @click="showFinanceRemittances = true"
           >
             <font-awesome-icon icon="fa-solid fa-file-invoice" class="mr-2" />
             Review Remittances
+            <span
+              v-if="pendingCount > 0"
+              class="badge badge-error badge-xs absolute -top-2 -right-2"
+            >
+              {{ pendingCount }}
+            </span>
           </button>
         </div>
       </div>
@@ -1374,12 +1580,23 @@
                       }}
                     </td>
                     <td class="text-xs">
-                      <button
-                        class="btn btn-xs btn-outline text-primaryColor"
-                        @click.stop="openRemitForBranch(row, entry)"
-                      >
-                        View Remit
-                      </button>
+                      <div class="flex gap-1">
+                        <button
+                          class="btn btn-xs btn-outline text-primaryColor"
+                          @click.stop="openRemitForBranch(row, entry)"
+                        >
+                          View Remit
+                        </button>
+                        <a
+                          v-if="entry.csv_url"
+                          class="btn btn-xs"
+                          :href="entry.csv_url"
+                          download
+                          @click.stop
+                        >
+                          Download CSV
+                        </a>
+                      </div>
                     </td>
                   </tr>
                 </tbody>

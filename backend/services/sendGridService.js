@@ -2,11 +2,13 @@ const sgMail = require("@sendgrid/mail");
 require("dotenv").config();
 
 // Initialize SendGrid
-sgMail.setApiKey(
-  process.env.SENDGRID_API_KEY_2 ||
-    process.env.SENDGRID_API_KEY ||
-    "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"
-);
+const apiKey = process.env.SENDGRID_API_KEY_2 || process.env.SENDGRID_API_KEY;
+
+if (!apiKey) {
+  console.warn("⚠️ SendGrid API key not found in environment variables");
+} else {
+  sgMail.setApiKey(apiKey);
+}
 
 class SendGridService {
   /**
@@ -16,20 +18,23 @@ class SendGridService {
     const apiKey =
       process.env.SENDGRID_API_KEY_2 || process.env.SENDGRID_API_KEY;
     const isConfigured =
-      apiKey && apiKey !== "your-sendgrid-api-key-here" && apiKey.length > 20;
+      apiKey &&
+      apiKey !== "your-sendgrid-api-key-here" &&
+      apiKey.startsWith("SG.") &&
+      apiKey.length > 20;
 
     // Debug logging
-    // console.log(`🔍 [SENDGRID DEBUG] Checking configuration:`);
-    // console.log(
-    //   `🔍 [SENDGRID DEBUG] SENDGRID_API_KEY_2: ${process.env.SENDGRID_API_KEY_2 ? "EXISTS" : "NOT_FOUND"}`
-    // );
-    // console.log(
-    //   `🔍 [SENDGRID DEBUG] SENDGRID_API_KEY: ${process.env.SENDGRID_API_KEY ? "EXISTS" : "NOT_FOUND"}`
-    // );
-    // console.log(
-    //   `🔍 [SENDGRID DEBUG] API Key length: ${apiKey ? apiKey.length : 0}`
-    // );
-    // console.log(`🔍 [SENDGRID DEBUG] Is configured: ${isConfigured}`);
+    console.log(`🔍 [SENDGRID DEBUG] Checking configuration:`);
+    console.log(
+      `🔍 [SENDGRID DEBUG] SENDGRID_API_KEY_2: ${process.env.SENDGRID_API_KEY_2 ? "EXISTS" : "NOT_FOUND"}`
+    );
+    console.log(
+      `🔍 [SENDGRID DEBUG] SENDGRID_API_KEY: ${process.env.SENDGRID_API_KEY ? "EXISTS" : "NOT_FOUND"}`
+    );
+    console.log(
+      `🔍 [SENDGRID DEBUG] API Key length: ${apiKey ? apiKey.length : 0}`
+    );
+    console.log(`🔍 [SENDGRID DEBUG] Is configured: ${isConfigured}`);
 
     return isConfigured;
   }
@@ -70,7 +75,7 @@ class SendGridService {
       const msg = {
         to: to,
         from: {
-          email: "noreply@countryside-steakhouse.site",
+          email: "mailcountrysidesteakhouse@gmail.com",
           name: "Countryside Steakhouse",
         },
         subject: "Welcome to Countryside Supplier Portal",
@@ -195,7 +200,7 @@ class SendGridService {
       const msg = {
         to: to,
         from: {
-          email: "noreply@countryside-steakhouse.site",
+          email: "mailcountrysidesteakhouse@gmail.com",
           name: "Countryside Steakhouse",
         },
         subject: "Welcome aboard to COUNTRYSIDE-STEAKHOUSE!",
@@ -372,7 +377,7 @@ class SendGridService {
       const msg = {
         to: to,
         from: {
-          email: "noreply@countryside-steakhouse.site",
+          email: "mailcountrysidesteakhouse@gmail.com",
           name: "Countryside Steakhouse",
         },
         subject: `Payroll Statement - ${payrollData.period_name}`,
@@ -630,7 +635,7 @@ class SendGridService {
       const msg = {
         to: to,
         from: {
-          email: "noreply@countryside-steakhouse.site",
+          email: "mailcountrysidesteakhouse@gmail.com",
           name: "Countryside Steakhouse",
         },
         subject: "Thank you for your feedback - Countryside Steakhouse",
@@ -795,7 +800,7 @@ class SendGridService {
       const msg = {
         to: to,
         from: {
-          email: "noreply@countryside-steakhouse.site",
+          email: "mailcountrysidesteakhouse@gmail.com",
           name: "Countryside Steakhouse",
         },
         subject: "Reset Your Password - Countryside Steakhouse",
@@ -917,6 +922,216 @@ class SendGridService {
       console.error("❌ SendGrid password recovery error:", error);
 
       // Handle SendGrid specific errors
+      if (error.response) {
+        console.error("SendGrid API Error:", error.response.body);
+        return {
+          success: false,
+          error: `SendGrid API Error: ${error.response.body.errors?.[0]?.message || error.message}`,
+          provider: "SendGrid",
+        };
+      }
+
+      return {
+        success: false,
+        error: error.message,
+        provider: "SendGrid",
+      };
+    }
+  }
+
+  /**
+   * Send employee transfer notification email using SendGrid
+   * @param {string} to - Employee email address
+   * @param {string} employeeName - Employee's full name
+   * @param {string} fromBranchName - Source branch name
+   * @param {string} toBranchName - Destination branch name
+   * @param {Date} transferDate - Date when transfer takes effect
+   * @param {string} managerName - Name of manager who requested transfer
+   */
+  static async sendEmployeeTransferNotification(
+    to,
+    employeeName,
+    fromBranchName,
+    toBranchName,
+    transferDate,
+    managerName
+  ) {
+    try {
+      if (!this.isConfigured()) {
+        console.log("⚠️ SendGrid not configured, skipping email");
+        return {
+          success: false,
+          error: "SendGrid API key not configured",
+          skipEmail: true,
+        };
+      }
+
+      const msg = {
+        to: to,
+        from: {
+          email: "mailcountrysidesteakhouse@gmail.com",
+          name: "Countryside Steakhouse",
+        },
+        subject: "Employee Transfer Notification - Countryside Steakhouse",
+        trackingSettings: {
+          clickTracking: {
+            enable: false,
+            enableText: false,
+          },
+          openTracking: {
+            enable: false,
+          },
+        },
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
+            <!-- Main Email Container -->
+            <div style="background-color: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+              
+              <!-- Header -->
+              <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #466114;">
+                <h1 style="color: #2c3e50; margin: 0; font-size: 28px; font-weight: bold;">Countryside Steakhouse</h1>
+                <p style="color: #466114; margin: 5px 0 0 0; font-size: 16px; font-weight: 500;">Ang Paborito ng Bayan</p>
+              </div>
+              
+              <!-- Main Content -->
+              <div style="margin-bottom: 30px;">
+                <h2 style="color: #2c3e50; margin-bottom: 20px; font-size: 24px; font-weight: bold;">Employee Transfer Notification</h2>
+                
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
+                  Dear <strong>${employeeName}</strong>,
+                </p>
+                
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
+                  We are writing to inform you that your branch assignment has been updated as part of our organizational restructuring. 
+                  Your transfer has been approved and is now effective.
+                </p>
+                
+                <!-- Transfer Details Card -->
+                <div style="background-color: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                  <h3 style="color: #2c3e50; margin-top: 0; font-size: 20px; font-weight: bold; margin-bottom: 20px;">Transfer Details</h3>
+                  
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                      <td style="padding: 8px 0; color: #555; font-size: 15px; font-weight: 500;">Employee:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${employeeName}
+                      </td>
+                    </tr>
+                    <tr style="border-top: 1px solid #dee2e6;">
+                      <td style="padding: 12px 0; color: #555; font-size: 16px; font-weight: 500;">Previous Branch:</td>
+                      <td style="padding: 12px 0; text-align: right; font-weight: 700; color: #dc2626; font-size: 16px;">
+                        ${fromBranchName}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #555; font-size: 16px; font-weight: 500;">New Branch:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 700; color: #466114; font-size: 16px;">
+                        ${toBranchName}
+                      </td>
+                    </tr>
+                    <tr style="border-top: 1px solid #dee2e6;">
+                      <td style="padding: 12px 0; color: #555; font-size: 15px; font-weight: 500;">Effective Date:</td>
+                      <td style="padding: 12px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${transferDate.toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #555; font-size: 15px; font-weight: 500;">Requested By:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${managerName}
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+                
+                <!-- Information Note -->
+                <div style="background-color: rgba(170,211,109,0.1); border-left: 4px solid #466114; 
+                            padding: 20px; border-radius: 5px; margin: 20px 0;">
+                  <h4 style="color: #466114; margin-top: 0; margin-bottom: 15px; font-size: 16px; font-weight: bold;">What This Means For You</h4>
+                  <p style="color: #2c3e50; margin: 0; font-size: 15px; line-height: 1.6;">
+                    Your transfer to <strong>${toBranchName}</strong> is now effective. Please report to your new branch location 
+                    starting from the effective date. All your existing employment benefits and terms remain unchanged. 
+                    If you have any questions about this transfer, please contact your new branch manager or the HR department.
+                  </p>
+                </div>
+                
+                <!-- Next Steps -->
+                <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; 
+                            padding: 20px; border-radius: 5px; margin: 20px 0;">
+                  <h4 style="color: #856404; margin-top: 0; margin-bottom: 15px; font-size: 16px; font-weight: bold;">Next Steps</h4>
+                  <ul style="color: #856404; margin: 0; padding-left: 20px; font-size: 15px; line-height: 1.6;">
+                    <li>Report to your new branch on the effective date</li>
+                    <li>Introduce yourself to your new branch manager</li>
+                    <li>Familiarize yourself with the new location and procedures</li>
+                    <li>Update your emergency contact information if needed</li>
+                  </ul>
+                </div>
+                
+                <p style="color: #555; font-size: 16px; margin-top: 25px; line-height: 1.6;">
+                  We wish you success in your new assignment!<br>
+                  <strong style="color: #466114;">Countryside Steakhouse HR Team</strong>
+                </p>
+              </div>
+              
+              <!-- Footer -->
+              <div style="text-align: center; color: #666; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                <p style="margin: 0;">©2025 COUNTRYSIDE-STEAKHOUSE. All rights reserved.</p>
+                <p style="margin: 5px 0 0 0;">This is an automated message, please do not reply to this email.</p>
+              </div>
+            </div>
+          </div>
+        `,
+        text: `
+          Countryside Steakhouse - Employee Transfer Notification
+          
+          Dear ${employeeName},
+          
+          We are writing to inform you that your branch assignment has been updated as part of our organizational restructuring. 
+          Your transfer has been approved and is now effective.
+          
+          TRANSFER DETAILS:
+          Employee: ${employeeName}
+          Previous Branch: ${fromBranchName}
+          New Branch: ${toBranchName}
+          Effective Date: ${transferDate.toLocaleDateString("en-PH")}
+          Requested By: ${managerName}
+          
+          WHAT THIS MEANS FOR YOU:
+          Your transfer to ${toBranchName} is now effective. Please report to your new branch location 
+          starting from the effective date. All your existing employment benefits and terms remain unchanged. 
+          If you have any questions about this transfer, please contact your new branch manager or the HR department.
+          
+          NEXT STEPS:
+          - Report to your new branch on the effective date
+          - Introduce yourself to your new branch manager
+          - Familiarize yourself with the new location and procedures
+          - Update your emergency contact information if needed
+          
+          We wish you success in your new assignment!
+          Countryside Steakhouse HR Team
+          
+          ©2025 COUNTRYSIDE-STEAKHOUSE. All rights reserved.
+          This is an automated message, please do not reply to this email.
+        `,
+      };
+
+      console.log(
+        `📧 [SENDGRID] Sending employee transfer notification to ${to}`
+      );
+      const response = await sgMail.send(msg);
+
+      console.log(
+        "✅ SendGrid employee transfer notification sent:",
+        response[0].headers["x-message-id"]
+      );
+      return {
+        success: true,
+        messageId: response[0].headers["x-message-id"],
+        provider: "SendGrid",
+      };
+    } catch (error) {
+      console.error("❌ SendGrid employee transfer notification error:", error);
+
       if (error.response) {
         console.error("SendGrid API Error:", error.response.body);
         return {

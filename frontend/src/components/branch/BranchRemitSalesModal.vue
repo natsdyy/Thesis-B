@@ -22,6 +22,7 @@
   import { usePOSStore } from '../../stores/posStore.js';
   import { useBranchContextStore } from '../../stores/branchContextStore.js';
   import { apiConfig, getApiUrl } from '../../config/api.js';
+  import axios from 'axios';
   import { useCustomToast } from '../../composables/useCustomToast.js';
   import {
     getCurrentPhilippineTime,
@@ -532,6 +533,108 @@
     }
   };
 
+  // Helper to build CSV Blob (shared by export + send to finance)
+  const buildRemitCsvBlob = () => {
+    const allOrders = allOrdersForPeriod.value || [];
+    const headers = [
+      'Order Number',
+      'Date',
+      'Type',
+      'Items',
+      'Total Amount',
+      'Cashier',
+      'Status',
+      'Remitted',
+    ];
+    const csvData = allOrders.map((order) => {
+      const items =
+        order.items
+          ?.map(
+            (item) =>
+              `${item.quantity}x ${item.item_name || item.menu_item_name}`
+          )
+          .join(', ') || 'No items';
+      return [
+        order.order_number || '',
+        order.created_at ? formatDate(order.created_at) : 'N/A',
+        order.order_type || '',
+        items,
+        `P${Number(order.total_amount || 0).toFixed(2)}`,
+        `${order.cashier_first_name || ''} ${order.cashier_last_name || ''}`.trim(),
+        order.status || '',
+        order.remittance_id ? 'Yes' : 'No',
+      ];
+    });
+    const totalOrdersCount = totalOrders.value || 0;
+    const unremittedCount = allUnremittedOrdersCount.value || 0;
+    const summary = confirmSummary.value || {
+      gross: 0,
+      refunds: 0,
+      voidedAmount: 0,
+      net: 0,
+      remitted: 0,
+    };
+    const summaryRows = [
+      [],
+      ['SUMMARY'],
+      ['Total Orders in Period', totalOrdersCount],
+      ['Already Remitted', totalOrdersCount - unremittedCount],
+      ['To be Remitted', unremittedCount],
+      [],
+      ['FINANCIAL SUMMARY (UNREMITTER ORDERS ONLY)'],
+      ['Gross Sales', `P${Number(summary.gross || 0).toFixed(2)}`],
+      ['Refunds', `P${Number(summary.refunds || 0).toFixed(2)}`],
+      ['Voided Amount', `P${Number(summary.voidedAmount || 0).toFixed(2)}`],
+      ['Net Sales', `P${Number(summary.net || 0).toFixed(2)}`],
+      ['Amount to Remit', `P${Number(summary.remitted || 0).toFixed(2)}`],
+    ];
+    const csvContent = [headers, ...csvData, ...summaryRows]
+      .map((row) =>
+        row.map((field) => `"${String(field).replace(/"/g, '""')}"`).join(',')
+      )
+      .join('\n');
+    return new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  };
+
+  const sendCsvToFinance = async (remittanceId) => {
+    try {
+      const blob = buildRemitCsvBlob();
+      const periodName =
+        activeTab.value === 'today'
+          ? 'Today'
+          : activeTab.value === 'thisWeek'
+            ? 'This Week'
+            : activeTab.value === 'thisMonth'
+              ? 'This Month'
+              : activeTab.value === 'customMonth'
+                ? customMonth.value
+                : 'Period';
+      const filename = `Remit_Sales_${periodName}_${new Date().toISOString().split('T')[0]}.csv`;
+      let meta = null;
+      if (posStore && typeof posStore.uploadRemittanceCSV === 'function') {
+        meta = await posStore.uploadRemittanceCSV(remittanceId, blob, filename);
+      } else {
+        // Direct upload fallback
+        const url = getApiUrl(`/finance/remittances/${remittanceId}/csv`);
+        const form = new FormData();
+        form.append('file', blob, filename);
+        const token = localStorage.getItem('token');
+        const { data } = await axios.post(url, form, {
+          baseURL: apiConfig.baseURL,
+          headers: {
+            Authorization: token ? `Bearer ${token}` : undefined,
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        meta = data?.data || null;
+      }
+      return meta;
+    } catch (e) {
+      console.error('Failed to send CSV to Finance:', e);
+      throw e;
+    }
+  };
+
   // Normalize remittance badge (Yes/Pending/No)
   const getRemittedInfo = (order) => {
     if (!order || !order.remittance_id) {
@@ -700,9 +803,26 @@
         ); // 10 second timeout
       });
 
-      await Promise.race([submissionPromise, timeoutPromise]);
+      const created = await Promise.race([submissionPromise, timeoutPromise]);
 
-      showSuccess('Remittance submitted to Finance');
+      // After remittance creation, send the CSV attachment
+      let csvUploaded = false;
+      if (created && created.id) {
+        try {
+          await sendCsvToFinance(created.id);
+          csvUploaded = true;
+        } catch (csvErr) {
+          console.warn('CSV upload failed (non-blocking):', csvErr);
+        }
+      }
+
+      // Consolidated messaging
+      if (csvUploaded) {
+        showSuccess('Remittance submitted and CSV sent to Finance');
+      } else {
+        showSuccess('Remittance submitted to Finance');
+        showWarning('CSV upload failed. You can retry via Export/Send.');
+      }
       showConfirmRemit.value = false;
     } catch (e) {
       showError(e?.response?.data?.message || 'Failed to submit remittance');
@@ -1095,7 +1215,7 @@
               "
               class="hidden lg:block overflow-x-auto"
             >
-              <table class="table table-zebra w-full">
+              <table class="table w-full">
                 <thead>
                   <tr>
                     <th class="text-xs">Order #</th>

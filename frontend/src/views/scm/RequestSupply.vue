@@ -3060,7 +3060,7 @@
           >
             <thead class="text-black/50">
               <tr class="text-black/50">
-                <th>Request ID</th>
+
                 <th>Branch</th>
                 <th>Description</th>
                 <th>Type</th>
@@ -3076,13 +3076,11 @@
                 :key="request.request_id"
                 class="hover:bg-primary/10"
               >
-                <td class="font-mono font-medium text-primary">
-                  {{ request.request_id }}
-                </td>
+
                 <td class="font-semibold">{{ request.branch_name }}</td>
                 <td class="text-wrap">{{ request.request_description }}</td>
                 <td>
-                  <div class="badge badge-outline badge-sm">
+                  <div class="text-xs">
                     {{ request.request_type }}
                   </div>
                 </td>
@@ -5650,7 +5648,7 @@
         </div>
         <div>
           <p class="text-sm text-gray-600">Type</p>
-          <div class="badge badge-outline badge-sm">
+          <div class="">
             {{ selectedBranchRequest.request_type }}
           </div>
         </div>
@@ -5693,9 +5691,9 @@
       <div class="mb-6">
         <h4 class="text-lg font-semibold mb-4">Requested Items</h4>
         <div class="overflow-x-auto">
-          <table class="table table-sm">
+          <table class="table table-sm table-zebra">
             <thead>
-              <tr class="bg-primaryColor text-accentColor">
+              <tr class="">
                 <th class="!font-thin">Item Name</th>
                 <th class="!font-thin text-right">Quantity</th>
                 <th class="!font-thin">Unit</th>

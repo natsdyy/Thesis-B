@@ -167,30 +167,41 @@ class AttendanceRecord {
       await EmployeeScheduleService.validateTimeInSchedule(employeeId);
 
     if (!scheduleValidation.isValid) {
-      // Create a more descriptive error message based on the validation result
-      let errorMessage = scheduleValidation.message;
+      // Allow early time-in within a grace window before shift start
+      const EARLY_TIMEIN_MINUTES_ALLOWED = 60; // configurable early window
+      if (
+        scheduleValidation.reason === "OUTSIDE_SCHEDULE" &&
+        scheduleValidation.direction === "before" &&
+        typeof scheduleValidation.timeDifference === "number" &&
+        scheduleValidation.timeDifference <= EARLY_TIMEIN_MINUTES_ALLOWED
+      ) {
+        // proceed without throwing; paid hours will be clamped to start at schedule start
+      } else {
+        // Create a more descriptive error message based on the validation result
+        let errorMessage = scheduleValidation.message;
 
-      if (scheduleValidation.reason === "NO_SCHEDULE") {
-        errorMessage =
-          "No work schedule assigned for today. Please contact your supervisor to set up your schedule.";
-      } else if (scheduleValidation.reason === "DAY_OFF") {
-        errorMessage =
-          "You are scheduled for Day Off today. You cannot time in on your scheduled day off.";
-      } else if (scheduleValidation.reason === "OUTSIDE_SCHEDULE") {
-        const { schedule, currentTime, timeDifference, direction } =
-          scheduleValidation;
-        if (timeDifference && direction) {
-          const timeDiffText =
-            timeDifference < 60
-              ? `${timeDifference} minutes`
-              : `${Math.round(timeDifference / 60)} hours`;
-          errorMessage = `You are ${timeDiffText} ${direction} your scheduled time. Your schedule today is ${schedule.start_time} - ${schedule.end_time} (${schedule.shift_name}).`;
-        } else {
-          errorMessage = `Time-in is outside your scheduled hours. Your schedule today is ${schedule.start_time} - ${schedule.end_time} (${schedule.shift_name}).`;
+        if (scheduleValidation.reason === "NO_SCHEDULE") {
+          errorMessage =
+            "No work schedule assigned for today. Please contact your supervisor to set up your schedule.";
+        } else if (scheduleValidation.reason === "DAY_OFF") {
+          errorMessage =
+            "You are scheduled for Day Off today. You cannot time in on your scheduled day off.";
+        } else if (scheduleValidation.reason === "OUTSIDE_SCHEDULE") {
+          const { schedule, currentTime, timeDifference, direction } =
+            scheduleValidation;
+          if (timeDifference && direction) {
+            const timeDiffText =
+              timeDifference < 60
+                ? `${timeDifference} minutes`
+                : `${Math.round(timeDifference / 60)} hours`;
+            errorMessage = `You are ${timeDiffText} ${direction} your scheduled time. Your schedule today is ${schedule.start_time} - ${schedule.end_time} (${schedule.shift_name}).`;
+          } else {
+            errorMessage = `Time-in is outside your scheduled hours. Your schedule today is ${schedule.start_time} - ${schedule.end_time} (${schedule.shift_name}).`;
+          }
         }
-      }
 
-      throw new Error(errorMessage);
+        throw new Error(errorMessage);
+      }
     }
 
     // Get QR code details for location validation
@@ -346,13 +357,75 @@ class AttendanceRecord {
         }
 
         const endForWorkCalc = timeOut < scheduleEnd ? timeOut : scheduleEnd;
-        const workingMs = Math.max(0, endForWorkCalc - timeIn);
+        // Clamp paid start time at scheduled start to avoid paying early time-in
+        const effectiveStart = timeIn < scheduleStart ? scheduleStart : timeIn;
+        let workingMs = Math.max(0, endForWorkCalc - effectiveStart);
+
+        // Deduct unpaid break if applicable.
+        // Priority: explicit schedule.unpaid_break_minutes → known 08:00-17:00 day shift → overlap with 12:00-13:00 window
+        let breakMinutes = 0;
+
+        if (
+          schedule &&
+          Object.prototype.hasOwnProperty.call(
+            schedule,
+            "unpaid_break_minutes"
+          ) &&
+          typeof schedule.unpaid_break_minutes === "number" &&
+          schedule.unpaid_break_minutes > 0
+        ) {
+          breakMinutes = schedule.unpaid_break_minutes;
+        } else if (
+          schedule &&
+          typeof schedule.start_time === "string" &&
+          typeof schedule.end_time === "string" &&
+          schedule.start_time.slice(0, 5) === "08:00" &&
+          schedule.end_time.slice(0, 5) === "17:00"
+        ) {
+          // Standard day shift 8am-5pm defaults to 60-minute unpaid break
+          breakMinutes = 60;
+        } else {
+          // As a safe fallback, deduct actual overlap with a standard lunch window 12:00-13:00
+          const lunchStart = new Date(`${philippineDateStr}T12:00:00+08:00`);
+          const lunchEnd = new Date(`${philippineDateStr}T13:00:00+08:00`);
+          const overlapStart = new Date(
+            Math.max(timeIn.getTime(), lunchStart.getTime())
+          );
+          const overlapEnd = new Date(
+            Math.min(endForWorkCalc.getTime(), lunchEnd.getTime())
+          );
+          const overlapMs = Math.max(0, overlapEnd - overlapStart);
+          breakMinutes = Math.floor(overlapMs / (1000 * 60));
+        }
+
+        if (breakMinutes > 0) {
+          const breakMs = breakMinutes * 60 * 1000;
+          workingMs = Math.max(0, workingMs - breakMs);
+        }
+
         hoursWorked = workingMs / (1000 * 60 * 60);
         // Per requirement: do not auto-calculate OT; approval flow handles OT separately
       }
     } catch (_) {
       // Fallback to simple diff if schedule fetch fails
-      hoursWorked = (timeOut - timeIn) / (1000 * 60 * 60);
+      // Also attempt to deduct overlap with standard lunch 12:00-13:00
+      const diffMs = Math.max(0, timeOut - timeIn);
+      try {
+        const philippineDateStr = getCurrentPhilippineDate();
+        const lunchStart = new Date(`${philippineDateStr}T12:00:00+08:00`);
+        const lunchEnd = new Date(`${philippineDateStr}T13:00:00+08:00`);
+        const overlapStart = new Date(
+          Math.max(timeIn.getTime(), lunchStart.getTime())
+        );
+        const overlapEnd = new Date(
+          Math.min(timeOut.getTime(), lunchEnd.getTime())
+        );
+        const overlapMs = Math.max(0, overlapEnd - overlapStart);
+        const adjustedMs = Math.max(0, diffMs - overlapMs);
+        hoursWorked = adjustedMs / (1000 * 60 * 60);
+      } catch (__) {
+        hoursWorked = diffMs / (1000 * 60 * 60);
+      }
     }
 
     const [updated] = await knex("attendance_records")
@@ -505,6 +578,70 @@ class AttendanceRecord {
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
     return `${diffHours}h ${diffMinutes}m`;
+  }
+
+  // Get comprehensive attendance data including OT and leave
+  static async getComprehensiveAttendanceData(employeeId, startDate, endDate) {
+    const start = new Date(startDate).toISOString();
+    const end = new Date(endDate + "T23:59:59.999Z").toISOString();
+
+    // Get attendance records
+    const attendanceRecords = await knex("attendance_records")
+      .where("employee_id", employeeId)
+      .whereBetween("created_at", [start, end])
+      .orderBy("created_at", "desc");
+
+    // Get overtime records - using correct column name 'ot_date'
+    const overtimeRecords = await knex("overtime_requests")
+      .select(
+        "id",
+        "employee_id",
+        knex.raw("to_char(ot_date, 'YYYY-MM-DD') as ot_date"),
+        "start_time",
+        "end_time",
+        "total_hours as hours_worked",
+        "reason",
+        "status",
+        "approved_by",
+        "approved_at",
+        "approver_notes",
+        "created_at",
+        "updated_at"
+      )
+      .where("employee_id", employeeId)
+      .where("status", "approved")
+      .whereBetween("ot_date", [startDate, endDate])
+      .orderBy("ot_date", "desc");
+
+    // Get leave records
+    const leaveRecords = await knex("leave_requests")
+      .where("employee_id", employeeId)
+      .whereIn("status", ["approved_by_manager", "approved_by_hr"])
+      .where(function () {
+        this.whereBetween("from_date", [startDate, endDate])
+          .orWhereBetween("to_date", [startDate, endDate])
+          .orWhere(function () {
+            this.where("from_date", "<=", startDate).where(
+              "to_date",
+              ">=",
+              endDate
+            );
+          });
+      })
+      .orderBy("from_date", "desc");
+
+    // Get employee schedules for the date range
+    const schedules = await knex("employee_schedules")
+      .where("employee_id", employeeId)
+      .whereBetween("schedule_date", [startDate, endDate])
+      .orderBy("schedule_date", "asc");
+
+    return {
+      attendance: attendanceRecords,
+      overtime: overtimeRecords,
+      leave: leaveRecords,
+      schedules: schedules,
+    };
   }
 
   // Check if employee is on approved leave for a specific date

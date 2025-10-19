@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, computed, onMounted } from 'vue';
+  import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
   import {
     Users,
     Search,
@@ -19,18 +19,22 @@
     X,
     FileText,
     UserCheck2,
+    ArrowRightLeft,
   } from 'lucide-vue-next';
   import { useBranchContextStore } from '../../stores/branchContextStore';
   import { useEmployeeStore } from '../../stores/employeeStore.js';
+  import { useBranchStore } from '../../stores/branchStore';
   import { useAttendanceStore } from '../../stores/attendanceStore';
   import { apiConfig } from '../../config/api';
   import { useOvertimeStore } from '../../stores/overtimeStore';
   import { useLeaveStore } from '../../stores/leaveStore';
   import { useCustomToast } from '../../composables/useCustomToast';
   import EmployeeScheduleComponent from '../../components/branch/EmployeeScheduleComponent.vue';
+  import EmployeeTransferRequestsComponent from '../../components/branch/EmployeeTransferRequestsComponent.vue';
 
   const branchContextStore = useBranchContextStore();
   const employeeStore = useEmployeeStore();
+  const branchStore = useBranchStore();
   const attendanceStore = useAttendanceStore();
   const overtimeStore = useOvertimeStore();
   const leaveStore = useLeaveStore();
@@ -43,7 +47,12 @@
   const currentPage = ref(1);
   const itemsPerPage = ref(10);
   const loading = ref(false);
-  const activeTab = ref('overview');
+  // Persistent tab state to prevent reset on re-render
+  const activeTab = ref(
+    localStorage.getItem('branchEmployeesActiveTab') || 'overview'
+  );
+  const isInitializing = ref(false);
+  const hasInitialized = ref(false);
 
   const branchEmployees = ref([]);
   const employeeStats = ref({
@@ -95,6 +104,18 @@
   const userRole = computed(() => branchContextStore.userRole);
   const canManageEmployees = computed(
     () => branchContextStore.canAccessEmployees
+  );
+
+  // Computed properties for props to reduce reactive dependencies
+  const otherEmployees = computed(() =>
+    employeeStore.employees.filter(
+      (emp) => emp.branch_id !== currentBranch.value?.id
+    )
+  );
+  const availableBranches = computed(() =>
+    branchStore.branches.filter(
+      (branch) => branch.id !== currentBranch.value?.id
+    )
   );
 
   const filteredEmployees = computed(() => {
@@ -230,12 +251,16 @@
   };
 
   const loadBranchEmployees = async () => {
+    if (loading.value) return; // Prevent multiple simultaneous calls
     loading.value = true;
 
     try {
       // Fetch real employees from API via Pinia store
       // Grab a large page to cover typical branch sizes; pagination UI can be added later
-      await employeeStore.fetchEmployees(false, 1, 500, false);
+      // Only fetch if employees array is empty to prevent continuous refetching
+      if (employeeStore.employees.length === 0) {
+        await employeeStore.fetchEmployees(false, 1, 500, false);
+      }
 
       const branchId = branchContextStore.currentBranch?.id || null;
       const all = Array.isArray(employeeStore.employees)
@@ -348,10 +373,6 @@
     }
   };
 
-  const refreshEmployees = () => {
-    loadBranchEmployees();
-  };
-
   const viewEmployee = (employee) => {
     // TODO: Implement view employee details
     console.log('View employee:', employee);
@@ -377,13 +398,22 @@
   };
 
   const loadOtRequests = async () => {
-    await overtimeStore.fetchRequests({
-      branch_id: currentBranch?.value?.id,
-      page: 1,
-      limit: 100,
-    });
-    otRequests.value = overtimeStore.requests;
-    updateOtStats();
+    try {
+      // Only fetch if OT requests array is empty to prevent continuous refetching
+      if (overtimeStore.requests.length === 0) {
+        await overtimeStore.fetchRequests({
+          branch_id: currentBranch.value?.id,
+          page: 1,
+          limit: 100,
+        });
+      }
+      otRequests.value = overtimeStore.requests;
+      updateOtStats();
+    } catch (error) {
+      console.error('Error loading OT requests:', error);
+      otRequests.value = [];
+      updateOtStats();
+    }
   };
 
   const openApprovalModal = (requestId) => {
@@ -507,9 +537,18 @@
   };
 
   const loadLeaveRequests = async () => {
-    await leaveStore.fetchPendingManagerApprovals(currentBranch?.value?.id);
-    leaveRequests.value = leaveStore.pendingManagerApprovals;
-    updateLeaveStats();
+    try {
+      // Only fetch if leave requests array is empty to prevent continuous refetching
+      if (leaveStore.pendingManagerApprovals.length === 0) {
+        await leaveStore.fetchPendingManagerApprovals(currentBranch.value?.id);
+      }
+      leaveRequests.value = leaveStore.pendingManagerApprovals;
+      updateLeaveStats();
+    } catch (error) {
+      console.error('Error loading leave requests:', error);
+      leaveRequests.value = [];
+      updateLeaveStats();
+    }
   };
 
   const openLeaveApprovalModal = (requestId) => {
@@ -622,10 +661,46 @@
   };
 
   // Initialize
-  onMounted(() => {
-    loadBranchEmployees();
-    loadOtRequests();
-    loadLeaveRequests();
+  onMounted(async () => {
+    if (isInitializing.value) {
+      return;
+    }
+
+    isInitializing.value = true;
+
+    try {
+      // Load data sequentially to avoid race conditions
+      // Only load if not already loaded to prevent continuous refreshing
+      if (!hasInitialized.value) {
+        await loadBranchEmployees();
+        await loadOtRequests();
+        await loadLeaveRequests();
+        // Only fetch branches if not already loaded to prevent continuous refetching
+        if (branchStore.branches.length === 0) {
+          await branchStore.fetchActiveBranches();
+        }
+        hasInitialized.value = true;
+      }
+    } catch (error) {
+      console.error('Error initializing branch employees data:', error);
+      showError(
+        'Failed to load employee data. Please refresh the page.',
+        'Loading Error'
+      );
+    } finally {
+      isInitializing.value = false;
+    }
+  });
+
+  // Cleanup on unmount
+  onUnmounted(() => {
+    // Reset initialization state to allow proper re-initialization on remount
+    // Note: Removing hasInitialized reset to prevent continuous auto-refreshing
+  });
+
+  // Track activeTab changes and persist state
+  watch(activeTab, (newTab) => {
+    localStorage.setItem('branchEmployeesActiveTab', newTab);
   });
 </script>
 
@@ -640,16 +715,6 @@
         <p class="text-gray-600 mt-1">
           {{ currentBranch?.name }} - Staff Management
         </p>
-      </div>
-      <div class="flex items-center space-x-2">
-        <button
-          @click="refreshEmployees"
-          :disabled="loading"
-          class="btn btn-outline text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
-        >
-          <RefreshCcw :class="['w-4 h-4 mr-2', { 'animate-spin': loading }]" />
-          Refresh
-        </button>
       </div>
     </div>
 
@@ -702,6 +767,15 @@
           <FileText class="w-4 h-4 mr-1 sm:mr-2" />
           <span class="hidden xs:inline">Leave Approvals</span>
           <span class="xs:hidden">Leave</span>
+        </button>
+        <button
+          @click="activeTab = 'transfers'"
+          class="tab flex-1 sm:flex-none"
+          :class="{ 'tab-active': activeTab === 'transfers' }"
+        >
+          <ArrowRightLeft class="w-4 h-4 mr-1 sm:mr-2" />
+          <span class="hidden xs:inline">Transfer Requests</span>
+          <span class="xs:hidden">Transfers</span>
         </button>
       </div>
 
@@ -822,7 +896,7 @@
             <!-- Employee Table -->
             <div v-else-if="paginatedEmployees.length > 0" class="space-y-4">
               <div class="overflow-x-auto">
-                <table class="table table-zebra w-full">
+                <table class="table table-zebra w-full !bg-accentColor">
                   <thead>
                     <tr>
                       <th>Employee</th>
@@ -955,7 +1029,7 @@
         <EmployeeScheduleComponent
           :employees="branchEmployees"
           :branch-id="currentBranch?.id"
-          @schedule-updated="refreshEmployees"
+          @schedule-updated="loadBranchEmployees"
         />
       </template>
 
@@ -1393,6 +1467,16 @@
           </div>
         </div>
       </template>
+
+      <!-- Transfer Requests Tab -->
+      <div v-if="activeTab === 'transfers'">
+        <EmployeeTransferRequestsComponent
+          :current-branch="currentBranch"
+          :branch-employees="branchEmployees"
+          :other-employees="otherEmployees"
+          :available-branches="availableBranches"
+        />
+      </div>
     </div>
 
     <!-- Approval Confirmation Modal -->

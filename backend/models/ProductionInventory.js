@@ -1707,11 +1707,103 @@ class ProductionInventory {
 
       await trx.commit();
 
-      return await this.getById(inventoryId);
+      // Ensure inventoryId is a primitive integer, not an object
+      const idValue =
+        typeof inventoryId === "object"
+          ? inventoryId.id || inventoryId[0]
+          : inventoryId;
+      return await this.getById(idValue);
     } catch (error) {
       await trx.rollback();
       console.error(
         "Error creating production inventory from quality approval:",
+        error
+      );
+      throw new Error("Failed to create production inventory entry");
+    }
+  }
+
+  // Create production inventory entry (called when menu item is approved directly)
+  static async createFromMenuApproval(menuItemId, createdBy) {
+    const trx = await db.transaction();
+
+    try {
+      // Check if production inventory already exists
+      const existing = await trx("production_inventory")
+        .where("menu_item_id", menuItemId)
+        .first();
+
+      if (existing) {
+        return existing;
+      }
+
+      // Get menu item and recipe details
+      const menuItem = await trx("menu_items as mi")
+        .select("mi.*", "r.batch_unit", "r.cost_per_batch")
+        .leftJoin("recipes as r", "mi.recipe_id", "r.id")
+        .where("mi.id", menuItemId)
+        .first();
+
+      if (!menuItem) {
+        throw new Error("Menu item not found");
+      }
+
+      // Create production inventory entry
+      const [inventoryId] = await trx("production_inventory")
+        .insert({
+          menu_item_id: menuItemId,
+          recipe_id: menuItem.recipe_id,
+          available_quantity: 0, // Default quantity 0 - ready for production
+          unit_of_measure: menuItem.batch_unit || "servings",
+          unit_cost: menuItem.cost_price || 0,
+          selling_price: menuItem.selling_price || 0,
+          production_cost_per_unit: menuItem.cost_price || 0,
+          profit_margin_percent: menuItem.profit_margin || 0,
+          is_active: true,
+          quality_status: "Approved",
+          total_produced: 0,
+          total_sold: 0,
+          reorder_point: 0,
+          maximum_stock: 0,
+          created_by: createdBy,
+          created_at: new Date(),
+          updated_at: new Date(),
+        })
+        .returning("id");
+
+      await trx.commit();
+
+      // Log the direct approval action
+      try {
+        const AuditLogger = require("./AuditLogger");
+        await AuditLogger.log({
+          menu_item_id: menuItemId,
+          employee_id: createdBy,
+          action_type: "APPROVED_FOR_PRODUCTION",
+          action_details: {
+            menu_item_name: menuItem.menu_item_name,
+            selling_price: menuItem.selling_price,
+            cost_price: menuItem.cost_price,
+            profit_margin: menuItem.profit_margin,
+            approval_type: "Direct Approval",
+          },
+          notes: `Menu item "${menuItem.menu_item_name}" approved for production directly`,
+        });
+      } catch (auditError) {
+        console.warn("Failed to create audit log:", auditError.message);
+        // Don't fail the entire operation if audit logging fails
+      }
+
+      // Ensure inventoryId is a primitive integer, not an object
+      const idValue =
+        typeof inventoryId === "object"
+          ? inventoryId.id || inventoryId[0]
+          : inventoryId;
+      return await this.getById(idValue);
+    } catch (error) {
+      await trx.rollback();
+      console.error(
+        "Error creating production inventory from menu approval:",
         error
       );
       throw new Error("Failed to create production inventory entry");

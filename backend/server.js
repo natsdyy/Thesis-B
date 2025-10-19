@@ -20,6 +20,7 @@ const roleRoutes = require("./routes/roles");
 const permissionRoutes = require("./routes/permissions");
 const rolePermissionRoutes = require("./routes/rolePermissions");
 const authRoutes = require("./routes/auth");
+const boardAuthRoutes = require("./routes/boardAuth");
 const branchRoutes = require("./routes/branches");
 const supplyRequestRoutes = require("./routes/supplyRequest");
 const budgetReleaseRoutes = require("./routes/budgetRelease");
@@ -46,6 +47,7 @@ const branchReturnRoutes = require("./routes/branchReturns");
 const branchScheduleRoutes = require("./routes/branchSchedules");
 const employeeScheduleRoutes = require("./routes/employeeSchedules");
 const shiftTypesRoutes = require("./routes/shiftTypes");
+const employeeTransferRequestRoutes = require("./routes/employeeTransferRequests");
 const { serve, setup } = require("./config/swagger");
 const posRoutes = require("./routes/pos");
 const overtimeRoutes = require("./routes/overtime");
@@ -54,6 +56,8 @@ const financeRoutes = require("./routes/finance");
 const cashMovementRoutes = require("./routes/cashMovements");
 const financeBalanceRoutes = require("./routes/financeBalances");
 const payrollRoutes = require("./routes/payroll");
+const executiveRoutes = require("./routes/executive");
+const adminOrgChartRoutes = require("./routes/adminOrgChart");
 
 const app = express();
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 5000;
@@ -126,6 +130,18 @@ app.use(
   express.static(require("path").join(__dirname, "uploads"))
 );
 
+// Proxy for serving any uploaded files with consistent prefix used by finance route
+app.use(
+  "/api/uploads-proxy",
+  (req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET");
+    res.header("Access-Control-Allow-Headers", "Content-Type");
+    next();
+  },
+  express.static(require("path").join(__dirname))
+);
+
 // Serve frontend static files
 const frontendPath = require("path").join(__dirname, "..", "frontend", "dist");
 app.use(express.static(frontendPath));
@@ -144,6 +160,7 @@ app.use("/api/roles", roleRoutes);
 app.use("/api/permissions", permissionRoutes);
 app.use("/api/role-permissions", rolePermissionRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/board-auth", boardAuthRoutes);
 app.use("/api/branches", branchRoutes);
 app.use("/api/supply-requests", supplyRequestRoutes);
 app.use("/api/budget-releases", budgetReleaseRoutes);
@@ -170,6 +187,7 @@ app.use("/api/branch-returns", branchReturnRoutes);
 app.use("/api/branch-schedules", branchScheduleRoutes);
 app.use("/api/employee-schedules", employeeScheduleRoutes);
 app.use("/api/shift-types", shiftTypesRoutes);
+app.use("/api/employee-transfer-requests", employeeTransferRequestRoutes);
 app.use("/api/pos", posRoutes);
 app.use("/api/overtime", overtimeRoutes);
 app.use("/api/leave", leaveRoutes);
@@ -177,6 +195,8 @@ app.use("/api/finance", financeRoutes);
 app.use("/api/cash-movements", cashMovementRoutes);
 app.use("/api/finance-balances", financeBalanceRoutes);
 app.use("/api/payroll", payrollRoutes);
+app.use("/api/executive", executiveRoutes);
+app.use("/api/admin/org-chart", adminOrgChartRoutes);
 
 // Auto-expire job
 async function autoExpireJob() {
@@ -223,8 +243,13 @@ app.get("/api/health", (req, res) => {
 // Debug endpoint for Railway environment variables
 app.get("/api/debug-env", (req, res) => {
   const emailVars = {};
-  Object.keys(process.env).forEach(key => {
-    if (key.includes('SMTP') || key.includes('SENDGRID') || key.includes('RAILWAY') || key.includes('NODE')) {
+  Object.keys(process.env).forEach((key) => {
+    if (
+      key.includes("SMTP") ||
+      key.includes("SENDGRID") ||
+      key.includes("RAILWAY") ||
+      key.includes("NODE")
+    ) {
       const value = process.env[key];
       if (value && value.length > 10) {
         emailVars[key] = `${value.substring(0, 10)}...`;
@@ -233,44 +258,47 @@ app.get("/api/debug-env", (req, res) => {
       }
     }
   });
-  
+
   res.json({
     environment: process.env.NODE_ENV,
     railwayEnvironment: process.env.RAILWAY_ENVIRONMENT,
     emailVariables: emailVars,
-    allEmailKeys: Object.keys(process.env).filter(key => key.includes('SMTP') || key.includes('SENDGRID'))
+    allEmailKeys: Object.keys(process.env).filter(
+      (key) => key.includes("SMTP") || key.includes("SENDGRID")
+    ),
   });
 });
 
 // Email test endpoint
 app.get("/api/test-email", async (req, res) => {
   try {
-    const EmailService = require('./services/emailService');
-    
+    const EmailService = require("./services/emailService");
+
     // Test email data
     const testEmailData = {
-      to: 'test@example.com', // This will fail but we can see the error
-      subject: 'Test Email from Countryside Steak House',
-      html: '<h1>Test Email</h1><p>This is a test email to verify email service functionality.</p>',
-      text: 'Test Email - This is a test email to verify email service functionality.'
+      to: "test@example.com", // This will fail but we can see the error
+      subject: "Test Email from Countryside Steak House",
+      html: "<h1>Test Email</h1><p>This is a test email to verify email service functionality.</p>",
+      text: "Test Email - This is a test email to verify email service functionality.",
     };
 
-    console.log('🧪 Testing email service...');
+    console.log("🧪 Testing email service...");
     const result = await EmailService.sendEmailWithFallback(testEmailData);
-    
+
     res.json({
       success: true,
-      message: 'Email test completed',
+      message: "Email test completed",
       emailServiceReady: EmailService.isEmailServiceReady(),
-      result: result
+      result: result,
     });
   } catch (error) {
-    console.error('❌ Email test failed:', error.message);
+    console.error("❌ Email test failed:", error.message);
     res.status(500).json({
       success: false,
-      message: 'Email test failed',
+      message: "Email test failed",
       error: error.message,
-      emailServiceReady: require('./services/emailService').isEmailServiceReady()
+      emailServiceReady:
+        require("./services/emailService").isEmailServiceReady(),
     });
   }
 });

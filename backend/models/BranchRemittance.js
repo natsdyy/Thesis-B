@@ -7,6 +7,13 @@ const {
 } = require("../utils/timezoneUtils");
 
 class BranchRemittance {
+  static async getById(id) {
+    const row = await db("branch_remittances")
+      .where({ id })
+      .whereNull("deleted_at")
+      .first();
+    return row || null;
+  }
   static async create(data) {
     const [row] = await db("branch_remittances")
       .insert({
@@ -161,6 +168,26 @@ class BranchRemittance {
     }
 
     return row;
+  }
+
+  static async updateCsvMetadata(
+    id,
+    { url, filename, size, mime, uploadedAt }
+  ) {
+    const [row] = await db("branch_remittances")
+      .where({ id })
+      .whereNull("deleted_at")
+      .update(
+        {
+          csv_url: url || null,
+          csv_filename: filename || null,
+          csv_size: size || null,
+          csv_mime: mime || null,
+          csv_uploaded_at: uploadedAt || new Date(),
+        },
+        "*"
+      );
+    return row || null;
   }
 }
 

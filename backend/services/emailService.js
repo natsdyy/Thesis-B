@@ -4,81 +4,122 @@ const SendGridService = require("./sendGridService");
 require("dotenv").config();
 
 // Initialize SendGrid if API key is available
-const sendGridKey = process.env.SENDGRID_API_KEY || process.env.SENDGRID_API_KEY_2;
-if (sendGridKey && sendGridKey !== 'your-sendgrid-api-key-here' && sendGridKey.startsWith('SG.')) {
+// Try SENDGRID_API_KEY_2 first since SENDGRID_API_KEY appears to be invalid
+const sendGridKey =
+  process.env.SENDGRID_API_KEY_2 || process.env.SENDGRID_API_KEY;
+if (
+  sendGridKey &&
+  sendGridKey !== "your-sendgrid-api-key-here" &&
+  sendGridKey.startsWith("SG.")
+) {
   sgMail.setApiKey(sendGridKey);
-  console.log('📧 SendGrid initialized for email delivery');
-  console.log('🚂 Railway-compatible email service ready');
-  console.log('🔑 Using SendGrid API key:', sendGridKey.substring(0, 10) + '...');
+  console.log("📧 SendGrid initialized for email delivery");
+  console.log("🚂 Railway-compatible email service ready");
+  console.log(
+    "🔑 Using SendGrid API key:",
+    sendGridKey.substring(0, 10) + "..."
+  );
 } else {
-  console.log('⚠️  SendGrid API key not found or not configured, using SMTP fallback');
-  console.log('💡 To fix Railway email issues, add SENDGRID_API_KEY environment variable');
+  console.log(
+    "⚠️  SendGrid API key not found or not configured, using SMTP fallback"
+  );
+  console.log(
+    "💡 To fix Railway email issues, add SENDGRID_API_KEY environment variable"
+  );
   if (sendGridKey) {
-    console.log('🔍 Detected API key but invalid format:', sendGridKey.substring(0, 10) + '...');
+    console.log(
+      "🔍 Detected API key but invalid format:",
+      sendGridKey.substring(0, 10) + "..."
+    );
   }
 }
 
 // Email configuration from environment variables
 const EMAIL_CONFIG = {
-  user: process.env.SMTP_USER || 'mailcountrysidesteakhouse@gmail.com',
-  pass: process.env.SMTP_PASS || 'sclg quvi fuyh dcfa', // Gmail App Password
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT) || 587 || 465 || 25,
-  secure: process.env.SMTP_SECURE === 'true' || false
+  user: process.env.SMTP_USER,
+  pass: process.env.SMTP_PASS,
+  host: process.env.SMTP_HOST || "smtp.gmail.com",
+  port: parseInt(process.env.SMTP_PORT) || 587,
+  secure: process.env.SMTP_SECURE === "true" || false,
 };
 
 // Check if we have proper email configuration
 const hasValidEmailConfig = () => {
   // More lenient SendGrid detection
-  const hasSendGrid = process.env.SENDGRID_API_KEY && 
-    process.env.SENDGRID_API_KEY !== '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' &&
-    process.env.SENDGRID_API_KEY_2 !== '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' &&
-    process.env.SENDGRID_API_KEY.length > 10; // Reduced from 20 to 10
-  
+  const hasSendGrid =
+    (process.env.SENDGRID_API_KEY &&
+      process.env.SENDGRID_API_KEY.startsWith("SG.") &&
+      process.env.SENDGRID_API_KEY.length > 10) ||
+    (process.env.SENDGRID_API_KEY_2 &&
+      process.env.SENDGRID_API_KEY_2.startsWith("SG.") &&
+      process.env.SENDGRID_API_KEY_2.length > 10);
+
   // More lenient SMTP detection
-  const hasSMTP = process.env.SMTP_PASS && 
-    process.env.SMTP_PASS !== 'sclg quvi fuyh dcfa' &&
-    process.env.SMTP_PASS.length > 5; // Reduced from 10 to 5
-  
+  const hasSMTP = process.env.SMTP_PASS && process.env.SMTP_PASS.length > 5;
+
   // Additional check: if we're in Railway and have any email-related env vars, consider it valid
-  const isRailwayEnv = process.env.RAILWAY_ENVIRONMENT === 'production' || process.env.NODE_ENV === 'production';
-  const hasAnyEmailConfig = process.env.SENDGRID_API_KEY || process.env.SMTP_PASS || process.env.SMTP_USER;
-  
-  console.log('🔍 Email Config Debug:', {
+  const isRailwayEnv =
+    process.env.RAILWAY_ENVIRONMENT === "production" ||
+    process.env.NODE_ENV === "production";
+  const hasAnyEmailConfig =
+    process.env.SENDGRID_API_KEY ||
+    process.env.SMTP_PASS ||
+    process.env.SMTP_USER;
+
+  console.log("🔍 Email Config Debug:", {
     hasSendGrid,
     hasSMTP,
     isRailwayEnv,
     hasAnyEmailConfig,
-    sendGridKey: process.env.SENDGRID_API_KEY ? `${process.env.SENDGRID_API_KEY.substring(0, 10)}...` : 'undefined',
-    smtpPass: process.env.SMTP_PASS ? `${process.env.SMTP_PASS.substring(0, 5)}...` : 'undefined',
+    sendGridKey: process.env.SENDGRID_API_KEY
+      ? `${process.env.SENDGRID_API_KEY.substring(0, 10)}...`
+      : "undefined",
+    sendGridKey2: process.env.SENDGRID_API_KEY_2
+      ? `${process.env.SENDGRID_API_KEY_2.substring(0, 10)}...`
+      : "undefined",
+    smtpPass: process.env.SMTP_PASS
+      ? `${process.env.SMTP_PASS.substring(0, 5)}...`
+      : "undefined",
     smtpUser: process.env.SMTP_USER,
     smtpHost: process.env.SMTP_HOST,
     smtpPort: process.env.SMTP_PORT,
-    allEnvVars: Object.keys(process.env).filter(key => key.includes('SMTP') || key.includes('SENDGRID'))
+    allEnvVars: Object.keys(process.env).filter(
+      (key) => key.includes("SMTP") || key.includes("SENDGRID")
+    ),
+    nodeEnv: process.env.NODE_ENV,
+    railwayEnv: process.env.RAILWAY_ENVIRONMENT,
   });
-  
+
   // In Railway, if we have any email config, consider it valid
   if (isRailwayEnv && hasAnyEmailConfig) {
-    console.log('🚂 Railway environment detected with email config - considering valid');
+    console.log(
+      "🚂 Railway environment detected with email config - considering valid"
+    );
     return true;
   }
-  
+
   return hasSendGrid || hasSMTP;
 };
 
 if (!hasValidEmailConfig()) {
-  console.error('❌ No valid email configuration found!');
-  console.error('   Please set up either SendGrid API key or Gmail SMTP password in Railway environment variables.');
-  console.error('   See RAILWAY_EMAIL_FIX_GUIDE.md for instructions.');
+  console.error("❌ No valid email configuration found!");
+  console.error(
+    "   Please set up either SendGrid API key or Gmail SMTP password in Railway environment variables."
+  );
+  console.error("   See RAILWAY_EMAIL_FIX_GUIDE.md for instructions.");
 }
 
 // Check if we're in Railway environment
-const isRailway = process.env.RAILWAY_ENVIRONMENT === 'production' || process.env.NODE_ENV === 'production';
+const isRailway =
+  process.env.RAILWAY_ENVIRONMENT === "production" ||
+  process.env.NODE_ENV === "production";
 
 // Railway-specific email configuration
 if (isRailway) {
-  console.log('🚂 Railway environment detected - using Railway-optimized email settings');
-  
+  console.log(
+    "🚂 Railway environment detected - using Railway-optimized email settings"
+  );
+
   // Override EMAIL_CONFIG for Railway
   if (process.env.SMTP_USER) {
     EMAIL_CONFIG.user = process.env.SMTP_USER;
@@ -93,7 +134,7 @@ if (isRailway) {
     EMAIL_CONFIG.port = parseInt(process.env.SMTP_PORT);
   }
   if (process.env.SMTP_SECURE) {
-    EMAIL_CONFIG.secure = process.env.SMTP_SECURE === 'true';
+    EMAIL_CONFIG.secure = process.env.SMTP_SECURE === "true";
   }
 }
 
@@ -114,8 +155,8 @@ const createTransporter = (config) => {
       rejectUnauthorized: false,
       secureProtocol: "TLSv1_2_method",
     },
-    debug: process.env.NODE_ENV === "development", // Enable debug in development only
-    logger: process.env.NODE_ENV === "development",
+    debug: false, // Disable debug logging for security
+    logger: false,
   });
 };
 
@@ -140,12 +181,12 @@ const alternativeTransporter = createTransporter({
   secure: false,
   tls: {
     rejectUnauthorized: false,
-    secureProtocol: 'TLSv1_method',
-    ciphers: 'ALL'
+    secureProtocol: "TLSv1_method",
+    ciphers: "ALL",
   },
-  connectionTimeout: 30000,   // 30 seconds
-  greetingTimeout: 30000,     // 30 seconds
-  socketTimeout: 60000        // 1 minute
+  connectionTimeout: 30000, // 30 seconds
+  greetingTimeout: 30000, // 30 seconds
+  socketTimeout: 60000, // 1 minute
 });
 
 // Railway-compatible transporter using alternative SMTP (if configured)
@@ -157,8 +198,8 @@ if (process.env.RAILWAY_SMTP_HOST) {
     secure: false,
     auth: {
       user: process.env.RAILWAY_SMTP_USER || EMAIL_CONFIG.user,
-      pass: process.env.RAILWAY_SMTP_PASS || EMAIL_CONFIG.pass
-    }
+      pass: process.env.RAILWAY_SMTP_PASS || EMAIL_CONFIG.pass,
+    },
   });
 }
 
@@ -181,9 +222,9 @@ const railwayGmailTransporter = nodemailer.createTransport({
   },
   // Use different DNS servers for Railway
   dns: {
-    servers: ['1.1.1.1', '1.0.0.1'] // Cloudflare DNS
+    servers: ["1.1.1.1", "1.0.0.1"], // Cloudflare DNS
   },
-  debug: false,
+  debug: false, // Disable debug logging for security
   logger: false,
 });
 
@@ -204,7 +245,7 @@ const railwayAlternativeTransporter = nodemailer.createTransport({
     rejectUnauthorized: false,
     secureProtocol: "TLSv1_2_method",
   },
-  debug: false,
+  debug: false, // Disable debug logging for security
   logger: false,
 });
 
@@ -215,6 +256,22 @@ let emailServiceReady = false;
 
 const verifyTransporter = () => {
   verificationAttempts++;
+
+  // Check if SendGrid is available - skip SMTP verification if it is
+  const sendGridKey =
+    process.env.SENDGRID_API_KEY || process.env.SENDGRID_API_KEY_2;
+  if (
+    sendGridKey &&
+    sendGridKey.startsWith("SG.") &&
+    sendGridKey !== "your-sendgrid-api-key-here"
+  ) {
+    console.log(
+      "📧 SendGrid detected - skipping SMTP verification (Railway-compatible)"
+    );
+    emailServiceReady = true;
+    return;
+  }
+
   console.log(
     `📧 Verifying email service (attempt ${verificationAttempts}/${maxVerificationAttempts})`
   );
@@ -251,7 +308,9 @@ const verifyTransporter = () => {
 
       Promise.race([fallbackVerification, verificationTimeout])
         .then(() => {
-          console.log("✅ Fallback email service (port 465) ready to send messages");
+          console.log(
+            "✅ Fallback email service (port 465) ready to send messages"
+          );
           emailServiceReady = true;
         })
         .catch((fallbackError) => {
@@ -262,14 +321,18 @@ const verifyTransporter = () => {
           console.error(`Fallback: ${fallbackError.message}`);
 
           if (verificationAttempts < maxVerificationAttempts) {
-            console.log(`⏳ Retrying email service verification in 10 seconds...`);
+            console.log(
+              `⏳ Retrying email service verification in 10 seconds...`
+            );
             setTimeout(verifyTransporter, 10000);
           } else {
             console.error(
               "❌ Email service verification failed after all attempts"
             );
             console.error("⚠️  Email functionality may be limited");
-            console.log("📧 Email service will attempt to send emails when needed, but verification failed");
+            console.log(
+              "📧 Email service will attempt to send emails when needed, but verification failed"
+            );
             emailServiceReady = false;
           }
         });
@@ -278,7 +341,9 @@ const verifyTransporter = () => {
 
 // Start verification only if not in Railway environment or if we have SMTP config
 if (isRailway && process.env.SENDGRID_API_KEY && !process.env.SMTP_PASS) {
-  console.log('🚂 Railway environment with SendGrid only - skipping SMTP verification');
+  console.log(
+    "🚂 Railway environment with SendGrid only - skipping SMTP verification"
+  );
   emailServiceReady = true;
 } else {
   // Start verification
@@ -308,18 +373,21 @@ class EmailService {
     try {
       const msg = {
         to: emailData.to,
-        from: emailData.from || '"Countryside Steak House" <mailcountrysidesteakhouse@gmail.com>',
+        from: emailData.from || "mailcountrysidesteakhouse@gmail.com",
         subject: emailData.subject,
         text: emailData.text,
         html: emailData.html,
       };
 
-      console.log('📧 Sending email via SendGrid to:', emailData.to);
+      console.log("📧 Sending email via SendGrid to:", emailData.to);
       const response = await sgMail.send(msg);
-      console.log('✅ SendGrid email sent successfully:', response[0].statusCode);
-      return { success: true, messageId: response[0].headers['x-message-id'] };
+      console.log(
+        "✅ SendGrid email sent successfully:",
+        response[0].statusCode
+      );
+      return { success: true, messageId: response[0].headers["x-message-id"] };
     } catch (error) {
-      console.error('❌ SendGrid email failed:', error.message);
+      console.error("❌ SendGrid email failed:", error.message);
       return { success: false, error: error.message };
     }
   }
@@ -332,29 +400,73 @@ class EmailService {
   static async sendEmailWithFallback(emailData) {
     // Check if email service is ready, but don't fail if it's not
     if (!this.isEmailServiceReady()) {
-      console.log('⚠️  Email service verification failed, but attempting to send anyway...');
+      console.log(
+        "⚠️  Email service verification failed, but attempting to send anyway..."
+      );
     }
 
     // Try SendGrid first if API key is available (Railway recommended)
-    const sendGridKey = process.env.SENDGRID_API_KEY || process.env.SENDGRID_API_KEY_2;
-    if (sendGridKey && sendGridKey !== 'your-sendgrid-api-key-here' && sendGridKey.startsWith('SG.')) {
-      console.log('📧 Attempting to send via SendGrid (Railway-compatible)...');
-      const sendGridResult = await this.sendViaSendGrid(emailData);
-      if (sendGridResult.success) {
-        console.log('✅ SendGrid email sent successfully (Railway-compatible)');
-        return sendGridResult;
+    // Try SENDGRID_API_KEY_2 first since SENDGRID_API_KEY appears to be invalid
+    const sendGridKey =
+      process.env.SENDGRID_API_KEY_2 || process.env.SENDGRID_API_KEY;
+
+    console.log("🔍 SendGrid Debug:", {
+      hasSendGridKey: !!sendGridKey,
+      sendGridKeyPrefix: sendGridKey
+        ? sendGridKey.substring(0, 10) + "..."
+        : "undefined",
+      isValidFormat: sendGridKey && sendGridKey.startsWith("SG."),
+      keyLength: sendGridKey ? sendGridKey.length : 0,
+      isNotDefault: sendGridKey !== "your-sendgrid-api-key-here",
+    });
+
+    if (
+      sendGridKey &&
+      sendGridKey !== "your-sendgrid-api-key-here" &&
+      sendGridKey.startsWith("SG.")
+    ) {
+      console.log("📧 Attempting to send via SendGrid (Railway-compatible)...");
+      try {
+        const sendGridResult = await this.withTimeout(
+          this.sendViaSendGrid(emailData),
+          20000 // 20 second timeout for SendGrid
+        );
+        if (sendGridResult.success) {
+          console.log(
+            "✅ SendGrid email sent successfully (Railway-compatible)"
+          );
+          return sendGridResult;
+        }
+        console.log("❌ SendGrid failed, falling back to SMTP...");
+      } catch (sendGridError) {
+        console.log("❌ SendGrid timed out or failed:", sendGridError.message);
       }
-      console.log('❌ SendGrid failed, falling back to SMTP...');
     } else {
-      console.log('⚠️  SendGrid not configured - Railway email may fail due to SMTP port blocking');
+      console.log(
+        "⚠️  SendGrid not configured - Railway email may fail due to SMTP port blocking"
+      );
       if (sendGridKey) {
-        console.log('🔍 SendGrid key detected but invalid format');
+        console.log("🔍 SendGrid key detected but invalid format:", {
+          hasKey: !!sendGridKey,
+          startsWithSG: sendGridKey.startsWith("SG."),
+          isDefault: sendGridKey === "your-sendgrid-api-key-here",
+        });
+      } else {
+        console.log("🔍 No SendGrid key found in environment variables");
       }
     }
 
     // Fallback to SMTP (may fail on Railway due to port blocking)
-    console.log('📧 Sending via SMTP fallback (may timeout on Railway)...');
-    return await this.sendViaSMTP(emailData);
+    console.log("📧 Sending via SMTP fallback (may timeout on Railway)...");
+    try {
+      return await this.withTimeout(
+        this.sendViaSMTP(emailData),
+        25000 // 25 second timeout for SMTP
+      );
+    } catch (smtpError) {
+      console.error("❌ All email methods failed:", smtpError.message);
+      return { success: false, error: "Email service unavailable" };
+    }
   }
 
   /**
@@ -365,7 +477,7 @@ class EmailService {
   static async sendViaSMTP(emailData) {
     try {
       const mailOptions = {
-        from: emailData.from || '"Countryside Steak House" <mailcountrysidesteakhouse@gmail.com>',
+        from: emailData.from || "mailcountrysidesteakhouse@gmail.com",
         to: emailData.to,
         subject: emailData.subject,
         html: emailData.html,
@@ -378,57 +490,69 @@ class EmailService {
           transporter.sendMail(mailOptions),
           60000
         );
-        console.log('✅ SMTP email sent (primary):', info.messageId);
+        console.log("✅ SMTP email sent (primary):", info.messageId);
         return { success: true, messageId: info.messageId };
       } catch (primaryError) {
-        console.log('❌ Primary SMTP failed:', primaryError.message);
-        console.log('📧 Trying fallback SMTP (port 465)...');
-        
+        console.log("❌ Primary SMTP failed:", primaryError.message);
+        console.log("📧 Trying fallback SMTP (port 465)...");
+
         try {
           const info = await this.withTimeout(
             fallbackTransporter.sendMail(mailOptions),
             60000
           );
-          console.log('✅ SMTP email sent (fallback):', info.messageId);
+          console.log("✅ SMTP email sent (fallback):", info.messageId);
           return { success: true, messageId: info.messageId };
         } catch (fallbackError) {
-          console.log('❌ Fallback SMTP failed:', fallbackError.message);
-          console.log('📧 Trying Railway-optimized SMTP...');
-          
+          console.log("❌ Fallback SMTP failed:", fallbackError.message);
+          console.log("📧 Trying Railway-optimized SMTP...");
+
           try {
             const info = await this.withTimeout(
               railwayGmailTransporter.sendMail(mailOptions),
               60000
             );
-            console.log('✅ SMTP email sent (Railway-optimized):', info.messageId);
+            console.log(
+              "✅ SMTP email sent (Railway-optimized):",
+              info.messageId
+            );
             return { success: true, messageId: info.messageId };
           } catch (railwayError) {
-            console.log('❌ Railway-optimized SMTP failed:', railwayError.message);
-            console.log('📧 Trying alternative SMTP...');
-            
+            console.log(
+              "❌ Railway-optimized SMTP failed:",
+              railwayError.message
+            );
+            console.log("📧 Trying alternative SMTP...");
+
             try {
               const info = await this.withTimeout(
                 alternativeTransporter.sendMail(mailOptions),
                 60000
               );
-              console.log('✅ SMTP email sent (alternative):', info.messageId);
+              console.log("✅ SMTP email sent (alternative):", info.messageId);
               return { success: true, messageId: info.messageId };
             } catch (alternativeError) {
-              console.log('❌ Alternative SMTP failed:', alternativeError.message);
-              console.log('📧 Trying Railway alternative SMTP (port 2525)...');
-              
+              console.log(
+                "❌ Alternative SMTP failed:",
+                alternativeError.message
+              );
+              console.log("📧 Trying Railway alternative SMTP (port 2525)...");
+
               const info = await this.withTimeout(
                 railwayAlternativeTransporter.sendMail(mailOptions),
                 60000
               );
-              console.log('✅ SMTP email sent (Railway alternative):', info.messageId);
+              console.log(
+                "✅ SMTP email sent (Railway alternative):",
+                info.messageId
+              );
               return { success: true, messageId: info.messageId };
             }
           }
         }
       }
     } catch (error) {
-      console.error('❌ All SMTP methods failed:', error.message);
+      console.error("❌ All SMTP methods failed:", error.message);
       return { success: false, error: error.message };
     }
   }
@@ -436,9 +560,9 @@ class EmailService {
   /**
    * Wrapper to add timeout to email operations
    * @param {Promise} emailPromise - The email promise
-   * @param {number} timeoutMs - Timeout in milliseconds (default: 30000 for production)
+   * @param {number} timeoutMs - Timeout in milliseconds (default: 25000 for production)
    */
-  static async withTimeout(emailPromise, timeoutMs = 30000) {
+  static async withTimeout(emailPromise, timeoutMs = 25000) {
     return Promise.race([
       emailPromise,
       new Promise((_, reject) =>
@@ -619,11 +743,13 @@ class EmailService {
       if (attempt > 1) {
         const delay = attempt * 2000; // 2s, 4s delays
         console.log(`⏳ Waiting ${delay}ms before retry...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
-      
+
       try {
-        console.log(`📧 Attempt ${attempt}/${maxRetries} - Sending password recovery email to ${to}`);
+        console.log(
+          `📧 Attempt ${attempt}/${maxRetries} - Sending password recovery email to ${to}`
+        );
 
         const resetUrl = `${process.env.FRONTEND_URL || "http://localhost:8080"}/reset-password?token=${resetToken}`;
 
@@ -697,16 +823,22 @@ class EmailService {
 
         // Use the SendGrid-first approach with SMTP fallback
         const result = await this.sendEmailWithFallback(emailData);
-        
+
         if (result.success) {
-          console.log(`✅ Password recovery email sent (attempt ${attempt}):`, result.messageId);
+          console.log(
+            `✅ Password recovery email sent (attempt ${attempt}):`,
+            result.messageId
+          );
           return result;
         } else {
           throw new Error(result.error);
         }
       } catch (error) {
         lastError = error;
-        console.error(`❌ Error sending password recovery email (attempt ${attempt}):`, error.message);
+        console.error(
+          `❌ Error sending password recovery email (attempt ${attempt}):`,
+          error.message
+        );
 
         if (attempt < maxRetries) {
           const retryDelay = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s
@@ -735,11 +867,13 @@ class EmailService {
       if (attempt > 1) {
         const delay = attempt * 2000; // 2s, 4s delays
         console.log(`⏳ Waiting ${delay}ms before retry...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
-      
+
       try {
-        console.log(`📧 Attempt ${attempt}/${maxRetries} - Sending welcome email to ${to}`);
+        console.log(
+          `📧 Attempt ${attempt}/${maxRetries} - Sending welcome email to ${to}`
+        );
 
         const emailData = {
           to: to,
@@ -797,7 +931,7 @@ class EmailService {
             Welcome to the Countryside Steak House management system! 
             Your account has been successfully created.
             
-            ${temporaryPassword ? `Your temporary password: ${temporaryPassword}\nPlease change this password after your first login.\n\n` : ''}
+            ${temporaryPassword ? `Your temporary password: ${temporaryPassword}\nPlease change this password after your first login.\n\n` : ""}
             You can now access the system and manage your restaurant operations efficiently.
             
             © 2024 Countryside Steak House. All rights reserved.
@@ -806,16 +940,22 @@ class EmailService {
 
         // Use the SendGrid-first approach with SMTP fallback
         const result = await this.sendEmailWithFallback(emailData);
-        
+
         if (result.success) {
-          console.log(`✅ Welcome email sent (attempt ${attempt}):`, result.messageId);
+          console.log(
+            `✅ Welcome email sent (attempt ${attempt}):`,
+            result.messageId
+          );
           return result;
         } else {
           throw new Error(result.error);
         }
       } catch (error) {
         lastError = error;
-        console.error(`❌ Error sending welcome email (attempt ${attempt}):`, error.message);
+        console.error(
+          `❌ Error sending welcome email (attempt ${attempt}):`,
+          error.message
+        );
 
         if (attempt < maxRetries) {
           const retryDelay = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s
@@ -874,7 +1014,7 @@ class EmailService {
     console.log(
       "📧 [EMAIL SERVICE] Using Gmail SMTP fallback for employee welcome email"
     );
-    
+
     // Get the correct frontend URL based on environment
     const frontendUrl =
       process.env.FRONTEND_URL ||
@@ -885,10 +1025,10 @@ class EmailService {
     const loginLink = loginUrl || defaultLoginUrl;
 
     const mailOptions = {
-        from: '"COUNTRYSIDE-STEAKHOUSE" <mailcountrysidesteakhouse@gmail.com>',
-        to: to,
-        subject: "Welcome aboard to COUNTRYSIDE-STEAKHOUSE!",
-        html: `
+      from: '"COUNTRYSIDE-STEAKHOUSE" <mailcountrysidesteakhouse@gmail.com>',
+      to: to,
+      subject: "Welcome aboard to COUNTRYSIDE-STEAKHOUSE!",
+      html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
             <!-- Main Email Container -->
             <div style="background-color: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
@@ -994,7 +1134,7 @@ class EmailService {
               </div>
             </div>
           `,
-          text: `
+      text: `
             Welcome aboard to Countryside Steakhouse!
             
             Your Account Has Been Created!
@@ -1019,54 +1159,52 @@ class EmailService {
             
             ©2025 Countryside-Steakhouse. All rights reserved.
           `,
-        };
+    };
 
-      // Try primary transporter first, then fallback
-      let info;
-      this.logEmailAttempt("Employee Welcome Email", email);
+    // Try primary transporter first, then fallback
+    let info;
+    this.logEmailAttempt("Employee Welcome Email", email);
 
+    try {
+      info = await this.withTimeout(
+        transporter.sendMail(mailOptions),
+        25000 // Reduced timeout for Railway
+      );
+    } catch (primaryError) {
+      console.log(`❌ Primary transporter failed: ${primaryError.message}`);
+      if (this.isProduction()) {
+        console.log(
+          `🌐 [PRODUCTION] SMTP connection may be blocked by Railway`
+        );
+      }
+      console.log(`📧 Trying fallback transporter for employee welcome email`);
       try {
         info = await this.withTimeout(
-          transporter.sendMail(mailOptions),
+          fallbackTransporter.sendMail(mailOptions),
           25000 // Reduced timeout for Railway
         );
-      } catch (primaryError) {
-        console.log(`❌ Primary transporter failed: ${primaryError.message}`);
+      } catch (fallbackError) {
+        console.error(
+          `❌ Both transporters failed in ${this.isProduction() ? "PRODUCTION" : "DEVELOPMENT"}`
+        );
+        console.error(`Primary error: ${primaryError.message}`);
+        console.error(`Fallback error: ${fallbackError.message}`);
+
+        // In production, if both fail, we should still return success for employee creation
         if (this.isProduction()) {
           console.log(
-            `🌐 [PRODUCTION] SMTP connection may be blocked by Railway`
+            `⚠️ [PRODUCTION] Email sending failed but continuing with employee creation`
           );
+          return {
+            success: false,
+            error: `Email sending failed in production: ${fallbackError.message}`,
+            productionWarning: true,
+          };
         }
-        console.log(
-          `📧 Trying fallback transporter for employee welcome email`
-        );
-        try {
-          info = await this.withTimeout(
-            fallbackTransporter.sendMail(mailOptions),
-            25000 // Reduced timeout for Railway
-          );
-        } catch (fallbackError) {
-          console.error(
-            `❌ Both transporters failed in ${this.isProduction() ? "PRODUCTION" : "DEVELOPMENT"}`
-          );
-          console.error(`Primary error: ${primaryError.message}`);
-          console.error(`Fallback error: ${fallbackError.message}`);
-
-          // In production, if both fail, we should still return success for employee creation
-          if (this.isProduction()) {
-            console.log(
-              `⚠️ [PRODUCTION] Email sending failed but continuing with employee creation`
-            );
-            return {
-              success: false,
-              error: `Email sending failed in production: ${fallbackError.message}`,
-              productionWarning: true,
-            };
-          }
-          throw fallbackError;
-        }
+        throw fallbackError;
       }
-    
+    }
+
     // If we reach here, email was sent successfully
     this.logEmailSuccess("Employee Welcome Email", email, info);
     return { success: true, messageId: info.messageId };
@@ -1283,7 +1421,7 @@ class EmailService {
       if (attempt > 1) {
         const delay = attempt * 2000; // 2s, 4s, 6s delays
         console.log(`⏳ Waiting ${delay}ms before retry...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
       try {
         console.log(
@@ -1386,7 +1524,7 @@ class EmailService {
 
         // Use the new SendGrid-first approach with SMTP fallback
         const result = await this.sendEmailWithFallback(emailData);
-        
+
         if (result.success) {
           console.log(
             `✅ Feedback reply email sent (attempt ${attempt}):`,
@@ -1430,11 +1568,13 @@ class EmailService {
       if (attempt > 1) {
         const delay = attempt * 2000; // 2s, 4s delays
         console.log(`⏳ Waiting ${delay}ms before retry...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
-      
+
       try {
-        console.log(`📧 Attempt ${attempt}/${maxRetries} - Sending OTP email to ${to}`);
+        console.log(
+          `📧 Attempt ${attempt}/${maxRetries} - Sending OTP email to ${to}`
+        );
 
         const emailData = {
           to: to,
@@ -1506,16 +1646,22 @@ class EmailService {
 
         // Use the SendGrid-first approach with SMTP fallback
         const result = await this.sendEmailWithFallback(emailData);
-        
+
         if (result.success) {
-          console.log(`✅ OTP email sent (attempt ${attempt}):`, result.messageId);
+          console.log(
+            `✅ OTP email sent (attempt ${attempt}):`,
+            result.messageId
+          );
           return result;
         } else {
           throw new Error(result.error);
         }
       } catch (error) {
         lastError = error;
-        console.error(`❌ Error sending OTP email (attempt ${attempt}):`, error.message);
+        console.error(
+          `❌ Error sending OTP email (attempt ${attempt}):`,
+          error.message
+        );
 
         if (attempt < maxRetries) {
           const retryDelay = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s
@@ -1544,11 +1690,13 @@ class EmailService {
       if (attempt > 1) {
         const delay = attempt * 2000; // 2s, 4s delays
         console.log(`⏳ Waiting ${delay}ms before retry...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
-      
+
       try {
-        console.log(`📧 Attempt ${attempt}/${maxRetries} - Sending notification email to ${to}`);
+        console.log(
+          `📧 Attempt ${attempt}/${maxRetries} - Sending notification email to ${to}`
+        );
 
         const emailData = {
           to: to,
@@ -1577,16 +1725,22 @@ class EmailService {
 
         // Use the SendGrid-first approach with SMTP fallback
         const result = await this.sendEmailWithFallback(emailData);
-        
+
         if (result.success) {
-          console.log(`✅ Notification email sent (attempt ${attempt}):`, result.messageId);
+          console.log(
+            `✅ Notification email sent (attempt ${attempt}):`,
+            result.messageId
+          );
           return result;
         } else {
           throw new Error(result.error);
         }
       } catch (error) {
         lastError = error;
-        console.error(`❌ Error sending notification email (attempt ${attempt}):`, error.message);
+        console.error(
+          `❌ Error sending notification email (attempt ${attempt}):`,
+          error.message
+        );
 
         if (attempt < maxRetries) {
           const retryDelay = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s

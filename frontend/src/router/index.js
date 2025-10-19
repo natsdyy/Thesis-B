@@ -18,6 +18,8 @@ import SupplierLayout from '../layouts/SupplierLayout.vue';
 
 // Import page components
 import HomePage from '../views/HomePage.vue';
+import SuperAdminHome from '../views/SuperAdminHome.vue';
+import FinancialStatement from '../views/FinancialStatement.vue';
 import NotFound from '../views/NotFound.vue';
 import Login from '../views/Login.vue';
 import ForgotPassword from '../views/ForgotPassword.vue';
@@ -126,6 +128,43 @@ const routes = [
       },
     ],
   },
+  // Super Admin Executive Dashboard
+  {
+    path: '/super-admin',
+    component: DashboardLayout,
+    children: [
+      {
+        path: '',
+        name: 'SuperAdminHome',
+        component: SuperAdminHome,
+        meta: {
+          title: 'Executive Dashboard',
+          requiresAuth: true,
+          requiresRole: [
+            'Super Admin',
+            'Chairman of the Board',
+            'Board of Directors',
+          ],
+          department: 'Administration',
+        },
+      },
+      {
+        path: 'financial-statement',
+        name: 'FinancialStatement',
+        component: FinancialStatement,
+        meta: {
+          title: 'Financial Statement',
+          requiresAuth: true,
+          requiresRole: [
+            'Super Admin',
+            'Chairman of the Board',
+            'Board of Directors',
+          ],
+          department: 'Administration',
+        },
+      },
+    ],
+  },
   // Human Resource routes
   {
     path: '/hr',
@@ -186,17 +225,21 @@ const routes = [
       requiresDepartmentAccess: true,
     },
   },
-  // Admin routes (Super Admin only)
+  // Admin routes (Super Admin, Chairman, and Board of Directors)
   {
     path: '/admin',
     component: DashboardLayout,
     children: adminRoutes,
     meta: {
       title: 'System Administration',
-      department: 'System',
+      department: 'Administration',
       requiresAuth: true,
       requiresDepartmentAccess: true,
-      adminOnly: true, // Only Super Admin
+      requiresRole: [
+        'Super Admin',
+        'Chairman of the Board',
+        'Board of Directors',
+      ],
     },
   },
   // Branch routes
@@ -253,19 +296,104 @@ const router = createRouter({
 
 // Helper function to check department access
 function canAccessDepartment(userRole, userDepartment, routeDepartment) {
-  // Super Admin can access everything
-  if (userRole === 'Super Admin') {
+  // Super Admin and Chairman can access everything
+  if (userRole === 'Super Admin' || userRole === 'Chairman of the Board') {
     return true;
   }
 
-  // Users can only access their own department
+  // Board of Directors can access Administration department
+  if (
+    userRole === 'Board of Directors' &&
+    routeDepartment === 'Administration'
+  ) {
+    return true;
+  }
+
+  // Allow access to HR routes for all users (for attendance records)
+  if (routeDepartment === 'Human Resource') {
+    return true;
+  }
+
+  // Users can access their own department routes (both Staff and Manager)
   return userDepartment === routeDepartment;
 }
 
 // Helper function to check admin access
 function canAccessAdminRoutes(userRole, userDepartment) {
-  // Only Super Admin can access admin routes
-  return userRole === 'Super Admin' && userDepartment === 'System';
+  // Super Admin, Chairman, and Board of Directors can access admin routes
+  return (
+    (userRole === 'Super Admin' && userDepartment === 'System') ||
+    userRole === 'Chairman of the Board' ||
+    userRole === 'Board of Directors'
+  );
+}
+
+// Helper function to get department from route path
+function getDepartmentFromRoute(routePath) {
+  if (routePath.startsWith('/hr/')) return 'Human Resource';
+  if (routePath.startsWith('/scm/')) return 'SCM';
+  if (routePath.startsWith('/finance/')) return 'Finance';
+  if (routePath.startsWith('/production/')) return 'Production';
+  if (routePath.startsWith('/crm/')) return 'CRM';
+  if (routePath.startsWith('/branch/')) return 'Branch';
+  if (routePath.startsWith('/admin/')) return 'Administration';
+  return null;
+}
+
+// Helper function to check if route requires manager access
+function requiresManagerAccess(routePath) {
+  const managerOnlyRoutes = [
+    // HR Manager routes
+    '/hr/employee-manager',
+    '/hr/add-employee',
+    '/hr/schedules',
+    '/hr/overtime-approval',
+    '/hr/leave-approvals',
+    '/hr/positions',
+    '/hr/payroll-management',
+    '/hr/attendance-records',
+
+    // SCM Manager routes
+    '/scm/dashboard',
+    '/scm/main-inventory',
+    '/scm/request-supply',
+    '/scm/purchase-order',
+    '/scm/grn',
+    '/scm/suppliers',
+
+    // Finance Manager routes
+    '/finance/dashboard',
+    '/finance/request-approval',
+    '/finance/payroll-approval',
+    '/finance/budget-release',
+    '/finance/cash-management',
+    '/finance/sales',
+
+    // Production Manager routes
+    '/production/dashboard',
+    '/production/menu-creation',
+    '/production/recipes',
+    '/production/quality-inspection',
+    '/production/production-inventory',
+    '/production/production-execution',
+
+    // CRM Manager routes
+    '/crm/dashboard',
+    '/crm/customers-feedback',
+    '/crm/analytics',
+  ];
+
+  return managerOnlyRoutes.some((route) => routePath.startsWith(route));
+}
+
+// Helper function to check manager role access
+function canAccessManagerRoutes(userRole) {
+  // Super Admin, Chairman, and Manager roles can access manager routes
+  return (
+    userRole === 'Super Admin' ||
+    userRole === 'Chairman of the Board' ||
+    userRole === 'Manager'
+  );
 }
 
 // Add a global navigation guard
@@ -336,6 +464,17 @@ router.beforeEach(async (to, from, next) => {
   const userRole = authStore.userRole;
   const userDepartment = authStore.userDepartment;
 
+  // Enforce route meta role requirement
+  if (to.meta?.requiresRole && Array.isArray(to.meta.requiresRole)) {
+    if (!to.meta.requiresRole.includes(userRole)) {
+      // If user is Super Admin or Chairman, always allow
+      if (userRole !== 'Super Admin' && userRole !== 'Chairman of the Board') {
+        next('/dashboard');
+        return;
+      }
+    }
+  }
+
   // Check if route requires authentication
   if (to.meta.requiresAuth && (!authStore.isAuthenticated || !authStore.user)) {
     next('/login');
@@ -360,6 +499,42 @@ router.beforeEach(async (to, from, next) => {
     }
   }
 
+  // Check manager access for manager-only routes
+  if (requiresManagerAccess(to.path)) {
+    if (!canAccessManagerRoutes(userRole)) {
+      // Redirect to their appropriate dashboard
+      const userDashboard = getUserDashboardRoute(userDepartment);
+
+      // Show an error message
+      console.warn(
+        `Access denied: Only Manager, Chairman, and Super Admin roles can access ${to.path}`
+      );
+
+      next(userDashboard);
+      return;
+    }
+
+    // Check department-specific access for managers
+    const routeDepartment = getDepartmentFromRoute(to.path);
+    if (
+      routeDepartment &&
+      routeDepartment !== userDepartment &&
+      userRole !== 'Super Admin' &&
+      userRole !== 'Chairman of the Board'
+    ) {
+      // Redirect to their appropriate dashboard
+      const userDashboard = getUserDashboardRoute(userDepartment);
+
+      // Show an error message
+      console.warn(
+        `Access denied: ${userRole} from ${userDepartment} department cannot access ${routeDepartment} routes`
+      );
+
+      next(userDashboard);
+      return;
+    }
+  }
+
   // Check admin access for admin routes
   if (to.meta.adminOnly) {
     if (!canAccessAdminRoutes(userRole, userDepartment)) {
@@ -376,19 +551,32 @@ router.beforeEach(async (to, from, next) => {
     }
   }
 
+  // If Super Admin or Board members navigate to /dashboard, redirect to executive dashboard
+  if (to.path === '/dashboard' || to.name === 'Home') {
+    if (
+      userRole === 'Super Admin' ||
+      userRole === 'Chairman of the Board' ||
+      userRole === 'Board of Directors'
+    ) {
+      next('/super-admin');
+      return;
+    }
+  }
+
   next();
 });
 
 // Helper function to get user's appropriate dashboard
 function getUserDashboardRoute(userDepartment) {
   const departmentRoutes = {
-    'Human Resource': '/hr/dashboard',
-    Finance: '/finance/dashboard',
-    SCM: '/scm/dashboard',
-    Production: '/production/dashboard',
-    CRM: '/crm/dashboard',
+    'Human Resource': '/hr/attendance',
+    Finance: '/finance/attendance',
+    SCM: '/scm/attendance',
+    Production: '/production/attendance',
+    CRM: '/crm/attendance',
     Branch: '/branch/dashboard',
     System: '/admin/dashboard',
+    Administration: '/admin/organizational-chart', // Board members go to org chart
   };
 
   return departmentRoutes[userDepartment] || '/dashboard';

@@ -18,13 +18,6 @@ export default [
     meta: { title: 'Recipe Management' },
   },
   {
-    path: 'sample-planning',
-    name: 'SampleProductionPlanning',
-    component: () =>
-      import('../../views/production/SampleProductionPlanning.vue'),
-    meta: { title: 'Sample Production Planning' },
-  },
-  {
     path: 'quality-inspection',
     name: 'QualityInspection',
     component: () => import('../../views/production/QualityInspection.vue'),
@@ -54,5 +47,4 @@ export default [
     component: () => import('../../views/common/DepartmentProfile.vue'),
     meta: { title: 'Production Profile' },
   },
-
 ];

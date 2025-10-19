@@ -21,7 +21,6 @@ export const useProductionStore = defineStore('production', () => {
   // Menu Management State
   const menus = ref([]);
   const menuItems = ref([]);
-  const sampleProductions = ref([]);
   const productionInventory = ref([]);
   const menuStats = ref({
     total_menus: 0,
@@ -37,15 +36,6 @@ export const useProductionStore = defineStore('production', () => {
     average_price: 0,
     average_margin: 0,
     total_categories: 0,
-  });
-  const sampleProductionStats = ref({
-    total_samples: 0,
-    planned_samples: 0,
-    in_progress_samples: 0,
-    completed_samples: 0,
-    failed_samples: 0,
-    average_cost: 0,
-    total_quantity_produced: 0,
   });
   const qualityInspectionStats = ref({
     total_inspections: 0,
@@ -1107,289 +1097,6 @@ export const useProductionStore = defineStore('production', () => {
     }
   };
 
-  // Sample Production Actions
-  const fetchSampleProductions = async (filters = {}) => {
-    loading.value = true;
-    error.value = null;
-
-    try {
-      const params = new URLSearchParams();
-      Object.keys(filters).forEach((key) => {
-        if (filters[key]) params.append(key, filters[key]);
-      });
-
-      const response = await axios.get(
-        `${apiConfig.baseURL}/menu/sample-production?${params}`
-      );
-      if (response.data.success) {
-        sampleProductions.value = response.data.data;
-      } else {
-        throw new Error(
-          response.data.message || 'Failed to fetch sample productions'
-        );
-      }
-    } catch (err) {
-      error.value =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to fetch sample productions';
-      console.error('Error fetching sample productions:', err);
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const getSampleProductionById = async (id) => {
-    try {
-      const response = await axios.get(
-        `${apiConfig.baseURL}/menu/sample-production/${id}`,
-        { timeout: 10000 } // 10 second timeout for complex operations
-      );
-      if (response.data.success) {
-        return response.data.data;
-      } else {
-        throw new Error(
-          response.data.message || 'Failed to fetch sample production'
-        );
-      }
-    } catch (err) {
-      console.error('Error fetching sample production by ID:', err);
-      throw err;
-    }
-  };
-
-  const createSampleProduction = async (sampleData) => {
-    loading.value = true;
-    error.value = null;
-
-    try {
-      const response = await axios.post(
-        `${apiConfig.baseURL}/menu/sample-production`,
-        sampleData,
-        { timeout: 10000 } // 10 second timeout for complex operations
-      );
-      if (response.data.success) {
-        await fetchSampleProductions();
-        return response.data.data;
-      } else {
-        throw new Error(
-          response.data.message || 'Failed to create sample production'
-        );
-      }
-    } catch (err) {
-      error.value =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to create sample production';
-      console.error('Error creating sample production:', err);
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const startSampleProduction = async (id) => {
-    loading.value = true;
-    error.value = null;
-
-    try {
-      const response = await axios.post(
-        `${apiConfig.baseURL}/menu/sample-production/${id}/start`,
-        {},
-        { timeout: 10000 } // 10 second timeout for complex operations
-      );
-      if (response.data.success) {
-        await fetchSampleProductions();
-        return response.data.data;
-      } else {
-        throw new Error(
-          response.data.message || 'Failed to start sample production'
-        );
-      }
-    } catch (err) {
-      error.value =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to start sample production';
-      console.error('Error starting sample production:', err);
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const completeSampleProduction = async (
-    id,
-    quantityProduced,
-    productionCost,
-    notes
-  ) => {
-    loading.value = true;
-    error.value = null;
-
-    try {
-      const response = await axios.post(
-        `${apiConfig.baseURL}/menu/sample-production/${id}/complete`,
-        {
-          quantity_produced: quantityProduced,
-          production_cost: productionCost,
-          notes,
-        },
-        { timeout: 10000 } // 10 second timeout for complex operations
-      );
-      if (response.data.success) {
-        await fetchSampleProductions();
-        await fetchQualityInspections();
-        return response.data.data;
-      } else {
-        throw new Error(
-          response.data.message || 'Failed to complete sample production'
-        );
-      }
-    } catch (err) {
-      error.value =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to complete sample production';
-      console.error('Error completing sample production:', err);
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const updateSampleProduction = async (id, updateData) => {
-    loading.value = true;
-    error.value = null;
-
-    try {
-      const response = await axios.put(
-        `${apiConfig.baseURL}/menu/sample-production/${id}`,
-        updateData,
-        { timeout: 10000 } // 10 second timeout for complex operations
-      );
-      if (response.data.success) {
-        // Small delay to ensure database transaction is committed
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        await fetchSampleProductions();
-        return response.data.data;
-      } else {
-        throw new Error(
-          response.data.message || 'Failed to update sample production'
-        );
-      }
-    } catch (err) {
-      error.value =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to update sample production';
-      console.error('Error updating sample production:', err);
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const cancelSampleProduction = async (id) => {
-    loading.value = true;
-    error.value = null;
-
-    try {
-      const response = await axios.post(
-        `${apiConfig.baseURL}/menu/sample-production/${id}/cancel`,
-        {},
-        { timeout: 10000 } // 10 second timeout for complex operations
-      );
-      if (response.data.success) {
-        await fetchSampleProductions();
-        return response.data.data;
-      } else {
-        throw new Error(
-          response.data.message || 'Failed to cancel sample production'
-        );
-      }
-    } catch (err) {
-      error.value =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to cancel sample production';
-      console.error('Error cancelling sample production:', err);
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const failSampleProduction = async (
-    id,
-    failureReason,
-    quantityLost,
-    costIncurred,
-    notes
-  ) => {
-    loading.value = true;
-    error.value = null;
-
-    try {
-      const response = await axios.post(
-        `${apiConfig.baseURL}/menu/sample-production/${id}/fail`,
-        {
-          failure_reason: failureReason,
-          quantity_lost: quantityLost,
-          cost_incurred: costIncurred,
-          notes: notes,
-        },
-        { timeout: 10000 } // 10 second timeout for complex operations
-      );
-      if (response.data.success) {
-        await fetchSampleProductions();
-        return response.data.data;
-      } else {
-        throw new Error(
-          response.data.message || 'Failed to fail sample production'
-        );
-      }
-    } catch (err) {
-      error.value =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to fail sample production';
-      console.error('Error failing sample production:', err);
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const deleteSampleProduction = async (id) => {
-    loading.value = true;
-    error.value = null;
-
-    try {
-      const response = await axios.delete(
-        `${apiConfig.baseURL}/menu/sample-production/${id}`,
-        { timeout: 10000 } // 10 second timeout for complex operations
-      );
-      if (response.data.success) {
-        await fetchSampleProductions();
-        return response.data.data;
-      } else {
-        throw new Error(
-          response.data.message || 'Failed to delete sample production'
-        );
-      }
-    } catch (err) {
-      error.value =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to delete sample production';
-      console.error('Error deleting sample production:', err);
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
   // Quality Inspection Actions
   const fetchQualityInspections = async (filters = {}) => {
     loading.value = true;
@@ -1417,74 +1124,6 @@ export const useProductionStore = defineStore('production', () => {
         err.message ||
         'Failed to fetch quality inspections';
       console.error('Error fetching quality inspections:', err);
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const archiveSampleProduction = async (id, notes = null) => {
-    loading.value = true;
-    error.value = null;
-
-    try {
-      const response = await axios.post(
-        `${apiConfig.baseURL}/menu/sample-production/${id}/archive`,
-        { notes },
-        { timeout: 10000 } // 10 second timeout for complex operations
-      );
-      if (response.data.success) {
-        await fetchSampleProductions();
-        return response.data.data;
-      } else {
-        throw new Error(
-          response.data.message || 'Failed to archive sample production'
-        );
-      }
-    } catch (err) {
-      error.value =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to archive sample production';
-      console.error('Error archiving sample production:', err);
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  const fetchSampleProductionAuditLogs = async (filters = {}) => {
-    loading.value = true;
-    error.value = null;
-
-    try {
-      const queryParams = new URLSearchParams();
-      Object.keys(filters).forEach((key) => {
-        if (
-          filters[key] !== null &&
-          filters[key] !== undefined &&
-          filters[key] !== ''
-        ) {
-          queryParams.append(key, filters[key]);
-        }
-      });
-
-      const response = await axios.get(
-        `${apiConfig.baseURL}/menu/sample-production/audit-logs?${queryParams.toString()}`,
-        { timeout: 10000 }
-      );
-
-      if (response.data.success) {
-        return response.data.data;
-      } else {
-        throw new Error(response.data.message || 'Failed to fetch audit logs');
-      }
-    } catch (err) {
-      error.value =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to fetch audit logs';
-      console.error('Error fetching audit logs:', err);
-      throw err;
     } finally {
       loading.value = false;
     }
@@ -1725,19 +1364,6 @@ export const useProductionStore = defineStore('production', () => {
     }
   };
 
-  const fetchSampleProductionStats = async () => {
-    try {
-      const response = await axios.get(
-        `${apiConfig.baseURL}/menu/sample-production/stats`
-      );
-      if (response.data.success) {
-        sampleProductionStats.value = response.data.data;
-      }
-    } catch (err) {
-      console.error('Error fetching sample production stats:', err);
-    }
-  };
-
   const fetchQualityInspectionStats = async () => {
     try {
       const response = await axios.get(
@@ -1761,6 +1387,82 @@ export const useProductionStore = defineStore('production', () => {
       }
     } catch (err) {
       console.error('Error fetching production inventory stats:', err);
+    }
+  };
+
+  // Compute weighted-average unit cost per produced item based on completed production batches
+  const fetchWeightedAverageCosts = async (filters = {}) => {
+    try {
+      const params = new URLSearchParams(filters).toString();
+      const response = await axios.get(
+        `${apiConfig.baseURL}/production/costs/weighted-average?${params}`
+      );
+      if (response.data?.success) {
+        // Expected shape: [{ menu_item_id, unit_cost }]
+        return Array.isArray(response.data.data) ? response.data.data : [];
+      }
+      return [];
+    } catch (err) {
+      console.error('Error fetching weighted average costs:', err);
+      return [];
+    }
+  };
+
+  // End-to-end COGS computation across Supply->PO->MainInventory->Menu->Production
+  // Returns { total_cogs, by_item: [{ menu_item_id, quantity_sold, unit_cost, cogs }] }
+  const fetchCOGSByPeriod = async ({
+    date_from,
+    date_to,
+    branch_ids = [],
+  } = {}) => {
+    try {
+      // 1) Weighted-average cost per produced item during/preceding period
+      const unitCosts = await fetchWeightedAverageCosts({ date_from, date_to });
+      const costMap = new Map(
+        (unitCosts || []).map((c) => [
+          String(c.menu_item_id),
+          Number(c.unit_cost || 0),
+        ])
+      );
+
+      // 2) Pull distributions delivered/completed to branches within window as proxy for availability
+      // This supports mapping when POS itemized sales are unavailable.
+      const distributionsResp = await fetchAllDistributions({
+        date_from,
+        date_to,
+      });
+      const distributions = Array.isArray(distributionsResp)
+        ? distributionsResp
+        : [];
+      const qtyByMenuItem = new Map();
+      distributions.forEach((d) => {
+        if (branch_ids.length && !branch_ids.includes(d.branch_id)) return;
+        const key = String(d.menu_item_id);
+        qtyByMenuItem.set(
+          key,
+          (qtyByMenuItem.get(key) || 0) + Number(d.quantity_distributed || 0)
+        );
+      });
+
+      // 3) Compute COGS = unit_cost × quantity_sold (using distributed qty as proxy)
+      const by_item = [];
+      let total_cogs = 0;
+      qtyByMenuItem.forEach((qty, id) => {
+        const unit_cost = costMap.get(id) || 0;
+        const cogs = unit_cost * qty;
+        total_cogs += cogs;
+        by_item.push({
+          menu_item_id: Number(id),
+          quantity_sold: qty,
+          unit_cost,
+          cogs,
+        });
+      });
+
+      return { total_cogs, by_item };
+    } catch (err) {
+      console.error('Error computing COGS by period:', err);
+      return { total_cogs: 0, by_item: [] };
     }
   };
 
@@ -2193,23 +1895,6 @@ export const useProductionStore = defineStore('production', () => {
     }
   };
 
-  const checkSampleAvailability = async (sampleId) => {
-    try {
-      loading.value = true;
-      const response = await axios.get(
-        `${apiConfig.baseURL}/menu/inventory/check-sample-availability/${sampleId}`
-      );
-      if (response.data.success) {
-        return response.data.data;
-      }
-    } catch (err) {
-      console.error('Error checking sample availability:', err);
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
   const fetchInventoryStats = async () => {
     try {
       loading.value = true;
@@ -2459,11 +2144,10 @@ export const useProductionStore = defineStore('production', () => {
     // Menu Management State
     menus,
     menuItems,
-    sampleProductions,
+
     productionInventory,
     menuStats,
     menuItemStats,
-    sampleProductionStats,
     qualityInspectionStats,
     productionInventoryStats,
 
@@ -2511,17 +2195,7 @@ export const useProductionStore = defineStore('production', () => {
     approveMenuItemForProduction,
     deleteMenuItem,
     restoreMenuItem,
-    fetchSampleProductions,
-    getSampleProductionById,
-    createSampleProduction,
-    updateSampleProduction,
-    startSampleProduction,
-    completeSampleProduction,
-    cancelSampleProduction,
-    failSampleProduction,
-    deleteSampleProduction,
-    archiveSampleProduction,
-    fetchSampleProductionAuditLogs,
+
     createQualityInspection,
     updateQualityInspection,
     approveForProduction,
@@ -2530,9 +2204,10 @@ export const useProductionStore = defineStore('production', () => {
     updateInventoryStock,
     updateInventoryPricing,
     fetchMenuItemStats,
-    fetchSampleProductionStats,
     fetchQualityInspectionStats,
     fetchProductionInventoryStats,
+    fetchWeightedAverageCosts,
+    fetchCOGSByPeriod,
     fetchAvailableRecipes,
     fetchRecipeCategories,
     fetchMenusByCategory,
@@ -2557,7 +2232,6 @@ export const useProductionStore = defineStore('production', () => {
 
     // Inventory Integration Actions
     checkRecipeAvailability,
-    checkSampleAvailability,
     fetchInventoryStats,
     fetchLowStockAlerts,
     fetchExpiringItems,

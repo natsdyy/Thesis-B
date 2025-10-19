@@ -69,6 +69,18 @@ const setupAxiosInterceptors = () => {
           return;
         }
 
+        // Handle board member authentication errors
+        if (requestUrl.includes('/board-auth/validate-session')) {
+          console.warn(
+            'Board member session validation failed, redirecting to login'
+          );
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          localStorage.removeItem('isAuthenticated');
+          window.location.href = '/login';
+          return;
+        }
+
         // Handle supplier authentication errors
         if (requestUrl.includes('/supplier-auth/validate-session')) {
           console.warn(
@@ -102,7 +114,13 @@ export const useAuthStore = defineStore('auth', () => {
   // Getters
   const userRole = computed(() => user.value?.role || null);
   const userDepartment = computed(() => user.value?.department || null);
-  const isSuperAdmin = computed(() => userRole.value === 'Super Admin');
+  const isChairman = computed(() => userRole.value === 'Chairman of the Board');
+  const isBoardDirector = computed(
+    () => userRole.value === 'Board of Directors'
+  );
+  const isSuperAdmin = computed(
+    () => userRole.value === 'Super Admin' || isChairman.value
+  );
   const userPermissions = computed(() => user.value?.permissions || []);
 
   // Actions
@@ -138,6 +156,47 @@ export const useAuthStore = defineStore('auth', () => {
     }
   };
 
+  const boardLogin = async (credentials) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.post(
+        `${apiConfig.baseURL}/board-auth/login`,
+        credentials
+      );
+
+      if (response.data.success) {
+        // Transform board member data to match employee data structure
+        const boardMember = response.data.data.user;
+        const userData = {
+          ...boardMember,
+          role: boardMember.position, // Map position to role for compatibility
+          employee_id: boardMember.board_id, // Map board_id to employee_id for compatibility
+          name: `${boardMember.first_name} ${boardMember.last_name}`, // Create full name for compatibility
+        };
+
+        user.value = userData;
+        isAuthenticated.value = true;
+
+        // Store in localStorage for persistence
+        localStorage.setItem('user', JSON.stringify(userData));
+        localStorage.setItem('token', response.data.data.token);
+        localStorage.setItem('isAuthenticated', 'true');
+
+        return userData;
+      } else {
+        throw new Error(response.data.message || 'Board login failed');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message || err.message || 'Board login failed';
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const logout = () => {
     user.value = null;
     isAuthenticated.value = false;
@@ -145,6 +204,7 @@ export const useAuthStore = defineStore('auth', () => {
 
     // Clear localStorage
     localStorage.removeItem('user');
+    localStorage.removeItem('token');
     localStorage.removeItem('isAuthenticated');
   };
 
@@ -165,17 +225,51 @@ export const useAuthStore = defineStore('auth', () => {
 
     try {
       console.log('Validating session for user ID:', user.value.id);
-      const response = await axios.post(
-        `${apiConfig.baseURL}/auth/validate-session`,
-        {
-          user_id: user.value.id,
-        }
-      );
+
+      // Determine if this is a Board member or employee based on the presence of board_id
+      const isBoardMember =
+        user.value.board_id ||
+        user.value.role === 'Chairman of the Board' ||
+        user.value.role === 'Board of Directors';
+
+      const endpoint = isBoardMember
+        ? `${apiConfig.baseURL}/board-auth/validate-session`
+        : `${apiConfig.baseURL}/auth/validate-session`;
+
+      const response = await axios.post(endpoint, {
+        user_id: user.value.id,
+      });
 
       if (response.data.success) {
         // Update user data with latest info
-        user.value = response.data.data.user;
-        localStorage.setItem('user', JSON.stringify(response.data.data.user));
+        const updatedUser = response.data.data.user;
+
+        // Check if it's a Board member by looking for board_id or position
+        const isBoardMember =
+          updatedUser.board_id ||
+          updatedUser.position === 'Board of Directors' ||
+          updatedUser.position === 'Chairman of the Board';
+
+        // If it's a Board member, transform the data structure
+        if (isBoardMember) {
+          const userData = {
+            ...updatedUser,
+            role: updatedUser.position, // Map position to role for compatibility
+            employee_id: updatedUser.board_id, // Map board_id to employee_id for compatibility
+            name: `${updatedUser.first_name} ${updatedUser.last_name}`, // Create full name for compatibility
+          };
+          user.value = userData;
+          localStorage.setItem('user', JSON.stringify(userData));
+          console.log(
+            'validateSession - Transformed Board member data:',
+            userData
+          );
+        } else {
+          user.value = updatedUser;
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+          console.log('validateSession - Set employee data:', updatedUser);
+        }
+
         console.log('Session validation successful');
         return true;
       } else {
@@ -212,6 +306,18 @@ export const useAuthStore = defineStore('auth', () => {
 
     try {
       console.log('Refreshing user data from API...');
+
+      // Check if current user is a Board member
+      const isBoardMember =
+        user.value?.board_id ||
+        user.value?.role === 'Chairman of the Board' ||
+        user.value?.role === 'Board of Directors';
+
+      if (isBoardMember) {
+        // Board members don't have a refresh endpoint, just validate session
+        return await validateSession();
+      }
+
       const response = await axios.get(`${apiConfig.baseURL}/employees/me`);
 
       if (response.data.success) {
@@ -382,8 +488,31 @@ export const useAuthStore = defineStore('auth', () => {
 
     if (storedUser && storedAuth === 'true' && token) {
       try {
-        user.value = JSON.parse(storedUser);
+        const parsedUser = JSON.parse(storedUser);
+
+        // Transform Board member data if needed (in case it wasn't transformed when stored)
+        let transformedUser = parsedUser;
+        if (parsedUser.board_id && !parsedUser.role) {
+          // This is a Board member without role transformation
+          transformedUser = {
+            ...parsedUser,
+            role: parsedUser.position, // Map position to role for compatibility
+            employee_id: parsedUser.board_id, // Map board_id to employee_id for compatibility
+            name: `${parsedUser.first_name} ${parsedUser.last_name}`, // Create full name for compatibility
+          };
+          console.log(
+            'initializeAuth - Transformed Board member data:',
+            transformedUser
+          );
+        }
+
+        user.value = transformedUser;
         isAuthenticated.value = true;
+
+        console.log(
+          'initializeAuth - Loaded user from localStorage:',
+          transformedUser
+        );
 
         // Try to refresh user data from API for fresh information
         const refreshed = await refreshUserData();
@@ -400,6 +529,8 @@ export const useAuthStore = defineStore('auth', () => {
         console.error('Error parsing stored user data:', e);
         logout();
       }
+    } else {
+      console.log('initializeAuth - No stored auth data found');
     }
   };
 
@@ -418,10 +549,13 @@ export const useAuthStore = defineStore('auth', () => {
     userRole,
     userDepartment,
     isSuperAdmin,
+    isChairman,
+    isBoardDirector,
     userPermissions,
 
     // Actions
     login,
+    boardLogin,
     logout,
     setUser,
     validateSession,

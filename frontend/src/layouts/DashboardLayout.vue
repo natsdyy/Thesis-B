@@ -35,7 +35,7 @@
     />
 
     <!-- Main Content Area with proper margins -->
-    <div class="lg:pl-64">
+    <div class="lg:pl-64 bg-accentColor">
       <!-- Header -->
       <DashboardHeader
         :is-mobile-menu-open="isMobileMenuOpen"

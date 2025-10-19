@@ -397,8 +397,24 @@
                   <option value="today">Today</option>
                   <option value="week">This Week</option>
                   <option value="month">This Month</option>
-                  <option value="all">All Time</option>
+                  <option value="custom_month">Custom Month</option>
                 </select>
+              </div>
+
+              <!-- Custom Month Picker -->
+              <div
+                class="space-y-2"
+                v-if="historyFilters.dateRange === 'custom_month'"
+              >
+                <label class="block text-sm font-medium text-gray-700">
+                  Select Month
+                </label>
+                <input
+                  type="month"
+                  v-model="historyCustomMonth"
+                  @change="applyHistoryFilters"
+                  class="input input-bordered w-full"
+                />
               </div>
 
               <div class="space-y-2">
@@ -475,9 +491,6 @@
                         <div>
                           <div class="font-medium">
                             {{ request.first_name }} {{ request.last_name }}
-                          </div>
-                          <div class="text-sm text-gray-500">
-                            {{ request.employee_code }}
                           </div>
                         </div>
                       </div>
@@ -1040,6 +1053,7 @@
     branch_id: '',
     search: '',
   });
+  const historyCustomMonth = ref(''); // YYYY-MM
 
   // Modal states
   const showViewModal = ref(false);
@@ -1170,14 +1184,44 @@
         case 'month':
           startDate = new Date(now.getFullYear(), now.getMonth(), 1);
           break;
+        case 'custom_month': {
+          const [yStr, mStr] = (historyCustomMonth.value || '').split('-');
+          const y = parseInt(yStr);
+          const m = parseInt(mStr);
+          if (!isNaN(y) && !isNaN(m)) {
+            startDate = new Date(y, m - 1, 1);
+          } else {
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          }
+          break;
+        }
         default:
           startDate = null;
       }
 
       if (startDate) {
         filtered = filtered.filter((req) => {
-          const completionDate = getCompletionDate(req);
-          return new Date(completionDate) >= startDate;
+          const completionDate = new Date(getCompletionDate(req));
+          if (historyFilters.value.dateRange === 'custom_month') {
+            // End at last day of selected month
+            const [yStr, mStr] = (historyCustomMonth.value || '').split('-');
+            const y = parseInt(yStr);
+            const m = parseInt(mStr);
+            const endDate =
+              !isNaN(y) && !isNaN(m)
+                ? new Date(y, m, 0, 23, 59, 59, 999)
+                : new Date(
+                    now.getFullYear(),
+                    now.getMonth() + 1,
+                    0,
+                    23,
+                    59,
+                    59,
+                    999
+                  );
+            return completionDate >= startDate && completionDate <= endDate;
+          }
+          return completionDate >= startDate;
         });
       }
     }

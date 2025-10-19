@@ -36,7 +36,8 @@ export const usePOSStore = defineStore('pos', () => {
   // Getters
   const filteredMenuItems = computed(() => {
     if (selectedCategory.value === 'All') {
-      return menuItems.value;
+      // Exclude Beverages from the default "All" view
+      return menuItems.value.filter((item) => item.category !== 'Beverages');
     }
     return menuItems.value.filter(
       (item) => item.category === selectedCategory.value
@@ -616,6 +617,47 @@ export const usePOSStore = defineStore('pos', () => {
     }
   };
 
+  // Move an existing order to processing (for kitchen/cook receiving orders)
+  const processOrderById = async (orderId) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const url = getApiUrl(`/pos/orders/${orderId}/process`);
+      const { data: response } = await axios.post(
+        url,
+        {},
+        {
+          baseURL: apiConfig.baseURL,
+          headers: { ...getAuthHeaders() },
+        }
+      );
+
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to receive order');
+      }
+
+      // Update local history state if present
+      const orderIndex = orderHistory.value.findIndex((o) => o.id === orderId);
+      if (orderIndex !== -1) {
+        orderHistory.value[orderIndex].status = 'processing';
+        orderHistory.value[orderIndex].processedAt =
+          response.data?.processed_at || new Date().toISOString();
+      }
+
+      return response.data;
+    } catch (err) {
+      error.value =
+        err?.response?.data?.message ||
+        err.message ||
+        'Failed to receive order';
+      console.error('Error processing order by id:', err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const fetchOrderHistory = async (filters = {}) => {
     try {
       const {
@@ -876,6 +918,31 @@ export const usePOSStore = defineStore('pos', () => {
     }
   };
 
+  // Upload a CSV attachment for a remittance
+  const uploadRemittanceCSV = async (
+    remittanceId,
+    fileBlob,
+    filename = 'remittance.csv'
+  ) => {
+    try {
+      const url = getApiUrl(`/finance/remittances/${remittanceId}/csv`);
+      const form = new FormData();
+      const file =
+        fileBlob instanceof Blob
+          ? fileBlob
+          : new Blob([String(fileBlob || '')], { type: 'text/csv' });
+      form.append('file', file, filename);
+      const { data } = await axios.post(url, form, {
+        baseURL: apiConfig.baseURL,
+        headers: { ...getAuthHeaders(), 'Content-Type': 'multipart/form-data' },
+      });
+      return data?.data || null;
+    } catch (err) {
+      console.error('Error uploading remittance CSV:', err);
+      throw err;
+    }
+  };
+
   // Check if there's already a pending remittance for the same period
   const hasPendingRemittance = async (branchId, dateFrom, dateTo) => {
     try {
@@ -1081,6 +1148,7 @@ export const usePOSStore = defineStore('pos', () => {
     cancelOrder,
     voidOrder,
     completeOrder,
+    processOrderById,
     fetchOrderHistory,
     fetchOrderById,
     fetchDailySummary,
@@ -1092,6 +1160,7 @@ export const usePOSStore = defineStore('pos', () => {
     approveRemittance,
     rejectRemittance,
     submitRemittance,
+    uploadRemittanceCSV,
     hasPendingRemittance,
     setSelectedCategory,
     initialize,

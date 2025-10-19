@@ -10,26 +10,6 @@ export default [
     },
   },
   {
-    path: 'users',
-    name: 'AdminUsers',
-    component: () => import('../../views/admin/Users.vue'),
-    meta: {
-      title: 'User Management',
-      permission: 'Manage User Management',
-      superAdminOnly: true,
-    },
-  },
-  {
-    path: 'roles',
-    name: 'AdminRoles',
-    component: () => import('../../views/admin/Roles.vue'),
-    meta: {
-      title: 'Role Management',
-      permission: 'Manage Role Management',
-      superAdminOnly: true, // Only Super Admin can manage roles
-    },
-  },
-  {
     path: 'branch-manager',
     name: 'AdminBranchManager',
     component: () => import('../../views/admin/BranchManager.vue'),
@@ -40,22 +20,27 @@ export default [
     },
   },
   {
+    path: 'organizational-chart',
+    name: 'AdminOrganizationalChart',
+    component: () => import('../../views/admin/OrganizationalChart.vue'),
+    meta: {
+      title: 'Organizational Chart',
+      permission: 'Manage Organizational Chart',
+      requiresAuth: true,
+      requiresRole: [
+        'Super Admin',
+        'Chairman of the Board',
+        'Board of Directors',
+      ],
+    },
+  },
+  {
     path: 'attendance',
     name: 'AdminAttendance',
     component: () => import('../../views/common/DepartmentAttendance.vue'),
     meta: {
       title: 'My Attendance',
       permission: 'View Attendance',
-    },
-  },
-  {
-    path: 'settings',
-    name: 'AdminSettings',
-    component: () => import('../../views/admin/Settings.vue'),
-    meta: {
-      title: 'System Settings',
-      permission: 'Manage System Settings',
-      superAdminOnly: true,
     },
   },
 ];

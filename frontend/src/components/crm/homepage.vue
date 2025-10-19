@@ -3,10 +3,10 @@
     <!-- Foodpanda Order Modal -->
     <FoodpandaOrderModal
       :isOpen="isFoodpandaModalOpen"
-        @close="closeFoodpandaModal"
-      />
+      @close="closeFoodpandaModal"
+    />
 
-      <!-- Grabfood Order Modal -->
+    <!-- Grabfood Order Modal -->
     <GrabfoodOrderModal
       :isOpen="isGrabfoodModalOpen"
       @close="closeGrabfoodModal"
@@ -34,19 +34,23 @@
                 <span
                   :class="[
                     'absolute block h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out',
-                    isMobileMenuOpen ? 'rotate-45 translate-y-2.5' : 'translate-y-0'
+                    isMobileMenuOpen
+                      ? 'rotate-45 translate-y-2.5'
+                      : 'translate-y-0',
                   ]"
                 ></span>
                 <span
                   :class="[
                     'absolute block h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out translate-y-2.5',
-                    isMobileMenuOpen ? 'opacity-0' : 'opacity-100'
+                    isMobileMenuOpen ? 'opacity-0' : 'opacity-100',
                   ]"
                 ></span>
                 <span
                   :class="[
                     'absolute block h-0.5 w-6 bg-current transform transition-all duration-300 ease-in-out',
-                    isMobileMenuOpen ? '-rotate-45 translate-y-2.5' : 'translate-y-5'
+                    isMobileMenuOpen
+                      ? '-rotate-45 translate-y-2.5'
+                      : 'translate-y-5',
                   ]"
                 ></span>
               </div>
@@ -76,8 +80,8 @@
           </div>
 
           <!-- Desktop Navigation -->
-             <nav class="hidden md:flex items-center space-x-10">
-               <router-link
+          <nav class="hidden md:flex items-center space-x-10">
+            <router-link
               to="/menu"
               class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
             >
@@ -96,19 +100,19 @@
                 class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
               ></span>
             </router-link>
-               <a
-                 href="#contact"
-                 class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
-               >
-                 <span class="relative z-10">Contact Us</span>
-                 <span
-                   class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
-                 ></span>
-               </a>
+            <a
+              href="#contact"
+              class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
+            >
+              <span class="relative z-10">Contact Us</span>
+              <span
+                class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
+              ></span>
+            </a>
           </nav>
 
-          <!-- Login Button -->
-          <div class="flex items-center space-x-2 sm:space-x-4">
+          <!-- Login Button (hidden on mobile, shown on md+) -->
+          <div class="hidden md:flex items-center space-x-2 sm:space-x-4">
             <button
               @click="goToLogin"
               class="border border-white text-white px-3 sm:px-4 md:px-6 py-1.5 sm:py-2 rounded-sm cursor-pointer transition-all duration-300 shadow-md font-thin text-sm sm:text-base"
@@ -124,17 +128,35 @@
     <div
       :class="[
         'mobile-menu-container fixed top-16 sm:top-20 left-0 right-0 bg-green-800 shadow-lg z-40 transform transition-all duration-300 ease-in-out md:hidden',
-        isMobileMenuOpen ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'
+        isMobileMenuOpen
+          ? 'translate-y-0 opacity-100'
+          : '-translate-y-full opacity-0',
       ]"
     >
-         <nav class="py-3 sm:py-4 px-3 sm:px-4 space-y-1 sm:space-y-2">
-           <router-link
+      <nav class="py-3 sm:py-4 px-3 sm:px-4 space-y-1 sm:space-y-2">
+        <router-link
+          to="/login"
+          @click="closeMobileMenu()"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <font-awesome-icon
+              icon="fa-solid fa-right-to-bracket"
+              class="w-4 h-4 sm:w-5 sm:h-5 mr-3"
+            />
+            Login
+          </span>
+        </router-link>
+        <router-link
           to="/menu"
           @click="closeMobileMenu()"
           class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
         >
           <span class="flex items-center">
-            <font-awesome-icon icon="fa-solid fa-utensils" class="w-4 h-4 sm:w-5 sm:h-5 mr-3" />
+            <font-awesome-icon
+              icon="fa-solid fa-utensils"
+              class="w-4 h-4 sm:w-5 sm:h-5 mr-3"
+            />
             Menu
           </span>
         </router-link>
@@ -144,20 +166,26 @@
           class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
         >
           <span class="flex items-center">
-            <font-awesome-icon icon="fa-solid fa-store" class="w-4 h-4 sm:w-5 sm:h-5 mr-3" />
+            <font-awesome-icon
+              icon="fa-solid fa-store"
+              class="w-4 h-4 sm:w-5 sm:h-5 mr-3"
+            />
             Store's
           </span>
         </router-link>
-           <a
-             href="#contact"
-             @click="closeMobileMenu()"
-             class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
-           >
-             <span class="flex items-center">
-               <font-awesome-icon icon="fa-solid fa-phone" class="w-4 h-4 sm:w-5 sm:h-5 mr-3" />
-               Contact Us
-             </span>
-           </a>
+        <a
+          href="#contact"
+          @click="closeMobileMenu()"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <font-awesome-icon
+              icon="fa-solid fa-phone"
+              class="w-4 h-4 sm:w-5 sm:h-5 mr-3"
+            />
+            Contact Us
+          </span>
+        </a>
       </nav>
     </div>
 
@@ -239,11 +267,17 @@
 
       <!-- Rest of the hero content -->
       <div class="relative z-30 container mx-auto px-3 sm:px-6">
-        <div class="grid lg:grid-cols-2 gap-8 sm:gap-12 items-center min-h-[75vh] sm:min-h-[80vh]">
+        <div
+          class="grid lg:grid-cols-2 gap-8 sm:gap-12 items-center min-h-[75vh] sm:min-h-[80vh]"
+        >
           <!-- Left Side - Main Content -->
-          <div class="text-center lg:text-left space-y-6 sm:space-y-8 order-1 lg:order-1">
+          <div
+            class="text-center lg:text-left space-y-6 sm:space-y-8 order-1 lg:order-1"
+          >
             <!-- Main Heading -->
-            <h1 class="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight">
+            <h1
+              class="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight"
+            >
               Ang Paborito ng
               <span class="text-orange-400 block mt-1 sm:mt-2">Bayan</span>
             </h1>
@@ -266,7 +300,9 @@
             </p>
 
             <!-- CTA Buttons -->
-            <div class="flex flex-row gap-3 sm:gap-4 pt-2 justify-center lg:justify-start">
+            <div
+              class="flex flex-row gap-3 sm:gap-4 pt-2 justify-center lg:justify-start"
+            >
               <router-link
                 to="/menu"
                 class="group bg-orange-500 hover:bg-orange-400 text-white px-6 sm:px-10 py-3 sm:py-4 rounded-md text-sm sm:text-base transition-all duration-300 flex items-center justify-center font-thin btn btn-md border border-none shadow-none"
@@ -290,25 +326,37 @@
             </div>
 
             <!-- Quick Stats -->
-            <div class="flex items-center justify-center lg:justify-start space-x-4 sm:space-x-6 lg:space-x-8 pt-4 sm:pt-6">
+            <div
+              class="flex items-center justify-center lg:justify-start space-x-4 sm:space-x-6 lg:space-x-8 pt-4 sm:pt-6"
+            >
               <div class="text-center">
-                <div class="text-xl sm:text-2xl font-bold text-orange-400">40+</div>
-                <div class="text-xs sm:text-sm text-white/70">Years of Excellence</div>
+                <div class="text-xl sm:text-2xl font-bold text-orange-400">
+                  40+
+                </div>
+                <div class="text-xs sm:text-sm text-white/70">
+                  Years of Excellence
+                </div>
               </div>
               <div class="text-center">
-                <div class="text-xl sm:text-2xl font-bold text-orange-400">3</div>
+                <div class="text-xl sm:text-2xl font-bold text-orange-400">
+                  3
+                </div>
                 <div class="text-xs sm:text-sm text-white/70">Branches</div>
               </div>
               <div class="text-center">
-                <div class="text-xl sm:text-2xl font-bold text-orange-400">1000+</div>
-                <div class="text-xs sm:text-sm text-white/70">Happy Customers</div>
+                <div class="text-xl sm:text-2xl font-bold text-orange-400">
+                  1000+
+                </div>
+                <div class="text-xs sm:text-sm text-white/70">
+                  Happy Customers
+                </div>
               </div>
             </div>
           </div>
-          
+
           <!-- Right Side - Professional Reels Carousel - Enhanced Layout with Right Alignment -->
           <div
-            class="hidden lg:block text-center lg:text-right space-y-6 sm:space-y-8 lg:space-y-10 lg:flex lg:flex-col lg:items-end mt-8 lg:mt-0 order-2 lg:order-2"
+            class="hidden text-center lg:text-right space-y-6 sm:space-y-8 lg:space-y-10 lg:flex lg:flex-col lg:items-end mt-8 lg:mt-0 order-2 lg:order-2"
           >
             <!-- Reels Carousel Container -->
             <div class="relative">
@@ -388,7 +436,9 @@
 
               <!-- Enhanced Reel Counter and Info - White Text for Better Visibility -->
               <div class="text-center mt-4 sm:mt-6 space-y-2 sm:space-y-3">
-                <div class="flex items-center justify-center space-x-2 sm:space-x-3">
+                <div
+                  class="flex items-center justify-center space-x-2 sm:space-x-3"
+                >
                   <span class="text-sm sm:text-base font-semibold text-white"
                     >{{ currentReelIndex + 1 }} of {{ reels.length }}</span
                   >
@@ -402,7 +452,9 @@
                 </p>
 
                 <!-- Auto-scroll indicator -->
-                <div class="flex items-center justify-center space-x-2 mt-1 sm:mt-2">
+                <div
+                  class="flex items-center justify-center space-x-2 mt-1 sm:mt-2"
+                >
                   <div
                     :class="[
                       'w-2 h-2 rounded-full transition-all duration-300',
@@ -432,7 +484,9 @@
         <div
           class="w-5 h-8 sm:w-6 sm:h-10 border-2 border-white rounded-full flex justify-center"
         >
-          <div class="w-1 h-2 sm:h-3 bg-white rounded-full mt-1.5 sm:mt-2 animate-pulse"></div>
+          <div
+            class="w-1 h-2 sm:h-3 bg-white rounded-full mt-1.5 sm:mt-2 animate-pulse"
+          ></div>
         </div>
       </div>
     </section>
@@ -444,7 +498,11 @@
         <div class="text-center mb-12 sm:mb-16">
           <div class="flex items-center justify-center mb-4 sm:mb-6">
             <div class="w-20 sm:w-40 lg:w-60 h-0.5 bg-orange-400"></div>
-            <h2 class="text-2xl sm:text-3xl lg:text-4xl font-bold text-green-800 mx-3 sm:mx-6">About Us</h2>
+            <h2
+              class="text-2xl sm:text-3xl lg:text-4xl font-bold text-green-800 mx-3 sm:mx-6"
+            >
+              About Us
+            </h2>
             <div class="w-20 sm:w-40 lg:w-60 h-0.5 bg-orange-400"></div>
           </div>
         </div>
@@ -466,11 +524,11 @@
 
             <!-- Floating achievement badge -->
             <div
-              class="absolute -bottom-6 -right-6 bg-orange-500 text-white px-6 py-3 rounded-full shadow-lg"
+              class="absolute -bottom-2 -right-2 sm:-bottom-4 sm:-right-4 lg:-bottom-6 lg:-right-6 bg-orange-500 text-white px-3 py-2 sm:px-4 sm:py-2.5 lg:px-6 lg:py-3 rounded-full shadow-lg"
             >
               <div class="text-center">
-                <div class="text-2xl font-bold">40+</div>
-                <div class="text-sm">Years of Excellence</div>
+                <div class="text-sm sm:text-lg lg:text-2xl font-bold">40+</div>
+                <div class="text-xs sm:text-sm">Years of Excellence</div>
               </div>
             </div>
           </div>
@@ -491,7 +549,9 @@
             </div>
 
             <!-- Main Description -->
-            <div class="space-y-4 sm:space-y-6 text-base sm:text-lg text-gray-700 leading-relaxed">
+            <div
+              class="space-y-4 sm:space-y-6 text-base sm:text-lg text-gray-700 leading-relaxed"
+            >
               <p>
                 Welcome to
                 <span class="font-semibold text-green-700"
@@ -525,13 +585,17 @@
             <div
               class="bg-white rounded-xl p-4 sm:p-6 shadow-lg border-l-4 border-green-600"
             >
-              <h3 class="text-lg sm:text-xl font-bold text-green-800 mb-3 sm:mb-4">
+              <h3
+                class="text-lg sm:text-xl font-bold text-green-800 mb-3 sm:mb-4"
+              >
                 🌿 Growing Across Cavite
               </h3>
               <p class="text-sm sm:text-base text-gray-600 mb-3 sm:mb-4">
                 We're proud to serve our community across multiple locations:
               </p>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-1 sm:gap-2 text-xs sm:text-sm text-gray-700">
+              <div
+                class="grid grid-cols-1 sm:grid-cols-2 gap-1 sm:gap-2 text-xs sm:text-sm text-gray-700"
+              >
                 <div class="flex items-center">
                   <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
                   Tanza, Philippines
@@ -883,29 +947,116 @@
         <!-- Signature Dishes Grid -->
         <div
           v-else-if="signatureDishes.length > 0"
-          class="grid md:grid-cols-2 lg:grid-cols-4 gap-6"
+          class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8 cursor-pointer"
         >
           <div
             v-for="item in signatureDishes"
             :key="item.name"
-            class="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300"
+            class="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover relative"
           >
-            <div class="h-48 overflow-hidden group">
+            <!-- Modern Promo Badge -->
+            <div v-if="item.hasPromo" class="absolute top-4 right-4 z-10">
+              <div
+                class="bg-gradient-to-br from-red-500 to-orange-500 rounded-xl px-3 py-2 shadow-lg backdrop-blur-sm border border-white/20 relative overflow-hidden hover:scale-105 transition-all duration-300 hover:shadow-xl"
+              >
+                <!-- Shimmer Effect -->
+                <div
+                  class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full animate-[shimmer_2s_infinite]"
+                ></div>
+
+                <div class="relative z-10 text-center">
+                  <div
+                    class="text-white text-sm font-thin leading-none drop-shadow-sm"
+                  >
+                    {{
+                      item.promoInfo.discount_type === 'percentage'
+                        ? '-' + item.promoInfo.discount_percentage + '%'
+                        : '-₱' + item.promoInfo.discount_amount
+                    }}
+                  </div>
+                  <div
+                    class="text-white/90 text-xs font-thin uppercase tracking-wide mt-1"
+                  >
+                    OFF
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="h-48 overflow-hidden group relative">
               <img
                 :src="item.image"
                 :alt="item.name"
                 class="w-full h-full object-cover transform transition-transform duration-500 ease-in-out group-hover:scale-110"
               />
+
+              <!-- Promo Overlay -->
+              <div
+                v-if="item.hasPromo"
+                class="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+              ></div>
             </div>
+
             <div class="p-6">
               <h3 class="text-xl font-bold text-green-800 mb-2">
                 {{ item.name }}
               </h3>
+
+              <!-- Price Section with Promo -->
               <div class="flex justify-between items-center">
-                <span class="text-orange-500 font-bold text-lg">
-                  <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                  {{ item.price.toFixed(2) }}
-                </span>
+                <div class="flex flex-col">
+                  <!-- Original Price (crossed out if promo) -->
+                  <span
+                    v-if="item.hasPromo"
+                    class="text-gray-400 text-sm line-through"
+                  >
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{ item.originalPrice.toFixed(2) }}
+                  </span>
+
+                  <!-- Current Price -->
+                  <span
+                    :class="[
+                      'font-bold text-lg',
+                      item.hasPromo ? 'text-red-500' : 'text-orange-500',
+                    ]"
+                  >
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{
+                      item.discountedPrice
+                        ? item.discountedPrice.toFixed(2)
+                        : item.price.toFixed(2)
+                    }}
+                  </span>
+
+                  <!-- Discount Amount -->
+                  <span
+                    v-if="
+                      item.hasPromo &&
+                      item.promoInfo.discount_type === 'percentage'
+                    "
+                    class="text-xs text-green-600 font-semibold"
+                  >
+                    {{ item.promoInfo.discount_percentage }}% OFF
+                  </span>
+                  <span
+                    v-else-if="
+                      item.hasPromo &&
+                      item.promoInfo.discount_type === 'fixed_amount'
+                    "
+                    class="text-xs text-green-600 font-semibold"
+                  >
+                    ₱{{ item.promoInfo.discount_amount }} OFF
+                  </span>
+                </div>
+
+                <!-- Promo Icon -->
+                <div
+                  v-if="item.hasPromo"
+                  class="flex items-center justify-center w-6 h-6 bg-gradient-to-br from-red-500 to-orange-500 text-white rounded-full shadow-md hover:scale-110 hover:shadow-lg transition-all duration-300"
+                >
+                  <font-awesome-icon icon="fa-solid fa-bolt" class="text-xs" />
+                </div>
               </div>
             </div>
           </div>
@@ -1856,7 +2007,10 @@
 
   // Click outside handler for mobile menu
   const handleClickOutside = (event) => {
-    if (isMobileMenuOpen.value && !event.target.closest('.mobile-menu-container')) {
+    if (
+      isMobileMenuOpen.value &&
+      !event.target.closest('.mobile-menu-container')
+    ) {
       closeMobileMenu();
     }
   };
@@ -2069,13 +2223,26 @@
   const fetchMenuItems = async () => {
     try {
       isLoadingMenu.value = true;
-      const response = await menuService.getFeaturedMenuItems(4);
+      const response = await menuService.getFeaturedMenuItems(10); // Get more items to filter
 
       if (response.success) {
-        const items = Array.isArray(response.data)
-          ? response.data.slice(0, 4)
-          : [];
-        signatureDishes.value = items.map((item) => ({
+        const items = Array.isArray(response.data) ? response.data : [];
+
+        // Sort items to prioritize promo items first
+        const sortedItems = items.sort((a, b) => {
+          // Items with active promos come first
+          const aHasPromo = a.promo_info && a.promo_info.is_active;
+          const bHasPromo = b.promo_info && b.promo_info.is_active;
+
+          if (aHasPromo && !bHasPromo) return -1;
+          if (!aHasPromo && bHasPromo) return 1;
+          return 0;
+        });
+
+        // Take only the first 4 items (prioritizing promos)
+        const selectedItems = sortedItems.slice(0, 4);
+
+        signatureDishes.value = selectedItems.map((item) => ({
           name:
             item.item_name ||
             item.menu_item_name ||
@@ -2089,6 +2256,18 @@
           image:
             resolvePublicUrl(item.image_url) ||
             '/src/assets/crm/default-menu.png',
+          // Add promo information
+          hasPromo: item.promo_info && item.promo_info.is_active,
+          promoInfo: item.promo_info,
+          originalPrice: parseFloat(item.selling_price || item.price || 0),
+          // Calculate discounted price
+          discountedPrice:
+            item.promo_info && item.promo_info.is_active
+              ? calculateDiscountedPrice(
+                  parseFloat(item.selling_price || item.price || 0),
+                  item.promo_info
+                )
+              : null,
         }));
       }
     } catch (error) {
@@ -2098,6 +2277,21 @@
     } finally {
       isLoadingMenu.value = false;
     }
+  };
+
+  // Calculate discounted price based on promo info
+  const calculateDiscountedPrice = (originalPrice, promoInfo) => {
+    if (!promoInfo || !promoInfo.is_active) return originalPrice;
+
+    if (promoInfo.discount_type === 'percentage') {
+      const discountAmount =
+        (originalPrice * parseFloat(promoInfo.discount_percentage)) / 100;
+      return originalPrice - discountAmount;
+    } else if (promoInfo.discount_type === 'fixed_amount') {
+      return originalPrice - parseFloat(promoInfo.discount_amount);
+    }
+
+    return originalPrice;
   };
 
   // Get directions to branch
@@ -2329,7 +2523,6 @@
   /* Enhanced focus states */
   button:focus,
   a:focus {
-    outline: 2px solid #f97316;
     outline-offset: 2px;
   }
 
@@ -2570,5 +2763,41 @@
   .video-player-container button,
   .relative.rounded-2xl.overflow-hidden.shadow-2xl button {
     z-index: 30;
+  }
+
+  /* Shimmer Animation for Tailwind */
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  /* Price Strikethrough Animation */
+  .line-through {
+    position: relative;
+  }
+
+  .line-through::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 100%;
+    height: 2px;
+    background: #ef4444;
+    transform: translateY(-50%);
+    animation: strikeThrough 0.5s ease-out;
+  }
+
+  @keyframes strikeThrough {
+    0% {
+      width: 0;
+    }
+    100% {
+      width: 100%;
+    }
   }
 </style>

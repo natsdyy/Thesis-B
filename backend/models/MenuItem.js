@@ -31,23 +31,14 @@ class MenuItem {
           "mi.promo_description",
           "mi.promo_start_date",
           "mi.promo_end_date",
-          db.raw("COUNT(sp.id) as sample_count"),
+          db.raw("COUNT(qi_direct.id) as quality_inspections_count"),
           db.raw(
-            "COUNT(CASE WHEN sp.status = 'Completed' THEN 1 END) as completed_samples"
-          ),
-          db.raw(
-            "COUNT(CASE WHEN (qi.result = 'Pass' AND qi.deleted_at IS NULL) OR (qi_direct.result = 'Pass' AND qi_direct.deleted_at IS NULL) THEN 1 END) as passed_inspections"
+            "COUNT(CASE WHEN qi_direct.result = 'Pass' AND qi_direct.deleted_at IS NULL THEN 1 END) as passed_inspections"
           )
         )
         .leftJoin("menus as m", "mi.menu_id", "m.id")
         .leftJoin("recipes as r", "mi.recipe_id", "r.id")
         .leftJoin("employees as u", "mi.created_by", "u.id")
-        .leftJoin("sample_productions as sp", "mi.id", "sp.menu_item_id")
-        .leftJoin(
-          "menu_quality_inspections as qi",
-          "sp.id",
-          "qi.sample_production_id"
-        )
         .leftJoin(
           "menu_quality_inspections as qi_direct",
           "mi.id",
@@ -108,9 +99,7 @@ class MenuItem {
       }
 
       if (filters.inspection_pending) {
-        query = query
-          .having("sample_count", ">", 0)
-          .having("passed_inspections", "=", 0);
+        query = query.having("quality_inspections_count", "=", 0);
       }
 
       const menuItems = await query.orderBy("mi.sequence_order", "asc");
@@ -189,30 +178,8 @@ class MenuItem {
           menuItem.recipe_ingredients = [];
         }
 
-        try {
-          // Get sample productions
-          menuItem.sample_productions = await db("sample_productions as sp")
-            .select(
-              "sp.*",
-              db.raw(
-                "concat(u.first_name,' ',u.last_name) as assigned_to_name"
-              ),
-              db.raw(
-                "concat(cu.first_name,' ',cu.last_name) as created_by_name"
-              )
-            )
-            .leftJoin("employees as u", "sp.assigned_to", "u.id")
-            .leftJoin("employees as cu", "sp.created_by", "cu.id")
-            .where("sp.menu_item_id", id)
-            .whereNull("sp.deleted_at")
-            .orderBy("sp.created_at", "desc");
-        } catch (sampleError) {
-          console.warn(
-            "Could not fetch sample productions:",
-            sampleError.message
-          );
-          menuItem.sample_productions = [];
-        }
+        // Sample productions are no longer used
+        menuItem.sample_productions = [];
 
         try {
           // Get quality inspections
@@ -221,15 +188,9 @@ class MenuItem {
           )
             .select(
               "qi.*",
-              db.raw("concat(u.first_name,' ',u.last_name) as inspector_name"),
-              "sp.sample_batch_number"
+              db.raw("concat(u.first_name,' ',u.last_name) as inspector_name")
             )
             .leftJoin("employees as u", "qi.inspector_id", "u.id")
-            .leftJoin(
-              "sample_productions as sp",
-              "qi.sample_production_id",
-              "sp.id"
-            )
             .where("qi.menu_item_id", id)
             .whereNull("qi.deleted_at")
             .orderBy("qi.created_at", "desc");
@@ -740,22 +701,27 @@ class MenuItem {
         // Import ProductionInventory model
         const ProductionInventory = require("./ProductionInventory");
 
-        // Get recipe batch size for reorder point calculation
-        const recipe = await db("recipes")
-          .select("batch_size", "batch_unit")
-          .where("id", menuItem.recipe_id)
-          .first();
+        // Create production inventory entry using the new direct approval method
+        await ProductionInventory.createFromMenuApproval(id, userId);
 
-        const batchSize = recipe ? recipe.batch_size : 100; // Default batch size
-        // Use dynamic reorder point calculation (will be calculated based on actual stock)
-        const reorderPoint =
-          ProductionInventory.calculateDynamicReorderPoint(0); // Start with 0 stock
-
-        // Create production inventory with 0 initial stock
-        await ProductionInventory.create(id, userId, {
-          reorder_point: reorderPoint,
-          maximum_stock: batchSize * 2, // Set max stock to 2x batch size
-        });
+        // Safely resolve batch size for reporting purposes
+        let batchSize = 0;
+        try {
+          if (
+            menuItem.recipe_batch_size &&
+            Number(menuItem.recipe_batch_size) > 0
+          ) {
+            batchSize = Number(menuItem.recipe_batch_size);
+          } else if (menuItem.recipe_id) {
+            const recipe = await db("recipes")
+              .select("batch_size")
+              .where("id", menuItem.recipe_id)
+              .first();
+            batchSize = Number(recipe?.batch_size || 0);
+          }
+        } catch (_) {
+          batchSize = 0;
+        }
 
         // Log the approval action
         await AuditLogger.log({
@@ -769,7 +735,7 @@ class MenuItem {
             profit_margin: menuItem.profit_margin,
             initial_stock: 0, // Now starts with 0 stock
             reorder_point: ProductionInventory.calculateDynamicReorderPoint(0), // Dynamic reorder point
-            maximum_stock: batchSize * 2,
+            maximum_stock: batchSize > 0 ? batchSize * 2 : 0,
           },
           notes: `Menu item "${menuItem.menu_item_name}" approved for production - Production inventory created with 0 initial stock`,
         });

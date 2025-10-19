@@ -6,6 +6,42 @@ const CashMovement = require("../models/CashMovement");
 const FinanceBalance = require("../models/FinanceBalance");
 const POSOrder = require("../models/POSOrder");
 const { formatForDatabase } = require("../utils/timezoneUtils");
+const fs = require("fs");
+const path = require("path");
+const multer = require("multer");
+
+// Multer setup for CSV uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const id = String(req.params.id || "general");
+    const dir = path.join(__dirname, "..", "uploads", "remittance-csv", id);
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const safe = (file.originalname || "remittance.csv").replace(
+      /[^a-zA-Z0-9_.-]/g,
+      "_"
+    );
+    const ts = Date.now();
+    cb(null, `${ts}-${safe}`);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["text/csv", "application/vnd.ms-excel", "application/csv"];
+    if (
+      allowed.includes(file.mimetype) ||
+      (file.originalname || "").toLowerCase().endsWith(".csv")
+    ) {
+      return cb(null, true);
+    }
+    cb(new Error("Only CSV files are allowed"));
+  },
+});
 
 // POST /api/finance/remittances - branch manager submits a remittance
 router.post("/remittances", authenticateToken, async (req, res) => {
@@ -141,6 +177,86 @@ router.post("/remittances/:id/reject", authenticateToken, async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || "Failed to reject remittance",
+    });
+  }
+});
+
+// POST /api/finance/remittances/:id/csv - upload CSV and store URL on remittance
+router.post(
+  "/remittances/:id/csv",
+  authenticateToken,
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const remittance = await BranchRemittance.getById(id);
+      if (!remittance) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Remittance not found" });
+      }
+
+      // Build URL to file via static /uploads path
+      const relPath = path
+        .relative(path.join(__dirname, ".."), req.file.path)
+        .replace(/\\/g, "/");
+      const url = `/api/uploads-proxy/${relPath}`; // proxy route added below for CORS headers
+
+      const updated = await BranchRemittance.updateCsvMetadata(id, {
+        url,
+        filename: req.file.originalname,
+        size: req.file.size,
+        mime: req.file.mimetype,
+        uploadedAt: new Date(),
+      });
+
+      return res.json({
+        success: true,
+        data: {
+          csvUrl: url,
+          filename: updated.csv_filename,
+          size: updated.csv_size,
+          uploadedAt: updated.csv_uploaded_at,
+        },
+      });
+    } catch (error) {
+      console.error("Upload remittance CSV failed:", error);
+      return res.status(400).json({
+        success: false,
+        message: error.message || "Failed to upload CSV",
+      });
+    }
+  }
+);
+
+// GET /api/finance/remittances/:id/csv - stream CSV for download
+router.get("/remittances/:id/csv", authenticateToken, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const remittance = await BranchRemittance.getById(id);
+    if (!remittance || !remittance.csv_url) {
+      return res
+        .status(404)
+        .json({ success: false, message: "CSV not found for this remittance" });
+    }
+
+    // Resolve file path from stored relative URL
+    const rel = remittance.csv_url.replace(/^\/api\/uploads-proxy\//, "");
+    const abs = path.join(__dirname, "..", rel);
+    if (!fs.existsSync(abs)) {
+      return res
+        .status(404)
+        .json({ success: false, message: "CSV file missing" });
+    }
+    const filename = remittance.csv_filename || `remittance-${id}.csv`;
+    res.setHeader("Content-Type", remittance.csv_mime || "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    fs.createReadStream(abs).pipe(res);
+  } catch (error) {
+    console.error("Download remittance CSV failed:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to download CSV",
     });
   }
 });

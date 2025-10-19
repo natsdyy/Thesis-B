@@ -52,9 +52,14 @@
   );
   const availableOperations = computed(() => {
     // Filter out 'pos' from navigation since it's a separate page with its own access control
-    return branchContextStore.availableOperations.filter(
+    const ops = branchContextStore.availableOperations.filter(
       (operation) => operation !== 'pos'
     );
+    // Ensure cooks see Kitchen entry even if store did not include it
+    if (userRole.value === 'Cook' && !ops.includes('kitchen')) {
+      ops.push('kitchen');
+    }
+    return ops;
   });
 
   // Check if user can access POS (separate from navigation)
@@ -84,6 +89,7 @@
     pos: CreditCard,
     sales: BarChart3,
     inventory: Package,
+    kitchen: Timer,
     employees: Users,
     profile: UserCircle,
     attendance: Clock,
@@ -95,6 +101,7 @@
     pos: 'POS',
     sales: 'Sales',
     inventory: 'Inventory',
+    kitchen: 'Kitchen',
     employees: 'Employees',
     profile: 'Profile',
     attendance: 'Attendance',
@@ -204,7 +211,7 @@
   });
 </script>
 <template>
-  <div class="min-h-screen bg-base-100">
+  <div class="min-h-screen bg-accentColor">
     <!-- Branch Header -->
     <div class="bg-primaryColor text-white shadow-lg">
       <div class="w-full px-4 py-3">
@@ -217,7 +224,6 @@
                 <h1 class="text-sm sm:text-lg font-semibold truncate">
                   {{ currentBranch?.name || user?.name || 'Branch Operations' }}
                 </h1>
-     
               </div>
             </div>
           </div>

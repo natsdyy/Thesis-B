@@ -369,9 +369,73 @@
         });
       }
 
+      // If showing all branches, aggregate data by menu item to avoid redundancy
+      let finalRows = perBranch;
+      if (selectedBranch.value === 'all') {
+        const aggregatedData = new Map();
+
+        perBranch.forEach((item) => {
+          const key = item.itemId;
+          if (!aggregatedData.has(key)) {
+            aggregatedData.set(key, {
+              branchId: 'all',
+              branchName: 'All Branches',
+              itemId: item.itemId,
+              itemName: item.itemName,
+              ordersCount: 0,
+              totalQuantity: 0,
+              totalAmount: 0,
+              dailyAvgQty: 0,
+              dailyAvgAmount: 0,
+              uniqueRemittances: new Set(),
+              remittanceIds: [],
+              lastActivity: '',
+              allBranches: [],
+            });
+          }
+
+          const aggItem = aggregatedData.get(key);
+          aggItem.ordersCount += item.ordersCount;
+          aggItem.totalQuantity += item.totalQuantity;
+          aggItem.totalAmount += item.totalAmount;
+          aggItem.dailyAvgQty += item.dailyAvgQty;
+          aggItem.dailyAvgAmount += item.dailyAvgAmount;
+
+          // Combine remittances
+          item.remittanceIds.forEach((id) => aggItem.uniqueRemittances.add(id));
+
+          // Keep track of most recent activity
+          if (item.lastActivity) {
+            if (
+              !aggItem.lastActivity ||
+              item.lastActivity > aggItem.lastActivity
+            ) {
+              aggItem.lastActivity = item.lastActivity;
+            }
+          }
+
+          // Track which branches this item appears in
+          aggItem.allBranches.push({
+            branchId: item.branchId,
+            branchName: item.branchName,
+            ordersCount: item.ordersCount,
+            totalQuantity: item.totalQuantity,
+            dailyAvgQty: item.dailyAvgQty,
+          });
+        });
+
+        // Convert Set to Array for uniqueRemittances and clean up the data
+        finalRows = Array.from(aggregatedData.values()).map((item) => ({
+          ...item,
+          uniqueRemittances: item.uniqueRemittances.size,
+          remittanceIds: Array.from(item.uniqueRemittances),
+          uniqueRemittances: item.uniqueRemittances.size, // Fix the property
+        }));
+      }
+
       // Sort by daily average quantity desc
-      perBranch.sort((a, b) => b.dailyAvgQty - a.dailyAvgQty);
-      rows.value = perBranch;
+      finalRows.sort((a, b) => b.dailyAvgQty - a.dailyAvgQty);
+      rows.value = finalRows;
       currentPage.value = 1;
 
       // Build trend arrays (oldest -> newest)
@@ -1435,7 +1499,7 @@
           </div>
           <div class="flex items-end">
             <button
-              class="btn btn-sm btn-outline w-full"
+              class="btn btn-sm bg-gray-200 hover:bg-gray-300 w-full"
               :disabled="loading"
               @click="buildRemittedMovements"
             >
@@ -1456,6 +1520,12 @@
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-sm font-medium text-gray-700">
             Remitted Menu Movements
+            <span
+              v-if="selectedBranch === 'all'"
+              class="text-xs text-gray-500 ml-2"
+            >
+              (Aggregated across all branches)
+            </span>
           </h3>
           <div class="text-xs text-gray-500">
             Derived from approved remittances only
@@ -1510,7 +1580,9 @@
             <table class="table w-full">
               <thead>
                 <tr>
-                  <th class="text-xs">Branch</th>
+                  <th v-if="selectedBranch !== 'all'" class="text-xs">
+                    Branch
+                  </th>
                   <th class="text-xs">Menu Item</th>
                   <th class="text-xs">
                     Orders <span class="text-gray-400">(count)</span>
@@ -1525,7 +1597,9 @@
               </thead>
               <tbody>
                 <tr v-for="r in pagedRows" :key="`${r.branchId}-${r.itemId}`">
-                  <td class="text-xs">{{ r.branchName }}</td>
+                  <td v-if="selectedBranch !== 'all'" class="text-xs">
+                    {{ r.branchName }}
+                  </td>
                   <td class="text-xs">{{ r.itemName }}</td>
                   <td class="text-xs">{{ r.ordersCount }}</td>
                   <td class="text-xs">{{ r.dailyAvgQty.toLocaleString() }}</td>

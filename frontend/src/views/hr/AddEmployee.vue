@@ -184,8 +184,8 @@
     return true;
   });
 
-  // Active branches for assignment (used when department is Branch)
-  const activeBranches = computed(() => branchStore.activeBranches || []);
+  // All branches for assignment (used when department is Branch)
+  const allBranches = computed(() => branchStore.allBranches || []);
 
   // Base salary calculation based on role and employee type
   const baseSalary = computed(() => {
@@ -673,8 +673,8 @@
   onMounted(() => {
     fetchEmployeeStats();
     fetchDepartmentsWithRoles();
-    // Load branches for assignment
-    branchStore.fetchActiveBranches().catch((e) => {
+    // Load all branches for assignment
+    branchStore.fetchAllBranches().catch((e) => {
       console.error('Failed to load branches', e);
     });
     // Load positions data for salary calculation
@@ -1193,15 +1193,16 @@
                 >
                   <option value="">Select branch</option>
                   <option
-                    v-for="branch in activeBranches"
+                    v-for="branch in allBranches"
                     :key="branch.id"
                     :value="branch.id"
                   >
                     {{ branch.name }} ({{ branch.code }})
+                    {{ branch.is_active ? '(Active)' : '(Inactive)' }}
                   </option>
                 </select>
                 <span class="text-xs text-gray-500 mt-1"
-                  >Only active branches are shown</span
+                  >Both active and inactive branches are shown</span
                 >
               </div>
             </div>

@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+  import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
   import { useRouter, useRoute } from 'vue-router';
   import {
     Users,
@@ -516,12 +516,12 @@
       ? departmentsWithRoles.value[employeeForm.value.department] || []
       : [];
   });
-  const activeBranches = computed(() => branchStore.activeBranches || []);
+  const allBranches = computed(() => branchStore.allBranches || []);
 
   // Helper function to get branch name by ID
   const getBranchName = (branchId) => {
-    if (!branchId || !activeBranches.value.length) return '';
-    const branch = activeBranches.value.find((b) => b.id === branchId);
+    if (!branchId || !allBranches.value.length) return '';
+    const branch = allBranches.value.find((b) => b.id === branchId);
     return branch ? branch.name : '';
   };
 
@@ -550,9 +550,14 @@
     };
   });
 
-  const openEditModal = (emp) => {
+  const openEditModal = async (emp) => {
     // Reset form first
     resetEmployeeForm();
+
+    // Ensure departments and roles are loaded
+    if (!Object.keys(departmentsWithRoles.value).length) {
+      await fetchDepartmentsWithRoles();
+    }
 
     // Populate form with employee data
     employeeForm.value = {
@@ -563,7 +568,7 @@
       address: emp.address || '',
       department: emp.department || '',
       role_id: emp.role_id || '',
-      employee_type: emp.employee_type || '',
+      employee_type: 'Full-time', // Fixed to Full-time
       status: emp.status || 'Active',
       emergency_contact_name: emp.emergency_contact_name || '',
       emergency_relationship: emp.emergency_relationship || '',
@@ -576,7 +581,20 @@
       editingEmployeeId: emp.id,
     };
 
+    // Debug logging
+    console.log('Employee data:', emp);
+    console.log('Department:', emp.department);
+    console.log('Role ID:', emp.role_id);
+    console.log(
+      'Available roles for department:',
+      departmentsWithRoles.value[emp.department]
+    );
+    console.log('Available roles computed:', availableRoles.value);
+
     showEditModal.value = true;
+
+    // Use nextTick to ensure DOM is updated
+    await nextTick();
     document.getElementById('edit_employee_modal')?.showModal();
   };
 
@@ -595,7 +613,7 @@
       address: '',
       department: '',
       role_id: '',
-      employee_type: '',
+      employee_type: 'Full-time',
       status: 'Active',
       emergency_contact_name: '',
       emergency_relationship: '',
@@ -786,8 +804,17 @@
   // Watch for department changes to reset role
   watch(
     () => employeeForm.value.department,
-    () => {
-      employeeForm.value.role_id = '';
+    (newDepartment) => {
+      console.log('Department changed to:', newDepartment);
+      console.log(
+        'Available roles for new department:',
+        departmentsWithRoles.value[newDepartment]
+      );
+
+      // Only reset role if we're not editing an existing employee
+      if (!employeeForm.value.isEditing) {
+        employeeForm.value.role_id = '';
+      }
     }
   );
 
@@ -845,9 +872,9 @@
     } catch (e) {
       console.error('Failed to load positions', e);
     }
-    // Load active branches for branch assignment
+    // Load all branches for branch assignment
     try {
-      await branchStore.fetchActiveBranches();
+      await branchStore.fetchAllBranches();
     } catch (e) {
       console.error('Failed to load branches', e);
     }
@@ -969,8 +996,8 @@
                 class="select select-sm sm:select-md select-bordered"
               >
                 <option value="">Choose a branch...</option>
-                <option v-for="b in activeBranches" :key="b.id" :value="b.id">
-                  {{ b.name }}
+                <option v-for="b in allBranches" :key="b.id" :value="b.id">
+                  {{ b.name }} {{ b.is_active ? '(Active)' : '(Inactive)' }}
                 </option>
               </select>
             </div>
@@ -1136,7 +1163,11 @@
                 </td>
                 <td class="text-sm">{{ emp.email || '—' }}</td>
                 <td class="text-sm">{{ emp.phone_number || '—' }}</td>
-                <td class="text-sm">{{ emp.address || '—' }}</td>
+                <td class="text-sm max-w-xs">
+                  <div class="truncate cursor-help" :title="emp.address || '—'">
+                    {{ emp.address || '—' }}
+                  </div>
+                </td>
                 <td>
                   <div class="text-xs">
                     {{ emp.department || '—' }}
@@ -1255,10 +1286,10 @@
                 :key="page"
                 @click="goToPage(page)"
                 :class="[
-                  'btn btn-sm',
+                  'btn btn-sm font-thin',
                   page === currentPage
-                    ? ' border-none text-primaryColor'
-                    : 'border-none text-black/60 hover:bg-gray-200',
+                    ? 'bg-primaryColor text-white border-primaryColor'
+                    : 'bg-gray-200 text-black/60 hover:bg-gray-300 border-none',
                 ]"
               >
                 {{ page }}
@@ -1281,7 +1312,7 @@
             <button
               @click="goToNextPage"
               :disabled="currentPage === totalPages"
-              class="btn bg"
+              class="btn btn-sm btn-outline"
             >
               Next
             </button>
@@ -1366,10 +1397,20 @@
                 </td>
                 <td class="text-sm">{{ emp.email || '—' }}</td>
                 <td class="text-sm">{{ emp.phone_number || '—' }}</td>
-                <td class="text-sm">{{ emp.address || '—' }}</td>
+                <td class="text-sm max-w-xs">
+                  <div class="truncate cursor-help" :title="emp.address || '—'">
+                    {{ emp.address || '—' }}
+                  </div>
+                </td>
                 <td>
                   <div class="text-xs">
                     {{ emp.role || emp.job_title || '—' }}
+                    <span
+                      v-if="emp.branch_id && getBranchName(emp.branch_id)"
+                      class="text-xs text-gray-500 block mt-1"
+                    >
+                      ({{ getBranchName(emp.branch_id) }})
+                    </span>
                   </div>
                 </td>
                 <td>
@@ -1508,10 +1549,10 @@
                 :key="page"
                 @click="goToPage(page)"
                 :class="[
-                  'btn btn-sm',
+                  'btn btn-sm font-thin',
                   page === currentPage
                     ? 'bg-primaryColor text-white border-primaryColor'
-                    : 'btn-outline',
+                    : 'bg-gray-200 text-black/60 hover:bg-gray-300 border-none',
                 ]"
               >
                 {{ page }}
@@ -1621,7 +1662,11 @@
                 </td>
                 <td class="text-sm">{{ emp.email || '—' }}</td>
                 <td class="text-sm">{{ emp.phone_number || '—' }}</td>
-                <td class="text-sm">{{ emp.address || '—' }}</td>
+                <td class="text-sm max-w-xs">
+                  <div class="truncate cursor-help" :title="emp.address || '—'">
+                    {{ emp.address || '—' }}
+                  </div>
+                </td>
                 <td>
                   <div class="text-xs">
                     {{ emp.department || '—' }}
@@ -2308,6 +2353,12 @@
                 {{ role.role }}
               </option>
             </select>
+            <div
+              v-if="employeeForm.isEditing && !availableRoles.length"
+              class="text-xs text-yellow-600 mt-1"
+            >
+              Loading roles for {{ employeeForm.department }}...
+            </div>
             <span class="text-xs text-gray-500 mt-1">
               {{ !employeeForm.department ? 'Select department first' : '' }}
             </span>
@@ -2331,13 +2382,11 @@
               required
             >
               <option value="">Select branch</option>
-              <option v-for="b in activeBranches" :key="b.id" :value="b.id">
+              <option v-for="b in allBranches" :key="b.id" :value="b.id">
                 {{ b.name }} ({{ b.code }})
+                {{ b.is_active ? '(Active)' : '(Inactive)' }}
               </option>
             </select>
-            <span class="text-xs text-gray-500 mt-1"
-              >Only active branches are shown</span
-            >
           </div>
 
           <div class="form-control">
@@ -2348,16 +2397,14 @@
                 Employee Type
               </span>
             </label>
-            <select
+            <input
               v-model="employeeForm.employee_type"
-              class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-            >
-              <option value="" disabled>Select Type</option>
-              <option value="Full-time">Full-time</option>
-              <option value="Part-time">Part-time</option>
-              <option value="Contract">Contract</option>
-              <option value="Intern">Intern</option>
-            </select>
+              type="text"
+              class="input input-sm sm:input-md input-bordered w-full bg-gray-50 cursor-not-allowed"
+              readonly
+              value="Full-time"
+            />
+            <span class="text-xs text-gray-500 mt-1">Fixed to Full-time</span>
           </div>
 
           <div class="form-control">
@@ -2368,16 +2415,15 @@
                 Status <span class="text-red-500">*</span>
               </span>
             </label>
-            <select
+            <input
               v-model="employeeForm.status"
-              class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
-              required
+              type="text"
+              class="input input-sm sm:input-md input-bordered w-full bg-gray-50 cursor-not-allowed"
+              readonly
+            />
+            <span class="text-xs text-gray-500 mt-1"
+              >Status cannot be changed</span
             >
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-              <option value="On Leave">On Leave</option>
-              <option value="Terminated">Terminated</option>
-            </select>
           </div>
         </div>
 
@@ -2751,5 +2797,22 @@
 <style scoped>
   .table-zebra tbody tr:nth-child(odd) {
     background-color: rgba(0, 0, 0, 0.05);
+  }
+
+  /* Address column styling */
+  .max-w-xs {
+    max-width: 12rem; /* 192px */
+  }
+
+  .truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Ensure table cells have consistent height */
+  .table td {
+    vertical-align: top;
+    padding: 0.75rem 0.5rem;
   }
 </style>

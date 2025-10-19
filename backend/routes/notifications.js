@@ -60,11 +60,23 @@ router.get("/", authenticateToken, async (req, res) => {
       }
     );
 
-    // Combine and sort notifications
-    const allNotifications = [
-      ...employeeNotifications,
-      ...departmentNotifications,
-    ]
+    // Combine notifications and deduplicate by ID
+    const notificationMap = new Map();
+
+    // Add employee notifications first
+    employeeNotifications.forEach((notification) => {
+      notificationMap.set(notification.id, notification);
+    });
+
+    // Add department notifications (will not overwrite existing ones with same ID)
+    departmentNotifications.forEach((notification) => {
+      if (!notificationMap.has(notification.id)) {
+        notificationMap.set(notification.id, notification);
+      }
+    });
+
+    // Convert back to array and sort
+    const allNotifications = Array.from(notificationMap.values())
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
       .slice(0, parseInt(limit));
 

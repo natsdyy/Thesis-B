@@ -1430,11 +1430,27 @@
           )
         )
       );
+
+      // Debug logging to help identify the issue
+      console.log('Processing alert item:', {
+        id: it.id,
+        item_name: it.item_name,
+        item_type_name: it.item_type_name,
+        item_type_id: it.item_type_id,
+        category_name: it.category_name,
+        current_stock: it.current_stock,
+        min_stock_level: it.min_stock_level,
+      });
+
+      // Ensure we have a proper item name
+      const itemName = it.item_name || it.item_type_name || 'Unknown Item';
+
       return {
-        name: it.item_name || it.item_type_name,
+        name: itemName,
         unit,
         unit_price: resolveUnitPrice(it),
         quantity: deficit,
+        item_type_id: it.item_type_id, // Include item_type_id for matching with supplier products
       };
     });
 
@@ -2364,7 +2380,7 @@
 </script>
 
 <template>
-  <div class="container mx-auto p-2 sm:p-4 lg:p-6 max-w-6xl">
+  <div class="mx-auto p-2 sm:p-4 lg:p-6">
     <!-- Header -->
     <div class="text-center mb-4 sm:mb-6 lg:mb-8">
       <h1

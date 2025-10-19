@@ -290,7 +290,8 @@
               {{
                 isPayrollReceipt
                   ? cashRequestReceipt.receipt?.finance_approved_by_name
-                  : cashRequestReceipt.receipt?.released_by
+                  : cashRequestReceipt.receipt?.released_by_name ||
+                    cashRequestReceipt.receipt?.released_by
               }}
             </p>
           </div>

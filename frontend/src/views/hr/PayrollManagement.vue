@@ -326,7 +326,7 @@
     <div class="mb-4 sm:mb-6">
       <div class="flex items-center gap-3">
         <div class="p-2 rounded-lg bg-primaryColor/10 text-primaryColor">
-          <DollarSign class="w-5 h-5" />
+          <i class="fa-solid fa-peso-sign w-5 h-5"></i>
         </div>
         <div>
           <h1 class="text-2xl sm:text-3xl font-bold text-primaryColor">
@@ -528,7 +528,7 @@
                     <!-- Submit (draft only) -->
                     <button
                       v-if="period.status === 'draft'"
-                      class="btn btn-xs bg-info/10 text-info hover:bg-info/20 border-none"
+                      class="btn btn-xs bg-primaryColor/10 text-primaryColor hover:bg-primaryColor/20 border-none"
                       @click="submitToFinance(period)"
                       :disabled="actionLoading"
                       title="Submit to Finance"
@@ -564,7 +564,7 @@
         :class="{
           'text-warning': confirmationModal.type === 'warning',
           'text-error': confirmationModal.type === 'danger',
-          'text-info': confirmationModal.type === 'info',
+          'text-primaryColor': confirmationModal.type === 'info',
         }"
       >
         {{ confirmationModal.title }}
@@ -586,7 +586,7 @@
               confirmationModal.type === 'warning',
             'bg-error/10 text-error hover:bg-error/20 border-none':
               confirmationModal.type === 'danger',
-            'bg-info/10 text-info hover:bg-info/20 border-none':
+            'bg-primaryColor text-white hover:bg-primaryColor/90 border-none font-thin':
               confirmationModal.type === 'info',
           }"
           :disabled="actionLoading"

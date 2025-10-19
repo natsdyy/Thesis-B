@@ -352,9 +352,12 @@ class Inventory {
       let targetItem;
       // If the item type does not require batch tracking, merge into an existing row
       if (itemType && itemType.requires_batch === false) {
-        // Find an existing available row for this item_type
+        // Find an existing available row for this item_type AND item_name
         targetItem = await trx("inventory_items")
-          .where({ item_type_id: itemData.item_type_id })
+          .where({
+            item_type_id: itemData.item_type_id,
+            item_name: itemData.item_name,
+          })
           .whereNull("deleted_at")
           .where("status", "available")
           .first();

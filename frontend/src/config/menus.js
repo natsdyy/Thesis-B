@@ -63,13 +63,6 @@ export const menuItems = [
 
   // Supply Chain Management
   {
-    name: 'Dashboard',
-    icon: LayoutDashboard,
-    route: '/scm/dashboard',
-    department: 'SCM',
-    managerOnly: true,
-  },
-  {
     name: 'Inventory',
     icon: Package,
     route: '/scm/main-inventory',
@@ -154,13 +147,6 @@ export const menuItems = [
   },
 
   // Production Department
-  {
-    name: 'Dashboard',
-    icon: LayoutDashboard,
-    route: '/production/dashboard',
-    department: 'Production',
-    managerOnly: true,
-  },
   {
     name: 'Menu Management',
     icon: ChefHat,

@@ -2541,7 +2541,7 @@
                 "
               >
                 <Package class="w-4 h-4 mr-2" />
-                SCM Inventory
+                Inventory
               </button>
               <button
                 @click="switchInventoryType('production')"
@@ -2553,7 +2553,7 @@
                 "
               >
                 <Settings class="w-4 h-4 mr-2" />
-                Production Inventory
+                Menu Inventory
               </button>
             </div>
           </div>
@@ -2612,7 +2612,7 @@
             <div class="card-body">
               <h3 class="card-title text-primaryColor mb-4">
                 <Package class="w-5 h-5" />
-                {{ inventoryType === 'scm' ? 'SCM' : 'Production' }} Inventory
+                {{ inventoryType === 'scm' ? 'Raw' : 'Menu' }} Inventory
                 Items
               </h3>
 

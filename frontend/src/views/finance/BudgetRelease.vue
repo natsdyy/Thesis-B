@@ -34,12 +34,16 @@
   import { useAuthStore } from '../../stores/authStore.js';
   import { useFinanceBalanceStore } from '../../stores/financeBalanceStore.js';
   import { usePayrollStore } from '../../stores/payrollStore.js';
+  import { useEmployeeResolver } from '../../composables/useEmployeeResolver.js';
   import cashRequestReceiptModal from '../../components/scm/cashRequestReceiptModal.vue';
 
   // Stores
   const supplyRequestStore = useSupplyRequestStore();
   const budgetReleaseStore = useBudgetReleaseStore();
   const authStore = useAuthStore();
+
+  // Employee resolver
+  const { resolveEmployeeName } = useEmployeeResolver();
   const financeBalanceStore = useFinanceBalanceStore();
   const payrollStore = usePayrollStore();
 
@@ -57,6 +61,20 @@
   );
 
   const budgetReleaseHistory = computed(() => budgetReleaseStore.releases);
+
+  // Processed budget release history with resolved employee names
+  const processedBudgetHistory = computed(() => {
+    return budgetReleaseHistory.value.map((release) => ({
+      ...release,
+      released_by_display:
+        release.supply_released_by || // Use supply request released_by for SCM requests
+        release.released_by_name ||
+        release.finance_approved_by_name || // Use payroll approved by name for payroll releases
+        (isNaN(release.released_by)
+          ? release.released_by
+          : `Employee ${release.released_by}`),
+    }));
+  });
 
   // Enhanced budget release stats using real data
   const budgetReleaseStats = computed(() => {
@@ -744,7 +762,7 @@
 
   // Computed properties for Budget Release History
   const filteredBudgetHistoryByDate = computed(() => {
-    let filtered = [...(budgetReleaseHistory.value || [])];
+    let filtered = [...(processedBudgetHistory.value || [])];
 
     // Apply date filtering based on filter type
     if (historyFilterType.value) {
@@ -1348,8 +1366,9 @@
                       <th class="w-32">Released Amount</th>
                       <th class="w-28">Released Date</th>
                       <th class="w-24">Released By</th>
-                      <th class="w-32">Receipt Status</th>
+
                       <th class="w-28">Confirmed Date</th>
+                      <th class="w-32">Receipt Status</th>
                       <th class="w-24">Receipt</th>
                     </tr>
                   </thead>
@@ -1450,9 +1469,24 @@
                         </div>
                       </td>
 
-                      <td class="text-sm">{{ release.released_by }}</td>
+                      <td class="text-sm">{{ release.released_by_display }}</td>
 
-                      <td>
+
+
+                      <td class="text-sm">
+                        <div v-if="release.receipt_confirmed_at">
+                          <span>{{
+                            formatManilaDate(release.receipt_confirmed_at)
+                          }}</span>
+                          <br />
+                          <span class="text-xs text-black/50">
+                            {{ formatManilaTime(release.receipt_confirmed_at) }}
+                          </span>
+                        </div>
+                        <span v-else>N/A</span>
+                      </td>
+
+                                            <td>
                         <div
                           class="badge badge-sm border-none font-medium"
                           :class="{
@@ -1466,19 +1500,6 @@
                             release.receipt_confirmed ? 'Confirmed' : 'Pending'
                           }}
                         </div>
-                      </td>
-
-                      <td class="text-sm">
-                        <div v-if="release.receipt_confirmed_at">
-                          <span>{{
-                            formatManilaDate(release.receipt_confirmed_at)
-                          }}</span>
-                          <br />
-                          <span class="text-xs text-black/50">
-                            {{ formatManilaTime(release.receipt_confirmed_at) }}
-                          </span>
-                        </div>
-                        <span v-else>N/A</span>
                       </td>
 
                       <td>

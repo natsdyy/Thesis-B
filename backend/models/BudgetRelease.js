@@ -13,6 +13,13 @@ class BudgetRelease {
         .leftJoin("payroll_periods as pp", function () {
           this.on("br.id", "=", "pp.budget_release_id");
         })
+        .leftJoin("employees as e", function () {
+          this.on(
+            db.raw("CAST(br.released_by AS TEXT)"),
+            "=",
+            db.raw("CAST(e.id AS TEXT)")
+          );
+        })
         .select(
           "br.*",
           // Supply request fields (null for payroll releases)
@@ -22,13 +29,18 @@ class BudgetRelease {
           "sr.requested_by",
           "sr.priority",
           "sr.request_date",
+          "sr.released_by as supply_released_by",
           // Payroll period fields (null for supply releases)
           "pp.id as payroll_period_id",
           "pp.period_name as payroll_period_name",
           "pp.period_type as payroll_period_type",
           "pp.date_from as payroll_date_from",
           "pp.date_to as payroll_date_to",
-          "pp.generated_by as payroll_generated_by"
+          "pp.generated_by as payroll_generated_by",
+          // Employee fields
+          "e.first_name",
+          "e.last_name",
+          db.raw("CONCAT(e.first_name, ' ', e.last_name) as released_by_name")
         );
 
       // Apply filters
@@ -75,6 +87,13 @@ class BudgetRelease {
         .leftJoin("payroll_periods as pp", function () {
           this.on("br.id", "=", "pp.budget_release_id");
         })
+        .leftJoin("employees as e", function () {
+          this.on(
+            db.raw("CAST(br.released_by AS TEXT)"),
+            "=",
+            db.raw("CAST(e.id AS TEXT)")
+          );
+        })
         .select(
           "br.*",
           // Supply request fields (null for payroll releases)
@@ -84,13 +103,18 @@ class BudgetRelease {
           "sr.requested_by",
           "sr.priority",
           "sr.request_date",
+          "sr.released_by as supply_released_by",
           // Payroll period fields (null for supply releases)
           "pp.id as payroll_period_id",
           "pp.period_name as payroll_period_name",
           "pp.period_type as payroll_period_type",
           "pp.date_from as payroll_date_from",
           "pp.date_to as payroll_date_to",
-          "pp.generated_by as payroll_generated_by"
+          "pp.generated_by as payroll_generated_by",
+          // Employee fields
+          "e.first_name",
+          "e.last_name",
+          db.raw("CONCAT(e.first_name, ' ', e.last_name) as released_by_name")
         )
         .where("br.id", id)
         .first();

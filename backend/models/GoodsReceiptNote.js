@@ -452,9 +452,12 @@ class GoodsReceiptNote {
           const requiresBatch = !!itemType?.requires_batch;
 
           if (!requiresBatch) {
-            // Merge into existing available row for this item_type
+            // Merge into existing available row for this item_type AND item_name
             const existing = await trx("inventory_items")
-              .where({ item_type_id: item.item_type_id })
+              .where({
+                item_type_id: item.item_type_id,
+                item_name: itemName,
+              })
               .whereNull("deleted_at")
               .where("status", "available")
               .first();

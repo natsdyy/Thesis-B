@@ -168,12 +168,12 @@
           >
             <!-- Current Balance -->
             <div
-              class="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4"
+              class="bg-accentColor border border-gray-200 rounded-lg p-3 sm:p-4"
             >
-              <p class="text-xs text-blue-600 font-medium mb-1">
+              <p class="text-xs text-gray-600 font-medium mb-1">
                 Current Balance
               </p>
-              <p class="text-lg sm:text-2xl font-bold text-blue-700">
+              <p class="text-lg sm:text-2xl font-bold text-gray-700">
                 <i class="fas fa-peso-sign mr-1"></i
                 >{{ formatCurrency(currentBalance) }}
               </p>
@@ -181,12 +181,12 @@
 
             <!-- Total Payroll Amount -->
             <div
-              class="bg-orange-50 border border-orange-200 rounded-lg p-3 sm:p-4"
+              class="bg-accentColor border border-gray-200 rounded-lg p-3 sm:p-4"
             >
-              <p class="text-xs text-orange-600 font-medium mb-1">
+              <p class="text-xs text-gray-600 font-medium mb-1">
                 Total Payroll Amount
               </p>
-              <p class="text-lg sm:text-2xl font-bold text-orange-700">
+              <p class="text-lg sm:text-2xl font-bold text-gray-700">
                 <i class="fas fa-peso-sign mr-1"></i
                 >{{ formatCurrency(totalPayrollAmount) }}
               </p>
@@ -524,18 +524,7 @@
 
       <!-- Footer Actions -->
       <div class="px-3 sm:px-6 py-3 sm:py-4 bg-gray-50">
-        <!-- Approval Info -->
-        <div class="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-0">
-          <span v-if="payrollPeriod?.finance_approved_by">
-            Approved by:
-            <strong>{{
-              payrollPeriod.finance_approved_by_name ||
-              payrollPeriod.finance_approved_by
-            }}</strong>
-            on
-            {{ formatDate(payrollPeriod.finance_approved_at) }}
-          </span>
-        </div>
+
 
         <!-- Action Buttons -->
         <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
@@ -702,7 +691,7 @@
       ];
 
       // Financial Summary
-      const currentBalance = computed(() => financeBalanceStore.currentBalance);
+      const currentBalance = computed(() => financeBalanceStore.totalBalance);
       const totalPayrollAmount = computed(() => {
         const netAmount = Number(payrollPeriod.value?.total_net_amount || 0);
         const employerContributions = payrollRecords.value.reduce(
@@ -972,7 +961,7 @@
         if (showBalanceSummary.value) {
           balanceLoading.value = true;
           try {
-            await financeBalanceStore.fetchCurrentBalance();
+            await financeBalanceStore.fetchTotals();
           } catch (error) {
             console.error('Error fetching balance:', error);
           } finally {

@@ -1,5 +1,12 @@
 <script setup>
-  import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
+  import {
+    ref,
+    computed,
+    onMounted,
+    onBeforeUnmount,
+    watch,
+    nextTick,
+  } from 'vue';
   import { useSupplyRequestStore } from '../../stores/supplyRequestStore.js';
   import { useBudgetReleaseStore } from '../../stores/budgetReleaseStore.js';
   import { useBranchRequestStore } from '../../stores/branchRequestStore.js';
@@ -60,7 +67,7 @@
   const loading = ref(false);
   const currentPage = ref(1);
   const requestsPerPage = ref(10);
-  const rowRequestModalPerPage = ref(5);
+  const rowRequestModalPerPage = ref(10);
   const requestModalCurrentPage = ref(1);
   const requestHistoryCurrentPage = ref(1);
   const requestHistoryPerPage = ref(10);
@@ -74,6 +81,7 @@
   const selectedSupplierId = ref('');
   const supplierProducts = ref([]);
   const productPromoInfo = ref({}); // Store promo info for each product
+  const forceDropdownUpdate = ref(0); // Force dropdown re-render
 
   // Tab system state
   const activeTab = ref('supply-requests');
@@ -221,6 +229,41 @@
   // Lock category/type when arriving with preloaded items
   const isPreloaded = ref(false);
 
+  // Watch for supplier products changes to ensure dropdown updates
+  watch(
+    supplierProducts,
+    (newProducts) => {
+      if (newProducts && newProducts.length > 0 && isPreloaded.value) {
+        rowRequest.value.forEach((row, index) => {
+          if (row.supplier_product_id) {
+            const product = newProducts.find(
+              (p) => String(p.id) === String(row.supplier_product_id)
+            );
+            if (product) {
+              // Product found and matched
+            }
+          }
+        });
+      }
+    },
+    { deep: true }
+  );
+
+  // Watch for rowRequest changes to ensure dropdown updates
+  watch(
+    rowRequest,
+    (newRows) => {
+      if (isPreloaded.value && newRows && newRows.length > 0) {
+        newRows.forEach((row, index) => {
+          if (row.supplier_product_id) {
+            // Row has supplier product ID
+          }
+        });
+      }
+    },
+    { deep: true }
+  );
+
   // Centralized inventory categories - computed from inventory store
   const requestCategories = computed(() => {
     const categories = inventoryStore.categories || [];
@@ -336,6 +379,9 @@
 
       const products = response.data?.data || [];
       supplierProducts.value = products;
+
+      // Force dropdown update when products are loaded
+      forceDropdownUpdate.value++;
 
       // Store promo info for products that have active promos
       products.forEach((product) => {
@@ -2276,7 +2322,6 @@
       }
 
       if (preload && Array.isArray(preload.items) && preload.items.length) {
-        console.log('Preload data found:', preload);
         // Fill requested_by with the real employee name from auth store
         try {
           const u = authStore?.user || {};
@@ -2313,18 +2358,9 @@
 
         // Set supplier information if provided in preload
         if (preload.supplier_id && preload.supplier_name) {
-          console.log('Setting supplier from preload:', {
-            supplier_id: preload.supplier_id,
-            supplier_name: preload.supplier_name,
-          });
-
           // Ensure suppliers are loaded first
           try {
             await supplierStore.fetchActiveSuppliers();
-            console.log(
-              'Active suppliers loaded:',
-              supplierOptions.value?.length
-            );
           } catch (e) {
             console.error('Failed to load suppliers for preload:', e);
           }
@@ -2334,21 +2370,11 @@
             (s) => String(s.id) === String(preload.supplier_id)
           );
 
-          console.log('Supplier exists in active list:', supplierExists);
-          console.log(
-            'Available suppliers:',
-            supplierOptions.value?.map((s) => ({ id: s.id, name: s.name }))
-          );
-
           if (supplierExists) {
             selectedSupplierId.value = String(preload.supplier_id);
-            console.log('Set selectedSupplierId to:', selectedSupplierId.value);
             // Trigger supplier selection to load supplier products
             await onSupplierSelected(preload.supplier_id);
           } else {
-            console.warn(
-              `Supplier ${preload.supplier_id} (${preload.supplier_name}) not found in active suppliers list`
-            );
             // Try to fetch all suppliers to see if the supplier exists but is not active
             try {
               await supplierStore.fetchSuppliers();
@@ -2358,60 +2384,50 @@
               );
 
               if (supplierInAll) {
-                console.log(
-                  'Supplier found in all suppliers but not active:',
-                  supplierInAll
-                );
                 // Even though supplier is not active, we can still use it for the request
                 selectedSupplierId.value = String(preload.supplier_id);
-                console.log(
-                  'Set selectedSupplierId to (from all suppliers):',
-                  selectedSupplierId.value
-                );
                 await onSupplierSelected(preload.supplier_id);
               } else {
-                console.error('Supplier not found in any supplier list');
                 // Still try to set it as a fallback
                 selectedSupplierId.value = String(preload.supplier_id);
-                console.log(
-                  'Set selectedSupplierId to (fallback):',
-                  selectedSupplierId.value
-                );
                 await onSupplierSelected(preload.supplier_id);
               }
             } catch (e) {
               console.error('Failed to fetch all suppliers:', e);
               // Still try to set it as a fallback
               selectedSupplierId.value = String(preload.supplier_id);
-              console.log(
-                'Set selectedSupplierId to (fallback):',
-                selectedSupplierId.value
-              );
               await onSupplierSelected(preload.supplier_id);
             }
           }
         }
 
         // Build rows from preload - wait for supplier products to be loaded
-        console.log(
-          'Building rows with supplier products:',
-          supplierProducts.value
-        );
         rowRequest.value = preload.items.map((it, idx) => {
-          // Try to find matching supplier product
-          const matchingProduct = supplierProducts.value?.find(
+          // Try to find matching supplier product by name similarity first, then by item_type_id
+          let matchingProduct = supplierProducts.value?.find(
             (product) =>
-              product.product_name.toLowerCase() === it.name.toLowerCase()
+              product.product_name
+                .toLowerCase()
+                .includes(it.name.toLowerCase()) ||
+              it.name.toLowerCase().includes(product.product_name.toLowerCase())
           );
 
-          console.log(
-            `Mapping item "${it.name}" to supplier product:`,
-            matchingProduct
-          );
+          // If no name match, fall back to item_type_id matching
+          if (!matchingProduct) {
+            matchingProduct = supplierProducts.value?.find(
+              (product) =>
+                product.item_type_id &&
+                it.item_type_id &&
+                String(product.item_type_id) === String(it.item_type_id)
+            );
+          }
+
+          // Ensure we have a proper item name
+          const itemName = it.name || it.item_name || 'Unknown Item';
 
           return {
             id: idx + 1,
-            item_name: it.name,
+            item_name: matchingProduct?.product_name || itemName,
             item_quantity: it.quantity || 0,
             item_unit: it.unit || '',
             item_type: requestForm.value.request_type,
@@ -2421,15 +2437,68 @@
             menu_item_id: null,
             category: preload.category || '',
             source: preload.source || 'scm',
-            // Add supplier product mapping
+            // Add supplier product mapping - this is crucial for the dropdown to work
             supplier_product_id: matchingProduct?.id || null,
             supplier_id: preload.supplier_id || null,
+            // Mark as preloaded to prevent manual changes
+            isPreloaded: true,
           };
         });
+
         // Open the create modal immediately
         openCreateTab();
         // Lock category/type so user doesn't accidentally change them for preloaded drafts
         isPreloaded.value = true;
+
+        // Force a reactive update to ensure the form displays the preloaded data
+        await nextTick();
+
+        // Add a small delay to ensure supplier products are fully loaded
+        setTimeout(async () => {
+          // Force update the supplier product selection for each row
+          rowRequest.value.forEach((row, index) => {
+            // Re-match the product now that supplier products are loaded
+            const preloadItem = preload.items[index];
+            if (preloadItem) {
+              // Try to find matching supplier product by name similarity first
+              let matchingProduct = supplierProducts.value?.find(
+                (product) =>
+                  product.product_name
+                    .toLowerCase()
+                    .includes(preloadItem.name.toLowerCase()) ||
+                  preloadItem.name
+                    .toLowerCase()
+                    .includes(product.product_name.toLowerCase())
+              );
+
+              // If no name match, fall back to item_type_id matching
+              if (!matchingProduct) {
+                matchingProduct = supplierProducts.value?.find(
+                  (product) =>
+                    product.item_type_id &&
+                    preloadItem.item_type_id &&
+                    String(product.item_type_id) ===
+                      String(preloadItem.item_type_id)
+                );
+              }
+
+              if (matchingProduct) {
+                // Update the row with the correct supplier product
+                const updatedRow = {
+                  ...row,
+                  supplier_product_id: matchingProduct.id,
+                  item_name: matchingProduct.product_name,
+                  isPreloaded: true,
+                };
+                rowRequest.value[index] = updatedRow;
+              }
+            }
+          });
+
+          // Force a complete re-render of the component
+          forceDropdownUpdate.value++;
+          await nextTick();
+        }, 200);
         // Clear state so reloads don't re-add
         try {
           const newState = { ...state };
@@ -3010,7 +3079,7 @@
                     <!-- <span class="text-xs text-black/50">{{ formatManilaTime(release.released_at) }}</span> -->
                   </div>
                 </td>
-                <td>{{ release.released_by }}</td>
+                <td>{{ release.released_by_name || release.released_by }}</td>
                 <td>
                   <button
                     class="btn btn-sm bg-success text-white font-thin border-none hover:bg-success/80"
@@ -3060,7 +3129,6 @@
           >
             <thead class="text-black/50">
               <tr class="text-black/50">
-
                 <th>Branch</th>
                 <th>Description</th>
                 <th>Type</th>
@@ -3076,7 +3144,6 @@
                 :key="request.request_id"
                 class="hover:bg-primary/10"
               >
-
                 <td class="font-semibold">{{ request.branch_name }}</td>
                 <td class="text-wrap">{{ request.request_description }}</td>
                 <td>
@@ -5315,12 +5382,22 @@
                 <td class="text-left font-medium">{{ row.id }}</td>
 
                 <td>
+
                   <!-- When supplier is selected, show a dropdown of supplier products -->
                   <select
-                    v-if="isSupplierMode"
+                    v-if="isSupplierMode && supplierProducts.length > 0"
                     v-model="row.supplier_product_id"
                     @change="onSupplierProductSelected(row)"
-                    class="select select-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor"
+                    :disabled="row.isPreloaded"
+                    :class="[
+                      'select select-xs w-full border-primaryColor/30 focus:border-primaryColor',
+                      row.isPreloaded
+                        ? 'bg-gray-100 cursor-not-allowed'
+                        : 'bg-white',
+                    ]"
+                    :key="`supplier-product-${row.id}-${row.supplier_product_id}-${supplierProducts.length}-${forceDropdownUpdate}`"
+                    :data-row-id="row.id"
+                    ref="supplierProductSelect"
                   >
                     <option value="" disabled>Select product...</option>
                     <option
@@ -5332,6 +5409,14 @@
                       {{ p.product_name }}
                     </option>
                   </select>
+                  <!-- Loading state when supplier products are loading -->
+                  <div
+                    v-else-if="isSupplierMode && supplierProducts.length === 0"
+                    class="input input-xs w-full bg-gray-100 text-gray-500"
+                  >
+                    Loading products...
+                  </div>
+
                   <!-- Manual entry when no supplier selected -->
                   <input
                     v-else
@@ -5339,7 +5424,10 @@
                     type="text"
                     v-model="row.item_name"
                     placeholder="Enter item name..."
-                    class="input input-xs w-full bg-white border-primaryColor/30 focus:border-primaryColor focus:bg-white"
+                    :class="[
+                      'input input-xs w-full border-primaryColor/30 focus:border-primaryColor focus:bg-white',
+                      isPreloaded ? 'bg-gray-100' : 'bg-white',
+                    ]"
                     @blur="updateItemAmount(row)"
                   />
                 </td>

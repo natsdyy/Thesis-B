@@ -448,14 +448,26 @@
         return;
       }
     } else if (type === 'add-ingredient' && recipe) {
-      // For ingredient modal, preserve the current recipe context
-      modal.value = { type: originalType, show: true, recipe };
+      // For ingredient modal, preserve the current recipe context AND current ingredients
+      modal.value = {
+        type: originalType,
+        show: true,
+        recipe: {
+          ...recipe,
+          ingredients: ingredients.value, // Use current ingredients array, not the original recipe ingredients
+        },
+      };
     } else {
       modal.value = { type: originalType, show: true, recipe };
     }
 
     // Only populate form if not already handled by full recipe fetch
-    if (recipe && type !== 'view' && type !== 'edit') {
+    if (
+      recipe &&
+      type !== 'view' &&
+      type !== 'edit' &&
+      type !== 'add-ingredient'
+    ) {
       recipeForm.value = {
         recipe_name: recipe.recipe_name || '',
         description: recipe.description || '',
@@ -467,7 +479,7 @@
         cost_per_batch: recipe.cost_per_batch || '',
       };
 
-      // Load ingredients if editing
+      // Load ingredients if editing (but NOT for add-ingredient modal)
       console.log('Recipe data when opening modal:', recipe);
       console.log('Recipe ingredients:', recipe.ingredients);
       if (recipe.ingredients) {

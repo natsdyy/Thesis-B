@@ -522,7 +522,7 @@
                       class="btn btn-xs font-thin"
                       :class="
                         period.status === 'pending_approval'
-                          ? 'bg-warning/10 text-warning hover:bg-warning/20 border-none'
+                          ? 'bg-gray-200 text-gray-600 hover:bg-gray-300 border-none'
                           : 'btn-ghost border border-black/10 hover:bg-black/5'
                       "
                       @click="viewPeriodDetails(period)"

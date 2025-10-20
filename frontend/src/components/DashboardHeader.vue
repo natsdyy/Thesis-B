@@ -97,7 +97,7 @@
         <!-- Dropdown content -->
         <ul
           tabindex="0"
-          class="dropdown-content menu bg-base-100 rounded-box z-[1] w-80 shadow-lg border border-base-300 max-h-96 overflow-y-auto"
+          class="dropdown-content menu bg-base-100 rounded-box z-[1] w-80 shadow-lg border border-base-300 max-h-96 overflow-y-auto overflow-x-hidden"
         >
           <!-- Header -->
           <li class="menu-title">
@@ -124,8 +124,10 @@
           </li>
 
           <!-- Empty state -->
-          <li v-else-if="visibleNotifications.length === 0" >
-            <div class="text-center flex justify-center items-center py-4 text-base-content/60">
+          <li v-else-if="visibleNotifications.length === 0">
+            <div
+              class="text-center flex justify-center items-center py-4 text-base-content/60"
+            >
               <p class="text-sm">No notifications yet</p>
             </div>
           </li>

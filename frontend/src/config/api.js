@@ -7,19 +7,11 @@ function resolveBaseURL() {
     return fromEnv.trim();
   }
 
-  // For local development, always use the backend server
+  // For local development, prefer the current origin so Vite proxy handles /api
   if (typeof window !== 'undefined' && window.location?.origin) {
-    // Check if we're in development mode (localhost:8080 or network IP:8080)
-    if (
-      window.location.origin.includes('localhost:8080') ||
-      window.location.origin.includes('192.168.56.1:8080') ||
-      window.location.origin.includes('192.168.18.5:8080') ||
-      window.location.origin.includes('192.168.254.116:8080') ||
-      window.location.origin.includes('192.168.68.111:8080')
-    ) {
-      // Use network IP for backend API so it's accessible from phones
-      // Use the Wi-Fi network IP (192.168.18.5) as it has proper gateway
-      return 'http://192.168.18.5:5000/api';
+    // In dev, route API through the frontend origin (Vite proxy -> backend)
+    if (window.location.origin.includes(':8080')) {
+      return `${window.location.origin.replace(/\/$/, '')}/api`;
     }
     // For production domain, use the production backend
     if (window.location.origin.includes('countryside-steakhouse.site')) {

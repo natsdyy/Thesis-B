@@ -84,6 +84,38 @@
   const map = ref(null);
   const marker = ref(null);
 
+  // Autocomplete state for OpenStreetMap (Nominatim)
+  const isSearching = ref(false);
+  const suggestions = ref([]);
+  const showSuggestions = ref(false);
+
+  // Simple debounce utility for input-driven fetches
+  const debounce = (fn, wait = 300) => {
+    let t;
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), wait);
+    };
+  };
+
+  // Cavite-only geocoding bounds (left, top, right, bottom)
+  // These coordinates cover Cavite province generously
+  const CAVITE_BOUNDS = {
+    left: 120.60, // min lon
+    top: 14.60, // max lat
+    right: 121.10, // max lon
+    bottom: 13.80, // min lat
+  };
+
+  const buildSearchUrl = (q, limit = 10) => {
+    const { left, top, right, bottom } = CAVITE_BOUNDS;
+    return (
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}` +
+      `&limit=${limit}&addressdetails=1&countrycodes=ph&dedupe=1` +
+      `&viewbox=${left},${top},${right},${bottom}&bounded=1`
+    );
+  };
+
   // Statistics
   const branchStats = computed(() => branchStore.stats);
 
@@ -317,94 +349,191 @@
     if (!locationSearch.value.trim()) return;
 
     try {
-      // Show loading state
-      const loadingDiv = document.createElement('div');
-      loadingDiv.innerHTML = `
-        <div class="flex items-center justify-center h-full bg-blue-50 text-blue-600">
-          <div class="text-center">
-            <div class="loading loading-spinner loading-lg mb-2"></div>
-            <p class="font-medium">Searching...</p>
-          </div>
-        </div>
-      `;
-      mapContainer.value.appendChild(loadingDiv);
+      isSearching.value = true;
+      showSuggestions.value = true;
 
-      // Search using Nominatim API
-      showToast('info', 'Searching location...');
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearch.value)}&limit=1&addressdetails=1`
-      );
+      // Prefer exact match if available; fetch top candidates
+      const url = buildSearchUrl(locationSearch.value, 10);
+      const response = await fetch(url, {
+        headers: { 'Accept-Language': 'en' },
+      });
 
-      if (response.ok) {
-        const results = await response.json();
+      if (!response.ok) throw new Error('Search request failed');
+      let results = await response.json();
+      // Hard-filter to Cavite province just in case
+      results = results.filter((r) => {
+        const a = r.address || {};
+        return (
+          (a.state && String(a.state).toLowerCase().includes('cavite')) ||
+          (a.province && String(a.province).toLowerCase().includes('cavite')) ||
+          (r.display_name && String(r.display_name).toLowerCase().includes('cavite'))
+        );
+      });
+      suggestions.value = results.map((r) => ({
+        lat: parseFloat(r.lat),
+        lon: parseFloat(r.lon),
+        display_name: r.display_name,
+        address: r.address || {},
+        type: r.type,
+        class: r.class,
+      }));
 
-        if (results.length > 0) {
-          const location = results[0];
-          const lat = parseFloat(location.lat);
-          const lon = parseFloat(location.lon);
+      // Rank results to prefer administrative areas (e.g., barangay/city) matching the query
+      const ranked = rankSuggestions(locationSearch.value, suggestions.value);
+      suggestions.value = ranked;
 
-          // Center map on search result if map is ready
-          if (map.value) {
-            map.value.setView([lat, lon], 16);
-          }
-
-          // Place marker and notify (works even if map isn't ready)
-          placeMarker({ lat, lng: lon }, true);
-
-          // Update selected address
-          selectedAddress.value = location.display_name;
-
-          // Auto-populate individual address fields
-          if (location.address) {
-            // Update form fields with parsed address components
-            branchForm.value.city =
-              location.address.city ||
-              location.address.town ||
-              location.address.village ||
-              location.address.county ||
-              '';
-            branchForm.value.state =
-              location.address.state || location.address.province || '';
-            branchForm.value.postal_code = location.address.postcode || '';
-            branchForm.value.country = location.address.country || '';
-          }
-
-          // Remove loading state
-          mapContainer.value.removeChild(loadingDiv);
-        } else {
-          // Remove loading state
-          mapContainer.value.removeChild(loadingDiv);
-          showToast(
-            'warning',
-            `Location not found: "${locationSearch.value}". Please try a different search term or enter the address manually.`
-          );
-        }
+      const candidate = ranked[0];
+      if (candidate) {
+        await selectSuggestion(candidate);
       } else {
-        throw new Error('Search request failed');
+        showToast('warning', `No results for "${locationSearch.value}"`);
       }
     } catch (error) {
       console.error('Search failed:', error);
-      showToast(
-        'error',
-        `Search failed: ${error.message}. Please try again or enter the address manually.`
-      );
-
-      // Remove loading state if it exists
-      const loadingDiv = mapContainer.value.querySelector('.loading');
-      if (loadingDiv) {
-        mapContainer.value.removeChild(loadingDiv);
-      }
+      showToast('error', `Search failed: ${error.message}`);
+    } finally {
+      isSearching.value = false;
     }
   };
 
+  // Fetch suggestions as user types (debounced)
+  const fetchSuggestions = debounce(async () => {
+    const q = locationSearch.value.trim();
+    if (!q) {
+      suggestions.value = [];
+      showSuggestions.value = false;
+      return;
+    }
+    try {
+      const url = buildSearchUrl(q, 10);
+      const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+      if (!res.ok) return;
+      let data = await res.json();
+      data = data.filter((r) => {
+        const a = r.address || {};
+        return (
+          (a.state && String(a.state).toLowerCase().includes('cavite')) ||
+          (a.province && String(a.province).toLowerCase().includes('cavite')) ||
+          (r.display_name && String(r.display_name).toLowerCase().includes('cavite'))
+        );
+      });
+      const mapped = data.map((r) => ({
+        lat: parseFloat(r.lat),
+        lon: parseFloat(r.lon),
+        display_name: r.display_name,
+        address: r.address || {},
+        type: r.type,
+        class: r.class,
+      }));
+      suggestions.value = rankSuggestions(locationSearch.value, mapped);
+      showSuggestions.value = suggestions.value.length > 0;
+    } catch (_) {
+      // ignore transient failures
+    }
+  }, 350);
+
+  const onSearchInput = () => {
+    showSuggestions.value = true;
+    fetchSuggestions();
+  };
+
+  const selectSuggestion = async (item) => {
+    // Center and drop marker
+    if (map.value) {
+      map.value.setView([item.lat, item.lon], 16);
+    }
+    // Place marker but preserve our formatted address (avoid overwriting with POI-rich reverse geocode)
+    placeMarker({ lat: item.lat, lng: item.lon }, true, { preserveSelectedAddress: true });
+    selectedAddress.value = formatSuggestionAddress(item, locationSearch.value);
+
+    // Populate form fields
+    const a = item.address || {};
+    branchForm.value.city = a.city || a.town || a.village || a.county || '';
+    branchForm.value.state = a.state || a.province || '';
+    branchForm.value.postal_code = a.postcode || '';
+    branchForm.value.country = a.country || '';
+
+    // Hide suggestions after selection
+    showSuggestions.value = false;
+  };
+
+  // Display helpers for suggestion list
+  const getSuggestionTitle = (s) => {
+    const a = s.address || {};
+    return (
+      a.village || a.suburb || a.neighbourhood || a.town || a.city || s.display_name
+    );
+  };
+
+  const getSuggestionSubtitle = (s) => {
+    const a = s.address || {};
+    const city = a.city || a.town;
+    const province = a.state || a.province;
+    const country = a.country;
+    return [city, province, country].filter(Boolean).join(', ');
+  };
+
+  const highlightMatch = (text) => {
+    const q = locationSearch.value.trim();
+    if (!q) return text;
+    const re = new RegExp(`(${q.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'ig');
+    return text.replace(re, '<span class="font-semibold">$1</span>');
+  };
+
+  // Utilities: rank and format results to prefer exact Salawag-like matches
+  const rankSuggestions = (queryText, items) => {
+    const q = queryText.trim().toLowerCase();
+    const adminTypes = new Set(['city', 'town', 'village', 'suburb', 'neighbourhood', 'hamlet', 'municipality', 'county', 'province']);
+    const poiClasses = new Set(['amenity', 'shop', 'tourism', 'office']);
+
+    const score = (s) => {
+      const name = (s.display_name || '').toLowerCase();
+      const a = s.address || {};
+      const parts = [a.city, a.town, a.village, a.suburb, a.neighbourhood, a.hamlet]
+        .filter(Boolean)
+        .map((x) => String(x).toLowerCase());
+
+      let sc = 0;
+      // Exact match on any admin field
+      if (parts.includes(q)) sc += 1000;
+      // Starts with query in display_name
+      if (name.startsWith(q + ',')) sc += 600;
+      if (name === q) sc += 800;
+      // Prefer administrative place types
+      if (adminTypes.has(s.type)) sc += 200;
+      // Penalize POIs unless exact name match
+      if (poiClasses.has(s.class)) sc -= 100;
+      // Minor boost if within Cavite/PH (common for your use case)
+      if ((a.state || '').toLowerCase().includes('cavite')) sc += 30;
+      if ((a.country || '').toLowerCase().includes('philippines')) sc += 10;
+      return sc;
+    };
+
+    return [...items].sort((a, b) => score(b) - score(a));
+  };
+
+  const formatSuggestionAddress = (s, queryText) => {
+    const a = s.address || {};
+    const namePref =
+      a.village || a.suburb || a.neighbourhood || a.town || a.city || queryText;
+    const city = a.city || a.town || '';
+    const province = a.state || a.province || '';
+    const country = a.country || '';
+    return [namePref, city, province, country]
+      .filter((x) => x && String(x).trim().length > 0)
+      .join(', ');
+  };
+
   // Wrapper to ensure toast fires immediately on UI action
-  const handleSearchClick = () => {
+  const handleSearchClick = async () => {
     if (!locationSearch.value.trim()) {
       showToast('warning', 'Please enter a location to search.');
       return;
     }
     showToast('info', 'Searching location...');
-    searchLocation();
+    await searchLocation();
+    // Close suggestions after search selects best candidate
+    showSuggestions.value = false;
   };
 
   // Apply the selected address to the form
@@ -469,7 +598,8 @@
   };
 
   // Place marker on map and get address
-  const placeMarker = async (latLng, notify = false) => {
+  const placeMarker = async (latLng, notify = false, options = {}) => {
+    const preserveSelectedAddress = options.preserveSelectedAddress === true;
     // If map is initialized, maintain marker on the map
     if (map.value) {
       // Remove existing marker
@@ -497,7 +627,9 @@
       if (response.ok) {
         const data = await response.json();
         if (data.display_name) {
-          selectedAddress.value = data.display_name;
+          if (!preserveSelectedAddress) {
+            selectedAddress.value = data.display_name;
+          }
 
           // Auto-populate individual address fields
           if (data.address) {
@@ -1584,6 +1716,7 @@
                 themeStore.themeClasses.input,
               ]"
               placeholder="Search for business location, landmark, or address..."
+              @input="onSearchInput"
               @keyup.enter="handleSearchClick"
             />
             <div class="flex gap-2 justify-end items-center">
@@ -1603,6 +1736,29 @@
                 Current
               </button>
             </div>
+          </div>
+
+          <!-- Autocomplete dropdown -->
+          <div
+            v-if="showSuggestions && suggestions.length"
+            class="mt-1 max-h-72 overflow-auto rounded-md border border-base-200 bg-base-100 shadow"
+          >
+            <ul>
+              <li
+                v-for="(s, idx) in suggestions"
+                :key="idx"
+                class="px-3 py-2 cursor-pointer hover:bg-base-200 text-sm border-b last:border-b-0"
+                @click="selectSuggestion(s)"
+              >
+                <div class="flex items-center gap-2">
+                  <span class="text-primaryColor">📍</span>
+                  <div class="flex-1">
+                    <div class="font-medium" v-html="highlightMatch(getSuggestionTitle(s))"></div>
+                    <div class="text-xs opacity-70">{{ getSuggestionSubtitle(s) }}</div>
+                  </div>
+                </div>
+              </li>
+            </ul>
           </div>
 
           <!-- Embedded Google Maps -->

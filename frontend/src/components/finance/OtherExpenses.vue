@@ -4,6 +4,7 @@
   import { useBranchContextStore } from '../../stores/branchContextStore.js';
   import { useBranchStore } from '../../stores/branchStore.js';
   import { useCustomToast } from '../../composables/useCustomToast.js';
+  import { formatImageUrl } from '../../config/api.js';
   import {
     getCurrentPhilippineTime,
     createPhilippineDate,
@@ -222,7 +223,7 @@
 
   // View receipt
   const viewReceipt = (receiptUrl) => {
-    receiptImageUrl.value = `http://localhost:5000/uploads${receiptUrl}`;
+    receiptImageUrl.value = formatImageUrl(receiptUrl);
     imageError.value = false; // Reset error state
     showReceiptModal.value = true;
   };

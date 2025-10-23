@@ -3,6 +3,7 @@
   import { useUtilityExpensesStore } from '../../stores/utilityExpensesStore.js';
   import { useBranchContextStore } from '../../stores/branchContextStore.js';
   import { useCustomToast } from '../../composables/useCustomToast.js';
+  import { formatImageUrl } from '../../config/api.js';
   import {
     getCurrentPhilippineTime,
     createPhilippineDate,
@@ -475,7 +476,12 @@
             <td class="font-medium">{{ formatCurrency(remittance.amount) }}</td>
             <td>{{ remittance.expense_month }}</td>
             <td>
-              <span :class="['badge badge-sm', getStatusBadgeClass(remittance.status)]">
+              <span
+                :class="[
+                  'badge badge-sm',
+                  getStatusBadgeClass(remittance.status),
+                ]"
+              >
                 {{ remittance.status }}
               </span>
               <div
@@ -498,31 +504,36 @@
               </button>
             </td>
             <td>
-  <div class="flex gap-2">
-    <!-- Edit Button -->
-    <button
-      v-if="remittance.status === 'pending'"
-      @click="editRemittance(remittance)"
-      :disabled="updating || deleting"
-      class="btn bg-warning/10 text-warning border-none btn-xs flex items-center justify-center"
-      title="Edit"
-    >
-      <font-awesome-icon icon="fa-solid fa-pen-to-square" class="w-3.5 h-3.5" />
-    </button>
+              <div class="flex gap-2">
+                <!-- Edit Button -->
+                <button
+                  v-if="remittance.status === 'pending'"
+                  @click="editRemittance(remittance)"
+                  :disabled="updating || deleting"
+                  class="btn bg-warning/10 text-warning border-none btn-xs flex items-center justify-center"
+                  title="Edit"
+                >
+                  <font-awesome-icon
+                    icon="fa-solid fa-pen-to-square"
+                    class="w-3.5 h-3.5"
+                  />
+                </button>
 
-    <!-- Delete Button -->
-    <button
-      v-if="remittance.status === 'pending'"
-      @click="deleteRemittance(remittance)"
-      :disabled="updating || deleting"
-      class="btn bg-error/10 text-error border-none btn-xs flex items-center justify-center"
-      title="Delete"
-    >
-      <font-awesome-icon icon="fa-solid fa-trash" class="w-3.5 h-3.5" />
-    </button>
-  </div>
-</td>
-
+                <!-- Delete Button -->
+                <button
+                  v-if="remittance.status === 'pending'"
+                  @click="deleteRemittance(remittance)"
+                  :disabled="updating || deleting"
+                  class="btn bg-error/10 text-error border-none btn-xs flex items-center justify-center"
+                  title="Delete"
+                >
+                  <font-awesome-icon
+                    icon="fa-solid fa-trash"
+                    class="w-3.5 h-3.5"
+                  />
+                </button>
+              </div>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -913,7 +924,7 @@
           <!-- Receipt Image -->
           <div class="text-center">
             <img
-              :src="`http://localhost:5000/uploads${selectedRemittance.receipt_url}`"
+              :src="formatImageUrl(selectedRemittance.receipt_url)"
               :alt="`Receipt for ${selectedRemittance.expense_type} expense`"
               class="max-w-full max-h-96 mx-auto border rounded shadow-sm"
               @error="handleImageError"

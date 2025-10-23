@@ -23,12 +23,6 @@
         </div>
         <div class="flex items-center gap-2" v-if="!auth.isBoardDirector">
           <button
-            class="btn bg-primaryColor hover:bg-primaryColor/80 text-white px-4 py-2 text-sm font-thin"
-            @click="openCreate(null)"
-          >
-            + Add Root
-          </button>
-          <button
             class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
             @click="fetchChart"
           >

@@ -200,6 +200,7 @@
       payroll: 'Payroll - Net Salary',
       payroll_employer_contributions: 'Payroll - Employer Contributions',
       payroll_employee_contributions: 'Payroll - Employee Contributions',
+      utilities_expense: 'Utilities Expense',
     };
 
     return (
@@ -279,10 +280,8 @@
               </td>
               <td
                 :class="{
-                  'text-error  text-xs':
-                    movement.movement_type === 'out',
-                  'text-success  text-xs':
-                    movement.movement_type === 'in',
+                  'text-error  text-xs': movement.movement_type === 'out',
+                  'text-success  text-xs': movement.movement_type === 'in',
                 }"
               >
                 <font-awesome-icon

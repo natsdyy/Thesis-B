@@ -10,6 +10,7 @@ const rolePermissions = {
   'Super Admin': [
     'dashboard',
     'sales',
+    'utilities',
     'inventory',
     'kitchen',
     'employees',
@@ -19,6 +20,7 @@ const rolePermissions = {
   Manager: [
     'dashboard',
     'sales',
+    'utilities',
     'inventory',
     'kitchen',
     'employees',
@@ -95,6 +97,17 @@ export default [
       title: 'Sales Management',
       requiresAuth: true,
       operation: 'sales',
+    },
+  },
+  {
+    path: 'utilities',
+    name: 'BranchUtilities',
+    component: () => import('../../views/branch/BranchUtilities.vue'),
+    beforeEnter: checkBranchAccess,
+    meta: {
+      title: 'Monthly Utilities',
+      requiresAuth: true,
+      operation: 'utilities',
     },
   },
   {

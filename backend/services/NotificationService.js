@@ -6,6 +6,7 @@ const OvertimeRequest = require("../models/OvertimeRequest");
 const LeaveRequest = require("../models/LeaveRequest");
 const BranchRequest = require("../models/BranchRequest");
 const BranchReturn = require("../models/BranchReturn");
+const BranchUtilitiesRemittance = require("../models/BranchUtilitiesRemittance");
 const { db } = require("../config/database");
 
 class NotificationService {
@@ -552,6 +553,109 @@ class NotificationService {
       return notification;
     } catch (error) {
       console.error("Error creating branch return notification:", error);
+      throw error;
+    }
+  }
+
+  // Utilities Expense Notifications
+  static async createUtilityExpenseNotification(remittanceId) {
+    try {
+      const remittance = await BranchUtilitiesRemittance.getById(remittanceId);
+      if (!remittance) {
+        console.error("Utilities remittance not found:", remittanceId);
+        return null;
+      }
+
+      // Check if notification already exists for this remittance
+      const existingNotification = await db("notifications")
+        .where("reference_id", remittanceId)
+        .where("reference_table", "branch_utilities_remittances")
+        .where("notification_type", "utilities_expense")
+        .where("created_at", ">", new Date(Date.now() - 30000)) // Within last 30 seconds
+        .first();
+
+      if (existingNotification) {
+        console.log(
+          "Duplicate notification prevented for utilities remittance:",
+          remittanceId
+        );
+        return null;
+      }
+
+      const notification = await Notification.create({
+        department: "Finance",
+        notification_type: "remittance",
+        title: "New Utilities Expense Submitted",
+        message: `Branch ${remittance.branch_name} has submitted a ${remittance.expense_type} expense of ₱${parseFloat(remittance.amount).toLocaleString()} for ${remittance.expense_month}. Please review and approve.`,
+        reference_id: remittanceId,
+        reference_table: "branch_utilities_remittances",
+        action_url: "/finance/cash-management?tab=other-expenses",
+      });
+
+      return notification;
+    } catch (error) {
+      console.error("Error creating utilities expense notification:", error);
+      throw error;
+    }
+  }
+
+  static async createUtilityExpenseApprovalNotification(remittanceId, action) {
+    try {
+      const remittance = await BranchUtilitiesRemittance.getById(remittanceId);
+      if (!remittance) {
+        console.error("Utilities remittance not found:", remittanceId);
+        return null;
+      }
+
+      // Check if notification already exists for this remittance and action
+      const existingNotification = await db("notifications")
+        .where("reference_id", remittanceId)
+        .where("reference_table", "branch_utilities_remittances")
+        .where("notification_type", "remittance")
+        .where(
+          "title",
+          action === "approved"
+            ? "Utilities Expense Approved"
+            : "Utilities Expense Rejected"
+        )
+        .where("created_at", ">", new Date(Date.now() - 30000)) // Within last 30 seconds
+        .first();
+
+      if (existingNotification) {
+        console.log(
+          "Duplicate notification prevented for utilities remittance approval:",
+          remittanceId,
+          "action:",
+          action
+        );
+        return null;
+      }
+
+      let title, message;
+      if (action === "approved") {
+        title = "Utilities Expense Approved";
+        message = `Your ${remittance.expense_type} expense of ₱${parseFloat(remittance.amount).toLocaleString()} for ${remittance.expense_month} has been approved by Finance.`;
+      } else {
+        title = "Utilities Expense Rejected";
+        message = `Your ${remittance.expense_type} expense of ₱${parseFloat(remittance.amount).toLocaleString()} for ${remittance.expense_month} has been rejected. Reason: ${remittance.rejection_reason || "No reason provided"}`;
+      }
+
+      const notification = await Notification.create({
+        department: remittance.branch_name, // Target the specific branch
+        notification_type: "remittance",
+        title: title,
+        message: message,
+        reference_id: remittanceId,
+        reference_table: "branch_utilities_remittances",
+        action_url: "/branch/utilities",
+      });
+
+      return notification;
+    } catch (error) {
+      console.error(
+        "Error creating utilities expense approval notification:",
+        error
+      );
       throw error;
     }
   }

@@ -1,5 +1,6 @@
 <script setup>
   import { ref, onMounted, computed, watch } from 'vue';
+  import axios from 'axios';
   import { useFinanceBalanceStore } from '../../stores/financeBalanceStore.js';
   import { useBranchContextStore } from '../../stores/branchContextStore.js';
   import { usePOSStore } from '../../stores/posStore.js';
@@ -261,6 +262,7 @@
             payrollExpenses.value.employeeContributions += amount;
             payrollExpenses.value.total += amount;
           }
+          // Note: utilities_expense is included in totalExpenses but not tracked separately
         });
       } catch (err) {
         console.error('Failed to fetch expenses:', err);
@@ -453,7 +455,32 @@
 </script>
 
 <template>
-  <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
+  <div
+    class="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 sm:gap-3 w-full mb-4 md:flex-row"
+  >
+    <div class="w-full sm:w-auto">
+      <select
+        v-model="period"
+        class="select select-bordered select-xs w-full sm:w-40 md:w-48"
+      >
+        <option value="today">Today</option>
+        <option value="week">This Week</option>
+        <option value="customMonth">Custom Month</option>
+        <option value="month">This Month</option>
+        <option value="year">This Year</option>
+      </select>
+    </div>
+
+    <div v-if="period === 'customMonth'" class="w-full sm:w-auto">
+      <input
+        type="month"
+        v-model="customMonth"
+        class="input input-bordered input-xs w-full sm:w-40 md:w-48"
+      />
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
     <div class="card bg-white shadow border border-black/10">
       <div class="card-body py-4">
         <div class="text-xs text-gray-500">Capital</div>
@@ -612,7 +639,6 @@
               <td>
                 <div class="flex flex-col">
                   <span class="text-xs">{{ employee.period_name }}</span>
-
                 </div>
               </td>
               <td>{{ employee.days_worked }}</td>
@@ -690,21 +716,6 @@
         class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-2"
       >
         <h3 class="text-sm font-medium text-gray-700">Branch Breakdown</h3>
-        <div class="flex items-center gap-3">
-          <select v-model="period" class="select select-bordered select-xs">
-            <option value="today">Today</option>
-            <option value="week">This Week</option>
-            <option value="customMonth">Custom Month</option>
-            <option value="month">This Month</option>
-            <option value="year">This Year</option>
-          </select>
-          <input
-            v-if="period === 'customMonth'"
-            type="month"
-            class="input input-bordered input-xs"
-            v-model="customMonth"
-          />
-        </div>
       </div>
       <div v-if="loading" class="flex justify-center py-8">
         <div class="loading loading-spinner loading-md text-primaryColor"></div>

@@ -2,7 +2,11 @@
   import { ref, onMounted, watch, computed } from 'vue';
   import { PhilippinePeso, FileText, Download } from 'lucide-vue-next';
   import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
-  import { faChartBar, faPesoSign, faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
+  import {
+    faChartBar,
+    faPesoSign,
+    faExclamationTriangle,
+  } from '@fortawesome/free-solid-svg-icons';
   import {
     getCurrentPhilippineTime,
     createPhilippineDate,
@@ -651,6 +655,9 @@
             case 'expense':
               category = 'General Expenses';
               break;
+            case 'utilities_expense':
+              category = 'Utilities';
+              break;
             case 'budget_return':
               // This is actually an inflow, but if it appears in outflows, categorize it
               category = 'Budget Returns';
@@ -910,9 +917,7 @@
         <h1 class="text-3xl font-bold text-primaryColor">
           Financial Statement
         </h1>
-        <p class="text-gray-600 mt-1">
-          Organization-wide summary
-        </p>
+        <p class="text-gray-600 mt-1">Organization-wide summary</p>
       </div>
       <div class="flex items-center gap-2">
         <select
@@ -1302,8 +1307,11 @@
                   v-if="statement.netIncome < 0"
                   class="text-red-600 font-medium"
                 >
-                  <font-awesome-icon :icon="faExclamationTriangle" class="mr-1" />
-                Operating at a loss for this period
+                  <font-awesome-icon
+                    :icon="faExclamationTriangle"
+                    class="mr-1"
+                  />
+                  Operating at a loss for this period
                 </p>
               </div>
             </div>

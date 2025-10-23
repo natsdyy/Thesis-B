@@ -30,7 +30,7 @@
       </div>
 
       <!-- Action Buttons -->
-      <div
+      <!-- <div
         v-if="canModify"
         class="mt-3 sm:mt-4 flex items-center justify-center gap-2 opacity-90 group-hover:opacity-100 transition-all"
       >
@@ -55,7 +55,7 @@
         >
           <Trash2 class="h-4 w-4" />
         </button>
-      </div>
+      </div> -->
     </div>
 
     <!-- Connectors & Children -->

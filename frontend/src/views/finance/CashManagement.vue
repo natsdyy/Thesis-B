@@ -7,13 +7,13 @@
   // Stub child components
   import CashMovement from '../../components/finance/CashMovement.vue';
   import CurrentBalance from '../../components/finance/CurrentBalance.vue';
-  import CashForecast from '../../components/finance/CashForecast.vue';
+  import OtherExpenses from '../../components/finance/OtherExpenses.vue';
 
   const branchContext = useBranchContextStore();
   const branchStore = useBranchStore();
   const { showToast } = useCustomToast();
 
-  const activeTab = ref('movement'); // movement | balance | forecast
+  const activeTab = ref('movement'); // movement | balance | other expenses
 
   const isSuperAdmin = computed(() => branchContext.isSuperAdmin);
   const availableBranches = computed(
@@ -89,11 +89,11 @@
       </a>
       <a
         class="tab"
-        :class="{ 'tab-active': activeTab === 'forecast' }"
-        @click="activeTab = 'forecast'"
+        :class="{ 'tab-active': activeTab === 'other expenses' }"
+        @click="activeTab = 'other expenses'"
       >
-        <font-awesome-icon icon="fa-solid fa-chart-line" class="mr-2" />
-        Forecasting
+        <font-awesome-icon icon="fa-solid fa-receipt" class="mr-2" />
+        Other Expenses
       </a>
     </div>
 
@@ -103,8 +103,8 @@
     <div v-show="activeTab === 'balance'">
       <CurrentBalance :branch-id="selectedBranchId || currentBranch?.id || 0" />
     </div>
-    <div v-show="activeTab === 'forecast'">
-      <CashForecast :branch-id="selectedBranchId || currentBranch?.id || 0" />
+    <div v-show="activeTab === 'other expenses'">
+      <OtherExpenses :branch-id="selectedBranchId || currentBranch?.id || 0" />
     </div>
   </div>
 </template>

@@ -953,6 +953,17 @@
             <p class="text-gray-500 text-sm font-roboto">
               Fill your data to continue. Thank You!
             </p>
+            
+            <!-- Employee Only Notice -->
+            <div class="bg-gradient-to-r from-primaryColor/10 to-secondaryColor/10 border border-primaryColor/20 rounded-xl p-4 mt-4 shadow-sm">
+              <div class="flex items-center justify-center space-x-2">
+                
+                <p class="text-primaryColor text-sm font-semibold">
+                  Employee Login Portal
+                </p>
+                
+              </div>
+            </div>
 
             <!-- Login type toggle removed: auto-detects based on credentials -->
           </div>
@@ -1141,6 +1152,17 @@
           <p class="text-gray-500 text-xs sm:text-sm font-roboto">
             Fill your data to continue. Thank You!
           </p>
+          
+          <!-- Employee Only Notice -->
+          <div class="bg-gradient-to-r from-primaryColor/10 to-secondaryColor/10 border border-primaryColor/20 rounded-xl p-3 sm:p-4 mt-4 shadow-sm">
+            <div class="flex items-center justify-center space-x-2">
+              <div class="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-primaryColor rounded-full"></div>
+              <p class="text-primaryColor text-xs sm:text-sm font-semibold">
+                Employee Login Portal
+              </p>
+              <div class="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-primaryColor rounded-full"></div>
+            </div>
+          </div>
 
           <!-- Login type toggle removed: auto-detects based on credentials -->
         </div>

@@ -92,19 +92,33 @@ const defaultAllowedOrigins = [
 
 const allowList = [...defaultAllowedOrigins, ...envOrigins];
 
+// Development-friendly CORS configuration
 const corsConfig = {
   origin: (origin, callback) => {
     // Allow non-browser requests or same-origin (no Origin header)
     if (!origin) return callback(null, true);
 
-    const isLanDevOrigin = /^http:\/\/192\.168\.\d+\.\d+:(8080|80)$/.test(
-      origin
-    );
+    // In development, be more permissive
+    if (process.env.NODE_ENV !== 'production') {
+      // Allow localhost with any port
+      if (/^http:\/\/localhost(:\d+)?$/.test(origin)) {
+        console.log(`CORS allowed localhost origin: ${origin}`);
+        return callback(null, true);
+      }
+      
+      // Allow LAN development origins
+      if (/^http:\/\/192\.168\.\d+\.\d+:(8080|80|5000)$/.test(origin)) {
+        console.log(`CORS allowed LAN origin: ${origin}`);
+        return callback(null, true);
+      }
+    }
 
-    // Allow Railway domains
+    const isLanDevOrigin = /^http:\/\/192\.168\.\d+\.\d+:(8080|80)$/.test(origin);
     const isRailwayOrigin = /^https:\/\/.*\.up\.railway\.app$/.test(origin);
+    const isLocalhost = /^http:\/\/localhost(:\d+)?$/.test(origin);
 
-    if (allowList.includes(origin) || isLanDevOrigin || isRailwayOrigin) {
+    if (allowList.includes(origin) || isLanDevOrigin || isRailwayOrigin || isLocalhost) {
+      console.log(`CORS allowed origin: ${origin}`);
       return callback(null, true);
     }
 
@@ -333,6 +347,7 @@ app.get("/api/health/db", async (req, res) => {
 const server = app.listen(PORT, "0.0.0.0", async () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🌐 Environment: ${process.env.NODE_ENV || "development"}`);
+  console.log(`🔗 CORS allowed origins: ${allowList.join(', ')}`);
   console.log(
     `📚 API Documentation available at http://localhost:${PORT}/api-docs`
   );

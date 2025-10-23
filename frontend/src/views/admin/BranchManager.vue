@@ -83,6 +83,7 @@
   const mapContainer = ref(null);
   const map = ref(null);
   const marker = ref(null);
+  const countrysideMarkers = ref([]);
 
   // Autocomplete state for OpenStreetMap (Nominatim)
   const isSearching = ref(false);
@@ -325,6 +326,11 @@
         placeMarker(event.latlng, true);
       });
 
+      // Load and display Countryside Steakhouse locations after a short delay
+      setTimeout(() => {
+        loadCountrysideLocations();
+      }, 500);
+
       // If there's a search query, search for it
       if (locationSearch.value.trim()) {
         searchLocation();
@@ -341,6 +347,156 @@
           </div>
         </div>
       `;
+    }
+  };
+
+  // Load all Countryside Steakhouse locations in Cavite
+  const loadCountrysideLocations = async () => {
+    if (!map.value) {
+      console.log('Map not initialized yet, skipping Countryside locations');
+      return;
+    }
+
+    try {
+      console.log('Loading Countryside Steakhouse locations...');
+      
+      // Hardcoded Countryside Steakhouse locations with geocoded coordinates
+      const countrysideLocations = [
+        {
+          name: "Countryside Steakhouse Tanza",
+          address: "9VV3+6CR, Tanza, Cavite",
+          lat: 14.4056,
+          lng: 120.8531
+        },
+        {
+          name: "Countryside Steakhouse Malihan",
+          address: "14 Malihan St, Dasmariñas, 4114 Cavite",
+          lat: 14.3297,
+          lng: 120.9369
+        },
+        {
+          name: "Countryside Steakhouse Silang",
+          address: "6XFF+XMX, Silang, 4118 Cavite",
+          lat: 14.2306,
+          lng: 120.9742
+        },
+        {
+          name: "Countryside Burgerhouse Cantimbuhan",
+          address: "Zone 4, Cantimbuhan Building, Cantimbuhan St, Poblacion, Dasmariñas, 4114 Cavite",
+          lat: 14.3297,
+          lng: 120.9369
+        },
+        {
+          name: "Countryside Steakhouse Noveleta",
+          address: "Lotto Bldg Dr. J, M. Salud Rd, Noveleta, Cavite",
+          lat: 14.4292,
+          lng: 120.8769
+        },
+        {
+          name: "Countryside Steakhouse - P & N Countryside Steakhouse",
+          address: "CW7R+8GJ, Ground Floor Robinson Place Imus, Imus, 4103 Cavite",
+          lat: 14.4297,
+          lng: 120.9369
+        },
+        {
+          name: "Countryside Steakhouse Poblacion Imus",
+          address: "Castaneda Street, Imus Branch, Carsadang Bago, Imus, Cavite",
+          lat: 14.4297,
+          lng: 120.9369
+        },
+        {
+          name: "Countryside Binakayan",
+          address: "Riverside Building, Covelandia Rd, Kawit, Cavite",
+          lat: 14.4442,
+          lng: 120.9019
+        },
+        {
+          name: "Countryside Steakhouse Burol Main",
+          address: "Congressional Rd, Dasmariñas, Cavite",
+          lat: 14.3297,
+          lng: 120.9369
+        }
+      ];
+
+      // Clear existing markers first
+      countrysideMarkers.value.forEach(marker => {
+        if (map.value) {
+          map.value.removeLayer(marker);
+        }
+      });
+      countrysideMarkers.value = [];
+
+      // Add markers for each location
+      countrysideLocations.forEach((location, index) => {
+        console.log(`Adding marker for ${location.name} at ${location.lat}, ${location.lng}`);
+        
+        let marker;
+        
+        try {
+          // Create custom icon for Countryside Steakhouse
+          const customIcon = L.divIcon({
+            className: 'countryside-marker',
+            html: `
+              <div style="
+                background: #dc2626;
+                color: white;
+                border: 2px solid white;
+                border-radius: 50%;
+                width: 30px;
+                height: 30px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: bold;
+                font-size: 12px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+              ">CS</div>
+            `,
+            iconSize: [30, 30],
+            iconAnchor: [15, 15],
+            popupAnchor: [0, -15]
+          });
+
+          marker = L.marker([location.lat, location.lng], { icon: customIcon });
+        } catch (iconError) {
+          console.warn('Custom icon failed, using default marker:', iconError);
+          // Fallback to default marker with red color
+          marker = L.marker([location.lat, location.lng], {
+            icon: L.icon({
+              iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-red.png',
+              shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+              iconSize: [25, 41],
+              iconAnchor: [12, 41],
+              popupAnchor: [1, -34],
+              shadowSize: [41, 41]
+            })
+          });
+        }
+
+        marker
+          .addTo(map.value)
+          .bindPopup(`
+            <div style="min-width: 250px;">
+              <h3 style="margin: 0 0 8px 0; color: #dc2626; font-weight: bold;">
+                🥩 ${location.name}
+              </h3>
+              <p style="margin: 0 0 4px 0; font-size: 14px; color: #333;">
+                ${location.address}
+              </p>
+              <p style="margin: 0; font-size: 12px; color: #666;">
+                Branch #${index + 1} • Cavite, Philippines
+              </p>
+            </div>
+          `);
+
+        countrysideMarkers.value.push(marker);
+      });
+
+      console.log(`Successfully added ${countrysideMarkers.value.length} Countryside markers to map`);
+      showToast('success', `Loaded ${countrysideLocations.length} Countryside Steakhouse locations in Cavite`);
+    } catch (error) {
+      console.error('Failed to load Countryside locations:', error);
+      showToast('warning', 'Could not load existing Countryside locations');
     }
   };
 
@@ -460,8 +616,15 @@
   // Display helpers for suggestion list
   const getSuggestionTitle = (s) => {
     const a = s.address || {};
+    const name = s.display_name || '';
+    
+    // If it's a Countryside Steakhouse, show it prominently
+    if (name.toLowerCase().includes('countryside') && name.toLowerCase().includes('steakhouse')) {
+      return name;
+    }
+    
     return (
-      a.village || a.suburb || a.neighbourhood || a.town || a.city || s.display_name
+      a.village || a.suburb || a.neighbourhood || a.town || a.city || name
     );
   };
 
@@ -494,6 +657,11 @@
         .map((x) => String(x).toLowerCase());
 
       let sc = 0;
+      
+      // Boost for Countryside Steakhouse matches
+      if (name.includes('countryside') && name.includes('steakhouse')) sc += 2000;
+      if (name.includes('countryside steakhouse')) sc += 2500;
+      
       // Exact match on any admin field
       if (parts.includes(q)) sc += 1000;
       // Starts with query in display_name
@@ -587,6 +755,14 @@
     selectedLng.value = null;
 
     // Clean up map resources
+    // Remove Countryside markers
+    countrysideMarkers.value.forEach(marker => {
+      if (map.value) {
+        map.value.removeLayer(marker);
+      }
+    });
+    countrysideMarkers.value = [];
+
     if (marker.value) {
       map.value?.removeLayer(marker.value);
       marker.value = null;
@@ -681,6 +857,12 @@
       const latLng = marker.value.getLatLng();
       map.value.setView(latLng, 16);
     }
+  };
+
+  // Reload Countryside markers
+  const reloadCountrysideMarkers = () => {
+    console.log('Manually reloading Countryside markers...');
+    loadCountrysideLocations();
   };
 
   const zoomIn = () => {
@@ -1751,9 +1933,31 @@
                 @click="selectSuggestion(s)"
               >
                 <div class="flex items-center gap-2">
-                  <span class="text-primaryColor">📍</span>
+                  <span 
+                    :class="[
+                      'text-primaryColor',
+                      (s.display_name || '').toLowerCase().includes('countryside') && 
+                      (s.display_name || '').toLowerCase().includes('steakhouse') 
+                        ? 'text-red-500' 
+                        : 'text-primaryColor'
+                    ]"
+                  >
+                    {{ (s.display_name || '').toLowerCase().includes('countryside') && 
+                        (s.display_name || '').toLowerCase().includes('steakhouse') 
+                          ? '🥩' 
+                          : '📍' }}
+                  </span>
                   <div class="flex-1">
-                    <div class="font-medium" v-html="highlightMatch(getSuggestionTitle(s))"></div>
+                    <div 
+                      :class="[
+                        'font-medium',
+                        (s.display_name || '').toLowerCase().includes('countryside') && 
+                        (s.display_name || '').toLowerCase().includes('steakhouse') 
+                          ? 'text-red-600 font-bold' 
+                          : ''
+                      ]"
+                      v-html="highlightMatch(getSuggestionTitle(s))"
+                    ></div>
                     <div class="text-xs opacity-70">{{ getSuggestionSubtitle(s) }}</div>
                   </div>
                 </div>
@@ -1798,6 +2002,13 @@
                 title="Zoom out"
               >
                 <font-awesome-icon icon="fa-solid fa-minus" />
+              </button>
+              <button
+                @click="reloadCountrysideMarkers"
+                class="btn btn-xs bg-red-500 text-white hover:bg-red-600 border border-red-600 shadow-md"
+                title="Reload Countryside markers"
+              >
+                <font-awesome-icon icon="fa-solid fa-map-marker-alt" />
               </button>
             </div>
           </div>

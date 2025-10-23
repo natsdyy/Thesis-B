@@ -137,9 +137,11 @@ router.post(
       // Handle receipt URL if file was uploaded
       let receiptUrl = null;
       if (req.file) {
-        receiptUrl = req.file.path
-          .replace(path.join(__dirname, "..", "uploads"), "")
-          .replace(/\\/g, "/");
+        receiptUrl =
+          "/uploads" +
+          req.file.path
+            .replace(path.join(__dirname, "..", "uploads"), "")
+            .replace(/\\/g, "/");
       }
 
       const data = await UtilitiesExpense.create({

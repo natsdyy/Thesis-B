@@ -95,9 +95,11 @@ router.post(
         expense_description: payload.expense_description || null,
         amount: payload.amount,
         expense_month: payload.expense_month,
-        receipt_url: req.file.path
-          .replace(path.join(__dirname, "..", "uploads"), "")
-          .replace(/\\/g, "/"),
+        receipt_url:
+          "/uploads" +
+          req.file.path
+            .replace(path.join(__dirname, "..", "uploads"), "")
+            .replace(/\\/g, "/"),
         notes: payload.notes || null,
         submitted_by: req.user.id,
       });
@@ -225,9 +227,11 @@ router.put(
 
       // If new receipt uploaded, update receipt_url
       if (req.file) {
-        updateData.receipt_url = req.file.path
-          .replace(path.join(__dirname, "..", "uploads"), "")
-          .replace(/\\/g, "/");
+        updateData.receipt_url =
+          "/uploads" +
+          req.file.path
+            .replace(path.join(__dirname, "..", "uploads"), "")
+            .replace(/\\/g, "/");
       }
 
       const data = await BranchUtilitiesRemittance.update(id, updateData);

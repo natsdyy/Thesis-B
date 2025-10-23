@@ -102,8 +102,11 @@ export const formatImageUrl = (imageUrl) => {
     return imageUrl;
   }
 
-  // If it's a relative path starting with /uploads/, convert to backend URL
-  if (imageUrl.startsWith('/uploads/')) {
+  // If it's a relative path starting with /uploads/ or /utility-receipts/, convert to backend URL
+  if (
+    imageUrl.startsWith('/uploads/') ||
+    imageUrl.startsWith('/utility-receipts/')
+  ) {
     // Get the backend URL by removing /api from the API base URL
     let backendUrl = apiConfig.baseURL.replace('/api', '');
 

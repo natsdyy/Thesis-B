@@ -158,13 +158,20 @@ class PayrollRecord {
    * @returns {Promise<Array>}
    */
   static async getEmployeeHistory(employeeId, filters = {}) {
-    const { limit = 10, offset = 0 } = filters;
+    const { limit = 10, offset = 0, status } = filters;
 
-    const records = await db("payroll_records as pr")
+    let query = db("payroll_records as pr")
       .join("payroll_periods as pp", "pr.payroll_period_id", "pp.id")
       .where("pr.employee_id", employeeId)
       .whereNull("pr.deleted_at")
-      .whereNull("pp.deleted_at")
+      .whereNull("pp.deleted_at");
+
+    // Filter by status if provided
+    if (status) {
+      query = query.where("pr.status", status);
+    }
+
+    const records = await query
       .select(
         "pr.*",
         "pp.period_name",

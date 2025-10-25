@@ -4,9 +4,7 @@
       class="modal-box bg-white text-black shadow-lg max-w-4xl max-h-[90vh] overflow-y-auto"
     >
       <!-- Header -->
-      <div
-        class="flex justify-between items-center border-b border-gray-300 pb-4 mb-4"
-      >
+      <div class="flex justify-between items-center pb-4 mb-4">
         <div class="flex items-center gap-3 header-left">
           <img src="/logo1.png" alt="Company Logo" class="w-12 h-12" />
           <div>
@@ -33,7 +31,7 @@
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <!-- Personal Information -->
-          <div class="bg-gray-50 p-4 rounded border">
+          <div class="bg-gray-50 p-4 rounded">
             <h4 class="font-semibold text-gray-700 mb-3 text-sm">
               Personal Details
             </h4>
@@ -66,7 +64,7 @@
           </div>
 
           <!-- Pay Period Information -->
-          <div class="bg-gray-50 p-4 rounded border">
+          <div class="bg-gray-50 p-4 rounded">
             <h4 class="font-semibold text-gray-700 mb-3 text-sm">
               Pay Period Details
             </h4>
@@ -75,12 +73,10 @@
                 <span class="text-sm text-gray-600">Period:</span>
                 <span class="text-sm font-medium">
                   {{
-                    props.period?.period_name ||
-                    formatDateRange(
+                    formatPeriodDisplay(
                       props.period?.date_from,
                       props.period?.date_to
-                    ) ||
-                    'N/A'
+                    ) || 'N/A'
                   }}
                 </span>
               </div>
@@ -105,19 +101,73 @@
             Earnings
           </h3>
           <table class="w-full text-sm border border-gray-300">
+            <thead>
+              <tr class="bg-gray-100">
+                <th class="p-2 text-left border-r border-gray-300">
+                  Description
+                </th>
+                <th class="p-2 text-center border-r border-gray-300">Hours</th>
+                <th class="p-2 text-right">Amount</th>
+              </tr>
+            </thead>
             <tbody>
-              <tr
-                v-for="(val, label) in earningsList"
-                :key="label"
-                class="border-b border-gray-200"
-              >
-                <td class="p-2 bg-gray-50">{{ label }}</td>
+              <tr class="border-b border-gray-200">
+                <td class="p-2 bg-gray-50">Basic Salary</td>
+                <td class="p-2 text-center">
+                  {{ recordData?.hours_worked || '0.00' }}
+                </td>
                 <td class="p-2 text-right font-medium">
-                  {{ formatCurrency(val) }}
+                  {{ formatCurrency(recordData?.basic_salary) }}
+                </td>
+              </tr>
+              <tr class="border-b border-gray-200">
+                <td class="p-2 bg-gray-50">Overtime Pay</td>
+                <td class="p-2 text-center">
+                  {{ recordData?.overtime_hours || '0.00' }}
+                </td>
+                <td class="p-2 text-right font-medium">
+                  {{ formatCurrency(recordData?.overtime_pay) }}
+                </td>
+              </tr>
+              <tr class="border-b border-gray-200">
+                <td class="p-2 bg-gray-50">Regular Holiday Pay</td>
+                <td class="p-2 text-center">
+                  {{ recordData?.holiday_hours_worked || '0.00' }}
+                </td>
+                <td class="p-2 text-right font-medium">
+                  {{ formatCurrency(recordData?.regular_holiday_pay) }}
+                </td>
+              </tr>
+              <tr class="border-b border-gray-200">
+                <td class="p-2 bg-gray-50">Special Holiday Pay</td>
+                <td class="p-2 text-center">
+                  {{ recordData?.holiday_hours_worked || '0.00' }}
+                </td>
+                <td class="p-2 text-right font-medium">
+                  {{ formatCurrency(recordData?.special_holiday_pay) }}
+                </td>
+              </tr>
+              <tr class="border-b border-gray-200">
+                <td class="p-2 bg-gray-50">Night Differential</td>
+                <td class="p-2 text-center">
+                  {{ recordData?.night_diff_hours || '0.00' }}
+                </td>
+                <td class="p-2 text-right font-medium">
+                  {{ formatCurrency(recordData?.night_diff_pay) }}
+                </td>
+              </tr>
+              <tr class="border-b border-gray-200">
+                <td class="p-2 bg-gray-50">SIL Conversion Pay</td>
+                <td class="p-2 text-center">-</td>
+                <td class="p-2 text-right font-medium">
+                  {{ formatCurrency(recordData?.sil_conversion_pay) }}
                 </td>
               </tr>
               <tr class="font-bold border-t-2 border-gray-400">
                 <td class="p-2 text-gray-800">Total Gross Salary</td>
+                <td class="p-2 text-center text-gray-800">
+      
+                </td>
                 <td class="p-2 text-right text-gray-900">
                   {{ formatCurrency(recordData?.gross_salary) }}
                 </td>
@@ -158,17 +208,25 @@
 
       <!-- Net Salary Summary -->
       <div class="mb-6">
-        <div class="bg-gray-50 border border-gray-300 p-6">
+        <div class="bg-gray-50 p-6">
           <div class="text-center">
             <h3 class="text-lg font-semibold text-gray-800 mb-3">NET SALARY</h3>
             <div class="border-t border-gray-300 pt-3">
               <p class="text-2xl font-bold text-gray-900">
                 {{ formatCurrency(recordData?.net_salary) }}
               </p>
-              <p class="text-sm text-gray-600 mt-1">
-                Amount payable to employee
-              </p>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Received By Section -->
+      <div class="mt-20 mb-10">
+        <div class="flex justify-end">
+          <div class="text-center">
+            <div class="border-t-2 border-gray-600 w-64 mb-3"></div>
+            <p class="text-sm font-medium text-gray-700">Received by:</p>
+            <p class="text-sm text-gray-600">Date:</p>
           </div>
         </div>
       </div>
@@ -177,9 +235,6 @@
       <div
         class="text-center text-xs text-gray-500 border-t border-gray-300 pt-4 footer-text"
       >
-        <p>
-          This payslip is computer-generated and does not require a signature.
-        </p>
         <p class="mt-1">
           Generated on {{ formatDate(new Date()) }} | Countryside Steakhouse
           Payroll System
@@ -236,6 +291,19 @@
   const formatDateRange = (from, to) => {
     if (!from || !to) return '';
     return `${formatDate(from)} - ${formatDate(to)}`;
+  };
+
+  const formatPeriodDisplay = (from, to) => {
+    if (!from || !to) return '';
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+
+    const month = fromDate.toLocaleDateString('en-US', { month: 'long' });
+    const year = fromDate.getFullYear();
+    const startDay = fromDate.getDate();
+    const endDay = toDate.getDate();
+
+    return `${month} ${year} (${startDay}-${endDay})`;
   };
 
   const getStatusBadgeClass = (status) => {
@@ -584,9 +652,9 @@
   }));
 
   const deductionsList = computed(() => ({
-    'SSS Employee Share': recordData.value?.sss_employee_share,
-    'PhilHealth Employee Share': recordData.value?.philhealth_employee_share,
-    'Pag-IBIG Employee Share': recordData.value?.pagibig_employee_share,
+    SSS: recordData.value?.sss_employee_share,
+    PhilHealth: recordData.value?.philhealth_employee_share,
+    'Pag-IBIG': recordData.value?.pagibig_employee_share,
   }));
 </script>
 

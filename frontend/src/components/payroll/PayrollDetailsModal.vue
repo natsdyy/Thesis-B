@@ -540,7 +540,7 @@
       <!-- Footer Actions -->
       <div class="px-3 sm:px-6 py-3 sm:py-4 bg-gray-50">
         <!-- Action Buttons -->
-        <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
+        <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 !justify-end !items-end">
           <!-- Close Button - Always visible -->
           <button
             @click="closeModal"
@@ -609,7 +609,7 @@
                 actionLoading &&
                 actionLoadingText === 'Sending to Budget Release...'
                   ? 'Sending...'
-                  : 'Send to Budget Release'
+                  : 'Release Budget'
               }}
             </button>
 

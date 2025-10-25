@@ -606,6 +606,34 @@ router.get("/records/:employeeId", authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/payroll/my-payslips - Get current employee's payslips
+router.get("/my-payslips", authenticateToken, async (req, res) => {
+  try {
+    const employeeId = req.user.id;
+    const { limit = 20, offset = 0, status } = req.query;
+
+    const records = await PayrollRecord.getEmployeeHistory(
+      parseInt(employeeId),
+      {
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        status: status || null,
+      }
+    );
+
+    res.json({
+      success: true,
+      data: records,
+    });
+  } catch (error) {
+    console.error("Error getting employee payslips:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get payslips",
+    });
+  }
+});
+
 /**
  * Helper function to record cash movements for payroll
  * @param {Object} period

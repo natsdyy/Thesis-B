@@ -48,6 +48,7 @@
                   Days Worked
                 </label>
                 <input
+                readonly
                   v-model.number="formData.days_worked"
                   type="number"
                   step="0.5"
@@ -61,6 +62,7 @@
                   Hours Worked
                 </label>
                 <input
+                  readonly
                   v-model.number="formData.hours_worked"
                   type="number"
                   step="0.25"
@@ -74,6 +76,7 @@
                   Overtime Hours
                 </label>
                 <input
+                  readonly
                   v-model.number="formData.overtime_hours"
                   type="number"
                   step="0.25"
@@ -87,6 +90,7 @@
                   Leave Days
                 </label>
                 <input
+                  readonly
                   v-model.number="formData.leave_days"
                   type="number"
                   step="0.5"

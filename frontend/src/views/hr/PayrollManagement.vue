@@ -292,6 +292,8 @@
         return 'bg-warning/10 text-warning border-none';
       case 'approved':
         return 'bg-info/10 text-info border-none';
+              case 'budget_released':
+        return 'bg-info/10 text-info border-none';
       case 'paid':
         return 'bg-success/10 text-success border-none';
       default:

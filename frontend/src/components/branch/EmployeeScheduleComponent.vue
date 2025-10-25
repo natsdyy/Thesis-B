@@ -359,7 +359,7 @@
       <div class="flex items-center space-x-2">
         <button
           @click="navigateWeek(-1)"
-          class="btn btn-outline btn-sm"
+          class="btn  btn-sm"
           :disabled="loading"
         >
           <ChevronLeft class="w-4 h-4" />
@@ -377,7 +377,7 @@
 
         <button
           @click="navigateWeek(1)"
-          class="btn btn-outline btn-sm"
+          class="btn  btn-sm"
           :disabled="loading"
         >
           <ChevronRight class="w-4 h-4" />

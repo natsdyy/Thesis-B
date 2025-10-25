@@ -44,6 +44,8 @@
   const searchQuery = ref('');
   const departmentFilter = ref('');
   const statusFilter = ref('');
+  const otStatusFilter = ref('');
+  const leaveStatusFilter = ref('');
   const currentPage = ref(1);
   const itemsPerPage = ref(10);
   const loading = ref(false);
@@ -156,8 +158,8 @@
     let requests = otRequests.value;
 
     // Filter by status if needed
-    if (statusFilter.value && statusFilter.value !== '') {
-      requests = requests.filter((req) => req.status === statusFilter.value);
+    if (otStatusFilter.value && otStatusFilter.value !== '') {
+      requests = requests.filter((req) => req.status === otStatusFilter.value);
     }
 
     // Filter by search query
@@ -191,8 +193,10 @@
     let requests = leaveRequests.value;
 
     // Filter by status if needed
-    if (statusFilter.value && statusFilter.value !== '') {
-      requests = requests.filter((req) => req.status === statusFilter.value);
+    if (leaveStatusFilter.value && leaveStatusFilter.value !== '') {
+      requests = requests.filter(
+        (req) => req.status === leaveStatusFilter.value
+      );
     }
 
     // Filter by search query
@@ -1122,7 +1126,7 @@
               </div>
 
               <!-- Status Filter -->
-              <select v-model="statusFilter" class="select select-bordered">
+              <select v-model="otStatusFilter" class="select select-bordered">
                 <option value="">All Status</option>
                 <option value="pending">Pending</option>
                 <option value="approved">Approved</option>
@@ -1342,7 +1346,10 @@
               </div>
 
               <!-- Status Filter -->
-              <select v-model="statusFilter" class="select select-bordered">
+              <select
+                v-model="leaveStatusFilter"
+                class="select select-bordered"
+              >
                 <option value="">All Status</option>
                 <option value="pending">Pending</option>
                 <option value="approved_by_manager">Manager Approved</option>

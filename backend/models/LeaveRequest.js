@@ -7,7 +7,15 @@ const {
 class LeaveRequest {
   // Create a new leave request
   static async create(
-    { employee_id, from_date, to_date, leave_type, reason },
+    {
+      employee_id,
+      from_date,
+      to_date,
+      leave_type,
+      reason,
+      use_sil = false,
+      sil_days = 0,
+    },
     createdBy = null
   ) {
     try {
@@ -78,6 +86,8 @@ class LeaveRequest {
           to_date,
           leave_type,
           reason,
+          use_sil: use_sil,
+          sil_days: sil_days,
           status: initialStatus,
           created_by: createdBy,
           created_at: formatForDatabase(),
@@ -119,6 +129,8 @@ class LeaveRequest {
           "lr.rejected_by",
           "lr.rejected_at",
           "lr.rejection_reason",
+          "lr.use_sil",
+          "lr.sil_days",
           "lr.created_at",
           "lr.updated_at",
           "e.first_name",
@@ -178,6 +190,8 @@ class LeaveRequest {
           "lr.rejected_by",
           "lr.rejected_at",
           "lr.rejection_reason",
+          "lr.use_sil",
+          "lr.sil_days",
           "lr.created_by",
           "lr.updated_by",
           "lr.created_at",
@@ -459,6 +473,8 @@ class LeaveRequest {
           "lr.leave_type",
           "lr.reason",
           "lr.status",
+          "lr.use_sil",
+          "lr.sil_days",
           "lr.created_at",
           "e.first_name",
           "e.last_name",
@@ -495,6 +511,8 @@ class LeaveRequest {
           "lr.leave_type",
           "lr.reason",
           "lr.status",
+          "lr.use_sil",
+          "lr.sil_days",
           "lr.created_at",
           "e.first_name",
           "e.last_name",
@@ -527,6 +545,8 @@ class LeaveRequest {
           "lr.leave_type",
           "lr.reason",
           "lr.status",
+          "lr.use_sil",
+          "lr.sil_days",
           "lr.manager_approved_at",
           "lr.manager_notes",
           "lr.created_at",

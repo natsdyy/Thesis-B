@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 p-4">
     <!-- Header -->
     <div
       class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
@@ -21,13 +21,8 @@
     </div>
 
     <!-- Summary Stats (match Branch overtime tab) -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      <div class="card bg-white shadow-lg">
-        <div class="card-body py-4">
-          <div class="text-sm opacity-60">Total Requests</div>
-          <div class="text-2xl font-semibold">{{ otStats.totalRequests }}</div>
-        </div>
-      </div>
+    <div class="grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-1 gap-4">
+
       <div class="card bg-white shadow-lg">
         <div class="card-body py-4">
           <div class="text-sm opacity-60">Pending</div>
@@ -36,14 +31,7 @@
           </div>
         </div>
       </div>
-      <div class="card bg-white shadow-lg">
-        <div class="card-body py-4">
-          <div class="text-sm opacity-60">Approved</div>
-          <div class="text-2xl font-semibold">
-            {{ otStats.approvedRequests }}
-          </div>
-        </div>
-      </div>
+ 
     </div>
 
     <!-- Filters -->

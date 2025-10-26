@@ -103,6 +103,7 @@
     Building2,
     Grid3X3,
     List,
+    BriefcaseBusiness,
   } from 'lucide-vue-next';
   import { useInventoryStore } from '../../stores/inventoryStore.js';
   import { useBranchStore } from '../../stores/branchStore.js';
@@ -2452,44 +2453,54 @@
     </div>
 
     <!-- Tabs -->
-    <div class="tabs tabs-boxed mb-4 sm:mb-6 justify-center sm:justify-start">
+    <div
+      class="tabs tabs-boxed mb-4 sm:mb-6 justify-center sm:justify-start flex-wrap gap-1 sm:gap-0"
+    >
       <button
         @click="activeTab = 'overview'"
-        class="tab"
+        class="tab flex-1 sm:flex-none min-w-0 text-xs sm:text-sm"
         :class="{ 'tab-active': activeTab === 'overview' }"
       >
-        <BarChart3 class="w-4 h-4 mr-1" />
-        Overview
+        <BarChart3 class="w-3 h-3 sm:w-4 sm:h-4 mr-1 flex-shrink-0" />
+        <span class="truncate">Overview</span>
       </button>
       <button
         @click="activeTab = 'inventory'"
-        class="tab"
+        class="tab flex-1 sm:flex-none min-w-0 text-xs sm:text-sm"
         :class="{ 'tab-active': activeTab === 'inventory' }"
       >
-        <Package class="w-4 h-4 mr-1" />
-        Inventory List
+        <Package class="w-3 h-3 sm:w-4 sm:h-4 mr-1 flex-shrink-0" />
+        <span class="truncate">Inventory</span>
       </button>
       <button
         @click="activeTab = 'alerts'"
-        class="tab"
+        class="tab flex-1 sm:flex-none min-w-0 text-xs sm:text-sm"
         :class="{ 'tab-active': activeTab === 'alerts' }"
       >
-        <Bell class="w-4 h-4 mr-1" />
-        Alerts
+        <Bell class="w-3 h-3 sm:w-4 sm:h-4 mr-1 flex-shrink-0" />
+        <span class="truncate">Alerts</span>
         <span
           v-if="alertsCount > 0"
-          class="badge badge-sm border-none font-medium bg-error/20 text-error ml-1"
+          class="badge badge-xs sm:badge-sm border-none font-medium bg-error/20 text-error ml-1 flex-shrink-0"
         >
           {{ alertsCount }}
         </span>
       </button>
       <button
         @click="activeTab = 'distribution'"
-        class="tab"
+        class="tab flex-1 sm:flex-none min-w-0 text-xs sm:text-sm"
         :class="{ 'tab-active': activeTab === 'distribution' }"
       >
-        <Truck class="w-4 h-4 mr-1" />
-        Branch Distribution
+        <Truck class="w-3 h-3 sm:w-4 sm:h-4 mr-1 flex-shrink-0" />
+        <span class="truncate">Distribution</span>
+      </button>
+      <button
+        @click="activeTab = 'Distribution History'"
+        class="tab flex-1 sm:flex-none min-w-0 text-xs sm:text-sm"
+        :class="{ 'tab-active': activeTab === 'Distribution History' }"
+      >
+        <BriefcaseBusiness class="w-3 h-3 sm:w-4 sm:h-4 mr-1 flex-shrink-0" />
+        <span class="truncate">History</span>
       </button>
     </div>
 
@@ -2775,7 +2786,7 @@
                     <!-- Category Icon -->
                     <div class="flex-shrink-0">
                       <div
-                        class="w-12 h-12 rounded-full flex items-center justify-center"
+                        class="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center"
                         :class="{
                           'bg-success/10': summary.category_status === 'active',
                           'bg-warning/10':
@@ -2787,7 +2798,7 @@
                         }"
                       >
                         <Package
-                          class="w-6 h-6"
+                          class="w-5 h-5 sm:w-6 sm:h-6"
                           :class="{
                             'text-success':
                               summary.category_status === 'active',
@@ -2898,9 +2909,11 @@
                   >
                     <td class="px-3 sm:px-6 py-4 whitespace-nowrap">
                       <div class="flex items-center">
-                        <div class="flex-shrink-0 h-10 w-10 sm:h-12 sm:w-12">
+                        <div
+                          class="flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10 md:h-12 md:w-12"
+                        >
                           <div
-                            class="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center"
+                            class="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center"
                             :class="{
                               'bg-success/10':
                                 summary.category_status === 'active',
@@ -2915,7 +2928,7 @@
                             }"
                           >
                             <Package
-                              class="w-5 h-5 sm:w-6 sm:h-6"
+                              class="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6"
                               :class="{
                                 'text-success':
                                   summary.category_status === 'active',
@@ -3002,9 +3015,9 @@
               <div class="flex justify-between items-center mb-6">
                 <div class="flex items-center gap-3">
                   <div
-                    class="w-10 h-10 rounded-full bg-primaryColor/10 flex items-center justify-center"
+                    class="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-primaryColor/10 flex items-center justify-center"
                   >
-                    <History class="w-5 h-5 text-primaryColor" />
+                    <History class="w-4 h-4 sm:w-5 sm:h-5 text-primaryColor" />
                   </div>
                   <div>
                     <h3 class="card-title text-lg font-bold text-primaryColor">
@@ -3037,15 +3050,15 @@
                 <p class="text-gray-500">No recent activity</p>
               </div>
 
-              <div v-else class="space-y-4 max-h-96 overflow-y-auto">
+              <div v-else class="space-y-3 max-h-96 overflow-y-auto px-1">
                 <div
                   v-for="activity in recentActivity"
                   :key="activity.id"
-                  class="flex items-start gap-4 p-4 bg-white/70 rounded-xl hover:bg-white transition-all duration-200 hover:shadow-md border border-gray-100"
+                  class="flex items-start gap-3 p-3 sm:p-4 bg-white/70 rounded-xl hover:bg-white transition-all duration-200 hover:shadow-md border border-gray-100"
                 >
                   <div class="flex-shrink-0">
                     <div
-                      class="w-10 h-10 rounded-full flex items-center justify-center"
+                      class="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center"
                       :class="{
                         'bg-success/10': getTransactionTypeInfo(
                           activity.transaction_type,
@@ -3080,7 +3093,7 @@
                             activity.adjustment_type
                           ).icon
                         "
-                        class="w-5 h-5"
+                        class="w-4 h-4 sm:w-5 sm:h-5"
                         :class="
                           getTransactionTypeInfo(
                             activity.transaction_type,
@@ -3091,33 +3104,39 @@
                     </div>
                   </div>
 
-                  <div class="flex-1 min-w-0">
-                    <div class="flex justify-between items-start mb-3">
-                      <div class="flex-1">
-                        <h4 class="font-bold text-sm text-gray-900 mb-1">
+                  <div class="flex-1 min-w-0 overflow-hidden">
+                    <!-- Header Section -->
+                    <div
+                      class="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-3 gap-2"
+                    >
+                      <div class="flex-1 min-w-0">
+                        <h4
+                          class="font-bold text-sm text-gray-900 mb-1 truncate"
+                        >
                           {{ activity.item_name || activity.item_type_name }}
                         </h4>
                         <div
-                          class="flex items-center gap-2 text-xs text-gray-600 mb-1"
+                          class="flex flex-wrap items-center gap-1 sm:gap-2 text-xs text-gray-600 mb-1"
                         >
-                          <span class="bg-gray-100 px-2 py-1 rounded-full">
+                          <span
+                            class="bg-gray-100 px-2 py-1 rounded-full whitespace-nowrap"
+                          >
                             {{ activity.category_name }}
                           </span>
-                          <span>•</span>
-                          <span>{{ activity.unit_of_measure }}</span>
+                          <span class="hidden sm:inline">•</span>
+                          <span class="text-gray-400 sm:hidden">|</span>
+                          <span class="whitespace-nowrap">{{
+                            activity.unit_of_measure
+                          }}</span>
                         </div>
-                        <p
-                          v-if="activity.batch_number"
-                          class="text-xs text-gray-500 font-mono bg-gray-50 px-2 py-1 rounded inline-block"
-                        >
-                          Batch: {{ formatBatchNumber(activity.batch_number) }}
-                        </p>
                       </div>
 
-                      <div class="text-right">
-                        <div class="flex items-center gap-2 justify-end mb-1">
+                      <div class="flex flex-col sm:text-right gap-1">
+                        <div
+                          class="flex items-center gap-2 justify-start sm:justify-end"
+                        >
                           <div
-                            class="badge badge-sm border-none font-medium"
+                            class="badge badge-sm border-none font-medium whitespace-nowrap"
                             :class="
                               getTransactionTypeInfo(
                                 activity.transaction_type,
@@ -3141,7 +3160,9 @@
                               ).description
                             "
                           >
-                            <Info class="w-3 h-3 text-gray-400 cursor-help" />
+                            <Info
+                              class="w-3 h-3 text-gray-400 cursor-help flex-shrink-0"
+                            />
                           </div>
                         </div>
                         <div class="text-xs text-gray-500 font-medium">
@@ -3150,10 +3171,13 @@
                       </div>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4 mb-3">
+                    <!-- Quantity and Value Section -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                       <div class="bg-gray-50 rounded-lg p-3">
                         <div class="text-xs text-gray-600 mb-1">Quantity</div>
-                        <div class="text-lg font-bold text-primaryColor">
+                        <div
+                          class="text-base sm:text-lg font-bold text-primaryColor"
+                        >
                           {{ parseFloat(activity.quantity).toLocaleString() }}
                           <span class="text-sm font-normal text-gray-500"
                             >units</span
@@ -3163,7 +3187,9 @@
 
                       <div class="bg-gray-50 rounded-lg p-3">
                         <div class="text-xs text-gray-600 mb-1">Value</div>
-                        <div class="text-lg font-bold text-success">
+                        <div
+                          class="text-base sm:text-lg font-bold text-success"
+                        >
                           <font-awesome-icon icon="fa-solid fa-peso-sign" />
                           {{
                             parseFloat(activity.total_value).toLocaleString(
@@ -3178,6 +3204,7 @@
                       </div>
                     </div>
 
+                    <!-- Disposal Cost Section -->
                     <div
                       v-if="activity.disposal_cost"
                       class="bg-error/10 border border-error/20 rounded-lg p-3 mb-3"
@@ -3204,18 +3231,19 @@
                       </div>
                     </div>
 
+                    <!-- Footer Section -->
                     <div
-                      class="flex justify-between items-center pt-3 border-t border-gray-100"
+                      class="flex flex-col sm:flex-row sm:justify-between sm:items-center pt-3 border-t border-gray-100 gap-2"
                     >
-                      <div class="text-xs text-gray-500">
+                      <div class="text-xs text-gray-500 truncate">
                         <span class="font-medium">Performed by:</span>
-                        {{ activity.performed_by }}
-                      </div>
-                      <div class="text-xs text-gray-400">
-                        Transaction ID: #{{ activity.id }}
+                        <span class="truncate">{{
+                          activity.performed_by
+                        }}</span>
                       </div>
                     </div>
 
+                    <!-- Reason/Notes Section -->
                     <div
                       v-if="activity.reason || activity.notes"
                       class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg"
@@ -3223,7 +3251,7 @@
                       <div class="text-xs text-blue-700 font-medium mb-1">
                         {{ activity.reason ? 'Reason' : 'Notes' }}
                       </div>
-                      <p class="text-xs text-blue-800">
+                      <p class="text-xs text-blue-800 break-words">
                         {{ activity.reason || activity.notes }}
                       </p>
                     </div>
@@ -4109,139 +4137,156 @@
             </p>
           </div>
         </div>
-      </div>
-    </div>
 
-    <!-- Branch Distribution History -->
-    <div class="card bg-base-100 border border-gray-200 mt-10">
-      <div class="card-body p-4">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="font-semibold text-base">Distribution History</h3>
-          <div class="flex items-center gap-2">
-            <select
-              v-model="historyStatusFilter"
-              class="select select-bordered select-xs"
-            >
-              <option value="">All Status</option>
-              <option value="delivered">Delivered</option>
-              <option value="completed">Completed</option>
-              <option value="rejected">Rejected</option>
-            </select>
-            <button
-              class="btn btn-xs btn-outline"
-              :disabled="historyLoading"
-              @click="fetchDistributionHistory(historyPagination.page || 1)"
-            >
-              <RefreshCcw
-                class="w-3 h-3 mr-1"
-                :class="{ 'animate-spin': historyLoading }"
-              />
-              Refresh
-            </button>
-          </div>
-        </div>
-        <div class="overflow-x-auto">
-          <table class="table table-zebra w-full text-sm">
-            <thead>
-              <tr>
-                <th>Date</th>
-
-                <th>Branch</th>
-                <th>Prepared By</th>
-                <th class="text-right">Total</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="dist in filteredDistributionHistory" :key="dist.id">
-                <td>
-                  {{ new Date(dist.created_at).toLocaleString('en-PH') }}
-                </td>
-
-                <td>{{ dist.branch_name || 'Branch' }}</td>
-                <td>{{ dist.prepared_by }}</td>
-                <td class="text-right">
-                  <font-awesome-icon
-                    icon="fa-solid fa-peso-sign"
-                    class="mr-1"
-                  />
-                  {{
-                    Number(dist.total_amount || 0).toLocaleString('en-PH', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })
-                  }}
-                </td>
-
-                <td>
-                  <span
-                    class="badge badge-sm border-none font-medium"
-                    :class="{
-                      'badge-success text-success bg-success/20':
-                        dist.status === 'completed',
-                      'badge-warning text-warning bg-warning/20':
-                        dist.status === 'delivered',
-                      'badge-error text-error bg-error/20':
-                        dist.status === 'rejected',
-                    }"
+        <!-- Distribution History Tab -->
+        <div v-if="activeTab === 'Distribution History'" class="space-y-6">
+          <!-- Branch Distribution History -->
+          <div class="card bg-base-100 border border-gray-200 mt-10">
+            <div class="card-body p-4">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="font-semibold text-base">Distribution History</h3>
+                <div class="flex items-center gap-2">
+                  <select
+                    v-model="historyStatusFilter"
+                    class="select select-bordered select-xs"
                   >
-                    {{
-                      dist.status === 'completed'
-                        ? 'Completed'
-                        : dist.status === 'rejected'
-                          ? 'Rejected'
-                          : 'Delivered'
-                    }}
-                  </span>
-                </td>
-                <td class="flex gap-2">
+                    <option value="">All Status</option>
+                    <option value="delivered">Delivered</option>
+                    <option value="completed">Completed</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
                   <button
-                    class="btn btn-ghost btn-xs"
-                    @click="openHistoryReceipt(dist.id)"
+                    class="btn btn-xs btn-outline"
+                    :disabled="historyLoading"
+                    @click="
+                      fetchDistributionHistory(historyPagination.page || 1)
+                    "
                   >
-                    View
+                    <RefreshCcw
+                      class="w-3 h-3 mr-1"
+                      :class="{ 'animate-spin': historyLoading }"
+                    />
+                    Refresh
                   </button>
-                </td>
-              </tr>
-              <tr v-if="!filteredDistributionHistory.length">
-                <td colspan="7" class="text-center text-gray-400 py-6">
-                  No distributions found
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+                </div>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="table table-zebra w-full text-sm">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
 
-        <!-- Pagination -->
-        <div class="flex items-center justify-between mt-3">
-          <div class="text-xs text-gray-500">
-            Page {{ historyPagination.page }} of {{ historyPagination.pages }} •
-            Total:
-            {{ historyPagination.total }}
-          </div>
-          <div class="join">
-            <button
-              class="btn btn-xs join-item"
-              :disabled="(historyPagination.page || 1) <= 1 || historyLoading"
-              @click="
-                fetchDistributionHistory((historyPagination.page || 1) - 1)
-              "
-            >
-              Prev
-            </button>
-            <button
-              class="btn btn-xs join-item"
-              :disabled="
-                (historyPagination.page || 1) >=
-                  (historyPagination.pages || 1) || historyLoading
-              "
-              @click="
-                fetchDistributionHistory((historyPagination.page || 1) + 1)
-              "
-            >
-              Next
-            </button>
+                      <th>Branch</th>
+                      <th>Prepared By</th>
+                      <th class="text-right">Total</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="dist in filteredDistributionHistory"
+                      :key="dist.id"
+                    >
+                      <td>
+                        {{ new Date(dist.created_at).toLocaleString('en-PH') }}
+                      </td>
+
+                      <td>{{ dist.branch_name || 'Branch' }}</td>
+                      <td>{{ dist.prepared_by }}</td>
+                      <td class="text-right">
+                        <font-awesome-icon
+                          icon="fa-solid fa-peso-sign"
+                          class="mr-1"
+                        />
+                        {{
+                          Number(dist.total_amount || 0).toLocaleString(
+                            'en-PH',
+                            {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            }
+                          )
+                        }}
+                      </td>
+
+                      <td>
+                        <span
+                          class="badge badge-sm border-none font-medium"
+                          :class="{
+                            'badge-success text-success bg-success/20':
+                              dist.status === 'completed',
+                            'badge-warning text-warning bg-warning/20':
+                              dist.status === 'delivered',
+                            'badge-error text-error bg-error/20':
+                              dist.status === 'rejected',
+                          }"
+                        >
+                          {{
+                            dist.status === 'completed'
+                              ? 'Completed'
+                              : dist.status === 'rejected'
+                                ? 'Rejected'
+                                : 'Delivered'
+                          }}
+                        </span>
+                      </td>
+                      <td class="flex gap-2">
+                        <button
+                          class="btn btn-ghost btn-xs"
+                          @click="openHistoryReceipt(dist.id)"
+                        >
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                    <tr v-if="!filteredDistributionHistory.length">
+                      <td colspan="7" class="text-center text-gray-400 py-6">
+                        No distributions found
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Pagination -->
+              <div class="flex items-center justify-between mt-3">
+                <div class="text-xs text-gray-500">
+                  Page {{ historyPagination.page }} of
+                  {{ historyPagination.pages }} • Total:
+                  {{ historyPagination.total }}
+                </div>
+                <div class="join">
+                  <button
+                    class="btn btn-xs join-item"
+                    :disabled="
+                      (historyPagination.page || 1) <= 1 || historyLoading
+                    "
+                    @click="
+                      fetchDistributionHistory(
+                        (historyPagination.page || 1) - 1
+                      )
+                    "
+                  >
+                    Prev
+                  </button>
+                  <button
+                    class="btn btn-xs join-item"
+                    :disabled="
+                      (historyPagination.page || 1) >=
+                        (historyPagination.pages || 1) || historyLoading
+                    "
+                    @click="
+                      fetchDistributionHistory(
+                        (historyPagination.page || 1) + 1
+                      )
+                    "
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

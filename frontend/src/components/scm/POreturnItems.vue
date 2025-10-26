@@ -706,16 +706,7 @@
       <div
         class="stats shadow w-full mb-6 bg-white border border-black/10 stats-vertical lg:stats-horizontal"
       >
-        <div class="stat">
-          <div class="stat-figure">
-            <Package class="w-6 h-6 text-primaryColor" />
-          </div>
-          <div class="stat-title text-black/50">Total Returns</div>
-          <div class="stat-value text-primaryColor">
-            <span v-if="!loading">{{ returnStats.total }}</span>
-            <span v-else class="loading loading-spinner loading-sm"></span>
-          </div>
-        </div>
+
 
         <div class="stat">
           <div class="stat-figure">
@@ -728,16 +719,7 @@
           </div>
         </div>
 
-        <div class="stat">
-          <div class="stat-figure">
-            <CheckCircle class="w-6 h-6 text-success" />
-          </div>
-          <div class="stat-title text-black/50">Completed</div>
-          <div class="stat-value text-success">
-            <span v-if="!loading">{{ returnStats.completed }}</span>
-            <span v-else class="loading loading-spinner loading-sm"></span>
-          </div>
-        </div>
+
       </div>
 
       <!-- Filters and Actions -->
@@ -908,7 +890,7 @@
         <table class="table table-zebra w-full table-xs">
           <thead>
             <tr class="border border-black">
-              <th class="text-black font-semibold">Return ID</th>
+
               <th class="text-black font-semibold">Item</th>
               <th class="text-black font-semibold">Quantity</th>
               <th class="text-black font-semibold">Reason</th>
@@ -924,7 +906,7 @@
               :key="returnItem.id"
               class="border border-black"
             >
-              <td class="font-mono text-sm">#{{ returnItem.id }}</td>
+ 
               <td>
                 <div class="font-bold">
                   {{ returnItem.item_name || 'N/A' }}
@@ -948,7 +930,10 @@
                 <div class="flex items-center gap-2">
                   <User class="w-4 h-4 text-black/50" />
                   <span class="text-sm">{{
-                    returnItem.processed_by || returnItem.logged_by || 'N/A'
+                    returnItem.received_by ||
+                    returnItem.processed_by ||
+                    returnItem.logged_by ||
+                    'N/A'
                   }}</span>
                 </div>
               </td>
@@ -1175,7 +1160,11 @@
                   {{ returnReceiptModal.item.return_reason }}
                 </td>
                 <td class="border border-black">
-                  {{ returnReceiptModal.item.processed_by || 'N/A' }}
+                  {{
+                    returnReceiptModal.item.received_by ||
+                    returnReceiptModal.item.processed_by ||
+                    'N/A'
+                  }}
                 </td>
                 <td class="border border-black">
                   ₱{{

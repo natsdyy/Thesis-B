@@ -44,6 +44,7 @@
   const showPayslipModal = ref(false);
   const selectedPayslip = ref(null);
   const selectedPeriod = ref(null);
+  const selectedMonth = ref('');
 
   // Profile data
   const profileData = ref({
@@ -446,13 +447,23 @@
     payslipsLoading.value = true;
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('/api/payroll/my-payslips', {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+
+      // Build query params if month is selected
+      const params = new URLSearchParams();
+      if (selectedMonth.value) {
+        params.append('month', selectedMonth.value);
+      }
+
+      const response = await fetch(
+        `/api/payroll/my-payslips${params.toString() ? '?' + params.toString() : ''}`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
 
       if (!response.ok) {
         throw new Error(`Failed to fetch payslips: ${response.statusText}`);
@@ -471,6 +482,24 @@
       payslipsLoading.value = false;
     }
   };
+
+  // Function to generate month options (last 12 months)
+  const getMonthOptions = () => {
+    const months = [];
+    const today = new Date();
+    for (let i = 0; i < 12; i++) {
+      const date = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const label = date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+      });
+      months.push({ value, label });
+    }
+    return months;
+  };
+
+  const monthOptions = getMonthOptions();
 
   const viewPayslip = (payslip) => {
     selectedPayslip.value = payslip;
@@ -889,22 +918,39 @@
       <!-- Payslips Section -->
       <div class="card bg-white shadow-lg">
         <div class="card-body">
-          <div class="flex items-center justify-between mb-4">
-            <h2 class="card-title text-primaryColor">
-              <i class="fas fa-file-invoice-dollar w-5 h-5"></i>
-              My Payslips
-            </h2>
-            <button
-              @click="loadPayslips"
-              :disabled="payslipsLoading"
-              class="btn btn-sm btn-outline text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
-            >
-              <i
-                class="fas fa-sync-alt w-4 h-4 mr-1"
-                :class="{ 'animate-spin': payslipsLoading }"
-              ></i>
-              Refresh
-            </button>
+          <div
+            class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4"
+          >
+            <h2 class="card-title text-primaryColor">My Payslips</h2>
+            <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              <!-- Month Filter -->
+              <select
+                v-model="selectedMonth"
+                @change="loadPayslips"
+                class="select select-bordered select-sm flex-1 sm:flex-none"
+              >
+                <option value="">All Months</option>
+                <option
+                  v-for="month in monthOptions"
+                  :key="month.value"
+                  :value="month.value"
+                >
+                  {{ month.label }}
+                </option>
+              </select>
+              <!-- Refresh Button -->
+              <button
+                @click="loadPayslips"
+                :disabled="payslipsLoading"
+                class="btn btn-sm btn-outline text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
+              >
+                <i
+                  class="fas fa-sync-alt w-4 h-4 mr-1"
+                  :class="{ 'animate-spin': payslipsLoading }"
+                ></i>
+                Refresh
+              </button>
+            </div>
           </div>
 
           <!-- Loading State -->
@@ -919,9 +965,6 @@
 
           <!-- No Payslips -->
           <div v-else-if="payslips.length === 0" class="text-center py-8">
-            <i
-              class="fas fa-file-invoice-dollar text-4xl text-gray-300 mb-4"
-            ></i>
             <p class="text-gray-600 text-lg mb-2">No payslips available</p>
             <p class="text-gray-500 text-sm">
               Your payslips will appear here once they are generated and

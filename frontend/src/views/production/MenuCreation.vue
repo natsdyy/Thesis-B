@@ -2677,17 +2677,6 @@
                   }}</span>
                 </div>
                 <div class="flex justify-between">
-                  <span class="text-gray-600">Profit Margin:</span>
-                  <span class="font-medium text-primaryColor">
-                    {{
-                      calculateProfitMargin(
-                        selectedMenuItem.selling_price,
-                        selectedMenuItem.cost_price
-                      )
-                    }}%
-                  </span>
-                </div>
-                <div class="flex justify-between">
                   <span class="text-gray-600">Profit Amount:</span>
                   <span class="font-medium text-success">
                     {{

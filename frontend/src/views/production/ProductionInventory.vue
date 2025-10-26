@@ -1155,14 +1155,17 @@
   const isReadyToProduce = (item) => {
     // Item is ready to produce if:
     // 1. Available quantity is 0 (needs production)
-    // 2. OR available quantity is below reorder point
-    // 3. OR no reorder point is set (default to ready)
+    // 2. OR available quantity is below reorder point (only if reorder point is set)
     const currentStock = item.available_quantity || 0;
     const reorderPoint = item.reorder_point || 0;
 
-    return (
-      currentStock === 0 || currentStock <= reorderPoint || reorderPoint === 0
-    );
+    // If no reorder point is set (0), only allow production when stock is 0
+    if (reorderPoint === 0) {
+      return currentStock === 0;
+    }
+
+    // If reorder point is set, allow production when stock is at or below reorder point
+    return currentStock <= reorderPoint;
   };
 
   const configureInventory = async (item) => {
@@ -1253,6 +1256,23 @@
     }
 
     return range;
+  };
+
+  // Distribution pagination navigation
+  const goToDistributionPage = (page) => {
+    distributionCurrentPage.value = page;
+  };
+
+  const prevDistributionPage = () => {
+    if (distributionCurrentPage.value > 1) {
+      distributionCurrentPage.value--;
+    }
+  };
+
+  const nextDistributionPage = () => {
+    if (distributionCurrentPage.value < totalDistributionPages.value) {
+      distributionCurrentPage.value++;
+    }
   };
 
   // Lifecycle
@@ -1590,7 +1610,7 @@
                     >
                       {{ item.item_name }}
                     </h3>
-   
+
                     <div class="flex items-center gap-2 mb-3">
                       <span
                         class="badge"
@@ -1925,9 +1945,8 @@
                           >
                             {{ item.item_name }}
                           </div>
-  
-                          <div class="flex items-center gap-1 sm:gap-2 mt-1">
 
+                          <div class="flex items-center gap-1 sm:gap-2 mt-1">
                             <span
                               class="badge badge-xs bg-gray-100 text-gray-600"
                             >
@@ -1941,7 +1960,6 @@
                       <div class="text-sm font-medium text-gray-900">
                         {{ item.available_quantity }} {{ item.unit_of_measure }}
                       </div>
-           
                     </td>
                     <td
                       class="px-3 sm:px-6 py-4 whitespace-nowrap hidden md:table-cell"
@@ -1949,7 +1967,6 @@
                       <div class="text-sm font-medium text-gray-900">
                         ₱{{ item.selling_price || 0 }}
                       </div>
-            
                     </td>
                     <td class="px-3 sm:px-6 py-4 whitespace-nowrap">
                       <span
@@ -2725,54 +2742,113 @@
                   </tbody>
                 </table>
 
-                <!-- Distribution Pagination -->
+                <!-- Enhanced Distribution Pagination (matching inventory pattern) -->
                 <div
-                  v-if="totalDistributionPages > 1"
-                  class="flex justify-center items-center mt-6 space-x-2"
+                  class="flex flex-col sm:flex-row justify-between items-center mt-6"
+                  v-if="!distributionLoading && totalDistributionPages > 1"
                 >
-                  <button
-                    @click="
-                      distributionCurrentPage = Math.max(
-                        1,
-                        distributionCurrentPage - 1
+                  <div class="text-sm text-black/60 mb-2 sm:mb-0">
+                    Showing
+                    {{
+                      (distributionCurrentPage - 1) * distributionItemsPerPage +
+                      1
+                    }}
+                    to
+                    {{
+                      Math.min(
+                        distributionCurrentPage * distributionItemsPerPage,
+                        filteredDistributions.length
                       )
-                    "
-                    :disabled="distributionCurrentPage <= 1"
-                    class="btn btn-sm btn-outline"
-                  >
-                    <ChevronLeft class="w-4 h-4" />
-                    Previous
-                  </button>
+                    }}
+                    of {{ filteredDistributions.length }} distribution records
+                  </div>
 
-                  <div class="join">
+                  <div class="join space-x-1">
+                    <button
+                      class="join-item btn font-thin !bg-gray-200 text-black/50 btn-sm border border-none hover:bg-gray-300"
+                      :disabled="distributionCurrentPage <= 1"
+                      @click="prevDistributionPage"
+                    >
+                      « Prev
+                    </button>
+
+                    <!-- First page -->
+                    <button
+                      v-if="totalDistributionPages > 1"
+                      class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                      :class="{
+                        'btn-active': distributionCurrentPage === 1,
+                        '!bg-primaryColor text-white':
+                          distributionCurrentPage === 1,
+                      }"
+                      @click="goToDistributionPage(1)"
+                    >
+                      1
+                    </button>
+
+                    <!-- Ellipsis before current page group -->
+                    <button
+                      v-if="distributionCurrentPage > 4"
+                      class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                      disabled
+                    >
+                      ...
+                    </button>
+
+                    <!-- Current page group -->
                     <button
                       v-for="page in getDistributionPageRange()"
                       :key="page"
-                      @click="distributionCurrentPage = page"
-                      :class="[
-                        'btn btn-sm join-item',
-                        page === distributionCurrentPage ? '' : 'btn-outline',
-                      ]"
+                      class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                      :class="{
+                        'btn-active': distributionCurrentPage === page,
+                        '!bg-primaryColor text-white':
+                          distributionCurrentPage === page,
+                      }"
+                      @click="goToDistributionPage(page)"
                     >
                       {{ page }}
                     </button>
-                  </div>
 
-                  <button
-                    @click="
-                      distributionCurrentPage = Math.min(
-                        totalDistributionPages,
-                        distributionCurrentPage + 1
-                      )
-                    "
-                    :disabled="
-                      distributionCurrentPage >= totalDistributionPages
-                    "
-                    class="btn btn-sm btn-outline"
-                  >
-                    Next
-                    <ChevronRight class="w-4 h-4" />
-                  </button>
+                    <!-- Ellipsis after current page group -->
+                    <button
+                      v-if="
+                        distributionCurrentPage < totalDistributionPages - 3
+                      "
+                      class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                      disabled
+                    >
+                      ...
+                    </button>
+
+                    <!-- Last page -->
+                    <button
+                      v-if="
+                        totalDistributionPages > 1 &&
+                        distributionCurrentPage < totalDistributionPages
+                      "
+                      class="join-item btn font-thin !bg-gray-200 text-black/50 border border-none btn-sm shadow-none"
+                      :class="{
+                        'btn-active':
+                          distributionCurrentPage === totalDistributionPages,
+                        '!bg-primaryColor text-white':
+                          distributionCurrentPage === totalDistributionPages,
+                      }"
+                      @click="goToDistributionPage(totalDistributionPages)"
+                    >
+                      {{ totalDistributionPages }}
+                    </button>
+
+                    <button
+                      class="join-item btn font-thin btn-sm !bg-gray-200 text-black/50 border border-none"
+                      :disabled="
+                        distributionCurrentPage >= totalDistributionPages
+                      "
+                      @click="nextDistributionPage"
+                    >
+                      Next »
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -3783,39 +3859,7 @@
               </div>
             </div>
 
-            <div class="form-control">
-              <label class="label mb-1">
-                <span
-                  class="label-text text-black/70 font-medium text-sm sm:text-base"
-                  >Profit Margin</span
-                >
-              </label>
-              <div
-                class="text-sm font-semibold"
-                :class="
-                  calculateProfitMargin(
-                    selectedItem?.selling_price,
-                    selectedItem?.unit_cost
-                  ) === null
-                    ? 'text-gray-500'
-                    : getProfitMarginColor(
-                        calculateProfitMargin(
-                          selectedItem?.selling_price,
-                          selectedItem?.unit_cost
-                        )
-                      )
-                "
-              >
-                {{
-                  calculateProfitMargin(
-                    selectedItem?.selling_price,
-                    selectedItem?.unit_cost
-                  ) === null
-                    ? 'Cost Data Needed'
-                    : `${calculateProfitMargin(selectedItem?.selling_price, selectedItem?.unit_cost)}%`
-                }}
-              </div>
-            </div>
+
 
             <div class="form-control">
               <label class="label mb-1">

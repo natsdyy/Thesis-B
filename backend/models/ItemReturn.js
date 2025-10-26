@@ -22,6 +22,7 @@ class ItemReturn {
           "poi.item_name",
           "poi.quantity as original_quantity",
           "poi.unit_price",
+          "poi.received_by",
           "sri.item_unit",
           "sri.item_type"
         );

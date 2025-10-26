@@ -345,21 +345,21 @@
     const errors = {};
     const form = employeeForm.value;
 
-    // Validate phone number format (Philippine) - allow 09XXXXXXXXX or +639XXXXXXXXX
+    // Validate phone number format (Philippine) - must be exactly 09XXXXXXXXX (11 digits)
     if (form.phone_number) {
       const isLocalPH = /^09\d{9}$/.test(form.phone_number);
-      const isIntlPH = /^\+639\d{9}$/.test(form.phone_number);
-      if (!isLocalPH && !isIntlPH) {
-        errors.phone_number = 'Use 09XXXXXXXXX or +639XXXXXXXXX';
+      if (!isLocalPH) {
+        errors.phone_number =
+          'Phone number must start with 09 and be exactly 11 digits';
       }
     }
 
-    // Validate emergency contact number format
+    // Validate emergency contact number format - must be exactly 09XXXXXXXXX (11 digits)
     if (form.emergency_contact_number) {
       const isLocalPH = /^09\d{9}$/.test(form.emergency_contact_number);
-      const isIntlPH = /^\+639\d{9}$/.test(form.emergency_contact_number);
-      if (!isLocalPH && !isIntlPH) {
-        errors.emergency_contact_number = 'Use 09XXXXXXXXX or +639XXXXXXXXX';
+      if (!isLocalPH) {
+        errors.emergency_contact_number =
+          'Emergency contact number must start with 09 and be exactly 11 digits';
       }
     }
 
@@ -404,48 +404,55 @@
     }
   };
 
-  // Philippine phone input handler: accepts only 09XXXXXXXXX or +639XXXXXXXXX
+  // Prevent non-numeric characters from being typed
+  const handlePhoneKeypress = (event) => {
+    const char = String.fromCharCode(event.which);
+    // Only allow digits (0-9)
+    if (!/[0-9]/.test(char)) {
+      event.preventDefault();
+    }
+  };
+
+  // Philippine phone input handler: accepts only 09XXXXXXXXX (11 digits total)
   const handlePHPhoneInput = (rawInput, field) => {
     const input = String(rawInput || '');
 
-    // If starts with +, normalize to +639XXXXXXXXX
-    if (input.trim().startsWith('+')) {
-      // Keep only digits, remember it is intended as +63
-      let digits = input.replace(/\D/g, '');
-      if (!digits.startsWith('63')) {
-        // Force country code 63
-        digits = '63' + digits.replace(/^\+?/, '').replace(/^63?/, '');
+    // Remove all non-digit characters
+    let digits = input.replace(/\D/g, '');
+
+    // If user types starting with 9, prepend 0
+    if (digits.startsWith('9') && !digits.startsWith('09')) {
+      digits = '0' + digits;
+    }
+
+    // If user types starting with 63, convert to local format
+    if (digits.startsWith('63')) {
+      digits = '0' + digits.substring(2);
+    }
+
+    // If user types starting with +63, convert to local format
+    if (input.trim().startsWith('+63')) {
+      digits = '0' + digits.substring(2);
+    }
+
+    // Ensure it starts with 09
+    if (digits.length > 0 && !digits.startsWith('09')) {
+      // If it doesn't start with 09, clear it
+      if (digits.length > 1) {
+        digits = '';
       }
-      // Keep country code + 10 digits for mobile
-      digits = digits.substring(0, 12); // 63 + 10 digits
-      const localPart = digits.substring(2); // after 63
-      employeeForm.value[field] = '+63' + localPart;
-      return;
     }
 
-    // Local format: keep digits only
-    let local = input.replace(/\D/g, '');
+    // STRICT LIMIT: Maximum 11 digits only
+    digits = digits.substring(0, 11);
 
-    // If user types starting with 63, convert to international
-    if (local.startsWith('63')) {
-      const afterCC = local.substring(2).substring(0, 10);
-      employeeForm.value[field] = '+63' + afterCC;
-      return;
+    // Only allow if it starts with 09 and is maximum 11 digits
+    if (digits.startsWith('09') && digits.length <= 11) {
+      employeeForm.value[field] = digits;
+    } else if (digits.length === 0) {
+      employeeForm.value[field] = '';
     }
-
-    // Ensure it starts with 09 for local numbers
-    if (local.startsWith('9')) {
-      local = '0' + local;
-    }
-    if (!local.startsWith('0')) {
-      // If doesn't start with 0, just keep as is until it does
-      // Limit to 11 digits regardless
-      employeeForm.value[field] = local.substring(0, 11);
-      return;
-    }
-    // Limit to 11 digits for local
-    local = local.substring(0, 11);
-    employeeForm.value[field] = local;
+    // If it doesn't start with 09 or exceeds 11 digits, don't update the field
   };
 
   // Modal functions
@@ -685,7 +692,7 @@
 </script>
 
 <template>
-  <div class="container mx-auto p-2 sm:p-4 lg:p-6 max-w-6xl">
+  <div class="mx-auto p-2 sm:p-4 lg:p-6">
     <!-- Header -->
     <div class="text-center mb-4 sm:mb-6 lg:mb-8">
       <h1
@@ -723,24 +730,6 @@
         </div>
       </div>
 
-      <div
-        class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
-      >
-        <div class="stat-figure">
-          <Activity class="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-success" />
-        </div>
-        <div class="stat-title text-black/50 !text-xs sm:text-sm">
-          Active Employees
-        </div>
-        <div
-          class="stat-value text-success text-lg sm:text-xl lg:text-2xl xl:text-3xl"
-        >
-          {{ employeeStats.active_employees }}
-        </div>
-        <div class="stat-desc text-black/50 !text-xs sm:text-sm">
-          Currently active
-        </div>
-      </div>
 
       <div
         class="stat sm:!border sm:!border-l-0 sm:!border-r-2 sm:!border-t-0 sm:!border-b-0 sm:!border-black/10 sm:border-dashed hover:bg-secondaryColor/10"
@@ -953,14 +942,15 @@
               <input
                 :value="employeeForm.phone_number"
                 @input="handlePHPhoneInput($event.target.value, 'phone_number')"
-                type="text"
-                placeholder="09XXXXXXXXX or +639XXXXXXXXX"
+                @keypress="handlePhoneKeypress"
+                type="tel"
+                placeholder="09XXXXXXXXX"
                 class="input input-sm sm:input-md input-bordered w-full"
                 required
+                maxlength="11"
+                pattern="[0-9]*"
+                inputmode="numeric"
               />
-              <span class="text-xs text-gray-500 mt-1"
-                >Use Philippine mobile format only</span
-              >
             </div>
 
             <!-- Leave blank column to balance -->
@@ -1228,6 +1218,7 @@
                 </label>
                 <label class="label cursor-pointer">
                   <input
+                    disabled
                     v-model="employeeForm.employee_type"
                     type="radio"
                     value="Part-time"
@@ -1462,20 +1453,20 @@
                       'emergency_contact_number'
                     )
                   "
-                  type="text"
-                  placeholder="09XXXXXXXXX or +639XXXXXXXXX"
+                  @keypress="handlePhoneKeypress"
+                  type="tel"
+                  placeholder="09XXXXXXXXX"
                   class="input input-bordered pl-10 w-full"
                   :class="{
                     'input-error': formErrors.emergency_contact_number,
                   }"
                   required
+                  maxlength="11"
+                  pattern="[0-9]*"
+                  inputmode="numeric"
                 />
               </div>
-              <label class="label">
-                <span class="label-text-alt text-gray-500"
-                  >Philippine number format only</span
-                >
-              </label>
+              <label class="label"> </label>
               <label v-if="formErrors.emergency_contact_number" class="label">
                 <span class="label-text-alt text-error">
                   {{ formErrors.emergency_contact_number }}
@@ -1502,16 +1493,16 @@
                       'alternate_contact_number'
                     )
                   "
-                  type="text"
-                  placeholder="09XXXXXXXXX or +639XXXXXXXXX (optional)"
+                  @keypress="handlePhoneKeypress"
+                  type="tel"
+                  placeholder="09XXXXXXXXX (optional)"
                   class="input input-bordered pl-10 w-full"
+                  maxlength="11"
+                  pattern="[0-9]*"
+                  inputmode="numeric"
                 />
               </div>
-              <label class="label">
-                <span class="label-text-alt text-gray-500"
-                  >Optional alternate number</span
-                >
-              </label>
+              <label class="label"> </label>
             </div>
 
             <!-- Emergency Contact Address -->
@@ -1569,61 +1560,75 @@
         </div>
 
         <!-- Wizard Navigation Buttons -->
-        <div
-          class="flex flex-col sm:flex-row justify-between items-center gap-4 mt-8 pt-6 border-t border-gray-200"
-        >
-          <div class="text-sm text-gray-600">
+        <div class="flex flex-col gap-4 mt-8 pt-6 border-t border-gray-200">
+          <!-- Form Completion Progress -->
+          <div class="text-sm text-gray-600 text-center sm:text-left">
             <span class="font-medium">Form Completion:</span>
             {{ completionPercentage }}%
           </div>
 
-          <div class="flex gap-3">
-            <!-- Previous Button -->
-            <button
-              v-if="!isFirstStep"
-              @click="previousStep"
-              class="btn btn-outline btn-sm text-gray-600 hover:bg-gray-100 font-thin"
-              :disabled="saving"
-            >
-              <ChevronLeft class="w-4 h-4 mr-1" />
-              Previous
-            </button>
+          <!-- Button Groups - Responsive Layout -->
+          <div class="flex flex-col sm:flex-row gap-3 w-full">
+            <!-- Primary Actions Group -->
+            <div class="flex flex-col sm:flex-row gap-2 flex-1">
+              <!-- Previous Button -->
+              <button
+                v-if="!isFirstStep"
+                @click="previousStep"
+                class="btn btn-outline btn-sm sm:btn-md text-gray-600 hover:bg-gray-100 font-thin flex-1 sm:flex-none min-h-[44px]"
+                :disabled="saving"
+              >
+                <ChevronLeft class="w-4 h-4 mr-1" />
+                <span class="hidden sm:inline">Previous</span>
+                <span class="sm:hidden">Prev</span>
+              </button>
 
-            <!-- Next Button -->
-            <button
-              v-if="!isLastStep"
-              @click="nextStep"
-              class="btn btn-primary btn-sm bg-primaryColor hover:bg-primaryColor/90 font-thin border-none shadow-none"
-              :disabled="!canGoNext || saving"
-            >
-              Next
-              <ChevronRight class="w-4 h-4 ml-1" />
-            </button>
+              <!-- Next Button -->
+              <button
+                v-if="!isLastStep"
+                @click="nextStep"
+                class="btn btn-primary btn-sm sm:btn-md bg-primaryColor hover:bg-primaryColor/90 font-thin border-none shadow-none flex-1 sm:flex-none min-h-[44px]"
+                :disabled="!canGoNext || saving"
+              >
+                <span class="hidden sm:inline">Next</span>
+                <span class="sm:hidden">Next</span>
+                <ChevronRight class="w-4 h-4 ml-1" />
+              </button>
 
-            <!-- Submit Button (only on last step) -->
-            <button
-              v-if="isLastStep"
-              @click="openConfirmModal"
-              class="btn btn-primary btn-sm bg-primaryColor hover:bg-primaryColor/90 font-thin border-none shadow-none"
-              :disabled="!isFormValid || saving"
-            >
-              <Save class="w-4 h-4 mr-1" />
-              <span
-                v-if="saving"
-                class="loading loading-spinner loading-sm"
-              ></span>
-              {{ saving ? 'Adding Employee...' : 'Add Employee' }}
-            </button>
+              <!-- Submit Button (only on last step) -->
+              <button
+                v-if="isLastStep"
+                @click="openConfirmModal"
+                class="btn btn-primary btn-sm sm:btn-md bg-primaryColor hover:bg-primaryColor/90 font-thin border-none shadow-none flex-1 sm:flex-none min-h-[44px]"
+                :disabled="!isFormValid || saving"
+              >
+                <Save class="w-4 h-4 mr-1" />
+                <span
+                  v-if="saving"
+                  class="loading loading-spinner loading-sm"
+                ></span>
+                <span class="hidden sm:inline">{{
+                  saving ? 'Adding Employee...' : 'Add Employee'
+                }}</span>
+                <span class="sm:hidden">{{
+                  saving ? 'Adding...' : 'Add'
+                }}</span>
+              </button>
+            </div>
 
-            <!-- Reset Button -->
-            <button
-              @click="resetForm"
-              class="btn btn-outline btn-sm text-gray-600 hover:bg-gray-100 font-thin"
-              :disabled="saving"
-            >
-              <X class="w-4 h-4 mr-1" />
-              Reset Form
-            </button>
+            <!-- Secondary Actions Group -->
+            <div class="flex flex-col sm:flex-row gap-2">
+              <!-- Reset Button -->
+              <button
+                @click="resetForm"
+                class="btn btn-outline btn-sm sm:btn-md text-gray-600 hover:bg-gray-100 font-thin flex-1 sm:flex-none min-h-[44px]"
+                :disabled="saving"
+              >
+                <X class="w-4 h-4 mr-1" />
+                <span class="hidden sm:inline">Reset Form</span>
+                <span class="sm:hidden">Reset</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 p-4">
     <!-- Header -->
     <div
       class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
@@ -21,29 +21,12 @@
     </div>
 
     <!-- Summary Stats (match OvertimeApproval) -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
+
       <div class="card bg-white shadow-lg">
         <div class="card-body py-4">
-          <div class="text-sm opacity-60">Pending Manager</div>
-          <div class="text-2xl font-semibold">{{ pendingManagerCount }}</div>
-        </div>
-      </div>
-      <div class="card bg-white shadow-lg">
-        <div class="card-body py-4">
-          <div class="text-sm opacity-60">Pending HR</div>
+          <div class="text-sm opacity-60">Pending</div>
           <div class="text-2xl font-semibold">{{ pendingHRCount }}</div>
-        </div>
-      </div>
-      <div class="card bg-white shadow-lg">
-        <div class="card-body py-4">
-          <div class="text-sm opacity-60">Approved Today</div>
-          <div class="text-2xl font-semibold">{{ approvedTodayCount }}</div>
-        </div>
-      </div>
-      <div class="card bg-white shadow-lg">
-        <div class="card-body py-4">
-          <div class="text-sm opacity-60">Total Requests</div>
-          <div class="text-2xl font-semibold">{{ totalRequestsCount }}</div>
         </div>
       </div>
     </div>

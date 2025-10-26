@@ -3,7 +3,7 @@
     <div class="card bg-base-100 shadow-xl">
       <div class="card-body">
         <h2 class="card-title text-2xl mb-4">Apply Leave</h2>
-        <form class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <form class="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div class="form-control">
             <label class="label"><span class="label-text">From</span></label>
             <input
@@ -20,7 +20,7 @@
               class="input input-bordered w-full"
             />
           </div>
-          <div class="form-control col-span-2">
+          <div class="form-control lg:col-span-2">
             <label class="label"
               ><span class="label-text">Leave Type</span></label
             >
@@ -35,9 +35,11 @@
           </div>
 
           <!-- SIL Toggle Section -->
-          <div class="form-control col-span-2">
+          <div class="form-control lg:col-span-2">
             <div class="card bg-base-200 p-4">
-              <div class="flex items-center justify-between">
+              <div
+                class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+              >
                 <div class="flex-1">
                   <h4 class="font-medium text-base mb-1">
                     Service Incentive Leave (SIL)
@@ -47,12 +49,12 @@
                   </p>
                   <div v-if="silCredits !== null" class="text-sm">
                     <span class="font-medium">Available SIL Credits:</span>
-                    <span class="ml-1 "
+                    <span class="ml-1"
                       >{{ silCredits.available_credits }} days</span
                     >
                   </div>
                 </div>
-                <div class="flex items-center space-x-3">
+                <div class="flex items-center justify-center sm:justify-end">
                   <label class="label cursor-pointer">
                     <span class="label-text mr-2">Use SIL</span>
                     <input
@@ -120,7 +122,7 @@
             </div>
           </div>
           <!-- Conditional text area for "Other" leave type -->
-          <div v-if="leaveType === 'Other'" class="form-control md:col-span-2">
+          <div v-if="leaveType === 'Other'" class="form-control lg:col-span-2">
             <label class="label"
               ><span class="label-text">Specify Leave Type</span></label
             >
@@ -131,7 +133,7 @@
               placeholder="Please specify the type of leave"
             ></textarea>
           </div>
-          <div class="form-control md:col-span-2">
+          <div class="form-control lg:col-span-2">
             <label class="label"
               ><span class="label-text">Reason Leave of Absence</span></label
             >
@@ -142,17 +144,24 @@
               placeholder="Describe the reason"
             ></textarea>
           </div>
-          <div class="md:col-span-2 flex justify-end">
+          <div
+            class="lg:col-span-2 flex flex-col sm:flex-row justify-end gap-2"
+          >
             <button
               type="button"
-              class="btn bg-primaryColor text-white font-thin hover:bg-primaryColor/80"
+              class="btn bg-primaryColor text-white font-thin hover:bg-primaryColor/80 w-full sm:w-auto min-h-[44px]"
               @click="openLeaveConfirmModal"
             >
               <span
                 v-if="isSubmitting"
                 class="loading loading-spinner loading-sm mr-2"
               ></span>
-              {{ isSubmitting ? 'Submitting...' : 'Submit Leave Request' }}
+              <span class="hidden sm:inline">{{
+                isSubmitting ? 'Submitting...' : 'Submit Leave Request'
+              }}</span>
+              <span class="sm:hidden">{{
+                isSubmitting ? 'Submitting...' : 'Submit Request'
+              }}</span>
             </button>
           </div>
         </form>

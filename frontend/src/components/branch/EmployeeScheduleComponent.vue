@@ -20,12 +20,14 @@
   import { useEmployeeScheduleStore } from '../../stores/employeeScheduleStore';
   import { useShiftTypesStore } from '../../stores/shiftTypesStore';
   import { useLeaveStore } from '../../stores/leaveStore';
+  import { useAuthStore } from '../../stores/authStore';
   import ShiftManagementModal from './ShiftManagementModal.vue';
 
   const { showSuccess, showError, showWarning, showInfo } = useCustomToast();
   const scheduleStore = useEmployeeScheduleStore();
   const shiftTypesStore = useShiftTypesStore();
   const leaveStore = useLeaveStore();
+  const authStore = useAuthStore();
 
   // Props
   const props = defineProps({
@@ -56,6 +58,7 @@
   // Computed from store
   const loading = computed(() => scheduleStore.loading);
   const shifts = computed(() => shiftTypesStore.getActiveShiftTypes);
+  const isHR = computed(() => authStore.user?.department === 'Human Resource');
 
   // Form data for adding/editing shifts
   const shiftForm = ref({
@@ -349,6 +352,7 @@
         <button
           @click="openShiftManagement"
           class="btn btn-outline btn-sm mt-2"
+          v-if="isHR"
         >
           <Settings class="w-4 h-4 mr-2" />
           Manage Shift Types
@@ -359,7 +363,7 @@
       <div class="flex items-center space-x-2">
         <button
           @click="navigateWeek(-1)"
-          class="btn  btn-sm"
+          class="btn btn-sm"
           :disabled="loading"
         >
           <ChevronLeft class="w-4 h-4" />
@@ -375,11 +379,7 @@
           </button>
         </div>
 
-        <button
-          @click="navigateWeek(1)"
-          class="btn  btn-sm"
-          :disabled="loading"
-        >
+        <button @click="navigateWeek(1)" class="btn btn-sm" :disabled="loading">
           <ChevronRight class="w-4 h-4" />
         </button>
       </div>

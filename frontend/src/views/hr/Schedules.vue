@@ -80,7 +80,8 @@
   });
   const currentUserRole = computed(() => authStore.userRole);
   const isManager = computed(() => currentUserRole.value === 'Manager');
-  const isHR = computed(() => currentUserDepartment === 'Human Resource');
+  const isHR = computed(() => currentUserDepartment.value === 'Human Resource');
+  const isHRManager = computed(() => isHR.value && isManager.value);
 
   // Form data for adding/editing shifts
   const shiftForm = ref({
@@ -618,7 +619,7 @@
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 p-4">
     <!-- Schedule Header -->
     <div
       class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4"
@@ -634,7 +635,7 @@
           }}
         </p>
         <button
-          v-if="isHR.value"
+          v-if="isHR"
           @click="openShiftManagement"
           class="btn btn-outline btn-sm mt-2"
         >

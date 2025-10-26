@@ -61,26 +61,7 @@
   });
 
   // Available filter options
-  const actionTypes = [
-    { value: '', label: 'All Types' },
-    { value: 'CREATED', label: 'Created' },
-    { value: 'UPDATED', label: 'Updated' },
-    { value: 'INVENTORY_UPDATED', label: 'Stock Updated' },
-    { value: 'SAMPLE_PLANNED', label: 'Sample Planned' },
-    { value: 'SAMPLE_STARTED', label: 'Sample Started' },
-    { value: 'SAMPLE_COMPLETED', label: 'Sample Completed' },
-    { value: 'QUALITY_INSPECTION', label: 'Quality Inspection' },
-    { value: 'QUALITY_PASSED', label: 'Quality Passed' },
-    { value: 'QUALITY_FAILED', label: 'Quality Failed' },
-    { value: 'APPROVED_FOR_PRODUCTION', label: 'Approved for Production' },
-    { value: 'ADDED_TO_INVENTORY', label: 'Added to Inventory' },
-    { value: 'DELETED', label: 'Deleted' },
-    // Production execution types
-    { value: 'In Progress', label: 'Production Started' },
-    { value: 'Completed', label: 'Production Completed' },
-    { value: 'Quality Check', label: 'Quality Check' },
-    { value: 'Failed', label: 'Production Failed' },
-  ];
+  const actionTypes = [{ value: '', label: 'All Types' }];
 
   // Computed properties
   const menuItems = computed(() => productionStore.productionInventory || []);

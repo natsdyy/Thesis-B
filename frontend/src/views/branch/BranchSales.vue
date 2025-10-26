@@ -1685,7 +1685,9 @@
                 </div>
 
                 <!-- Top/Least Selling Items -->
-                <div class="card bg-white shadow-l">
+                <div
+                  class="card bg-white shadow-l w-full lg:w-[400px] xl:w-[450px] flex-shrink-0"
+                >
                   <div class="card-body">
                     <div class="flex items-center justify-between mb-4">
                       <h2 class="card-title text-primaryColor">

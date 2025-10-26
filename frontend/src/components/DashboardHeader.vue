@@ -9,7 +9,7 @@
     <div
       class="flex items-center space-x-1 sm:space-x-2 md:space-x-4 min-w-0 flex-1"
     >
-      <!-- Menu Toggle Button -->
+      <!-- Menu Toggle Button (Mobile) -->
       <button
         @click="toggleSidebar"
         :class="[
@@ -26,26 +26,21 @@
         <X v-else class="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5" />
       </button>
 
-      <!-- Theme Toggle Button -->
+      <!-- Desktop Sidebar Toggle Button -->
       <button
-        @click="toggleTheme"
+        @click="toggleDesktopSidebar"
         :class="[
-          'p-1 sm:p-1.5 md:p-2 rounded-lg transition-all duration-300 ease-in-out flex-shrink-0',
+          'p-1 sm:p-1.5 md:p-2 rounded-lg transition-all duration-300 ease-in-out hidden lg:flex flex-shrink-0',
           themeStore.themeClasses.hoverBg,
           themeStore.themeClasses.textSecondary,
         ]"
-        :title="
-          themeStore.isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'
-        "
+        title="Toggle Sidebar"
       >
-        <Sun
-          v-if="themeStore.isDarkMode"
-          class="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-yellow-400 transition-transform duration-300"
+        <PanelLeftClose
+          v-if="props.isDesktopSidebarVisible"
+          class="w-4 h-4 md:w-5 md:h-5"
         />
-        <Moon
-          v-else
-          class="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5 text-black transition-transform duration-300"
-        />
+        <PanelLeftOpen v-else class="w-4 h-4 md:w-5 md:h-5" />
       </button>
 
       <!-- Breadcrumb Navigation -->
@@ -383,6 +378,8 @@
     LogOut,
     Sun,
     Moon,
+    PanelLeftOpen,
+    PanelLeftClose,
   } from 'lucide-vue-next';
 
   // Define props
@@ -391,10 +388,14 @@
       type: Boolean,
       default: false,
     },
+    isDesktopSidebarVisible: {
+      type: Boolean,
+      default: true,
+    },
   });
 
   // Define emits for parent communication
-  const emit = defineEmits(['toggle-sidebar']);
+  const emit = defineEmits(['toggle-sidebar', 'toggle-desktop-sidebar']);
 
   // Stores and router
   const authStore = useAuthStore();
@@ -495,6 +496,10 @@
 
   const toggleSidebar = () => {
     emit('toggle-sidebar');
+  };
+
+  const toggleDesktopSidebar = () => {
+    emit('toggle-desktop-sidebar');
   };
 
   const toggleTheme = () => {

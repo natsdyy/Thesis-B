@@ -218,26 +218,6 @@
             </span>
           </div>
 
-          <!-- Status -->
-          <div class="flex justify-between items-center mb-3">
-            <span class="text-xs sm:text-sm text-black/70">Status:</span>
-            <div
-              class="badge badge-xs sm:badge-sm border-none"
-              :class="
-                position.is_active
-                  ? 'bg-success/20 text-success'
-                  : 'bg-error/20 text-error'
-              "
-            >
-              {{ position.is_active ? 'Active' : 'Inactive' }}
-            </div>
-          </div>
-
-          <!-- Description -->
-          <div class="text-xs text-black/60 line-clamp-2">
-            {{ position.description }}
-          </div>
-
           <!-- Click to Edit Indicator -->
           <div class="flex justify-end mt-2">
             <span

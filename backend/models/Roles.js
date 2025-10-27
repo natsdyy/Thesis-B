@@ -460,6 +460,12 @@ class Roles {
         .orderBy("department", "asc")
         .orderBy("role", "asc");
 
+      // Log positions to see their is_active status
+      console.log('getAllPositions - Sample positions with is_active:')
+      positions.slice(0, 3).forEach(p => {
+        console.log(`  - ${p.role} (${p.department}): is_active = ${p.is_active}`)
+      })
+
       // Group positions by department
       const groupedPositions = {};
       positions.forEach((position) => {
@@ -543,6 +549,66 @@ class Roles {
       return updatedPosition;
     } catch (error) {
       console.error("Error updating rate per hour:", error);
+      throw error;
+    }
+  }
+
+  // Update position status (is_active)
+  static async updatePositionStatus(role_id, is_active) {
+    try {
+      console.log(`updatePositionStatus called with role_id: ${role_id}, is_active: ${is_active}`)
+      
+      // First check if the role exists
+      const role = await db("user_roles")
+        .where("role_id", role_id)
+        .whereNull("deleted_at")
+        .first();
+      
+      console.log('Found role:', role)
+      
+      if (!role) {
+        const error = new Error("Position not found");
+        error.code = "POSITION_NOT_FOUND";
+        throw error;
+      }
+
+      // Validate is_active (should be boolean)
+      if (typeof is_active !== "boolean") {image.png
+        const error = new Error("is_active must be a boolean value");
+        error.code = "INVALID_STATUS";
+        throw error;
+      }
+
+      const [updatedPosition] = await db("user_roles")
+        .where("role_id", role_id)
+        .update({
+          is_active: is_active,
+          updated_at: db.fn.now(),
+        })
+        .returning([
+          "role_id",
+          "role",
+          "department",
+          "description",
+          "rate_per_hour",
+          "is_active",
+          "created_at",
+          "updated_at",
+        ]);
+
+      console.log('Updated position:', updatedPosition)
+      console.log('is_active in DB should now be:', is_active)
+      
+      // Verify the update by reading it back
+      const verification = await db("user_roles")
+        .where("role_id", role_id)
+        .select("role_id", "role", "is_active")
+        .first();
+      console.log('Verification read from DB:', verification)
+      
+      return updatedPosition;
+    } catch (error) {
+      console.error("Error updating position status:", error);
       throw error;
     }
   }

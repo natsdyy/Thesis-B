@@ -462,6 +462,108 @@ router.put("/positions/:role_id/rate", async (req, res) => {
 
 /**
  * @swagger
+ * /api/roles/positions/{role_id}/status:
+ *   put:
+ *     tags: [Positions]
+ *     summary: Update status for a position
+ *     description: Update the is_active status for a specific position
+ *     parameters:
+ *       - name: role_id
+ *         in: path
+ *         description: The ID of the position to update
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - is_active
+ *             properties:
+ *               is_active:
+ *                 type: boolean
+ *                 description: The new active status
+ *                 example: true
+ *     responses:
+ *       200:
+ *         description: Status updated successfully
+ *       400:
+ *         description: Invalid status value
+ *       404:
+ *         description: Position not found
+ *       500:
+ *         description: Server error
+ */
+// Update status for a position
+router.put("/positions/:role_id/status", async (req, res) => {
+  console.log('=== PUT /positions/:role_id/status called ===')
+  console.log('role_id:', req.params.role_id)
+  console.log('body:', req.body)
+  console.log('is_active:', req.body.is_active)
+  
+  try {
+    const { role_id } = req.params;
+    const { is_active } = req.body;
+
+    // Validate required field
+    if (typeof is_active === "undefined" || is_active === null) {
+      return res.status(400).json({
+        success: false,
+        message: "is_active is required",
+        code: "MISSING_STATUS",
+      });
+    }
+
+    // Validate is_active
+    if (typeof is_active !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        message: "is_active must be a boolean value",
+        code: "INVALID_STATUS",
+      });
+    }
+
+    const updatedPosition = await Roles.updatePositionStatus(
+      role_id,
+      is_active
+    );
+
+    res.json({
+      success: true,
+      data: updatedPosition,
+      message: "Position status updated successfully",
+    });
+  } catch (error) {
+    if (error.code === "POSITION_NOT_FOUND") {
+      return res.status(404).json({
+        success: false,
+        message: error.message,
+        code: "POSITION_NOT_FOUND",
+      });
+    }
+
+    if (error.code === "INVALID_STATUS") {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+        code: "INVALID_STATUS",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Error updating position status",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
  * /api/roles/positions/department/{department}:
  *   get:
  *     tags: [Positions]

@@ -919,6 +919,156 @@
       </div>
     </section>
 
+    <!-- Job Application Section -->
+    <section class="py-20 bg-green-800">
+      <div class="container mx-auto px-6">
+        <div class="text-center mb-16">
+          <div class="flex items-center justify-center mb-6">
+            <div class="w-20 h-0.5 bg-orange-400"></div>
+            <h2 class="text-4xl font-bold text-white mx-6">Join Our Team</h2>
+            <div class="w-20 h-0.5 bg-orange-400"></div>
+          </div>
+          <p class="text-xl text-green-100 max-w-2xl mx-auto">
+            Be part of the Countryside family! We're always looking for passionate individuals to join our growing team.
+          </p>
+        </div>
+
+        <!-- Job Application Cards -->
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
+          <!-- Available Positions Card -->
+          <div class="bg-white rounded-2xl p-8 text-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover">
+            <div class="w-20 h-20 bg-green-100 rounded-full mx-auto mb-6 flex items-center justify-center">
+              <font-awesome-icon icon="fa-solid fa-briefcase" class="text-green-600 text-3xl" />
+            </div>
+            <h3 class="text-2xl font-bold text-green-800 mb-4">Available Positions</h3>
+            <p class="text-gray-600 mb-6 leading-relaxed">
+              Explore our current job openings and find the perfect role that matches your skills and passion.
+            </p>
+            <router-link
+              to="/hr/job-application"
+              class="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg font-medium transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md"
+            >
+              <span>View Positions</span>
+              <font-awesome-icon
+                icon="fa-solid fa-arrow-right"
+                class="ml-2 group-hover:translate-x-1 transition-transform"
+              />
+            </router-link>
+          </div>
+
+          <!-- Apply Now Card -->
+          <div class="bg-white rounded-2xl p-8 text-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover">
+            <div class="w-20 h-20 bg-orange-100 rounded-full mx-auto mb-6 flex items-center justify-center">
+              <font-awesome-icon icon="fa-solid fa-file-pen" class="text-orange-600 text-3xl" />
+            </div>
+            <h3 class="text-2xl font-bold text-green-800 mb-4">Apply Now</h3>
+            <p class="text-gray-600 mb-6 leading-relaxed">
+              Ready to start your journey with us? Submit your application and let us know why you'd be a great fit.
+            </p>
+            <router-link
+              to="/hr/job-application"
+              class="bg-orange-500 hover:bg-orange-400 text-white px-8 py-3 rounded-lg font-medium transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md"
+            >
+              <span>Apply Today</span>
+              <font-awesome-icon
+                icon="fa-solid fa-paper-plane"
+                class="ml-2 group-hover:translate-x-1 transition-transform"
+              />
+            </router-link>
+          </div>
+
+          <!-- Why Work With Us Card -->
+          <div class="bg-white rounded-2xl p-8 text-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover">
+            <div class="w-20 h-20 bg-blue-100 rounded-full mx-auto mb-6 flex items-center justify-center">
+              <font-awesome-icon icon="fa-solid fa-heart" class="text-blue-600 text-3xl" />
+            </div>
+            <h3 class="text-2xl font-bold text-green-800 mb-4">Why Countryside?</h3>
+            <p class="text-gray-600 mb-6 leading-relaxed">
+              Join a family-oriented company with 40+ years of tradition, competitive benefits, and growth opportunities.
+            </p>
+            <button
+              @click="scrollToBenefits"
+              class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md mx-auto"
+            >
+              <span>Learn More</span>
+              <font-awesome-icon
+                icon="fa-solid fa-info-circle"
+                class="ml-2 group-hover:translate-x-1 transition-transform"
+              />
+            </button>
+          </div>
+        </div>
+
+        <!-- Benefits Section -->
+        <div id="benefits" class="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/30">
+          <div class="text-center mb-8">
+            <h3 class="text-3xl font-bold text-white mb-4">Employee Benefits</h3>
+            <p class="text-green-100 text-lg">We value our team members and offer comprehensive benefits</p>
+          </div>
+          
+          <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div class="text-center">
+              <div class="w-16 h-16 bg-orange-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+                <font-awesome-icon icon="fa-solid fa-money-bill-wave" class="text-white text-xl" />
+              </div>
+              <h4 class="text-white font-semibold mb-2">Competitive Salary</h4>
+              <p class="text-green-100 text-sm">Fair compensation based on experience and performance</p>
+            </div>
+            
+            <div class="text-center">
+              <div class="w-16 h-16 bg-green-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+                <font-awesome-icon icon="fa-solid fa-calendar-check" class="text-white text-xl" />
+              </div>
+              <h4 class="text-white font-semibold mb-2">Flexible Schedule</h4>
+              <p class="text-green-100 text-sm">Work-life balance with flexible working hours</p>
+            </div>
+            
+            <div class="text-center">
+              <div class="w-16 h-16 bg-blue-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+                <font-awesome-icon icon="fa-solid fa-graduation-cap" class="text-white text-xl" />
+              </div>
+              <h4 class="text-white font-semibold mb-2">Training & Development</h4>
+              <p class="text-green-100 text-sm">Continuous learning and career advancement opportunities</p>
+            </div>
+            
+            <div class="text-center">
+              <div class="w-16 h-16 bg-purple-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+                <font-awesome-icon icon="fa-solid fa-users" class="text-white text-xl" />
+              </div>
+              <h4 class="text-white font-semibold mb-2">Team Environment</h4>
+              <p class="text-green-100 text-sm">Join a supportive and collaborative work family</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Call to Action -->
+        <div class="text-center mt-12">
+          <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/30 max-w-4xl mx-auto">
+            <h3 class="text-2xl font-bold text-white mb-4">Ready to Start Your Career Journey?</h3>
+            <p class="text-green-100 mb-6 text-lg">
+              Don't wait! Join the Countryside family and be part of our 40+ year legacy of serving delicious food and creating memorable experiences.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+              <router-link
+                to="/hr/job-application"
+                class="bg-orange-500 hover:bg-orange-400 text-white px-8 py-4 rounded-lg font-medium transition-all duration-300 shadow-lg flex items-center justify-center btn btn-lg"
+              >
+                <font-awesome-icon icon="fa-solid fa-briefcase" class="mr-3" />
+                <span>Browse Open Positions</span>
+              </router-link>
+              <router-link
+                to="/hr/job-application"
+                class="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-lg font-medium transition-all duration-300 shadow-lg flex items-center justify-center btn btn-lg"
+              >
+                <font-awesome-icon icon="fa-solid fa-paper-plane" class="mr-3" />
+                <span>Submit Application</span>
+              </router-link>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Menu Teaser Section -->
     <section id="menu-teaser" class="py-20 bg-green-800">
       <div class="container mx-auto px-6">
@@ -2015,11 +2165,11 @@
     }
   };
 
-  // Smooth scroll to home section
-  const scrollToHome = () => {
-    const homeSection = document.getElementById('home');
-    if (homeSection) {
-      homeSection.scrollIntoView({
+  // Smooth scroll to benefits section
+  const scrollToBenefits = () => {
+    const benefitsSection = document.getElementById('benefits');
+    if (benefitsSection) {
+      benefitsSection.scrollIntoView({
         behavior: 'smooth',
         block: 'start',
       });

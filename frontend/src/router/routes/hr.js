@@ -55,4 +55,11 @@ export default [
     component: () => import('../../views/hr/PayrollManagement.vue'),
     meta: { title: 'Payroll Management' },
   },
+  {
+    path: 'job-application-management',
+    name: 'HRJobApplicationManagement',
+    component: () => import('../../views/hr/JobApplication.vue'),
+    meta: { title: 'Job Application Management' },
+  },
+
 ];

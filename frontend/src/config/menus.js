@@ -16,6 +16,7 @@ import {
   BookOpen,
   ChefHat,
   UserCheck,
+  FileUser,
 } from 'lucide-vue-next';
 
 export const menuItems = [
@@ -51,6 +52,13 @@ export const menuItems = [
     name: 'Payroll Management',
     icon: PhilippinePeso,
     route: '/hr/payroll-management',
+    department: 'Human Resource',
+    managerOnly: true,
+  },
+  {
+    name: 'Job Application Management',
+    icon: FileUser,
+    route: '/hr/job-application-management',
     department: 'Human Resource',
     managerOnly: true,
   },

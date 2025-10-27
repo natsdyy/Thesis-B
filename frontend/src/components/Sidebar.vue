@@ -13,7 +13,10 @@
         'fixed top-0 left-0 h-screen bg-primaryColor shadow-xl z-40 transition-transform duration-300 ease-in-out',
         'w-64 flex flex-col text-white min-h-screen',
         props.isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full',
-        'lg:translate-x-0 lg:fixed lg:z-40',
+        props.isDesktopSidebarVisible
+          ? 'lg:translate-x-0'
+          : 'lg:-translate-x-full',
+        'lg:fixed lg:z-40',
       ]"
     >
       <!-- Header -->
@@ -240,6 +243,10 @@
     isMobileMenuOpen: {
       type: Boolean,
       default: false,
+    },
+    isDesktopSidebarVisible: {
+      type: Boolean,
+      default: true,
     },
   });
 

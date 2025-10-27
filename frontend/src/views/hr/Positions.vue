@@ -137,7 +137,7 @@
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 p-4">
     <!-- Header -->
     <div class="flex justify-between items-center">
       <h1 class="text-3xl font-bold">Position Management</h1>

@@ -301,13 +301,21 @@ router.get("/mine", authenticateToken, async (req, res) => {
 router.get(
   "/",
   authenticateToken,
-  // Allow Managers by role, otherwise require permissions
+  // Allow Managers and Board Members by role, otherwise require permissions
   (req, res, next) => {
     const user = req.user || {};
     const roleName = (user.role || "").toLowerCase();
-    if (roleName.includes("manager")) {
+
+    // Allow managers and board members
+    if (
+      roleName.includes("manager") ||
+      user.user_type === "board_member" ||
+      user.board_id ||
+      user.position
+    ) {
       return next();
     }
+
     return requireAnyPermission([
       "manage_overtime",
       "manage_employees",
@@ -316,7 +324,14 @@ router.get(
   },
   async (req, res) => {
     try {
-      const { status, branch_id, department_only, department } = req.query;
+      const {
+        status,
+        branch_id,
+        department_only,
+        department,
+        exclude_employee_id,
+        hr_only,
+      } = req.query;
       const page = parseInt(req.query.page || "1");
       const limit = parseInt(req.query.limit || "50");
       const rows = await OvertimeRequest.getAll({
@@ -324,6 +339,10 @@ router.get(
         branch_id,
         department_only,
         department,
+        exclude_employee_id: exclude_employee_id
+          ? parseInt(exclude_employee_id)
+          : undefined,
+        hr_only,
         page,
         limit,
       });
@@ -371,9 +390,17 @@ router.post(
   (req, res, next) => {
     const user = req.user || {};
     const roleName = (user.role || "").toLowerCase();
-    if (roleName.includes("manager")) {
+
+    // Allow managers and board members
+    if (
+      roleName.includes("manager") ||
+      user.user_type === "board_member" ||
+      user.board_id ||
+      user.position
+    ) {
       return next();
     }
+
     return requireAnyPermission([
       "manage_overtime",
       "manage_employees",
@@ -417,6 +444,16 @@ router.post(
       res.json({ success: true, data: updated, message: "Overtime approved" });
     } catch (error) {
       console.error("Error approving overtime:", error);
+
+      // Handle self-approval error specifically
+      if (error.message.includes("cannot approve your own overtime request")) {
+        return res.status(403).json({
+          success: false,
+          message: error.message,
+          code: "SELF_APPROVAL_NOT_ALLOWED",
+        });
+      }
+
       res.status(500).json({
         success: false,
         message: "Error approving overtime",
@@ -458,9 +495,17 @@ router.post(
   (req, res, next) => {
     const user = req.user || {};
     const roleName = (user.role || "").toLowerCase();
-    if (roleName.includes("manager")) {
+
+    // Allow managers and board members
+    if (
+      roleName.includes("manager") ||
+      user.user_type === "board_member" ||
+      user.board_id ||
+      user.position
+    ) {
       return next();
     }
+
     return requireAnyPermission([
       "manage_overtime",
       "manage_employees",
@@ -488,6 +533,16 @@ router.post(
       res.json({ success: true, data: updated, message: "Overtime rejected" });
     } catch (error) {
       console.error("Error rejecting overtime:", error);
+
+      // Handle self-rejection error specifically
+      if (error.message.includes("cannot reject your own overtime request")) {
+        return res.status(403).json({
+          success: false,
+          message: error.message,
+          code: "SELF_REJECTION_NOT_ALLOWED",
+        });
+      }
+
       res.status(500).json({
         success: false,
         message: "Error rejecting overtime",

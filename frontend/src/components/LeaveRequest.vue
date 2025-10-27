@@ -3,7 +3,7 @@
     <div class="card bg-base-100 shadow-xl">
       <div class="card-body">
         <h2 class="card-title text-2xl mb-4">Apply Leave</h2>
-        <form class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <form class="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div class="form-control">
             <label class="label"><span class="label-text">From</span></label>
             <input
@@ -20,7 +20,7 @@
               class="input input-bordered w-full"
             />
           </div>
-          <div class="form-control col-span-2">
+          <div class="form-control lg:col-span-2">
             <label class="label"
               ><span class="label-text">Leave Type</span></label
             >
@@ -33,8 +33,96 @@
               <option value="Other">Other</option>
             </select>
           </div>
+
+          <!-- SIL Toggle Section -->
+          <div class="form-control lg:col-span-2">
+            <div class="card bg-base-200 p-4">
+              <div
+                class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+              >
+                <div class="flex-1">
+                  <h4 class="font-medium text-base mb-1">
+                    Service Incentive Leave (SIL)
+                  </h4>
+                  <p class="text-sm text-gray-600 mb-2">
+                    Use your SIL credits for this leave request
+                  </p>
+                  <div v-if="silCredits !== null" class="text-sm">
+                    <span class="font-medium">Available SIL Credits:</span>
+                    <span class="ml-1"
+                      >{{ silCredits.available_credits }} days</span
+                    >
+                  </div>
+                </div>
+                <div class="flex items-center justify-center sm:justify-end">
+                  <label class="label cursor-pointer">
+                    <span class="label-text mr-2">Use SIL</span>
+                    <input
+                      v-model="useSIL"
+                      type="checkbox"
+                      class="toggle checked:text-white"
+                      :disabled="!canUseSIL"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <!-- SIL Usage Info -->
+              <div
+                v-if="useSIL && silCredits !== null"
+                class="mt-3 p-3 bg-info/10 rounded-lg"
+              >
+                <div class="flex items-center space-x-2 text-sm">
+                  <svg
+                    class="w-4 h-4 text-info"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                      clip-rule="evenodd"
+                    ></path>
+                  </svg>
+                  <span class="text-info">
+                    You will use {{ calculateSILDays() }} SIL day(s) for this
+                    leave request
+                  </span>
+                </div>
+              </div>
+
+              <!-- SIL Insufficient Credits Warning -->
+              <div
+                v-if="
+                  useSIL &&
+                  silCredits !== null &&
+                  silCredits.available_credits < calculateSILDays()
+                "
+                class="mt-3 p-3 bg-warning/10 rounded-lg"
+              >
+                <div class="flex items-center space-x-2 text-sm">
+                  <svg
+                    class="w-4 h-4 text-warning"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                      clip-rule="evenodd"
+                    ></path>
+                  </svg>
+                  <span class="text-warning">
+                    Insufficient SIL credits. You have
+                    {{ silCredits.available_credits }} days available but need
+                    {{ calculateSILDays() }} days.
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
           <!-- Conditional text area for "Other" leave type -->
-          <div v-if="leaveType === 'Other'" class="form-control md:col-span-2">
+          <div v-if="leaveType === 'Other'" class="form-control lg:col-span-2">
             <label class="label"
               ><span class="label-text">Specify Leave Type</span></label
             >
@@ -45,7 +133,7 @@
               placeholder="Please specify the type of leave"
             ></textarea>
           </div>
-          <div class="form-control md:col-span-2">
+          <div class="form-control lg:col-span-2">
             <label class="label"
               ><span class="label-text">Reason Leave of Absence</span></label
             >
@@ -56,17 +144,24 @@
               placeholder="Describe the reason"
             ></textarea>
           </div>
-          <div class="md:col-span-2 flex justify-end">
+          <div
+            class="lg:col-span-2 flex flex-col sm:flex-row justify-end gap-2"
+          >
             <button
               type="button"
-              class="btn bg-primaryColor text-white font-thin hover:bg-primaryColor/80"
+              class="btn bg-primaryColor text-white font-thin hover:bg-primaryColor/80 w-full sm:w-auto min-h-[44px]"
               @click="openLeaveConfirmModal"
             >
               <span
                 v-if="isSubmitting"
                 class="loading loading-spinner loading-sm mr-2"
               ></span>
-              {{ isSubmitting ? 'Submitting...' : 'Submit Leave Request' }}
+              <span class="hidden sm:inline">{{
+                isSubmitting ? 'Submitting...' : 'Submit Leave Request'
+              }}</span>
+              <span class="sm:hidden">{{
+                isSubmitting ? 'Submitting...' : 'Submit Request'
+              }}</span>
             </button>
           </div>
         </form>
@@ -201,6 +296,13 @@
             <div class="col-span-2 font-medium">
               {{ leaveType === 'Other' ? leaveOtherSpecify : leaveType }}
             </div>
+            <div class="text-gray-600">SIL Usage</div>
+            <div class="col-span-2 font-medium">
+              <span v-if="useSIL" class="">
+                {{ calculateSILDays() }} SIL day(s)
+              </span>
+              <span v-else class="text-gray-500">Not using SIL</span>
+            </div>
             <div class="text-gray-600">Reason</div>
             <div class="col-span-2">{{ leaveReason || '—' }}</div>
           </div>
@@ -248,9 +350,11 @@
   import { ref, computed, onMounted } from 'vue';
   import { useCustomToast } from '../composables/useCustomToast';
   import { useLeaveStore } from '../stores/leaveStore';
+  import { useAuthStore } from '../stores/authStore';
 
   const { showSuccess, showError } = useCustomToast();
   const leaveStore = useLeaveStore();
+  const authStore = useAuthStore();
 
   // Leave form data
   const leaveFromDate = ref('');
@@ -261,12 +365,17 @@
   const isSubmitting = ref(false);
   const showLeaveConfirmModal = ref(false);
 
+  // SIL related data
+  const useSIL = ref(false);
+  const silCredits = ref(null);
+
   // Pagination data
   const leaveCurrentPage = ref(1);
   const leaveItemsPerPage = ref(5);
 
   // Use store data
   const myLeaveRequests = computed(() => leaveStore.myLeaveRequests);
+  const currentUser = computed(() => authStore.user);
   const leaveTotalPages = computed(() =>
     Math.max(
       1,
@@ -278,6 +387,34 @@
     const end = start + leaveItemsPerPage.value;
     return myLeaveRequests.value.slice(start, end);
   });
+
+  // SIL related computed properties
+  const canUseSIL = computed(() => {
+    return silCredits.value !== null && silCredits.value.available_credits > 0;
+  });
+
+  // Calculate SIL days needed for the leave request
+  const calculateSILDays = () => {
+    if (!leaveFromDate.value || !leaveToDate.value) return 0;
+
+    const fromDate = new Date(leaveFromDate.value);
+    const toDate = new Date(leaveToDate.value);
+
+    // Calculate business days (excluding weekends)
+    let days = 0;
+    const currentDate = new Date(fromDate);
+
+    while (currentDate <= toDate) {
+      const dayOfWeek = currentDate.getDay();
+      // Count only weekdays (Monday = 1, Friday = 5)
+      if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+        days++;
+      }
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    return days;
+  };
 
   // Check for overlapping approved leave requests (only current/future ones)
   const checkForOverlappingLeave = (fromDate, toDate) => {
@@ -336,6 +473,21 @@
       return;
     }
 
+    // Validate SIL usage
+    if (useSIL.value) {
+      const silDaysNeeded = calculateSILDays();
+      if (silCredits.value === null) {
+        showError('Unable to load SIL credits. Please try again.');
+        return;
+      }
+      if (silCredits.value.available_credits < silDaysNeeded) {
+        showError(
+          `Insufficient SIL credits. You need ${silDaysNeeded} days but only have ${silCredits.value.available_credits} days available.`
+        );
+        return;
+      }
+    }
+
     // Check for overlapping approved leave requests
     const overlappingRequest = checkForOverlappingLeave(fromDate, toDate);
     if (overlappingRequest) {
@@ -373,6 +525,8 @@
             ? leaveOtherSpecify.value
             : leaveType.value,
         reason: leaveReason.value,
+        use_sil: useSIL.value,
+        sil_days: useSIL.value ? calculateSILDays() : 0,
       };
 
       // Submit leave request using store
@@ -399,6 +553,7 @@
     leaveType.value = '';
     leaveReason.value = '';
     leaveOtherSpecify.value = '';
+    useSIL.value = false;
   };
 
   // Utility methods
@@ -426,16 +581,19 @@
   };
 
   const getStatusDisplayText = (status) => {
+    const isHRStaff = currentUser.value?.department === 'Human Resource';
+
     switch ((status || '').toLowerCase()) {
       case 'approved_by_hr':
         return 'Approved';
       case 'approved_by_manager':
-        return 'Manager Approved';
+        return isHRStaff ? 'Pending Board Approval' : 'Manager Approved';
       case 'rejected':
         return 'Rejected';
       case 'pending':
+        return isHRStaff ? 'Pending Board Approval' : 'Pending';
       default:
-        return 'Pending';
+        return isHRStaff ? 'Pending Board Approval' : 'Pending';
     }
   };
 
@@ -455,9 +613,21 @@
     }
   };
 
+  // Fetch SIL credits for the current year
+  const fetchSILCredits = async () => {
+    try {
+      const data = await leaveStore.fetchSILCredits();
+      silCredits.value = data;
+    } catch (error) {
+      console.error('Error fetching SIL credits:', error);
+      silCredits.value = null;
+    }
+  };
+
   // Lifecycle
   onMounted(() => {
     fetchMyLeaveRequests();
+    fetchSILCredits();
   });
 </script>
 

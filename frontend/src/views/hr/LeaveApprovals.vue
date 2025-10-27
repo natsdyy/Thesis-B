@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 p-4">
     <!-- Header -->
     <div
       class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
@@ -21,29 +21,11 @@
     </div>
 
     <!-- Summary Stats (match OvertimeApproval) -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
       <div class="card bg-white shadow-lg">
         <div class="card-body py-4">
-          <div class="text-sm opacity-60">Pending Manager</div>
-          <div class="text-2xl font-semibold">{{ pendingManagerCount }}</div>
-        </div>
-      </div>
-      <div class="card bg-white shadow-lg">
-        <div class="card-body py-4">
-          <div class="text-sm opacity-60">Pending HR</div>
+          <div class="text-sm opacity-60">Pending</div>
           <div class="text-2xl font-semibold">{{ pendingHRCount }}</div>
-        </div>
-      </div>
-      <div class="card bg-white shadow-lg">
-        <div class="card-body py-4">
-          <div class="text-sm opacity-60">Approved Today</div>
-          <div class="text-2xl font-semibold">{{ approvedTodayCount }}</div>
-        </div>
-      </div>
-      <div class="card bg-white shadow-lg">
-        <div class="card-body py-4">
-          <div class="text-sm opacity-60">Total Requests</div>
-          <div class="text-2xl font-semibold">{{ totalRequestsCount }}</div>
         </div>
       </div>
     </div>
@@ -269,7 +251,18 @@
                       }}</span>
                     </td>
                     <td>
-                      <span class="font-medium">{{ request.leave_type }}</span>
+                      <div class="flex items-center space-x-2">
+                        <span class="font-medium">{{
+                          request.leave_type
+                        }}</span>
+                        <span
+                          v-if="request.use_sil"
+                          class="badge badge-sm bg-info/10 text-info"
+                          title="Uses Service Incentive Leave"
+                        >
+                          SIL
+                        </span>
+                      </div>
                     </td>
                     <td>{{ formatDate(request.from_date) }}</td>
                     <td>{{ formatDate(request.to_date) }}</td>
@@ -504,7 +497,18 @@
                       }}</span>
                     </td>
                     <td>
-                      <span class="font-medium">{{ request.leave_type }}</span>
+                      <div class="flex items-center space-x-2">
+                        <span class="font-medium"
+                          >{{ request.leave_type }} /
+                        </span>
+                        <span
+                          v-if="request.use_sil"
+                          class="badge badge-sm bg-info/10 text-info"
+                          title="Uses Service Incentive Leave"
+                        >
+                          SIL
+                        </span>
+                      </div>
                     </td>
                     <td>{{ formatDate(request.from_date) }}</td>
                     <td>{{ formatDate(request.to_date) }}</td>
@@ -657,6 +661,40 @@
                   <p class="font-medium ml-2 mt-1">
                     {{ selectedRequest.reason }}
                   </p>
+                </div>
+
+                <!-- SIL Information -->
+                <div v-if="selectedRequest.use_sil" class="col-span-2">
+                  <div
+                    class="mt-3 p-3 bg-info/10 rounded-lg border border-info/20"
+                  >
+                    <div class="flex items-center space-x-2 mb-2">
+                      <svg
+                        class="w-4 h-4 text-info"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fill-rule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                          clip-rule="evenodd"
+                        ></path>
+                      </svg>
+                      <span class="text-info font-medium"
+                        >Service Incentive Leave (SIL) Used</span
+                      >
+                    </div>
+                    <div class="text-sm text-info">
+                      <span class="font-medium">SIL Days Used:</span>
+                      <span class="ml-1"
+                        >{{ selectedRequest.sil_days || 0 }} days</span
+                      >
+                    </div>
+                    <div class="text-xs text-info/70 mt-1">
+                      This leave request uses the employee's Service Incentive
+                      Leave credits
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -937,7 +975,7 @@
             ></textarea>
           </div>
 
-          <div class="alert bg-warning/10 text-warning">
+          <div class="alert bg-warning/10 text-warning shadow-none">
             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
               <path
                 fill-rule="evenodd"
@@ -1014,12 +1052,14 @@
   } from 'lucide-vue-next';
   import { useLeaveStore } from '../../stores/leaveStore';
   import { useBranchStore } from '../../stores/branchStore';
+  import { useAuthStore } from '../../stores/authStore';
   import { useCustomToast } from '../../composables/useCustomToast';
   import { apiConfig } from '../../config/api';
 
   const { showSuccess, showError, showLoading, dismiss } = useCustomToast();
   const leaveStore = useLeaveStore();
   const branchStore = useBranchStore();
+  const authStore = useAuthStore();
 
   // Reactive state
   const loading = ref(false);
@@ -1069,6 +1109,7 @@
 
   // Computed properties
   const activeBranches = computed(() => branchStore.activeBranches || []);
+  const currentUser = computed(() => authStore.user);
 
   const filteredLeaveRequests = computed(() => {
     let filtered = [...allLeaveRequests.value];
@@ -1282,8 +1323,17 @@
   // Error handling methods
   const handleApprovalError = (error) => {
     const errorMessage = error.response?.data?.message || error.message || '';
+    const errorCode = error.response?.data?.code || '';
 
-    if (errorMessage.includes('Leave request is already')) {
+    if (
+      errorCode === 'SELF_APPROVAL_NOT_ALLOWED' ||
+      errorMessage.includes('cannot approve your own leave request')
+    ) {
+      showError(
+        'You cannot approve your own leave request. Please have another manager or HR staff member handle this approval.',
+        'Self-Approval Not Allowed'
+      );
+    } else if (errorMessage.includes('Leave request is already')) {
       showError(
         'This leave request has already been processed. Please refresh the page to see the latest status.',
         'Request Already Processed'
@@ -1320,8 +1370,17 @@
 
   const handleRejectionError = (error) => {
     const errorMessage = error.response?.data?.message || error.message || '';
+    const errorCode = error.response?.data?.code || '';
 
-    if (errorMessage.includes('Leave request is already')) {
+    if (
+      errorCode === 'SELF_REJECTION_NOT_ALLOWED' ||
+      errorMessage.includes('cannot reject your own leave request')
+    ) {
+      showError(
+        'You cannot reject your own leave request. Please have another manager or HR staff member handle this rejection.',
+        'Self-Rejection Not Allowed'
+      );
+    } else if (errorMessage.includes('Leave request is already')) {
       showError(
         'This leave request has already been processed. Please refresh the page to see the latest status.',
         'Request Already Processed'
@@ -1501,6 +1560,8 @@
       'Department',
       'Branch',
       'Leave Type',
+      'Uses SIL',
+      'SIL Days',
       'From Date',
       'To Date',
       'Days',
@@ -1515,6 +1576,8 @@
       `"${request.department || 'N/A'}"`,
       `"${getBranchName(request.branch_id)}"`,
       `"${request.leave_type}"`,
+      request.use_sil ? 'Yes' : 'No',
+      request.sil_days || 0,
       `"${formatDate(request.from_date)}"`,
       `"${formatDate(request.to_date)}"`,
       calculateDays(request.from_date, request.to_date),
@@ -1551,7 +1614,11 @@
   };
 
   const canApprove = (request) => {
-    if (!request) return false;
+    if (!request || !currentUser.value) return false;
+
+    // Prevent self-approval - user cannot approve their own request
+    if (request.employee_id === currentUser.value.id) return false;
+
     // HR can approve after manager approval OR department employees with pending status
     return (
       request.status === 'approved_by_manager' ||
@@ -1560,7 +1627,11 @@
   };
 
   const canReject = (request) => {
-    if (!request) return false;
+    if (!request || !currentUser.value) return false;
+
+    // Prevent self-rejection - user cannot reject their own request
+    if (request.employee_id === currentUser.value.id) return false;
+
     return ['pending', 'approved_by_manager'].includes(request.status);
   };
 
@@ -1723,6 +1794,8 @@
       'Department',
       'Branch',
       'Leave Type',
+      'Uses SIL',
+      'SIL Days',
       'From Date',
       'To Date',
       'Days',
@@ -1737,6 +1810,8 @@
       `"${request.department || 'N/A'}"`,
       `"${getBranchName(request.branch_id)}"`,
       `"${request.leave_type}"`,
+      request.use_sil ? 'Yes' : 'No',
+      request.sil_days || 0,
       `"${formatDate(request.from_date)}"`,
       `"${formatDate(request.to_date)}"`,
       calculateDays(request.from_date, request.to_date),
@@ -1818,10 +1893,18 @@
       case 'approved_by_hr':
         return 'Approved';
       case 'approved_by_manager':
+        // Check if this is an HR staff member's request
+        if (request && request.department === 'Human Resource') {
+          return 'Pending Board Approval';
+        }
         return 'Pending HR';
       case 'rejected':
         return 'Rejected';
       case 'pending':
+        // Check if this is an HR staff member's request
+        if (request && request.department === 'Human Resource') {
+          return 'Pending Board Approval';
+        }
         // Department employees (no branch_id) with pending status go directly to HR (single approval)
         if (request && !request.branch_id) {
           return 'Pending HR Approval';

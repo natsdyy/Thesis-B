@@ -7,7 +7,15 @@ const {
 class LeaveRequest {
   // Create a new leave request
   static async create(
-    { employee_id, from_date, to_date, leave_type, reason },
+    {
+      employee_id,
+      from_date,
+      to_date,
+      leave_type,
+      reason,
+      use_sil = false,
+      sil_days = 0,
+    },
     createdBy = null
   ) {
     try {
@@ -66,10 +74,45 @@ class LeaveRequest {
         );
       }
 
-      // All employees start with pending status
-      // Department employees skip manager approval and go directly to HR
-      // Branch employees go through manager approval first
-      const initialStatus = "pending";
+      // Check if the employee is a manager to determine initial status
+      const employee = await db("employees")
+        .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
+        .select(
+          "employees.role_id",
+          "employees.branch_id",
+          "employees.department",
+          db.raw("user_roles.role as role"),
+          db.raw("user_roles.description as role_description")
+        )
+        .where("employees.id", employee_id)
+        .first();
+
+      if (!employee) {
+        throw new Error("Employee not found");
+      }
+
+      // Determine initial status based on role and type
+      let initialStatus = "pending";
+      let approvedByManager = null;
+      let managerApprovedAt = null;
+      let managerNotes = null;
+
+      // If employee is a branch manager, skip manager approval and go directly to HR
+      const isManager =
+        employee.role && employee.role.toLowerCase().includes("manager");
+      const isBranchEmployee = employee.branch_id !== null;
+
+      if (isManager && isBranchEmployee) {
+        // Branch managers skip manager approval step but still need HR approval
+        // Their requests go directly to "pending HR" status since they can't approve themselves
+        initialStatus = "approved_by_manager";
+        approvedByManager = null; // No self-approval
+        managerApprovedAt = null;
+        managerNotes =
+          "Manager leave request - bypassed manager approval, requires HR approval";
+      }
+      // Department employees (no branch_id) skip manager approval and go directly to HR
+      // Other branch employees go through normal manager approval first
 
       const [leaveRequest] = await db("leave_requests")
         .insert({
@@ -78,7 +121,12 @@ class LeaveRequest {
           to_date,
           leave_type,
           reason,
+          use_sil: use_sil,
+          sil_days: sil_days,
           status: initialStatus,
+          approved_by_manager: approvedByManager,
+          manager_approved_at: managerApprovedAt,
+          manager_notes: managerNotes,
           created_by: createdBy,
           created_at: formatForDatabase(),
           updated_at: formatForDatabase(),
@@ -119,6 +167,8 @@ class LeaveRequest {
           "lr.rejected_by",
           "lr.rejected_at",
           "lr.rejection_reason",
+          "lr.use_sil",
+          "lr.sil_days",
           "lr.created_at",
           "lr.updated_at",
           "e.first_name",
@@ -178,6 +228,8 @@ class LeaveRequest {
           "lr.rejected_by",
           "lr.rejected_at",
           "lr.rejection_reason",
+          "lr.use_sil",
+          "lr.sil_days",
           "lr.created_by",
           "lr.updated_by",
           "lr.created_at",
@@ -293,7 +345,12 @@ class LeaveRequest {
         throw new Error(`Leave request is already ${leaveRequest.status}`);
       }
 
-      // Allow employees to approve their own requests
+      // Prevent self-approval - employees cannot approve their own requests
+      if (leaveRequest.employee_id === managerId) {
+        throw new Error(
+          "You cannot approve your own leave request. Please have another manager or HR approve it."
+        );
+      }
 
       const [updated] = await db("leave_requests")
         .where("id", id)
@@ -322,7 +379,12 @@ class LeaveRequest {
         throw new Error("Leave request not found");
       }
 
-      // Allow employees to approve their own requests
+      // Prevent self-approval - employees cannot approve their own requests
+      if (leaveRequest.employee_id === hrId) {
+        throw new Error(
+          "You cannot approve your own leave request. HR staff requests must be approved by Board of Directors or Super Admin."
+        );
+      }
 
       // Check if this is a department employee (single approval) or branch employee (dual approval)
       if (leaveRequest.branch_id) {
@@ -374,6 +436,13 @@ class LeaveRequest {
 
       if (leaveRequest.status === "approved_by_hr") {
         throw new Error("Cannot reject an already approved leave request");
+      }
+
+      // Prevent self-rejection - employees cannot reject their own requests
+      if (leaveRequest.employee_id === rejectedById) {
+        throw new Error(
+          "You cannot reject your own leave request. Please have a manager or HR handle this."
+        );
       }
 
       const [updated] = await db("leave_requests")
@@ -459,6 +528,8 @@ class LeaveRequest {
           "lr.leave_type",
           "lr.reason",
           "lr.status",
+          "lr.use_sil",
+          "lr.sil_days",
           "lr.created_at",
           "e.first_name",
           "e.last_name",
@@ -495,6 +566,8 @@ class LeaveRequest {
           "lr.leave_type",
           "lr.reason",
           "lr.status",
+          "lr.use_sil",
+          "lr.sil_days",
           "lr.created_at",
           "e.first_name",
           "e.last_name",
@@ -527,6 +600,8 @@ class LeaveRequest {
           "lr.leave_type",
           "lr.reason",
           "lr.status",
+          "lr.use_sil",
+          "lr.sil_days",
           "lr.manager_approved_at",
           "lr.manager_notes",
           "lr.created_at",

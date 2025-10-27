@@ -2,24 +2,34 @@
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-exports.up = function (knex) {
-  return knex.schema.alterTable("leave_requests", (table) => {
-    // Add SIL (Sick Leave) specific fields
-    table.string("medical_certificate_url", 500).nullable().comment("URL to medical certificate");
-    table.text("medical_notes").nullable().comment("Medical notes or diagnosis");
-    table.boolean("requires_medical_certificate").defaultTo(false).comment("Whether medical certificate is required");
+exports.up = async function (knex) {
+  // Add SIL fields to leave_requests table
+  await knex.schema.alterTable("leave_requests", (table) => {
+    table
+      .boolean("use_sil")
+      .defaultTo(false)
+      .comment("Whether employee is using SIL credits");
+    table
+      .decimal("sil_days", 5, 2)
+      .defaultTo(0)
+      .comment("Number of SIL days used for this leave request");
   });
+
+  // Add index for SIL usage queries
+  await knex.raw(`
+    CREATE INDEX idx_leave_requests_sil ON leave_requests(use_sil);
+  `);
 };
 
-/**
- * @param { import("knex").Knex } knex
- * @returns { Promise<void> }
- */
-exports.down = function (knex) {
-  return knex.schema.alterTable("leave_requests", (table) => {
-    table.dropColumn("medical_certificate_url");
-    table.dropColumn("medical_notes");
-    table.dropColumn("requires_medical_certificate");
+exports.down = async function (knex) {
+  // Remove SIL fields from leave_requests table
+  await knex.schema.alterTable("leave_requests", (table) => {
+    table.dropColumn("use_sil");
+    table.dropColumn("sil_days");
   });
-};
 
+  // Drop SIL index
+  await knex.raw(`
+    DROP INDEX IF EXISTS idx_leave_requests_sil;
+  `);
+};

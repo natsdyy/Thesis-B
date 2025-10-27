@@ -126,9 +126,7 @@
                       getOtBadgeClass(req.status),
                     ]"
                   >
-                    {{
-                      req.status.charAt(0).toUpperCase() + req.status.slice(1)
-                    }}
+                    {{ getStatusDisplayText(req.status) }}
                   </div>
                 </td>
               </tr>
@@ -236,10 +234,15 @@
 <script setup>
   import { ref, computed, onMounted, watch } from 'vue';
   import { useOvertimeStore } from '../stores/overtimeStore';
+  import { useAuthStore } from '../stores/authStore';
   import { apiConfig } from '../config/api';
 
-  // Store
+  // Stores
   const overtimeStore = useOvertimeStore();
+  const authStore = useAuthStore();
+
+  // Current user
+  const currentUser = computed(() => authStore.user);
 
   // OT form data
   const otDate = ref('');
@@ -310,11 +313,11 @@
         startTime,
         scheduledEndMinutes,
         startTimeMinutes,
-        isValid: startTimeMinutes > scheduledEndMinutes,
+        isValid: startTimeMinutes >= scheduledEndMinutes,
       });
 
-      if (startTimeMinutes <= scheduledEndMinutes) {
-        otError.value = `Overtime must start after your scheduled end time (${scheduledEnd})`;
+      if (startTimeMinutes < scheduledEndMinutes) {
+        otError.value = `Overtime must start at or after your scheduled end time (${scheduledEnd})`;
         showOTConfirmModal.value = true;
         return;
       }
@@ -509,6 +512,22 @@
       case 'pending':
       default:
         return 'bg-warning/20 text-warning';
+    }
+  };
+
+  // Get status display text (handle HR staff special case)
+  const getStatusDisplayText = (status) => {
+    const isHRStaff = currentUser.value?.department === 'Human Resource';
+
+    switch ((status || '').toLowerCase()) {
+      case 'approved':
+        return 'Approved';
+      case 'rejected':
+        return 'Rejected';
+      case 'pending':
+        return isHRStaff ? 'Pending Board Approval' : 'Pending';
+      default:
+        return isHRStaff ? 'Pending Board Approval' : 'Pending';
     }
   };
 

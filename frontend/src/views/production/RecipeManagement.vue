@@ -156,7 +156,7 @@
   // Local state
   const loading = ref(false);
   const currentPage = ref(1);
-  const recipesPerPage = ref(6);
+  const recipesPerPage = ref(8);
 
   // Modal state
   const modal = ref({ type: null, show: false, recipe: null });

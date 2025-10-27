@@ -721,7 +721,6 @@
             @click="submitRemittance"
             :disabled="submitting"
             class="btn bg-primaryColor text-white hover:bg-primaryColor/90 font-thin btn-sm w-full sm:w-auto"
-            :class="{ loading: submitting }"
           >
             <span v-if="submitting">Submitting...</span>
             <span v-else>Submit Expense</span>

@@ -292,6 +292,8 @@
         return 'bg-warning/10 text-warning border-none';
       case 'approved':
         return 'bg-info/10 text-info border-none';
+              case 'budget_released':
+        return 'bg-info/10 text-info border-none';
       case 'paid':
         return 'bg-success/10 text-success border-none';
       default:
@@ -321,7 +323,7 @@
 </script>
 
 <template>
-  <div class="container mx-auto p-4 sm:p-6 max-w-7xl">
+  <div class=" mx-auto p-4 sm:p-6 ">
     <!-- Header -->
     <div class="mb-4 sm:mb-6">
       <div class="flex items-center gap-3">

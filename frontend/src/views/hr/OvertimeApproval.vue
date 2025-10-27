@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 p-4">
     <!-- Header -->
     <div
       class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
@@ -21,26 +21,12 @@
     </div>
 
     <!-- Summary Stats (match Branch overtime tab) -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      <div class="card bg-white shadow-lg">
-        <div class="card-body py-4">
-          <div class="text-sm opacity-60">Total Requests</div>
-          <div class="text-2xl font-semibold">{{ otStats.totalRequests }}</div>
-        </div>
-      </div>
+    <div class="grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-1 gap-4">
       <div class="card bg-white shadow-lg">
         <div class="card-body py-4">
           <div class="text-sm opacity-60">Pending</div>
           <div class="text-2xl font-semibold">
             {{ otStats.pendingRequests }}
-          </div>
-        </div>
-      </div>
-      <div class="card bg-white shadow-lg">
-        <div class="card-body py-4">
-          <div class="text-sm opacity-60">Approved</div>
-          <div class="text-2xl font-semibold">
-            {{ otStats.approvedRequests }}
           </div>
         </div>
       </div>
@@ -221,16 +207,13 @@
                       getStatusBadgeClass(request.status),
                     ]"
                   >
-                    {{
-                      request.status.charAt(0).toUpperCase() +
-                      request.status.slice(1)
-                    }}
+                    {{ getStatusDisplayText(request.status, request) }}
                   </div>
                 </td>
                 <td>
                   <div class="flex space-x-2">
                     <button
-                      v-if="request.status === 'pending'"
+                      v-if="canApprove(request)"
                       title="Approve"
                       @click="openApprovalModal(request)"
                       class="btn btn-xs bg-success/10 rounded-full font-thin shadow-none border border-none hover:bg-success/30 text-success"
@@ -239,7 +222,7 @@
                       <Check class="w-4 h-4" />
                     </button>
                     <button
-                      v-if="request.status === 'pending'"
+                      v-if="canReject(request)"
                       title="Reject"
                       @click="openRejectionModal(request)"
                       class="btn btn-xs bg-error/10 rounded-full font-thin shadow-none border border-none hover:bg-error/30 text-error"
@@ -391,9 +374,7 @@
                       getStatusBadgeClass(row.status),
                     ]"
                   >
-                    {{
-                      row.status.charAt(0).toUpperCase() + row.status.slice(1)
-                    }}
+                    {{ getStatusDisplayText(row.status, row) }}
                   </div>
                 </td>
               </tr>
@@ -427,7 +408,7 @@
               <label class="label">
                 <span class="label-text font-semibold">Department</span>
               </label>
-              <p>Department Employee</p>
+              <p>{{ selectedRequest.department || 'Department Employee' }}</p>
             </div>
             <div>
               <label class="label">
@@ -458,7 +439,9 @@
                 class="badge"
                 :class="getStatusBadgeClass(selectedRequest.status)"
               >
-                {{ selectedRequest.status }}
+                {{
+                  getStatusDisplayText(selectedRequest.status, selectedRequest)
+                }}
               </span>
             </div>
           </div>
@@ -695,6 +678,9 @@
   const { showSuccess, showError } = useCustomToast();
   const overtimeStore = useOvertimeStore();
 
+  // Current user
+  const currentUser = computed(() => authStore.user);
+
   // Reactive data
   const isLoading = ref(false);
   const isProcessing = ref(false);
@@ -831,7 +817,8 @@
       isLoading.value = true;
       await overtimeStore.fetchRequests({
         status: filters.value.status || undefined,
-        department_only: true,
+        // Use hr_only filter: shows department employees + branch managers only
+        hr_only: true,
         department_id: filters.value.department || undefined,
         page: 1,
         limit: 200,
@@ -859,10 +846,11 @@
           CRM: 'Customer Relationship',
         };
 
-        // Convert object keyed by department names to [{ name }], excluding Branch and Admin for HR view
+        // Convert object keyed by department names to [{ name }], excluding only Admin for HR view
+        // Include Branch so HR can filter Branch Manager overtime requests
         const departmentSet = new Set();
         Object.keys(raw).forEach((name) => {
-          if (name !== 'Branch' && name !== 'Admin') {
+          if (name !== 'Admin') {
             const normalizedName = departmentMapping[name] || name;
             departmentSet.add(normalizedName);
           }
@@ -908,6 +896,19 @@
     showRejectionModal.value = true;
   };
 
+  // Check if current user can approve/reject request (prevent self-approval/rejection)
+  const canApprove = (request) => {
+    if (!request || !currentUser.value) return false;
+    if (request.employee_id === currentUser.value.id) return false;
+    return request.status === 'pending';
+  };
+
+  const canReject = (request) => {
+    if (!request || !currentUser.value) return false;
+    if (request.employee_id === currentUser.value.id) return false;
+    return request.status === 'pending';
+  };
+
   const confirmApprove = async () => {
     if (!selectedRequest.value) return;
     try {
@@ -918,7 +919,22 @@
       closeModals();
     } catch (error) {
       console.error('Error approving request:', error);
-      showError('Failed to approve overtime request');
+
+      // Handle self-approval error specifically
+      const errorMessage = error.response?.data?.message || error.message || '';
+      const errorCode = error.response?.data?.code || '';
+
+      if (
+        errorCode === 'SELF_APPROVAL_NOT_ALLOWED' ||
+        errorMessage.includes('cannot approve your own overtime request')
+      ) {
+        showError(
+          'You cannot approve your own overtime request. Please have another manager or HR staff member handle this approval.',
+          'Self-Approval Not Allowed'
+        );
+      } else {
+        showError('Failed to approve overtime request');
+      }
     } finally {
       isProcessing.value = false;
     }
@@ -937,7 +953,22 @@
       closeModals();
     } catch (error) {
       console.error('Error rejecting request:', error);
-      showError('Failed to reject overtime request');
+
+      // Handle self-rejection error specifically
+      const errorMessage = error.response?.data?.message || error.message || '';
+      const errorCode = error.response?.data?.code || '';
+
+      if (
+        errorCode === 'SELF_REJECTION_NOT_ALLOWED' ||
+        errorMessage.includes('cannot reject your own overtime request')
+      ) {
+        showError(
+          'You cannot reject your own overtime request. Please have a manager or HR staff member handle this.',
+          'Self-Rejection Not Allowed'
+        );
+      } else {
+        showError('Failed to reject overtime request');
+      }
     } finally {
       isProcessing.value = false;
     }
@@ -968,6 +999,28 @@
       rejected: 'bg-error/20 text-error',
     };
     return badges[status] || 'bg-gray-500/20 text-gray-500';
+  };
+
+  // Get status display text (handle HR staff special case)
+  const getStatusDisplayText = (status, request = null) => {
+    switch ((status || '').toLowerCase()) {
+      case 'approved':
+        return 'Approved';
+      case 'rejected':
+        return 'Rejected';
+      case 'pending':
+        // Check if this is an HR staff member's request
+        if (request && request.department === 'Human Resource') {
+          return 'Pending Board Approval';
+        }
+        return 'Pending';
+      default:
+        // Check if this is an HR staff member's request
+        if (request && request.department === 'Human Resource') {
+          return 'Pending Board Approval';
+        }
+        return 'Pending';
+    }
   };
 
   const formatDate = (dateString) => {

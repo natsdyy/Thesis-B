@@ -364,28 +364,28 @@
               <label class="label">
                 <span class="label-text font-medium">Transfer Type</span>
               </label>
-              <div class="flex gap-4">
-                <label class="cursor-pointer label">
+              <div class="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                <label class="cursor-pointer flex items-start sm:items-center gap-2">
                   <input
                     v-model="transferForm.transfer_type"
                     type="radio"
                     value="transfer_in"
                     @change="handleTransferTypeChange"
-                    class="radio checked:text-primaryColor radio-xs sm:radio-sm"
+                    class="radio checked:text-primaryColor radio-xs sm:radio-sm mt-1 sm:mt-0"
                   />
-                  <span class="label-text ml-2"
+                  <span class="label-text leading-tight"
                     >Transfer In (to this branch)</span
                   >
                 </label>
-                <label class="cursor-pointer label">
+                <label class="cursor-pointer flex items-start sm:items-center gap-2">
                   <input
                     v-model="transferForm.transfer_type"
                     type="radio"
                     value="transfer_out"
                     @change="handleTransferTypeChange"
-                    class="radio checked:text-primaryColor radio-xs sm:radio-sm"
+                    class="radio checked:text-primaryColor radio-xs sm:radio-sm mt-1 sm:mt-0"
                   />
-                  <span class="label-text ml-2"
+                  <span class="label-text leading-tight"
                     >Transfer Out (from this branch)</span
                   >
                 </label>
@@ -475,13 +475,13 @@
               <button
                 type="submit"
                 :disabled="submitting"
-                class="btn bg-primaryColor text-white hover:bg-primaryColor/80 font-thin"
+                class="btn w-full sm:w-auto bg-primaryColor text-white hover:bg-primaryColor/80 font-medium flex items-center justify-center gap-2"
               >
                 <span
                   v-if="submitting"
-                  class="loading loading-spinner loading-sm mr-2"
+                  class="loading loading-spinner loading-sm"
                 ></span>
-                <Plus v-else class="w-4 h-4 mr-2" />
+                <Plus v-else class="w-4 h-4" />
                 {{ submitting ? 'Submitting...' : 'Submit Transfer Request' }}
               </button>
             </div>

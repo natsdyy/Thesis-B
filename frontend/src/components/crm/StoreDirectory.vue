@@ -254,7 +254,6 @@
           <div class="p-6">
             <div class="flex items-center justify-between mb-3">
               <h3 class="text-xl font-bold text-green-800">Burol Main Branch</h3>
-              <span class="bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full">Main Branch</span>
             </div>
             <p class="text-gray-600 text-sm mb-4 font-medium">COUNTRYSIDE STEAKHOUSE</p>
             <p class="text-gray-500 text-xs mb-4">T-BONE • CHICKEN WINGS • PORKSTEAK • TAPSILOG • SISIG</p>
@@ -289,7 +288,7 @@
           <div class="p-6">
             <div class="flex items-center justify-between mb-3">
               <h3 class="text-xl font-bold text-green-800">Malihan Branch</h3>
-              <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1 rounded-full">Premium</span>
+
             </div>
             <p class="text-gray-600 text-sm mb-4 font-medium">P&N COUNTRYSIDE STEAKHOUSE</p>
             <p class="text-gray-500 text-xs mb-4">T-BONE • CHICKEN WINGS • PORKSTEAK • TAPSILOG • SISIG</p>
@@ -324,7 +323,6 @@
           <div class="p-6">
             <div class="flex items-center justify-between mb-3">
               <h3 class="text-xl font-bold text-green-800">Imus Branch</h3>
-              <span class="bg-purple-100 text-purple-800 text-xs font-semibold px-3 py-1 rounded-full">Business</span>
             </div>
             <p class="text-gray-600 text-sm mb-4 font-medium">COUNTRYSIDE STEAKHOUSE</p>
             <p class="text-gray-500 text-xs mb-4">T-BONE • CHICKEN WINGS • PORKSTEAK • TAPSILOG • SISIG</p>

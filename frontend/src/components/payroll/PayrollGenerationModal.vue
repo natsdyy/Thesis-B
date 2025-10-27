@@ -236,11 +236,6 @@
 
       const periodTypes = [
         {
-          value: 'weekly',
-          label: 'Weekly',
-          description: '7 days',
-        },
-        {
           value: 'bi-weekly',
           label: 'Bi-Weekly',
           description: '14 days',

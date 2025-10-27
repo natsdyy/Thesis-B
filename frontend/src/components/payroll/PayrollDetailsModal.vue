@@ -393,6 +393,13 @@
                 >
                   Edit
                 </button>
+                <button
+                  v-if="record.status === 'paid'"
+                  @click="printPayslip(record)"
+                  class="text-xs text-primaryColor hover:text-primaryColor/80 font-medium"
+                >
+                  Print Payslip
+                </button>
               </div>
             </div>
           </div>
@@ -515,6 +522,14 @@
                   >
                     Edit
                   </button>
+                  <button
+                    v-if="record.status === 'paid'"
+                    @click="printPayslip(record)"
+                    class="ml-2 text-primaryColor hover:text-primaryColor/80 text-sm font-medium cursor-pointer"
+                    title="Print Payslip"
+                  >
+                    Print Payslip
+                  </button>
                 </td>
               </tr>
             </tbody>
@@ -524,10 +539,8 @@
 
       <!-- Footer Actions -->
       <div class="px-3 sm:px-6 py-3 sm:py-4 bg-gray-50">
-
-
         <!-- Action Buttons -->
-        <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
+        <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 !justify-end !items-end">
           <!-- Close Button - Always visible -->
           <button
             @click="closeModal"
@@ -596,7 +609,7 @@
                 actionLoading &&
                 actionLoadingText === 'Sending to Budget Release...'
                   ? 'Sending...'
-                  : 'Send to Budget Release'
+                  : 'Release Budget'
               }}
             </button>
 
@@ -636,6 +649,13 @@
       @close="showRecordEdit = false"
       @save="handleRecordUpdate"
     />
+
+    <PayslipPrintModal
+      :show="showPayslipModal"
+      :record="selectedRecord"
+      :period="payrollPeriod"
+      @close="showPayslipModal = false"
+    />
   </div>
 </template>
 
@@ -647,12 +667,14 @@
   import { useCustomToast } from '@/composables/useCustomToast.js';
   import PayrollRecordDetailsModal from './PayrollRecordDetailsModal.vue';
   import PayrollRecordEditModal from './PayrollRecordEditModal.vue';
+  import PayslipPrintModal from './PayslipPrintModal.vue';
 
   export default {
     name: 'PayrollDetailsModal',
     components: {
       PayrollRecordDetailsModal,
       PayrollRecordEditModal,
+      PayslipPrintModal,
     },
     props: {
       show: {
@@ -674,6 +696,7 @@
 
       const showRecordDetails = ref(false);
       const showRecordEdit = ref(false);
+      const showPayslipModal = ref(false);
       const selectedRecord = ref(null);
       const actionLoading = ref(false);
       const actionLoadingText = ref('');
@@ -806,6 +829,13 @@
       const editRecord = (record) => {
         selectedRecord.value = record;
         showRecordEdit.value = true;
+      };
+
+      const printPayslip = (record) => {
+        console.log('printPayslip called with record:', record);
+        selectedRecord.value = record;
+        console.log('selectedRecord set to:', selectedRecord.value);
+        showPayslipModal.value = true;
       };
 
       const handleRecordUpdate = async (updatedRecord) => {
@@ -986,6 +1016,7 @@
         getStatusBadgeClass,
         viewRecordDetails,
         editRecord,
+        printPayslip,
         handleRecordUpdate,
         submitToFinance,
         approvePayroll,
@@ -994,6 +1025,7 @@
         closeModal,
         showRecordDetails,
         showRecordEdit,
+        showPayslipModal,
         selectedRecord,
         actionLoading,
         actionLoadingText,

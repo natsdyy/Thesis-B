@@ -2931,7 +2931,7 @@
 </script>
 
 <template>
-  <div class="container mx-auto p-6 max-w-6xl">
+  <div class="mx-auto p-6">
     <!-- Header -->
     <div class="text-center mb-8">
       <h1 class="text-4xl font-bold text-primaryColor mb-2 text-shadow-xs">
@@ -5348,7 +5348,7 @@
           <h4 class="text-lg font-semibold text-primaryColor">Request Items</h4>
           <div class="flex gap-2">
             <button
-              class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
+              class="btn btn-sm  border  font-thin "
               @click="addRowRequest"
             >
               <Plus class="w-4 h-4 mr-1" />

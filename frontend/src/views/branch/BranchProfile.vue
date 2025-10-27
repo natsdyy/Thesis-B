@@ -20,6 +20,7 @@
   import { useBranchContextStore } from '../../stores/branchContextStore';
   import { useAuthStore } from '../../stores/authStore';
   import { formatImageUrl } from '../../config/api.js';
+  import PayslipPrintModal from '../../components/payroll/PayslipPrintModal.vue';
 
   const branchContextStore = useBranchContextStore();
   const authStore = useAuthStore();
@@ -36,6 +37,14 @@
   const showCurrentPassword = ref(false);
   const showNewPassword = ref(false);
   const showConfirmPassword = ref(false);
+
+  // Payslip state
+  const payslips = ref([]);
+  const payslipsLoading = ref(false);
+  const showPayslipModal = ref(false);
+  const selectedPayslip = ref(null);
+  const selectedPeriod = ref(null);
+  const selectedMonth = ref('');
 
   // Profile data
   const profileData = ref({
@@ -433,9 +442,102 @@
     }
   };
 
+  // Payslip methods
+  const loadPayslips = async () => {
+    payslipsLoading.value = true;
+    try {
+      const token = localStorage.getItem('token');
+
+      // Build query params if month is selected
+      const params = new URLSearchParams();
+      if (selectedMonth.value) {
+        params.append('month', selectedMonth.value);
+      }
+
+      const response = await fetch(
+        `/api/payroll/my-payslips${params.toString() ? '?' + params.toString() : ''}`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch payslips: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        payslips.value = result.data || [];
+      } else {
+        throw new Error(result.message || 'Failed to load payslips');
+      }
+    } catch (error) {
+      console.error('Error loading payslips:', error);
+      showToast('error', error.message || 'Failed to load payslips');
+    } finally {
+      payslipsLoading.value = false;
+    }
+  };
+
+  // Function to generate month options (last 12 months)
+  const getMonthOptions = () => {
+    const months = [];
+    const today = new Date();
+    for (let i = 0; i < 12; i++) {
+      const date = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const label = date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+      });
+      months.push({ value, label });
+    }
+    return months;
+  };
+
+  const monthOptions = getMonthOptions();
+
+  const viewPayslip = (payslip) => {
+    selectedPayslip.value = payslip;
+    selectedPeriod.value = {
+      period_name: payslip.period_name,
+      date_from: payslip.date_from,
+      date_to: payslip.date_to,
+    };
+    showPayslipModal.value = true;
+  };
+
+  const closePayslipModal = () => {
+    showPayslipModal.value = false;
+    selectedPayslip.value = null;
+    selectedPeriod.value = null;
+  };
+
+  const formatCurrency = (amount) => {
+    return Number(amount || 0).toLocaleString('en-PH', {
+      style: 'currency',
+      currency: 'PHP',
+      minimumFractionDigits: 2,
+    });
+  };
+
+  const getStatusBadgeClass = (status) => {
+    const classes = {
+      pending: 'bg-warning/10 text-warning',
+      paid: 'bg-success/10 text-success',
+      draft: 'bg-neutral/10 text-neutral',
+    };
+    return classes[status] || 'bg-gray-100 text-gray-800';
+  };
+
   // Initialize
   onMounted(() => {
     loadProfileData();
+    loadPayslips();
   });
 </script>
 
@@ -812,6 +914,124 @@
           </div>
         </div>
       </div>
+
+      <!-- Payslips Section -->
+      <div class="card bg-white shadow-lg">
+        <div class="card-body">
+          <div
+            class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4"
+          >
+            <h2 class="card-title text-primaryColor">My Payslips</h2>
+            <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              <!-- Month Filter -->
+              <select
+                v-model="selectedMonth"
+                @change="loadPayslips"
+                class="select select-bordered select-sm flex-1 sm:flex-none"
+              >
+                <option value="">All Months</option>
+                <option
+                  v-for="month in monthOptions"
+                  :key="month.value"
+                  :value="month.value"
+                >
+                  {{ month.label }}
+                </option>
+              </select>
+              <!-- Refresh Button -->
+              <button
+                @click="loadPayslips"
+                :disabled="payslipsLoading"
+                class="btn btn-sm btn-outline text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
+              >
+                <i
+                  class="fas fa-sync-alt w-4 h-4 mr-1"
+                  :class="{ 'animate-spin': payslipsLoading }"
+                ></i>
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <!-- Loading State -->
+          <div v-if="payslipsLoading" class="flex justify-center py-8">
+            <div class="text-center">
+              <div
+                class="loading loading-spinner loading-lg text-primaryColor"
+              ></div>
+              <p class="mt-2 text-gray-600">Loading payslips...</p>
+            </div>
+          </div>
+
+          <!-- No Payslips -->
+          <div v-else-if="payslips.length === 0" class="text-center py-8">
+            <p class="text-gray-600 text-lg mb-2">No payslips available</p>
+            <p class="text-gray-500 text-sm">
+              Your payslips will appear here once they are generated and
+              released.
+            </p>
+          </div>
+
+          <!-- Payslips List -->
+          <div v-else class="space-y-3">
+            <div
+              v-for="payslip in payslips"
+              :key="payslip.id"
+              class="bg-gray-50 rounded-lg p-4 border border-gray-200 hover:border-primaryColor/30 transition-colors"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex-1">
+                  <div class="flex items-center gap-3 mb-2">
+                    <h3 class="font-semibold text-gray-900">
+                      {{ payslip.period_name }}
+                    </h3>
+                    <span
+                      class="badge badge-sm"
+                      :class="getStatusBadgeClass(payslip.status)"
+                    >
+                      {{ payslip.status }}
+                    </span>
+                  </div>
+                  <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <span class="text-gray-600">Period:</span>
+                      <p class="font-medium">
+                        {{ formatDate(payslip.date_from) }} -
+                        {{ formatDate(payslip.date_to) }}
+                      </p>
+                    </div>
+                    <div>
+                      <span class="text-gray-600">Net Salary:</span>
+                      <p class="font-semibold text-primaryColor">
+                        {{ formatCurrency(payslip.net_salary) }}
+                      </p>
+                    </div>
+                    <div>
+                      <span class="text-gray-600">Hours Worked:</span>
+                      <p class="font-medium">{{ payslip.hours_worked }} hrs</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2 ml-4">
+                  <button
+                    @click="viewPayslip(payslip)"
+                    class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/90"
+                    :disabled="payslip.status !== 'paid'"
+                    :title="
+                      payslip.status !== 'paid'
+                        ? 'Payslip not yet released'
+                        : 'View and print payslip'
+                    "
+                  >
+                    <i class="fas fa-eye w-4 h-4 mr-1"></i>
+                    View Payslip
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Toast Notifications -->
@@ -866,6 +1086,14 @@
         </div>
       </div>
     </div>
+
+    <!-- Payslip Print Modal -->
+    <PayslipPrintModal
+      :show="showPayslipModal"
+      :record="selectedPayslip"
+      :period="selectedPeriod"
+      @close="closePayslipModal"
+    />
   </div>
 </template>
 

@@ -749,11 +749,45 @@
     return options;
   });
 
-  const supplyRequestFilterOptions = ref([
-    { type: 'today', label: 'Today', count: 0 },
-    { type: 'week', label: 'This Week', count: 0 },
-    { type: 'month', label: 'This Month', count: 0 },
-  ]);
+  const supplyRequestFilterOptions = computed(() => {
+    const options = [
+      { type: 'today', label: 'Today', count: 0 },
+      { type: 'week', label: 'This Week', count: 0 },
+      { type: 'month', label: 'This Month', count: 0 },
+    ];
+
+    // Calculate counts based on actual supply request data
+    options.forEach((option) => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      option.count = approvedSupplyRequests.value.filter((request) => {
+        const requestDate = new Date(request.request_date);
+        requestDate.setHours(0, 0, 0, 0);
+
+        switch (option.type) {
+          case 'today':
+            return requestDate.getTime() === today.getTime();
+          case 'week': {
+            const startOfWeek = new Date(today);
+            startOfWeek.setDate(today.getDate() - today.getDay());
+            const endOfWeek = new Date(startOfWeek);
+            endOfWeek.setDate(startOfWeek.getDate() + 6);
+            return requestDate >= startOfWeek && requestDate <= endOfWeek;
+          }
+          case 'month':
+            return (
+              requestDate.getMonth() === today.getMonth() &&
+              requestDate.getFullYear() === today.getFullYear()
+            );
+          default:
+            return false;
+        }
+      }).length;
+    });
+
+    return options;
+  });
 
   const supplyRequestFilterType = ref('today');
   const showSupplyRequestCustomMonthPicker = ref(false);
@@ -1195,6 +1229,20 @@
       default:
         return 'All History';
     }
+  };
+
+  const getCurrentHistoryFilterLabel = () => {
+    const currentOption = historyFilterOptions.value.find(
+      (option) => option.type === historyFilterType.value
+    );
+    return currentOption ? currentOption.label : 'All History';
+  };
+
+  const getCurrentHistoryFilterCount = () => {
+    const currentOption = historyFilterOptions.value.find(
+      (option) => option.type === historyFilterType.value
+    );
+    return currentOption ? currentOption.count : 0;
   };
 
   const getSupplyRequestFilterDisplayText = () => {
@@ -2367,7 +2415,7 @@
 </script>
 
 <template>
-  <div class="container mx-auto p-2 sm:p-4 lg:p-6 max-w-6xl">
+  <div class="mx-auto p-2 sm:p-4 lg:p-6">
     <!-- Header -->
     <div class="text-center mb-4 sm:mb-6 lg:mb-8">
       <h1
@@ -2992,19 +3040,21 @@
 
             <!-- History Date Filter Section -->
             <div
-              class="mb-6 p-4 bg-white/5 rounded-lg border border-primaryColor/20"
+              class="mb-6 p-3 sm:p-4 bg-white/5 rounded-lg border border-primaryColor/20"
             >
-              <div
-                class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
-              >
+              <div class="flex flex-col gap-4">
                 <!-- Current Filter Display -->
                 <div class="flex items-center gap-3">
-                  <Calendar class="w-5 h-5 text-primaryColor" />
-                  <div>
-                    <h3 class="font-semibold text-primaryColor">
+                  <Calendar
+                    class="w-4 h-4 sm:w-5 sm:h-5 text-primaryColor flex-shrink-0"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <h3
+                      class="font-semibold text-primaryColor text-sm sm:text-base truncate"
+                    >
                       {{ getHistoryFilterDisplayText() }}
                     </h3>
-                    <p class="text-sm text-black/60">
+                    <p class="text-xs sm:text-sm text-black/60">
                       Showing {{ filteredHistory.length }} order{{
                         filteredHistory.length !== 1 ? 's' : ''
                       }}
@@ -3013,20 +3063,28 @@
                 </div>
 
                 <!-- Filter Controls -->
-                <div class="flex flex-col sm:flex-row gap-3">
-                  <!-- Quick Date Dropdown -->
+                <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                  <!-- Quick Date Filter Dropdown -->
                   <div class="relative" @click.stop>
                     <button
-                      class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
+                      class="btn btn-xs sm:btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin w-full sm:w-auto"
                       @click="toggleHistoryDateDropdown"
                     >
-                      <Filter class="w-4 h-4" />
+                      <Filter class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                      <span class="truncate">{{
+                        getCurrentHistoryFilterLabel()
+                      }}</span>
+                      <span
+                        class="badge badge-xs ml-1 bg-secondaryColor border-none flex-shrink-0"
+                      >
+                        {{ getCurrentHistoryFilterCount() }}
+                      </span>
                     </button>
 
                     <!-- Dropdown Menu -->
                     <div
                       v-if="showHistoryDateDropdown"
-                      class="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50"
+                      class="absolute top-full left-0 right-0 sm:right-auto mt-1 w-full sm:w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50"
                     >
                       <div class="py-1">
                         <button
@@ -3057,95 +3115,96 @@
                   </div>
 
                   <!-- Custom Month Selection -->
-                  <div class="flex items-center gap-2">
-                    <div class="relative">
-                      <button
-                        class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                        @click="toggleCustomMonthPicker"
-                      >
-                        <Calendar class="w-4 h-4 mr-1" />
-                        Custom Month
-                      </button>
+                  <div class="relative">
+                    <button
+                      class="btn btn-xs sm:btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin w-full sm:w-auto"
+                      @click="toggleCustomMonthPicker"
+                    >
+                      <Calendar class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                      <span class="hidden xs:inline">Custom Month</span>
+                      <span class="xs:hidden">Custom</span>
+                    </button>
 
-                      <!-- Custom Month Picker -->
-                      <div
-                        v-if="showCustomMonthPicker"
-                        class="absolute top-full left-0 mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10 p-3 min-w-64"
-                      >
-                        <div class="flex items-center justify-between mb-3">
-                          <h4 class="font-medium text-sm text-black">
-                            Select Month
-                          </h4>
-                          <button
-                            @click="showCustomMonthPicker = false"
-                            class="btn btn-ghost btn-xs"
-                          >
-                            <X class="w-3 h-3" />
-                          </button>
-                        </div>
+                    <!-- Custom Month Picker -->
+                    <div
+                      v-if="showCustomMonthPicker"
+                      class="absolute top-full left-0 right-0 sm:right-auto mt-1 bg-white border border-primaryColor/30 rounded-lg shadow-lg z-10 p-3 sm:min-w-64"
+                    >
+                      <div class="flex items-center justify-between mb-3">
+                        <h4 class="font-medium text-sm text-black">
+                          Select Month
+                        </h4>
+                        <button
+                          @click="showCustomMonthPicker = false"
+                          class="btn btn-ghost btn-xs"
+                        >
+                          <X class="w-3 h-3" />
+                        </button>
+                      </div>
 
-                        <!-- Month Selection -->
-                        <div class="grid grid-cols-3 gap-2 mb-3">
-                          <button
-                            v-for="month in months"
-                            :key="month.value"
-                            class="btn btn-xs font-thin"
-                            :class="{
-                              'bg-primaryColor text-white':
-                                customMonthPicker.month === month.value,
-                              'btn-ghost':
-                                customMonthPicker.month !== month.value,
-                            }"
-                            @click="customMonthPicker.month = month.value"
-                          >
-                            {{ month.label }}
-                          </button>
-                        </div>
+                      <!-- Month Selection -->
+                      <div class="grid grid-cols-3 gap-1 sm:gap-2 mb-3">
+                        <button
+                          v-for="month in months"
+                          :key="month.value"
+                          class="btn btn-xs font-thin"
+                          :class="{
+                            'bg-primaryColor text-white':
+                              customMonthPicker.month === month.value,
+                            'btn-ghost':
+                              customMonthPicker.month !== month.value,
+                          }"
+                          @click="customMonthPicker.month = month.value"
+                        >
+                          {{ month.label }}
+                        </button>
+                      </div>
 
-                        <!-- Year Selection -->
-                        <div class="flex items-center gap-2 mb-3">
-                          <span class="text-sm text-black/70">Year:</span>
-                          <select
-                            v-model="customMonthPicker.year"
-                            class="select select-xs select-bordered bg-white border-primaryColor/30 text-black/70"
+                      <!-- Year Selection -->
+                      <div class="flex items-center gap-2 mb-3">
+                        <span class="text-xs sm:text-sm text-black/70"
+                          >Year:</span
+                        >
+                        <select
+                          v-model="customMonthPicker.year"
+                          class="select select-xs select-bordered bg-white border-primaryColor/30 text-black/70 flex-1"
+                        >
+                          <option
+                            v-for="year in availableYears"
+                            :key="year"
+                            :value="year"
                           >
-                            <option
-                              v-for="year in availableYears"
-                              :key="year"
-                              :value="year"
-                            >
-                              {{ year }}
-                            </option>
-                          </select>
-                        </div>
+                            {{ year }}
+                          </option>
+                        </select>
+                      </div>
 
-                        <!-- Apply Button -->
-                        <div class="flex gap-2">
-                          <button
-                            @click="applyCustomMonthFilter"
-                            class="btn btn-xs bg-primaryColor text-white font-thin"
-                          >
-                            Apply
-                          </button>
-                          <button
-                            @click="showCustomMonthPicker = false"
-                            class="btn btn-xs btn-ghost font-thin"
-                          >
-                            Cancel
-                          </button>
-                        </div>
+                      <!-- Apply Button -->
+                      <div class="flex gap-2">
+                        <button
+                          @click="applyCustomMonthFilter"
+                          class="btn btn-xs bg-primaryColor text-white font-thin flex-1"
+                        >
+                          Apply
+                        </button>
+                        <button
+                          @click="showCustomMonthPicker = false"
+                          class="btn btn-xs btn-ghost font-thin flex-1"
+                        >
+                          Cancel
+                        </button>
                       </div>
                     </div>
-
-                    <!-- Clear Filters Button -->
-                    <button
-                      class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
-                      @click="clearHistoryFilters"
-                    >
-                      <RefreshCcw class="w-4 h-4 mr-1" />
-                      Clear
-                    </button>
                   </div>
+
+                  <!-- Clear Filters Button -->
+                  <button
+                    class="btn btn-xs sm:btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin w-full sm:w-auto"
+                    @click="clearHistoryFilters"
+                  >
+                    <RefreshCcw class="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                    Clear
+                  </button>
                 </div>
               </div>
             </div>
@@ -3398,18 +3457,25 @@
                       order.item_count
                     }}</span>
                   </div>
- <div class="flex items-center text-xs sm:text-sm">
-  <span class="font-medium text-black/70 w-16 sm:w-20">Total:</span>
-  <span class="text-black font-semibold flex items-center gap-1">
-    <font-awesome-icon icon="fa-solid fa-peso-sign" />
-    {{
-      Number(order.total_amount || 0).toLocaleString('en-PH', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      })
-    }}
-  </span>
-</div>
+                  <div class="flex items-center text-xs sm:text-sm">
+                    <span class="font-medium text-black/70 w-16 sm:w-20"
+                      >Total:</span
+                    >
+                    <span
+                      class="text-black font-semibold flex items-center gap-1"
+                    >
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{
+                        Number(order.total_amount || 0).toLocaleString(
+                          'en-PH',
+                          {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          }
+                        )
+                      }}
+                    </span>
+                  </div>
 
                   <div
                     v-if="order.supply_request_number"

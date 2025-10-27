@@ -1174,6 +1174,7 @@ class Employee {
         .where("department", department)
         .whereNull("deleted_at")
         .where("is_active", true)
+        .where("role", "!=", "Admin") // Exclude Admin roles
         .orderBy("role");
 
       return roles;

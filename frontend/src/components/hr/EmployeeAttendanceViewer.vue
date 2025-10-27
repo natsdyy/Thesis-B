@@ -241,17 +241,26 @@
     );
   });
 
-  // Calculate hours worked
-  const calculateHoursWorked = (timeIn, timeOut) => {
-    if (!timeIn || !timeOut) return '—';
+  // Calculate hours worked - use database value instead of time difference
+  const calculateHoursWorked = (attendanceRecord) => {
+    if (
+      !attendanceRecord ||
+      !attendanceRecord.time_in ||
+      !attendanceRecord.time_out
+    )
+      return '—';
 
-    const start = new Date(timeIn);
-    const end = new Date(timeOut);
-    const diffMs = end - start;
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    // Use the hours_worked field from the database
+    const hours = parseFloat(attendanceRecord.hours_worked) || 0;
+    const overtimeHours = parseFloat(attendanceRecord.overtime_hours) || 0;
+    const totalHours = hours + overtimeHours;
 
-    return `${diffHours}h ${diffMinutes}m`;
+    if (totalHours === 0) return '—';
+
+    const wholeHours = Math.floor(totalHours);
+    const minutes = Math.round((totalHours - wholeHours) * 60);
+
+    return `${wholeHours}h ${minutes}m`;
   };
 
   // Calculate late minutes
@@ -374,10 +383,7 @@
         // Calculate hours worked - return empty string for non-working days
         let hoursWorked = '';
         if (record.attendance?.time_in && record.attendance?.time_out) {
-          hoursWorked = calculateHoursWorked(
-            record.attendance.time_in,
-            record.attendance.time_out
-          );
+          hoursWorked = calculateHoursWorked(record.attendance);
         }
 
         return [
@@ -388,7 +394,10 @@
           hoursWorked,
           getAttendanceStatus(record),
           lateMinutes > 0 ? lateMinutes.toString() : '',
-          record.overtime ? record.overtime.hours_worked.toString() : '',
+          record.attendance?.overtime_hours &&
+          parseFloat(record.attendance.overtime_hours) > 0
+            ? parseFloat(record.attendance.overtime_hours).toString()
+            : '',
           record.leave?.leave_type || '',
           record.schedule?.shift_name || '',
         ];
@@ -621,12 +630,7 @@
                 <!-- Hours Worked Column - Always visible -->
                 <td>
                   <span class="text-sm font-medium">
-                    {{
-                      calculateHoursWorked(
-                        record.attendance?.time_in,
-                        record.attendance?.time_out
-                      )
-                    }}
+                    {{ calculateHoursWorked(record.attendance) }}
                   </span>
                 </td>
 
@@ -658,10 +662,16 @@
 
                 <!-- OT Hours Column - Hidden on mobile/tablet -->
                 <td class="hidden lg:table-cell">
-                  <div v-if="record.overtime" class="flex items-center gap-1">
+                  <div
+                    v-if="
+                      record.attendance?.overtime_hours &&
+                      parseFloat(record.attendance.overtime_hours) > 0
+                    "
+                    class="flex items-center gap-1"
+                  >
                     <TrendingUp class="w-3 h-3 text-warning" />
                     <span class="text-sm font-medium">
-                      {{ record.overtime.hours_worked }}h
+                      {{ parseFloat(record.attendance.overtime_hours) }}h
                     </span>
                   </div>
                   <span v-else class="text-black/40">—</span>

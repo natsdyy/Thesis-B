@@ -29,6 +29,7 @@
   import { useOvertimeStore } from '../../stores/overtimeStore';
   import { useLeaveStore } from '../../stores/leaveStore';
   import { useCustomToast } from '../../composables/useCustomToast';
+  import { useAuthStore } from '../../stores/authStore';
   import EmployeeScheduleComponent from '../../components/branch/EmployeeScheduleComponent.vue';
   import EmployeeTransferRequestsComponent from '../../components/branch/EmployeeTransferRequestsComponent.vue';
 
@@ -38,6 +39,7 @@
   const attendanceStore = useAttendanceStore();
   const overtimeStore = useOvertimeStore();
   const leaveStore = useLeaveStore();
+  const authStore = useAuthStore();
   const { showSuccess, showError } = useCustomToast();
 
   // Local state following EmployeeManager pattern
@@ -401,12 +403,19 @@
     };
   };
 
-  const loadOtRequests = async () => {
+  const loadOtRequests = async (forceRefresh = false) => {
     try {
       // Only fetch if OT requests array is empty to prevent continuous refetching
-      if (overtimeStore.requests.length === 0) {
+      // OR if forceRefresh is true (after approve/reject actions)
+      if (overtimeStore.requests.length === 0 || forceRefresh) {
+        // Branch Managers should not see their own overtime requests in the approval interface
+        // These should go directly to HR for approval
+        const excludeEmployeeId =
+          userRole.value === 'Manager' ? authStore.user?.id : undefined;
+
         await overtimeStore.fetchRequests({
           branch_id: currentBranch.value?.id,
+          exclude_employee_id: excludeEmployeeId,
           page: 1,
           limit: 100,
         });
@@ -444,7 +453,7 @@
         selectedRequest.value.id,
         selectedRequest.value.notes || ''
       );
-      await loadOtRequests();
+      await loadOtRequests(true);
 
       showSuccess(
         `Overtime request for ${selectedRequest.value.employee_name} has been approved.`,
@@ -473,7 +482,7 @@
         selectedRequest.value.id,
         rejectionNotes.value || ''
       );
-      await loadOtRequests();
+      await loadOtRequests(true);
 
       showSuccess(
         `Overtime request for ${selectedRequest.value.employee_name} has been rejected.`,
@@ -540,10 +549,11 @@
     };
   };
 
-  const loadLeaveRequests = async () => {
+  const loadLeaveRequests = async (forceRefresh = false) => {
     try {
       // Only fetch if leave requests array is empty to prevent continuous refetching
-      if (leaveStore.pendingManagerApprovals.length === 0) {
+      // OR if forceRefresh is true (after approve/reject actions)
+      if (leaveStore.pendingManagerApprovals.length === 0 || forceRefresh) {
         await leaveStore.fetchPendingManagerApprovals(currentBranch.value?.id);
       }
       leaveRequests.value = leaveStore.pendingManagerApprovals;
@@ -580,7 +590,7 @@
         selectedLeaveRequest.value.id,
         leaveApprovalNotes.value || ''
       );
-      await loadLeaveRequests();
+      await loadLeaveRequests(true);
 
       showSuccess(
         `Leave request for ${selectedLeaveRequest.value.first_name} ${selectedLeaveRequest.value.last_name} has been approved by manager.`,
@@ -610,7 +620,7 @@
         selectedLeaveRequest.value.id,
         leaveRejectionNotes.value || ''
       );
-      await loadLeaveRequests();
+      await loadLeaveRequests(true);
 
       showSuccess(
         `Leave request for ${selectedLeaveRequest.value.first_name} ${selectedLeaveRequest.value.last_name} has been rejected.`,
@@ -709,7 +719,7 @@
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 p-4">
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
@@ -1040,23 +1050,7 @@
       <!-- Overtime Approvals Tab -->
       <template v-else-if="activeTab === 'overtime'">
         <!-- OT Stats Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div class="card bg-white shadow-lg">
-            <div class="card-body">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm text-gray-600">Total Requests</p>
-                  <p class="text-2xl font-bold text-primaryColor">
-                    {{ otStats.totalRequests }}
-                  </p>
-                </div>
-                <div class="p-3 bg-primaryColor/10 rounded-full">
-                  <BadgeCheck class="w-6 h-6 text-primaryColor" />
-                </div>
-              </div>
-            </div>
-          </div>
-
+        <div class="grid grid-cols-1 md:grid-cols-1 gap-6">
           <div class="card bg-white shadow-lg">
             <div class="card-body">
               <div class="flex items-center justify-between">
@@ -1068,38 +1062,6 @@
                 </div>
                 <div class="p-3 bg-warning/10 rounded-full">
                   <Clock class="w-6 h-6 text-warning" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="card bg-white shadow-lg">
-            <div class="card-body">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm text-gray-600">Approved</p>
-                  <p class="text-2xl font-bold text-success">
-                    {{ otStats.approvedRequests }}
-                  </p>
-                </div>
-                <div class="p-3 bg-success/10 rounded-full">
-                  <UserCheck class="w-6 h-6 text-success" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="card bg-white shadow-lg">
-            <div class="card-body">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm text-gray-600">Total OT Hours</p>
-                  <p class="text-2xl font-bold text-gray-600">
-                    {{ otStats.totalOvertimeHours }}h
-                  </p>
-                </div>
-                <div class="p-3 bg-gray-600/10 rounded-full">
-                  <Calendar class="w-6 h-6 text-gray-600" />
                 </div>
               </div>
             </div>

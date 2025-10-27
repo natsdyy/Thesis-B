@@ -350,9 +350,11 @@
   import { ref, computed, onMounted } from 'vue';
   import { useCustomToast } from '../composables/useCustomToast';
   import { useLeaveStore } from '../stores/leaveStore';
+  import { useAuthStore } from '../stores/authStore';
 
   const { showSuccess, showError } = useCustomToast();
   const leaveStore = useLeaveStore();
+  const authStore = useAuthStore();
 
   // Leave form data
   const leaveFromDate = ref('');
@@ -373,6 +375,7 @@
 
   // Use store data
   const myLeaveRequests = computed(() => leaveStore.myLeaveRequests);
+  const currentUser = computed(() => authStore.user);
   const leaveTotalPages = computed(() =>
     Math.max(
       1,
@@ -578,16 +581,19 @@
   };
 
   const getStatusDisplayText = (status) => {
+    const isHRStaff = currentUser.value?.department === 'Human Resource';
+
     switch ((status || '').toLowerCase()) {
       case 'approved_by_hr':
         return 'Approved';
       case 'approved_by_manager':
-        return 'Manager Approved';
+        return isHRStaff ? 'Pending Board Approval' : 'Manager Approved';
       case 'rejected':
         return 'Rejected';
       case 'pending':
+        return isHRStaff ? 'Pending Board Approval' : 'Pending';
       default:
-        return 'Pending';
+        return isHRStaff ? 'Pending Board Approval' : 'Pending';
     }
   };
 

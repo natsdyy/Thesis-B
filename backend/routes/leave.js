@@ -822,8 +822,14 @@ router.post(
     const user = req.user || {};
     const roleName = (user.role || "").toLowerCase();
 
-    // Allow branch managers or HR to approve
-    if (roleName.includes("manager") || roleName.includes("hr")) {
+    // Allow branch managers, HR, or board members to approve
+    if (
+      roleName.includes("manager") ||
+      roleName.includes("hr") ||
+      user.user_type === "board_member" ||
+      user.board_id ||
+      user.position
+    ) {
       return next();
     }
 
@@ -863,6 +869,16 @@ router.post(
       });
     } catch (error) {
       console.error("Error approving leave by manager:", error);
+
+      // Handle self-approval error specifically
+      if (error.message.includes("cannot approve your own leave request")) {
+        return res.status(403).json({
+          success: false,
+          message: error.message,
+          code: "SELF_APPROVAL_NOT_ALLOWED",
+        });
+      }
+
       res.status(500).json({
         success: false,
         message: "Error approving leave request",
@@ -943,6 +959,16 @@ router.post(
       });
     } catch (error) {
       console.error("Error approving leave by HR:", error);
+
+      // Handle self-approval error specifically
+      if (error.message.includes("cannot approve your own leave request")) {
+        return res.status(403).json({
+          success: false,
+          message: error.message,
+          code: "SELF_APPROVAL_NOT_ALLOWED",
+        });
+      }
+
       res.status(500).json({
         success: false,
         message: "Error approving leave request",
@@ -995,8 +1021,14 @@ router.post(
     const user = req.user || {};
     const roleName = (user.role || "").toLowerCase();
 
-    // Allow managers or HR to reject
-    if (roleName.includes("manager") || roleName.includes("hr")) {
+    // Allow managers, HR, or board members to reject
+    if (
+      roleName.includes("manager") ||
+      roleName.includes("hr") ||
+      user.user_type === "board_member" ||
+      user.board_id ||
+      user.position
+    ) {
       return next();
     }
 
@@ -1047,6 +1079,16 @@ router.post(
       });
     } catch (error) {
       console.error("Error rejecting leave request:", error);
+
+      // Handle self-rejection error specifically
+      if (error.message.includes("cannot reject your own leave request")) {
+        return res.status(403).json({
+          success: false,
+          message: error.message,
+          code: "SELF_REJECTION_NOT_ALLOWED",
+        });
+      }
+
       res.status(500).json({
         success: false,
         message: "Error rejecting leave request",
@@ -1197,8 +1239,14 @@ router.get(
     const user = req.user || {};
     const roleName = (user.role || "").toLowerCase();
 
-    // Allow branch managers or HR to view
-    if (roleName.includes("manager") || roleName.includes("hr")) {
+    // Allow branch managers, HR, or board members to view
+    if (
+      roleName.includes("manager") ||
+      roleName.includes("hr") ||
+      user.user_type === "board_member" ||
+      user.board_id ||
+      user.position
+    ) {
       return next();
     }
 

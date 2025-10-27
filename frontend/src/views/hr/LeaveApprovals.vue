@@ -22,7 +22,6 @@
 
     <!-- Summary Stats (match OvertimeApproval) -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
-
       <div class="card bg-white shadow-lg">
         <div class="card-body py-4">
           <div class="text-sm opacity-60">Pending</div>
@@ -499,10 +498,9 @@
                     </td>
                     <td>
                       <div class="flex items-center space-x-2">
-                        <span class="font-medium">{{
-                          request.leave_type
-                          
-                        }} / </span>
+                        <span class="font-medium"
+                          >{{ request.leave_type }} /
+                        </span>
                         <span
                           v-if="request.use_sil"
                           class="badge badge-sm bg-info/10 text-info"
@@ -1054,12 +1052,14 @@
   } from 'lucide-vue-next';
   import { useLeaveStore } from '../../stores/leaveStore';
   import { useBranchStore } from '../../stores/branchStore';
+  import { useAuthStore } from '../../stores/authStore';
   import { useCustomToast } from '../../composables/useCustomToast';
   import { apiConfig } from '../../config/api';
 
   const { showSuccess, showError, showLoading, dismiss } = useCustomToast();
   const leaveStore = useLeaveStore();
   const branchStore = useBranchStore();
+  const authStore = useAuthStore();
 
   // Reactive state
   const loading = ref(false);
@@ -1109,6 +1109,7 @@
 
   // Computed properties
   const activeBranches = computed(() => branchStore.activeBranches || []);
+  const currentUser = computed(() => authStore.user);
 
   const filteredLeaveRequests = computed(() => {
     let filtered = [...allLeaveRequests.value];
@@ -1322,8 +1323,17 @@
   // Error handling methods
   const handleApprovalError = (error) => {
     const errorMessage = error.response?.data?.message || error.message || '';
+    const errorCode = error.response?.data?.code || '';
 
-    if (errorMessage.includes('Leave request is already')) {
+    if (
+      errorCode === 'SELF_APPROVAL_NOT_ALLOWED' ||
+      errorMessage.includes('cannot approve your own leave request')
+    ) {
+      showError(
+        'You cannot approve your own leave request. Please have another manager or HR staff member handle this approval.',
+        'Self-Approval Not Allowed'
+      );
+    } else if (errorMessage.includes('Leave request is already')) {
       showError(
         'This leave request has already been processed. Please refresh the page to see the latest status.',
         'Request Already Processed'
@@ -1360,8 +1370,17 @@
 
   const handleRejectionError = (error) => {
     const errorMessage = error.response?.data?.message || error.message || '';
+    const errorCode = error.response?.data?.code || '';
 
-    if (errorMessage.includes('Leave request is already')) {
+    if (
+      errorCode === 'SELF_REJECTION_NOT_ALLOWED' ||
+      errorMessage.includes('cannot reject your own leave request')
+    ) {
+      showError(
+        'You cannot reject your own leave request. Please have another manager or HR staff member handle this rejection.',
+        'Self-Rejection Not Allowed'
+      );
+    } else if (errorMessage.includes('Leave request is already')) {
       showError(
         'This leave request has already been processed. Please refresh the page to see the latest status.',
         'Request Already Processed'
@@ -1595,7 +1614,11 @@
   };
 
   const canApprove = (request) => {
-    if (!request) return false;
+    if (!request || !currentUser.value) return false;
+
+    // Prevent self-approval - user cannot approve their own request
+    if (request.employee_id === currentUser.value.id) return false;
+
     // HR can approve after manager approval OR department employees with pending status
     return (
       request.status === 'approved_by_manager' ||
@@ -1604,7 +1627,11 @@
   };
 
   const canReject = (request) => {
-    if (!request) return false;
+    if (!request || !currentUser.value) return false;
+
+    // Prevent self-rejection - user cannot reject their own request
+    if (request.employee_id === currentUser.value.id) return false;
+
     return ['pending', 'approved_by_manager'].includes(request.status);
   };
 
@@ -1866,10 +1893,18 @@
       case 'approved_by_hr':
         return 'Approved';
       case 'approved_by_manager':
+        // Check if this is an HR staff member's request
+        if (request && request.department === 'Human Resource') {
+          return 'Pending Board Approval';
+        }
         return 'Pending HR';
       case 'rejected':
         return 'Rejected';
       case 'pending':
+        // Check if this is an HR staff member's request
+        if (request && request.department === 'Human Resource') {
+          return 'Pending Board Approval';
+        }
         // Department employees (no branch_id) with pending status go directly to HR (single approval)
         if (request && !request.branch_id) {
           return 'Pending HR Approval';

@@ -124,6 +124,8 @@ export const useOvertimeStore = defineStore('overtime', {
       branch_id,
       department_only,
       department_id,
+      exclude_employee_id,
+      hr_only,
       page = 1,
       limit = 100,
     } = {}) {
@@ -141,6 +143,9 @@ export const useOvertimeStore = defineStore('overtime', {
         params.delete('department_id');
         params.set('department', department_id);
       }
+      if (exclude_employee_id)
+        params.set('exclude_employee_id', String(exclude_employee_id));
+      if (hr_only) params.set('hr_only', String(hr_only));
       const res = await fetch(
         `${apiConfig.baseURL}/overtime?${params.toString()}`,
         {

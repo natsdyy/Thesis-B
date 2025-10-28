@@ -3673,7 +3673,7 @@
           <div class="form-control">
             <label class="label">
               <span class="label-text font-medium"
-                >Supply Request (Optional)</span
+                >Supply Request</span
               >
             </label>
             <div class="flex gap-2">
@@ -4610,15 +4610,7 @@
 
         <!-- Status and Additional Info -->
         <div class="space-y-2">
-          <div class="flex justify-between items-center">
-            <span class="text-sm text-black/70">Status:</span>
-            <span
-              class="badge badge-sm"
-              :class="getStatusColor(receiptModal.order.status)"
-            >
-              {{ receiptModal.order.status }}
-            </span>
-          </div>
+
           <div class="flex justify-between items-center">
             <span class="text-sm text-black/70">Total Amount:</span>
             <span class="font-semibold text-black">
@@ -4655,14 +4647,12 @@
         <!-- Signature Section -->
         <div class="flex justify-between mt-8 w-full">
           <div class="flex flex-col items-start">
-            <div class="border-b border-black w-[280px] mb-1"></div>
             <div class="text-xs font-medium text-black mt-1">
               {{ receiptModal.order.supplier_name || 'N/A' }}
             </div>
-            <div class="text-xs text-gray-600">Supplier Signature</div>
+            <div class="text-xs text-gray-600">Supplier Name</div>
           </div>
           <div class="flex flex-col items-end">
-            <div class="border-b border-black w-[280px] mb-1"></div>
             <div class="text-xs font-medium text-black mt-1">
               {{
                 receiptModal.order.completed_by ||

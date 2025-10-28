@@ -1464,29 +1464,63 @@
           category: alertItem.category_name,
           item_type_id: alertItem.item_type_id,
           source: 'scm',
-          // Include supplier information - try to get from alert item first, then from current inventory
-          supplier_id:
-            alertItem.supplier_id ||
-            (() => {
-              // Try to find supplier info from current inventory
-              const inventoryItem = currentInventory.value.find(
+          // Include supplier information - prefer explicit alert supplier, then item-type defaults, then current inventory
+          supplier_id: (() => {
+            if (alertItem.supplier_id) return alertItem.supplier_id;
+            // Try to resolve from itemTypes metadata (preferred/default supplier)
+            try {
+              const type = (itemTypes.value || []).find(
+                (t) => t.id === alertItem.item_type_id
+              );
+              if (type) {
+                const typeSupplierId =
+                  type.preferred_supplier_id ||
+                  type.default_supplier_id ||
+                  type.supplier_id ||
+                  null;
+                if (typeSupplierId) return typeSupplierId;
+              }
+            } catch (_) {}
+            // Fallback to any matching current inventory batch (may be absent if stock is zero)
+            try {
+              const inventoryItem = (currentInventory.value || []).find(
                 (item) =>
                   item.item_type_id === alertItem.item_type_id ||
                   item.id === alertItem.id
               );
-              return inventoryItem?.supplier_id;
-            })(),
-          supplier_name:
-            alertItem.supplier_name ||
-            (() => {
-              // Try to find supplier info from current inventory
-              const inventoryItem = currentInventory.value.find(
+              return inventoryItem?.supplier_id || null;
+            } catch (_) {
+              return null;
+            }
+          })(),
+          supplier_name: (() => {
+            if (alertItem.supplier_name) return alertItem.supplier_name;
+            // Try to resolve from itemTypes metadata
+            try {
+              const type = (itemTypes.value || []).find(
+                (t) => t.id === alertItem.item_type_id
+              );
+              if (type) {
+                const typeSupplierName =
+                  type.preferred_supplier_name ||
+                  type.default_supplier_name ||
+                  type.supplier_name ||
+                  null;
+                if (typeSupplierName) return typeSupplierName;
+              }
+            } catch (_) {}
+            // Fallback to current inventory
+            try {
+              const inventoryItem = (currentInventory.value || []).find(
                 (item) =>
                   item.item_type_id === alertItem.item_type_id ||
                   item.id === alertItem.id
               );
-              return inventoryItem?.supplier_name;
-            })(),
+              return inventoryItem?.supplier_name || null;
+            } catch (_) {
+              return null;
+            }
+          })(),
         },
       };
       console.log(
@@ -2263,14 +2297,7 @@
       // Handle query parameters for production integration
       handleQueryParameters();
 
-      // Test individual API calls
-      try {
-        const categoriesResponse = await inventoryStore.fetchCategories();
-
-        const inventoryResponse = await inventoryStore.fetchCurrentInventory();
-      } catch (err) {
-        console.error('API call error:', err);
-      }
+      // Note: avoid re-calling inventory fetches here to prevent duplicates
 
       // Add keyboard navigation for forecasting pagination
       document.addEventListener('keydown', handleForecastKeyNavigation);
@@ -2474,9 +2501,15 @@
       </button>
       <button
         @click="activeTab = 'alerts'"
-        class="tab flex-1 sm:flex-none min-w-0 text-xs sm:text-sm"
+        class="tab flex-1 sm:flex-none min-w-0 text-xs sm:text-sm relative"
         :class="{ 'tab-active': activeTab === 'alerts' }"
+        aria-label="Alerts"
       >
+        <span
+          v-if="alertsCount > 0"
+          class="absolute -top-1 -right-1 w-2 h-2 bg-error rounded-full"
+          aria-hidden="true"
+        ></span>
         <Bell class="w-3 h-3 sm:w-4 sm:h-4 mr-1 flex-shrink-0" />
         <span class="truncate">Alerts</span>
         <span

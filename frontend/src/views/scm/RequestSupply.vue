@@ -1131,14 +1131,21 @@
         return;
       }
 
-      const validItems = rowRequest.value.filter(
-        (row) =>
-          row.item_name.trim() &&
-          row.item_quantity > 0 &&
-          row.item_unitPrice > 0 &&
-          // For dynamic-unit categories (Other Materials, Beverages), ensure unit is selected
-          (!isUnitSelectionRequired(row) || row.item_unit.trim())
-      );
+      const validItems = rowRequest.value
+        .filter(
+          (row) =>
+            row.item_name.trim() &&
+            row.item_quantity > 0 &&
+            row.item_unitPrice > 0 &&
+            // For dynamic-unit categories (Other Materials, Beverages), ensure unit is selected
+            (!isUnitSelectionRequired(row) || row.item_unit.trim())
+        )
+        .map((row) => ({
+          ...row,
+          // ensure supplier_id is present per item when supplier mode/preload is used
+          supplier_id:
+            Number(selectedSupplierId.value || 0) || row.supplier_id || null,
+        }));
 
       if (validItems.length === 0) {
         showToast(
@@ -1166,6 +1173,10 @@
           authStore.user?.full_name ||
           authStore.user?.name ||
           requestForm.value.requested_by,
+        // Persist supplier if preselected or inferred from rows
+        supplier_id:
+          Number(selectedSupplierId.value || 0) ||
+          (rowRequest.value.find((r) => r.supplier_id)?.supplier_id ?? null),
       };
 
       await supplyRequestStore.createRequest(requestData, validItems);
@@ -1199,14 +1210,20 @@
         return;
       }
 
-      const validItems = rowRequest.value.filter(
-        (row) =>
-          row.item_name.trim() &&
-          row.item_quantity > 0 &&
-          row.item_unitPrice > 0 &&
-          // For dynamic-unit categories (Other Materials, Beverages), ensure unit is selected
-          (!isUnitSelectionRequired(row) || row.item_unit.trim())
-      );
+      const validItems = rowRequest.value
+        .filter(
+          (row) =>
+            row.item_name.trim() &&
+            row.item_quantity > 0 &&
+            row.item_unitPrice > 0 &&
+            // For dynamic-unit categories (Other Materials, Beverages), ensure unit is selected
+            (!isUnitSelectionRequired(row) || row.item_unit.trim())
+        )
+        .map((row) => ({
+          ...row,
+          supplier_id:
+            Number(selectedSupplierId.value || 0) || row.supplier_id || null,
+        }));
 
       if (validItems.length === 0) {
         showToast(
@@ -1237,7 +1254,13 @@
 
       await supplyRequestStore.updateRequest(
         request.id,
-        requestData,
+        {
+          ...requestData,
+          // persist supplier on updates too
+          supplier_id:
+            Number(selectedSupplierId.value || 0) ||
+            (rowRequest.value.find((r) => r.supplier_id)?.supplier_id ?? null),
+        },
         validItems
       );
 
@@ -1645,6 +1668,22 @@
         confirmText: 'Delete',
         confirmClass: 'btn-error',
         onConfirm: () => handleDeleteRequest(data.request_id),
+      },
+      confirm_receipt: {
+        title: 'Confirm Receipt',
+        message:
+          'Finance has released the budget for this request. Confirm receipt to complete the process.',
+        confirmText: 'Confirm Receipt',
+        confirmClass: 'btn-success',
+        onConfirm: () => confirmReceipt(data.request_id),
+      },
+      acknowledge_branch: {
+        title: 'Acknowledge Branch Request',
+        message:
+          'Are you sure you want to acknowledge this branch request? The branch will be notified.',
+        confirmText: 'Acknowledge',
+        confirmClass: 'btn-primary bg-primaryColor',
+        onConfirm: () => acknowledgeBranchRequest(data.request_id),
       },
     };
 
@@ -3083,11 +3122,23 @@
                 <td>
                   <button
                     class="btn btn-sm bg-success text-white font-thin border-none hover:bg-success/80"
-                    @click="confirmReceipt(release.request_id)"
+                    @click="
+                      openConfirmModal('confirm_receipt', {
+                        request_id: release.request_id,
+                      })
+                    "
                     :disabled="loading"
                   >
-                    <FileCheck class="w-4 h-4 mr-1" />
-                    {{ loading ? 'Confirming...' : 'Confirm Receipt' }}
+                    <span
+                      class="loading loading-spinner loading-xs mr-2"
+                      v-if="loading && confirmModal.type === 'confirm_receipt'"
+                    ></span>
+                    <FileCheck v-else class="w-4 h-4 mr-1" />
+                    {{
+                      loading && confirmModal.type === 'confirm_receipt'
+                        ? 'Confirming...'
+                        : 'Confirm Receipt'
+                    }}
                   </button>
                 </td>
               </tr>
@@ -3184,11 +3235,25 @@
                     </button>
                     <button
                       class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
-                      @click="acknowledgeBranchRequest(request.request_id)"
+                      @click="
+                        openConfirmModal('acknowledge_branch', {
+                          request_id: request.request_id,
+                        })
+                      "
                       :disabled="loading"
                     >
-                      <CheckCircle class="w-4 h-4 mr-1" />
-                      {{ loading ? 'Acknowledging...' : 'Acknowledge' }}
+                      <span
+                        class="loading loading-spinner loading-xs mr-2"
+                        v-if="
+                          loading && confirmModal.type === 'acknowledge_branch'
+                        "
+                      ></span>
+                      <CheckCircle v-else class="w-4 h-4 mr-1" />
+                      {{
+                        loading && confirmModal.type === 'acknowledge_branch'
+                          ? 'Acknowledging...'
+                          : 'Acknowledge'
+                      }}
                     </button>
                   </div>
                 </td>
@@ -5347,10 +5412,7 @@
         <div class="flex justify-between items-center mb-4">
           <h4 class="text-lg font-semibold text-primaryColor">Request Items</h4>
           <div class="flex gap-2">
-            <button
-              class="btn btn-sm  border  font-thin "
-              @click="addRowRequest"
-            >
+            <button class="btn btn-sm border font-thin" @click="addRowRequest">
               <Plus class="w-4 h-4 mr-1" />
               Add Item
             </button>
@@ -5382,7 +5444,6 @@
                 <td class="text-left font-medium">{{ row.id }}</td>
 
                 <td>
-
                   <!-- When supplier is selected, show a dropdown of supplier products -->
                   <select
                     v-if="isSupplierMode && supplierProducts.length > 0"

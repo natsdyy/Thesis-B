@@ -44,13 +44,28 @@ router.get("/", authenticateToken, async (req, res) => {
       limit,
     } = req.query;
 
-    // Super Admin always allowed by middleware shortcut; otherwise check permission
+    // Super Admin and Board Members always allowed by middleware shortcut; otherwise check permission
     let branchFilter = qBranchId;
     const user = req.user || {};
-    const hasManage = await require("../models/Roles").hasPermission(
-      user.role_id,
-      "Manage Inventory"
-    );
+
+    // Check if user is board member (Chairman of the Board, Board of Directors, etc.)
+    const isBoardMember =
+      user.board_id ||
+      user.position?.includes("Board") ||
+      user.position?.includes("Chairman");
+
+    let hasManage = false;
+    if (isBoardMember) {
+      // Board members have full access
+      hasManage = true;
+    } else if (user.role_id) {
+      // Only check permissions if user has a role_id
+      hasManage = await require("../models/Roles").hasPermission(
+        user.role_id,
+        "Manage Inventory"
+      );
+    }
+
     if (!hasManage) {
       // Force to user's branch only
       branchFilter = user.branch_id || null;

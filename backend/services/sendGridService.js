@@ -40,6 +40,65 @@ class SendGridService {
   }
 
   /**
+   * Test if the SendGrid API key is valid and working
+   */
+  static async testApiKey() {
+    try {
+      if (!this.isConfigured()) {
+        return {
+          success: false,
+          error: "SendGrid API key not configured",
+        };
+      }
+
+      // Use SendGrid's built-in API key validation endpoint
+      const response = await sgMail.send({
+        to: "test@example.com", // This won't actually send
+        from: "mailcountrysidesteakhouse@gmail.com",
+        subject: "Test",
+        text: "Test",
+        mail_settings: {
+          sandbox_mode: {
+            enable: true, // Sandbox mode prevents actual sending
+          },
+        },
+      });
+
+      return {
+        success: true,
+        message: "SendGrid API key is valid and working",
+        provider: "SendGrid",
+      };
+    } catch (error) {
+      console.error("❌ SendGrid API key test failed:", error);
+
+      if (error.response) {
+        const errorCode = error.response.status;
+        const errorMessage =
+          error.response.body.errors?.[0]?.message || error.message;
+
+        if (errorCode === 401) {
+          return {
+            success: false,
+            error: "SendGrid API key is invalid or expired",
+            needsNewKey: true,
+          };
+        }
+
+        return {
+          success: false,
+          error: `SendGrid API Error (${errorCode}): ${errorMessage}`,
+        };
+      }
+
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
    * Send supplier welcome email using SendGrid
    * @param {string} to - Recipient email address
    * @param {string} supplierName - Supplier or contact person's name

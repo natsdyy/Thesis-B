@@ -23,6 +23,10 @@ export const usePOSStore = defineStore('pos', () => {
     createdAt: null,
     completedAt: null,
   });
+  // PH SC/PWD discount state (order-level)
+  const discountType = ref('NONE'); // NONE | SC | PWD
+  const beneficiaryName = ref('');
+  const beneficiaryIdNo = ref('');
   const selectedCategory = ref('All');
   const loading = ref(false);
   const error = ref(null);
@@ -77,22 +81,26 @@ export const usePOSStore = defineStore('pos', () => {
 
   const orderSubtotal = computed(() => {
     return currentOrder.value.items.reduce((total, item) => {
-      // Calculate discounted price if promo applies
+      // Promo and SC/PWD are mutually exclusive. If discountType != NONE, ignore promo pricing.
       let itemPrice = item.price;
-      if (
-        item.promo_info &&
-        item.promo_info.is_active &&
-        item.quantity >= item.promo_info.minimum_quantity
-      ) {
-        if (item.promo_info.discount_type === 'percentage') {
-          const discountAmount =
-            item.price * (item.promo_info.discount_percentage / 100);
-          itemPrice = Math.max(0, item.price - discountAmount);
-        } else if (item.promo_info.discount_type === 'fixed_amount') {
-          itemPrice = Math.max(
-            0,
-            item.price - parseFloat(item.promo_info.discount_amount || 0)
-          );
+      const applyingScPwd =
+        discountType.value === 'SC' || discountType.value === 'PWD';
+      if (!applyingScPwd) {
+        if (
+          item.promo_info &&
+          item.promo_info.is_active &&
+          item.quantity >= item.promo_info.minimum_quantity
+        ) {
+          if (item.promo_info.discount_type === 'percentage') {
+            const discountAmount =
+              item.price * (item.promo_info.discount_percentage / 100);
+            itemPrice = Math.max(0, item.price - discountAmount);
+          } else if (item.promo_info.discount_type === 'fixed_amount') {
+            itemPrice = Math.max(
+              0,
+              item.price - parseFloat(item.promo_info.discount_amount || 0)
+            );
+          }
         }
       }
       return total + itemPrice * item.quantity;
@@ -419,20 +427,24 @@ export const usePOSStore = defineStore('pos', () => {
         items: currentOrder.value.items.map((item) => {
           // Calculate discounted price if promo applies
           let itemPrice = item.price;
-          if (
-            item.promo_info &&
-            item.promo_info.is_active &&
-            item.quantity >= item.promo_info.minimum_quantity
-          ) {
-            if (item.promo_info.discount_type === 'percentage') {
-              const discountAmount =
-                item.price * (item.promo_info.discount_percentage / 100);
-              itemPrice = Math.max(0, item.price - discountAmount);
-            } else if (item.promo_info.discount_type === 'fixed_amount') {
-              itemPrice = Math.max(
-                0,
-                item.price - parseFloat(item.promo_info.discount_amount || 0)
-              );
+          const applyingScPwd =
+            discountType.value === 'SC' || discountType.value === 'PWD';
+          if (!applyingScPwd) {
+            if (
+              item.promo_info &&
+              item.promo_info.is_active &&
+              item.quantity >= item.promo_info.minimum_quantity
+            ) {
+              if (item.promo_info.discount_type === 'percentage') {
+                const discountAmount =
+                  item.price * (item.promo_info.discount_percentage / 100);
+                itemPrice = Math.max(0, item.price - discountAmount);
+              } else if (item.promo_info.discount_type === 'fixed_amount') {
+                itemPrice = Math.max(
+                  0,
+                  item.price - parseFloat(item.promo_info.discount_amount || 0)
+                );
+              }
             }
           }
 
@@ -451,6 +463,12 @@ export const usePOSStore = defineStore('pos', () => {
           };
         }),
         notes: currentOrder.value.notes || null,
+        // SC/PWD fields
+        discount_type: discountType.value,
+        beneficiary_name:
+          discountType.value !== 'NONE' ? beneficiaryName.value : null,
+        beneficiary_id_no:
+          discountType.value !== 'NONE' ? beneficiaryIdNo.value : null,
       };
 
       // Create order via API
@@ -527,6 +545,9 @@ export const usePOSStore = defineStore('pos', () => {
       createdAt: null,
       completedAt: null,
     };
+    discountType.value = 'NONE';
+    beneficiaryName.value = '';
+    beneficiaryIdNo.value = '';
   };
 
   const cancelOrder = () => {
@@ -1133,6 +1154,10 @@ export const usePOSStore = defineStore('pos', () => {
     orderTotal,
     orderChange,
     isOrderValid,
+    // Discount state
+    discountType,
+    beneficiaryName,
+    beneficiaryIdNo,
 
     // Actions
     fetchMenuItems,

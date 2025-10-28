@@ -44,6 +44,13 @@ const routes = [
     component: Homepage,
     meta: { title: 'Countryside Steakhouse - Home' },
   },
+  // Public Queue Board (no auth)
+  {
+    path: '/queue',
+    name: 'QueueBoard',
+    component: () => import('../views/QueueBoard.vue'),
+    meta: { title: 'Now Serving' },
+  },
   // crm menu route
   {
     path: '/menu',

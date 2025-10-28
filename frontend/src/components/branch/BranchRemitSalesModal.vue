@@ -431,6 +431,11 @@
         'Items',
         'Total Amount',
         'Cashier',
+        'VAT-Exempt',
+        'Discount Type',
+        'Discount Amount',
+        'Beneficiary Name',
+        'Beneficiary ID',
         'Status',
         'Remitted',
       ];
@@ -452,6 +457,11 @@
           items,
           `P${Number(order.total_amount || 0).toFixed(2)}`,
           `${order.cashier_first_name || ''} ${order.cashier_last_name || ''}`.trim(),
+          order.is_vat_exempt ? 'Yes' : 'No',
+          order.discount_type || 'NONE',
+          Number(order.discount_amount || 0).toFixed(2),
+          order.beneficiary_name || '',
+          order.beneficiary_id_no || '',
           order.status || '',
           order.remittance_id ? 'Yes' : 'No',
         ];
@@ -1174,6 +1184,30 @@
                       }}</span>
                     </div>
                     <div class="flex justify-between items-center">
+                      <span class="text-xs text-gray-600">VAT-Exempt:</span>
+                      <span
+                        class="text-xs font-medium"
+                        :class="
+                          order.is_vat_exempt
+                            ? 'text-emerald-700'
+                            : 'text-gray-500'
+                        "
+                      >
+                        {{ order.is_vat_exempt ? 'Yes' : 'No' }}
+                      </span>
+                    </div>
+                    <div
+                      v-if="
+                        order.discount_type && order.discount_type !== 'NONE'
+                      "
+                      class="flex justify-between items-center"
+                    >
+                      <span class="text-xs text-gray-600">SC/PWD:</span>
+                      <span class="text-xs font-medium text-emerald-700">
+                        {{ order.discount_type }}
+                      </span>
+                    </div>
+                    <div class="flex justify-between items-center">
                       <span class="text-xs text-gray-600">Cashier:</span>
                       <span class="text-xs font-medium">
                         {{ order.cashier_first_name }}
@@ -1223,6 +1257,8 @@
                     <th class="text-xs">Type</th>
                     <th class="text-xs">Items</th>
                     <th class="text-xs">Total</th>
+                    <th class="text-xs">VAT-Exempt</th>
+                    <th class="text-xs">SC/PWD</th>
                     <th class="text-xs">Cashier</th>
                     <th class="text-xs">Remitted</th>
                     <th class="text-xs">Status</th>
@@ -1265,6 +1301,28 @@
                           { minimumFractionDigits: 2, maximumFractionDigits: 2 }
                         )
                       }}
+                    </td>
+                    <td class="text-xs">
+                      <span
+                        :class="
+                          order.is_vat_exempt
+                            ? 'text-emerald-700'
+                            : 'text-gray-500'
+                        "
+                      >
+                        {{ order.is_vat_exempt ? 'Yes' : 'No' }}
+                      </span>
+                    </td>
+                    <td class="text-xs">
+                      <span
+                        v-if="
+                          order.discount_type && order.discount_type !== 'NONE'
+                        "
+                        class="badge badge-ghost badge-xs text-emerald-700 border-emerald-200"
+                      >
+                        {{ order.discount_type }}
+                      </span>
+                      <span v-else class="text-gray-400">-</span>
                     </td>
                     <td class="text-xs">
                       {{ order.cashier_first_name }}

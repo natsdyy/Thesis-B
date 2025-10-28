@@ -347,6 +347,55 @@
     showOrderConfirmationModal.value = true;
   };
 
+  // Reactive confirmation totals (PH): apply SC/PWD only to beneficiary's own meal
+  // Highest-priced single item gets VAT-exempt + 20% discount; companions are regular.
+  const confirmIsVatExempt = computed(
+    () => posStore.discountType === 'SC' || posStore.discountType === 'PWD'
+  );
+  const confirmGross = computed(() => posStore.orderSubtotal);
+  const highestUnitPrice = computed(() => {
+    const items = posStore.currentOrder.items || [];
+    if (!items.length) return 0;
+    return items.reduce((max, it) => {
+      const p = parseFloat(it.price || 0);
+      return p > max ? p : max;
+    }, 0);
+  });
+  // Single meal base without VAT
+  const confirmVatExemptItemBase = computed(() =>
+    confirmIsVatExempt.value
+      ? Number((highestUnitPrice.value / 1.12).toFixed(2))
+      : 0
+  );
+  const confirmRemovedVatOnItem = computed(() =>
+    confirmIsVatExempt.value
+      ? Number(
+          (highestUnitPrice.value - highestUnitPrice.value / 1.12).toFixed(2)
+        )
+      : 0
+  );
+  const confirmDiscountAmount = computed(() =>
+    confirmIsVatExempt.value
+      ? Number((0.2 * confirmVatExemptItemBase.value).toFixed(2))
+      : 0
+  );
+  const confirmTotalDue = computed(() => {
+    if (!confirmIsVatExempt.value) return Number(confirmGross.value.toFixed(2));
+    const due =
+      confirmGross.value -
+      confirmRemovedVatOnItem.value -
+      confirmDiscountAmount.value;
+    return Number(due.toFixed(2));
+  });
+  const confirmChange = computed(() =>
+    Number(
+      Math.max(
+        0,
+        (parseFloat(paymentInput.value) || 0) - confirmTotalDue.value
+      ).toFixed(2)
+    )
+  );
+
   const confirmOrder = async () => {
     // Validate payment amount
     const amountPaid = parseFloat(paymentInput.value) || 0;
@@ -406,11 +455,14 @@
 
   const showReceipt = () => {
     if (orderCompleteData.value) {
-      // Calculate VAT breakdown for visualization
+      // Calculate VAT breakdown for visualization using backend-provided fields when available
       const totalAmount = parseFloat(orderCompleteData.value.total_amount || 0);
       const vatRate = 0.12; // 12% VAT
-      const subtotalBeforeVat = totalAmount / (1 + vatRate);
-      const vatAmount = totalAmount - subtotalBeforeVat;
+      const isVatExempt = Boolean(orderCompleteData.value.is_vat_exempt);
+      const subtotalBeforeVat = isVatExempt
+        ? parseFloat(orderCompleteData.value.vat_exempt_sales || 0)
+        : totalAmount / (1 + vatRate);
+      const vatAmount = isVatExempt ? 0 : totalAmount - subtotalBeforeVat;
 
       receiptData.value = {
         ...orderCompleteData.value,
@@ -425,6 +477,13 @@
         subtotalBeforeVat: subtotalBeforeVat,
         vatAmount: vatAmount,
         vatRate: vatRate,
+        discountType: orderCompleteData.value.discount_type || 'NONE',
+        beneficiaryName: orderCompleteData.value.beneficiary_name || null,
+        beneficiaryIdNo: orderCompleteData.value.beneficiary_id_no || null,
+        discountAmount: parseFloat(
+          orderCompleteData.value.discount_amount || 0
+        ),
+        isVatExempt: isVatExempt,
       };
       showReceiptModal.value = true;
     }
@@ -534,8 +593,9 @@
 
       <div class="section totals">
         <table>
-          <tr><td>Subtotal:</td><td style="text-align:right">${currency(r.subtotalBeforeVat)}</td></tr>
-          <tr><td>Tax (${((r.vatRate || 0) * 100).toFixed(0)}%):</td><td style="text-align:right">${currency(r.vatAmount)}</td></tr>
+          <tr><td>${r.isVatExempt ? 'VAT-Exempt Sales:' : 'Subtotal:'}</td><td style="text-align:right">${currency(r.subtotalBeforeVat)}</td></tr>
+          ${r.discountType && r.discountType !== 'NONE' ? `<tr><td>SC/PWD Discount (20%):</td><td style="text-align:right">-${currency(r.discountAmount)}</td></tr>` : ''}
+          ${r.isVatExempt ? '' : `<tr><td>Tax (${((r.vatRate || 0) * 100).toFixed(0)}%):</td><td style="text-align:right">${currency(r.vatAmount)}</td></tr>`}
           <tr><td><strong>Total Amount:</strong></td><td style="text-align:right"><strong>${currency(r.total_amount)}</strong></td></tr>
           <tr><td>Amount Paid:</td><td style="text-align:right">${currency(r.amount_paid)}</td></tr>
           <tr><td><strong>Change:</strong></td><td style="text-align:right"><strong>${currency(r.change_amount)}</strong></td></tr>
@@ -574,30 +634,55 @@
     paymentInput.value = '';
   };
 
-  // Fetch today's sales statistics
+  // Fetch today's sales statistics (from pos_sales_orders via fetchSalesStats)
   const fetchTodayStats = async () => {
     try {
       statsLoading.value = true;
-      const today = new Date().toISOString().split('T')[0];
       const branchId = currentBranch.value?.id || user.value?.branch_id;
-
       if (!branchId) return;
 
-      // Use the store method instead of direct API call
-      const data = await posStore.fetchDailySummary(branchId, today);
+      // Build local 00:00:00 to 23:59:59 range for today
+      const now = new Date();
+      const startOfDay = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        0,
+        0,
+        0,
+        0
+      );
+      const endOfDay = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        23,
+        59,
+        59,
+        999
+      );
+
+      const data = await posStore.fetchSalesStats(
+        branchId,
+        startOfDay.toISOString(),
+        endOfDay.toISOString()
+      );
 
       if (data) {
         stats.value = {
-          todaySales: data.total_sales || 0,
-          todayTransactions: data.completed_orders || 0,
-          averageTransaction: data.average_order_value || 0,
-          activeOrders:
-            data.total_orders - data.completed_orders - data.voided_orders || 0,
+          todaySales: Number(data.total_sales || 0),
+          todayTransactions: Number(data.total_orders || 0),
+          averageTransaction: Number(data.average_order_value || 0),
+          activeOrders: Math.max(
+            0,
+            Number(data.total_orders || 0) -
+              Number(data.completed_orders || 0) -
+              Number(data.voided_orders || 0)
+          ),
         };
       }
     } catch (error) {
       console.error('Error fetching today stats:', error);
-      // Keep existing stats if fetch fails
     } finally {
       statsLoading.value = false;
     }
@@ -1459,17 +1544,121 @@
             </div>
 
             <!-- Payment Summary -->
-            <div class="bg-gray-50 rounded-lg p-4">
+            <div class="bg-accentColor rounded-lg p-4">
               <div class="space-y-4">
+                <!-- PH SC/PWD Discount Section -->
+                <div class="space-y-2">
+                  <label class="text-sm font-medium text-gray-700"
+                    >Senior/PWD Discount</label
+                  >
+                  <div class="flex flex-wrap gap-2 items-center">
+                    <button
+                      class="btn btn-xs"
+                      :class="
+                        posStore.discountType === 'NONE' ? 'btn-active' : ''
+                      "
+                      @click="posStore.discountType = 'NONE'"
+                    >
+                      None
+                    </button>
+                    <button
+                      class="btn btn-xs"
+                      :class="
+                        posStore.discountType === 'SC' ? 'btn-active' : ''
+                      "
+                      @click="posStore.discountType = 'SC'"
+                    >
+                      Senior Citizen
+                    </button>
+                    <button
+                      class="btn btn-xs"
+                      :class="
+                        posStore.discountType === 'PWD' ? 'btn-active' : ''
+                      "
+                      @click="posStore.discountType = 'PWD'"
+                    >
+                      PWD
+                    </button>
+                    <span
+                      v-if="posStore.discountType !== 'NONE'"
+                      class="text-xs text-amber-600"
+                    >
+                      Promo and SC/PWD cannot be combined; regular prices will
+                      be used.
+                    </span>
+                  </div>
+                </div>
+
+                <div
+                  v-if="posStore.discountType !== 'NONE'"
+                  class="grid grid-cols-1 sm:grid-cols-2 gap-3"
+                >
+                  <div>
+                    <label class="text-xs text-gray-600"
+                      >Beneficiary Name</label
+                    >
+                    <input
+                      v-model="posStore.beneficiaryName"
+                      type="text"
+                      placeholder="Full name"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primaryColor focus:border-transparent text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label class="text-xs text-gray-600">ID Number</label>
+                    <input
+                      v-model="posStore.beneficiaryIdNo"
+                      type="text"
+                      placeholder="SC/PWD ID No."
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primaryColor focus:border-transparent text-sm"
+                    />
+                  </div>
+                </div>
+
                 <div class="flex justify-between text-sm">
-                  <span class="text-gray-600">Subtotal:</span>
+                  <span class="text-gray-600">
+                    {{
+                      confirmIsVatExempt
+                        ? 'Beneficiary Meal (VAT-Exempt Base):'
+                        : 'Subtotal:'
+                    }}
+                  </span>
                   <span class="font-semibold">
                     <font-awesome-icon icon="fa-solid fa-peso-sign" />
                     {{
-                      parseFloat(orderConfirmationData?.subtotal || 0).toFixed(
-                        2
-                      )
+                      confirmIsVatExempt
+                        ? confirmVatExemptItemBase.toFixed(2)
+                        : confirmGross.toFixed(2)
                     }}
+                  </span>
+                </div>
+                <div
+                  v-if="confirmIsVatExempt"
+                  class="flex justify-between text-sm"
+                >
+                  <span class="text-gray-600">SC/PWD Discount (20%):</span>
+                  <span class="font-semibold text-emerald-700">
+                    -<font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{ confirmDiscountAmount.toFixed(2) }}
+                  </span>
+                </div>
+                <div
+                  v-if="confirmIsVatExempt"
+                  class="flex justify-between text-xs text-gray-500"
+                >
+                  <span>Removed VAT on beneficiary meal:</span>
+                  <span>
+                    -<font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{ confirmRemovedVatOnItem.toFixed(2) }}
+                  </span>
+                </div>
+                <div
+                  class="flex justify-between text-sm border-t border-gray-200 pt-2"
+                >
+                  <span class="text-gray-800 font-medium">Amount Due:</span>
+                  <span class="font-semibold">
+                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                    {{ confirmTotalDue.toFixed(2) }}
                   </span>
                 </div>
 
@@ -1495,12 +1684,7 @@
                   <span>Change:</span>
                   <span>
                     <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                    {{
-                      (
-                        (parseFloat(paymentInput) || 0) -
-                        parseFloat(orderConfirmationData?.subtotal || 0)
-                      ).toFixed(2)
-                    }}
+                    {{ confirmChange.toFixed(2) }}
                   </span>
                 </div>
               </div>
@@ -1521,26 +1705,33 @@
               @click="confirmOrder"
               :disabled="
                 isProcessingOrder ||
-                (parseFloat(paymentInput) || 0) <
-                  parseFloat(orderConfirmationData?.subtotal || 0)
+                (parseFloat(paymentInput) || 0) < confirmTotalDue ||
+                (posStore.discountType !== 'NONE' &&
+                  (!posStore.beneficiaryName || !posStore.beneficiaryIdNo))
               "
               class="flex-1 btn btn-sm sm:btn-md touch-manipulation font-thin"
               :class="
                 isProcessingOrder ||
-                (parseFloat(paymentInput) || 0) <
-                  parseFloat(orderConfirmationData?.subtotal || 0)
+                (parseFloat(paymentInput) || 0) < confirmTotalDue ||
+                (posStore.discountType !== 'NONE' &&
+                  (!posStore.beneficiaryName || !posStore.beneficiaryIdNo))
                   ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
                   : 'bg-primaryColor text-white hover:bg-primaryColor/80'
               "
             >
               <span v-if="isProcessingOrder">Processing...</span>
               <span
-                v-else-if="
-                  (parseFloat(paymentInput) || 0) <
-                  parseFloat(orderConfirmationData?.subtotal || 0)
-                "
+                v-else-if="(parseFloat(paymentInput) || 0) < confirmTotalDue"
               >
                 Enter Payment Amount
+              </span>
+              <span
+                v-else-if="
+                  posStore.discountType !== 'NONE' &&
+                  (!posStore.beneficiaryName || !posStore.beneficiaryIdNo)
+                "
+              >
+                Enter Beneficiary Details
               </span>
               <span v-else>Confirm & Finalize Order</span>
             </button>
@@ -1602,7 +1793,7 @@
             >
               <button
                 @click="closeOrderCompleteModal"
-                class="flex-1 btn  btn-sm sm:btn-md touch-manipulation font-thin hover:bg-gray-50"
+                class="flex-1 btn btn-sm sm:btn-md touch-manipulation font-thin hover:bg-gray-50"
               >
                 New Order
               </button>
@@ -1660,6 +1851,17 @@
                 <div class="flex justify-between mb-2">
                   <span class="font-medium">Cashier:</span>
                   <span>{{ receiptData?.cashierName }}</span>
+                </div>
+                <div
+                  v-if="
+                    receiptData?.discountType &&
+                    receiptData.discountType !== 'NONE'
+                  "
+                  class="mt-2 p-2 rounded bg-emerald-50 text-emerald-700 text-xs"
+                >
+                  VAT Exempt (SC/PWD). Beneficiary:
+                  {{ receiptData?.beneficiaryName }} — ID:
+                  {{ receiptData?.beneficiaryIdNo }}
                 </div>
               </div>
 

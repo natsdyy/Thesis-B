@@ -162,7 +162,7 @@
 
   const filters = ref({
     search: '',
-    status: '', // pending | processing | completed | void
+    status: 'processing', // default to processing
     order_type: '', // dine_in | take_out
     date_from: '',
     date_to: '',
@@ -291,6 +291,8 @@
     if (!context.currentBranch?.id) return;
     if (showLoading) loading.value = true;
     try {
+      // Ensure date_from/date_to are in sync with date_range before fetching
+      applyDateRange();
       // Calculate offset for pagination
       const offset = (currentPage.value - 1) * itemsPerPage.value;
 
@@ -341,6 +343,8 @@
             time: formatTime(order.created_at),
             date: formatTransactionDate(order.created_at),
             amount: parseFloat(order.total_amount) || 0,
+            is_vat_exempt: Boolean(order.is_vat_exempt),
+            discount_type: order.discount_type || 'NONE',
             amount_paid: parseFloat(order.amount_paid) || 0,
             change_amount: parseFloat(order.change_amount) || 0,
             items: order.items || [],
@@ -401,7 +405,7 @@
   const clearFilters = () => {
     filters.value = {
       search: '',
-      status: '',
+      status: 'processing',
       order_type: '',
       date_from: '',
       date_to: '',
@@ -472,6 +476,9 @@
       const dlg = document.getElementById('pos_transaction_modal');
       if (val) {
         Object.assign(filters.value, props.initialFilter || {});
+        // Enforce defaults if not provided via initialFilter
+        if (!filters.value.status) filters.value.status = 'processing';
+        if (!filters.value.date_range) filters.value.date_range = 'today';
         currentPage.value = 1;
         fetchTransactions();
         startAutoRefresh(); // Start auto-refresh when modal opens
@@ -496,41 +503,64 @@
   });
 
   // Date range helpers
-  const toYmd = (d) => {
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const startOfDayISO = (d) => {
+    const s = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+    return s.toISOString();
+  };
+  const endOfDayISO = (d) => {
+    const e = new Date(
+      d.getFullYear(),
+      d.getMonth(),
+      d.getDate(),
+      23,
+      59,
+      59,
+      999
+    );
+    return e.toISOString();
   };
 
   const applyDateRange = () => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     if (filters.value.date_range === 'today') {
-      filters.value.date_from = toYmd(today);
-      filters.value.date_to = toYmd(today);
+      filters.value.date_from = startOfDayISO(today);
+      filters.value.date_to = endOfDayISO(today);
     } else if (filters.value.date_range === 'this_week') {
       const day = today.getDay();
       const mondayOffset = day === 0 ? -6 : 1 - day;
       const weekStart = new Date(today);
       weekStart.setDate(today.getDate() + mondayOffset);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 6);
-      filters.value.date_from = toYmd(weekStart);
-      filters.value.date_to = toYmd(weekEnd);
+      const weekEnd = new Date(today);
+      filters.value.date_from = startOfDayISO(weekStart);
+      filters.value.date_to = endOfDayISO(weekEnd);
     } else if (filters.value.date_range === 'this_month') {
       const start = new Date(today.getFullYear(), today.getMonth(), 1);
-      const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-      filters.value.date_from = toYmd(start);
-      filters.value.date_to = toYmd(end);
+      const end = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+      );
+      filters.value.date_from = startOfDayISO(start);
+      filters.value.date_to = endOfDayISO(end);
     } else if (filters.value.date_range === 'custom_month') {
       const base = filters.value.date_from
         ? new Date(filters.value.date_from)
         : new Date(today.getFullYear(), today.getMonth(), 1);
       const start = new Date(base.getFullYear(), base.getMonth(), 1);
       const end = new Date(base.getFullYear(), base.getMonth() + 1, 0);
-      filters.value.date_from = toYmd(start);
-      filters.value.date_to = toYmd(end);
-    } else {
-      // custom: keep inputs
+      filters.value.date_from = startOfDayISO(start);
+      filters.value.date_to = endOfDayISO(end);
+    } else if (filters.value.date_range === 'custom') {
+      // If user entered yyyy-mm-dd values, convert to ISO day bounds
+      if (filters.value.date_from) {
+        const d = new Date(filters.value.date_from);
+        filters.value.date_from = startOfDayISO(d);
+      }
+      if (filters.value.date_to) {
+        const d = new Date(filters.value.date_to);
+        filters.value.date_to = endOfDayISO(d);
+      }
     }
   };
 
@@ -977,8 +1007,8 @@
                 <th>Date</th>
                 <th>Time</th>
                 <th>Amount</th>
-                <th>Paid Amount</th>
-                <th>Change</th>
+                <th>VAT-Exempt</th>
+                <th>SC/PWD</th>
                 <th>Cashier</th>
                 <th>Type</th>
                 <th>Status</th>
@@ -1030,21 +1060,28 @@
                   </div>
                 </td>
                 <td>
-                  <div class="font-thin text-gray-600">
-                    <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                      isNaN(transaction.amount_paid)
-                        ? '0.00'
-                        : transaction.amount_paid.toFixed(2)
-                    }}
+                  <div
+                    class="text-xs"
+                    :class="
+                      transaction.is_vat_exempt
+                        ? 'text-emerald-600'
+                        : 'text-gray-400'
+                    "
+                  >
+                    {{ transaction.is_vat_exempt ? 'Yes' : 'No' }}
                   </div>
                 </td>
                 <td>
-                  <div class="font-thin text-gray-600">
-                    <font-awesome-icon icon="fa-solid fa-peso-sign" />{{
-                      isNaN(transaction.change_amount)
-                        ? '0.00'
-                        : transaction.change_amount.toFixed(2)
-                    }}
+                  <div class="text-xs">
+                    <span
+                      v-if="
+                        transaction.discount_type &&
+                        transaction.discount_type !== 'NONE'
+                      "
+                      class="badge badge-xs bg-emerald-100 text-emerald-700 border border-emerald-200"
+                      >{{ transaction.discount_type }}</span
+                    >
+                    <span v-else class="text-gray-400">-</span>
                   </div>
                 </td>
                 <td>

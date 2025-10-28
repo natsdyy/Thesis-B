@@ -1470,7 +1470,7 @@ export default {
 }
 </script>
 
-<style>
+<style scoped>
 .job-application-management {
   padding: 24px;
   background: #f8fafc;

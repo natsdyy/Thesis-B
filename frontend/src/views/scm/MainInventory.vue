@@ -117,6 +117,99 @@
   import { useBranchDistributionStore } from '../../stores/branchDistributionStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
   import { useRouter } from 'vue-router';
+  // TinyMCE WYSIWYG editor (default export) and sanitizer for proofs
+  // The TinyMCE Vue package exports the component as default
+  import Editor from '@tinymce/tinymce-vue';
+  const TinyMCEEditor = Editor;
+  import { sanitizeHtml } from '../../utils/sanitizeHtml.js';
+  import { getApiUrl, formatImageUrl } from '../../config/api.js';
+  // Self-hosted TinyMCE runtime and plugins (avoid Tiny Cloud API key)
+  import 'tinymce/tinymce';
+  import tinymce from 'tinymce/tinymce';
+  import 'tinymce/icons/default';
+  import 'tinymce/themes/silver';
+  import 'tinymce/models/dom/model';
+  import 'tinymce/plugins/link';
+  import 'tinymce/plugins/lists';
+  import 'tinymce/plugins/image';
+  // Local skin to prevent CDN fetch
+  import 'tinymce/skins/ui/oxide/skin.min.css';
+  // Ensure license applied before any editor inits
+  try {
+    tinymce?.EditorManager?.overrideDefaults?.({ license_key: 'gpl' });
+  } catch (_) {}
+
+  // TinyMCE configuration
+  const tinyMCEConfig = computed(() => ({
+    menubar: false,
+    height: 200,
+    plugins: 'link lists',
+    toolbar:
+      'undo redo | bold italic underline | bullist numlist | link customimage',
+    automatic_uploads: true,
+    images_upload_url: '/api/uploads/proofs',
+    file_picker_types: 'image',
+    setup: (ed) => {
+      ed.ui.registry.addButton('customimage', {
+        icon: 'image',
+        tooltip: 'Insert image',
+        onAction: () => {
+          pickAndUploadImage(
+            (url) => ed.insertContent(`<img src="${formatImageUrl(url)}" />`),
+            'inventory_confirm_modal'
+          );
+        },
+      });
+    },
+    branding: false,
+    skin: false,
+    content_css: false,
+    license_key: 'gpl',
+    ui_container: 'body',
+  }));
+  const pickAndUploadImage = (
+    callback,
+    modalId = 'inventory_confirm_modal'
+  ) => {
+    try {
+      const modal = document.getElementById(modalId);
+      const wasOpen = !!modal?.open;
+      // Close modal to avoid z-index issues with native pickers
+      if (wasOpen)
+        try {
+          modal.close();
+        } catch (_) {}
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/png,image/jpeg';
+      input.onchange = async () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+          const res = await fetch(getApiUrl('/uploads/proofs'), {
+            method: 'POST',
+            body: fd,
+          });
+          const json = await res.json();
+          if (res.ok && json.location) {
+            callback(json.location);
+          } else {
+            alert(json.message || 'Upload failed');
+          }
+        } catch (e) {
+          alert('Upload failed');
+        }
+        // Reopen modal after upload attempt
+        if (wasOpen)
+          try {
+            modal.showModal();
+          } catch (_) {}
+      };
+      input.click();
+    } catch (_) {}
+  };
 
   const router = useRouter();
 
@@ -184,6 +277,9 @@
         completed_by: dist.completed_by || null,
         received_by: dist.processed_by || dist.completed_by || '',
         notes: dist.notes,
+        // Include proofs uploaded by SCM (prepared) and Branch (received)
+        prepared_proof_html: dist.prepared_proof_html || null,
+        received_proof_html: dist.received_proof_html || null,
         items: (dist.items || []).map((it) => ({
           source: it.source,
           item_name: it.name,
@@ -363,6 +459,9 @@
     message: '',
     onConfirm: null,
   });
+
+  // Proof HTML from TinyMCE editor (Prepared By only; branch will provide Received By proof)
+  const preparedProofHtml = ref('');
 
   // Form data
   const stockForm = ref({
@@ -2134,6 +2233,7 @@
                 0
               ),
               notes: inventoryStore.distributionCart.notes || '',
+              prepared_proof_html: sanitizeHtml(preparedProofHtml.value),
               items: cart.items.map((x) => ({
                 source: x.source,
                 item_ref_id: x.item_id,
@@ -2222,6 +2322,10 @@
                 createdReceipt.completed_by ||
                 '',
               notes: createdReceipt.notes,
+              prepared_proof_html:
+                createdReceipt.prepared_proof_html ||
+                sanitizeHtml(preparedProofHtml.value),
+              received_proof_html: createdReceipt.received_proof_html,
               items: createdReceipt.items.map((item) => ({
                 source: item.source,
                 item_name: item.name,
@@ -4409,6 +4513,16 @@
             <span class="font-medium">Notes:</span>
             {{ confirmModal.details.notes }}
           </div>
+          <!-- Proof editor (TinyMCE) - Prepared By only; branch will attach Received By on acceptance -->
+          <div class="mt-4 grid grid-cols-1 gap-4">
+            <div>
+              <div class="text-xs font-medium mb-1">Prepared By Proof</div>
+              <TinyMCEEditor
+                v-model="preparedProofHtml"
+                :init="tinyMCEConfig"
+              />
+            </div>
+          </div>
         </div>
 
         <div class="modal-action">
@@ -4898,5 +5012,20 @@
       flex: 1;
       min-width: 120px;
     }
+  }
+</style>
+
+<style>
+  /* Ensure TinyMCE popups (image dialog, link dialog, pickers) appear above DaisyUI modals */
+  .tox,
+  .tox-tinymce-aux,
+  .tox-silver-sink,
+  .tox-dialog-wrap,
+  .tox-dialog {
+    z-index: 99999 !important;
+  }
+  /* Avoid stacking-context issues from transform animations in DaisyUI modal */
+  #inventory_confirm_modal .modal-box {
+    transform: none !important;
   }
 </style>

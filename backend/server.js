@@ -50,6 +50,7 @@ const shiftTypesRoutes = require("./routes/shiftTypes");
 const employeeTransferRequestRoutes = require("./routes/employeeTransferRequests");
 const { serve, setup } = require("./config/swagger");
 const posRoutes = require("./routes/pos");
+const uploadRoutes = require("./routes/uploads");
 const overtimeRoutes = require("./routes/overtime");
 const leaveRoutes = require("./routes/leave");
 const financeRoutes = require("./routes/finance");
@@ -102,13 +103,13 @@ const corsConfig = {
     if (!origin) return callback(null, true);
 
     // In development, be more permissive
-    if (process.env.NODE_ENV !== 'production') {
+    if (process.env.NODE_ENV !== "production") {
       // Allow localhost with any port
       if (/^http:\/\/localhost(:\d+)?$/.test(origin)) {
         console.log(`CORS allowed localhost origin: ${origin}`);
         return callback(null, true);
       }
-      
+
       // Allow LAN development origins
       if (/^http:\/\/192\.168\.\d+\.\d+:(8080|80|5000)$/.test(origin)) {
         console.log(`CORS allowed LAN origin: ${origin}`);
@@ -116,11 +117,18 @@ const corsConfig = {
       }
     }
 
-    const isLanDevOrigin = /^http:\/\/192\.168\.\d+\.\d+:(8080|80)$/.test(origin);
+    const isLanDevOrigin = /^http:\/\/192\.168\.\d+\.\d+:(8080|80)$/.test(
+      origin
+    );
     const isRailwayOrigin = /^https:\/\/.*\.up\.railway\.app$/.test(origin);
     const isLocalhost = /^http:\/\/localhost(:\d+)?$/.test(origin);
 
-    if (allowList.includes(origin) || isLanDevOrigin || isRailwayOrigin || isLocalhost) {
+    if (
+      allowList.includes(origin) ||
+      isLanDevOrigin ||
+      isRailwayOrigin ||
+      isLocalhost
+    ) {
       console.log(`CORS allowed origin: ${origin}`);
       return callback(null, true);
     }
@@ -219,6 +227,7 @@ app.use("/api/executive", executiveRoutes);
 app.use("/api/admin/org-chart", adminOrgChartRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/branch-positions", branchPositionRoutes);
+app.use("/api/uploads", uploadRoutes);
 
 // Auto-expire job
 async function autoExpireJob() {
@@ -353,7 +362,7 @@ app.get("/api/health/db", async (req, res) => {
 const server = app.listen(PORT, "0.0.0.0", async () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🌐 Environment: ${process.env.NODE_ENV || "development"}`);
-  console.log(`🔗 CORS allowed origins: ${allowList.join(', ')}`);
+  console.log(`🔗 CORS allowed origins: ${allowList.join(", ")}`);
   console.log(
     `📚 API Documentation available at http://localhost:${PORT}/api-docs`
   );

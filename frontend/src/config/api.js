@@ -102,10 +102,14 @@ export const formatImageUrl = (imageUrl) => {
     // Get the backend URL by removing /api from the API base URL
     let backendUrl = apiConfig.baseURL.replace('/api', '');
 
-    // Special handling for production environments
+    // Special handling for environments
     if (typeof window !== 'undefined' && window.location?.origin) {
+      // Local dev: serve uploads from backend port directly (Vite proxy usually not set for /uploads)
+      if (window.location.origin.includes(':8080')) {
+        backendUrl = 'http://localhost:5000';
+      }
       // For countryside-steakhouse.site domain
-      if (window.location.origin.includes('countryside-steakhouse.site')) {
+      else if (window.location.origin.includes('countryside-steakhouse.site')) {
         backendUrl = 'https://www.countryside-steakhouse.site';
       }
       // For Railway production deployment, use the production domain
@@ -118,7 +122,11 @@ export const formatImageUrl = (imageUrl) => {
       }
     }
 
-    const fullUrl = `${backendUrl}${imageUrl}`;
+    // Use URL API to safely join paths and avoid duplicate segments
+    let fullUrl = new URL(imageUrl, backendUrl).toString();
+    // Normalize any accidental repeated /uploads segments
+    fullUrl = fullUrl.replace('/uploads/uploads/', '/uploads/');
+
     console.log('Backend URL:', backendUrl);
     console.log('Formatted URL:', fullUrl);
     return fullUrl;

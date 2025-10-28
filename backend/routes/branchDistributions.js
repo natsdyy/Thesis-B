@@ -1,5 +1,15 @@
 const express = require("express");
 const router = express.Router();
+// Accept prepared/received proof HTML on create/update and return on reads
+// Ensure only images are embedded by sanitizing allowed tags server-side
+const sanitizeHtml = (html) => {
+  if (!html) return null;
+  // Minimal sanitizer to strip scripts; frontend also sanitizes
+  return String(html)
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
+    .replace(/on\w+="[^"]*"/g, "")
+    .replace(/javascript:/gi, "");
+};
 const BranchDistribution = require("../models/BranchDistribution");
 const { authenticateToken } = require("../middleware/rbac");
 
@@ -267,7 +277,15 @@ router.post("/bulk-distribute", authenticateToken, async (req, res) => {
  */
 router.post("/", authenticateToken, async (req, res) => {
   try {
-    const { branch_id, prepared_by, total_amount, notes, items } = req.body;
+    const {
+      branch_id,
+      prepared_by,
+      total_amount,
+      notes,
+      items,
+      prepared_proof_html,
+      received_proof_html,
+    } = req.body;
 
     // Validation
     if (
@@ -321,6 +339,8 @@ router.post("/", authenticateToken, async (req, res) => {
       prepared_by,
       total_amount,
       notes,
+      prepared_proof_html: sanitizeHtml(prepared_proof_html),
+      received_proof_html: sanitizeHtml(received_proof_html),
       items,
     });
 
@@ -864,7 +884,7 @@ router.post("/:id/reject", authenticateToken, async (req, res) => {
 router.post("/:id/complete", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { completed_by } = req.body;
+    const { completed_by, received_proof_html } = req.body;
 
     // Validation
     if (!completed_by) {
@@ -879,6 +899,7 @@ router.post("/:id/complete", authenticateToken, async (req, res) => {
       {
         completed_by,
         performed_by_id: req.user?.id || null,
+        received_proof_html: sanitizeHtml(received_proof_html),
       }
     );
 

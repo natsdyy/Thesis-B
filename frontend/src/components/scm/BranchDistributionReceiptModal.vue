@@ -1,5 +1,6 @@
 <script setup>
   import { watch } from 'vue';
+  import { sanitizeHtml } from '../../utils/sanitizeHtml.js';
 
   const props = defineProps({
     receipt: {
@@ -16,7 +17,92 @@
     },
   });
 
-  const printReceipt = () => window.print();
+  const printReceipt = () => {
+    try {
+      const printWindow = window.open(
+        '',
+        '_blank',
+        'width=900,height=700,noopener'
+      );
+      if (!printWindow) return window.print();
+
+      // Select the exact modal content
+      const modalEl = document.getElementById(
+        'branch_distribution_receipt_modal'
+      );
+      const content = modalEl ? modalEl.querySelector('.modal-box') : null;
+      if (!content) return window.print();
+
+      // Scaffold minimal HTML
+      const doc = printWindow.document;
+      doc.open();
+      doc.write(`<!DOCTYPE html><html><head>
+        <meta charset="utf-8" />
+        <title>Branch Distribution Receipt</title>
+        <base href="${location.origin}/">
+        <style>
+          html, body { background:#fff !important; color:#111; margin:0; }
+          .print-container{ max-width:1152px; margin:0.5in auto; padding:16px; background:#fff; }
+          /* Hide action buttons inside the cloned modal */
+          .modal-action{ display:none !important; }
+          /* Ensure images and tables print cleanly */
+          .prose img{ max-width:100% !important; height:auto !important; page-break-inside:avoid; }
+          table{ page-break-inside:avoid; border-collapse:collapse; }
+          @page{ size:A4; margin:0; }
+        </style>
+      </head><body></body></html>`);
+      doc.close();
+
+      // Copy all existing styles so Tailwind/DaisyUI classes render the same
+      const head = doc.head;
+      const currentHead = document.head;
+      currentHead
+        .querySelectorAll('link[rel="stylesheet"], style')
+        .forEach((node) => {
+          try {
+            head.appendChild(node.cloneNode(true));
+          } catch (_) {}
+        });
+
+      // Strong print overrides to force proper table layout regardless of framework CSS
+      const strongOverrides = doc.createElement('style');
+      strongOverrides.type = 'text/css';
+      strongOverrides.textContent = `
+        /* Force real tables in print to avoid single-row rendering */
+        table, .table { width: 100% !important; border-collapse: collapse !important; background: #fff !important; }
+        thead, .table thead { display: table-header-group !important; }
+        tbody, .table tbody { display: table-row-group !important; }
+        tr, .table tr { display: table-row !important; }
+        th, td, .table th, .table td { display: table-cell !important; border: 1px solid #000 !important; padding: 6px 8px !important; color:#111 !important; vertical-align: top !important; }
+        th, .table th { background: #fff !important; font-weight: 600 !important; text-align: left !important; }
+        /* Avoid DaisyUI responsive blocks in print by unsetting its :where() cascade */
+        .table :where(thead, tbody, tr, th, td){ all: unset; }
+        .table thead{ display: table-header-group !important; }
+        .table tbody{ display: table-row-group !important; }
+        .table tr{ display: table-row !important; }
+        .table th, .table td{ display: table-cell !important; border: 1px solid #000 !important; padding: 6px 8px !important; }
+      `;
+      head.appendChild(strongOverrides);
+
+      // Clone the modal content into a constrained container
+      const wrapper = doc.createElement('div');
+      wrapper.className = 'print-container';
+      wrapper.appendChild(content.cloneNode(true));
+      doc.body.appendChild(wrapper);
+
+      printWindow.focus();
+      printWindow.onload = () => {
+        setTimeout(() => {
+          try {
+            printWindow.print();
+            printWindow.close();
+          } catch (_) {}
+        }, 200);
+      };
+    } catch (_) {
+      window.print();
+    }
+  };
 
   const extractRejectionReason = (notes) => {
     if (!notes) return 'No reason provided';
@@ -207,6 +293,13 @@
                 props.receipt?.prepared_by || ''
               }}</span>
             </div>
+            <!-- Prepared proof (sanitized HTML) -->
+            <div v-if="props.receipt?.prepared_proof_html" class="mt-2 w-full">
+              <div
+                class="prose prose-sm max-w-none bg-white p-2 border rounded"
+                v-html="sanitizeHtml(props.receipt.prepared_proof_html)"
+              ></div>
+            </div>
           </div>
           <div class="flex flex-col items-start">
             <div class="w-full border-b border-black h-8"></div>
@@ -218,6 +311,13 @@
                 props.receipt?.received_by ||
                 'Not specified'
               }}</span>
+            </div>
+            <!-- Received proof (sanitized HTML) -->
+            <div v-if="props.receipt?.received_proof_html" class="mt-2 w-full">
+              <div
+                class="prose prose-sm max-w-none bg-white p-2 border rounded"
+                v-html="sanitizeHtml(props.receipt.received_proof_html)"
+              ></div>
             </div>
           </div>
         </div>
@@ -240,3 +340,18 @@
     </div>
   </dialog>
 </template>
+<style scoped>
+  /* Ensure embedded proof images scale nicely and print correctly */
+  .prose img {
+    max-width: 100%;
+    height: auto;
+  }
+
+  @media print {
+    .prose img {
+      max-width: 100%;
+      height: auto;
+      page-break-inside: avoid;
+    }
+  }
+</style>

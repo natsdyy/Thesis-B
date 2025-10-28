@@ -231,7 +231,8 @@
       <!-- Interview Schedule Tab -->
       <div v-if="activeTab === 'interview-schedule'" class="tab-panel">
         <div class="panel-header">
-          <h3>📅 Interview Schedule</h3>
+          
+          <h3> <font-awesome-icon icon="fa-solid fa-calendar" /> Interview Schedule</h3>
           <p>Calendar view, interviewer assignment, time slots</p>
         </div>
         <div class="content-section">
@@ -328,7 +329,7 @@
                 <button
                   @click="loadPositions"
                   :disabled="isLoadingPositions"
-                  class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
+                  class="btn btn-outline btn-sm flex items-center gap-2"
                   title="Refresh positions from Position Management"
                 >
                   <RefreshCw :class="['w-4 h-4', isLoadingPositions ? 'animate-spin' : '']" />

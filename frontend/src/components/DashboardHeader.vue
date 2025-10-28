@@ -343,13 +343,13 @@
       </p>
       <div class="modal-action">
         <button
-          class="btn btn-ghost btn-sm font-thin border-none"
+          class="btn btn-ghost btn-sm !font-thin border-none"
           @click="cancelLogout"
         >
           Cancel
         </button>
         <button
-          class="btn bg-error/30 text-error btn-sm font-thin border-none"
+          class="btn bg-error/30 text-error btn-sm font-thin border-none !font-thin"
           @click="confirmLogout"
         >
           Yes, Log Out

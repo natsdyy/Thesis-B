@@ -56,7 +56,7 @@ export const menuItems = [
     managerOnly: true,
   },
   {
-    name: 'Job Application Management',
+    name: 'Job Application',
     icon: FileUser,
     route: '/hr/job-application-management',
     department: 'Human Resource',

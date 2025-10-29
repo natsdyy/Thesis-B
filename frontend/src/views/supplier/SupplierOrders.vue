@@ -1039,6 +1039,11 @@
         label: 'Cancelled',
         count: statusCounts.cancelled || 0,
       },
+      {
+        value: 'in progress',
+        label: 'In Progress',
+        count: statusCounts['in progress'] || 0,
+      }
     ];
   });
 
@@ -1095,6 +1100,7 @@
       Completed: 'bg-success/10 text-success',
       Cancelled: 'bg-error/10 text-error',
       'In Transit': 'bg-info/10 text-info',
+      'In Progress': 'bg-info/10 text-info',
     };
     return statusMap[status] || 'bg-ghost';
   };

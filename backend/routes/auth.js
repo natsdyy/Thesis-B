@@ -272,8 +272,14 @@ router.post("/validate-session", async (req, res) => {
       });
     }
 
-    // Check if role is active
-    if (!employee.role_id) {
+    // Check if role is active (skip for board members)
+    const isBoardMember =
+      employee.board_id ||
+      employee.position?.includes("Board") ||
+      employee.position?.includes("Chairman") ||
+      employee.position === "Chairman of the Board";
+
+    if (!isBoardMember && !employee.role_id) {
       return res.status(403).json({
         success: false,
         message: "No role assigned to your account",

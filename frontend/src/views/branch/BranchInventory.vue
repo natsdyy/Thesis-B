@@ -48,8 +48,105 @@
   import BranchInventoryConsumptionModal from '../../components/branch/BranchInventoryConsumptionModal.vue';
   import BranchInventoryAdjustmentModal from '../../components/branch/BranchInventoryAdjustmentModal.vue';
   import BranchInventoryTransactionModal from '../../components/branch/BranchInventoryTransactionModal.vue';
-  import { apiConfig, formatImageUrl } from '../../config/api';
+  // Use centralized API helpers
+  import { formatImageUrl, getApiUrl } from '../../config/api.js';
   import { useRouter } from 'vue-router';
+  // TinyMCE (self-hosted) for Received By proof capture
+  import Editor from '@tinymce/tinymce-vue';
+  const TinyMCEEditor = Editor;
+  import { sanitizeHtml } from '../../utils/sanitizeHtml.js';
+  import tinymce from 'tinymce/tinymce';
+  import 'tinymce/tinymce';
+  import 'tinymce/icons/default';
+  import 'tinymce/themes/silver';
+  import 'tinymce/models/dom/model';
+  import 'tinymce/plugins/link';
+  import 'tinymce/plugins/lists';
+  import 'tinymce/plugins/image';
+  import 'tinymce/skins/ui/oxide/skin.min.css';
+  try {
+    tinymce?.EditorManager?.overrideDefaults?.({ license_key: 'gpl' });
+  } catch (_) {}
+
+  // TinyMCE configuration
+  const tinyMCEConfig = computed(() => ({
+    menubar: false,
+    height: 220,
+    plugins: 'link lists',
+    // Only show the explicit upload image button; remove overflow/ellipsis
+    toolbar: 'uploadimage',
+    toolbar_mode: 'wrap',
+    automatic_uploads: true,
+    images_upload_url: '/api/uploads/proofs',
+    file_picker_types: 'image',
+    // Make editor images responsive to avoid oversized previews
+    content_style:
+      'html,body{max-width:100%;} img{max-width:100%;height:auto;display:block;margin:6px 0;}',
+    valid_elements:
+      'p,b,i,u,strong,em,ul,ol,li,br,a[href|target|rel],img[src|alt|title|class|style],span[class|style],div[class|style]',
+    setup: (ed) => {
+      ed.ui.registry.addButton('uploadimage', {
+        text: 'Upload Image',
+        tooltip: 'Upload image',
+        onAction: () => {
+          pickAndUploadImage(
+            (url) => ed.insertContent(`<img src="${formatImageUrl(url)}" />`),
+            'auto'
+          );
+        },
+      });
+    },
+    branding: false,
+    skin: false,
+    content_css: false,
+    license_key: 'gpl',
+    ui_container: 'body',
+  }));
+
+  const pickAndUploadImage = (callback, modalId = 'auto') => {
+    try {
+      // Detect currently open dialog if auto
+      const activeModalId =
+        modalId === 'auto'
+          ? document.querySelector('dialog[open]')?.id ||
+            'distribution_acceptance_modal'
+          : modalId;
+      const modal = document.getElementById(activeModalId);
+      const wasOpen = !!modal?.open;
+      if (wasOpen)
+        try {
+          modal.close();
+        } catch (_) {}
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/png,image/jpeg';
+      input.onchange = async () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+          const res = await fetch(getApiUrl('/uploads/proofs'), {
+            method: 'POST',
+            body: fd,
+          });
+          const json = await res.json();
+          if (res.ok && json.location) {
+            callback(json.location);
+          } else {
+            alert(json.message || 'Upload failed');
+          }
+        } catch (e) {
+          alert('Upload failed');
+        }
+        if (wasOpen)
+          try {
+            modal.showModal();
+          } catch (_) {}
+      };
+      input.click();
+    } catch (_) {}
+  };
 
   const branchContextStore = useBranchContextStore();
   const branchDistributionStore = useBranchDistributionStore();
@@ -67,6 +164,8 @@
   const currentPage = ref(1);
   const itemsPerPage = ref(12);
   const loading = ref(false);
+  // Branch-provided proof for Received By
+  const receivedProofHtml = ref('');
 
   // Alerts tab state to mirror MainInventory
   const alertTab = ref('expiring');
@@ -1735,6 +1834,8 @@
   const openAcceptanceModal = (distribution) => {
     console.log('Opening acceptance modal for distribution:', distribution);
     selectedDistribution.value = distribution;
+    // Reset received proof input
+    receivedProofHtml.value = '';
     showAcceptanceModal.value = true;
     // Open the modal using DaisyUI's modal system
     document.getElementById('distribution_acceptance_modal')?.showModal();
@@ -1798,6 +1899,7 @@
       );
       await branchDistributionStore.completeDistribution(distribution.id, {
         completed_by: authStore.user?.name || 'Branch Manager',
+        received_proof_html: sanitizeHtml(receivedProofHtml.value),
       });
       console.log(
         'Distribution completed successfully and items added to branch inventory'
@@ -1925,7 +2027,7 @@
       await branchDistributionStore.rejectDistribution(distribution.id, {
         rejected_by: authStore.user?.name || 'Branch Manager',
         rejection_reason: rejectionForm.value.reason,
-        rejection_notes: rejectionForm.value.notes,
+        rejection_notes: sanitizeHtml(rejectionForm.value.notes),
       });
       console.log(
         'Distribution rejected successfully and quantities returned to main inventory'
@@ -2030,6 +2132,9 @@
             }
             return user?.name || 'Branch Manager';
           })(),
+        // Include proof fields to match MainInventory behavior
+        prepared_proof_html: full.prepared_proof_html || null,
+        received_proof_html: full.received_proof_html || null,
         items:
           (full.items || distribution.items || [])?.map((item) => ({
             item_name: item.name,
@@ -2612,8 +2717,7 @@
             <div class="card-body">
               <h3 class="card-title text-primaryColor mb-4">
                 <Package class="w-5 h-5" />
-                {{ inventoryType === 'scm' ? 'Raw' : 'Menu' }} Inventory
-                Items
+                {{ inventoryType === 'scm' ? 'Raw' : 'Menu' }} Inventory Items
               </h3>
 
               <!-- Loading State -->
@@ -3710,7 +3814,7 @@
       :class="{ 'modal-open': showAcceptanceModal }"
       @click="(e) => e.target === e.currentTarget && closeAcceptanceModal()"
     >
-      <div class="modal-box w-11/12 max-w-4xl">
+      <div class="modal-box w-11/12 max-w-4xl max-h-[90vh] overflow-y-auto">
         <div class="flex justify-between items-center mb-6">
           <h3 class="font-bold text-xl text-primaryColor">
             <CheckCircle class="w-6 h-6 inline mr-2" />
@@ -3818,6 +3922,12 @@
                 {{ selectedDistribution.notes }}
               </p>
             </div>
+          </div>
+
+          <!-- Received By Proof (Branch) -->
+          <div>
+            <h4 class="font-semibold text-lg mb-2">Received By Proof</h4>
+            <TinyMCEEditor v-model="receivedProofHtml" :init="tinyMCEConfig" />
           </div>
 
           <!-- Confirmation Message -->
@@ -3944,11 +4054,10 @@
               <label class="label">
                 <span class="label-text font-medium">Additional Notes</span>
               </label>
-              <textarea
+              <TinyMCEEditor
                 v-model="rejectionForm.notes"
-                class="textarea textarea-bordered w-full h-24"
-                placeholder="Please provide additional details about the rejection..."
-              ></textarea>
+                :init="tinyMCEConfig"
+              />
             </div>
           </div>
 
@@ -4090,22 +4199,6 @@
         <h3 class="font-bold text-lg mb-2">
           Branch Returns Awaiting Acknowledgment
         </h3>
-        <div class="flex gap-2 mb-3">
-          <button
-            class="btn btn-xs"
-            :class="returnsTab === 'approved' ? 'btn-primary' : ''"
-            @click="returnsTab = 'approved'"
-          >
-            Approved
-          </button>
-          <button
-            class="btn btn-xs"
-            :class="returnsTab === 'rejected' ? 'btn-error' : ''"
-            @click="returnsTab = 'rejected'"
-          >
-            Rejected
-          </button>
-        </div>
         <div class="overflow-x-auto max-h-[60vh]">
           <table class="table table-zebra table-xs w-full custom-zebra">
             <thead>
@@ -4195,5 +4288,20 @@
   }
   .custom-zebra tbody tr:nth-child(odd) {
     background-color: rgba(0, 0, 0, 0.03);
+  }
+</style>
+
+<style>
+  /* Raise TinyMCE dialogs above DaisyUI modal in branch acceptance */
+  .tox,
+  .tox-tinymce-aux,
+  .tox-silver-sink,
+  .tox-dialog-wrap,
+  .tox-dialog {
+    z-index: 99999 !important;
+  }
+  /* Avoid stacking-context issues from transform animations in DaisyUI modal */
+  #distribution_acceptance_modal .modal-box {
+    transform: none !important;
   }
 </style>

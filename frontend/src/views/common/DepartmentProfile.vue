@@ -80,6 +80,20 @@
   // Computed
   const user = computed(() => authStore.user);
 
+  // Access flags
+  const isBoardMember = computed(() => {
+    const u = user.value || {};
+    return (
+      !!u.board_id ||
+      u.role === 'Chairman of the Board' ||
+      u.role === 'Board of Directors'
+    );
+  });
+  const isSuperAdmin = computed(() => authStore.isSuperAdmin);
+  const showPayslipSection = computed(
+    () => !isBoardMember.value && !isSuperAdmin.value
+  );
+
   const profileInitials = computed(() => {
     if (profileData.value.first_name && profileData.value.last_name) {
       return (
@@ -124,8 +138,8 @@
         phone: employee.phone_number || '',
         address: employee.address || '',
         hire_date: employee.created_at || '',
-        employee_id: employee.employee_id || '',
-        role: employee.role || 'Employee',
+        employee_id: employee.employee_id || employee.board_id || '',
+        role: employee.role || employee.position || 'Employee',
         department: employee.department || '',
         last_login: employee.last_login || '',
         profile_picture: employee.photo_url || null,
@@ -188,8 +202,8 @@
         phone: employee.phone_number || '',
         address: employee.address || '',
         hire_date: employee.created_at || '',
-        employee_id: employee.employee_id || '',
-        role: employee.role || 'Employee',
+        employee_id: employee.employee_id || employee.board_id || '',
+        role: employee.role || employee.position || 'Employee',
         department: employee.department || '',
         last_login: employee.last_login || '',
         profile_picture: employee.photo_url || null,
@@ -392,7 +406,9 @@
 
   onMounted(() => {
     loadProfileData();
-    loadPayslips();
+    if (showPayslipSection.value) {
+      loadPayslips();
+    }
   });
 </script>
 
@@ -401,8 +417,12 @@
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-3xl font-bold text-primaryColor">Employee Profile</h1>
-        <p class="text-gray-600 mt-1">Personal Information</p>
+        <h1 v-if="!isBoardMember" class="text-3xl font-bold text-primaryColor">
+          Employee Profile
+        </h1>
+        <h1 v-else class="text-3xl font-bold text-primaryColor">
+          Board Member Profile
+        </h1>
       </div>
     </div>
 
@@ -546,7 +566,7 @@
                   </template>
                 </div>
 
-                <div class="form-control md:col-span-1">
+                <div class="form-control md:col-span-1" v-if="!isBoardMember">
                   <label class="label">
                     <span class="label-text font-medium">Address</span>
                   </label>
@@ -582,7 +602,7 @@
       </div>
 
       <!-- Work Information -->
-      <div class="card bg-white shadow-lg">
+      <div class="card bg-white shadow-lg" v-if="!isBoardMember">
         <div class="card-body">
           <h2 class="card-title text-primaryColor mb-4">
             <Building2 class="w-5 h-5" />
@@ -750,7 +770,7 @@
       </div>
 
       <!-- Payslips Section -->
-      <div class="card bg-white shadow-lg">
+      <div v-if="showPayslipSection" class="card bg-white shadow-lg">
         <div class="card-body">
           <div
             class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4"

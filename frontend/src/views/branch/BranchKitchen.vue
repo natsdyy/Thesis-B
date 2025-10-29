@@ -9,6 +9,8 @@
   const branchCtx = useBranchContextStore();
   const { showSuccess, showInfo, showError } = useCustomToast();
 
+  // Only show loading indicator on first load; subsequent polls are silent
+  const initialLoading = ref(true);
   const loading = ref(false);
   const orders = ref([]);
   const search = ref('');
@@ -22,9 +24,12 @@
 
   const currentBranch = computed(() => branchCtx.currentBranch);
 
-  const fetchKitchenOrders = async () => {
+  const fetchKitchenOrders = async (opts = { silent: false }) => {
     if (!currentBranch.value?.id) return;
-    loading.value = true;
+    if (!opts.silent) {
+      initialLoading.value = true;
+      loading.value = true;
+    }
     try {
       const { data } = await posStore.fetchOrderHistory({
         branch_id: currentBranch.value.id,
@@ -63,6 +68,7 @@
       showError('Failed to load kitchen orders');
     } finally {
       loading.value = false;
+      initialLoading.value = false;
     }
   };
 
@@ -149,7 +155,7 @@
     if (autoTimer.value) clearInterval(autoTimer.value);
     autoTimer.value = setInterval(() => {
       // Silent refresh behavior; keep loading spinner off
-      fetchKitchenOrders();
+      fetchKitchenOrders({ silent: true });
     }, 10000);
     document.addEventListener('visibilitychange', onVisibility);
   };
@@ -161,11 +167,12 @@
   };
 
   const onVisibility = () => {
-    if (document.visibilityState === 'visible') fetchKitchenOrders();
+    if (document.visibilityState === 'visible')
+      fetchKitchenOrders({ silent: true });
   };
 
   onMounted(() => {
-    fetchKitchenOrders();
+    fetchKitchenOrders({ silent: false });
     startAuto();
   });
 
@@ -215,7 +222,7 @@
           </select>
         </div>
 
-        <div v-if="loading" class="py-10 flex justify-center">
+        <div v-if="initialLoading" class="py-10 flex justify-center">
           <span
             class="loading loading-spinner loading-lg text-primaryColor"
           ></span>

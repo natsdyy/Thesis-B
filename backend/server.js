@@ -21,6 +21,7 @@ const permissionRoutes = require("./routes/permissions");
 const rolePermissionRoutes = require("./routes/rolePermissions");
 const authRoutes = require("./routes/auth");
 const boardAuthRoutes = require("./routes/boardAuth");
+const boardMembersRoutes = require("./routes/boardMembers");
 const branchRoutes = require("./routes/branches");
 const supplyRequestRoutes = require("./routes/supplyRequest");
 const budgetReleaseRoutes = require("./routes/budgetRelease");
@@ -50,6 +51,7 @@ const shiftTypesRoutes = require("./routes/shiftTypes");
 const employeeTransferRequestRoutes = require("./routes/employeeTransferRequests");
 const { serve, setup } = require("./config/swagger");
 const posRoutes = require("./routes/pos");
+const uploadRoutes = require("./routes/uploads");
 const overtimeRoutes = require("./routes/overtime");
 const leaveRoutes = require("./routes/leave");
 const financeRoutes = require("./routes/finance");
@@ -103,13 +105,13 @@ const corsConfig = {
     if (!origin) return callback(null, true);
 
     // In development, be more permissive
-    if (process.env.NODE_ENV !== 'production') {
+    if (process.env.NODE_ENV !== "production") {
       // Allow localhost with any port
       if (/^http:\/\/localhost(:\d+)?$/.test(origin)) {
         console.log(`CORS allowed localhost origin: ${origin}`);
         return callback(null, true);
       }
-      
+
       // Allow LAN development origins
       if (/^http:\/\/192\.168\.\d+\.\d+:(8080|80|5000)$/.test(origin)) {
         console.log(`CORS allowed LAN origin: ${origin}`);
@@ -117,11 +119,18 @@ const corsConfig = {
       }
     }
 
-    const isLanDevOrigin = /^http:\/\/192\.168\.\d+\.\d+:(8080|80)$/.test(origin);
+    const isLanDevOrigin = /^http:\/\/192\.168\.\d+\.\d+:(8080|80)$/.test(
+      origin
+    );
     const isRailwayOrigin = /^https:\/\/.*\.up\.railway\.app$/.test(origin);
     const isLocalhost = /^http:\/\/localhost(:\d+)?$/.test(origin);
 
-    if (allowList.includes(origin) || isLanDevOrigin || isRailwayOrigin || isLocalhost) {
+    if (
+      allowList.includes(origin) ||
+      isLanDevOrigin ||
+      isRailwayOrigin ||
+      isLocalhost
+    ) {
       console.log(`CORS allowed origin: ${origin}`);
       return callback(null, true);
     }
@@ -180,6 +189,7 @@ app.use("/api/permissions", permissionRoutes);
 app.use("/api/role-permissions", rolePermissionRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/board-auth", boardAuthRoutes);
+app.use("/api/board-members", boardMembersRoutes);
 app.use("/api/branches", branchRoutes);
 app.use("/api/supply-requests", supplyRequestRoutes);
 app.use("/api/budget-releases", budgetReleaseRoutes);
@@ -355,7 +365,7 @@ app.get("/api/health/db", async (req, res) => {
 const server = app.listen(PORT, "0.0.0.0", async () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🌐 Environment: ${process.env.NODE_ENV || "development"}`);
-  console.log(`🔗 CORS allowed origins: ${allowList.join(', ')}`);
+  console.log(`🔗 CORS allowed origins: ${allowList.join(", ")}`);
   console.log(
     `📚 API Documentation available at http://localhost:${PORT}/api-docs`
   );

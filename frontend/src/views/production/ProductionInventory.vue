@@ -1307,7 +1307,7 @@
 </script>
 
 <template>
-  <div class="container mx-auto p-2 sm:p-4 lg:p-6 max-w-6xl">
+  <div class=" mx-auto p-2 sm:p-4 lg:p-6 ">
     <!-- Header -->
     <div class="text-center mb-4 sm:mb-6 lg:mb-8">
       <h1

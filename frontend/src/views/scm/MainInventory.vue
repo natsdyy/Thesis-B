@@ -117,6 +117,105 @@
   import { useBranchDistributionStore } from '../../stores/branchDistributionStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
   import { useRouter } from 'vue-router';
+  // TinyMCE WYSIWYG editor (default export) and sanitizer for proofs
+  // The TinyMCE Vue package exports the component as default
+  import Editor from '@tinymce/tinymce-vue';
+  const TinyMCEEditor = Editor;
+  import { sanitizeHtml } from '../../utils/sanitizeHtml.js';
+  import { getApiUrl, formatImageUrl } from '../../config/api.js';
+  // Self-hosted TinyMCE runtime and plugins (avoid Tiny Cloud API key)
+  import 'tinymce/tinymce';
+  import tinymce from 'tinymce/tinymce';
+  import 'tinymce/icons/default';
+  import 'tinymce/themes/silver';
+  import 'tinymce/models/dom/model';
+  import 'tinymce/plugins/link';
+  import 'tinymce/plugins/lists';
+  import 'tinymce/plugins/image';
+  // Local skin to prevent CDN fetch
+  import 'tinymce/skins/ui/oxide/skin.min.css';
+  // Ensure license applied before any editor inits
+  try {
+    tinymce?.EditorManager?.overrideDefaults?.({ license_key: 'gpl' });
+  } catch (_) {}
+
+  // TinyMCE configuration
+  const tinyMCEConfig = computed(() => ({
+    menubar: false,
+    height: 200,
+    plugins: 'link lists',
+    toolbar:
+      'undo redo | bold italic underline | bullist numlist | link customimage',
+    automatic_uploads: true,
+    images_upload_url: '/api/uploads/proofs',
+    file_picker_types: 'image',
+    // Ensure images inside the editor never overflow and scale responsively
+    content_style:
+      'html,body{max-width:100%;} img{max-width:100%;height:auto;display:block;margin:6px 0;}',
+    // Allow styling on images and common inline elements
+    valid_elements:
+      'p,b,i,u,strong,em,ul,ol,li,br,a[href|target|rel],img[src|alt|title|class|style],span[class|style],div[class|style]',
+    setup: (ed) => {
+      ed.ui.registry.addButton('customimage', {
+        icon: 'image',
+        tooltip: 'Insert image',
+        onAction: () => {
+          pickAndUploadImage(
+            (url) => ed.insertContent(`<img src="${formatImageUrl(url)}" />`),
+            'inventory_confirm_modal'
+          );
+        },
+      });
+    },
+    branding: false,
+    skin: false,
+    content_css: false,
+    license_key: 'gpl',
+    ui_container: 'body',
+  }));
+  const pickAndUploadImage = (
+    callback,
+    modalId = 'inventory_confirm_modal'
+  ) => {
+    try {
+      const modal = document.getElementById(modalId);
+      const wasOpen = !!modal?.open;
+      // Close modal to avoid z-index issues with native pickers
+      if (wasOpen)
+        try {
+          modal.close();
+        } catch (_) {}
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/png,image/jpeg';
+      input.onchange = async () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+          const res = await fetch(getApiUrl('/uploads/proofs'), {
+            method: 'POST',
+            body: fd,
+          });
+          const json = await res.json();
+          if (res.ok && json.location) {
+            callback(json.location);
+          } else {
+            alert(json.message || 'Upload failed');
+          }
+        } catch (e) {
+          alert('Upload failed');
+        }
+        // Reopen modal after upload attempt
+        if (wasOpen)
+          try {
+            modal.showModal();
+          } catch (_) {}
+      };
+      input.click();
+    } catch (_) {}
+  };
 
   const router = useRouter();
 
@@ -184,6 +283,9 @@
         completed_by: dist.completed_by || null,
         received_by: dist.processed_by || dist.completed_by || '',
         notes: dist.notes,
+        // Include proofs uploaded by SCM (prepared) and Branch (received)
+        prepared_proof_html: dist.prepared_proof_html || null,
+        received_proof_html: dist.received_proof_html || null,
         items: (dist.items || []).map((it) => ({
           source: it.source,
           item_name: it.name,
@@ -363,6 +465,9 @@
     message: '',
     onConfirm: null,
   });
+
+  // Proof HTML from TinyMCE editor (Prepared By only; branch will provide Received By proof)
+  const preparedProofHtml = ref('');
 
   // Form data
   const stockForm = ref({
@@ -1464,29 +1569,63 @@
           category: alertItem.category_name,
           item_type_id: alertItem.item_type_id,
           source: 'scm',
-          // Include supplier information - try to get from alert item first, then from current inventory
-          supplier_id:
-            alertItem.supplier_id ||
-            (() => {
-              // Try to find supplier info from current inventory
-              const inventoryItem = currentInventory.value.find(
+          // Include supplier information - prefer explicit alert supplier, then item-type defaults, then current inventory
+          supplier_id: (() => {
+            if (alertItem.supplier_id) return alertItem.supplier_id;
+            // Try to resolve from itemTypes metadata (preferred/default supplier)
+            try {
+              const type = (itemTypes.value || []).find(
+                (t) => t.id === alertItem.item_type_id
+              );
+              if (type) {
+                const typeSupplierId =
+                  type.preferred_supplier_id ||
+                  type.default_supplier_id ||
+                  type.supplier_id ||
+                  null;
+                if (typeSupplierId) return typeSupplierId;
+              }
+            } catch (_) {}
+            // Fallback to any matching current inventory batch (may be absent if stock is zero)
+            try {
+              const inventoryItem = (currentInventory.value || []).find(
                 (item) =>
                   item.item_type_id === alertItem.item_type_id ||
                   item.id === alertItem.id
               );
-              return inventoryItem?.supplier_id;
-            })(),
-          supplier_name:
-            alertItem.supplier_name ||
-            (() => {
-              // Try to find supplier info from current inventory
-              const inventoryItem = currentInventory.value.find(
+              return inventoryItem?.supplier_id || null;
+            } catch (_) {
+              return null;
+            }
+          })(),
+          supplier_name: (() => {
+            if (alertItem.supplier_name) return alertItem.supplier_name;
+            // Try to resolve from itemTypes metadata
+            try {
+              const type = (itemTypes.value || []).find(
+                (t) => t.id === alertItem.item_type_id
+              );
+              if (type) {
+                const typeSupplierName =
+                  type.preferred_supplier_name ||
+                  type.default_supplier_name ||
+                  type.supplier_name ||
+                  null;
+                if (typeSupplierName) return typeSupplierName;
+              }
+            } catch (_) {}
+            // Fallback to current inventory
+            try {
+              const inventoryItem = (currentInventory.value || []).find(
                 (item) =>
                   item.item_type_id === alertItem.item_type_id ||
                   item.id === alertItem.id
               );
-              return inventoryItem?.supplier_name;
-            })(),
+              return inventoryItem?.supplier_name || null;
+            } catch (_) {
+              return null;
+            }
+          })(),
         },
       };
       console.log(
@@ -2100,6 +2239,7 @@
                 0
               ),
               notes: inventoryStore.distributionCart.notes || '',
+              prepared_proof_html: sanitizeHtml(preparedProofHtml.value),
               items: cart.items.map((x) => ({
                 source: x.source,
                 item_ref_id: x.item_id,
@@ -2188,6 +2328,10 @@
                 createdReceipt.completed_by ||
                 '',
               notes: createdReceipt.notes,
+              prepared_proof_html:
+                createdReceipt.prepared_proof_html ||
+                sanitizeHtml(preparedProofHtml.value),
+              received_proof_html: createdReceipt.received_proof_html,
               items: createdReceipt.items.map((item) => ({
                 source: item.source,
                 item_name: item.name,
@@ -2263,14 +2407,7 @@
       // Handle query parameters for production integration
       handleQueryParameters();
 
-      // Test individual API calls
-      try {
-        const categoriesResponse = await inventoryStore.fetchCategories();
-
-        const inventoryResponse = await inventoryStore.fetchCurrentInventory();
-      } catch (err) {
-        console.error('API call error:', err);
-      }
+      // Note: avoid re-calling inventory fetches here to prevent duplicates
 
       // Add keyboard navigation for forecasting pagination
       document.addEventListener('keydown', handleForecastKeyNavigation);
@@ -2474,9 +2611,15 @@
       </button>
       <button
         @click="activeTab = 'alerts'"
-        class="tab flex-1 sm:flex-none min-w-0 text-xs sm:text-sm"
+        class="tab flex-1 sm:flex-none min-w-0 text-xs sm:text-sm relative"
         :class="{ 'tab-active': activeTab === 'alerts' }"
+        aria-label="Alerts"
       >
+        <span
+          v-if="alertsCount > 0"
+          class="absolute -top-1 -right-1 w-2 h-2 bg-error rounded-full"
+          aria-hidden="true"
+        ></span>
         <Bell class="w-3 h-3 sm:w-4 sm:h-4 mr-1 flex-shrink-0" />
         <span class="truncate">Alerts</span>
         <span
@@ -4376,6 +4519,16 @@
             <span class="font-medium">Notes:</span>
             {{ confirmModal.details.notes }}
           </div>
+          <!-- Proof editor (TinyMCE) - Prepared By only; branch will attach Received By on acceptance -->
+          <div class="mt-4 grid grid-cols-1 gap-4">
+            <div>
+              <div class="text-xs font-medium mb-1">Prepared By Proof</div>
+              <TinyMCEEditor
+                v-model="preparedProofHtml"
+                :init="tinyMCEConfig"
+              />
+            </div>
+          </div>
         </div>
 
         <div class="modal-action">
@@ -4865,5 +5018,20 @@
       flex: 1;
       min-width: 120px;
     }
+  }
+</style>
+
+<style>
+  /* Ensure TinyMCE popups (image dialog, link dialog, pickers) appear above DaisyUI modals */
+  .tox,
+  .tox-tinymce-aux,
+  .tox-silver-sink,
+  .tox-dialog-wrap,
+  .tox-dialog {
+    z-index: 99999 !important;
+  }
+  /* Avoid stacking-context issues from transform animations in DaisyUI modal */
+  #inventory_confirm_modal .modal-box {
+    transform: none !important;
   }
 </style>

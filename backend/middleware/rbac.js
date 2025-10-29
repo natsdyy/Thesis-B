@@ -53,7 +53,14 @@ function requirePermission(permissionName) {
       }
 
       // Allow Board Members (Chairman of the Board, Board of Directors)
-      if (user.user_type === "board_member" || user.board_id || user.position) {
+      const isBoardMember =
+        user.user_type === "board_member" ||
+        user.board_id ||
+        user.position?.includes("Board") ||
+        user.position?.includes("Chairman") ||
+        user.position === "Chairman of the Board";
+
+      if (isBoardMember) {
         return next();
       }
 
@@ -113,7 +120,14 @@ function requireAnyPermission(permissionNames) {
       }
 
       // Allow Board Members (Chairman of the Board, Board of Directors)
-      if (user.user_type === "board_member" || user.board_id || user.position) {
+      const isBoardMember =
+        user.user_type === "board_member" ||
+        user.board_id ||
+        user.position?.includes("Board") ||
+        user.position?.includes("Chairman") ||
+        user.position === "Chairman of the Board";
+
+      if (isBoardMember) {
         return next();
       }
 

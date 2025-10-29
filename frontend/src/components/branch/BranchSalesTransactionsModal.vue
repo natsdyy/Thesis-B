@@ -230,6 +230,8 @@
             time: formatTime(order.created_at),
             date: formatTransactionDate(order.created_at),
             amount: parseFloat(order.total_amount) || 0,
+            is_vat_exempt: Boolean(order.is_vat_exempt),
+            discount_type: order.discount_type || 'NONE',
             amount_paid: parseFloat(order.amount_paid) || 0,
             change_amount: parseFloat(order.change_amount) || 0,
             items: order.items || [],
@@ -1124,6 +1126,8 @@
                 <th>Date</th>
                 <th>Time</th>
                 <th>Amount</th>
+                <th>VAT-Exempt</th>
+                <th>SC/PWD</th>
                 <th>Paid Amount</th>
                 <th>Change</th>
                 <th>Cashier</th>
@@ -1174,6 +1178,31 @@
                         ? '0.00'
                         : transaction.amount.toFixed(2)
                     }}
+                  </div>
+                </td>
+                <td>
+                  <div
+                    class="text-xs"
+                    :class="
+                      transaction.is_vat_exempt
+                        ? 'text-emerald-600'
+                        : 'text-gray-400'
+                    "
+                  >
+                    {{ transaction.is_vat_exempt ? 'Yes' : 'No' }}
+                  </div>
+                </td>
+                <td>
+                  <div class="text-xs">
+                    <span
+                      v-if="
+                        transaction.discount_type &&
+                        transaction.discount_type !== 'NONE'
+                      "
+                      class="badge badge-xs bg-emerald-100 text-emerald-700 border border-emerald-200"
+                      >{{ transaction.discount_type }}</span
+                    >
+                    <span v-else class="text-gray-400">-</span>
                   </div>
                 </td>
                 <td>

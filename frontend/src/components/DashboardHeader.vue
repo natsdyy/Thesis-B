@@ -281,7 +281,7 @@
           </li>
 
           <!-- Menu Items -->
-          <li v-if="!isSuperAdmin && !isBoardMember">
+          <li>
             <router-link
               :to="getProfileRoute()"
               :class="[
@@ -343,13 +343,13 @@
       </p>
       <div class="modal-action">
         <button
-          class="btn btn-ghost btn-sm font-thin border-none"
+          class="btn btn-ghost btn-sm !font-thin border-none"
           @click="cancelLogout"
         >
           Cancel
         </button>
         <button
-          class="btn bg-error/30 text-error btn-sm font-thin border-none"
+          class="btn bg-error/30 text-error btn-sm font-thin border-none !font-thin"
           @click="confirmLogout"
         >
           Yes, Log Out
@@ -366,7 +366,7 @@
   import { useAuthStore } from '../stores/authStore';
   import { useThemeStore } from '../stores/themeStore';
   import { useNotificationStore } from '../stores/notificationStore';
-  import { apiConfig } from '../config/api';
+  import { apiConfig, formatImageUrl } from '../config/api';
   import {
     Menu,
     X,
@@ -451,12 +451,7 @@
   const profileImageUrl = computed(() => {
     const url = user.value?.photo_url || user.value?.photoUrl || null;
     if (!url) return null;
-    // If already absolute (e.g., starts with http), use as-is
-    if (/^https?:\/\//i.test(url)) return url;
-    // Build from API server origin (not the /api base path)
-    const apiOrigin = new URL(apiConfig.baseURL, window.location.origin).origin;
-    const path = url.startsWith('/') ? url : `/${url}`;
-    return `${apiOrigin}${path}`;
+    return /^https?:\/\//i.test(url) ? url : formatImageUrl(url);
   });
 
   // Computed properties

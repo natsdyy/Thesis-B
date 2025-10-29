@@ -1,22 +1,31 @@
 /**
- * @param { import("knex").Knex } knex
- * @returns { Promise<void> }
+ * Adds proof HTML fields to branch_distributions
  */
-exports.up = function(knex) {
-  return knex.schema.alterTable('branch_distributions', function(table) {
-    table.string('proof_of_delivery', 500).nullable();
-    table.string('proof_of_receipt', 500).nullable();
+
+exports.up = async function (knex) {
+  const hasTable = await knex.schema.hasTable("branch_distributions");
+  if (!hasTable) return;
+
+  const hasPrepared = await knex.schema.hasColumn(
+    "branch_distributions",
+    "prepared_proof_html"
+  );
+  const hasReceived = await knex.schema.hasColumn(
+    "branch_distributions",
+    "received_proof_html"
+  );
+
+  return knex.schema.alterTable("branch_distributions", (table) => {
+    if (!hasPrepared) table.text("prepared_proof_html").nullable();
+    if (!hasReceived) table.text("received_proof_html").nullable();
   });
 };
 
-/**
- * @param { import("knex").Knex } knex
- * @returns { Promise<void> }
- */
-exports.down = function(knex) {
-  return knex.schema.alterTable('branch_distributions', function(table) {
-    table.dropColumn('proof_of_delivery');
-    table.dropColumn('proof_of_receipt');
+exports.down = async function (knex) {
+  const hasTable = await knex.schema.hasTable("branch_distributions");
+  if (!hasTable) return;
+  return knex.schema.alterTable("branch_distributions", (table) => {
+    table.dropColumn("prepared_proof_html");
+    table.dropColumn("received_proof_html");
   });
 };
-

@@ -463,10 +463,8 @@
               >
                 <option value="">Select Reason</option>
                 <option value="Kitchen Usage">Kitchen Usage</option>
-                <option value="Preparation">Food Preparation</option>
-                <option value="Service">Customer Service</option>
+                <option value="Service">Office Usage</option>
                 <option value="Cleaning">Cleaning/Maintenance</option>
-                <option value="Training">Staff Training</option>
                 <option value="Waste">Waste/Spoilage</option>
                 <option value="Other">Other</option>
               </select>

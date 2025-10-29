@@ -448,13 +448,21 @@
         case 'INTERNAL_SERVER_ERROR':
           return 'Service temporarily unavailable. Please try again later.';
         default:
+          // Heuristic for deleted/soft-deactivated accounts even if backend returns generic codes
+          if (/deactivat|revok|deleted?/i.test(message || '')) {
+            return 'Your account has been deactivated. Please contact your administrator.';
+          }
           return message || 'Login failed. Please try again.';
       }
     }
 
     // Fallback for other error types
     if (error.response?.data?.message) {
-      return error.response.data.message;
+      const msg = error.response.data.message;
+      if (/deactivat|revok|deleted?/i.test(msg)) {
+        return 'Your account has been deactivated. Please contact your administrator.';
+      }
+      return msg;
     }
 
     if (error.message) {
@@ -953,15 +961,15 @@
             <p class="text-gray-500 text-sm font-roboto">
               Fill your data to continue. Thank You!
             </p>
-            
+
             <!-- Employee Only Notice -->
-            <div class="bg-gradient-to-r from-primaryColor/10 to-secondaryColor/10 border border-primaryColor/20 rounded-xl p-4 mt-4 shadow-sm">
+            <div
+              class="bg-gradient-to-r from-primaryColor/10 to-secondaryColor/10 border border-primaryColor/20 rounded-xl p-4 mt-4 shadow-sm"
+            >
               <div class="flex items-center justify-center space-x-2">
-                
                 <p class="text-primaryColor text-sm font-semibold">
                   Employee Login Portal
                 </p>
-                
               </div>
             </div>
 
@@ -1096,7 +1104,7 @@
               <button
                 type="submit"
                 :disabled="isLoading"
-                class="btn bg-primaryColor border-none hover:bg-primaryColor/80 font-poppins disabled:bg-primaryColor/50 text-white font-medium py-3 px-6 rounded-full transition-colors flex items-center justify-center shadow-lg cursor-pointer w-full sm:w-[80%] lg:w-[60%] xl:w-[50%]"
+                class="btn bg-primaryColor border-none hover:bg-primaryColor/80 font-poppins disabled:bg-primaryColor/50 text-white font-medium py-3 px-6 rounded-full transition-colors flex items-center justify-center shadow-lg cursor-pointer w-full sm:w-[80%] lg:w-[60%] xl:w-[50%] "
               >
                 <template v-if="isLoading">
                   <span
@@ -1152,15 +1160,21 @@
           <p class="text-gray-500 text-xs sm:text-sm font-roboto">
             Fill your data to continue. Thank You!
           </p>
-          
+
           <!-- Employee Only Notice -->
-          <div class="bg-gradient-to-r from-primaryColor/10 to-secondaryColor/10 border border-primaryColor/20 rounded-xl p-3 sm:p-4 mt-4 shadow-sm">
+          <div
+            class="bg-gradient-to-r from-primaryColor/10 to-secondaryColor/10 border border-primaryColor/20 rounded-xl p-3 sm:p-4 mt-4 shadow-sm"
+          >
             <div class="flex items-center justify-center space-x-2">
-              <div class="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-primaryColor rounded-full"></div>
+              <div
+                class="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-primaryColor rounded-full"
+              ></div>
               <p class="text-primaryColor text-xs sm:text-sm font-semibold">
                 Employee Login Portal
               </p>
-              <div class="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-primaryColor rounded-full"></div>
+              <div
+                class="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-primaryColor rounded-full"
+              ></div>
             </div>
           </div>
 

@@ -43,4 +43,18 @@ export default [
       permission: 'View Attendance',
     },
   },
+  {
+    path: 'profile',
+    name: 'AdminProfile',
+    component: () => import('../../views/common/DepartmentProfile.vue'),
+    meta: {
+      title: 'Profile',
+      requiresAuth: true,
+      requiresRole: [
+        'Super Admin',
+        'Chairman of the Board',
+        'Board of Directors',
+      ],
+    },
+  },
 ];

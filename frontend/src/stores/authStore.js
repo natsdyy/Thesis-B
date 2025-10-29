@@ -362,7 +362,16 @@ export const useAuthStore = defineStore('auth', () => {
   // Fetch full employee profile for the logged-in user (raw fields)
   const fetchMyFullProfile = async () => {
     try {
-      const response = await axios.get(`${apiConfig.baseURL}/employees/me`);
+      const isBoardMember =
+        user.value?.board_id ||
+        user.value?.role === 'Chairman of the Board' ||
+        user.value?.role === 'Board of Directors';
+      let url = `${apiConfig.baseURL}/employees/me`;
+      if (isBoardMember) {
+        const id = user.value?.id;
+        url = `${apiConfig.baseURL}/board-members/me${id ? `?id=${id}` : ''}`;
+      }
+      const response = await axios.get(url);
       if (response.data?.success) {
         return response.data.data;
       }
@@ -376,10 +385,19 @@ export const useAuthStore = defineStore('auth', () => {
   // Update own employee profile
   const updateMyProfile = async (payload) => {
     try {
-      const response = await axios.put(
-        `${apiConfig.baseURL}/employees/me`,
-        payload
-      );
+      // Route to proper endpoint depending on user type
+      const isBoardMember =
+        user.value?.board_id ||
+        user.value?.role === 'Chairman of the Board' ||
+        user.value?.role === 'Board of Directors';
+
+      const url = isBoardMember
+        ? `${apiConfig.baseURL}/board-members/me`
+        : `${apiConfig.baseURL}/employees/me`;
+
+      const body = isBoardMember ? { id: user.value?.id, ...payload } : payload;
+
+      const response = await axios.put(url, body);
       if (response.data?.success) {
         // refresh lightweight user cache
         await refreshUserData();
@@ -395,10 +413,20 @@ export const useAuthStore = defineStore('auth', () => {
   // Change own password
   const changeMyPassword = async (current_password, new_password) => {
     try {
-      const response = await axios.put(
-        `${apiConfig.baseURL}/employees/me/change-password`,
-        { current_password, new_password }
-      );
+      const isBoardMember =
+        user.value?.board_id ||
+        user.value?.role === 'Chairman of the Board' ||
+        user.value?.role === 'Board of Directors';
+
+      const url = isBoardMember
+        ? `${apiConfig.baseURL}/board-members/me/change-password`
+        : `${apiConfig.baseURL}/employees/me/change-password`;
+
+      const body = isBoardMember
+        ? { id: user.value?.id, current_password, new_password }
+        : { current_password, new_password };
+
+      const response = await axios.put(url, body);
       if (response.data?.success) {
         return true;
       }
@@ -414,11 +442,22 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const formData = new FormData();
       formData.append('photo', file);
-      const response = await axios.post(
-        `${apiConfig.baseURL}/employees/me/upload-photo`,
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' } }
-      );
+      const isBoardMember =
+        user.value?.board_id ||
+        user.value?.role === 'Chairman of the Board' ||
+        user.value?.role === 'Board of Directors';
+
+      const url = isBoardMember
+        ? `${apiConfig.baseURL}/board-members/me/upload-photo`
+        : `${apiConfig.baseURL}/employees/me/upload-photo`;
+
+      if (isBoardMember && user.value?.id) {
+        formData.append('id', String(user.value.id));
+      }
+
+      const response = await axios.post(url, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
       if (response.data?.success) {
         await refreshUserData();
         return response.data.data;

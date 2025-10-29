@@ -311,7 +311,7 @@
             >
               <router-link
                 to="/menu"
-                class="group bg-orange-500 hover:bg-orange-400 text-white px-6 sm:px-10 py-3 sm:py-4 rounded-md text-sm sm:text-base transition-all duration-300 flex items-center justify-center font-thin btn btn-md border border-none shadow-none"
+                class="btn  bg-orange-500 hover:bg-orange-400 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-md !font-thin text-sm sm:text-base transition-all duration-300 flex items-center justify-center btn btn-md shadow-none"
               >
                 <span>View Menu</span>
                 <font-awesome-icon
@@ -321,7 +321,7 @@
               </router-link>
               <router-link
                 to="/stores"
-                class="group bg-transparent border-2 border-white text-white hover:bg-white hover:text-gray-800 px-6 sm:px-8 py-3 sm:py-4 rounded-md font-thin text-sm sm:text-base transition-all duration-300 flex items-center justify-center btn btn-md shadow-none"
+                class="btn  bg-white/20 hover:bg-white/30 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-md !font-thin text-sm sm:text-base transition-all duration-300 flex items-center justify-center btn btn-md shadow-none"
               >
                 <span>Find Stores</span>
                 <font-awesome-icon
@@ -641,7 +641,7 @@
             <div class="flex flex-col sm:flex-row gap-3 sm:gap-4">
               <router-link
                 to="/menu"
-                class="bg-green-600 hover:bg-green-700 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md text-sm sm:text-base"
+                class="btn bg-green-800 hover:bg-green-700 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg !font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md text-sm sm:text-base"
               >
                 <span>Explore our menu</span>
                 <font-awesome-icon
@@ -652,7 +652,7 @@
 
               <router-link
                 to="/stores"
-                class="bg-orange-500 hover:bg-orange-400 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md text-sm sm:text-base"
+                class="btn bg-orange-500 hover:bg-orange-400 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg !font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md text-sm sm:text-base"
               >
                 <span>Find your branch</span>
                 <font-awesome-icon
@@ -1225,19 +1225,20 @@
           </p>
         </div>
 
-        <!-- Full Menu Button -->
-        <div class="text-center mt-12 flex justify-end">
-          <router-link
-            to="/menu"
-            class="btn btn-sm border-none border bg-orange-500 hover:bg-orange-400 text-white px-8 py-3 rounded-md font-thin lg:mx-0 shadow-none"
-          >
-            <span>View Full Menu</span>
-            <font-awesome-icon
-              icon="fa-solid fa-arrow-right"
-              class="ml-2 group-hover:translate-x-1 transition-transform"
-            />
-          </router-link>
-        </div>
+<!-- Full Menu Button -->
+<div class="mt-12 flex justify-center lg:justify-end">
+  <router-link
+    to="/menu"
+    class="btn btn-sm border-none bg-orange-500 hover:bg-orange-400 text-white px-8 py-3 rounded-md !font-thin shadow-none"
+  >
+    <span>View Full Menu</span>
+    <font-awesome-icon
+      icon="fa-solid fa-arrow-right"
+      class="ml-2 transition-transform group-hover:translate-x-1"
+    />
+  </router-link>
+</div>
+
       </div>
     </section>
 

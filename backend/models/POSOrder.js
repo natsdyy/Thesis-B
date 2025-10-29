@@ -479,6 +479,51 @@ class POSOrder {
       // Generate order number
       const orderNumber = this.generateOrderNumber();
 
+      // Compute order-level SC/PWD discount if applicable
+      const discountType = (orderData.discount_type || "NONE").toUpperCase();
+      const isDiscount = discountType === "SC" || discountType === "PWD";
+
+      // Determine gross from posted items (unit_price already promo-adjusted by client).
+      // If SC/PWD is applied, ignore promo prices and recompute using original price if provided; else use provided totals.
+      let gross = 0;
+      const normalizedItems = (orderData.items || []).map((it) => {
+        const qty = parseFloat(it.quantity || 0);
+        const postedUnit = parseFloat(it.unit_price || it.price || 0);
+        const originalUnit = parseFloat(
+          it.original_unit_price || it.price || postedUnit
+        );
+        const useUnit = isDiscount ? originalUnit : postedUnit; // promos excluded when SC/PWD
+        const total = useUnit * qty;
+        gross += total;
+        return {
+          ...it,
+          unit_price: useUnit,
+          total_price: total,
+        };
+      });
+
+      const VAT_RATE = 0.12;
+      let vatExemptSales = 0;
+      let discountAmount = 0;
+      let netAmount = 0;
+      let outputVat = 0;
+      let isVatExempt = false;
+
+      if (isDiscount) {
+        isVatExempt = true;
+        const netOfVat = gross / (1 + VAT_RATE);
+        vatExemptSales = Number(netOfVat.toFixed(2));
+        discountAmount = Number((0.2 * netOfVat).toFixed(2));
+        netAmount = Number((netOfVat - discountAmount).toFixed(2));
+        outputVat = 0;
+      } else {
+        // Non-discounted: keep existing totals from client to preserve current behavior
+        vatExemptSales = 0;
+        discountAmount = 0;
+        netAmount = Number((orderData.total_amount || gross).toFixed(2));
+        outputVat = Number((orderData.tax_amount || 0).toFixed(2));
+      }
+
       // Create the order
       const [order] = await trx("pos_sales_orders")
         .insert({
@@ -487,19 +532,34 @@ class POSOrder {
           cashier_id: orderData.cashier_id,
           manager_id: orderData.manager_id || null,
           order_type: orderData.order_type || "Dine In",
-          subtotal: orderData.subtotal,
-          tax_amount: orderData.tax_amount || 0,
-          total_amount: orderData.total_amount,
+          subtotal: isDiscount ? vatExemptSales : orderData.subtotal,
+          tax_amount: isDiscount ? 0 : orderData.tax_amount || 0,
+          total_amount: isDiscount ? netAmount : orderData.total_amount,
           amount_paid: orderData.amount_paid,
           change_amount: orderData.change_amount,
           status: "pending",
           notes: orderData.notes || null,
+          // SC/PWD fields
+          discount_type: isDiscount ? discountType : "NONE",
+          beneficiary_name: isDiscount
+            ? orderData.beneficiary_name || null
+            : null,
+          beneficiary_id_no: isDiscount
+            ? orderData.beneficiary_id_no || null
+            : null,
+          discount_rate: isDiscount ? 0.2 : 0,
+          is_vat_exempt: isDiscount,
+          gross_amount: gross,
+          vat_exempt_sales: vatExemptSales,
+          discount_amount: discountAmount,
+          net_amount: isDiscount ? netAmount : orderData.total_amount,
+          output_vat: outputVat,
         })
         .returning("*");
 
       // Create order items
-      if (orderData.items && orderData.items.length > 0) {
-        const orderItems = orderData.items.map((item) => {
+      if (normalizedItems.length > 0) {
+        const orderItems = normalizedItems.map((item) => {
           // Handle SCM items that don't have a valid menu_item_id
           let menuItemId = item.menu_item_id;
 

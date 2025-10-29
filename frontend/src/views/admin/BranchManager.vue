@@ -1262,7 +1262,7 @@
     <div class="flex justify-end mb-6">
       <button
         @click="openCreateModal"
-        class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none btn-sm font-thin"
+        class="btn btn-outline  btn-sm"
       >
         <Plus class="w-4 h-4 mr-2" />
         Add Branch
@@ -1339,7 +1339,7 @@
         </select>
         <button
           @click="loadBranches"
-          class="btn btn-outline text-primaryColor border-primaryColor hover:bg-primaryColor hover:text-white"
+          class="btn btn-outline border-gray-300 "
           :disabled="branchStore.loading"
         >
           <RefreshCw
@@ -1696,23 +1696,26 @@
               />
             </div>
 
-            <!-- Radius (meters) -->
-            <div class="form-control">
-              <label class="label mb-1">
-                <span class="label-text">Allowed Radius (meters)</span>
-              </label>
-              <input
-                v-model.number="branchForm.radius_meters"
-                type="number"
-                min="1"
-                step="0.5"
-                placeholder="e.g., 2"
-                class="input input-sm sm:input-md input-bordered w-full"
-              />
-              <span class="text-xs text-gray-500 mt-1"
-                >Used for attendance geofencing tolerance.</span
-              >
-            </div>
+<!-- Radius (meters) -->
+<div class="form-control w-full max-w-md mx-auto sm:max-w-sm md:max-w-md">
+  <label class="label mb-1">
+    <span class="label-text text-sm sm:text-base">Allowed Radius (m)</span>
+  </label>
+
+  <input
+    v-model.number="branchForm.radius_meters"
+    type="number"
+    min="1"
+    step="0.5"
+    placeholder="e.g., 2"
+    class="input input-sm sm:input-md input-bordered w-full"
+  />
+
+  <span class="text-xs text-gray-500 mt-1 block text-center sm:text-left">
+    Used for attendance geofencing tolerance.
+  </span>
+</div>
+
           </div>
 
           <!-- Description Section -->
@@ -1904,14 +1907,14 @@
             <div class="flex gap-2 justify-end items-center">
               <button
                 @click="handleSearchClick"
-                class="btn btn-sm bg-gray-200 font-thin hover:bg-gray-300 text-gray-700 border-none"
+                class="btn bg-gray-200 font-thin hover:bg-gray-300 text-gray-700 border-none"
               >
                 <font-awesome-icon icon="fa-solid fa-search" />
                 Search
               </button>
               <button
                 @click="getCurrentLocation"
-                class="btn btn-sm bg-primaryColor font-thin hover:bg-primaryColor/80 text-white border-none"
+                class="btn  bg-primaryColor !font-thin hover:bg-primaryColor/80 text-white border-none"
                 title="Get your current location"
               >
                 <font-awesome-icon icon="fa-solid fa-location-dot" />
@@ -2062,7 +2065,7 @@
             Cancel
           </button>
           <button
-            class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/80 border-none font-thin"
+            class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/80 border-none !font-thin"
             @click="applySelectedAddress"
             :disabled="!selectedAddress.trim()"
           >

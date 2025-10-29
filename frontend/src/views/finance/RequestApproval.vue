@@ -1398,7 +1398,7 @@
 </script>
 
 <template>
-  <div class="container mx-auto p-6 max-w-6xl">
+  <div class=" mx-auto p-6">
     <!-- Header -->
     <div class="text-center mb-8">
       <h1 class="text-4xl font-bold text-primaryColor mb-2 text-shadow-xs">

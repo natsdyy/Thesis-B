@@ -28,6 +28,8 @@ class BranchDistribution {
         prepared_by: distributionData.prepared_by,
         total_amount: distributionData.total_amount,
         notes: distributionData.notes,
+        prepared_proof_html: distributionData.prepared_proof_html || null,
+        received_proof_html: distributionData.received_proof_html || null,
         status: "delivered",
       });
       // Handle different driver return shapes
@@ -872,13 +874,17 @@ class BranchDistribution {
         }
       }
 
-      // Update distribution status to completed
-      await trx("branch_distributions").where("id", id).update({
-        status: "completed",
-        completed_by: completionData.completed_by,
-        completed_at: db.fn.now(),
-        updated_at: db.fn.now(),
-      });
+      // Update distribution status to completed and optionally save received proof
+      await trx("branch_distributions")
+        .where("id", id)
+        .update({
+          status: "completed",
+          completed_by: completionData.completed_by,
+          completed_at: db.fn.now(),
+          received_proof_html:
+            completionData.received_proof_html || db.raw("received_proof_html"),
+          updated_at: db.fn.now(),
+        });
 
       await trx.commit();
 

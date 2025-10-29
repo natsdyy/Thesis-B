@@ -422,7 +422,6 @@
           </button>
         </div>
 
-
         <!-- Summary Cards -->
         <div class="grid grid-cols-1 md:grid-cols-6 gap-3 mb-4">
           <div class="card bg-white shadow border border-black/10">
@@ -485,6 +484,8 @@
                 <th class="text-xs">Status</th>
                 <th class="text-xs">Items</th>
                 <th class="text-xs">Total</th>
+                <th class="text-xs">VAT-Exempt</th>
+                <th class="text-xs">SC/PWD</th>
                 <th class="text-xs">Cashier</th>
                 <th class="text-xs">Reason</th>
                 <th class="text-xs">Impact</th>
@@ -518,9 +519,32 @@
                   </div>
                 </td>
                 <td class="text-xs font-semibold text-right">
-  <i class="fa-solid fa-peso-sign mr-1"></i>
-  {{ Number(o.total_amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}
-</td>
+                  <i class="fa-solid fa-peso-sign mr-1"></i>
+                  {{
+                    Number(o.total_amount || 0).toLocaleString('en-PH', {
+                      minimumFractionDigits: 2,
+                    })
+                  }}
+                </td>
+
+                <td class="text-xs">
+                  <span
+                    :class="
+                      o.is_vat_exempt ? 'text-emerald-700' : 'text-gray-500'
+                    "
+                  >
+                    {{ o.is_vat_exempt ? 'Yes' : 'No' }}
+                  </span>
+                </td>
+                <td class="text-xs">
+                  <span
+                    v-if="o.discount_type && o.discount_type !== 'NONE'"
+                    class="badge badge-ghost badge-xs text-emerald-700 border-emerald-200"
+                  >
+                    {{ o.discount_type }}
+                  </span>
+                  <span v-else class="text-gray-400">-</span>
+                </td>
 
                 <td class="text-xs">
                   {{ o.cashier_first_name }} {{ o.cashier_last_name }}

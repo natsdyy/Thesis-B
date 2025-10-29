@@ -6,15 +6,15 @@
   >
     <div class="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl">
       <!-- Modal Header -->
-      <div class="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
+      <div class="bg-gradient-to-r from-green-600 to-green-700 text-white p-6">
         <div class="flex justify-between items-center">
           <div>
             <h2 class="text-2xl font-bold mb-2">Application Details</h2>
-            <p class="text-blue-100">{{ application?.full_name || 'Loading...' }}</p>
+            <p class="text-green-100">{{ application?.full_name || 'Loading...' }}</p>
           </div>
           <button
             @click="closeModal"
-            class="text-white hover:text-blue-200 transition-colors p-2 rounded-full hover:bg-white/10"
+            class="text-white hover:text-green-200 transition-colors p-2 rounded-full hover:bg-white/10"
           >
             <font-awesome-icon icon="fa-solid fa-times" class="w-6 h-6" />
           </button>
@@ -25,7 +25,7 @@
       <div class="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
         <!-- Loading State -->
         <div v-if="isLoading" class="flex justify-center items-center py-12">
-          <div class="loading loading-spinner loading-lg text-blue-600"></div>
+          <div class="loading loading-spinner loading-lg text-green-600"></div>
           <span class="ml-3 text-gray-600">Loading application details...</span>
         </div>
 
@@ -34,7 +34,7 @@
           <!-- Personal Information Section -->
           <div class="bg-gray-50 rounded-lg p-6">
             <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <font-awesome-icon icon="fa-solid fa-user" class="mr-2 text-blue-600" />
+              <font-awesome-icon icon="fa-solid fa-user" class="mr-2 text-green-600" />
               Personal Information
             </h3>
             
@@ -49,7 +49,7 @@
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-                <p class="text-gray-900">{{ application.phone }}</p>
+                <p class="text-gray-900">{{ formatPhoneNumber(application.phone) }}</p>
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
@@ -65,7 +65,7 @@
           <!-- Professional Information Section -->
           <div class="bg-gray-50 rounded-lg p-6">
             <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <font-awesome-icon icon="fa-solid fa-briefcase" class="mr-2 text-blue-600" />
+              <font-awesome-icon icon="fa-solid fa-briefcase" class="mr-2 text-green-600" />
               Professional Information
             </h3>
             
@@ -82,10 +82,6 @@
                 <label class="block text-sm font-medium text-gray-700 mb-1">Years of Experience</label>
                 <p class="text-gray-900">{{ application.experience_years }} years</p>
               </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Expected Salary</label>
-                <p class="text-gray-900">₱{{ formatNumber(application.expected_salary) }}</p>
-              </div>
               <div class="md:col-span-2">
                 <label class="block text-sm font-medium text-gray-700 mb-1">Skills & Qualifications</label>
                 <p class="text-gray-900 whitespace-pre-line">{{ application.skills }}</p>
@@ -93,33 +89,10 @@
             </div>
           </div>
 
-          <!-- Additional Information Section -->
-          <div class="bg-gray-50 rounded-lg p-6">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <font-awesome-icon icon="fa-solid fa-info-circle" class="mr-2 text-blue-600" />
-              Additional Information
-            </h3>
-            
-            <div class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Why do you want to work at Countryside Steakhouse?</label>
-                <p class="text-gray-900 whitespace-pre-line">{{ application.motivation }}</p>
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">When can you start?</label>
-                <p class="text-gray-900">{{ application.availability }}</p>
-              </div>
-              <div v-if="application.additional_notes">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Additional Notes</label>
-                <p class="text-gray-900 whitespace-pre-line">{{ application.additional_notes }}</p>
-              </div>
-            </div>
-          </div>
-
           <!-- Documents Section -->
           <div class="bg-gray-50 rounded-lg p-6">
             <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <font-awesome-icon icon="fa-solid fa-file-upload" class="mr-2 text-blue-600" />
+              <font-awesome-icon icon="fa-solid fa-file-upload" class="mr-2 text-green-600" />
               Submitted Documents
             </h3>
             
@@ -135,7 +108,7 @@
                 </div>
                 <button
                   @click="downloadFile(application.resume_path, 'resume')"
-                  class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors text-sm"
+                  class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors text-sm"
                 >
                   <font-awesome-icon icon="fa-solid fa-download" class="mr-2" />
                   Download
@@ -153,7 +126,7 @@
                 </div>
                 <button
                   @click="downloadFile(application.additional_documents_path, 'additional')"
-                  class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors text-sm"
+                  class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors text-sm"
                 >
                   <font-awesome-icon icon="fa-solid fa-download" class="mr-2" />
                   Download
@@ -171,7 +144,7 @@
           <!-- Application Status Section -->
           <div class="bg-gray-50 rounded-lg p-6">
             <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <font-awesome-icon icon="fa-solid fa-clipboard-check" class="mr-2 text-blue-600" />
+              <font-awesome-icon icon="fa-solid fa-clipboard-check" class="mr-2 text-green-600" />
               Application Status
             </h3>
             
@@ -323,6 +296,50 @@ const formatDateTime = (dateString) => {
 const formatNumber = (number) => {
   if (!number) return '0'
   return parseFloat(number).toLocaleString('en-US')
+}
+
+const formatPhoneNumber = (phone) => {
+  if (!phone) return 'Not provided'
+  
+  // Remove all non-digits
+  let digits = phone.toString().replace(/\D/g, '')
+  
+  // If it doesn't start with 09, try to format it
+  if (digits.length >= 11 && !digits.startsWith('09')) {
+    // If it starts with 0, replace with 09
+    if (digits.startsWith('0')) {
+      digits = '09' + digits.substring(1)
+    } else if (digits.length === 11) {
+      // If it's 11 digits without 09, assume it starts with country code (63) and format
+      if (digits.startsWith('63')) {
+        digits = '0' + digits.substring(2)
+      } else {
+        digits = '09' + digits.substring(0, 9)
+      }
+    }
+  }
+  
+  // Ensure it starts with 09
+  if (digits.length > 0 && !digits.startsWith('09')) {
+    if (digits.startsWith('0')) {
+      digits = '09' + digits.substring(1)
+    } else {
+      digits = '09' + digits
+    }
+  }
+  
+  // Format: 09XX XXX XXXX (11 digits: first 4 digits together, then space, then 3, then space, then 4)
+  if (digits.length >= 11) {
+    return `${digits.substring(0, 4)} ${digits.substring(4, 7)} ${digits.substring(7, 11)}`
+  } else if (digits.length >= 7) {
+    return `${digits.substring(0, 4)} ${digits.substring(4, 7)} ${digits.substring(7)}`
+  } else if (digits.length >= 4) {
+    return `${digits.substring(0, 4)} ${digits.substring(4)}`
+  } else if (digits.length >= 2) {
+    return digits // Return without spaces if less than 4 digits
+  }
+  
+  return phone // Return original if can't format
 }
 
 const getStatusColor = (status) => {

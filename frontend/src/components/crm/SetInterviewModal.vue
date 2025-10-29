@@ -6,15 +6,15 @@
   >
     <div class="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl">
       <!-- Modal Header -->
-      <div class="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-6">
+      <div class="bg-gradient-to-r from-green-600 to-green-700 text-white p-6">
         <div class="flex justify-between items-center">
           <div>
             <h2 class="text-2xl font-bold mb-2">Set Interview Date</h2>
-            <p class="text-purple-100">{{ application?.full_name || 'Loading...' }} - {{ application?.position_title || '' }}</p>
+            <p class="text-green-100">{{ application?.full_name || 'Loading...' }} - {{ application?.position_title || '' }}</p>
           </div>
           <button
             @click="closeModal"
-            class="text-white hover:text-purple-200 transition-colors p-2 rounded-full hover:bg-white/10"
+            class="text-white hover:text-green-200 transition-colors p-2 rounded-full hover:bg-white/10"
           >
             <font-awesome-icon icon="fa-solid fa-times" class="w-6 h-6" />
           </button>
@@ -25,7 +25,7 @@
       <div class="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
         <!-- Loading State -->
         <div v-if="isLoading" class="flex justify-center items-center py-12">
-          <div class="loading loading-spinner loading-lg text-purple-600"></div>
+          <div class="loading loading-spinner loading-lg text-green-600"></div>
           <span class="ml-3 text-gray-600">Loading application details...</span>
         </div>
 
@@ -34,7 +34,7 @@
           <!-- Interview Details Section -->
           <div class="bg-gray-50 rounded-lg p-6">
             <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <font-awesome-icon icon="fa-solid fa-calendar-check" class="mr-2 text-purple-600" />
+              <font-awesome-icon icon="fa-solid fa-calendar-check" class="mr-2 text-green-600" />
               Interview Details
             </h3>
             
@@ -49,7 +49,7 @@
                   type="date"
                   required
                   :min="today"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300"
                 />
               </div>
 
@@ -62,7 +62,7 @@
                   v-model="interviewForm.interviewTime"
                   type="time"
                   required
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300"
                 />
               </div>
 
@@ -74,7 +74,7 @@
                 <select
                   v-model="interviewForm.interviewType"
                   required
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300"
                 >
                   <option value="in-person">In-Person</option>
                   <option value="video">Video Call</option>
@@ -87,7 +87,7 @@
           <!-- Additional Information Section -->
           <div class="bg-gray-50 rounded-lg p-6">
             <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <font-awesome-icon icon="fa-solid fa-info-circle" class="mr-2 text-purple-600" />
+              <font-awesome-icon icon="fa-solid fa-info-circle" class="mr-2 text-green-600" />
               Additional Information
             </h3>
             
@@ -102,7 +102,7 @@
                   type="text"
                   required
                   placeholder="Enter interview location"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300"
                 />
               </div>
 
@@ -116,7 +116,7 @@
                   type="url"
                   required
                   placeholder="Enter video meeting link"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300"
                 />
               </div>
 
@@ -129,7 +129,7 @@
                   v-model="interviewForm.notes"
                   rows="4"
                   placeholder="Add any special instructions or notes for the interview..."
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300 resize-none"
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 resize-none"
                 ></textarea>
               </div>
             </div>
@@ -147,7 +147,7 @@
             <button
               type="submit"
               :disabled="isSubmitting"
-              class="px-8 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center gap-2"
+              class="px-8 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center gap-2"
             >
               <span v-if="isSubmitting" class="loading loading-spinner loading-sm"></span>
               <font-awesome-icon v-if="!isSubmitting" icon="fa-solid fa-calendar-plus" class="mr-2" />

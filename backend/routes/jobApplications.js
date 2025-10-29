@@ -47,12 +47,23 @@ const upload = multer({
 // Helper function to verify reCAPTCHA token
 const verifyRecaptcha = async (token) => {
   try {
-    // Use test secret key for development (allows all tokens)
-    const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY || '6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe'; // Google's test secret
+    const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
     
     if (!token) {
       return { success: false, error: 'No reCAPTCHA token provided' };
     }
+
+    if (!RECAPTCHA_SECRET_KEY) {
+      console.warn('RECAPTCHA_SECRET_KEY not found in environment variables');
+      // In development, if no key is set, allow the request (for testing)
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('Skipping reCAPTCHA verification in development mode (no secret key)');
+        return { success: true, error: null };
+      }
+      return { success: false, error: 'reCAPTCHA secret key not configured' };
+    }
+
+    console.log('Verifying reCAPTCHA token with secret key:', RECAPTCHA_SECRET_KEY.substring(0, 10) + '...');
 
     const response = await axios.post('https://www.google.com/recaptcha/api/siteverify', null, {
       params: {
@@ -61,13 +72,35 @@ const verifyRecaptcha = async (token) => {
       }
     });
 
+    console.log('reCAPTCHA verification response:', {
+      success: response.data.success,
+      errorCodes: response.data['error-codes'],
+      hostname: response.data.hostname
+    });
+
+    if (response.data['error-codes'] && response.data['error-codes'].includes('invalid-input-secret')) {
+      console.error('Invalid reCAPTCHA secret key. Please check your RECAPTCHA_SECRET_KEY in .env file.');
+      return { 
+        success: false, 
+        error: 'Invalid reCAPTCHA secret key. Please contact the administrator.' 
+      };
+    }
+
+    if (response.data['error-codes'] && response.data['error-codes'].includes('invalid-input-response')) {
+      console.error('Invalid reCAPTCHA token. Token may be expired or invalid.');
+      return { 
+        success: false, 
+        error: 'reCAPTCHA verification failed. Please complete the verification again.' 
+      };
+    }
+
     return {
       success: response.data.success === true,
       error: response.data['error-codes'] || null
     };
   } catch (error) {
     console.error('reCAPTCHA verification error:', error);
-    return { success: false, error: 'Failed to verify reCAPTCHA' };
+    return { success: false, error: 'Failed to verify reCAPTCHA: ' + error.message };
   }
 };
 
@@ -80,21 +113,35 @@ router.post("/", upload.fields([
     const applicationData = req.body;
     
     // Verify reCAPTCHA token
-    if (applicationData.recaptchaToken) {
-      const recaptchaVerification = await verifyRecaptcha(applicationData.recaptchaToken);
-      if (!recaptchaVerification.success) {
-        return res.status(400).json({
-          success: false,
-          message: 'reCAPTCHA verification failed. Please try again.',
-          error: recaptchaVerification.error
-        });
+    if (!applicationData.recaptchaToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'reCAPTCHA verification required. Please complete the security verification.',
+        error: 'Missing reCAPTCHA token'
+      });
+    }
+
+    const recaptchaVerification = await verifyRecaptcha(applicationData.recaptchaToken);
+    if (!recaptchaVerification.success) {
+      // Provide more helpful error messages
+      let errorMessage = 'reCAPTCHA verification failed. Please try again.';
+      if (recaptchaVerification.error) {
+        if (Array.isArray(recaptchaVerification.error)) {
+          if (recaptchaVerification.error.includes('invalid-keys')) {
+            errorMessage = 'reCAPTCHA configuration error. Please contact the administrator.';
+          } else if (recaptchaVerification.error.includes('invalid-input-secret')) {
+            errorMessage = 'reCAPTCHA configuration error. Please contact the administrator.';
+          } else if (recaptchaVerification.error.includes('invalid-input-response')) {
+            errorMessage = 'reCAPTCHA verification expired. Please complete the verification again.';
+          }
+        }
       }
-    } else {
-      // In development with test key, we might skip verification
-      // In production, this should be required
-      if (process.env.NODE_ENV === 'production' && !process.env.RECAPTCHA_SECRET_KEY) {
-        console.warn('reCAPTCHA token missing but not enforcing in development');
-      }
+      
+      return res.status(400).json({
+        success: false,
+        message: errorMessage,
+        error: recaptchaVerification.error
+      });
     }
     
     // Handle file uploads

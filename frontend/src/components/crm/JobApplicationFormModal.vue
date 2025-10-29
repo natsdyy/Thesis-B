@@ -86,9 +86,13 @@
                   v-model="formData.phone"
                   type="tel"
                   required
-                  placeholder="Enter your phone number"
+                  placeholder="0993 948 5851"
+                  @input="formatPhoneNumber"
+                  maxlength="14"
+                  pattern="09[0-9]{2} [0-9]{3} [0-9]{4}"
                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300"
                 />
+                <p class="text-xs text-gray-500 mt-1">Format: 09XX XXX XXXX (must start with 09)</p>
               </div>
 
               <!-- Date of Birth -->
@@ -176,22 +180,6 @@
                 </select>
               </div>
 
-              <!-- Expected Salary -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">
-                  Expected Monthly Salary (₱)
-                </label>
-                <input
-                  v-model.number="formData.expectedSalary"
-                  type="number"
-                  min="0"
-                  max="999999.99"
-                  step="1000"
-                  placeholder="Enter expected salary"
-                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300"
-                />
-              </div>
-
               <!-- Skills -->
               <div class="md:col-span-2">
                 <label class="block text-sm font-medium text-gray-700 mb-2">
@@ -230,7 +218,7 @@
                 />
               </div>
               <p v-if="resumeFile" class="mt-2 text-sm text-gray-600">
-                <font-awesome-icon icon="fa-solid fa-file-check" class="mr-1 text-green-600" />
+                <font-awesome-icon icon="fa-solid fa-circle-check" class="mr-1 text-green-600" />
                 Selected: {{ resumeFile.name }} ({{ formatFileSize(resumeFile.size) }})
               </p>
               <p class="text-xs text-gray-500 mt-2">
@@ -450,7 +438,6 @@ const formData = ref({
   positionTitle: '',
   department: '',
   experienceYears: '',
-  expectedSalary: '',
   skills: ''
 })
 
@@ -748,8 +735,6 @@ const submitApplication = async () => {
         let value = formData.value[key]
         if (key === 'experienceYears') {
           value = parseInt(value) || 0
-        } else if (key === 'expectedSalary') {
-          value = parseFloat(value) || null
         }
         submitData.append(key, value)
       }
@@ -838,7 +823,6 @@ const resetForm = () => {
     positionTitle: '',
     department: '',
     experienceYears: '',
-    expectedSalary: '',
     skills: ''
   }
   resumeFile.value = null
@@ -847,6 +831,41 @@ const resetForm = () => {
   }
   resetRecaptcha()
   captchaError.value = ''
+}
+
+// Format phone number (Philippines format: 09XX XXX XXXX)
+const formatPhoneNumber = (event) => {
+  let value = event.target.value.replace(/\D/g, '') // Remove all non-digits
+  
+  // Limit to 11 digits
+  if (value.length > 11) {
+    value = value.substring(0, 11)
+  }
+  
+  // Ensure it starts with 09
+  if (value.length > 0 && !value.startsWith('09')) {
+    if (value.startsWith('0')) {
+      value = '09' + value.substring(1)
+    } else {
+      value = '09' + value
+    }
+    // Limit again after adding 09
+    if (value.length > 11) {
+      value = value.substring(0, 11)
+    }
+  }
+  
+  // Format: 09XX XXX XXXX (11 digits: first 4 digits together, then space, then 3 digits, then space, then 4 digits)
+  let formatted = ''
+  if (value.length <= 4) {
+    formatted = value // No spaces until after 4th digit
+  } else if (value.length <= 7) {
+    formatted = value.substring(0, 4) + ' ' + value.substring(4)
+  } else {
+    formatted = value.substring(0, 4) + ' ' + value.substring(4, 7) + ' ' + value.substring(7, 11)
+  }
+  
+  formData.value.phone = formatted
 }
 
 // Watch for selected position changes

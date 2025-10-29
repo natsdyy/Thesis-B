@@ -891,7 +891,7 @@
 </script>
 
 <template>
-  <div class=" mx-auto p-4 sm:p-6 ">
+  <div class="mx-auto p-4 sm:p-6">
     <!-- Header -->
     <div class="mb-4 sm:mb-6">
       <div class="flex items-center gap-3">

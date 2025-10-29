@@ -45,18 +45,27 @@ class BranchPosition {
    */
   static async getAll(filters = {}) {
     try {
+      // Query all branch positions - don't filter by is_active, status, or job_status unless explicitly requested
       let query = db("branch_positions as bp")
-        .leftJoin("branches as b", "bp.branch_id", "b.id")
+        .leftJoin("branches as b", function() {
+          this.on("bp.branch_id", "=", "b.id")
+            .andOnNull("b.deleted_at"); // Only join with non-deleted branches
+        })
         .select(
           "bp.*",
           "b.name as branch_name",
           "b.code as branch_code",
           "b.address as branch_address"
         )
-        .where("bp.deleted_at", null);
+        .whereNull("bp.deleted_at");
+      
+      // Don't filter by branch is_active - we want to show positions even if branch is inactive
+      // This allows HR to see all positions for management purposes
+      // Also don't filter by position is_active or status unless explicitly requested
         
       // Also get all department positions from user_roles and combine
-      const departmentPositions = await db("user_roles")
+      // Filter by is_active if job_status=open is requested (only show active department positions)
+      let departmentPositionsQuery = db("user_roles")
         .select(
           db.raw("CAST(role_id AS TEXT) as id"),
           "role as position_title",
@@ -69,6 +78,7 @@ class BranchPosition {
           db.raw("1 as total_slots"),
           db.raw("0 as filled_slots"),
           db.raw("CASE WHEN is_active THEN 'open' ELSE 'closed' END as status"),
+          db.raw("CASE WHEN is_active THEN 'open' ELSE 'closed' END as job_status"),
           "is_active",
           db.raw("NULL as position_code"),
           "description",
@@ -80,7 +90,14 @@ class BranchPosition {
         .where("department", "!=", "System")
         .where("department", "!=", "Admin")
         .where("role", "!=", "Admin")
-        .whereNull("deleted_at")
+        .whereNull("deleted_at");
+      
+      // If job_status=open filter is requested, only include active department positions
+      if (filters.job_status === 'open') {
+        departmentPositionsQuery = departmentPositionsQuery.where("is_active", true);
+      }
+      
+      const departmentPositions = await departmentPositionsQuery
         .orderBy("department", "asc")
         .orderBy("role", "asc");
 
@@ -93,7 +110,17 @@ class BranchPosition {
         query = query.where("bp.department", filters.department);
       }
 
-      if (filters.status) {
+      // Filter by job_status for public job listing (preferred for public listing)
+      // Use status filter as fallback for internal management
+      if (filters.job_status) {
+        query = query.where("bp.job_status", filters.job_status);
+        // When job_status=open is requested, also ensure is_active is true
+        // This ensures closed positions don't show up on public homepage
+        if (filters.job_status === 'open') {
+          query = query.where("bp.is_active", true);
+        }
+      } else if (filters.status) {
+        // Only apply status filter if job_status is not provided
         query = query.where("bp.status", filters.status);
       }
 
@@ -101,7 +128,9 @@ class BranchPosition {
         query = query.where("bp.position_type", filters.position_type);
       }
 
-      if (filters.is_active !== undefined) {
+      if (filters.is_active !== undefined && !filters.job_status) {
+        // Only apply is_active filter if job_status filter isn't already applied
+        // (job_status=open already filters by is_active above)
         query = query.where("bp.is_active", filters.is_active);
       }
 
@@ -122,11 +151,70 @@ class BranchPosition {
         query = query.limit(filters.limit).offset(offset);
       }
 
+      // Execute query and get raw results
       const branchPositions = await query;
       
-      // Log sample positions to see their status
-      console.log(`BranchPosition.getAll - Found ${branchPositions.length} branch positions`)
+      // Log detailed information about what was queried and returned
+      console.log(`\n========== BranchPosition.getAll Debug ==========`)
+      console.log(`Filters applied:`, JSON.stringify(filters, null, 2))
+      console.log(`Raw SQL query would filter by deleted_at only`)
+      console.log(`BranchPosition.getAll - Found ${branchPositions.length} branch positions from database`)
       console.log(`Found ${departmentPositions.length} department positions`)
+      
+      // Log detailed breakdown of branch positions
+      if (branchPositions.length > 0) {
+        const branchCounts = {};
+        const statusCounts = { open: 0, closed: 0, filled: 0, 'on-hold': 0, other: 0 };
+        const isActiveCounts = { active: 0, inactive: 0 };
+        const branchIdCounts = {};
+        
+        branchPositions.forEach(p => {
+          const branchName = p.branch_name || `Branch ID ${p.branch_id} (No Name)`;
+          branchCounts[branchName] = (branchCounts[branchName] || 0) + 1;
+          
+          // Count by status
+          const status = p.status || 'other';
+          if (statusCounts[status] !== undefined) {
+            statusCounts[status]++;
+          } else {
+            statusCounts.other++;
+          }
+          
+          // Count by is_active
+          if (p.is_active === true || p.is_active === 1) {
+            isActiveCounts.active++;
+          } else {
+            isActiveCounts.inactive++;
+          }
+          
+          // Count by branch_id
+          branchIdCounts[p.branch_id] = (branchIdCounts[p.branch_id] || 0) + 1;
+        });
+        
+        console.log('Branch position counts by branch:', branchCounts);
+        console.log('Status distribution:', statusCounts);
+        console.log('is_active distribution:', isActiveCounts);
+        console.log('Counts by branch_id:', branchIdCounts);
+        
+        // Log sample positions
+        console.log('Sample positions (first 5):', branchPositions.slice(0, 5).map(p => ({
+          id: p.id,
+          branch_id: p.branch_id,
+          branch_name: p.branch_name,
+          position_title: p.position_title,
+          is_active: p.is_active,
+          status: p.status,
+          job_status: p.job_status,
+          deleted_at: p.deleted_at
+        })));
+      } else {
+        console.warn('⚠️ WARNING: No branch positions found in database!')
+        console.warn('This could mean:')
+        console.warn('  1. No positions have been created yet')
+        console.warn('  2. All positions are soft-deleted (deleted_at is set)')
+        console.warn('  3. There are no active branches')
+      }
+      console.log(`================================================\n`)
       
       // If filtering by a specific department, combine appropriately
       // Otherwise, return branch positions only (not department positions)
@@ -141,12 +229,59 @@ class BranchPosition {
         console.log(`Filtered for department ${filters.department}: ${allPositions.length} positions`)
       } else if (filters.department === 'Branch') {
         // For Branch, only return actual branch positions, not department roles
-        allPositions = branchPositions.filter(p => p.department === 'Branch' || !p.department);
-        console.log(`Filtered for Branch: ${allPositions.length} positions`)
+        // Include all branch positions regardless of department value (some might be NULL)
+        allPositions = branchPositions.filter(p => {
+          // Include if it's explicitly Branch department OR if it has a branch_id (actual branch position)
+          return (p.department === 'Branch' || !p.department || p.department === null) && p.branch_id;
+        });
+        console.log(`Filtered for Branch: ${allPositions.length} positions (from ${branchPositions.length} total branch positions)`)
       } else {
         // No department filter - return all branch positions only
-        allPositions = branchPositions;
-        console.log(`No department filter - returning ${allPositions.length} branch positions only`)
+        // Include ALL positions with a branch_id (even if branch_name is null due to deleted branch)
+        allPositions = branchPositions.filter(p => {
+          // Include positions that have a valid branch_id (non-null, not empty string, and numeric > 0)
+          const branchId = p.branch_id;
+          const hasValidBranchId = branchId != null && 
+                                   branchId !== '' && 
+                                   branchId !== undefined &&
+                                   !isNaN(branchId) && 
+                                   Number(branchId) > 0;
+          
+          if (!hasValidBranchId) {
+            console.warn('Position excluded - invalid branch_id:', {
+              position_id: p.id,
+              position_title: p.position_title,
+              branch_id: branchId,
+              branch_id_type: typeof branchId
+            });
+          }
+          
+          return hasValidBranchId;
+        });
+        
+        console.log(`No department filter - returning ${allPositions.length} branch positions (from ${branchPositions.length} total)`)
+        
+        // Log detailed branch distribution
+        const branchDistribution = {};
+        allPositions.forEach(p => {
+          const branchName = p.branch_name || `Branch ID ${p.branch_id} (No Name)`;
+          if (!branchDistribution[branchName]) {
+            branchDistribution[branchName] = { count: 0, positions: [] };
+          }
+          branchDistribution[branchName].count++;
+          branchDistribution[branchName].positions.push(p.position_title);
+        });
+        console.log('Branch distribution:', branchDistribution);
+        
+        console.log('Sample branch positions:', allPositions.slice(0, 5).map(p => ({ 
+          id: p.id, 
+          branch_id: p.branch_id, 
+          branch_name: p.branch_name || 'NULL',
+          position_title: p.position_title,
+          is_active: p.is_active,
+          status: p.status,
+          job_status: p.job_status
+        })))
       }
       
       return allPositions;
@@ -212,14 +347,51 @@ class BranchPosition {
     try {
       console.log(`BranchPosition.update called - id: ${id}, updateData:`, updateData)
       
+      // Get current position to check status before update
+      const currentPosition = await db("branch_positions")
+        .where("id", id)
+        .first();
+
+      if (!currentPosition) {
+        throw new Error("Position not found");
+      }
+
       // Calculate monthly salary if rate changed (fixed 160 hours per month)
       if (updateData.rate_per_hour) {
-        const currentPosition = await db("branch_positions")
-          .where("id", id)
-          .first();
-
         const rate = updateData.rate_per_hour || currentPosition.rate_per_hour;
         updateData.monthly_salary = rate * 160;
+      }
+
+      // Sync status, job_status, and is_active when status is changed
+      // This ensures public homepage shows consistent filtering
+      if (updateData.status !== undefined) {
+        const newStatus = updateData.status;
+        
+        // Sync job_status with status (for public listing filter)
+        updateData.job_status = newStatus;
+        
+        // Sync is_active with status (open = active, closed = inactive)
+        if (newStatus === 'open') {
+          updateData.is_active = true;
+        } else if (newStatus === 'closed' || newStatus === 'filled' || newStatus === 'on-hold') {
+          updateData.is_active = false;
+        }
+        
+        console.log(`Status sync: status=${newStatus}, job_status=${updateData.job_status}, is_active=${updateData.is_active}`)
+      }
+      
+      // Also handle if job_status is updated directly (sync status and is_active)
+      if (updateData.job_status !== undefined && updateData.status === undefined) {
+        const newJobStatus = updateData.job_status;
+        updateData.status = newJobStatus;
+        
+        if (newJobStatus === 'open') {
+          updateData.is_active = true;
+        } else if (newJobStatus === 'closed' || newJobStatus === 'filled' || newJobStatus === 'on-hold') {
+          updateData.is_active = false;
+        }
+        
+        console.log(`Job status sync: job_status=${newJobStatus}, status=${updateData.status}, is_active=${updateData.is_active}`)
       }
 
       updateData.updated_at = db.fn.now();
@@ -232,17 +404,26 @@ class BranchPosition {
 
       console.log(`BranchPosition updated:`, updatedPosition)
       console.log(`Status after update: ${updatedPosition?.status}`)
+      console.log(`Job status after update: ${updatedPosition?.job_status}`)
+      console.log(`Is active after update: ${updatedPosition?.is_active}`)
 
       if (!updatedPosition) {
         throw new Error("Position not found");
       }
       
-      // Verify the update by reading it back
+      // Verify the update by reading it back with all relevant fields
       const verification = await db("branch_positions")
         .where("id", id)
-        .select("id", "position_title", "status")
+        .select("id", "position_title", "status", "job_status", "is_active")
         .first();
       console.log(`Verification read from DB:`, verification)
+
+      // Ensure the returned position has the synced fields
+      if (verification) {
+        updatedPosition.status = verification.status;
+        updatedPosition.job_status = verification.job_status || verification.status;
+        updatedPosition.is_active = verification.is_active;
+      }
 
       return updatedPosition;
     } catch (error) {

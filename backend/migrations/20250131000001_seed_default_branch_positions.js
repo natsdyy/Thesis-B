@@ -24,7 +24,8 @@ exports.up = async function (knex) {
       position_type: "Full-time",
       total_slots: 1,
       filled_slots: 0,
-      status: "open"
+      status: "open",
+      job_status: "open"
     },
     {
       position_title: "Cashier",
@@ -37,7 +38,8 @@ exports.up = async function (knex) {
       position_type: "Full-time",
       total_slots: 2,
       filled_slots: 0,
-      status: "open"
+      status: "open",
+      job_status: "open"
     },
     {
       position_title: "Cook",
@@ -50,7 +52,8 @@ exports.up = async function (knex) {
       position_type: "Full-time",
       total_slots: 2,
       filled_slots: 0,
-      status: "open"
+      status: "open",
+      job_status: "open"
     },
     {
       position_title: "Kitchen Assistant",
@@ -63,7 +66,8 @@ exports.up = async function (knex) {
       position_type: "Full-time",
       total_slots: 1,
       filled_slots: 0,
-      status: "open"
+      status: "open",
+      job_status: "open"
     },
     {
       position_title: "Waiter",
@@ -76,7 +80,8 @@ exports.up = async function (knex) {
       position_type: "Full-time",
       total_slots: 3,
       filled_slots: 0,
-      status: "open"
+      status: "open",
+      job_status: "open"
     }
   ];
   
@@ -101,6 +106,7 @@ exports.up = async function (knex) {
         total_slots: position.total_slots,
         filled_slots: position.filled_slots,
         status: position.status,
+        job_status: position.status, // Set job_status same as status
         is_active: true,
         created_at: knex.fn.now(),
         updated_at: knex.fn.now()

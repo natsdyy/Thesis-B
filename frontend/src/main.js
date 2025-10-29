@@ -35,10 +35,9 @@ app.use(Toast, toastConfig);
 const authStore = useAuthStore();
 authStore.initializeAuth();
 
-// Initialize theme system
+// Initialize theme system (light mode only)
 const themeStore = useThemeStore();
 themeStore.initializeTheme();
-themeStore.watchSystemTheme();
 
 // Initialize PikaDay
 const pikaDay = new PikaDay({

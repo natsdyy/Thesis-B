@@ -1381,7 +1381,7 @@
           <table
             :class="[
               'table transition-colors duration-300',
-              themeStore.isDarkMode ? 'table-zebra-dark' : 'table-zebra',
+              'table-zebra',
             ]"
           >
             <thead>

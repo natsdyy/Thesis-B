@@ -160,6 +160,11 @@ export const usePositionsStore = defineStore('positions', {
             }
           }
 
+          // If this is a Branch department position, notify that branch positions were also updated
+          if (department === 'Branch') {
+            console.log(`✅ Rate updated for ${updatedPosition.role}. All matching branch positions have been synced.`);
+          }
+
           return updatedPosition;
         } else {
           throw new Error(data.message || 'Failed to update position rate');

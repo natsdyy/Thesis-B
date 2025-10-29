@@ -1,28 +1,42 @@
 <template>
   <div
     v-if="isOpen"
-    class="fixed inset-0 backdrop-blur-md bg-transparent flex items-center justify-center z-50 p-4"
+    class="fixed inset-0 backdrop-blur-md bg-transparent z-50 overflow-y-auto"
     @click.self="closeModal"
   >
-    <div class="bg-white rounded-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden shadow-2xl">
+    <div class="min-h-full flex items-start justify-center p-4 pt-24 pb-6">
+      <div class="bg-white rounded-2xl w-full max-w-6xl max-h-[calc(100vh-6rem)] min-h-0 flex flex-col shadow-2xl overflow-hidden">
       <!-- Modal Header -->
-      <div class="bg-gradient-to-r from-green-600 to-green-700 text-white p-6">
+      <div class="bg-gradient-to-r from-green-600 to-green-700 text-white p-6 flex-shrink-0">
         <div class="flex justify-between items-center">
           <div>
             <h2 class="text-2xl font-bold mb-2">Open Job Positions</h2>
             <p class="text-green-100">Explore our current job openings and find the perfect role for you</p>
           </div>
-          <button
-            @click="closeModal"
-            class="text-white hover:text-green-200 transition-colors p-2 rounded-full hover:bg-white/10"
-          >
-            <font-awesome-icon icon="fa-solid fa-times" class="w-6 h-6" />
-          </button>
+          <div class="flex items-center gap-2">
+            <button
+              @click="loadPositions"
+              :disabled="isLoading"
+              class="text-white hover:text-green-200 transition-colors p-2 rounded-full hover:bg-white/10"
+              title="Refresh positions"
+            >
+              <font-awesome-icon 
+                icon="fa-solid fa-rotate" 
+                :class="['w-5 h-5', isLoading ? 'animate-spin' : '']" 
+              />
+            </button>
+            <button
+              @click="closeModal"
+              class="text-white hover:text-green-200 transition-colors p-2 rounded-full hover:bg-white/10"
+            >
+              <font-awesome-icon icon="fa-solid fa-times" class="w-6 h-6" />
+            </button>
+          </div>
         </div>
       </div>
 
       <!-- Modal Content -->
-      <div class="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+      <div class="flex-1 overflow-y-auto p-6">
         <!-- Loading State -->
         <div v-if="isLoading" class="flex justify-center items-center py-12">
           <div class="loading loading-spinner loading-lg text-green-600"></div>
@@ -76,18 +90,15 @@
                   <h3 class="text-xl font-bold text-gray-900 mb-1 group-hover:text-green-700 transition-colors">
                     {{ position.position_title }}
                   </h3>
-                  <p class="text-sm text-gray-600">{{ position.department }}</p>
+                  <div class="space-y-1">
+                    <p class="text-sm text-gray-600">{{ position.department }}</p>
+                    <p v-if="position.branch_name" class="text-sm font-medium text-green-600 flex items-center">
+                      <font-awesome-icon icon="fa-solid fa-map-marker-alt" class="mr-1 text-xs" />
+                      {{ position.branch_name }}
+                    </p>
+                  </div>
                 </div>
-                <div
-                  :class="[
-                    'px-3 py-1 rounded-full text-xs font-semibold',
-                    position.status === 'open'
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-red-100 text-red-800'
-                  ]"
-                >
-                  {{ position.status === 'open' ? 'Open' : 'Closed' }}
-                </div>
+                <!-- Status badge removed since we only show open positions -->
               </div>
 
               <!-- Position Details -->
@@ -124,12 +135,17 @@
               <!-- Action Buttons -->
               <div class="flex gap-2">
                 <button
-                  v-if="position.status === 'open'"
                   @click="applyForPosition(position)"
-                  class="flex-1 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-medium transition-colors text-sm"
+                  :disabled="!(position.status === 'open' || position.job_status === 'open') || position.is_active === false"
+                  :class="[
+                    'flex-1 px-4 py-2 rounded-lg font-medium transition-colors text-sm',
+                    (position.status === 'open' || position.job_status === 'open') && position.is_active !== false
+                      ? 'bg-orange-500 hover:bg-orange-600 text-white cursor-pointer'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed opacity-60'
+                  ]"
                 >
                   <font-awesome-icon icon="fa-solid fa-paper-plane" class="mr-2" />
-                  Apply Now
+                  {{ (position.status === 'open' || position.job_status === 'open') && position.is_active !== false ? 'Apply Now' : 'Position Closed' }}
                 </button>
               </div>
             </div>
@@ -138,12 +154,13 @@
           <!-- Footer Stats -->
           <div class="mt-8 bg-gray-50 rounded-lg p-4">
             <div class="flex justify-between items-center text-sm text-gray-600">
-              <span>Showing {{ filteredPositions.length }} of {{ positions.length }} positions</span>
+              <span>Showing {{ filteredPositions.length }} of {{ positions.length }} open positions</span>
               <span>{{ getOpenPositionsCount() }} positions currently open</span>
             </div>
           </div>
         </div>
       </div>
+    </div>
     </div>
 
     <!-- Job Application Form Modal -->
@@ -235,9 +252,10 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { formatImageUrl, apiConfig } from '../../config/api.js'
 import JobApplicationFormModal from './JobApplicationFormModal.vue'
+import { usePositionsStore } from '../../stores/positionsStore.js'
 
 // Props
 const props = defineProps({
@@ -251,24 +269,71 @@ const props = defineProps({
 const emit = defineEmits(['close'])
 
 // State
-const positions = ref([])
+const positionsStore = usePositionsStore()
+const branchPositions = ref([]) // Separate branch positions from API
 const isLoading = ref(false)
 const activeDepartment = ref('All')
 const isApplicationFormOpen = ref(false)
 const selectedPosition = ref(null)
 const showSuccessModal = ref(false)
 
-// Computed
+// Computed - merge branch positions with store positions (department roles)
+const positions = computed(() => {
+  // Get department positions from store (grouped by department)
+  const storePositions = []
+  for (const department in positionsStore.positions) {
+    const deptPositions = positionsStore.positions[department] || []
+    deptPositions.forEach(role => {
+      // Only include active positions
+      if (role.is_active) {
+        storePositions.push({
+          id: `dept-${role.role_id}`,
+          position_title: role.role,
+          position_code: role.role_code || '',
+          department: role.department || 'Department',
+          position_type: 'Full-time',
+          rate_per_hour: parseFloat(role.rate_per_hour) || 0,
+          status: role.is_active ? 'open' : 'closed',
+          description: role.description || '',
+          requirements: role.requirements || '',
+          role_id: role.role_id,
+          branch_id: null, // Department roles don't have a branch
+          branch_name: null
+        })
+      }
+    })
+  }
+  
+  // Merge with branch positions and filter out closed positions
+  // Branch positions already have branch_id and branch_name from the API
+  const allPositions = [...branchPositions.value, ...storePositions]
+  // Double-check filtering: only show truly open and active positions
+  return allPositions.filter(p => {
+    const isOpen = p.status === 'open' || p.job_status === 'open';
+    const isActive = p.is_active !== false && p.is_active !== 0;
+    const notDeleted = !p.deleted_at;
+    return isOpen && isActive && notDeleted;
+  })
+})
+
 const departments = computed(() => {
-  const deptSet = new Set(positions.value.map(p => p.department))
-  return ['All', ...Array.from(deptSet).sort()]
+  // Default departments we always want to show as tabs
+  const defaultDepartments = ['Branch', 'Human Resource', 'Finance', 'SCM', 'Production', 'CRM']
+  const deptSet = new Set([
+    ...defaultDepartments,
+    ...positions.value.map(p => p.department).filter(Boolean)
+  ])
+  return ['All', ...Array.from(deptSet).sort((a, b) => a.localeCompare(b))]
 })
 
 const filteredPositions = computed(() => {
-  if (activeDepartment.value === 'All') {
-    return positions.value
+  let filtered = positions.value // Already filtered to only open positions
+  
+  if (activeDepartment.value !== 'All') {
+    filtered = filtered.filter(p => p.department === activeDepartment.value)
   }
-  return positions.value.filter(p => p.department === activeDepartment.value)
+  
+  return filtered
 })
 
 // Methods
@@ -288,7 +353,8 @@ const getDepartmentCount = (department) => {
 }
 
 const getOpenPositionsCount = () => {
-  return positions.value.filter(p => p.status === 'open').length
+  // All positions in the computed property are already open (filtered)
+  return positions.value.length
 }
 
 const calculateMonthlySalaryRange = (ratePerHour) => {
@@ -357,46 +423,107 @@ const loadPositions = async () => {
   try {
     isLoading.value = true
     
-    const response = await fetch('/api/branch-positions', {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        'Content-Type': 'application/json'
-      }
+    // Fetch from branch-positions API - public endpoint should work without auth
+    // Always request fresh data with job_status=open to only show open positions
+    const headers = {
+      'Content-Type': 'application/json'
+    }
+    
+    // Add auth token if available (for logged-in users), but allow public access
+    const token = localStorage.getItem('token')
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+    
+    const response = await fetch('/api/branch-positions?job_status=open', {
+      headers
     })
 
     if (!response.ok) {
-      throw new Error('Failed to load positions')
+      throw new Error('Failed to load branch positions')
     }
 
     const result = await response.json()
     
     if (result.success && result.data) {
-      positions.value = result.data
-      console.log(`Loaded ${positions.value.length} positions`)
+      // Filter to only open positions (check both status and job_status for compatibility)
+      // Also ensure is_active is true
+      branchPositions.value = result.data.filter(p => {
+        const isOpen = p.status === 'open' || p.job_status === 'open';
+        const isActive = p.is_active !== false && p.is_active !== 0;
+        const notDeleted = !p.deleted_at;
+        return isOpen && isActive && notDeleted;
+      })
+      console.log(`Loaded ${branchPositions.value.length} open branch positions`)
+      
+      // Log any filtered out positions for debugging
+      const closedCount = result.data.length - branchPositions.value.length;
+      if (closedCount > 0) {
+        console.log(`Filtered out ${closedCount} closed/inactive positions from public listing`)
+      }
     } else {
-      console.warn('Positions API returned no data')
-      positions.value = []
+      console.warn('Branch positions API returned no data')
+      branchPositions.value = []
+    }
+    
+    // Load department positions from store (this will sync with Position Management)
+    try {
+      await positionsStore.fetchPositions()
+      console.log('Loaded positions from store (synced with Position Management)')
+    } catch (err) {
+      console.warn('Error loading positions from store:', err)
     }
   } catch (error) {
     console.error('Error loading positions:', error)
-    positions.value = []
+    branchPositions.value = []
   } finally {
     isLoading.value = false
   }
 }
 
-// Load positions when modal opens
+// Cleanup function for visibility listener
+let visibilityHandler = null
+
+// Watch modal open state and add/remove visibility listener
+watch(() => props.isOpen, (newValue) => {
+  if (newValue) {
+    // Modal opened - refresh positions immediately
+    // This ensures we always show the latest status from JobApplication.vue
+    console.log('Job positions modal opened - refreshing positions...')
+    loadPositions()
+    
+    // Add visibility change listener to refresh when tab becomes visible
+    // This ensures changes made in HR view (JobApplication.vue) are reflected
+    if (typeof document !== 'undefined') {
+      visibilityHandler = () => {
+        if (document.visibilityState === 'visible' && props.isOpen) {
+          console.log('Page visible and modal open - refreshing positions...')
+          loadPositions()
+        }
+      }
+      document.addEventListener('visibilitychange', visibilityHandler)
+    }
+  } else {
+    // Modal closed - remove visibility listener
+    if (visibilityHandler && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', visibilityHandler)
+      visibilityHandler = null
+    }
+  }
+})
+
+// Load positions when component is mounted
 onMounted(() => {
   if (props.isOpen) {
     loadPositions()
   }
 })
 
-// Watch for modal open state
-import { watch } from 'vue'
-watch(() => props.isOpen, (newValue) => {
-  if (newValue) {
-    loadPositions()
+// Cleanup on unmount
+onUnmounted(() => {
+  if (visibilityHandler && typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', visibilityHandler)
+    visibilityHandler = null
   }
 })
 </script>

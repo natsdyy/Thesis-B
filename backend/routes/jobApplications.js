@@ -173,6 +173,14 @@ router.post("/", upload.fields([
       ? null
       : Number.parseInt(applicationData.positionId, 10);
 
+    // Extract branchId if provided (for branch positions)
+    const normalizedBranchId = (applicationData.branchId === undefined ||
+                                applicationData.branchId === null ||
+                                applicationData.branchId === '' ||
+                                applicationData.branchId === 'null')
+      ? null
+      : Number.parseInt(applicationData.branchId, 10);
+
     const jobApplicationData = {
       fullName: applicationData.fullName,
       email: applicationData.email,
@@ -190,6 +198,7 @@ router.post("/", upload.fields([
       resumePath: resumePath || null,
       additionalDocumentsPath: additionalDocumentsPath || null,
       positionId: Number.isNaN(normalizedPositionId) ? null : normalizedPositionId,
+      branchId: Number.isNaN(normalizedBranchId) ? null : normalizedBranchId,
       applicationDate: applicationData.applicationDate || new Date().toISOString(),
       status: 'new'
     };

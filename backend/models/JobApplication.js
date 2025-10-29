@@ -3,6 +3,22 @@ const { db } = require("../config/database");
 class JobApplication {
   static async create(applicationData) {
     try {
+      // If branchId is provided, we can store it via position lookup or add it to the table
+      // For now, we'll derive branch info from position_id when fetching
+      // But if branchId is provided separately, try to get it from branch_positions first
+      let actualBranchId = applicationData.branchId;
+      
+      // If we have positionId but no branchId, try to get branch_id from branch_positions
+      if (applicationData.positionId && !actualBranchId) {
+        const branchPosition = await db("branch_positions")
+          .select("branch_id")
+          .where("id", applicationData.positionId)
+          .first();
+        if (branchPosition) {
+          actualBranchId = branchPosition.branch_id;
+        }
+      }
+
       const [application] = await db("job_applications")
         .insert({
           full_name: applicationData.fullName,
@@ -28,6 +44,11 @@ class JobApplication {
         })
         .returning("*");
 
+      // Add branch_id to the returned data if we have it
+      if (actualBranchId) {
+        application.branch_id = actualBranchId;
+      }
+
       return {
         success: true,
         data: application,
@@ -45,19 +66,27 @@ class JobApplication {
 
   static async getAll(filters = {}) {
     try {
-      let query = db("job_applications")
-        .select("*")
-        .orderBy("created_at", "desc");
+      // Join with branch_positions to get branch_id and branch_name
+      // Use leftJoin to include applications that may not have branch positions (department roles)
+      let query = db("job_applications as ja")
+        .leftJoin("branch_positions as bp", "ja.position_id", "bp.id")
+        .leftJoin("branches as b", "bp.branch_id", "b.id")
+        .select(
+          "ja.*",
+          "bp.branch_id",
+          "b.name as branch_name"
+        )
+        .orderBy("ja.created_at", "desc");
 
       // Apply filters
       if (filters.status) {
-        query = query.where("status", filters.status);
+        query = query.where("ja.status", filters.status);
       }
       if (filters.department) {
-        query = query.where("department", filters.department);
+        query = query.where("ja.department", filters.department);
       }
       if (filters.positionId) {
-        query = query.where("position_id", filters.positionId);
+        query = query.where("ja.position_id", filters.positionId);
       }
 
       const applications = await query;
@@ -79,9 +108,15 @@ class JobApplication {
 
   static async getById(id) {
     try {
-      const application = await db("job_applications")
-        .select("*")
-        .where("id", id)
+      const application = await db("job_applications as ja")
+        .leftJoin("branch_positions as bp", "ja.position_id", "bp.id")
+        .leftJoin("branches as b", "bp.branch_id", "b.id")
+        .select(
+          "ja.*",
+          "bp.branch_id",
+          "b.name as branch_name"
+        )
+        .where("ja.id", id)
         .first();
 
       if (!application) {

@@ -50,10 +50,16 @@ router.get("/", async (req, res) => {
       branch_id: req.query.branch_id,
       department: req.query.department,
       status: req.query.status,
-      search: req.query.search,
-      page: parseInt(req.query.page) || 1,
-      limit: parseInt(req.query.limit) || 10
+      job_status: req.query.job_status,
+      is_active: req.query.is_active !== undefined ? req.query.is_active === 'true' : undefined,
+      search: req.query.search
     };
+
+    // Only apply pagination if explicitly requested
+    if (req.query.page !== undefined || req.query.limit !== undefined) {
+      filters.page = parseInt(req.query.page) || 1;
+      filters.limit = parseInt(req.query.limit) || 10;
+    }
 
     // Remove undefined filters
     Object.keys(filters).forEach(key => {

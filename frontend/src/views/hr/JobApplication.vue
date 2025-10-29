@@ -437,22 +437,53 @@
 
           <!-- Positions Card Grid -->
           <div v-else-if="positions.length > 0" class="mb-8">
-            <!-- Header with Refresh Button -->
+            <!-- Header with Refresh Button and View Toggle -->
             <div class="bg-white rounded-lg shadow-md border border-gray-200 p-4 mb-4">
               <div class="flex justify-between items-center">
                 <div>
                   <h3 class="text-lg font-semibold text-gray-900">Open Job Positions</h3>
                   <p class="text-sm text-gray-600 mt-1">List of available positions displayed on the landing page</p>
                 </div>
-                <button
-                  @click="loadPositions"
-                  :disabled="isLoadingPositions"
-                  class="btn btn-outline btn-sm flex items-center gap-2"
-                  title="Refresh positions from Position Management"
-                >
-                  <RefreshCw :class="['w-4 h-4', isLoadingPositions ? 'animate-spin' : '']" />
-                  {{ isLoadingPositions ? 'Loading...' : 'Refresh' }}
-                </button>
+                <div class="flex items-center gap-2">
+                  <!-- View Mode Toggle -->
+                  <div class="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+                    <button
+                      @click="viewMode = 'grid'"
+                      :class="[
+                        'px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5',
+                        viewMode === 'grid' 
+                          ? 'bg-white text-green-600 shadow-sm' 
+                          : 'text-gray-600 hover:text-gray-900'
+                      ]"
+                      title="Grid View"
+                    >
+                      <List class="w-4 h-4" />
+                      Grid
+                    </button>
+                    <button
+                      @click="viewMode = 'card'"
+                      :class="[
+                        'px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5',
+                        viewMode === 'card' 
+                          ? 'bg-white text-green-600 shadow-sm' 
+                          : 'text-gray-600 hover:text-gray-900'
+                      ]"
+                      title="Card View"
+                    >
+                      <LayoutGrid class="w-4 h-4" />
+                      Card
+                    </button>
+                  </div>
+                  <button
+                    @click="loadPositions"
+                    :disabled="isLoadingPositions"
+                    class="btn btn-outline btn-sm flex items-center gap-2"
+                    title="Refresh positions from Position Management"
+                  >
+                    <RefreshCw :class="['w-4 h-4', isLoadingPositions ? 'animate-spin' : '']" />
+                    {{ isLoadingPositions ? 'Loading...' : 'Refresh' }}
+                  </button>
+                </div>
               </div>
               </div>
               
@@ -473,10 +504,291 @@
               </button>
             </div>
 
-            <!-- Cards Grid -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 mb-4">
+            <!-- Grid View (Table) -->
+            <div v-if="viewMode === 'grid'" class="bg-white rounded-lg shadow-md border border-gray-200 mb-4">
+              <!-- Active Filters Display -->
+              <div v-if="hasActiveGridFilters" class="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center gap-2 flex-wrap">
+                <span class="text-xs font-medium text-gray-600">Active filters:</span>
+                <span v-if="gridFilters.position" class="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded-full">
+                  Position: {{ gridFilters.position }}
+                  <button @click.stop="gridFilters.position = null; gridCurrentPage = 1" class="hover:text-orange-900">
+                    <X class="w-3 h-3" />
+                  </button>
+                </span>
+                <span v-if="gridFilters.branch" class="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+                  Branch: {{ gridFilters.branch }}
+                  <button @click.stop="gridFilters.branch = null; gridCurrentPage = 1" class="hover:text-green-900">
+                    <X class="w-3 h-3" />
+                  </button>
+                </span>
+                <span v-if="gridFilters.department" class="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                  Department: {{ gridFilters.department }}
+                  <button @click.stop="gridFilters.department = null; gridCurrentPage = 1" class="hover:text-blue-900">
+                    <X class="w-3 h-3" />
+                  </button>
+                </span>
+                <span v-if="gridFilters.status" class="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">
+                  Status: {{ gridFilters.status }}
+                  <button @click.stop="gridFilters.status = null; gridCurrentPage = 1" class="hover:text-purple-900">
+                    <X class="w-3 h-3" />
+                  </button>
+                </span>
+                <button @click.stop="clearGridFilters" class="text-xs text-gray-600 hover:text-gray-900 underline ml-2">
+                  Clear all
+                </button>
+              </div>
+              
+              <div class="overflow-x-auto">
+                <table class="w-full">
+                  <thead class="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th 
+                        @click="togglePositionFilter(null)"
+                        class="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors relative group"
+                      >
+                        <div class="flex items-center gap-1">
+                          Position
+                          <Filter class="w-3 h-3 opacity-50 group-hover:opacity-100" />
+                          <span v-if="gridFilters.position" class="w-2 h-2 bg-orange-600 rounded-full"></span>
+                        </div>
+                        <!-- Dropdown menu -->
+                        <div v-if="availablePositionTitles.length > 0" class="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-[200px] hidden group-hover:block">
+                          <div class="py-1">
+                            <button
+                              @click.stop="togglePositionFilter(null)"
+                              class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 flex items-center justify-between"
+                              :class="!gridFilters.position ? 'bg-orange-50 text-orange-700' : 'text-gray-700'"
+                            >
+                              <span>All Positions</span>
+                              <span v-if="!gridFilters.position" class="text-orange-600">✓</span>
+                            </button>
+                            <div class="border-t border-gray-200 my-1"></div>
+                            <button
+                              v-for="position in availablePositionTitles"
+                              :key="position"
+                              @click.stop="togglePositionFilter(position)"
+                              class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 flex items-center justify-between"
+                              :class="gridFilters.position === position ? 'bg-orange-50 text-orange-700' : 'text-gray-700'"
+                            >
+                              <span>{{ position }}</span>
+                              <span v-if="gridFilters.position === position" class="text-orange-600">✓</span>
+                            </button>
+                          </div>
+                        </div>
+                      </th>
+                      <th 
+                        @click="toggleBranchFilter(null)"
+                        class="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors relative group"
+                      >
+                        <div class="flex items-center gap-1">
+                          Branch
+                          <Filter class="w-3 h-3 opacity-50 group-hover:opacity-100" />
+                          <span v-if="gridFilters.branch" class="w-2 h-2 bg-green-600 rounded-full"></span>
+                        </div>
+                        <!-- Dropdown menu -->
+                        <div v-if="availableBranches.length > 0" class="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-[200px] hidden group-hover:block">
+                          <div class="py-1">
+                            <button
+                              @click.stop="toggleBranchFilter(null)"
+                              class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 flex items-center justify-between"
+                              :class="!gridFilters.branch ? 'bg-green-50 text-green-700' : 'text-gray-700'"
+                            >
+                              <span>All Branches</span>
+                              <span v-if="!gridFilters.branch" class="text-green-600">✓</span>
+                            </button>
+                            <div class="border-t border-gray-200 my-1"></div>
+                            <button
+                              v-for="branch in availableBranches"
+                              :key="branch"
+                              @click.stop="toggleBranchFilter(branch)"
+                              class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 flex items-center justify-between"
+                              :class="gridFilters.branch === branch ? 'bg-green-50 text-green-700' : 'text-gray-700'"
+                            >
+                              <span>{{ branch }}</span>
+                              <span v-if="gridFilters.branch === branch" class="text-green-600">✓</span>
+                            </button>
+                          </div>
+                        </div>
+                      </th>
+                      <th 
+                        @click="toggleDepartmentFilter(null)"
+                        class="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors relative group"
+                      >
+                        <div class="flex items-center gap-1">
+                          Department
+                          <Filter class="w-3 h-3 opacity-50 group-hover:opacity-100" />
+                          <span v-if="gridFilters.department" class="w-2 h-2 bg-blue-600 rounded-full"></span>
+                        </div>
+                        <!-- Dropdown menu -->
+                        <div v-if="availableDepartments.length > 0" class="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-[200px] hidden group-hover:block">
+                          <div class="py-1">
+                            <button
+                              @click.stop="toggleDepartmentFilter(null)"
+                              class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 flex items-center justify-between"
+                              :class="!gridFilters.department ? 'bg-blue-50 text-blue-700' : 'text-gray-700'"
+                            >
+                              <span>All Departments</span>
+                              <span v-if="!gridFilters.department" class="text-blue-600">✓</span>
+                            </button>
+                            <div class="border-t border-gray-200 my-1"></div>
+                            <button
+                              v-for="dept in availableDepartments"
+                              :key="dept"
+                              @click.stop="toggleDepartmentFilter(dept)"
+                              class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 flex items-center justify-between"
+                              :class="gridFilters.department === dept ? 'bg-blue-50 text-blue-700' : 'text-gray-700'"
+                            >
+                              <span>{{ dept }}</span>
+                              <span v-if="gridFilters.department === dept" class="text-blue-600">✓</span>
+                            </button>
+                          </div>
+                        </div>
+                      </th>
+                      <th class="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Rate/Hour</th>
+                      <th 
+                        @click="toggleStatusFilter(null)"
+                        class="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors relative group"
+                      >
+                        <div class="flex items-center gap-1">
+                          Status
+                          <Filter class="w-3 h-3 opacity-50 group-hover:opacity-100" />
+                          <span v-if="gridFilters.status" class="w-2 h-2 bg-purple-600 rounded-full"></span>
+                        </div>
+                        <!-- Dropdown menu -->
+                        <div v-if="availableStatuses.length > 0" class="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-[150px] hidden group-hover:block">
+                          <div class="py-1">
+                            <button
+                              @click.stop="toggleStatusFilter(null)"
+                              class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 flex items-center justify-between"
+                              :class="!gridFilters.status ? 'bg-purple-50 text-purple-700' : 'text-gray-700'"
+                            >
+                              <span>All Status</span>
+                              <span v-if="!gridFilters.status" class="text-purple-600">✓</span>
+                            </button>
+                            <div class="border-t border-gray-200 my-1"></div>
+                            <button
+                              v-for="status in availableStatuses"
+                              :key="status"
+                              @click.stop="toggleStatusFilter(status)"
+                              class="w-full text-left px-3 py-2 text-xs hover:bg-gray-100 flex items-center justify-between capitalize"
+                              :class="gridFilters.status === status ? 'bg-purple-50 text-purple-700' : 'text-gray-700'"
+                            >
+                              <span>{{ status }}</span>
+                              <span v-if="gridFilters.status === status" class="text-purple-600">✓</span>
+                            </button>
+                          </div>
+                        </div>
+                      </th>
+                      <th class="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody class="bg-white divide-y divide-gray-200">
+                    <tr
+                      v-for="position in gridPaginatedPositions"
+                      :key="position.id"
+                      class="hover:bg-gray-50 transition-colors"
+                    >
+                      <td 
+                        class="px-4 py-3 whitespace-nowrap cursor-pointer"
+                        @click.stop="togglePositionStatus(position)"
+                      >
+                        <div class="font-semibold text-gray-900">{{ position.position_title }}</div>
+                        <div class="text-xs text-gray-500 line-clamp-1">{{ position.description || `${position.department} ${position.position_title}` }}</div>
+                      </td>
+                      <td 
+                        class="px-4 py-3 whitespace-nowrap"
+                        @click.stop
+                      >
+                        <div v-if="position.branch_name && position.branch_name !== 'N/A' && position.branch_name.trim() !== ''" class="flex items-center text-sm text-green-600">
+                          <svg class="w-4 h-4 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                          </svg>
+                          <span class="truncate max-w-[200px]">{{ position.branch_name }}</span>
+                        </div>
+                        <span v-else-if="position.branch_id" class="text-sm text-gray-400 italic">No branch name</span>
+                        <span v-else class="text-sm text-green-600 flex items-center">
+                          <svg class="w-4 h-4 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                          </svg>
+                          Main Branch
+                        </span>
+                      </td>
+                      <td 
+                        class="px-4 py-3 whitespace-nowrap cursor-pointer"
+                        @click.stop="togglePositionStatus(position)"
+                      >
+                        <span class="text-sm text-gray-600">{{ position.department }}</span>
+                      </td>
+                      <td 
+                        class="px-4 py-3 whitespace-nowrap cursor-pointer"
+                        @click.stop="togglePositionStatus(position)"
+                      >
+                        <span class="text-sm font-semibold text-primaryColor">
+                          ₱{{ (parseFloat(position.rate_per_hour) || 0).toFixed(2) }}
+                        </span>
+                      </td>
+                      <td 
+                        class="px-4 py-3 whitespace-nowrap cursor-pointer"
+                        @click.stop="togglePositionStatus(position)"
+                      >
+                        <span
+                          class="px-2 py-1 text-xs font-medium rounded-full"
+                          :class="position.status === 'open' ? 'bg-success/20 text-success' : 'bg-error/20 text-error'"
+                        >
+                          {{ position.status === 'open' ? 'Open' : 'Closed' }}
+                        </span>
+                      </td>
+                      <td 
+                        class="px-4 py-3 whitespace-nowrap text-sm text-gray-500 cursor-pointer"
+                        @click.stop="togglePositionStatus(position)"
+                      >
+                        Click to {{ position.status === 'open' ? 'close' : 'open' }}
+                      </td>
+                    </tr>
+                    <tr v-if="gridPaginatedPositions.length === 0">
+                      <td colspan="6" class="px-4 py-8 text-center text-gray-500">
+                        No positions found matching the filters.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              
+              <!-- Pagination Controls -->
+              <div class="px-4 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+                <div class="text-sm text-gray-600">
+                  Showing {{ (gridCurrentPage - 1) * gridItemsPerPage + 1 }} to 
+                  {{ Math.min(gridCurrentPage * gridItemsPerPage, gridFilteredPositions.length) }} of 
+                  {{ gridFilteredPositions.length }} positions
+                </div>
+                <div class="flex items-center gap-2">
+                  <button
+                    @click="gridCurrentPage = Math.max(1, gridCurrentPage - 1)"
+                    :disabled="gridCurrentPage === 1"
+                    class="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <span class="text-sm text-gray-600">
+                    Page {{ gridCurrentPage }} of {{ gridTotalPages }}
+                  </span>
+                  <button
+                    @click="gridCurrentPage = Math.min(gridTotalPages, gridCurrentPage + 1)"
+                    :disabled="gridCurrentPage >= gridTotalPages"
+                    class="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Cards Grid View -->
+            <div v-else-if="viewMode === 'card'" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 mb-4">
               <div
-                v-for="position in filteredPositions"
+                v-for="position in cardPaginatedPositions"
                 :key="position.id"
                 @click="togglePositionStatus(position)"
                 class="card bg-white shadow-md border border-black/10 hover:shadow-lg cursor-pointer hover:border-green-500/30"
@@ -488,9 +800,26 @@
                       <h3 class="font-semibold text-black truncate text-sm sm:text-base">
                         {{ position.position_title }}
                       </h3>
-                      <p class="text-xs sm:text-sm text-black/60 truncate">
-                        {{ position.department }}
-                      </p>
+                      <div class="space-y-1">
+                        <p class="text-xs sm:text-sm text-black/60 truncate">
+                          {{ position.department }}
+                        </p>
+                        <p v-if="position.branch_name && position.branch_name !== 'N/A' && position.branch_name.trim() !== ''" class="text-xs font-medium text-green-600 flex items-center truncate">
+                          <svg class="w-3 h-3 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                          </svg>
+                          {{ position.branch_name }}
+                        </p>
+                        <p v-else-if="position.branch_id" class="text-xs text-gray-400 italic truncate">No branch name</p>
+                        <p v-else class="text-xs font-medium text-green-600 flex items-center truncate">
+                          <svg class="w-3 h-3 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                          </svg>
+                          Main Branch
+                        </p>
+                      </div>
                     </div>
                   </div>
 
@@ -528,13 +857,33 @@
               </div>
             </div>
 
-            <!-- Footer Stats -->
-            <div class="bg-white rounded-lg shadow-md border border-gray-200 p-4">
+            <!-- Card View Pagination -->
+            <div v-if="viewMode === 'card'" class="bg-white rounded-lg shadow-md border border-gray-200 p-4">
               <div class="flex justify-between items-center">
-                <div class="text-sm text-gray-700">
-                  Showing <span class="font-medium">{{ positions.length }}</span> positions
+                <div class="text-sm text-gray-600">
+                  Showing {{ (cardCurrentPage - 1) * cardItemsPerPage + 1 }} to 
+                  {{ Math.min(cardCurrentPage * cardItemsPerPage, filteredPositions.length) }} of 
+                  {{ filteredPositions.length }} positions
                 </div>
-            
+                <div class="flex items-center gap-2">
+                  <button
+                    @click="cardCurrentPage = Math.max(1, cardCurrentPage - 1)"
+                    :disabled="cardCurrentPage === 1"
+                    class="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <span class="text-sm text-gray-600">
+                    Page {{ cardCurrentPage }} of {{ cardTotalPages }}
+                  </span>
+                  <button
+                    @click="cardCurrentPage = Math.min(cardTotalPages, cardCurrentPage + 1)"
+                    :disabled="cardCurrentPage >= cardTotalPages"
+                    class="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1097,7 +1446,7 @@ import { useRouter } from 'vue-router'
 import { 
   FileUser, Plus, Download, Calendar, Users, Target, CheckCircle,
   Inbox, Clock, UserCheck, MapPin, Eye, Search, X, AlertTriangle, RefreshCw, Filter,
-  SquarePen, CircleX, Building2, Trash2
+  SquarePen, CircleX, Building2, Trash2, LayoutGrid, List
 } from 'lucide-vue-next'
 import JobApplicationDetailsModal from '../../components/crm/JobApplicationDetailsModal.vue'
 import SetInterviewModal from '../../components/crm/SetInterviewModal.vue'
@@ -1108,7 +1457,7 @@ export default {
   components: {
     FileUser, Plus, Download, Calendar, Users, Target, CheckCircle,
     Inbox, Clock, UserCheck, MapPin, Eye, Search, X, AlertTriangle, RefreshCw, Filter,
-    SquarePen, CircleX, Building2, Trash2,
+    SquarePen, CircleX, Building2, Trash2, LayoutGrid, List,
     JobApplicationDetailsModal,
     SetInterviewModal
   },
@@ -1121,6 +1470,25 @@ export default {
     
     // Active department for filtering
     const activeDepartment = ref('All')
+    
+    // View mode - grid (default) or card
+    const viewMode = ref('grid') // 'grid' or 'card'
+    
+    // Grid view filters
+    const gridFilters = ref({
+      position: null,
+      branch: null,
+      department: null,
+      status: null
+    })
+    
+    // Grid view pagination
+    const gridCurrentPage = ref(1)
+    const gridItemsPerPage = ref(10)
+    
+    // Card view pagination
+    const cardCurrentPage = ref(1)
+    const cardItemsPerPage = ref(12)
 
     // Tab configuration
     const tabs = ref([
@@ -1167,12 +1535,14 @@ export default {
             status: role.is_active ? 'open' : 'closed',
             description: role.description || '',
             requirements: role.requirements || '',
-            role_id: role.role_id // Keep reference for rate updates
+            role_id: role.role_id, // Keep reference for rate updates
+            branch_id: null, // Department roles don't have a branch
+            branch_name: null
           })
         })
       }
       
-      // Merge with branch positions
+      // Merge with branch positions (branch positions already include branch_name from API)
       return [...branchPositions.value, ...storePositions]
     })
     const searchQuery = ref('')
@@ -1295,20 +1665,193 @@ export default {
       return ['All', ...Array.from(deptSet).sort((a, b) => a.localeCompare(b))]
     })
 
-    // Filter positions by department
+    // Filter positions by department (show all positions for HR management)
     const filteredPositions = computed(() => {
-      if (activeDepartment.value === 'All') {
-        return positions.value
+      // In Job Listing tab, show all positions (open and closed) so HR can manage them
+      let filtered = positions.value.filter(p => p.is_active !== false && !p.deleted_at)
+      
+      // Apply department filter from tabs
+      if (activeDepartment.value !== 'All') {
+        filtered = filtered.filter(p => p.department === activeDepartment.value)
       }
-      return positions.value.filter(p => p.department === activeDepartment.value)
+      
+      return filtered
+    })
+    
+    // Grid view filtered positions (with additional grid-specific filters)
+    const gridFilteredPositions = computed(() => {
+      let filtered = [...filteredPositions.value]
+      
+      // Apply position filter
+      if (gridFilters.value.position) {
+        filtered = filtered.filter(p => 
+          p.position_title && p.position_title.trim() === gridFilters.value.position
+        )
+      }
+      
+      // Apply branch filter
+      if (gridFilters.value.branch) {
+        if (gridFilters.value.branch === 'Main Branch') {
+          // Filter for Main Branch positions (no branch_id or branch_name)
+          filtered = filtered.filter(p => 
+            !p.branch_id || 
+            !p.branch_name || 
+            p.branch_name.trim() === '' || 
+            p.branch_name === 'N/A'
+          )
+        } else {
+          // Filter for specific branch
+          filtered = filtered.filter(p => 
+            p.branch_name === gridFilters.value.branch || 
+            p.branch_id === gridFilters.value.branch
+          )
+        }
+      }
+      
+      // Apply department filter (if not already filtered by tabs)
+      if (gridFilters.value.department && activeDepartment.value === 'All') {
+        filtered = filtered.filter(p => p.department === gridFilters.value.department)
+      }
+      
+      // Apply status filter
+      if (gridFilters.value.status) {
+        filtered = filtered.filter(p => p.status === gridFilters.value.status)
+      }
+      
+      return filtered
+    })
+    
+    // Grid view paginated positions
+    const gridPaginatedPositions = computed(() => {
+      const start = (gridCurrentPage.value - 1) * gridItemsPerPage.value
+      const end = start + gridItemsPerPage.value
+      return gridFilteredPositions.value.slice(start, end)
+    })
+    
+    // Grid view total pages
+    const gridTotalPages = computed(() => {
+      return Math.ceil(gridFilteredPositions.value.length / gridItemsPerPage.value)
+    })
+    
+    // Card view paginated positions
+    const cardPaginatedPositions = computed(() => {
+      const start = (cardCurrentPage.value - 1) * cardItemsPerPage.value
+      const end = start + cardItemsPerPage.value
+      return filteredPositions.value.slice(start, end)
+    })
+    
+    // Card view total pages
+    const cardTotalPages = computed(() => {
+      return Math.ceil(filteredPositions.value.length / cardItemsPerPage.value)
+    })
+    
+    // Get unique values for filters
+    const availableBranches = computed(() => {
+      const branches = new Set()
+      let hasMainBranch = false
+      
+      filteredPositions.value.forEach(p => {
+        // Check if this is a Main Branch position (no branch_id or no branch_name)
+        if (!p.branch_id || !p.branch_name || p.branch_name.trim() === '' || p.branch_name === 'N/A') {
+          hasMainBranch = true
+        }
+        // Include actual branch positions (those with branch_name and branch_id)
+        else if (p.branch_name && p.branch_name.trim() !== '' && p.branch_name !== 'N/A' && p.branch_id) {
+          branches.add(p.branch_name.trim())
+        }
+      })
+      
+      // Add "Main Branch" as the first option if there are any department positions
+      const branchList = hasMainBranch ? ['Main Branch'] : []
+      branchList.push(...Array.from(branches).sort())
+      
+      return branchList
+    })
+    
+    const availableDepartments = computed(() => {
+      const depts = new Set()
+      filteredPositions.value.forEach(p => {
+        if (p.department) depts.add(p.department)
+      })
+      return Array.from(depts).sort()
+    })
+    
+    const availableStatuses = computed(() => {
+      const statuses = new Set()
+      filteredPositions.value.forEach(p => {
+        if (p.status) statuses.add(p.status)
+      })
+      return Array.from(statuses).sort()
+    })
+    
+    const availablePositionTitles = computed(() => {
+      const positions = new Set()
+      filteredPositions.value.forEach(p => {
+        if (p.position_title) positions.add(p.position_title.trim())
+      })
+      return Array.from(positions).sort()
+    })
+    
+    // Methods for grid filters
+    const togglePositionFilter = (position) => {
+      if (gridFilters.value.position === position) {
+        gridFilters.value.position = null
+      } else {
+        gridFilters.value.position = position
+      }
+      gridCurrentPage.value = 1 // Reset to first page
+    }
+    
+    const toggleBranchFilter = (branch) => {
+      if (gridFilters.value.branch === branch) {
+        gridFilters.value.branch = null
+      } else {
+        gridFilters.value.branch = branch
+      }
+      gridCurrentPage.value = 1 // Reset to first page
+    }
+    
+    const toggleDepartmentFilter = (department) => {
+      if (gridFilters.value.department === department) {
+        gridFilters.value.department = null
+      } else {
+        gridFilters.value.department = department
+      }
+      gridCurrentPage.value = 1
+    }
+    
+    const toggleStatusFilter = (status) => {
+      if (gridFilters.value.status === status) {
+        gridFilters.value.status = null
+      } else {
+        gridFilters.value.status = status
+      }
+      gridCurrentPage.value = 1
+    }
+    
+    const clearGridFilters = () => {
+      gridFilters.value = {
+        position: null,
+        branch: null,
+        department: null,
+        status: null
+      }
+      gridCurrentPage.value = 1
+    }
+    
+    const hasActiveGridFilters = computed(() => {
+      return gridFilters.value.position || gridFilters.value.branch || gridFilters.value.department || gridFilters.value.status
     })
 
     // Filter positions by department (helper function for tabs)
     const filteredPositionsByDepartment = (department) => {
+      // Show all positions (open and closed) for HR management
+      let filtered = positions.value.filter(p => p.is_active !== false && !p.deleted_at)
+      
       if (department === 'All') {
-        return positions.value
+        return filtered
       }
-      return positions.value.filter(p => p.department === department)
+      return filtered.filter(p => p.department === department)
     }
 
     const filteredApplications = computed(() => {
@@ -1943,17 +2486,23 @@ export default {
           }
 
           // Update local array with the returned data
-          // Update branch positions array
+          // Update branch positions array with synced fields
           const index = branchPositions.value.findIndex(p => p.id === position.id)
           if (index !== -1) {
             const updatedStatus = responseData.data?.status || newStatus
-            console.log('Setting position status to:', updatedStatus)
+            const updatedJobStatus = responseData.data?.job_status || updatedStatus
+            const updatedIsActive = responseData.data?.is_active !== undefined ? responseData.data.is_active : (updatedStatus === 'open')
+            console.log('Setting position status to:', { status: updatedStatus, job_status: updatedJobStatus, is_active: updatedIsActive })
             branchPositions.value[index] = { 
               ...branchPositions.value[index], 
               ...responseData.data,
-              status: updatedStatus // Explicitly set status from response
+              status: updatedStatus, // Explicitly set status from response
+              job_status: updatedJobStatus, // Also sync job_status
+              is_active: updatedIsActive // Also sync is_active
             }
             console.log(`Branch position status updated to ${updatedStatus}`)
+            console.log(`Branch position job_status synced to ${updatedJobStatus}`)
+            console.log(`Branch position is_active synced to ${updatedIsActive}`)
             console.log('Final position data:', branchPositions.value[index])
           }
         }
@@ -2131,7 +2680,7 @@ export default {
       try {
         isLoadingPositions.value = true
         
-        // Fetch from branch-positions API
+        // Fetch from branch-positions API (get all positions, not just open ones, so HR can manage them)
         const response = await fetch('/api/branch-positions', {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -2146,9 +2695,33 @@ export default {
         const result = await response.json()
         
         if (result.success && result.data) {
-          // Store branch positions separately
-          branchPositions.value = result.data
+          // Store branch positions separately (they already include branch_name, branch_code, branch_address from API)
+          // Don't filter here - let the computed property handle filtering so we can toggle between open/closed
+          // Only filter out deleted positions, keep both active and inactive for HR management
+          branchPositions.value = result.data.filter(p => !p.deleted_at && p.branch_id != null)
+          
+          // Log detailed information for debugging
           console.log(`Loaded ${branchPositions.value.length} branch positions from API`)
+          console.log(`Total positions returned by API: ${result.data.length}`)
+          
+          // Group by branch to see distribution
+          const branchGroups = {}
+          branchPositions.value.forEach(p => {
+            const branchName = p.branch_name || 'Unknown Branch'
+            if (!branchGroups[branchName]) {
+              branchGroups[branchName] = []
+            }
+            branchGroups[branchName].push(p.position_title)
+          })
+          console.log('Branch positions grouped by branch:', branchGroups)
+          console.log('Sample branch positions:', branchPositions.value.slice(0, 5).map(p => ({
+            id: p.id,
+            position_title: p.position_title,
+            branch_name: p.branch_name,
+            branch_id: p.branch_id,
+            is_active: p.is_active,
+            status: p.status
+          })))
         } else {
           console.warn('Branch positions API returned no data or unsuccessful response:', result)
           branchPositions.value = []
@@ -2165,15 +2738,33 @@ export default {
           console.warn('Error loading positions from store:', err)
         }
         
-        // Log total position counts by department
+        // Log total position counts by department and by branch
         const allPositions = positions.value // Use computed property
         const deptCounts = {}
+        const branchCounts = {}
         allPositions.forEach(p => {
           if (p && p.department) {
             deptCounts[p.department] = (deptCounts[p.department] || 0) + 1
           }
+          // Count branch positions separately
+          if (p && p.branch_id && p.branch_name) {
+            branchCounts[p.branch_name] = (branchCounts[p.branch_name] || 0) + 1
+          }
         })
         console.log('Position counts by department:', deptCounts)
+        console.log('Position counts by branch:', branchCounts)
+        
+        // Also check if there are branches without positions
+        if (branches.value.length > 0) {
+          const branchesWithPositions = new Set(Object.keys(branchCounts))
+          const branchesWithoutPositions = branches.value
+            .filter(b => b.is_active !== false)
+            .filter(b => !branchesWithPositions.has(b.name))
+            .map(b => b.name)
+          if (branchesWithoutPositions.length > 0) {
+            console.warn('Branches without any positions:', branchesWithoutPositions)
+          }
+        }
       } catch (error) {
         console.error('Error loading positions:', error)
         alert('Failed to load positions. Please try again.')
@@ -2214,6 +2805,9 @@ export default {
     // Set active department
     const setActiveDepartment = (department) => {
       activeDepartment.value = department
+      currentPage.value = 1
+      gridCurrentPage.value = 1
+      cardCurrentPage.value = 1
     }
 
     // Watch for position title changes to auto-fill rate from Position Management
@@ -2239,10 +2833,21 @@ export default {
         positionsStore.fetchPositions().catch(err => {
           console.warn('Error refreshing positions from store:', err)
         })
+        // Also refresh branch positions from API to get latest rates (synced from Position Management)
+        loadPositions().catch(err => {
+          console.warn('Error refreshing branch positions:', err)
+        })
         // Also refresh rolesPositionsData for watch functionality
         rolesPositionsData.value = positionsStore.positions
       }
     })
+    
+    // Watch positionsStore.positions to automatically update department positions when rates change
+    watch(() => positionsStore.positions, (newPositions) => {
+      // Update rolesPositionsData when store positions change
+      rolesPositionsData.value = newPositions
+      console.log('Position store updated - rates may have changed, refreshing display')
+    }, { deep: true })
 
     // Lifecycle
     onMounted(() => {
@@ -2255,6 +2860,7 @@ export default {
     return {
       activeTab,
       activeDepartment,
+      viewMode,
       tabs,
       newApplicationsCount,
       pendingReviewCount,
@@ -2332,6 +2938,28 @@ export default {
       filteredPositions,
       filteredPositionsByDepartment,
       setActiveDepartment,
+      viewMode,
+      // Grid view
+      gridFilters,
+      gridCurrentPage,
+      gridItemsPerPage,
+      gridFilteredPositions,
+      gridPaginatedPositions,
+      gridTotalPages,
+      cardCurrentPage,
+      cardItemsPerPage,
+      cardPaginatedPositions,
+      cardTotalPages,
+      availableBranches,
+      availableDepartments,
+      availableStatuses,
+      availablePositionTitles,
+      togglePositionFilter,
+      toggleBranchFilter,
+      toggleDepartmentFilter,
+      toggleStatusFilter,
+      clearGridFilters,
+      hasActiveGridFilters,
       addPosition,
       editPosition,
       deletePosition,

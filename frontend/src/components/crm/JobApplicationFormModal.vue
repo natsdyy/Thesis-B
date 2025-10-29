@@ -1,16 +1,23 @@
 <template>
   <div
     v-if="isOpen"
-    class="fixed inset-0 backdrop-blur-md bg-transparent flex items-center justify-center z-50 p-4"
+    class="fixed inset-0 backdrop-blur-md bg-transparent z-50 overflow-y-auto"
     @click.self="closeModal"
   >
-    <div class="bg-white rounded-2xl w-full max-w-4xl max-h-[95vh] flex flex-col shadow-2xl">
+    <div class="min-h-full flex items-start justify-center p-4 pt-26 pb-6">
+      <div class="bg-white rounded-2xl w-full max-w-4xl max-h-[calc(100vh-7rem)] min-h-0 flex flex-col shadow-2xl">
       <!-- Modal Header -->
       <div class="bg-gradient-to-r from-green-600 to-green-700 text-white p-6 flex-shrink-0">
         <div class="flex justify-between items-center">
           <div>
             <h2 class="text-2xl font-bold mb-2">Job Application Form</h2>
-            <p class="text-green-100">{{ selectedPosition ? `Applying for: ${selectedPosition.position_title}` : 'Submit your application' }}</p>
+            <div>
+              <p class="text-green-100">{{ selectedPosition ? `Applying for: ${selectedPosition.position_title}` : 'Submit your application' }}</p>
+              <p v-if="selectedPosition?.branch_name" class="text-green-200 text-sm mt-1 flex items-center">
+                <font-awesome-icon icon="fa-solid fa-map-marker-alt" class="mr-2" />
+                Location: {{ selectedPosition.branch_name }}
+              </p>
+            </div>
           </div>
           <button
             @click="closeModal"
@@ -276,6 +283,7 @@
           </button>
         </div>
       </div>
+    </div>
 
         <!-- Success Message -->
         <div
@@ -749,6 +757,10 @@ const submitApplication = async () => {
     submitData.append('applicationDate', new Date().toISOString())
     submitData.append('status', 'new')
     submitData.append('positionId', props.selectedPosition?.id || '')
+    // Include branch_id if it's a branch position
+    if (props.selectedPosition?.branch_id) {
+      submitData.append('branchId', props.selectedPosition.branch_id)
+    }
     submitData.append('recaptchaToken', recaptchaToken.value)
 
     console.log('Submitting application data:', {

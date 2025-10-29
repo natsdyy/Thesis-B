@@ -5,7 +5,7 @@
       themeStore.themeClasses.headerBg,
     ]"
   >
-    <!-- Left Section: Menu Toggle + Theme Toggle + Breadcrumb -->
+    <!-- Left Section: Menu Toggle + Breadcrumb -->
     <div
       class="flex items-center space-x-1 sm:space-x-2 md:space-x-4 min-w-0 flex-1"
     >
@@ -317,10 +317,10 @@
           >
             <a
               @click="requestLogout"
-              class="flex items-center space-x-3 px-3 py-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors cursor-pointer"
+              class="flex items-center space-x-3 px-3 py-2 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
             >
               <LogOut class="w-4 h-4 text-red-600" />
-              <span class="text-sm text-red-700 dark:text-red-400"
+              <span class="text-sm text-red-700"
                 >Log Out</span
               >
             </a>
@@ -376,8 +376,6 @@
     Settings,
     Clock,
     LogOut,
-    Sun,
-    Moon,
     PanelLeftOpen,
     PanelLeftClose,
   } from 'lucide-vue-next';
@@ -495,10 +493,6 @@
 
   const toggleDesktopSidebar = () => {
     emit('toggle-desktop-sidebar');
-  };
-
-  const toggleTheme = () => {
-    themeStore.toggleTheme();
   };
 
   const requestLogout = () => {

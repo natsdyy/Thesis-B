@@ -11,7 +11,9 @@
     "migrate:status": "knex migrate:status --knexfile knexfile.js",
     "migrate:make": "knex migrate:make --knexfile knexfile.js",
     "seed": "node seeders/seedDefaultData.js",
-    "setup": "npm run migrate && npm run seed"
+    "setup": "npm run migrate && npm run seed",
+    "ensure-positions": "node scripts/ensure_all_branch_positions.js",
+    "sync-rates": "node scripts/sync_branch_positions_rates.js"
   },
   "keywords": [],
   "author": "",

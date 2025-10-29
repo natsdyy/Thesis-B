@@ -208,6 +208,37 @@
             </div>
           </div>
 
+          <!-- Documents Upload Section -->
+          <div class="bg-gray-50 rounded-lg p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+              <font-awesome-icon icon="fa-solid fa-file-upload" class="mr-2 text-green-600" />
+              Resume / CV Upload
+            </h3>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                Upload Resume or CV (PDF, DOC, DOCX) *
+              </label>
+              <div class="mt-2">
+                <input
+                  ref="resumeInput"
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  @change="handleResumeChange"
+                  required
+                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-600 file:text-white hover:file:bg-green-700 file:cursor-pointer"
+                />
+              </div>
+              <p v-if="resumeFile" class="mt-2 text-sm text-gray-600">
+                <font-awesome-icon icon="fa-solid fa-file-check" class="mr-1 text-green-600" />
+                Selected: {{ resumeFile.name }} ({{ formatFileSize(resumeFile.size) }})
+              </p>
+              <p class="text-xs text-gray-500 mt-2">
+                Please upload your resume or CV. Accepted formats: PDF, DOC, DOCX. Max file size: 5MB.
+              </p>
+            </div>
+          </div>
+
           <!-- reCAPTCHA Section -->
           <div class="bg-gray-50 rounded-lg p-6">
             <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
@@ -215,8 +246,16 @@
               Security Verification
             </h3>
             
-            <div class="flex justify-center">
-              <div id="recaptcha-container" ref="recaptchaContainer"></div>
+            <div class="flex justify-center min-h-[78px] items-center">
+              <div v-if="!recaptchaLoaded && !captchaError" class="text-gray-500 text-sm">
+                <span class="loading loading-spinner loading-sm mr-2"></span>
+                Loading security verification...
+              </div>
+              <div 
+                id="recaptcha-container" 
+                ref="recaptchaContainer"
+                class="recaptcha-wrapper"
+              ></div>
             </div>
             <p class="text-xs text-gray-500 mt-2 text-center">Please complete the verification to confirm you're not a robot</p>
             <p v-if="captchaError" class="text-sm text-red-600 mt-2 text-center">
@@ -359,7 +398,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onMounted } from 'vue'
 
 // Props
 const props = defineProps({
@@ -393,6 +432,14 @@ const recaptchaLoaded = ref(false)
 // reCAPTCHA Site Key (use environment variable or default test key)
 const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI' // Google's test key
 
+// Debug: Log the site key being used
+console.log('reCAPTCHA Site Key:', RECAPTCHA_SITE_KEY)
+console.log('Environment variable VITE_RECAPTCHA_SITE_KEY:', import.meta.env.VITE_RECAPTCHA_SITE_KEY)
+
+// Resume file
+const resumeInput = ref(null)
+const resumeFile = ref(null)
+
 // Form data
 const formData = ref({
   fullName: '',
@@ -416,6 +463,7 @@ const isFormValid = computed(() => {
          formData.value.address &&
          formData.value.experienceYears &&
          formData.value.skills &&
+         resumeFile.value !== null &&
          recaptchaToken.value !== null
 })
 
@@ -445,80 +493,236 @@ const confirmSubmission = () => {
 // reCAPTCHA methods
 const loadRecaptchaScript = () => {
   return new Promise((resolve, reject) => {
+    // Check if already loaded
     if (window.grecaptcha && window.grecaptcha.render) {
+      console.log('reCAPTCHA already loaded')
       recaptchaLoaded.value = true
       resolve()
       return
     }
 
-    if (document.querySelector('script[src*="recaptcha"]')) {
-      // Script is loading, wait for it
+    // Check if script tag already exists
+    const existingScript = document.querySelector('script[src*="recaptcha"]')
+    if (existingScript) {
+      console.log('reCAPTCHA script tag exists, waiting for load...')
+      // Script is loading, wait for it with longer timeout
+      let attempts = 0
+      const maxAttempts = 100 // 10 seconds max wait (increased from 5)
       const checkInterval = setInterval(() => {
+        attempts++
         if (window.grecaptcha && window.grecaptcha.render) {
           clearInterval(checkInterval)
+          console.log('reCAPTCHA loaded from existing script')
           recaptchaLoaded.value = true
+          resolve()
+        } else if (attempts >= maxAttempts) {
+          clearInterval(checkInterval)
+          console.warn('reCAPTCHA script timeout - will continue trying')
+          // Don't reject, just resolve and let renderRecaptcha handle it gracefully
           resolve()
         }
       }, 100)
       return
     }
 
+    // Create and load script
+    console.log('Loading reCAPTCHA script...')
     const script = document.createElement('script')
-    script.src = 'https://www.google.com/recaptcha/api.js?render=explicit'
+    script.src = `https://www.google.com/recaptcha/api.js?render=explicit&hl=en`
     script.async = true
     script.defer = true
-    script.onload = () => {
-      recaptchaLoaded.value = true
+    
+    // Add timeout for script loading
+    const loadTimeout = setTimeout(() => {
+      console.warn('reCAPTCHA script load timeout - will continue trying')
+      // Don't reject immediately, give it more time
       resolve()
+    }, 10000) // 10 second timeout
+    
+    script.onload = () => {
+      clearTimeout(loadTimeout)
+      console.log('reCAPTCHA script loaded')
+      // Wait a bit longer for grecaptcha to be available
+      let checkAttempts = 0
+      const maxCheckAttempts = 20 // 2 seconds
+      const checkGrecaptcha = setInterval(() => {
+        checkAttempts++
+        if (window.grecaptcha && window.grecaptcha.render) {
+          clearInterval(checkGrecaptcha)
+          recaptchaLoaded.value = true
+          resolve()
+        } else if (checkAttempts >= maxCheckAttempts) {
+          clearInterval(checkGrecaptcha)
+          console.warn('reCAPTCHA object not immediately available after script load, but script loaded')
+          // Script loaded, even if grecaptcha isn't ready yet
+          resolve()
+        }
+      }, 100)
     }
-    script.onerror = () => {
-      reject(new Error('Failed to load reCAPTCHA'))
+    
+    script.onerror = (error) => {
+      clearTimeout(loadTimeout)
+      console.error('Failed to load reCAPTCHA script:', error)
+      // Don't reject, show error to user instead
+      captchaError.value = 'Failed to load security verification. Please check your internet connection and try again.'
+      resolve() // Resolve instead of reject to prevent uncaught promise rejection
     }
+    
     document.head.appendChild(script)
+    console.log('reCAPTCHA script tag added to head')
   })
 }
 
 const renderRecaptcha = async () => {
   try {
-    await loadRecaptchaScript()
+    console.log('Starting reCAPTCHA rendering...')
+    console.log('Site Key:', RECAPTCHA_SITE_KEY)
+    console.log('Container element:', recaptchaContainer.value)
+    
+    // Load script (this now resolves even on timeout)
+    await loadRecaptchaScript().catch(err => {
+      console.warn('Script loading warning:', err)
+      // Continue anyway
+    })
     
     if (!recaptchaContainer.value) {
-      console.error('reCAPTCHA container not found')
+      console.error('reCAPTCHA container not found, retrying in 500ms...')
+      // Retry after a delay
+      setTimeout(() => {
+        if (recaptchaContainer.value) {
+          renderRecaptcha()
+        } else {
+          console.error('reCAPTCHA container still not found')
+          captchaError.value = 'reCAPTCHA container not found. Please refresh the page.'
+        }
+      }, 500)
       return
     }
 
     // Reset container
     recaptchaContainer.value.innerHTML = ''
+    console.log('reCAPTCHA container cleared')
+
+    // Check if grecaptcha is available with retries
+    let grecaptchaAttempts = 0
+    const maxGrecaptchaAttempts = 30 // 3 seconds
+    
+    const waitForGrecaptcha = () => {
+      return new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+          grecaptchaAttempts++
+          if (window.grecaptcha && window.grecaptcha.render) {
+            clearInterval(checkInterval)
+            resolve(true)
+          } else if (grecaptchaAttempts >= maxGrecaptchaAttempts) {
+            clearInterval(checkInterval)
+            resolve(false)
+          }
+        }, 100)
+      })
+    }
+
+    const grecaptchaAvailable = await waitForGrecaptcha()
+    
+    if (!grecaptchaAvailable) {
+      console.error('window.grecaptcha is not available after waiting')
+      captchaError.value = 'reCAPTCHA API not loaded. Please check your internet connection and refresh the page.'
+      return
+    }
+
+    if (!window.grecaptcha.render) {
+      console.error('window.grecaptcha.render is not available')
+      captchaError.value = 'reCAPTCHA render function not available. Please refresh the page.'
+      return
+    }
 
     // Render reCAPTCHA
-    if (window.grecaptcha && window.grecaptcha.render) {
+    console.log('Rendering reCAPTCHA widget...')
+    try {
       recaptchaWidgetId.value = window.grecaptcha.render(recaptchaContainer.value, {
         sitekey: RECAPTCHA_SITE_KEY,
         callback: (token) => {
+          console.log('reCAPTCHA token received')
           recaptchaToken.value = token
           captchaError.value = ''
         },
         'expired-callback': () => {
+          console.log('reCAPTCHA token expired')
           recaptchaToken.value = null
           captchaError.value = 'reCAPTCHA expired. Please verify again.'
         },
-        'error-callback': () => {
+        'error-callback': (error) => {
+          console.error('reCAPTCHA error callback:', error)
           recaptchaToken.value = null
           captchaError.value = 'reCAPTCHA error. Please refresh and try again.'
         }
       })
+      console.log('reCAPTCHA widget rendered successfully, ID:', recaptchaWidgetId.value)
+      recaptchaLoaded.value = true
+    } catch (renderError) {
+      console.error('Error in grecaptcha.render:', renderError)
+      captchaError.value = `Failed to render reCAPTCHA: ${renderError.message || 'Unknown error'}. Please refresh the page.`
     }
   } catch (error) {
     console.error('Error rendering reCAPTCHA:', error)
-    captchaError.value = 'Failed to load security verification. Please refresh the page.'
+    captchaError.value = `Failed to load security verification: ${error.message || 'Unknown error'}. Please refresh the page.`
   }
 }
 
 const resetRecaptcha = () => {
-  if (recaptchaWidgetId.value !== null && window.grecaptcha) {
-    window.grecaptcha.reset(recaptchaWidgetId.value)
-    recaptchaToken.value = null
+  if (recaptchaWidgetId.value !== null && window.grecaptcha && window.grecaptcha.reset) {
+    try {
+      window.grecaptcha.reset(recaptchaWidgetId.value)
+      recaptchaToken.value = null
+    } catch (e) {
+      console.error('Error resetting reCAPTCHA:', e)
+    }
   }
+  recaptchaToken.value = null
+}
+
+// Handle resume file selection
+const handleResumeChange = (event) => {
+  const file = event.target.files?.[0]
+  if (file) {
+    // Validate file type
+    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+    const allowedExtensions = ['.pdf', '.doc', '.docx']
+    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase()
+    
+    if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
+      errorMessage.value = 'Invalid file type. Please upload PDF, DOC, or DOCX files only.'
+      showError.value = true
+      resumeInput.value.value = ''
+      resumeFile.value = null
+      return
+    }
+    
+    // Validate file size (5MB max)
+    const maxSize = 5 * 1024 * 1024 // 5MB in bytes
+    if (file.size > maxSize) {
+      errorMessage.value = 'File size too large. Please upload a file smaller than 5MB.'
+      showError.value = true
+      resumeInput.value.value = ''
+      resumeFile.value = null
+      return
+    }
+    
+    resumeFile.value = file
+    showError.value = false
+    errorMessage.value = ''
+  } else {
+    resumeFile.value = null
+  }
+}
+
+// Format file size for display
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
 }
 
 const submitApplication = async () => {
@@ -550,6 +754,11 @@ const submitApplication = async () => {
         submitData.append(key, value)
       }
     })
+
+    // Add resume file if selected
+    if (resumeFile.value) {
+      submitData.append('resume', resumeFile.value)
+    }
 
     // Add application metadata
     submitData.append('applicationDate', new Date().toISOString())
@@ -632,6 +841,10 @@ const resetForm = () => {
     expectedSalary: '',
     skills: ''
   }
+  resumeFile.value = null
+  if (resumeInput.value) {
+    resumeInput.value.value = ''
+  }
   resetRecaptcha()
   captchaError.value = ''
 }
@@ -649,17 +862,33 @@ watch(() => props.isOpen, async (isOpen) => {
   if (isOpen) {
     // Wait for DOM to update, then render reCAPTCHA
     await nextTick()
-    setTimeout(() => {
-      renderRecaptcha()
-    }, 300)
+    // Use longer timeout to ensure container is ready
+    setTimeout(async () => {
+      console.log('Modal opened, attempting to render reCAPTCHA...')
+      await renderRecaptcha()
+    }, 500)
   } else {
     resetForm()
-    if (recaptchaWidgetId.value !== null && window.grecaptcha) {
-      window.grecaptcha.reset(recaptchaWidgetId.value)
+    if (recaptchaWidgetId.value !== null && window.grecaptcha && window.grecaptcha.reset) {
+      try {
+        window.grecaptcha.reset(recaptchaWidgetId.value)
+      } catch (e) {
+        console.error('Error resetting reCAPTCHA:', e)
+      }
     }
     recaptchaToken.value = null
     recaptchaWidgetId.value = null
   }
+})
+
+// Preload reCAPTCHA script when component is mounted
+onMounted(() => {
+  // Preload script in background (non-blocking)
+  loadRecaptchaScript().then(() => {
+    console.log('reCAPTCHA preloaded successfully')
+  }).catch(err => {
+    console.warn('Preloading reCAPTCHA failed (will retry when modal opens):', err)
+  })
 })
 </script>
 

@@ -1060,14 +1060,14 @@
                 class="bg-orange-500 hover:bg-orange-400 text-white px-8 py-4 rounded-lg font-medium transition-all duration-300 shadow-lg flex items-center justify-center btn btn-lg"
               >
                 <font-awesome-icon icon="fa-solid fa-briefcase" class="mr-3" />
-                <span>Browse Open Positions</span>
+                Browse Open Positions
               </button>
               <button
                 @click="openJobPositionsModal"
                 class="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-lg font-medium transition-all duration-300 shadow-lg flex items-center justify-center btn btn-lg"
               >
                 <font-awesome-icon icon="fa-solid fa-paper-plane" class="mr-3" />
-                <span>Submit Application</span>
+                Submit Application
               </button>
             </div>
           </div>

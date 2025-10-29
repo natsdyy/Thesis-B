@@ -149,6 +149,12 @@
     automatic_uploads: true,
     images_upload_url: '/api/uploads/proofs',
     file_picker_types: 'image',
+    // Ensure images inside the editor never overflow and scale responsively
+    content_style:
+      'html,body{max-width:100%;} img{max-width:100%;height:auto;display:block;margin:6px 0;}',
+    // Allow styling on images and common inline elements
+    valid_elements:
+      'p,b,i,u,strong,em,ul,ol,li,br,a[href|target|rel],img[src|alt|title|class|style],span[class|style],div[class|style]',
     setup: (ed) => {
       ed.ui.registry.addButton('customimage', {
         icon: 'image',

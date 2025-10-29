@@ -129,7 +129,9 @@
 
 <template>
   <dialog id="branch_distribution_receipt_modal" class="modal" v-if="show" open>
-    <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-6xl">
+    <div
+      class="modal-box bg-accentColor text-black/50 shadow-lg max-w-6xl max-h-[90vh] overflow-y-auto"
+    >
       <div class="flex justify-between items-center mb-2 text-black">
         <div class="flex items-center gap-2 mb-2 w-full">
           <img src="/logo1.png" alt="" class="w-10 h-10" />
@@ -281,6 +283,38 @@
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <!-- Rejection Proofs (images/text provided per rejected item) -->
+        <div
+          v-if="
+            props.receipt?.status === 'partially_processed' &&
+            (props.receipt?.rejected_items || []).some((x) => x.rejection_notes)
+          "
+          class="mt-6"
+        >
+          <h4 class="text-red-800 font-semibold text-sm mb-2">
+            Rejection Proofs
+          </h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <template
+              v-for="(item, idx) in props.receipt.rejected_items"
+              :key="`rej-proof-${idx}`"
+            >
+              <div
+                v-if="item.rejection_notes"
+                class="bg-white p-3 border rounded"
+              >
+                <div class="text-xs font-semibold mb-2 text-black">
+                  {{ item.name || item.item_name || 'Rejected Item' }}
+                </div>
+                <div
+                  class="prose prose-sm max-w-none"
+                  v-html="sanitizeHtml(item.rejection_notes)"
+                ></div>
+              </div>
+            </template>
+          </div>
         </div>
 
         <!-- Signatories -->

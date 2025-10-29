@@ -73,19 +73,25 @@
     menubar: false,
     height: 220,
     plugins: 'link lists',
-    toolbar:
-      'undo redo | bold italic underline | bullist numlist | link customimage',
+    // Only show the explicit upload image button; remove overflow/ellipsis
+    toolbar: 'uploadimage',
+    toolbar_mode: 'wrap',
     automatic_uploads: true,
     images_upload_url: '/api/uploads/proofs',
     file_picker_types: 'image',
+    // Make editor images responsive to avoid oversized previews
+    content_style:
+      'html,body{max-width:100%;} img{max-width:100%;height:auto;display:block;margin:6px 0;}',
+    valid_elements:
+      'p,b,i,u,strong,em,ul,ol,li,br,a[href|target|rel],img[src|alt|title|class|style],span[class|style],div[class|style]',
     setup: (ed) => {
-      ed.ui.registry.addButton('customimage', {
-        icon: 'image',
-        tooltip: 'Insert image',
+      ed.ui.registry.addButton('uploadimage', {
+        text: 'Upload Image',
+        tooltip: 'Upload image',
         onAction: () => {
           pickAndUploadImage(
             (url) => ed.insertContent(`<img src="${formatImageUrl(url)}" />`),
-            'distribution_acceptance_modal'
+            'auto'
           );
         },
       });
@@ -97,12 +103,15 @@
     ui_container: 'body',
   }));
 
-  const pickAndUploadImage = (
-    callback,
-    modalId = 'distribution_acceptance_modal'
-  ) => {
+  const pickAndUploadImage = (callback, modalId = 'auto') => {
     try {
-      const modal = document.getElementById(modalId);
+      // Detect currently open dialog if auto
+      const activeModalId =
+        modalId === 'auto'
+          ? document.querySelector('dialog[open]')?.id ||
+            'distribution_acceptance_modal'
+          : modalId;
+      const modal = document.getElementById(activeModalId);
       const wasOpen = !!modal?.open;
       if (wasOpen)
         try {
@@ -2018,7 +2027,7 @@
       await branchDistributionStore.rejectDistribution(distribution.id, {
         rejected_by: authStore.user?.name || 'Branch Manager',
         rejection_reason: rejectionForm.value.reason,
-        rejection_notes: rejectionForm.value.notes,
+        rejection_notes: sanitizeHtml(rejectionForm.value.notes),
       });
       console.log(
         'Distribution rejected successfully and quantities returned to main inventory'
@@ -3805,7 +3814,7 @@
       :class="{ 'modal-open': showAcceptanceModal }"
       @click="(e) => e.target === e.currentTarget && closeAcceptanceModal()"
     >
-      <div class="modal-box w-11/12 max-w-4xl">
+      <div class="modal-box w-11/12 max-w-4xl max-h-[90vh] overflow-y-auto">
         <div class="flex justify-between items-center mb-6">
           <h3 class="font-bold text-xl text-primaryColor">
             <CheckCircle class="w-6 h-6 inline mr-2" />
@@ -4045,11 +4054,10 @@
               <label class="label">
                 <span class="label-text font-medium">Additional Notes</span>
               </label>
-              <textarea
+              <TinyMCEEditor
                 v-model="rejectionForm.notes"
-                class="textarea textarea-bordered w-full h-24"
-                placeholder="Please provide additional details about the rejection..."
-              ></textarea>
+                :init="tinyMCEConfig"
+              />
             </div>
           </div>
 
@@ -4191,22 +4199,6 @@
         <h3 class="font-bold text-lg mb-2">
           Branch Returns Awaiting Acknowledgment
         </h3>
-        <div class="flex gap-2 mb-3">
-          <button
-            class="btn btn-xs"
-            :class="returnsTab === 'approved' ? 'btn-primary' : ''"
-            @click="returnsTab = 'approved'"
-          >
-            Approved
-          </button>
-          <button
-            class="btn btn-xs"
-            :class="returnsTab === 'rejected' ? 'btn-error' : ''"
-            @click="returnsTab = 'rejected'"
-          >
-            Rejected
-          </button>
-        </div>
         <div class="overflow-x-auto max-h-[60vh]">
           <table class="table table-zebra table-xs w-full custom-zebra">
             <thead>

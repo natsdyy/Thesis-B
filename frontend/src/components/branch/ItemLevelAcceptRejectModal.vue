@@ -138,7 +138,7 @@
                     <p class="text-sm text-gray-600">{{ item.category }}</p>
                     <div class="flex items-center gap-2 mt-1">
                       <span
-                        class="badge badge-sm "
+                        class="badge badge-sm"
                         :class="getSourceBadgeClass(item.source)"
                       >
                         {{ item.source.toUpperCase() }}
@@ -200,16 +200,7 @@
                         <option value="">Select a reason...</option>
                         <option value="damaged">Item is damaged</option>
                         <option value="wrong_item">Wrong item delivered</option>
-                        <option value="expired">
-                          Item is expired or near expiry
-                        </option>
-                        <option value="wrong_quantity">
-                          Incorrect quantity
-                        </option>
-                        <option value="quality_issue">Quality issue</option>
-                        <option value="not_ordered">
-                          Item was not ordered
-                        </option>
+
                         <option value="other">Other (specify in notes)</option>
                       </select>
                     </div>
@@ -217,11 +208,9 @@
                       <label class="label">
                         <span class="label-text">Additional Notes</span>
                       </label>
-                      <input
+                      <TinyMCEEditor
                         v-model="selectedItems[item.id].notes"
-                        type="text"
-                        class="input input-bordered input-sm w-full"
-                        placeholder="Optional notes..."
+                        :init="tinyMCEConfig"
                       />
                     </div>
                   </div>
@@ -266,13 +255,7 @@
         <label class="label">
           <span class="label-text font-medium">Processing Notes</span>
         </label>
-        <textarea
-          v-model="processingNotes"
-          class="textarea textarea-bordered w-full"
-          rows="3"
-          placeholder="Optional notes about this partial processing..."
-          :disabled="loading"
-        ></textarea>
+        <TinyMCEEditor v-model="processingNotes" :init="tinyMCEConfig" />
       </div>
 
       <!-- Validation Errors -->
@@ -319,6 +302,23 @@
     CheckCircle,
     AlertTriangle,
   } from 'lucide-vue-next';
+  // TinyMCE for rich-text/image notes
+  import Editor from '@tinymce/tinymce-vue';
+  const TinyMCEEditor = Editor;
+  import { sanitizeHtml } from '../../utils/sanitizeHtml.js';
+  import { getApiUrl, formatImageUrl } from '../../config/api.js';
+  import 'tinymce/tinymce';
+  import tinymce from 'tinymce/tinymce';
+  import 'tinymce/icons/default';
+  import 'tinymce/themes/silver';
+  import 'tinymce/models/dom/model';
+  import 'tinymce/plugins/link';
+  import 'tinymce/plugins/lists';
+  import 'tinymce/plugins/image';
+  import 'tinymce/skins/ui/oxide/skin.min.css';
+  try {
+    tinymce?.EditorManager?.overrideDefaults?.({ license_key: 'gpl' });
+  } catch (_) {}
 
   // Props
   const props = defineProps({
@@ -338,6 +338,78 @@
   // Reactive state
   const selectedItems = ref({});
   const processingNotes = ref('');
+  // Image picker + uploader used by TinyMCE buttons
+  const pickAndUploadImage = (callback) => {
+    try {
+      const modal = document.getElementById('item_level_accept_reject_modal');
+      const wasOpen = !!modal?.open;
+      if (wasOpen)
+        try {
+          modal.close();
+        } catch (_) {}
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/png,image/jpeg';
+      input.onchange = async () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+          const res = await fetch(getApiUrl('/uploads/proofs'), {
+            method: 'POST',
+            body: fd,
+          });
+          const json = await res.json();
+          if (res.ok && json.location) {
+            callback(json.location);
+          } else {
+            alert(json.message || 'Upload failed');
+          }
+        } catch (e) {
+          alert('Upload failed');
+        }
+        if (wasOpen)
+          try {
+            modal.showModal();
+          } catch (_) {}
+      };
+      input.click();
+    } catch (_) {}
+  };
+
+  // TinyMCE configuration shared by all editors in this modal
+  const tinyMCEConfig = {
+    menubar: false,
+    height: 180,
+    plugins: 'link lists',
+    // Show only a single explicit image upload button
+    toolbar: 'uploadimage',
+    toolbar_mode: 'wrap',
+    automatic_uploads: true,
+    images_upload_url: '/api/uploads/proofs',
+    file_picker_types: 'image',
+    content_style:
+      'html,body{max-width:100%;} img{max-width:100%;height:auto;display:block;margin:6px 0;}',
+    valid_elements:
+      'p,b,i,u,strong,em,ul,ol,li,br,a[href|target|rel],img[src|alt|title|class|style],span[class|style],div[class|style]',
+    setup: (ed) => {
+      ed.ui.registry.addButton('uploadimage', {
+        text: 'Upload Image',
+        tooltip: 'Upload image',
+        onAction: () => {
+          pickAndUploadImage((url) =>
+            ed.insertContent(`<img src="${formatImageUrl(url)}" />`)
+          );
+        },
+      });
+    },
+    branding: false,
+    skin: false,
+    content_css: false,
+    license_key: 'gpl',
+    ui_container: 'body',
+  };
   const validationErrors = ref([]);
 
   // Computed properties
@@ -494,8 +566,11 @@
 
     emit('process', {
       accepted_items: acceptedItems,
-      rejected_items: rejectedItems,
-      notes: processingNotes.value || null,
+      rejected_items: rejectedItems.map((r) => ({
+        ...r,
+        notes: r.notes ? sanitizeHtml(r.notes) : null,
+      })),
+      notes: processingNotes.value ? sanitizeHtml(processingNotes.value) : null,
     });
   };
 

@@ -523,8 +523,10 @@ router.beforeEach(async (to, from, next) => {
 
     // Check department-specific access for managers
     const routeDepartment = getDepartmentFromRoute(to.path);
+    // Managers can access HR manager routes (e.g., Employee Schedules) across departments
     if (
       routeDepartment &&
+      routeDepartment !== 'Human Resource' &&
       routeDepartment !== userDepartment &&
       userRole !== 'Super Admin' &&
       userRole !== 'Chairman of the Board'

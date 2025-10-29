@@ -7,11 +7,11 @@ function resolveBaseURL() {
     return fromEnv.trim();
   }
 
-  // For local development, prefer the current origin so Vite proxy handles /api
+  // For local development, always use localhost to avoid CORS issues
   if (typeof window !== 'undefined' && window.location?.origin) {
-    // In dev, route API through the frontend origin (Vite proxy -> backend)
-    if (window.location.origin.includes(':8080')) {
-      return `${window.location.origin.replace(/\/$/, '')}/api`;
+    // In dev, always use localhost:8080 to ensure proxy works
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.includes('192.168')) {
+      return 'http://localhost:8080/api';
     }
     // For production domain, use the production backend
     if (window.location.origin.includes('countryside-steakhouse.site')) {
@@ -30,7 +30,7 @@ function resolveBaseURL() {
   }
 
   // Fallback for local development/offline
-  return 'http://localhost:5000/api';
+  return 'http://localhost:8080/api';
 }
 
 const baseURL = resolveBaseURL();

@@ -76,7 +76,7 @@
                 <div class="flex items-center gap-4">
                   <div class="flex items-center gap-2">
                     <Filter class="w-4 h-4 text-gray-600" />
-                    <span class="text-gray-600">Showing {{ applications.length }} applications</span>
+                    <span class="text-gray-600">Showing {{ getFilteredApplicationsCount() }} applications</span>
                   </div>
                 </div>
                 
@@ -155,17 +155,17 @@
                 <!-- Card Actions -->
                 <div class="flex justify-between items-center pt-4 border-t border-gray-100">
                   <div class="flex gap-2">
-                    <button @click="viewApplication(application)" class="text-blue-600 hover:text-blue-700 text-sm font-medium">
+                    <button @click="viewApplication(application)" class="flex items-center gap-2 px-3 py-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-blue-200 rounded-lg text-sm font-medium transition-colors">
+                      <Eye class="w-4 h-4" />
                       View
                     </button>
-                    <button @click="reviewApplication(application)" class="text-green-600 hover:text-green-700 text-sm font-medium">
-                      Review
-                    </button>
-                    <button @click="shortlistApplication(application)" class="text-purple-600 hover:text-purple-700 text-sm font-medium">
-                      Shortlist
+                    <button @click="setInterviewDate(application)" class="flex items-center gap-2 px-3 py-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50 border border-purple-200 rounded-lg text-sm font-medium transition-colors">
+                      <Calendar class="w-4 h-4" />
+                      Set Interview
                     </button>
                   </div>
-                  <button @click="rejectApplication(application)" class="text-red-600 hover:text-red-700 text-sm font-medium">
+                  <button @click="rejectApplication(application)" class="flex items-center gap-2 px-3 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg text-sm font-medium transition-colors">
+                    <Trash2 class="w-4 h-4" />
                     Delete
                   </button>
                 </div>
@@ -175,7 +175,7 @@
             <!-- Pagination -->
             <div class="flex justify-between items-center mt-8">
               <div class="text-sm text-gray-600">
-                Showing {{ (currentPage - 1) * itemsPerPage + 1 }} to {{ Math.min(currentPage * itemsPerPage, applications.length) }} of {{ applications.length }} applications
+                Showing {{ (currentPage - 1) * itemsPerPage + 1 }} to {{ Math.min(currentPage * itemsPerPage, getFilteredApplicationsCount()) }} of {{ getFilteredApplicationsCount() }} applications
               </div>
               
               <div class="flex gap-2">
@@ -232,60 +232,179 @@
       <div v-if="activeTab === 'interview-schedule'" class="tab-panel">
         <div class="panel-header">
           <h3>📅 Interview Schedule</h3>
-          <p>Calendar view, interviewer assignment, time slots</p>
+          <p>Manage scheduled interviews and conduct interview evaluations</p>
         </div>
         <div class="content-section">
           <div class="calendar-container">
             <div class="calendar-header">
-              <h4>Upcoming Interviews</h4>
+              <h4>Scheduled Interviews</h4>
               <div class="calendar-controls">
-                <button class="btn btn-outline">Today</button>
-                <button class="btn btn-outline">This Week</button>
-                <button class="btn btn-outline">This Month</button>
+                <button 
+                  @click="interviewFilter = 'all'"
+                  :class="['btn', interviewFilter === 'all' ? 'btn-primary' : 'btn-outline']"
+                >
+                  All
+                </button>
+                <button 
+                  @click="interviewFilter = 'today'"
+                  :class="['btn', interviewFilter === 'today' ? 'btn-primary' : 'btn-outline']"
+                >
+                  Today
+                </button>
+                <button 
+                  @click="interviewFilter = 'this-week'"
+                  :class="['btn', interviewFilter === 'this-week' ? 'btn-primary' : 'btn-outline']"
+                >
+                  This Week
+                </button>
+                <button 
+                  @click="interviewFilter = 'this-month'"
+                  :class="['btn', interviewFilter === 'this-month' ? 'btn-primary' : 'btn-outline']"
+                >
+                  This Month
+                </button>
               </div>
             </div>
-            <div class="interview-list">
-              <div class="interview-item">
-                <div class="interview-time">10:00 AM</div>
-                <div class="interview-details">
-                  <div class="candidate-name">John Doe</div>
-                  <div class="position">Software Developer</div>
-                  <div class="interviewer">Sarah Johnson</div>
+            
+            <!-- Loading State -->
+            <div v-if="isLoadingInterviews" class="loading-container">
+              <div class="loading loading-spinner loading-lg"></div>
+              <span class="loading-text">Loading interviews...</span>
+            </div>
+            
+            <!-- Interviews List -->
+            <div v-else-if="filteredInterviews.length > 0" class="interview-list">
+              <div
+                v-for="interview in filteredInterviews"
+                :key="interview.id"
+                class="interview-item"
+              >
+                <div class="interview-time">
+                  <div class="time">{{ formatTime(interview.interview_time) }}</div>
+                  <div class="date">{{ formatDate(interview.interview_date) }}</div>
                 </div>
-                <div class="interview-type">In-Person</div>
+                <div class="interview-details">
+                  <div class="candidate-name">{{ interview.applicant_name }}</div>
+                  <div class="position">{{ interview.position_title }}</div>
+                  <div class="department">{{ interview.department }}</div>
+                  <div v-if="interview.location" class="location">
+                    <MapPin class="w-4 h-4 inline mr-1" />
+                    {{ interview.location }}
+                  </div>
+                  <div v-if="interview.meeting_link" class="meeting-link">
+                    <a :href="interview.meeting_link" target="_blank" class="text-blue-600 hover:text-blue-800">
+                      <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                      </svg>
+                      Join Meeting
+                    </a>
+                  </div>
+                </div>
+                <div class="interview-meta">
+                  <span
+                    :class="[
+                      'interview-type',
+                      interview.interview_type === 'in-person' 
+                        ? 'type-in-person'
+                        : interview.interview_type === 'video'
+                        ? 'type-video'
+                        : 'type-phone'
+                    ]"
+                  >
+                    {{ interview.interview_type === 'in-person' ? 'In-Person' : 
+                       interview.interview_type === 'video' ? 'Video Call' : 'Phone Call' }}
+                  </span>
+                  <span
+                    v-if="!(interview.status === 'completed' && (interview.result === 'passed' || interview.result === 'failed'))"
+                    :class="[
+                      'interview-status',
+                      interview.status === 'scheduled' 
+                        ? 'status-scheduled'
+                        : interview.status === 'completed'
+                        ? 'status-completed'
+                        : interview.status === 'cancelled'
+                        ? 'status-cancelled'
+                        : 'status-rescheduled'
+                    ]"
+                  >
+                    {{ interview.status.charAt(0).toUpperCase() + interview.status.slice(1) }}
+                  </span>
+                </div>
+                <div class="interview-actions">
+                  <!-- Interview Decision Buttons -->
+                  <div v-if="interview.status === 'scheduled'" class="decision-buttons">
+                    <button 
+                      @click="conductInterview(interview, 'passed')"
+                      class="btn btn-success btn-sm"
+                      :disabled="isUpdatingInterview"
+                    >
+                      <CheckCircle class="w-4 h-4 mr-1" />
+                      Interview: Yes
+                    </button>
+                    <button 
+                      @click="conductInterview(interview, 'failed')"
+                      class="btn btn-error btn-sm"
+                      :disabled="isUpdatingInterview"
+                    >
+                      <X class="w-4 h-4 mr-1" />
+                      Interview: No
+                    </button>
+                  </div>
+                  <!-- Completed Interview Status -->
+                  <div v-else-if="interview.status === 'completed'" class="completed-status">
+                    <span v-if="interview.result === 'passed'" class="badge badge-success">
+                      <CheckCircle class="w-4 h-4 mr-1" />
+                      Interview Done
+                    </span>
+                    <span v-else-if="interview.result === 'failed'" class="badge badge-error">
+                      <X class="w-4 h-4 mr-1" />
+                      Interview Failed
+                    </span>
+                    <span v-else class="badge badge-info">
+                      <CheckCircle class="w-4 h-4 mr-1" />
+                      Interview Completed
+                    </span>
+                  </div>
+                  <!-- Other Actions -->
+                  <div class="other-actions">
+                    <button 
+                      @click="viewInterviewDetails(interview)"
+                      class="btn btn-outline btn-sm"
+                      title="View Details"
+                    >
+                      <Eye class="w-4 h-4" />
+                    </button>
+                    <button 
+                      @click="rescheduleInterview(interview)"
+                      class="btn btn-outline btn-sm"
+                      title="Reschedule"
+                    >
+                      <Calendar class="w-4 h-4" />
+                    </button>
+                    <button 
+                      @click="cancelInterview(interview)"
+                      class="btn btn-outline btn-sm text-red-600 hover:text-red-800"
+                      title="Delete Interview"
+                    >
+                      <Trash2 class="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Application Status Tab -->
-      <div v-if="activeTab === 'application-status'" class="tab-panel">
-        <div class="panel-header">
-          <h3>✅ Application Status</h3>
-          <p>Track progress (Shortlisted, On-Hold, Rejected, Hired)</p>
-        </div>
-        <div class="content-section">
-          <div class="status-grid">
-            <div class="status-card shortlisted">
-              <div class="status-icon">📋</div>
-              <div class="status-count">{{ shortlistedCount }}</div>
-              <div class="status-label">Shortlisted</div>
-            </div>
-            <div class="status-card on-hold">
-              <div class="status-icon">⏸️</div>
-              <div class="status-count">{{ onHoldCount }}</div>
-              <div class="status-label">On-Hold</div>
-            </div>
-            <div class="status-card rejected">
-              <div class="status-icon">❌</div>
-              <div class="status-count">{{ rejectedCount }}</div>
-              <div class="status-label">Rejected</div>
-            </div>
-            <div class="status-card hired">
-              <div class="status-icon">✅</div>
-              <div class="status-count">{{ hiredCount }}</div>
-              <div class="status-label">Hired</div>
+            
+            <!-- Empty State -->
+            <div v-else class="empty-state">
+              <div class="empty-icon">📅</div>
+              <h4>No Interviews Found</h4>
+              <p v-if="interviewFilter === 'all'">No interviews have been scheduled yet.</p>
+              <p v-else>No interviews found for the selected filter.</p>
+              <button 
+                @click="interviewFilter = 'all'"
+                class="btn btn-primary mt-4"
+              >
+                View All Interviews
+              </button>
             </div>
           </div>
         </div>
@@ -719,6 +838,256 @@
         </form>
       </div>
     </div>
+
+    <!-- Application Details Modal -->
+    <JobApplicationDetailsModal
+      :isOpen="showApplicationDetailsModal"
+      :applicationId="selectedApplication?.id"
+      @close="closeApplicationDetailsModal"
+    />
+
+    <!-- Set Interview Modal -->
+    <SetInterviewModal
+      :isOpen="showSetInterviewModal"
+      :applicationId="selectedApplication?.id"
+      @close="closeSetInterviewModal"
+      @interview-scheduled="handleInterviewScheduled"
+      @navigate-to-schedule="handleNavigateToSchedule"
+    />
+
+    <!-- Delete Confirmation Modal -->
+    <div v-if="showDeleteModal" class="fixed inset-0 backdrop-blur-md bg-transparent flex items-center justify-center z-50">
+      <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 transform transition-all">
+        <!-- Modal Header -->
+        <div class="flex items-center justify-between p-6 border-b border-gray-200">
+          <div class="flex items-center">
+            <div class="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mr-3">
+              <Trash2 class="w-5 h-5 text-red-600" />
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900">Delete Application</h3>
+          </div>
+          <button @click="showDeleteModal = false" class="text-gray-400 hover:text-gray-600 transition-colors">
+            <X class="w-5 h-5" />
+          </button>
+        </div>
+
+        <!-- Modal Body -->
+        <div class="p-6">
+          <p class="text-gray-600 mb-4">
+            Are you sure you want to delete this application? This action cannot be undone and will permanently remove all application data.
+          </p>
+          
+          <!-- Application Preview -->
+          <div v-if="applicationToDelete" class="bg-gray-50 rounded-lg p-4 mb-6">
+            <div class="flex items-center">
+              <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center mr-3">
+                <span class="text-green-600 font-semibold text-sm">
+                  {{ applicationToDelete.full_name?.charAt(0) || 'A' }}
+                </span>
+              </div>
+              <div>
+                <h4 class="font-medium text-gray-900">{{ applicationToDelete.full_name }}</h4>
+                <p class="text-sm text-gray-500">{{ applicationToDelete.email }}</p>
+                <p class="text-sm text-gray-500">{{ applicationToDelete.position_name }} • {{ applicationToDelete.location }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal Footer -->
+        <div class="flex justify-end gap-3 p-6 border-t border-gray-200">
+          <button 
+            @click="showDeleteModal = false"
+            class="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
+          >
+            Cancel
+          </button>
+          <button 
+            @click="confirmDelete"
+            class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors flex items-center"
+          >
+            <Trash2 class="w-4 h-4 mr-2" />
+            Delete Application
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interview Delete Confirmation Modal -->
+    <div v-if="showInterviewDeleteModal" class="fixed inset-0 backdrop-blur-md bg-transparent flex items-center justify-center z-50">
+      <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 transform transition-all">
+        <!-- Modal Header -->
+        <div class="flex items-center justify-between p-6 border-b border-gray-200">
+          <div class="flex items-center">
+            <div class="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mr-3">
+              <Trash2 class="w-5 h-5 text-red-600" />
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900">Delete Interview</h3>
+          </div>
+          <button @click="showInterviewDeleteModal = false; interviewToDelete = null" class="text-gray-400 hover:text-gray-600 transition-colors">
+            <X class="w-5 h-5" />
+          </button>
+        </div>
+
+        <!-- Modal Body -->
+        <div class="p-6">
+          <p class="text-gray-600 mb-4">
+            Are you sure you want to delete this interview? This action cannot be undone and will permanently remove all interview data.
+          </p>
+          
+          <!-- Interview Preview -->
+          <div v-if="interviewToDelete" class="bg-gray-50 rounded-lg p-4 mb-6">
+            <div class="flex items-center">
+              <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center mr-3">
+                <Calendar class="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <h4 class="font-medium text-gray-900">{{ interviewToDelete.applicant_name }}</h4>
+                <p class="text-sm text-gray-500">{{ interviewToDelete.position_title }}</p>
+                <p class="text-sm text-gray-500">{{ formatDate(interviewToDelete.interview_date) }} at {{ formatTime(interviewToDelete.interview_time) }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal Footer -->
+        <div class="flex justify-end gap-3 p-6 border-t border-gray-200">
+          <button 
+            @click="showInterviewDeleteModal = false; interviewToDelete = null"
+            class="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
+          >
+            Cancel
+          </button>
+          <button 
+            @click="confirmInterviewDelete"
+            class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors flex items-center"
+          >
+            <Trash2 class="w-4 h-4 mr-2" />
+            Delete Interview
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notification Modal (Success/Error) -->
+    <div v-if="showNotificationModal" class="fixed inset-0 backdrop-blur-md bg-transparent flex items-center justify-center z-50">
+      <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 transform transition-all animate-in slide-in-from-bottom-4 duration-300">
+        <!-- Modal Header -->
+        <div class="flex items-center justify-between p-6 border-b border-gray-200">
+          <div class="flex items-center">
+            <div :class="[
+              'w-10 h-10 rounded-full flex items-center justify-center mr-3',
+              notificationData.type === 'success' ? 'bg-green-100' : 'bg-red-100'
+            ]">
+              <CheckCircle v-if="notificationData.type === 'success'" class="w-5 h-5 text-green-600" />
+              <AlertTriangle v-else class="w-5 h-5 text-red-600" />
+            </div>
+            <h3 :class="[
+              'text-lg font-semibold',
+              notificationData.type === 'success' ? 'text-green-900' : 'text-red-900'
+            ]">
+              {{ notificationData.title }}
+            </h3>
+          </div>
+          <button @click="showNotificationModal = false" class="text-gray-400 hover:text-gray-600 transition-colors">
+            <X class="w-5 h-5" />
+          </button>
+        </div>
+
+        <!-- Modal Body -->
+        <div class="p-6">
+          <p :class="[
+            'text-gray-700',
+            notificationData.type === 'success' ? 'text-green-800' : 'text-red-800'
+          ]">
+            {{ notificationData.message }}
+          </p>
+        </div>
+
+        <!-- Modal Footer -->
+        <div class="flex justify-end p-6 border-t border-gray-200">
+          <button 
+            @click="showNotificationModal = false"
+            :class="[
+              'px-6 py-2 rounded-lg font-medium transition-colors',
+              notificationData.type === 'success' 
+                ? 'bg-green-600 hover:bg-green-700 text-white' 
+                : 'bg-red-600 hover:bg-red-700 text-white'
+            ]"
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Interview Details Modal -->
+    <div v-if="showInterviewDetailsModal" class="fixed inset-0 backdrop-blur-md bg-transparent flex items-center justify-center z-50">
+      <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden">
+        <!-- Header -->
+        <div class="flex items-center justify-between p-6 border-b border-gray-200">
+          <div class="flex items-center">
+            <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+              <Eye class="w-5 h-5 text-blue-600" />
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900">Interview Details</h3>
+          </div>
+          <button @click="showInterviewDetailsModal = false" class="text-gray-400 hover:text-gray-600 transition-colors">
+            <X class="w-5 h-5" />
+          </button>
+        </div>
+
+        <!-- Body -->
+        <div class="p-6 space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <div class="text-xs uppercase text-gray-500 mb-1">Applicant Name</div>
+              <div class="text-gray-900 font-medium">{{ selectedInterview?.applicant_name }}</div>
+            </div>
+            <div>
+              <div class="text-xs uppercase text-gray-500 mb-1">Position</div>
+              <div class="text-gray-900">{{ selectedInterview?.position_title }}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <Calendar class="w-4 h-4 text-blue-600" />
+              <div>
+                <div class="text-xs uppercase text-gray-500">Date</div>
+                <div class="text-gray-900">{{ formatDate(selectedInterview?.interview_date) }}</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <Clock class="w-4 h-4 text-blue-600" />
+              <div>
+                <div class="text-xs uppercase text-gray-500">Time</div>
+                <div class="text-gray-900">{{ formatTime(selectedInterview?.interview_time) }}</div>
+              </div>
+            </div>
+            <div>
+              <div class="text-xs uppercase text-gray-500 mb-1">Type</div>
+              <div class="text-gray-900 capitalize">{{ selectedInterview?.interview_type }}</div>
+            </div>
+            <div>
+              <div class="text-xs uppercase text-gray-500 mb-1">Status</div>
+              <div class="text-gray-900 capitalize">{{ selectedInterview?.status }}</div>
+            </div>
+          </div>
+          <div v-if="selectedInterview?.location && selectedInterview?.interview_type === 'in-person'" class="flex items-center gap-2">
+            <MapPin class="w-4 h-4 text-green-600" />
+            <div>
+              <div class="text-xs uppercase text-gray-500">Location</div>
+              <div class="text-gray-900">{{ selectedInterview.location }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="flex justify-end p-6 border-t border-gray-200">
+          <button @click="showInterviewDetailsModal = false" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -728,21 +1097,27 @@ import { useRouter } from 'vue-router'
 import { 
   FileUser, Plus, Download, Calendar, Users, Target, CheckCircle,
   Inbox, Clock, UserCheck, MapPin, Eye, Search, X, AlertTriangle, RefreshCw, Filter,
-  SquarePen, CircleX, Building2
+  SquarePen, CircleX, Building2, Trash2
 } from 'lucide-vue-next'
+import JobApplicationDetailsModal from '../../components/crm/JobApplicationDetailsModal.vue'
+import SetInterviewModal from '../../components/crm/SetInterviewModal.vue'
+import { usePositionsStore } from '../../stores/positionsStore.js'
 
 export default {
   name: 'JobApplication',
   components: {
     FileUser, Plus, Download, Calendar, Users, Target, CheckCircle,
     Inbox, Clock, UserCheck, MapPin, Eye, Search, X, AlertTriangle, RefreshCw, Filter,
-    SquarePen, CircleX, Building2
+    SquarePen, CircleX, Building2, Trash2,
+    JobApplicationDetailsModal,
+    SetInterviewModal
   },
   setup() {
     const router = useRouter()
+    const positionsStore = usePositionsStore()
     
-    // Active tab
-    const activeTab = ref('new-applications')
+    // Active tab - default to position-tracker for public access
+    const activeTab = ref('position-tracker')
     
     // Active department for filtering
     const activeDepartment = ref('All')
@@ -760,13 +1135,8 @@ export default {
         icon: Calendar
       },
       {
-        id: 'application-status',
-        name: 'Application Status',
-        icon: CheckCircle
-      },
-      {
         id: 'position-tracker',
-        name: 'Position Tracker',
+        name: 'Job Listing',
         icon: Target
       },
     ])
@@ -774,21 +1144,71 @@ export default {
     // Statistics data - will be populated from API
     const screenedCount = ref(0)
     const processedCount = ref(0)
-    const shortlistedCount = ref(0)
-    const onHoldCount = ref(0)
-    const rejectedCount = ref(0)
-    const hiredCount = ref(0)
 
     // Application data - will be populated from API
     const applications = ref([])
-    const positions = ref([])
+    const branchPositions = ref([]) // Separate branch positions from API
     const rolesPositionsData = ref({}) // Store roles/positions data by department
+    
+    // Computed property that merges branch positions with store positions (reactive to store changes)
+    const positions = computed(() => {
+      // Get department positions from store (grouped by department)
+      const storePositions = []
+      for (const department in positionsStore.positions) {
+        const deptPositions = positionsStore.positions[department] || []
+        deptPositions.forEach(role => {
+          storePositions.push({
+            id: `dept-${role.role_id}`,
+            position_title: role.role,
+            position_code: role.role_code || '',
+            department: role.department || 'Department',
+            position_type: 'Full-time',
+            rate_per_hour: parseFloat(role.rate_per_hour) || 0,
+            status: role.is_active ? 'open' : 'closed',
+            description: role.description || '',
+            requirements: role.requirements || '',
+            role_id: role.role_id // Keep reference for rate updates
+          })
+        })
+      }
+      
+      // Merge with branch positions
+      return [...branchPositions.value, ...storePositions]
+    })
     const searchQuery = ref('')
     const statusFilter = ref('')
     const positionFilter = ref('')
     const dateFilter = ref('')
     const currentPage = ref(1)
     const itemsPerPage = ref(10)
+
+    // Delete modal state
+    const showDeleteModal = ref(false)
+    const applicationToDelete = ref(null)
+
+    // Interview delete confirmation modal state
+    const showInterviewDeleteModal = ref(false)
+    const interviewToDelete = ref(null)
+
+    // Notification modal state (for success/error messages)
+    const showNotificationModal = ref(false)
+    const notificationData = ref({
+      type: 'success', // 'success' or 'error'
+      title: '',
+      message: ''
+    })
+    const isLoadingApplications = ref(false)
+
+    // Modal state
+    const showApplicationDetailsModal = ref(false)
+    const showSetInterviewModal = ref(false)
+    const selectedApplication = ref(null)
+
+    // Interview management state
+    const interviews = ref([])
+    const isLoadingInterviews = ref(false)
+    const isUpdatingInterview = ref(false)
+    const interviewFilter = ref('all') // all, today, this-week, this-month
 
     // Position management state
     const showAddPositionModal = ref(false)
@@ -866,8 +1286,13 @@ export default {
 
     // Get unique departments from positions
     const departments = computed(() => {
-      const deptSet = new Set(positions.value.map(p => p.department))
-      return ['All', ...Array.from(deptSet).sort()]
+      // Default departments we always want to show as tabs
+      const defaultDepartments = ['Branch', 'Human Resource', 'Finance', 'SCM', 'Production', 'CRM']
+      const deptSet = new Set([
+        ...defaultDepartments,
+        ...positions.value.map(p => p.department).filter(Boolean)
+      ])
+      return ['All', ...Array.from(deptSet).sort((a, b) => a.localeCompare(b))]
     })
 
     // Filter positions by department
@@ -912,14 +1337,34 @@ export default {
       return filtered
     })
 
-    const totalPages = computed(() => 
-      Math.ceil(applications.value.length / itemsPerPage.value)
-    )
+    const totalPages = computed(() => {
+      // Get filtered applications count based on active tab
+      let filteredApps = applications.value
+      
+      if (activeTab.value === 'new-applications') {
+        filteredApps = applications.value.filter(app => 
+          app.status === 'new' || app.status === 'reviewing'
+        )
+      }
+      
+      return Math.ceil(filteredApps.length / itemsPerPage.value)
+    })
 
     const paginatedApplications = computed(() => {
       const start = (currentPage.value - 1) * itemsPerPage.value
       const end = start + itemsPerPage.value
-      return applications.value.slice(start, end)
+      
+      // Filter applications based on active tab
+      let filteredApps = applications.value
+      
+      if (activeTab.value === 'new-applications') {
+        // Only show truly new applications (new, reviewing) - exclude interview-scheduled, rejected, hired
+        filteredApps = applications.value.filter(app => 
+          app.status === 'new' || app.status === 'reviewing'
+        )
+      }
+      
+      return filteredApps.slice(start, end)
     })
     
     const visiblePages = computed(() => {
@@ -971,13 +1416,121 @@ export default {
       return applications.value.filter(app => app.status === 'reviewing').length
     })
 
-    // Methods
-    const formatDate = (dateString) => {
-      return new Date(dateString).toLocaleDateString()
+    const getFilteredApplicationsCount = () => {
+      if (activeTab.value === 'new-applications') {
+        return applications.value.filter(app => 
+          app.status === 'new' || app.status === 'reviewing'
+        ).length
+      }
+      return applications.value.length
     }
 
-    const formatTime = (dateString) => {
-      return new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    // Filter interviews based on selected filter
+    const filteredInterviews = computed(() => {
+      let filtered = interviews.value || []
+      
+      const today = new Date()
+      const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+      const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
+      
+      const startOfWeek = new Date(today)
+      startOfWeek.setDate(today.getDate() - today.getDay())
+      startOfWeek.setHours(0, 0, 0, 0)
+      
+      const endOfWeek = new Date(startOfWeek)
+      endOfWeek.setDate(startOfWeek.getDate() + 7)
+      
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+      const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1)
+      
+      switch (interviewFilter.value) {
+        case 'today':
+          filtered = filtered.filter(interview => {
+            const interviewDate = new Date(interview.interview_date)
+            return interviewDate >= startOfToday && interviewDate < endOfToday
+          })
+          break
+        case 'this-week':
+          filtered = filtered.filter(interview => {
+            const interviewDate = new Date(interview.interview_date)
+            return interviewDate >= startOfWeek && interviewDate < endOfWeek
+          })
+          break
+        case 'this-month':
+          filtered = filtered.filter(interview => {
+            const interviewDate = new Date(interview.interview_date)
+            return interviewDate >= startOfMonth && interviewDate < endOfMonth
+          })
+          break
+        case 'all':
+        default:
+          // No filtering
+          break
+      }
+      
+      return filtered
+    })
+
+    // Methods
+    const formatDate = (dateString) => {
+      if (!dateString) return 'N/A'
+      
+      // Handle date string format
+      let date
+      if (typeof dateString === 'string') {
+        // If it's already a full ISO date string (has T), use it as-is
+        if (dateString.includes('T') || dateString.includes(' ')) {
+          date = new Date(dateString)
+        } else if (dateString.includes('-')) {
+          // If it's a date-only string (YYYY-MM-DD), add time to avoid timezone issues
+          date = new Date(dateString + 'T00:00:00')
+        } else {
+          date = new Date(dateString)
+        }
+      } else {
+        date = new Date(dateString)
+      }
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        // If invalid, return original string
+        return String(dateString)
+      }
+      
+      // Format date in Philippines timezone (GMT+8)
+      return new Intl.DateTimeFormat('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        timeZone: 'Asia/Manila'
+      }).format(date)
+    }
+
+    const formatTime = (timeString) => {
+      if (!timeString) return 'N/A'
+      
+      // If timeString is already in HH:MM format, convert to 12-hour format
+      if (typeof timeString === 'string' && /^\d{1,2}:\d{2}/.test(timeString)) {
+        const [hours, minutes] = timeString.split(':')
+        const hour24 = parseInt(hours, 10)
+        const hour12 = hour24 === 0 ? 12 : (hour24 > 12 ? hour24 - 12 : hour24)
+        const ampm = hour24 >= 12 ? 'PM' : 'AM'
+        return `${hour12}:${minutes.padStart(2, '0')} ${ampm}`
+      }
+      
+      // Try to parse as date/time
+      const date = new Date(timeString)
+      if (isNaN(date.getTime())) {
+        return timeString
+      }
+      
+      // Format time in Philippines timezone (GMT+8) with 12-hour format
+      return new Intl.DateTimeFormat('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true, // Use 12-hour format (AM/PM)
+        timeZone: 'Asia/Manila'
+      }).format(date)
     }
 
     const toggleSelectAll = () => {
@@ -996,22 +1549,229 @@ export default {
     }
 
     const viewApplication = (application) => {
-      // TODO: Implement view application modal/page
+      selectedApplication.value = application
+      showApplicationDetailsModal.value = true
     }
 
-    const reviewApplication = (application) => {
-      application.status = 'reviewing'
-      // TODO: Update application status via API
+    const setInterviewDate = (application) => {
+      selectedApplication.value = application
+      showSetInterviewModal.value = true
     }
 
-    const shortlistApplication = (application) => {
-      application.status = 'shortlisted'
-      // TODO: Update application status via API
+    const closeApplicationDetailsModal = () => {
+      showApplicationDetailsModal.value = false
+      selectedApplication.value = null
+    }
+
+    const closeSetInterviewModal = () => {
+      showSetInterviewModal.value = false
+      selectedApplication.value = null
+    }
+
+    const handleInterviewScheduled = (interviewData) => {
+      console.log('Interview scheduled:', interviewData)
+      // Reload applications to show updated status
+      loadApplications()
+    }
+
+    const handleNavigateToSchedule = () => {
+      // Switch to interview schedule tab
+      activeTab.value = 'interview-schedule'
+      // Reload interviews to show the newly scheduled one
+      loadInterviews()
+    }
+
+    // Interview management methods
+    const conductInterview = async (interview, result) => {
+      try {
+        isUpdatingInterview.value = true
+        
+        const response = await fetch(`/api/job-applications/interviews/${interview.id}/status`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ 
+            status: 'completed',
+            result: result // 'passed' or 'failed'
+          })
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to update interview status')
+        }
+
+        const result_data = await response.json()
+        
+        if (result_data.success) {
+          // Update local interview status
+          const index = interviews.value.findIndex(i => i.id === interview.id)
+          if (index !== -1) {
+            interviews.value[index].status = 'completed'
+            interviews.value[index].result = result
+          }
+          
+          // Update application status based on interview result
+          await updateApplicationStatusFromInterview(interview.application_id, result)
+          
+          // Reload interviews to get the latest data from the database
+          await loadInterviews()
+          
+          alert(`Interview ${result === 'passed' ? 'passed successfully!' : 'failed. Application rejected.'}`)
+        } else {
+          throw new Error(result_data.message || 'Failed to update interview')
+        }
+      } catch (error) {
+        console.error('Error conducting interview:', error)
+        alert(`Failed to update interview: ${error.message}`)
+      } finally {
+        isUpdatingInterview.value = false
+      }
+    }
+
+    const updateApplicationStatusFromInterview = async (applicationId, result) => {
+      try {
+        const newStatus = result === 'passed' ? 'hired' : 'rejected'
+        
+        const response = await fetch(`/api/job-applications/${applicationId}/status`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ status: newStatus })
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to update application status')
+        }
+
+        const result_data = await response.json()
+        
+        if (result_data.success) {
+          // Update local application status
+          const index = applications.value.findIndex(app => app.id === applicationId)
+          if (index !== -1) {
+            applications.value[index].status = newStatus
+          }
+        }
+      } catch (error) {
+        console.error('Error updating application status:', error)
+      }
+    }
+
+    // Interview details modal
+    const showInterviewDetailsModal = ref(false)
+    const selectedInterview = ref(null)
+
+    const viewInterviewDetails = (interview) => {
+      selectedInterview.value = interview
+      showInterviewDetailsModal.value = true
+    }
+
+    const rescheduleInterview = (interview) => {
+      // TODO: Implement reschedule functionality
+      console.log('Rescheduling interview:', interview)
+      alert('Reschedule functionality will be implemented soon.')
+    }
+
+    // Helper function to show notification
+    const showNotification = (type, title, message) => {
+      notificationData.value = { type, title, message }
+      showNotificationModal.value = true
+      // Auto-close after 3 seconds for success messages
+      if (type === 'success') {
+        setTimeout(() => {
+          showNotificationModal.value = false
+        }, 3000)
+      }
+    }
+
+    const cancelInterview = (interview) => {
+      interviewToDelete.value = interview
+      showInterviewDeleteModal.value = true
+    }
+
+    const confirmInterviewDelete = async () => {
+      if (!interviewToDelete.value) return
+
+      try {
+        isUpdatingInterview.value = true
+        
+        const response = await fetch(`/api/job-applications/interviews/${interviewToDelete.value.id}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to delete interview')
+        }
+
+        const result_data = await response.json()
+        
+        if (result_data.success) {
+          // Remove interview from local list
+          const index = interviews.value.findIndex(i => i.id === interviewToDelete.value.id)
+          if (index !== -1) {
+            interviews.value.splice(index, 1)
+          }
+          
+          // Close modal and show success notification
+          showInterviewDeleteModal.value = false
+          interviewToDelete.value = null
+          showNotification('success', 'Success!', 'Interview deleted successfully!')
+        } else {
+          throw new Error(result_data.message || 'Failed to delete interview')
+        }
+      } catch (error) {
+        console.error('Error deleting interview:', error)
+        showNotification('error', 'Error', `Failed to delete interview: ${error.message}`)
+      } finally {
+        isUpdatingInterview.value = false
+      }
     }
 
     const rejectApplication = (application) => {
-      application.status = 'rejected'
-      // TODO: Update application status via API
+      applicationToDelete.value = application
+      showDeleteModal.value = true
+    }
+
+    const confirmDelete = async () => {
+      if (!applicationToDelete.value) return
+
+      try {
+        const response = await fetch(`/api/job-applications/${applicationToDelete.value.id}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.message || 'Failed to delete application')
+        }
+
+        // Remove from local applications list
+        const index = applications.value.findIndex(app => app.id === applicationToDelete.value.id)
+        if (index > -1) {
+          applications.value.splice(index, 1)
+        }
+
+        // Close modal and reset
+        showDeleteModal.value = false
+        applicationToDelete.value = null
+
+        showNotification('success', 'Success!', 'Application deleted successfully!')
+      } catch (error) {
+        console.error('Error deleting application:', error)
+        showNotification('error', 'Error', `Failed to delete application: ${error.message}`)
+      }
     }
     const handleTabClick = (tabId) => {
       // For all tabs, just switch the active tab content
@@ -1070,8 +1830,8 @@ export default {
             throw new Error('Failed to delete position')
           }
 
-          // Remove from local array
-          positions.value = positions.value.filter(p => p.id !== positionId)
+          // Remove from local array (branch positions only)
+          branchPositions.value = branchPositions.value.filter(p => p.id !== positionId)
           
           // Show success message
           console.log('Position deleted successfully')
@@ -1141,17 +1901,9 @@ export default {
             throw new Error(responseData.message || 'Failed to update department position status')
           }
 
-          // Update local array - map is_active to status
-          const index = positions.value.findIndex(p => p.id === position.id)
-          if (index !== -1) {
-            // Update the position with new data
-            positions.value[index] = {
-              ...positions.value[index],
-              ...responseData.data,
-              status: responseData.data.is_active ? 'open' : 'closed'
-            }
-            console.log(`Department position status updated to ${responseData.data.is_active ? 'open' : 'closed'}`)
-          }
+          // Refresh store to sync changes (computed property will update automatically)
+          await positionsStore.fetchPositions()
+          console.log(`Department position status updated to ${responseData.data.is_active ? 'open' : 'closed'}`)
         } else {
           // Handle branch position
           if (!position.id || isNaN(position.id)) {
@@ -1191,17 +1943,18 @@ export default {
           }
 
           // Update local array with the returned data
-          const index = positions.value.findIndex(p => p.id === position.id)
+          // Update branch positions array
+          const index = branchPositions.value.findIndex(p => p.id === position.id)
           if (index !== -1) {
             const updatedStatus = responseData.data?.status || newStatus
             console.log('Setting position status to:', updatedStatus)
-            positions.value[index] = { 
-              ...positions.value[index], 
+            branchPositions.value[index] = { 
+              ...branchPositions.value[index], 
               ...responseData.data,
               status: updatedStatus // Explicitly set status from response
             }
             console.log(`Branch position status updated to ${updatedStatus}`)
-            console.log('Final position data:', positions.value[index])
+            console.log('Final position data:', branchPositions.value[index])
           }
         }
       } catch (error) {
@@ -1255,14 +2008,14 @@ export default {
         const result = await response.json()
         
         if (editingPosition.value) {
-          // Update existing position in local array
-          const index = positions.value.findIndex(p => p.id === editingPosition.value.id)
+          // Update existing position in branch positions array
+          const index = branchPositions.value.findIndex(p => p.id === editingPosition.value.id)
           if (index !== -1) {
-            positions.value[index] = result.data
+            branchPositions.value[index] = result.data
           }
         } else {
-          // Add new position to local array
-          positions.value.unshift(result.data)
+          // Add new position to branch positions array
+          branchPositions.value.unshift(result.data)
         }
         
         closePositionModal()
@@ -1303,12 +2056,82 @@ export default {
       alert(`Position Details:\n\nTitle: ${position.position_title}\nDepartment: ${position.department}\nStatus: ${position.status}\nRate: ₱${position.rate_per_hour}/hour\nMonthly Salary: ₱${position.monthly_salary}`)
     }
 
+    // Load applications from API
+    const loadInterviews = async () => {
+      try {
+        isLoadingInterviews.value = true
+        
+        const response = await fetch('/api/job-applications/interviews', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to load interviews')
+        }
+
+        const result = await response.json()
+        
+        if (result.success && result.data) {
+          interviews.value = result.data
+          console.log(`Loaded ${interviews.value.length} interviews`)
+        } else {
+          console.warn('Interviews API returned no data')
+          interviews.value = []
+        }
+      } catch (error) {
+        console.error('Error loading interviews:', error)
+        interviews.value = []
+      } finally {
+        isLoadingInterviews.value = false
+      }
+    }
+
+    const loadApplications = async () => {
+      try {
+        isLoadingApplications.value = true
+        
+        const response = await fetch('/api/job-applications', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to load applications')
+        }
+
+        const result = await response.json()
+        
+        if (result.success && result.data) {
+          applications.value = result.data.map(app => ({
+            ...app,
+            applicant_name: app.full_name,
+            applied_date: app.application_date,
+            skills_count: app.skills ? app.skills.split(',').length : 0
+          }))
+          console.log(`Loaded ${applications.value.length} applications`)
+        } else {
+          console.warn('Applications API returned no data')
+          applications.value = []
+        }
+      } catch (error) {
+        console.error('Error loading applications:', error)
+        applications.value = []
+      } finally {
+        isLoadingApplications.value = false
+      }
+    }
+
     // Load positions from API
     const loadPositions = async () => {
       try {
         isLoadingPositions.value = true
         
-        // Fetch from branch-positions API (now includes department positions)
+        // Fetch from branch-positions API
         const response = await fetch('/api/branch-positions', {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -1317,25 +2140,40 @@ export default {
         })
 
         if (!response.ok) {
-          throw new Error('Failed to load positions')
+          throw new Error('Failed to load branch positions')
         }
 
         const result = await response.json()
         
         if (result.success && result.data) {
-          positions.value = result.data
-          console.log(`Loaded ${positions.value.length} positions from API`)
-          
-          // Group by department to show counts
-          const deptCounts = {}
-          positions.value.forEach(p => {
-            deptCounts[p.department] = (deptCounts[p.department] || 0) + 1
-          })
-          console.log('Position counts by department:', deptCounts)
+          // Store branch positions separately
+          branchPositions.value = result.data
+          console.log(`Loaded ${branchPositions.value.length} branch positions from API`)
         } else {
-          console.warn('Positions API returned no data or unsuccessful response:', result)
-          positions.value = []
+          console.warn('Branch positions API returned no data or unsuccessful response:', result)
+          branchPositions.value = []
         }
+        
+        // Load department positions from store (this will sync with Positions.vue)
+        try {
+          await positionsStore.fetchPositions()
+          console.log('Loaded positions from store (synced with Position Management)')
+          
+          // Also store roles/positions data for watch functionality
+          rolesPositionsData.value = positionsStore.positions
+        } catch (err) {
+          console.warn('Error loading positions from store:', err)
+        }
+        
+        // Log total position counts by department
+        const allPositions = positions.value // Use computed property
+        const deptCounts = {}
+        allPositions.forEach(p => {
+          if (p && p.department) {
+            deptCounts[p.department] = (deptCounts[p.department] || 0) + 1
+          }
+        })
+        console.log('Position counts by department:', deptCounts)
       } catch (error) {
         console.error('Error loading positions:', error)
         alert('Failed to load positions. Please try again.')
@@ -1393,11 +2231,23 @@ export default {
         }
       }
     })
+    
+    // Watch for tab changes to refresh positions from store (to sync with Position Management)
+    watch(() => activeTab.value, (newTab) => {
+      if (newTab === 'position-tracker') {
+        // Refresh positions from store to ensure we have the latest rates
+        positionsStore.fetchPositions().catch(err => {
+          console.warn('Error refreshing positions from store:', err)
+        })
+        // Also refresh rolesPositionsData for watch functionality
+        rolesPositionsData.value = positionsStore.positions
+      }
+    })
 
     // Lifecycle
     onMounted(() => {
-      // TODO: Load applications from API
-      // loadApplications()
+      loadApplications()
+      loadInterviews()
       loadPositions()
       loadBranches()
     })
@@ -1410,10 +2260,17 @@ export default {
       pendingReviewCount,
       screenedCount,
       processedCount,
-      shortlistedCount,
-      onHoldCount,
-      rejectedCount,
-      hiredCount,
+      // Interview management
+      interviews,
+      isLoadingInterviews,
+      isUpdatingInterview,
+      interviewFilter,
+      filteredInterviews,
+      loadInterviews,
+      conductInterview,
+      viewInterviewDetails,
+      rescheduleInterview,
+      cancelInterview,
       applications,
       positions,
       rolesPositionsData,
@@ -1423,18 +2280,35 @@ export default {
       dateFilter,
       currentPage,
       itemsPerPage,
+      isLoadingApplications,
       selectAll,
       filteredApplications,
       totalPages,
       paginatedApplications,
+      getFilteredApplicationsCount,
       formatDate,
       formatTime,
       toggleSelectAll,
       markAllAsReviewed,
       viewApplication,
-      reviewApplication,
-      shortlistApplication,
+      setInterviewDate,
+      closeApplicationDetailsModal,
+      closeSetInterviewModal,
+      handleInterviewScheduled,
+      handleNavigateToSchedule,
       rejectApplication,
+      confirmDelete,
+      showDeleteModal,
+      applicationToDelete,
+      cancelInterview,
+      confirmInterviewDelete,
+      showInterviewDeleteModal,
+      interviewToDelete,
+      showInterviewDetailsModal,
+      selectedInterview,
+      showNotificationModal,
+      notificationData,
+      showNotification,
       handleTabClick,
       clearFilters,
       // Position management
@@ -1442,6 +2316,10 @@ export default {
       editingPosition,
       isLoadingPositions,
       isSavingPosition,
+      // Modal state
+      showApplicationDetailsModal,
+      showSetInterviewModal,
+      selectedApplication,
       positionForm,
       calculatedMonthlySalary,
       getMonthlySalaryRange,
@@ -1463,7 +2341,8 @@ export default {
       resetPositionForm,
       viewPositionDetails,
       loadPositions,
-      loadBranches
+      loadBranches,
+      loadApplications
     }
   }
 }
@@ -1950,7 +2829,7 @@ export default {
 
 /* Calendar */
 .calendar-container {
-  background: #f8fafc;
+  background: #f8f8f8;
   border-radius: 8px;
   padding: 20px;
 }
@@ -1984,10 +2863,17 @@ export default {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 16px;
+  padding: 20px;
   background: white;
-  border-radius: 8px;
+  border-radius: 12px;
   border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+}
+
+.interview-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
 }
 
 .interview-time {
@@ -2616,4 +3502,198 @@ export default {
   color: #64748b;
 }
 
+/* Interview Schedule Styles */
+.loading-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  gap: 0.5rem;
+}
+
+.loading-text {
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.interview-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.interview-type {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.type-in-person {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.type-video {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.type-phone {
+  background-color: #f3e8ff;
+  color: #7c3aed;
+}
+
+.interview-status {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.status-scheduled {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.status-completed {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.status-cancelled {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+
+.status-rescheduled {
+  background-color: #fef3c7;
+  color: #d97706;
+}
+
+/* Interview Actions */
+.interview-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+  min-width: 200px;
+}
+
+.decision-buttons {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.decision-buttons .btn {
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.decision-buttons .btn-success {
+  background: #10b981;
+  color: white;
+  border: none;
+}
+
+.decision-buttons .btn-success:hover {
+  background: #059669;
+  transform: translateY(-1px);
+}
+
+.decision-buttons .btn-error {
+  background: #ef4444;
+  color: white;
+  border: none;
+}
+
+.decision-buttons .btn-error:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
+}
+
+.completed-status {
+  margin-bottom: 8px;
+}
+
+.completed-status .badge {
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+}
+
+.completed-status .badge-error {
+  background-color: #dc2626;
+  color: white;
+}
+
+.completed-status .badge-success {
+  background-color: #16a34a;
+  color: white;
+}
+
+.completed-status .badge-info {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.other-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.other-actions .btn {
+  padding: 6px 8px;
+  font-size: 12px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.other-actions .btn:hover {
+  transform: translateY(-1px);
+}
+
+.interview-details .location,
+.interview-details .meeting-link {
+  font-size: 14px;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+.interview-details .meeting-link a {
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.interview-details .meeting-link a:hover {
+  text-decoration: underline;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #6b7280;
+}
+
+.empty-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.empty-state h4 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.5rem;
+}
+
+.empty-state p {
+  font-size: 0.875rem;
+}
 </style>

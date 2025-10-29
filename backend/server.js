@@ -62,6 +62,7 @@ const executiveRoutes = require("./routes/executive");
 const adminOrgChartRoutes = require("./routes/adminOrgChart");
 const notificationRoutes = require("./routes/notifications");
 const branchPositionRoutes = require("./routes/branchPositions");
+const jobApplicationRoutes = require("./routes/jobApplications");
 
 const app = express();
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 5000;
@@ -219,6 +220,7 @@ app.use("/api/executive", executiveRoutes);
 app.use("/api/admin/org-chart", adminOrgChartRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/branch-positions", branchPositionRoutes);
+app.use("/api/job-applications", jobApplicationRoutes);
 
 // Auto-expire job
 async function autoExpireJob() {

@@ -12,6 +12,12 @@
       @close="closeGrabfoodModal"
     />
 
+    <!-- Job Positions Modal -->
+    <JobPositionsModal
+      :isOpen="isJobPositionsModalOpen"
+      @close="closeJobPositionsModal"
+    />
+
     <!-- Header -->
     <header
       :class="[
@@ -944,8 +950,8 @@
             <p class="text-gray-600 mb-6 leading-relaxed">
               Explore our current job openings and find the perfect role that matches your skills and passion.
             </p>
-            <router-link
-              to="/hr/job-application"
+            <button
+              @click="openJobPositionsModal"
               class="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg font-medium transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md"
             >
               <span>View Positions</span>
@@ -953,7 +959,7 @@
                 icon="fa-solid fa-arrow-right"
                 class="ml-2 group-hover:translate-x-1 transition-transform"
               />
-            </router-link>
+            </button>
           </div>
 
           <!-- Apply Now Card -->
@@ -965,8 +971,8 @@
             <p class="text-gray-600 mb-6 leading-relaxed">
               Ready to start your journey with us? Submit your application and let us know why you'd be a great fit.
             </p>
-            <router-link
-              to="/hr/job-application"
+            <button
+              @click="openJobPositionsModal"
               class="bg-orange-500 hover:bg-orange-400 text-white px-8 py-3 rounded-lg font-medium transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md"
             >
               <span>Apply Today</span>
@@ -974,7 +980,7 @@
                 icon="fa-solid fa-paper-plane"
                 class="ml-2 group-hover:translate-x-1 transition-transform"
               />
-            </router-link>
+            </button>
           </div>
 
           <!-- Why Work With Us Card -->
@@ -1049,20 +1055,20 @@
               Don't wait! Join the Countryside family and be part of our 40+ year legacy of serving delicious food and creating memorable experiences.
             </p>
             <div class="flex flex-col sm:flex-row gap-4 justify-center">
-              <router-link
-                to="/hr/job-application"
+              <button
+                @click="openJobPositionsModal"
                 class="bg-orange-500 hover:bg-orange-400 text-white px-8 py-4 rounded-lg font-medium transition-all duration-300 shadow-lg flex items-center justify-center btn btn-lg"
               >
                 <font-awesome-icon icon="fa-solid fa-briefcase" class="mr-3" />
                 <span>Browse Open Positions</span>
-              </router-link>
-              <router-link
-                to="/hr/job-application"
+              </button>
+              <button
+                @click="openJobPositionsModal"
                 class="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-lg font-medium transition-all duration-300 shadow-lg flex items-center justify-center btn btn-lg"
               >
                 <font-awesome-icon icon="fa-solid fa-paper-plane" class="mr-3" />
                 <span>Submit Application</span>
-              </router-link>
+              </button>
             </div>
           </div>
         </div>
@@ -1672,6 +1678,7 @@
   import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue';
   import FoodpandaOrderModal from './FoodpandaOrderModal.vue';
   import GrabfoodOrderModal from './GrabfoodOrderModal.vue';
+  import JobPositionsModal from './JobPositionsModal.vue';
   import feedbackService from '../../services/feedbackService.js';
   import branchService from '../../services/branchService.js';
   import menuService from '../../services/menuService.js';
@@ -1961,6 +1968,7 @@
   // Modal state
   const isFoodpandaModalOpen = ref(false);
   const isGrabfoodModalOpen = ref(false);
+  const isJobPositionsModalOpen = ref(false);
 
   // Template refs
   const imageInput = ref(null);
@@ -2191,6 +2199,14 @@
 
   const closeGrabfoodModal = () => {
     isGrabfoodModalOpen.value = false;
+  };
+
+  const openJobPositionsModal = () => {
+    isJobPositionsModalOpen.value = true;
+  };
+
+  const closeJobPositionsModal = () => {
+    isJobPositionsModalOpen.value = false;
   };
 
   // Feedback submission method

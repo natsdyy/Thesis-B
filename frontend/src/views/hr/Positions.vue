@@ -10,10 +10,19 @@
   // Reactive data
   const activeTab = ref('');
   const showEditModal = ref(false);
+  const showAddModal = ref(false);
   const selectedPosition = ref(null);
 
   // Form data for edit
   const positionForm = ref({
+    role: '',
+    department: '',
+    description: '',
+    rate_per_hour: 0,
+  });
+
+  // Form data for add
+  const addPositionForm = ref({
     role: '',
     department: '',
     description: '',
@@ -129,6 +138,102 @@
       style: 'currency',
       currency: 'PHP',
     }).format(amount);
+  };
+
+  const openAddModal = () => {
+    // Set department from active tab if available
+    addPositionForm.value = {
+      role: '',
+      department: activeTab.value || '',
+      description: '',
+      rate_per_hour: 0,
+    };
+    showAddModal.value = true;
+  };
+
+  const closeAddModal = () => {
+    showAddModal.value = false;
+    addPositionForm.value = {
+      role: '',
+      department: '',
+      description: '',
+      rate_per_hour: 0,
+    };
+  };
+
+  const createPosition = async () => {
+    try {
+      // Validation
+      if (!addPositionForm.value.role || !addPositionForm.value.department || !addPositionForm.value.description) {
+        showError('Role, department, and description are required', 'Validation Error');
+        return;
+      }
+
+      if (!addPositionForm.value.rate_per_hour || addPositionForm.value.rate_per_hour < 0) {
+        showError('Rate per hour must be a positive number', 'Validation Error');
+        return;
+      }
+
+      const token = localStorage.getItem('token');
+      
+      // Step 1: Create role
+      const createResponse = await fetch('/api/roles/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          role: addPositionForm.value.role.trim(),
+          department: addPositionForm.value.department.trim(),
+          description: addPositionForm.value.description.trim(),
+        }),
+      });
+
+      if (!createResponse.ok) {
+        const errorData = await createResponse.json();
+        throw new Error(errorData.message || 'Failed to create position');
+      }
+
+      const createResult = await createResponse.json();
+      
+      if (!createResult.success || !createResult.data) {
+        throw new Error(createResult.message || 'Failed to create position');
+      }
+
+      const newRoleId = createResult.data.role_id;
+
+      // Step 2: Update rate per hour
+      const updateResponse = await fetch(`/api/roles/positions/${newRoleId}/rate`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          rate_per_hour: addPositionForm.value.rate_per_hour,
+        }),
+      });
+
+      if (!updateResponse.ok) {
+        const errorData = await updateResponse.json();
+        throw new Error(errorData.message || 'Failed to set rate per hour');
+      }
+
+      // Refresh positions list
+      await fetchPositions();
+      closeAddModal();
+      showSuccess(
+        `Position "${addPositionForm.value.role}" created successfully with rate ₱${addPositionForm.value.rate_per_hour}/hr!`,
+        'Position Created'
+      );
+    } catch (error) {
+      console.error('Error creating position:', error);
+      showError(
+        error.message || 'Failed to create position',
+        'Creation Failed'
+      );
+    }
   };
 
   onMounted(() => {
@@ -250,6 +355,97 @@
         <p class="text-black/50 text-center max-w-md">
           No positions available in this department
         </p>
+      </div>
+    </div>
+
+    <!-- Add Position Modal -->
+    <div v-if="showAddModal" class="modal modal-open">
+      <div class="modal-box">
+        <h3 class="font-bold text-lg mb-4">Add New Position</h3>
+
+        <div class="space-y-4">
+          <!-- Role Name -->
+          <div>
+            <label class="label">
+              <span class="label-text font-medium">Position/Role Name *</span>
+            </label>
+            <input
+              v-model="addPositionForm.role"
+              type="text"
+              placeholder="e.g., Manager, Cook, Cashier"
+              class="input input-bordered w-full"
+              required
+            />
+          </div>
+
+          <!-- Department -->
+          <div>
+            <label class="label">
+              <span class="label-text font-medium">Department *</span>
+            </label>
+            <select
+              v-model="addPositionForm.department"
+              class="select select-bordered w-full"
+              required
+            >
+              <option value="">Select Department</option>
+              <option v-for="dept in departments" :key="dept" :value="dept">
+                {{ dept }}
+              </option>
+              <option value="Branch">Branch</option>
+              <option value="Human Resource">Human Resource</option>
+              <option value="Finance">Finance</option>
+              <option value="SCM">SCM</option>
+              <option value="Production">Production</option>
+              <option value="CRM">CRM</option>
+            </select>
+          </div>
+
+          <!-- Description -->
+          <div>
+            <label class="label">
+              <span class="label-text font-medium">Description *</span>
+            </label>
+            <textarea
+              v-model="addPositionForm.description"
+              placeholder="Describe the role and responsibilities..."
+              class="textarea textarea-bordered w-full"
+              rows="3"
+              required
+            ></textarea>
+          </div>
+
+          <!-- Rate per Hour -->
+          <div>
+            <label class="label">
+              <span class="label-text font-medium">Rate per Hour (₱) *</span>
+            </label>
+            <input
+              v-model.number="addPositionForm.rate_per_hour"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="0.00"
+              class="input input-bordered w-full"
+              required
+            />
+          </div>
+        </div>
+
+        <div class="modal-action">
+          <button
+            @click="closeAddModal"
+            class="btn btn-sm bg-gray-200 text-black/50 font-thin border-none hover:bg-gray-300 shadow-none"
+          >
+            Cancel
+          </button>
+          <button
+            @click="createPosition"
+            class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
+          >
+            Create Position
+          </button>
+        </div>
       </div>
     </div>
 

@@ -22,6 +22,7 @@ class BranchPosition {
         total_slots: positionData.total_slots || 1,
         filled_slots: positionData.filled_slots || 0,
         status: positionData.status || "open",
+        job_status: positionData.job_status || positionData.status || "open", // Initialize job_status to match status
         is_active: positionData.is_active !== undefined ? positionData.is_active : true,
         created_at: db.fn.now(),
         updated_at: db.fn.now()
@@ -52,7 +53,25 @@ class BranchPosition {
             .andOnNull("b.deleted_at"); // Only join with non-deleted branches
         })
         .select(
-          "bp.*",
+          "bp.id",
+          "bp.branch_id",
+          "bp.position_title",
+          "bp.position_code",
+          "bp.description",
+          "bp.requirements",
+          "bp.rate_per_hour",
+          "bp.monthly_salary",
+          "bp.department",
+          "bp.position_type",
+          "bp.total_slots",
+          "bp.filled_slots",
+          "bp.status",
+          // Ensure job_status always has a value by using COALESCE (fallback to status if job_status is NULL)
+          db.raw("COALESCE(bp.job_status, bp.status) as job_status"),
+          "bp.is_active",
+          "bp.created_at",
+          "bp.updated_at",
+          "bp.deleted_at",
           "b.name as branch_name",
           "b.code as branch_code",
           "b.address as branch_address"
@@ -113,11 +132,23 @@ class BranchPosition {
       // Filter by job_status for public job listing (preferred for public listing)
       // Use status filter as fallback for internal management
       if (filters.job_status) {
-        query = query.where("bp.job_status", filters.job_status);
-        // When job_status=open is requested, also ensure is_active is true
-        // This ensures closed positions don't show up on public homepage
         if (filters.job_status === 'open') {
-          query = query.where("bp.is_active", true);
+          // When job_status=open is requested, include positions where:
+          // 1. (job_status = 'open' AND is_active = true) OR
+          // 2. (job_status IS NULL AND status = 'open' AND is_active = true)
+          // This ensures closed positions (is_active=false) don't show up even if job_status='open'
+          query = query.where(function() {
+            this.where(function() {
+              this.where("bp.job_status", "open").where("bp.is_active", true);
+            }).orWhere(function() {
+              this.whereNull("bp.job_status")
+                .where("bp.status", "open")
+                .where("bp.is_active", true);
+            });
+          });
+        } else {
+          // For other job_status values, filter directly
+          query = query.where("bp.job_status", filters.job_status);
         }
       } else if (filters.status) {
         // Only apply status filter if job_status is not provided
@@ -435,24 +466,32 @@ class BranchPosition {
   }
 
   /**
-   * Delete position (soft delete)
+   * Delete position (hard delete - permanently removes from database)
    */
   static async delete(id, deletedBy = null) {
     try {
-      const [deletedPosition] = await db("branch_positions")
+      // First check if position exists (and not already deleted)
+      const existingPosition = await db("branch_positions")
         .where("id", id)
-        .where("deleted_at", null)
-        .update({
-          deleted_at: db.fn.now(),
-          updated_at: db.fn.now()
-        })
+        .whereNull("deleted_at")
+        .first();
+
+      if (!existingPosition) {
+        throw new Error("Position not found or already deleted");
+      }
+
+      // Hard delete - actually remove from database
+      // For PostgreSQL, use .del() with .returning() to get the deleted row
+      const deletedPosition = await db("branch_positions")
+        .where("id", id)
+        .del()
         .returning("*");
 
-      if (!deletedPosition) {
+      if (!deletedPosition || deletedPosition.length === 0) {
         throw new Error("Position not found");
       }
 
-      return deletedPosition;
+      return deletedPosition[0];
     } catch (error) {
       throw error;
     }

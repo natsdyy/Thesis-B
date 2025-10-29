@@ -329,15 +329,29 @@ router.post("/", authenticateToken, async (req, res) => {
     const positionData = req.body;
     const createdBy = req.user?.id || null;
 
-    // Validate required fields
-    const requiredFields = ["branch_id", "position_title", "position_code", "rate_per_hour", "department"];
+    // Validate required fields (allow branch_id to be null for main branch)
+    const requiredFields = ["position_title", "position_code", "rate_per_hour", "department"];
     for (const field of requiredFields) {
-      if (!positionData[field]) {
+      if (positionData[field] === undefined || positionData[field] === null || positionData[field] === '') {
         return res.status(400).json({
           success: false,
           message: `${field} is required`
         });
       }
+    }
+    
+    // Validate branch_id (can be null for main branch, but must be valid number if provided)
+    if (positionData.branch_id !== null && positionData.branch_id !== undefined && positionData.branch_id !== '') {
+      if (isNaN(parseInt(positionData.branch_id))) {
+        return res.status(400).json({
+          success: false,
+          message: `branch_id must be a valid number or null for main branch`
+        });
+      }
+      positionData.branch_id = parseInt(positionData.branch_id);
+    } else {
+      // Set to null explicitly for main branch positions
+      positionData.branch_id = null;
     }
 
     const newPosition = await BranchPosition.create(positionData, createdBy);

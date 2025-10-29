@@ -92,9 +92,9 @@
                   </h3>
                   <div class="space-y-1">
                     <p class="text-sm text-gray-600">{{ position.department }}</p>
-                    <p v-if="position.branch_name" class="text-sm font-medium text-green-600 flex items-center">
+                    <p class="text-sm font-medium text-green-600 flex items-center">
                       <font-awesome-icon icon="fa-solid fa-map-marker-alt" class="mr-1 text-xs" />
-                      {{ position.branch_name }}
+                      {{ getDisplayBranchName(position) }}
                     </p>
                   </div>
                 </div>
@@ -294,6 +294,7 @@ const positions = computed(() => {
           position_type: 'Full-time',
           rate_per_hour: parseFloat(role.rate_per_hour) || 0,
           status: role.is_active ? 'open' : 'closed',
+          is_active: !!role.is_active,
           description: role.description || '',
           requirements: role.requirements || '',
           role_id: role.role_id,
@@ -307,11 +308,27 @@ const positions = computed(() => {
   // Merge with branch positions and filter out closed positions
   // Branch positions already have branch_id and branch_name from the API
   const allPositions = [...branchPositions.value, ...storePositions]
-  // Double-check filtering: only show truly open and active positions
+  // Final filtering: only show truly open and active positions
+  // Exclude any position that is closed, filled, or on-hold
   return allPositions.filter(p => {
-    const isOpen = p.status === 'open' || p.job_status === 'open';
-    const isActive = p.is_active !== false && p.is_active !== 0;
+    // Get status values (prefer job_status, fallback to status)
+    const jobStatus = p.job_status || p.status;
+    const status = p.status || p.job_status || 'open';
+    
+    // Position must be open (not closed, filled, or on-hold)
+    // If either status or job_status indicates closed/filled/on-hold, exclude it
+    const closedStatuses = ['closed', 'filled', 'on-hold'];
+    const isClosed = closedStatuses.includes(jobStatus) || closedStatuses.includes(status);
+    
+    // Position must be explicitly open
+    const isOpen = (jobStatus === 'open' || status === 'open') && !isClosed;
+    
+    // Must be active (strict check - only true or 1)
+    const isActive = p.is_active === true || p.is_active === 1;
+    
+    // Must not be deleted
     const notDeleted = !p.deleted_at;
+    
     return isOpen && isActive && notDeleted;
   })
 })
@@ -355,6 +372,18 @@ const getDepartmentCount = (department) => {
 const getOpenPositionsCount = () => {
   // All positions in the computed property are already open (filtered)
   return positions.value.length
+}
+
+const getDisplayBranchName = (position) => {
+  // Main branch positions come from user_roles table (branch_id is null/undefined)
+  // Also check if branch_id is null or undefined, or if branch_name is null/undefined/empty
+  if (position.branch_id === null || position.branch_id === undefined || 
+      !position.branch_id || position.branch_id === '') {
+    return 'Main Branch'
+  }
+  
+  // If branch has a name, use it; otherwise fallback to Main Branch
+  return position.branch_name || 'Main Branch'
 }
 
 const calculateMonthlySalaryRange = (ratePerHour) => {
@@ -407,7 +436,7 @@ const closeApplicationForm = () => {
 }
 
 const handleApplicationSubmitted = (applicationData) => {
-  console.log('Application submitted:', applicationData)
+  
   // Close the application form modal
   closeApplicationForm()
   // Show success modal
@@ -446,21 +475,40 @@ const loadPositions = async () => {
     const result = await response.json()
     
     if (result.success && result.data) {
-      // Filter to only open positions (check both status and job_status for compatibility)
-      // Also ensure is_active is true
+      // Filter to only open positions - be strict about excluding closed positions
+      // The backend should already filter by job_status=open, but we double-check on frontend
       branchPositions.value = result.data.filter(p => {
-        const isOpen = p.status === 'open' || p.job_status === 'open';
-        const isActive = p.is_active !== false && p.is_active !== 0;
+        // Get status values (prefer job_status, fallback to status)
+        const jobStatus = p.job_status || p.status;
+        const status = p.status || p.job_status || 'open';
+        
+        // Position must be open (not closed, filled, or on-hold)
+        // If either status or job_status indicates closed/filled/on-hold, exclude it
+        const closedStatuses = ['closed', 'filled', 'on-hold'];
+        const isClosed = closedStatuses.includes(jobStatus) || closedStatuses.includes(status);
+        
+        // Position must be explicitly open
+        const isOpen = (jobStatus === 'open' || status === 'open') && !isClosed;
+        
+        // Must be active (strict check)
+        const isActive = p.is_active === true || p.is_active === 1;
+        
+        // Must not be deleted
         const notDeleted = !p.deleted_at;
+        
         return isOpen && isActive && notDeleted;
       })
-      console.log(`Loaded ${branchPositions.value.length} open branch positions`)
+      
+      
+      // Log main branch positions for debugging
+      const mainBranchPositions = branchPositions.value.filter(p => 
+        p.branch_id === null || p.branch_id === undefined || !p.branch_id
+      )
+      
       
       // Log any filtered out positions for debugging
       const closedCount = result.data.length - branchPositions.value.length;
-      if (closedCount > 0) {
-        console.log(`Filtered out ${closedCount} closed/inactive positions from public listing`)
-      }
+      
     } else {
       console.warn('Branch positions API returned no data')
       branchPositions.value = []
@@ -469,7 +517,25 @@ const loadPositions = async () => {
     // Load department positions from store (this will sync with Position Management)
     try {
       await positionsStore.fetchPositions()
-      console.log('Loaded positions from store (synced with Position Management)')
+      console.log('Loaded positions from store')
+      
+      // Log main branch positions from store (positions from user_roles table)
+      const storeMainBranchPositions = []
+      for (const department in positionsStore.positions) {
+        const deptPositions = positionsStore.positions[department] || []
+        deptPositions.forEach(role => {
+          if (role.is_active) {
+            storeMainBranchPositions.push({
+              id: `dept-${role.role_id}`,
+              title: role.role,
+              department: role.department
+            })
+          }
+        })
+      }
+      if (storeMainBranchPositions.length > 0) {
+        console.log(`Found ${storeMainBranchPositions.length} main branch positions from store`)
+      }
     } catch (err) {
       console.warn('Error loading positions from store:', err)
     }
@@ -489,7 +555,7 @@ watch(() => props.isOpen, (newValue) => {
   if (newValue) {
     // Modal opened - refresh positions immediately
     // This ensures we always show the latest status from JobApplication.vue
-    console.log('Job positions modal opened - refreshing positions...')
+    
     loadPositions()
     
     // Add visibility change listener to refresh when tab becomes visible
@@ -497,7 +563,7 @@ watch(() => props.isOpen, (newValue) => {
     if (typeof document !== 'undefined') {
       visibilityHandler = () => {
         if (document.visibilityState === 'visible' && props.isOpen) {
-          console.log('Page visible and modal open - refreshing positions...')
+          
           loadPositions()
         }
       }

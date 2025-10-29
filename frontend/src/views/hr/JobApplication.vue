@@ -159,7 +159,11 @@
                       <Eye class="w-4 h-4" />
                       View
                     </button>
-                    <button @click="setInterviewDate(application)" class="flex items-center gap-2 px-3 py-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50 border border-purple-200 rounded-lg text-sm font-medium transition-colors">
+                    <button 
+                      v-if="!hasScheduledInterview(application.id) && application.status !== 'interview-scheduled'"
+                      @click="setInterviewDate(application)" 
+                      class="flex items-center gap-2 px-3 py-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50 border border-purple-200 rounded-lg text-sm font-medium transition-colors"
+                    >
                       <Calendar class="w-4 h-4" />
                       Set Interview
                     </button>
@@ -274,11 +278,51 @@
             
             <!-- Interviews List -->
             <div v-else-if="filteredInterviews.length > 0" class="interview-list">
-              <div
-                v-for="interview in filteredInterviews"
-                :key="interview.id"
-                class="interview-item"
-              >
+              <!-- Grouped by Date (for "All", "Today", "This Week", and "This Month" filters) -->
+              <template v-if="(interviewFilter === 'all' || interviewFilter === 'today' || interviewFilter === 'this-week' || interviewFilter === 'this-month') && groupedInterviewsByDate && sortedDateKeys.length > 0">
+                <!-- Date Navigation Controls -->
+                <div class="date-navigation">
+                  <button
+                    @click="prevDateGroup"
+                    :disabled="!canGoPrev"
+                    class="btn btn-outline btn-sm date-nav-btn"
+                    title="Previous date"
+                  >
+                    <ChevronLeft class="w-4 h-4 mr-1" />
+                    Previous
+                  </button>
+                  <div class="date-nav-info">
+                    <span class="date-nav-counter">
+                      Date {{ currentDateGroupIndex + 1 }} of {{ sortedDateKeys.length }}
+                    </span>
+                  </div>
+                  <button
+                    @click="nextDateGroup"
+                    :disabled="!canGoNext"
+                    class="btn btn-outline btn-sm date-nav-btn"
+                    title="Next date"
+                  >
+                    Next
+                    <ChevronRight class="w-4 h-4 ml-1" />
+                  </button>
+                </div>
+                
+                <!-- Current Date Group -->
+                <div
+                  v-for="(dateGroup, date) in paginatedDateGroups"
+                  :key="date"
+                  class="interview-date-group"
+                >
+                  <div class="date-header">
+                    <Calendar class="w-5 h-5 mr-2" />
+                    <h5 class="date-title">{{ date }}</h5>
+                    <span class="date-count">({{ dateGroup.length }} interview{{ dateGroup.length !== 1 ? 's' : '' }})</span>
+                  </div>
+                  <div
+                    v-for="interview in dateGroup"
+                    :key="interview.id"
+                    class="interview-item"
+                  >
                 <div class="interview-time">
                   <div class="time">{{ formatTime(interview.interview_time) }}</div>
                   <div class="date">{{ formatDate(interview.interview_date) }}</div>
@@ -331,27 +375,8 @@
                   </span>
                 </div>
                 <div class="interview-actions">
-                  <!-- Interview Decision Buttons -->
-                  <div v-if="interview.status === 'scheduled'" class="decision-buttons">
-                    <button 
-                      @click="conductInterview(interview, 'passed')"
-                      class="btn btn-success btn-sm"
-                      :disabled="isUpdatingInterview"
-                    >
-                      <CheckCircle class="w-4 h-4 mr-1" />
-                      Interview: Yes
-                    </button>
-                    <button 
-                      @click="conductInterview(interview, 'failed')"
-                      class="btn btn-error btn-sm"
-                      :disabled="isUpdatingInterview"
-                    >
-                      <X class="w-4 h-4 mr-1" />
-                      Interview: No
-                    </button>
-                  </div>
                   <!-- Completed Interview Status -->
-                  <div v-else-if="interview.status === 'completed'" class="completed-status">
+                  <div v-if="interview.status === 'completed'" class="completed-status">
                     <span v-if="interview.result === 'passed'" class="badge badge-success">
                       <CheckCircle class="w-4 h-4 mr-1" />
                       Interview Done
@@ -375,13 +400,6 @@
                       <Eye class="w-4 h-4" />
                     </button>
                     <button 
-                      @click="rescheduleInterview(interview)"
-                      class="btn btn-outline btn-sm"
-                      title="Reschedule"
-                    >
-                      <Calendar class="w-4 h-4" />
-                    </button>
-                    <button 
                       @click="cancelInterview(interview)"
                       class="btn btn-outline btn-sm text-red-600 hover:text-red-800"
                       title="Delete Interview"
@@ -390,7 +408,104 @@
                     </button>
                   </div>
                 </div>
-              </div>
+                  </div>
+                </div>
+              </template>
+              
+              <!-- Not Grouped (for other filters) - This should not appear now since all filters use grouping -->
+              <template v-else>
+                <div
+                  v-for="interview in filteredInterviews"
+                  :key="interview.id"
+                  class="interview-item"
+                >
+                  <div class="interview-time">
+                    <div class="time">{{ formatTime(interview.interview_time) }}</div>
+                    <div class="date">{{ formatDate(interview.interview_date) }}</div>
+                  </div>
+                  <div class="interview-details">
+                    <div class="candidate-name">{{ interview.applicant_name }}</div>
+                    <div class="position">{{ interview.position_title }}</div>
+                    <div class="department">{{ interview.department }}</div>
+                    <div v-if="interview.location" class="location">
+                      <MapPin class="w-4 h-4 inline mr-1" />
+                      {{ interview.location }}
+                    </div>
+                    <div v-if="interview.meeting_link" class="meeting-link">
+                      <a :href="interview.meeting_link" target="_blank" class="text-blue-600 hover:text-blue-800">
+                        <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                        </svg>
+                        Join Meeting
+                      </a>
+                    </div>
+                  </div>
+                  <div class="interview-meta">
+                    <span
+                      :class="[
+                        'interview-type',
+                        interview.interview_type === 'in-person' 
+                          ? 'type-in-person'
+                          : interview.interview_type === 'video'
+                          ? 'type-video'
+                          : 'type-phone'
+                      ]"
+                    >
+                      {{ interview.interview_type === 'in-person' ? 'In-Person' : 
+                         interview.interview_type === 'video' ? 'Video Call' : 'Phone Call' }}
+                    </span>
+                    <span
+                      v-if="!(interview.status === 'completed' && (interview.result === 'passed' || interview.result === 'failed'))"
+                      :class="[
+                        'interview-status',
+                        interview.status === 'scheduled' 
+                          ? 'status-scheduled'
+                          : interview.status === 'completed'
+                          ? 'status-completed'
+                          : interview.status === 'cancelled'
+                          ? 'status-cancelled'
+                          : 'status-rescheduled'
+                      ]"
+                    >
+                      {{ interview.status.charAt(0).toUpperCase() + interview.status.slice(1) }}
+                    </span>
+                  </div>
+                  <div class="interview-actions">
+                    <!-- Completed Interview Status -->
+                    <div v-if="interview.status === 'completed'" class="completed-status">
+                      <span v-if="interview.result === 'passed'" class="badge badge-success">
+                        <CheckCircle class="w-4 h-4 mr-1" />
+                        Interview Done
+                      </span>
+                      <span v-else-if="interview.result === 'failed'" class="badge badge-error">
+                        <X class="w-4 h-4 mr-1" />
+                        Interview Failed
+                      </span>
+                      <span v-else class="badge badge-info">
+                        <CheckCircle class="w-4 h-4 mr-1" />
+                        Interview Completed
+                      </span>
+                    </div>
+                    <!-- Other Actions -->
+                    <div class="other-actions">
+                      <button 
+                        @click="viewInterviewDetails(interview)"
+                        class="btn btn-outline btn-sm"
+                        title="View Details"
+                      >
+                        <Eye class="w-4 h-4" />
+                      </button>
+                      <button 
+                        @click="cancelInterview(interview)"
+                        class="btn btn-outline btn-sm text-red-600 hover:text-red-800"
+                        title="Delete Interview"
+                      >
+                        <Trash2 class="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </template>
             </div>
             
             <!-- Empty State -->
@@ -406,6 +521,88 @@
                 View All Interviews
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Job Hiring Tab -->
+      <div v-if="activeTab === 'job-hiring'" class="tab-panel">
+        <div class="panel-header">
+          <h3>💼 Job Hiring</h3>
+          <p>Manage candidates after interviews - Hire or Reject applicants</p>
+        </div>
+        <div class="content-section">
+          <!-- Loading State -->
+          <div v-if="isLoadingInterviews" class="loading-container">
+            <div class="loading loading-spinner loading-lg"></div>
+            <span class="loading-text">Loading candidates...</span>
+          </div>
+          
+          <!-- Candidates List (only passed interviews) -->
+          <div v-else-if="hiringCandidates.length > 0" class="interview-list">
+            <div
+              v-for="candidate in hiringCandidates"
+              :key="candidate.id"
+              class="interview-item"
+            >
+              <div class="interview-time">
+                <div class="time">{{ formatTime(candidate.interview_time) }}</div>
+                <div class="date">{{ formatDate(candidate.interview_date) }}</div>
+              </div>
+              <div class="interview-details">
+                <div class="candidate-name">{{ candidate.applicant_name }}</div>
+                <div class="position">{{ candidate.position_title }}</div>
+                <div class="department">{{ candidate.department }}</div>
+                <div v-if="candidate.location" class="location">
+                  <MapPin class="w-4 h-4 inline mr-1" />
+                  {{ candidate.location }}
+                </div>
+              </div>
+              <div class="interview-meta">
+                <span class="badge badge-success">
+                  <CheckCircle class="w-4 h-4 mr-1" />
+                  Interview Passed
+                </span>
+              </div>
+              <div class="interview-actions">
+                <div class="hiring-buttons">
+                  <button 
+                    @click="hireCandidate(candidate)"
+                    class="btn btn-success btn-sm"
+                    :disabled="isProcessingHiring"
+                    title="Hire this candidate"
+                  >
+                    <CheckCircle class="w-4 h-4 mr-1" />
+                    Hire
+                  </button>
+                  <button 
+                    @click="rejectCandidate(candidate)"
+                    class="btn btn-error btn-sm"
+                    :disabled="isProcessingHiring"
+                    title="Reject this candidate"
+                  >
+                    <X class="w-4 h-4 mr-1" />
+                    Reject
+                  </button>
+                </div>
+                <div class="other-actions">
+                  <button 
+                    @click="viewInterviewDetails(candidate)"
+                    class="btn btn-outline btn-sm"
+                    title="View Details"
+                  >
+                    <Eye class="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Empty State -->
+          <div v-else class="empty-state">
+            <div class="empty-icon">💼</div>
+            <h4>No Candidates Ready for Hiring</h4>
+            <p>Interviewed candidates who passed will appear here for hiring decisions.</p>
           </div>
         </div>
       </div>
@@ -427,12 +624,15 @@
             </div>
             <h3 class="text-lg font-medium text-gray-900 mb-2">No positions found</h3>
             <p class="text-gray-500 mb-4">There are no branch positions available at the moment.</p>
-            <button @click="addPosition" class="btn btn-primary">
-              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-              </svg>
-              Add New Position
-            </button>
+            <div class="flex gap-2">
+              <button @click="addPosition" class="btn btn-primary">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                </svg>
+                Add New Job listing
+              </button>
+              
+            </div>
           </div>
 
           <!-- Positions Card Grid -->
@@ -444,7 +644,7 @@
                   <h3 class="text-lg font-semibold text-gray-900">Open Job Positions</h3>
                   <p class="text-sm text-gray-600 mt-1">List of available positions displayed on the landing page</p>
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
                   <!-- View Mode Toggle -->
                   <div class="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
                     <button
@@ -475,6 +675,15 @@
                     </button>
                   </div>
                   <button
+                    @click="addPosition"
+                    class="btn btn-primary btn-sm flex items-center gap-2"
+                    title="Add new position"
+                  >
+                    <Plus class="w-4 h-4" />
+                    Add New Position
+                  </button>
+                  
+                  <button
                     @click="loadPositions"
                     :disabled="isLoadingPositions"
                     class="btn btn-outline btn-sm flex items-center gap-2"
@@ -485,6 +694,39 @@
                   </button>
                 </div>
               </div>
+              </div>
+              
+              <!-- Bulk Action Bar (below header) -->
+              <div v-if="selectedCount > 0" class="flex items-center justify-end gap-2 flex-wrap bg-white rounded-lg border border-gray-200 px-4 py-2 mb-3">
+                <span class="text-sm text-gray-600">{{ selectedCount }} selected</span>
+                <button
+                  @click="bulkOpenPositions"
+                  :disabled="isProcessingBulkAction"
+                  class="btn btn-success btn-sm flex items-center gap-2"
+                  title="Open selected positions"
+                >
+                  <CheckCircle class="w-4 h-4" />
+                  Open Selected
+                </button>
+                <button
+                  @click="bulkClosePositions"
+                  :disabled="isProcessingBulkAction"
+                  class="btn btn-warning btn-sm flex items-center gap-2"
+                  title="Close selected positions"
+                >
+                  <X class="w-4 h-4" />
+                  Close Selected
+                </button>
+                <button
+                  v-if="!hasMainBranchSelected"
+                  @click="bulkDeletePositions"
+                  :disabled="isProcessingBulkAction"
+                  class="btn btn-error btn-sm flex items-center justify-center"
+                  title="Delete selected positions"
+                  aria-label="Delete selected positions"
+                >
+                  <Trash2 class="w-4 h-4" />
+                </button>
               </div>
               
             <!-- Department Tabs -->
@@ -542,6 +784,16 @@
                 <table class="w-full">
                   <thead class="bg-gray-50 border-b border-gray-200">
                     <tr>
+                      <!-- Checkbox Column -->
+                      <th class="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider w-12">
+                        <input
+                          type="checkbox"
+                          :checked="isSelectAll"
+                          @change="toggleSelectAllPositions"
+                          class="checkbox checkbox-sm checkbox-primary"
+                          :disabled="gridPaginatedPositions.length === 0"
+                        />
+                      </th>
                       <th 
                         @click="togglePositionFilter(null)"
                         class="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors relative group"
@@ -686,14 +938,26 @@
                     <tr
                       v-for="position in gridPaginatedPositions"
                       :key="position.id"
-                      class="hover:bg-gray-50 transition-colors"
+                      :class="[
+                        'hover:bg-gray-50 transition-colors',
+                        isPositionSelected(position.id) ? 'bg-blue-50' : ''
+                      ]"
                     >
+                      <!-- Checkbox Cell -->
+                      <td class="px-4 py-3 whitespace-nowrap" @click.stop>
+                        <input
+                          type="checkbox"
+                          :checked="isPositionSelected(position.id)"
+                          @change="togglePositionSelection(position.id)"
+                          class="checkbox checkbox-sm checkbox-primary"
+                        />
+                      </td>
                       <td 
                         class="px-4 py-3 whitespace-nowrap cursor-pointer"
                         @click.stop="togglePositionStatus(position)"
                       >
                         <div class="font-semibold text-gray-900">{{ position.position_title }}</div>
-                        <div class="text-xs text-gray-500 line-clamp-1">{{ position.description || `${position.department} ${position.position_title}` }}</div>
+                        <div class="text-xs text-gray-500 line-clamp-1">{{ `${position.department} ${position.position_title}` }}</div>
                       </td>
                       <td 
                         class="px-4 py-3 whitespace-nowrap"
@@ -748,7 +1012,7 @@
                       </td>
                     </tr>
                     <tr v-if="gridPaginatedPositions.length === 0">
-                      <td colspan="6" class="px-4 py-8 text-center text-gray-500">
+                      <td colspan="7" class="px-4 py-8 text-center text-gray-500">
                         No positions found matching the filters.
                       </td>
                     </tr>
@@ -1002,34 +1266,19 @@
             <X class="w-6 h-6" />
           </button>
         </div>
+        
+        <!-- Info banner for Main Office Department -->
+        <div v-if="isMainOfficeDepartment" class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <p class="text-sm text-amber-800">
+            <strong>ℹ️ Main Office Department:</strong> Positions in <strong>{{ positionForm.department }}</strong> are automatically assigned to the main branch (no specific branch).
+          </p>
+        </div>
 
         <form @submit.prevent="savePosition" class="space-y-6">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- Left Column -->
             <div class="space-y-4">
-              <!-- Job Title -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Job Title *</label>
-                <input
-                  v-model="positionForm.position_title"
-                  type="text"
-                  required
-                  placeholder="e.g., Cashier, Cook, Manager"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                />
-              </div>
-
-              <!-- Position Code -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Position Code *</label>
-                <input
-                  v-model="positionForm.position_code"
-                  type="text"
-                  required
-                  placeholder="e.g., CASH, COOK"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                />
-              </div>
+              
 
               <!-- Work Type -->
               <div>
@@ -1045,6 +1294,37 @@
                   <option value="Contract">Contract</option>
                   <option value="Intern">Intern</option>
                 </select>
+              </div>
+              
+              <!-- Branch Selection (only for Branch department) -->
+              <div v-if="positionForm.department === 'Branch' && !isMainOfficeDepartment">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Branch *</label>
+                <select
+                  v-model="positionForm.branch_id"
+                  :required="positionForm.department === 'Branch' && !isMainOfficeDepartment"
+                  :disabled="isLoadingBranches"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+                >
+                  <option value="">
+                    {{ isLoadingBranches ? 'Loading branches...' : 'Select Branch' }}
+                  </option>
+                  <option 
+                    v-for="branch in availableBranchesForSelection" 
+                    :key="branch.id"
+                    :value="branch.id"
+                  >
+                    {{ branch.name }}{{ branch.code ? ` (${branch.code})` : '' }}
+                  </option>
+                </select>
+                <p v-if="isLoadingBranches" class="text-xs text-gray-500 mt-1">
+                  Loading branches...
+                </p>
+                <p v-else-if="availableBranchesForSelection.length === 0" class="text-xs text-amber-600 mt-1">
+                  ⚠️ No active branches found. Please ensure branches are created and active.
+                </p>
+                <p v-else class="text-xs text-gray-500 mt-1">
+                  Select a specific branch for this position ({{ availableBranchesForSelection.length }} available)
+                </p>
               </div>
 
             </div>
@@ -1070,8 +1350,8 @@
                 </select>
               </div>
 
-              <!-- Position/Role Selection (only for non-Branch departments) -->
-              <div v-if="positionForm.department && positionForm.department !== 'Branch' && availableRolesForDepartment.length > 0">
+              <!-- Position/Role Selection (all departments) -->
+              <div v-if="positionForm.department && availableRolesForDepartment.length > 0">
                 <label class="block text-sm font-medium text-gray-700 mb-2">Position/Role *</label>
                 <select
                   v-model="positionForm.position_title"
@@ -1094,38 +1374,10 @@
               </div>
 
               <!-- Debug info for department selection -->
-              <div v-if="positionForm.department && positionForm.department !== 'Branch' && !availableRolesForDepartment.length" class="text-xs text-amber-600 bg-amber-50 p-2 rounded">
+              <div v-if="positionForm.department && !availableRolesForDepartment.length" class="text-xs text-amber-600 bg-amber-50 p-2 rounded">
                 ⚠️ No positions found for {{ positionForm.department }}. Please check Position Management first.
               </div>
-
-              <!-- Rate per Hour -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Rate per Hour (₱) *</label>
-                <input
-                  v-model.number="positionForm.rate_per_hour"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  required
-                  placeholder="50.00"
-                  :readonly="positionForm.department && positionForm.department !== 'Branch' && availableRolesForDepartment.length > 0"
-                  :class="[
-                    'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent',
-                    positionForm.department && positionForm.department !== 'Branch' && availableRolesForDepartment.length > 0 ? 'bg-gray-100 cursor-not-allowed' : ''
-                  ]"
-                />
-                <p v-if="positionForm.department && positionForm.department !== 'Branch'" class="text-xs text-gray-500 mt-1">
-                  {{ positionForm.rate_per_hour > 0 ? 'Rate from Position Management' : 'Select a position to auto-fill rate' }}
-                </p>
-              </div>
-
-              <!-- Calculated Monthly Salary -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Monthly Salary</label>
-                <div class="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-700 font-medium">
-                  ₱{{ calculatedMonthlySalary.toFixed(2) }}
-                </div>
-              </div>
+              
 
               <!-- Status -->
               <div>
@@ -1144,27 +1396,7 @@
             </div>
           </div>
 
-          <!-- Description -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Job Description</label>
-            <textarea
-              v-model="positionForm.description"
-              rows="4"
-              placeholder="Describe the role, responsibilities, and requirements..."
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none"
-            ></textarea>
-          </div>
-
-          <!-- Requirements -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Requirements</label>
-            <textarea
-              v-model="positionForm.requirements"
-              rows="3"
-              placeholder="List the required skills, experience, and qualifications..."
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none"
-            ></textarea>
-          </div>
+          
 
           <!-- Form Actions -->
           <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
@@ -1446,24 +1678,26 @@ import { useRouter } from 'vue-router'
 import { 
   FileUser, Plus, Download, Calendar, Users, Target, CheckCircle,
   Inbox, Clock, UserCheck, MapPin, Eye, Search, X, AlertTriangle, RefreshCw, Filter,
-  SquarePen, CircleX, Building2, Trash2, LayoutGrid, List
+  SquarePen, CircleX, Building2, Trash2, LayoutGrid, List, ChevronLeft, ChevronRight
 } from 'lucide-vue-next'
 import JobApplicationDetailsModal from '../../components/crm/JobApplicationDetailsModal.vue'
 import SetInterviewModal from '../../components/crm/SetInterviewModal.vue'
 import { usePositionsStore } from '../../stores/positionsStore.js'
+import { useCustomToast } from '../../composables/useCustomToast.js'
 
 export default {
   name: 'JobApplication',
   components: {
     FileUser, Plus, Download, Calendar, Users, Target, CheckCircle,
     Inbox, Clock, UserCheck, MapPin, Eye, Search, X, AlertTriangle, RefreshCw, Filter,
-    SquarePen, CircleX, Building2, Trash2, LayoutGrid, List,
+    SquarePen, CircleX, Building2, Trash2, LayoutGrid, List, ChevronLeft, ChevronRight,
     JobApplicationDetailsModal,
     SetInterviewModal
   },
   setup() {
     const router = useRouter()
     const positionsStore = usePositionsStore()
+    const { showSuccess, showError, showWarning, showInfo } = useCustomToast()
     
     // Active tab - default to position-tracker for public access
     const activeTab = ref('position-tracker')
@@ -1490,6 +1724,11 @@ export default {
     const cardCurrentPage = ref(1)
     const cardItemsPerPage = ref(12)
 
+    // Selected positions for bulk actions
+    const selectedPositions = ref(new Set())
+    const isSelectAll = ref(false)
+    const isProcessingBulkAction = ref(false)
+
     // Tab configuration
     const tabs = ref([
       {
@@ -1501,6 +1740,11 @@ export default {
         id: 'interview-schedule',
         name: 'Interview Schedule',
         icon: Calendar
+      },
+      {
+        id: 'job-hiring',
+        name: 'Job Hiring',
+        icon: UserCheck
       },
       {
         id: 'position-tracker',
@@ -1528,13 +1772,11 @@ export default {
           storePositions.push({
             id: `dept-${role.role_id}`,
             position_title: role.role,
-            position_code: role.role_code || '',
             department: role.department || 'Department',
             position_type: 'Full-time',
             rate_per_hour: parseFloat(role.rate_per_hour) || 0,
             status: role.is_active ? 'open' : 'closed',
-            description: role.description || '',
-            requirements: role.requirements || '',
+            
             role_id: role.role_id, // Keep reference for rate updates
             branch_id: null, // Department roles don't have a branch
             branch_name: null
@@ -1579,6 +1821,19 @@ export default {
     const isLoadingInterviews = ref(false)
     const isUpdatingInterview = ref(false)
     const interviewFilter = ref('all') // all, today, this-week, this-month
+    const isProcessingHiring = ref(false)
+    const currentDateGroupIndex = ref(0) // For navigating date groups
+    
+    // Filter candidates for hiring (only those who passed interviews)
+    const hiringCandidates = computed(() => {
+      return interviews.value.filter(interview => 
+        // Show all completed interviews (date passed or marked done), regardless of result
+        interview.status === 'completed' &&
+        // Only include if application status is still not hired/rejected
+        (!interview.application_status || 
+         (interview.application_status !== 'hired' && interview.application_status !== 'rejected'))
+      )
+    })
 
     // Position management state
     const showAddPositionModal = ref(false)
@@ -1587,6 +1842,7 @@ export default {
     const isSavingPosition = ref(false)
     const branches = ref([])
     const isLoadingBranches = ref(false)
+    // Removed create-for-all-branches
 
     // Position form data
     const positionForm = ref({
@@ -1601,6 +1857,28 @@ export default {
       requirements: '',
       assignment_type: 'new', // 'new', 'branch', 'department'
       linked_position_id: '' // If linking to existing position
+    })
+    
+    // Main office departments that should auto-assign to main branch
+    const mainOfficeDepartments = ['CRM', 'Finance', 'Human Resource', 'Production', 'SCM']
+    
+    // Check if selected department is a main office department
+    const isMainOfficeDepartment = computed(() => {
+      return mainOfficeDepartments.includes(positionForm.value.department)
+    })
+    
+    // Computed property to determine if branch selection should be disabled
+    const branchSelectionDisabled = computed(() => {
+      return isMainOfficeDepartment.value
+    })
+    
+    // Available branches for selection (excluding when creating for all or main office dept)
+    const availableBranchesForSelection = computed(() => {
+      if (isMainOfficeDepartment.value) {
+        return []
+      }
+      // Filter out deleted branches and show only active ones
+      return branches.value.filter(b => b.is_active !== false && !b.deleted_at)
     })
 
     // Computed properties
@@ -1843,6 +2121,258 @@ export default {
       return gridFilters.value.position || gridFilters.value.branch || gridFilters.value.department || gridFilters.value.status
     })
 
+    // Computed for selected positions count
+    const selectedCount = computed(() => selectedPositions.value.size)
+    
+    // Check if any selected positions are main branch positions (cannot delete)
+    const hasMainBranchSelected = computed(() => {
+      if (selectedPositions.value.size === 0) return false
+      
+      const selectedIds = Array.from(selectedPositions.value)
+      return selectedIds.some(positionId => {
+        const position = positions.value.find(p => p.id === positionId)
+        if (!position) return false
+        
+        // Main branch positions have no branch_id or are from user_roles (dept-)
+        return !position.branch_id || 
+               position.branch_id === null || 
+               position.id.toString().startsWith('dept-') ||
+               (!position.branch_name || position.branch_name.trim() === '' || position.branch_name === 'N/A')
+      })
+    })
+
+    // Toggle select all positions
+    const toggleSelectAllPositions = () => {
+      if (isSelectAll.value) {
+        selectedPositions.value.clear()
+      } else {
+        gridPaginatedPositions.value.forEach(position => {
+          selectedPositions.value.add(position.id)
+        })
+      }
+      isSelectAll.value = !isSelectAll.value
+    }
+
+    // Toggle individual position selection
+    const togglePositionSelection = (positionId) => {
+      if (selectedPositions.value.has(positionId)) {
+        selectedPositions.value.delete(positionId)
+      } else {
+        selectedPositions.value.add(positionId)
+      }
+      // Update select all state
+      isSelectAll.value = selectedPositions.value.size === gridPaginatedPositions.value.length && gridPaginatedPositions.value.length > 0
+    }
+
+    // Check if position is selected
+    const isPositionSelected = (positionId) => {
+      return selectedPositions.value.has(positionId)
+    }
+
+    // Watch for pagination changes to reset select all
+    watch(() => gridCurrentPage.value, () => {
+      isSelectAll.value = false
+    })
+
+    watch(() => gridPaginatedPositions.value.length, () => {
+      // Update select all state based on current page
+      isSelectAll.value = selectedPositions.value.size === gridPaginatedPositions.value.length && gridPaginatedPositions.value.length > 0
+    })
+
+    // Bulk actions
+    const bulkOpenPositions = async () => {
+      if (selectedPositions.value.size === 0) {
+        showWarning('Please select at least one position')
+        return
+      }
+
+      if (!confirm(`Are you sure you want to open ${selectedPositions.value.size} selected position(s)?`)) {
+        return
+      }
+
+      try {
+        isProcessingBulkAction.value = true
+        const selectedIds = Array.from(selectedPositions.value)
+        let successCount = 0
+        let errorCount = 0
+
+        for (const positionId of selectedIds) {
+          try {
+            const position = positions.value.find(p => p.id === positionId)
+            if (!position) continue
+
+            // Skip if already open
+            if (position.status === 'open') {
+              successCount++
+              continue
+            }
+
+            await togglePositionStatus(position)
+            successCount++
+          } catch (error) {
+            console.error(`Error opening position ${positionId}:`, error)
+            errorCount++
+          }
+        }
+
+        // Clear selections
+        selectedPositions.value.clear()
+        isSelectAll.value = false
+
+        if (errorCount > 0) {
+          showWarning(`Successfully opened ${successCount} position(s). ${errorCount} failed.`)
+        } else {
+          showSuccess(`Successfully opened ${successCount} position(s)`)
+        }
+      } catch (error) {
+        console.error('Error in bulk open:', error)
+        showError('An error occurred while opening positions')
+      } finally {
+        isProcessingBulkAction.value = false
+      }
+    }
+
+    const bulkClosePositions = async () => {
+      if (selectedPositions.value.size === 0) {
+        showWarning('Please select at least one position')
+        return
+      }
+
+      if (!confirm(`Are you sure you want to close ${selectedPositions.value.size} selected position(s)?`)) {
+        return
+      }
+
+      try {
+        isProcessingBulkAction.value = true
+        const selectedIds = Array.from(selectedPositions.value)
+        let successCount = 0
+        let errorCount = 0
+
+        for (const positionId of selectedIds) {
+          try {
+            const position = positions.value.find(p => p.id === positionId)
+            if (!position) continue
+
+            // Skip if already closed
+            if (position.status === 'closed') {
+              successCount++
+              continue
+            }
+
+            await togglePositionStatus(position)
+            successCount++
+          } catch (error) {
+            console.error(`Error closing position ${positionId}:`, error)
+            errorCount++
+          }
+        }
+
+        // Clear selections
+        selectedPositions.value.clear()
+        isSelectAll.value = false
+
+        if (errorCount > 0) {
+          showWarning(`Successfully closed ${successCount} position(s). ${errorCount} failed.`)
+        } else {
+          showSuccess(`Successfully closed ${successCount} position(s)`)
+        }
+      } catch (error) {
+        console.error('Error in bulk close:', error)
+        showError('An error occurred while closing positions')
+      } finally {
+        isProcessingBulkAction.value = false
+      }
+    }
+
+    const bulkDeletePositions = async () => {
+      if (selectedPositions.value.size === 0) {
+        showWarning('Please select at least one position')
+        return
+      }
+
+      if (!confirm(`Are you sure you want to delete ${selectedPositions.value.size} selected position(s)? This action cannot be undone.`)) {
+        return
+      }
+
+      try {
+        isProcessingBulkAction.value = true
+        const selectedIds = Array.from(selectedPositions.value)
+        let successCount = 0
+        let errorCount = 0
+        const errors = []
+
+        // Delete all positions in parallel (or sequentially if needed for API constraints)
+        for (const positionId of selectedIds) {
+          try {
+            // Check if it's a department position (from user_roles) - skip those
+            const position = positions.value.find(p => p.id === positionId)
+            if (!position) {
+              errorCount++
+              errors.push(`Position ${positionId}: Not found`)
+              continue
+            }
+
+            // Skip department positions (from Positions.vue / user_roles table)
+            if (position.id.toString().startsWith('dept-')) {
+              errorCount++
+              errors.push(`${position.position_title}: Department positions cannot be deleted from here. Use Position Management.`)
+              continue
+            }
+
+            // Delete branch position (including main branch with branch_id=null)
+            // Don't use deletePosition() function as it has its own confirm dialog
+            const response = await fetch(`/api/branch-positions/${positionId}`, {
+              method: 'DELETE',
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                'Content-Type': 'application/json'
+              }
+            })
+
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}))
+              throw new Error(errorData.message || 'Failed to delete position')
+            }
+
+            // Remove from local array
+            branchPositions.value = branchPositions.value.filter(p => p.id !== positionId)
+            successCount++
+            console.log(`Deleted position ${positionId}: ${position.position_title}`)
+          } catch (error) {
+            console.error(`Error deleting position ${positionId}:`, error)
+            errorCount++
+            const position = positions.value.find(p => p.id === positionId)
+            errors.push(`${position?.position_title || positionId}: ${error.message}`)
+          }
+        }
+
+        // Clear selections
+        selectedPositions.value.clear()
+        isSelectAll.value = false
+
+        // Reload positions to refresh the list
+        await loadPositions()
+
+        // Show detailed result (modal design)
+        if (errorCount > 0) {
+          const errorMessage = errors.slice(0, 3).join('. ')
+          const moreErrors = errors.length > 3 ? ` and ${errors.length - 3} more` : ''
+          showNotification(
+            'warning',
+            'Partial Delete',
+            `Successfully deleted ${successCount} position(s). ${errorCount} failed: ${errorMessage}${moreErrors}`
+          )
+        } else {
+          showNotification('success', 'Success!', `Successfully deleted ${successCount} position(s)`) 
+        }
+      } catch (error) {
+        console.error('Error in bulk delete:', error)
+        showError(`An error occurred while deleting positions: ${error.message}`)
+      } finally {
+        isProcessingBulkAction.value = false
+      }
+    }
+
     // Filter positions by department (helper function for tabs)
     const filteredPositionsByDepartment = (department) => {
       // Show all positions (open and closed) for HR management
@@ -1956,8 +2486,18 @@ export default {
     })
     
     const pendingReviewCount = computed(() => {
-      return applications.value.filter(app => app.status === 'reviewing').length
+      // Count interviews that are scheduled (or rescheduled) and not yet completed/cancelled
+      return (interviews.value || []).filter(iv => iv && (iv.status === 'scheduled' || iv.status === 'rescheduled')).length
     })
+
+    // Check if an application has a scheduled interview (not completed or cancelled)
+    const hasScheduledInterview = (applicationId) => {
+      if (!applicationId || !interviews.value) return false
+      return interviews.value.some(iv => 
+        iv.application_id === applicationId && 
+        (iv.status === 'scheduled' || iv.status === 'rescheduled')
+      )
+    }
 
     const getFilteredApplicationsCount = () => {
       if (activeTab.value === 'new-applications') {
@@ -1968,7 +2508,7 @@ export default {
       return applications.value.length
     }
 
-    // Filter interviews based on selected filter
+    // Filter interviews based on selected filter and auto-mark past interviews as completed
     const filteredInterviews = computed(() => {
       let filtered = interviews.value || []
       
@@ -1985,6 +2525,36 @@ export default {
       
       const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
       const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1)
+      
+      // Auto-mark interviews as completed if date has passed and status is still 'scheduled'
+      filtered = filtered.map(interview => {
+        if (interview.status === 'scheduled' || interview.status === 'rescheduled') {
+          const interviewDate = new Date(interview.interview_date)
+          const interviewDateTime = new Date(interviewDate)
+          
+          // If time is provided, combine date and time
+          if (interview.interview_time) {
+            const timeParts = interview.interview_time.toString().split(':')
+            if (timeParts.length >= 2) {
+              interviewDateTime.setHours(parseInt(timeParts[0]), parseInt(timeParts[1]), 0, 0)
+            }
+          } else {
+            // If no time, consider end of day
+            interviewDateTime.setHours(23, 59, 59, 999)
+          }
+          
+          // If interview date/time has passed, auto-mark as completed (display only)
+          if (interviewDateTime < today && interview.status !== 'completed') {
+            // Just update the display, don't modify the original
+            return {
+              ...interview,
+              status: 'completed',
+              _autoCompleted: true // Flag for display purposes
+            }
+          }
+        }
+        return interview
+      })
       
       switch (interviewFilter.value) {
         case 'today':
@@ -2007,11 +2577,160 @@ export default {
           break
         case 'all':
         default:
-          // No filtering
+          // No filtering for 'all'
           break
       }
       
+      // Hide completed interviews from the Interview Schedule list
+      // Completed interviews will appear in the Job Hiring tab instead
+      filtered = filtered.filter(interview => interview.status !== 'completed')
+      
+      // Sort by date (most recent first)
+      filtered.sort((a, b) => {
+        const dateA = new Date(a.interview_date)
+        const dateB = new Date(b.interview_date)
+        return dateB - dateA
+      })
+      
       return filtered
+    })
+    
+    // Group interviews by date for 'all', 'today', 'this-week', and 'this-month' filters
+    const groupedInterviewsByDate = computed(() => {
+      if (interviewFilter.value !== 'all' && 
+          interviewFilter.value !== 'today' && 
+          interviewFilter.value !== 'this-week' && 
+          interviewFilter.value !== 'this-month') {
+        return null // Don't group for other filters
+      }
+      
+      const groups = {}
+      filteredInterviews.value.forEach(interview => {
+        const dateKey = formatDate(interview.interview_date)
+        if (!groups[dateKey]) {
+          groups[dateKey] = []
+        }
+        groups[dateKey].push(interview)
+      })
+      
+      // Sort dates: upcoming dates first, then past dates
+      // formatDate returns MM/DD/YYYY
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      
+      const sortedGroups = Object.keys(groups)
+        .sort((a, b) => {
+          // Parse MM/DD/YYYY format
+          const parseFormattedDate = (dateStr) => {
+            const [month, day, year] = dateStr.split('/').map(Number)
+            return new Date(year, month - 1, day)
+          }
+          const dateA = parseFormattedDate(a)
+          const dateB = parseFormattedDate(b)
+          
+          // Normalize dates to midnight for comparison
+          dateA.setHours(0, 0, 0, 0)
+          dateB.setHours(0, 0, 0, 0)
+          
+          // Separate upcoming and past dates
+          const aIsUpcoming = dateA >= today
+          const bIsUpcoming = dateB >= today
+          
+          // Upcoming dates come first, sorted ascending (earliest first)
+          if (aIsUpcoming && bIsUpcoming) {
+            return dateA - dateB
+          }
+          // Past dates come after, sorted descending (most recent first)
+          if (!aIsUpcoming && !bIsUpcoming) {
+            return dateB - dateA
+          }
+          // Upcoming always comes before past
+          return aIsUpcoming ? -1 : 1
+        })
+        .reduce((acc, date) => {
+          acc[date] = groups[date]
+          return acc
+        }, {})
+      
+      return sortedGroups
+    })
+    
+    // Get sorted date keys for navigation (upcoming first, then past)
+    const sortedDateKeys = computed(() => {
+      if (!groupedInterviewsByDate.value) return []
+      
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      
+      return Object.keys(groupedInterviewsByDate.value).sort((a, b) => {
+        const parseFormattedDate = (dateStr) => {
+          const [month, day, year] = dateStr.split('/').map(Number)
+          return new Date(year, month - 1, day)
+        }
+        const dateA = parseFormattedDate(a)
+        const dateB = parseFormattedDate(b)
+        
+        // Normalize dates to midnight for comparison
+        dateA.setHours(0, 0, 0, 0)
+        dateB.setHours(0, 0, 0, 0)
+        
+        // Separate upcoming and past dates
+        const aIsUpcoming = dateA >= today
+        const bIsUpcoming = dateB >= today
+        
+        // Upcoming dates come first, sorted ascending (earliest first)
+        if (aIsUpcoming && bIsUpcoming) {
+          return dateA - dateB
+        }
+        // Past dates come after, sorted descending (most recent first)
+        if (!aIsUpcoming && !bIsUpcoming) {
+          return dateB - dateA
+        }
+        // Upcoming always comes before past
+        return aIsUpcoming ? -1 : 1
+      })
+    })
+    
+    // Paginated date groups (show one date group at a time)
+    const paginatedDateGroups = computed(() => {
+      if (!groupedInterviewsByDate.value || sortedDateKeys.value.length === 0) {
+        return {}
+      }
+      
+      const currentDate = sortedDateKeys.value[currentDateGroupIndex.value]
+      if (!currentDate) {
+        return {}
+      }
+      
+      return {
+        [currentDate]: groupedInterviewsByDate.value[currentDate]
+      }
+    })
+    
+    // Navigation functions
+    const nextDateGroup = () => {
+      if (currentDateGroupIndex.value < sortedDateKeys.value.length - 1) {
+        currentDateGroupIndex.value++
+      }
+    }
+    
+    const prevDateGroup = () => {
+      if (currentDateGroupIndex.value > 0) {
+        currentDateGroupIndex.value--
+      }
+    }
+    
+    const canGoNext = computed(() => {
+      return currentDateGroupIndex.value < sortedDateKeys.value.length - 1
+    })
+    
+    const canGoPrev = computed(() => {
+      return currentDateGroupIndex.value > 0
+    })
+    
+    // Reset date index when filter changes
+    watch(() => interviewFilter.value, () => {
+      currentDateGroupIndex.value = 0
     })
 
     // Methods
@@ -2111,10 +2830,34 @@ export default {
       selectedApplication.value = null
     }
 
-    const handleInterviewScheduled = (interviewData) => {
+    const handleInterviewScheduled = async (interviewData) => {
       console.log('Interview scheduled:', interviewData)
-      // Reload applications to show updated status
-      loadApplications()
+      
+      // Immediately update the local application status to 'interview-scheduled'
+      // This will remove it from the "New Applications" list due to filtering
+      if (selectedApplication.value) {
+        const appId = selectedApplication.value.id
+        const index = applications.value.findIndex(app => app.id === appId)
+        if (index !== -1) {
+          // Update the status locally - this will filter it out from "New Applications" tab
+          applications.value[index].status = 'interview-scheduled'
+        }
+      }
+      
+      // Also update by application_id from interview data if available
+      if (interviewData && interviewData.application_id) {
+        const appIndex = applications.value.findIndex(app => app.id === interviewData.application_id)
+        if (appIndex !== -1) {
+          applications.value[appIndex].status = 'interview-scheduled'
+        }
+      }
+      
+      // Small delay to ensure backend update is complete, then reload to sync
+      await new Promise(resolve => setTimeout(resolve, 500))
+      await loadApplications()
+      
+      // Clear the selected application
+      selectedApplication.value = null
     }
 
     const handleNavigateToSchedule = () => {
@@ -2125,6 +2868,32 @@ export default {
     }
 
     // Interview management methods
+    // Silently update interview status (for auto-completion)
+    const updateInterviewStatusSilently = async (interviewId, status) => {
+      try {
+        const response = await fetch(`/api/job-applications/interviews/${interviewId}/status`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ status })
+        })
+        
+        if (response.ok) {
+          const result = await response.json()
+          // Update local interview
+          const index = interviews.value.findIndex(i => i.id === interviewId)
+          if (index !== -1 && result.data) {
+            interviews.value[index] = { ...interviews.value[index], ...result.data }
+          }
+        }
+      } catch (error) {
+        console.error('Error silently updating interview status:', error)
+        throw error
+      }
+    }
+    
     const conductInterview = async (interview, result) => {
       try {
         isUpdatingInterview.value = true
@@ -2161,13 +2930,17 @@ export default {
           // Reload interviews to get the latest data from the database
           await loadInterviews()
           
-          alert(`Interview ${result === 'passed' ? 'passed successfully!' : 'failed. Application rejected.'}`)
+          if (result === 'passed') {
+            showSuccess('Interview passed successfully!')
+          } else {
+            showWarning('Interview failed. Application rejected.')
+          }
         } else {
           throw new Error(result_data.message || 'Failed to update interview')
         }
       } catch (error) {
         console.error('Error conducting interview:', error)
-        alert(`Failed to update interview: ${error.message}`)
+        showError(`Failed to update interview: ${error.message}`)
       } finally {
         isUpdatingInterview.value = false
       }
@@ -2213,11 +2986,6 @@ export default {
       showInterviewDetailsModal.value = true
     }
 
-    const rescheduleInterview = (interview) => {
-      // TODO: Implement reschedule functionality
-      console.log('Rescheduling interview:', interview)
-      alert('Reschedule functionality will be implemented soon.')
-    }
 
     // Helper function to show notification
     const showNotification = (type, title, message) => {
@@ -2236,6 +3004,111 @@ export default {
       showInterviewDeleteModal.value = true
     }
 
+    // Hire or reject candidate functions
+    const hireCandidate = async (candidate) => {
+      if (!confirm(`Are you sure you want to hire ${candidate.applicant_name} for ${candidate.position_title}?`)) {
+        return
+      }
+      
+      try {
+        isProcessingHiring.value = true
+        
+        const response = await fetch(`/api/job-applications/${candidate.application_id}/status`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ status: 'hired' })
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to hire candidate')
+        }
+
+        const result = await response.json()
+        
+        if (result.success) {
+          // Update local application status
+          const index = applications.value.findIndex(app => app.id === candidate.application_id)
+          if (index !== -1) {
+            applications.value[index].status = 'hired'
+          }
+          
+          // Update interview with application status
+          const interviewIndex = interviews.value.findIndex(i => i.id === candidate.id)
+          if (interviewIndex !== -1) {
+            interviews.value[interviewIndex].application_status = 'hired'
+          }
+          
+          // Reload data
+          await loadApplications()
+          await loadInterviews()
+          
+          showNotification('success', 'Success!', `${candidate.applicant_name} has been hired!`)
+        } else {
+          throw new Error(result.message || 'Failed to hire candidate')
+        }
+      } catch (error) {
+        console.error('Error hiring candidate:', error)
+        showNotification('error', 'Error', `Failed to hire candidate: ${error.message}`)
+      } finally {
+        isProcessingHiring.value = false
+      }
+    }
+    
+    const rejectCandidate = async (candidate) => {
+      if (!confirm(`Are you sure you want to reject ${candidate.applicant_name}?`)) {
+        return
+      }
+      
+      try {
+        isProcessingHiring.value = true
+        
+        const response = await fetch(`/api/job-applications/${candidate.application_id}/status`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ status: 'rejected' })
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to reject candidate')
+        }
+
+        const result = await response.json()
+        
+        if (result.success) {
+          // Update local application status
+          const index = applications.value.findIndex(app => app.id === candidate.application_id)
+          if (index !== -1) {
+            applications.value[index].status = 'rejected'
+          }
+          
+          // Update interview with application status
+          const interviewIndex = interviews.value.findIndex(i => i.id === candidate.id)
+          if (interviewIndex !== -1) {
+            interviews.value[interviewIndex].application_status = 'rejected'
+          }
+          
+          // Reload data
+          await loadApplications()
+          await loadInterviews()
+          
+          showNotification('success', 'Success!', `${candidate.applicant_name} has been rejected.`)
+        } else {
+          throw new Error(result.message || 'Failed to reject candidate')
+        }
+      } catch (error) {
+        console.error('Error rejecting candidate:', error)
+        showNotification('error', 'Error', `Failed to reject candidate: ${error.message}`)
+      } finally {
+        isProcessingHiring.value = false
+      }
+    }
+    
     const confirmInterviewDelete = async () => {
       if (!interviewToDelete.value) return
 
@@ -2330,26 +3203,35 @@ export default {
     }
 
     // Position management methods
-    const addPosition = () => {
+    const addPosition = async () => {
       editingPosition.value = null
       resetPositionForm()
+      // Ensure branches are loaded when opening modal
+      if (branches.value.length === 0) {
+        await loadBranches()
+      }
       showAddPositionModal.value = true
     }
+    
+    // Removed addPositionForAllBranches
 
-    const editPosition = (position) => {
+    const editPosition = async (position) => {
       console.log('Editing position:', position) // Debug log
-      console.log('Available branches:', branches.value) // Debug log
       editingPosition.value = position
+      
+      // Ensure branches are loaded when opening modal for editing
+      if (branches.value.length === 0) {
+        await loadBranches()
+      }
+      console.log('Available branches:', branches.value) // Debug log
       positionForm.value = {
         branch_id: position.branch_id || '',
         position_title: position.position_title || '',
-        position_code: position.position_code || '',
         department: position.department || '',
         position_type: position.position_type || 'Full-time',
         rate_per_hour: position.rate_per_hour || 0,
         status: position.status || 'open',
-        description: position.description || '',
-        requirements: position.requirements || '',
+        
         assignment_type: 'new', // Always 'new' when editing
         linked_position_id: ''
       }
@@ -2370,17 +3252,22 @@ export default {
           })
 
           if (!response.ok) {
-            throw new Error('Failed to delete position')
+            const errorData = await response.json().catch(() => ({}))
+            throw new Error(errorData.message || 'Failed to delete position')
           }
 
           // Remove from local array (branch positions only)
           branchPositions.value = branchPositions.value.filter(p => p.id !== positionId)
           
-          // Show success message
-          console.log('Position deleted successfully')
+          // Reload positions from API to ensure we have the latest data
+          await loadPositions()
+          
+          // Show success message in designed modal
+          showNotification('success', 'Success!', 'Position deleted successfully')
         } catch (error) {
           console.error('Error deleting position:', error)
-          alert('Failed to delete position. Please try again.')
+          // Show error message in designed modal
+          showNotification('error', 'Error', `Failed to delete position: ${error.message}`)
         }
       }
     }
@@ -2403,7 +3290,7 @@ export default {
           
           if (!actualRoleId || isNaN(actualRoleId)) {
             console.error('Invalid department position - missing role_id:', position)
-            alert('Invalid department position ID. Cannot update status.')
+            showError('Invalid department position ID. Cannot update status.')
             return
           }
 
@@ -2450,7 +3337,7 @@ export default {
         } else {
           // Handle branch position
           if (!position.id || isNaN(position.id)) {
-            alert('Invalid position ID. Cannot update status.')
+            showError('Invalid position ID. Cannot update status.')
             return
           }
 
@@ -2508,7 +3395,7 @@ export default {
         }
       } catch (error) {
         console.error('Error updating position status:', error)
-        alert(error.message || 'Failed to update position status. Please try again.')
+        showError(error.message || 'Failed to update position status. Please try again.')
       }
     }
 
@@ -2516,23 +3403,148 @@ export default {
       try {
         isSavingPosition.value = true
         
-        // Prepare the position data
-        let positionData = { ...positionForm.value }
-        
-        // If linking to an existing position, load its data
-        if (positionForm.value.assignment_type !== 'new' && positionForm.value.linked_position_id) {
-          const linkedPosition = positions.value.find(p => p.id === positionForm.value.linked_position_id)
-          if (linkedPosition) {
-            // Use linked position data for title, code, and other basic fields
-            positionData.position_title = linkedPosition.position_title
-            positionData.position_code = linkedPosition.position_code
-            // Keep the newly entered rate and other override fields
-          }
+        // Validate required fields
+        if (!positionForm.value.department) {
+          throw new Error('Please select a department')
         }
         
-        // Clean up the assignment fields before sending
+        if (!positionForm.value.position_title) {
+          throw new Error('Please select a position/role')
+        }
+        
+        // For Branch department, validate branch_id
+        if (positionForm.value.department === 'Branch' && !isMainOfficeDepartment.value && !positionForm.value.branch_id) {
+          throw new Error('Please select a branch for Branch department positions')
+        }
+        
+        // Prepare the position data (derive from selected role)
+        let positionData = { ...positionForm.value }
+
+        // Auto-assign to main branch if main office department
+        if (isMainOfficeDepartment.value) {
+          positionData.branch_id = null // Main branch means no branch_id
+          console.log('Main office department detected, setting branch_id to null')
+        } else if (positionForm.value.department === 'Branch' && positionData.branch_id) {
+          // Ensure branch_id is a number for Branch department positions
+          positionData.branch_id = parseInt(positionData.branch_id) || null
+        } else if (!positionData.branch_id || positionData.branch_id === '') {
+          // For non-Branch departments (or if branch_id is empty), set to null
+          positionData.branch_id = null
+        }
+        
+        // If a role is selected, derive code and rate from Positions store
+        let basePositionCode = null
+        // Store in positionData for use in retry logic
+        if (positionForm.value.position_title && positionForm.value.department) {
+          const deptPositions = rolesPositionsData.value[positionForm.value.department] || []
+          const role = deptPositions.find(r => r.role?.toLowerCase() === positionForm.value.position_title?.toLowerCase())
+          if (role) {
+            basePositionCode = role.role_code || null
+            positionData.rate_per_hour = role.rate_per_hour || positionData.rate_per_hour || 0
+          }
+        }
+        // Store basePositionCode in positionData for retry logic
+        positionData._basePositionCode = basePositionCode
+        
+        // When editing, preserve the existing position_code (don't regenerate)
+        if (editingPosition.value && positionData.position_code) {
+          // Keep the existing position_code when editing
+          console.log('Editing existing position, preserving position_code:', positionData.position_code)
+        } else {
+          // When creating new position, generate unique position_code
+          // Generate position_code if not set (create from position_title)
+          if (!basePositionCode && positionData.position_title) {
+            // Generate a simple code from the title (first 4 uppercase letters)
+            basePositionCode = positionData.position_title
+              .toUpperCase()
+              .replace(/[^A-Z0-9]/g, '')
+              .substring(0, 4) || 'POS'
+          }
+          
+          // Now generate base position code with branch identifier
+          let baseCodeWithBranch = ''
+          if (basePositionCode) {
+            if (positionData.branch_id) {
+              const selectedBranch = branches.value.find(b => b.id === positionData.branch_id)
+              if (selectedBranch && selectedBranch.code) {
+                // Append branch code: COOK-BRN004
+                baseCodeWithBranch = `${basePositionCode}-${selectedBranch.code}`
+              } else {
+                // If no branch code, use branch ID: COOK-4
+                baseCodeWithBranch = `${basePositionCode}-${positionData.branch_id}`
+              }
+            } else {
+              // For main branch (no branch_id), use base code with MAIN prefix: COOK-MAIN
+              baseCodeWithBranch = `${basePositionCode}-MAIN`
+            }
+          }
+          
+          // Check if this position code already exists (check both client-side and query backend)
+          let positionCode = baseCodeWithBranch
+          let counter = 1
+          let maxRetries = 10 // Limit retries when querying backend
+          
+          // Normalize branch_id for comparison (handle null, string, number)
+          const targetBranchId = positionData.branch_id === null || positionData.branch_id === '' 
+            ? null 
+            : parseInt(positionData.branch_id)
+          
+          // First check local cache
+          while (counter <= 3) { // Check up to 3 times locally first
+            const existingPosition = branchPositions.value.find(p => {
+              // Normalize existing position's branch_id for comparison
+              const existingBranchId = p.branch_id === null || p.branch_id === '' 
+                ? null 
+                : parseInt(p.branch_id)
+              
+              // Check if branch_id matches (both null or both same number)
+              const branchMatches = targetBranchId === existingBranchId
+              
+              // Check if position_code matches
+              const codeMatches = p.position_code === positionCode
+              
+              // Exclude current position when editing
+              const isCurrentPosition = editingPosition.value && p.id === editingPosition.value.id
+              
+              return branchMatches && codeMatches && !isCurrentPosition && !p.deleted_at
+            })
+            
+            if (!existingPosition) {
+              // Code appears unique locally, but verify with backend
+              break
+            }
+            
+            // Code exists locally, try with number suffix
+            if (positionData.branch_id) {
+              const selectedBranch = branches.value.find(b => b.id === positionData.branch_id)
+              if (selectedBranch && selectedBranch.code) {
+                positionCode = `${basePositionCode}-${selectedBranch.code}-${counter}`
+              } else {
+                positionCode = `${basePositionCode}-${positionData.branch_id}-${counter}`
+              }
+            } else {
+              positionCode = `${basePositionCode}-MAIN-${counter}`
+            }
+            
+            counter++
+          }
+          
+          // Use the code we generated (if backend says it's duplicate, retry mechanism will handle it)
+          positionData.position_code = positionCode
+          console.log('Generated position code:', positionCode, 'for branch:', positionData.branch_id || 'Main Branch')
+        }
+        
+        // Clean up the assignment and unused fields before sending
         delete positionData.assignment_type
         delete positionData.linked_position_id
+        delete positionData.description
+        delete positionData.requirements
+        
+        // Ensure we're only saving to branch_positions, not user_roles
+        // Remove any role_id or user_role references
+        delete positionData.role_id
+        delete positionData.user_role_id
+        delete positionData._basePositionCode // Remove helper field before sending
         
         const url = editingPosition.value 
           ? `/api/branch-positions/${editingPosition.value.id}`
@@ -2540,18 +3552,62 @@ export default {
         
         const method = editingPosition.value ? 'PUT' : 'POST'
         
-        const response = await fetch(url, {
-          method: method,
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(positionData)
-        })
+        // Try to save, with automatic retry if duplicate code error
+        let response
+        let retryCount = 0
+        const maxRetries = 5
+        
+        while (retryCount <= maxRetries) {
+          response = await fetch(url, {
+            method: method,
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(positionData)
+          })
 
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.message || 'Failed to save position')
+          if (!response.ok) {
+            const errorData = await response.json()
+            
+            // If it's a duplicate code error and we're creating (not editing), retry with incremented code
+            if (errorData.message && 
+                errorData.message.includes('Position code already exists') && 
+                !editingPosition.value &&
+                retryCount < maxRetries) {
+              
+              retryCount++
+              console.log(`Duplicate code detected, retrying with new code (attempt ${retryCount})...`)
+              
+              // Generate new code with incremented number
+              const branchId = positionData.branch_id
+              const selectedBranch = branches.value.find(b => b.id === branchId)
+              let newCode
+              
+              // Get base code from stored value or generate from title
+              const retryBaseCode = positionData._basePositionCode || positionData.position_title.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 4) || 'POS'
+              
+              if (branchId) {
+                if (selectedBranch && selectedBranch.code) {
+                  newCode = `${retryBaseCode}-${selectedBranch.code}-${retryCount}`
+                } else {
+                  newCode = `${retryBaseCode}-${branchId}-${retryCount}`
+                }
+              } else {
+                newCode = `${retryBaseCode}-MAIN-${retryCount}`
+              }
+              
+              positionData.position_code = newCode
+              console.log(`Retrying with new position code: ${newCode}`)
+              continue // Retry with new code
+            } else {
+              // Other error or max retries reached
+              throw new Error(errorData.message || 'Failed to save position')
+            }
+          } else {
+            // Success
+            break
+          }
         }
 
         const result = await response.json()
@@ -2560,18 +3616,31 @@ export default {
           // Update existing position in branch positions array
           const index = branchPositions.value.findIndex(p => p.id === editingPosition.value.id)
           if (index !== -1) {
-            branchPositions.value[index] = result.data
+            branchPositions.value[index] = { 
+              ...result.data,
+              branch_name: result.data.branch_name || branches.value.find(b => b.id === result.data.branch_id)?.name || null,
+              branch_code: result.data.branch_code || branches.value.find(b => b.id === result.data.branch_id)?.code || null
+            }
           }
         } else {
-          // Add new position to branch positions array
-          branchPositions.value.unshift(result.data)
+          // Add new position to branch positions array with branch info
+          const newPosition = {
+            ...result.data,
+            branch_name: result.data.branch_name || (result.data.branch_id ? branches.value.find(b => b.id === result.data.branch_id)?.name : null) || null,
+            branch_code: result.data.branch_code || (result.data.branch_id ? branches.value.find(b => b.id === result.data.branch_id)?.code : null) || null
+          }
+          branchPositions.value.unshift(newPosition)
         }
         
+        // Reload positions from API to ensure we have all the latest data
+        await loadPositions()
+        
         closePositionModal()
-        console.log('Position saved successfully')
+        showNotification('success', 'Success!', 'Position saved successfully')
+        console.log('Position saved successfully and positions list refreshed')
       } catch (error) {
         console.error('Error saving position:', error)
-        alert(`Failed to save position: ${error.message}`)
+        showNotification('error', 'Error', `Failed to save position: ${error.message}`)
       } finally {
         isSavingPosition.value = false
       }
@@ -2587,13 +3656,10 @@ export default {
       positionForm.value = {
         branch_id: '',
         position_title: '',
-        position_code: '',
         department: '',
         position_type: 'Full-time',
         rate_per_hour: 0,
         status: 'open',
-        description: '',
-        requirements: '',
         assignment_type: 'new',
         linked_position_id: ''
       }
@@ -2602,7 +3668,8 @@ export default {
     const viewPositionDetails = (position) => {
       // TODO: Implement position details view
       console.log('Viewing position details:', position)
-      alert(`Position Details:\n\nTitle: ${position.position_title}\nDepartment: ${position.department}\nStatus: ${position.status}\nRate: ₱${position.rate_per_hour}/hour\nMonthly Salary: ₱${position.monthly_salary}`)
+      const details = `Title: ${position.position_title}\nDepartment: ${position.department}\nStatus: ${position.status}\nRate: ₱${position.rate_per_hour}/hour\nMonthly Salary: ₱${position.monthly_salary}`
+      showInfo(details, 'Position Details')
     }
 
     // Load applications from API
@@ -2626,6 +3693,36 @@ export default {
         if (result.success && result.data) {
           interviews.value = result.data
           console.log(`Loaded ${interviews.value.length} interviews`)
+          
+          // Auto-complete interviews that have passed (check and update in background)
+          const today = new Date()
+          interviews.value.forEach(async (interview) => {
+            if ((interview.status === 'scheduled' || interview.status === 'rescheduled') && interview.status !== 'completed') {
+              const interviewDate = new Date(interview.interview_date)
+              const interviewDateTime = new Date(interviewDate)
+              
+              // If time is provided, combine date and time
+              if (interview.interview_time) {
+                const timeParts = interview.interview_time.toString().split(':')
+                if (timeParts.length >= 2) {
+                  interviewDateTime.setHours(parseInt(timeParts[0]), parseInt(timeParts[1]), 0, 0)
+                }
+              } else {
+                // If no time, consider end of day
+                interviewDateTime.setHours(23, 59, 59, 999)
+              }
+              
+              // If interview date/time has passed, auto-complete it
+              if (interviewDateTime < today) {
+                try {
+                  await updateInterviewStatusSilently(interview.id, 'completed')
+                  console.log(`Auto-completed interview ${interview.id} (date passed)`)
+                } catch (err) {
+                  console.warn('Failed to auto-complete interview:', err)
+                }
+              }
+            }
+          })
         } else {
           console.warn('Interviews API returned no data')
           interviews.value = []
@@ -2698,7 +3795,8 @@ export default {
           // Store branch positions separately (they already include branch_name, branch_code, branch_address from API)
           // Don't filter here - let the computed property handle filtering so we can toggle between open/closed
           // Only filter out deleted positions, keep both active and inactive for HR management
-          branchPositions.value = result.data.filter(p => !p.deleted_at && p.branch_id != null)
+          // Include both branch positions (branch_id != null) and main branch positions (branch_id = null)
+          branchPositions.value = result.data.filter(p => !p.deleted_at)
           
           // Log detailed information for debugging
           console.log(`Loaded ${branchPositions.value.length} branch positions from API`)
@@ -2767,7 +3865,7 @@ export default {
         }
       } catch (error) {
         console.error('Error loading positions:', error)
-        alert('Failed to load positions. Please try again.')
+        showError('Failed to load positions. Please try again.')
       } finally {
         isLoadingPositions.value = false
       }
@@ -2790,13 +3888,27 @@ export default {
         }
 
         const result = await response.json()
-        branches.value = result.data || []
+        // Handle both response formats: direct array or { success: true, data: [...] }
+        if (Array.isArray(result)) {
+          branches.value = result
+        } else if (result.success && Array.isArray(result.data)) {
+          branches.value = result.data
+        } else if (result.data && Array.isArray(result.data)) {
+          branches.value = result.data
+        } else {
+          branches.value = []
+        }
+        
+        // Filter out deleted branches
+        branches.value = branches.value.filter(b => !b.deleted_at)
         
         console.log(`Loaded ${branches.value.length} branches`)
         console.log('Branches data:', branches.value) // Debug log
+        console.log('Available branches for selection:', availableBranchesForSelection.value) // Debug log
       } catch (error) {
         console.error('Error loading branches:', error)
-        alert('Failed to load branches. Please try again.')
+        showError('Failed to load branches. Please try again.')
+        branches.value = []
       } finally {
         isLoadingBranches.value = false
       }
@@ -2810,6 +3922,23 @@ export default {
       cardCurrentPage.value = 1
     }
 
+    // Watch for department changes - auto-assign to main branch for main office departments
+    watch(() => positionForm.value.department, (newDepartment, oldDepartment) => {
+      if (newDepartment && mainOfficeDepartments.includes(newDepartment)) {
+        // Auto-clear branch_id for main office departments
+        positionForm.value.branch_id = ''
+        console.log(`Main office department "${newDepartment}" selected - setting branch_id to null (main branch)`)
+      }
+      // Reset position title and rate when department changes (except when switching to Branch with existing data)
+      if (newDepartment && newDepartment !== 'Branch') {
+        // Only reset if actually changing from Branch or from empty
+        if (oldDepartment === 'Branch' || !oldDepartment) {
+          positionForm.value.position_title = ''
+          positionForm.value.rate_per_hour = 0
+        }
+      }
+    })
+    
     // Watch for position title changes to auto-fill rate from Position Management
     watch(() => positionForm.value.position_title, (newPositionTitle) => {
       if (newPositionTitle && positionForm.value.department && positionForm.value.department !== 'Branch') {
@@ -2872,11 +4001,22 @@ export default {
       isUpdatingInterview,
       interviewFilter,
       filteredInterviews,
+      groupedInterviewsByDate,
+      paginatedDateGroups,
+      sortedDateKeys,
+      currentDateGroupIndex,
+      canGoNext,
+      canGoPrev,
+      nextDateGroup,
+      prevDateGroup,
       loadInterviews,
       conductInterview,
       viewInterviewDetails,
-      rescheduleInterview,
       cancelInterview,
+      isProcessingHiring,
+      hiringCandidates,
+      hireCandidate,
+      rejectCandidate,
       applications,
       positions,
       rolesPositionsData,
@@ -2907,6 +4047,7 @@ export default {
       showDeleteModal,
       applicationToDelete,
       cancelInterview,
+      hasScheduledInterview,
       confirmInterviewDelete,
       showInterviewDeleteModal,
       interviewToDelete,
@@ -2922,6 +4063,10 @@ export default {
       editingPosition,
       isLoadingPositions,
       isSavingPosition,
+      
+      isMainOfficeDepartment,
+      branchSelectionDisabled,
+      availableBranchesForSelection,
       // Modal state
       showApplicationDetailsModal,
       showSetInterviewModal,
@@ -2960,7 +4105,20 @@ export default {
       toggleStatusFilter,
       clearGridFilters,
       hasActiveGridFilters,
+      // Selection
+      selectedPositions,
+      selectedCount,
+      hasMainBranchSelected,
+      isSelectAll,
+      isProcessingBulkAction,
+      toggleSelectAllPositions,
+      togglePositionSelection,
+      isPositionSelected,
+      bulkOpenPositions,
+      bulkClosePositions,
+      bulkDeletePositions,
       addPosition,
+      
       editPosition,
       deletePosition,
       togglePositionStatus,
@@ -4301,6 +5459,106 @@ export default {
 
 .interview-details .meeting-link a:hover {
   text-decoration: underline;
+}
+
+/* Date Grouping Styles */
+.date-navigation {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.date-nav-btn {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.date-nav-info {
+  flex: 1;
+  text-align: center;
+}
+
+.date-nav-counter {
+  font-size: 0.875rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.date-nav-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.interview-date-group {
+  margin-bottom: 2rem;
+}
+
+.date-header {
+  display: flex;
+  align-items: center;
+  padding: 1rem;
+  background: #f8fafc;
+  border-left: 4px solid var(--color-primaryColor);
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.date-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+}
+
+.date-count {
+  margin-left: 0.5rem;
+  font-size: 0.875rem;
+  color: #64748b;
+}
+
+/* Hiring Buttons */
+.hiring-buttons {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.hiring-buttons .btn {
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.hiring-buttons .btn-success {
+  background: #10b981;
+  color: white;
+  border: none;
+}
+
+.hiring-buttons .btn-success:hover {
+  background: #059669;
+  transform: translateY(-1px);
+}
+
+.hiring-buttons .btn-error {
+  background: #ef4444;
+  color: white;
+  border: none;
+}
+
+.hiring-buttons .btn-error:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
 }
 
 .empty-state {

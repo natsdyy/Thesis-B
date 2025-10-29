@@ -171,6 +171,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { useCustomToast } from '../../composables/useCustomToast.js'
 
 // Props
 const props = defineProps({

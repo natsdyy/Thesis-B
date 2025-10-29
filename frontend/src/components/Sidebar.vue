@@ -259,9 +259,11 @@
   const router = useRouter();
 
   // Computed properties
-  const { isSuperAdmin, isBoardDirector, userDepartment, user } = authStore;
+  const { isSuperAdmin, isBoardDirector, isChairman, userDepartment, user } =
+    authStore;
 
   const availableMenus = computed(() => {
+    // Super Admin (includes Chairman): see all departments except attendance items
     if (isSuperAdmin) {
       // Super Admin sees all departments EXCEPT any attendance-related items
       const filtered = {};
@@ -285,8 +287,53 @@
           filtered[dept] = items;
         }
       });
+      // If user is a board member, additionally tweak visibility
+      if (isChairman || isBoardDirector) {
+        const hrMenus = (filtered['Human Resource'] || []).map((menu) => {
+          if (
+            menu.name === 'Employee Management' &&
+            Array.isArray(menu.subItems)
+          ) {
+            return {
+              ...menu,
+              subItems: menu.subItems.filter(
+                (s) => s.name !== 'Schedules' && s.name !== 'Manage Employee'
+              ),
+            };
+          }
+          return menu;
+        });
+        if (hrMenus.length) filtered['Human Resource'] = hrMenus;
+
+        // SCM: keep only Inventory; hide Supply Request, Purchase Order, GRN, Suppliers
+        if (filtered['SCM']) {
+          filtered['SCM'] = filtered['SCM'].filter(
+            (menu) => menu.name === 'Inventory'
+          );
+          if (filtered['SCM'].length === 0) delete filtered['SCM'];
+        }
+
+        // Production: keep only Production Inventory; hide Menu Management and Recipe Management
+        if (filtered['Production']) {
+          filtered['Production'] = filtered['Production'].filter(
+            (menu) => menu.name === 'Production Inventory'
+          );
+          if (filtered['Production'].length === 0)
+            delete filtered['Production'];
+        }
+
+        // CRM: hide Customers Feedback for Board Members
+        if (filtered['CRM']) {
+          filtered['CRM'] = filtered['CRM'].filter(
+            (menu) => menu.name !== 'Customers Feedback'
+          );
+          if (filtered['CRM'].length === 0) delete filtered['CRM'];
+        }
+      }
       return filtered;
-    } else if (isBoardDirector) {
+    } else if (isBoardDirector || isChairman) {
+      // Board Members (Chairman and Board of Directors)
+      // 1) Administration: restrict to selected items (same as existing Board of Directors rule)
       // Board of Directors: Only Administration menus and only select items
       const adminMenus = (menusByDepartment['Administration'] || []).filter(
         (menu) => {
@@ -303,7 +350,25 @@
           return isAllowed && !isEmployeeSchedules;
         }
       );
-      return adminMenus.length ? { Administration: adminMenus } : {};
+      // 2) Human Resource: hide only Schedules and Manage Employee under Employee Management
+      const hrMenusRaw = menusByDepartment['Human Resource'] || [];
+      const hrMenus = hrMenusRaw.map((menu) => {
+        if (
+          menu.name === 'Employee Management' &&
+          Array.isArray(menu.subItems)
+        ) {
+          const filteredSub = menu.subItems.filter(
+            (s) => s.name !== 'Schedules' && s.name !== 'Manage Employee'
+          );
+          return { ...menu, subItems: filteredSub };
+        }
+        return menu;
+      });
+
+      const result = {};
+      if (adminMenus.length) result['Administration'] = adminMenus;
+      if (hrMenus.length) result['Human Resource'] = hrMenus;
+      return result;
     } else if (userDepartment) {
       // Regular users see only their department, excluding super admin only items
       const filteredMenus = {};

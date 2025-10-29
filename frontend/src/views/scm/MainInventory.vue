@@ -225,6 +225,12 @@
   const productionStore = useProductionStore();
   const branchDistributionStore = useBranchDistributionStore();
   const authStore = useAuthStore();
+  // Board member check (Chairman or Board of Directors)
+  const isBoardMember = computed(
+    () =>
+      authStore.userRole === 'Board of Directors' ||
+      authStore.userRole === 'Chairman of the Board'
+  );
 
   // Access store values as computed properties
   const categories = computed(() => inventoryStore.categories);
@@ -3624,7 +3630,7 @@
                             <ul
                               class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-40 z-50"
                             >
-                              <li>
+                              <li v-if="!isBoardMember">
                                 <button
                                   @click="consumeBatch(batch)"
                                   class="text-sm"
@@ -3639,7 +3645,7 @@
                                   Consume
                                 </button>
                               </li>
-                              <li>
+                              <li v-if="!isBoardMember">
                                 <button
                                   @click="adjustBatch(batch)"
                                   class="text-sm"
@@ -4004,6 +4010,7 @@
                     View Item
                   </button>
                   <button
+                    v-if="!isBoardMember"
                     class="btn btn-ghost btn-xs"
                     @click="createSupplyRequestFromAlert(item)"
                   >
@@ -4201,7 +4208,10 @@
                   </div>
                 </div>
 
-                <div class="card-actions justify-end mt-auto">
+                <div
+                  class="card-actions justify-end mt-auto"
+                  v-if="!isBoardMember"
+                >
                   <button
                     @click="openDistributionModal(item)"
                     class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"

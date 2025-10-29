@@ -77,6 +77,29 @@ class NotificationService {
           });
           break;
 
+        case "chairman_approved":
+          // Chairman approves - notify Finance and HR
+          notifications.push({
+            department: "Finance",
+            role_filter: "Manager",
+            notification_type: "payroll",
+            title: "Payroll Chairman Approval",
+            message: `Chairman has approved payroll period ${payroll.period_name}. You may proceed to budget release.`,
+            reference_id: payrollId,
+            reference_table: "payroll_periods",
+            action_url: "/finance/payroll-approval",
+          });
+          notifications.push({
+            department: "Human Resource",
+            notification_type: "payroll",
+            title: "Payroll Chairman Approval",
+            message: `Chairman has approved payroll period ${payroll.period_name}.`,
+            reference_id: payrollId,
+            reference_table: "payroll_periods",
+            action_url: "/hr/payroll-management",
+          });
+          break;
+
         case "rejected":
           // Finance rejects - notify SCM
           notifications.push({
@@ -181,7 +204,7 @@ class NotificationService {
             role_filter: "Manager",
             notification_type: "payroll",
             title: "Payroll Submitted for Approval",
-            message: `Payroll period ${payroll.period_name} (${payroll.department}) has been submitted for your approval.`,
+            message: `Payroll period ${payroll.period_name} has been submitted for your approval.`,
             reference_id: payrollId,
             reference_table: "payroll_periods",
             action_url: "/finance/payroll-approval",
@@ -191,7 +214,7 @@ class NotificationService {
         case "approved":
           // Finance approves - notify HR
           notifications.push({
-            department: payroll.department,
+            department: "Human Resource",
             notification_type: "payroll",
             title: "Payroll Approved",
             message: `Payroll period ${payroll.period_name} has been approved by Finance.`,
@@ -204,7 +227,7 @@ class NotificationService {
         case "rejected":
           // Finance rejects - notify HR
           notifications.push({
-            department: payroll.department,
+            department: "Human Resource",
             notification_type: "payroll",
             title: "Payroll Rejected",
             message: `Payroll period ${payroll.period_name} has been rejected by Finance. Please review and resubmit.`,

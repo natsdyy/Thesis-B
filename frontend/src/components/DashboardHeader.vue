@@ -349,7 +349,7 @@
           Cancel
         </button>
         <button
-          class="btn bg-error/30 text-error btn-sm font-thin border-none !font-thin"
+          class="btn bg-error/30 text-error btn-sm font-thin border-none"
           @click="confirmLogout"
         >
           Yes, Log Out

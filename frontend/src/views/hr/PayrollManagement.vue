@@ -1,6 +1,7 @@
 <script setup>
   import { ref, computed, onMounted, watch } from 'vue';
   import { useRouter } from 'vue-router';
+  import { useAuthStore } from '../../stores/authStore.js';
   import { usePayrollStore } from '../../stores/payrollStore.js';
   import { useCustomToast } from '../../composables/useCustomToast.js';
   import PayrollDetailsModal from '../../components/payroll/PayrollDetailsModal.vue';
@@ -24,6 +25,7 @@
 
   const router = useRouter();
   const payrollStore = usePayrollStore();
+  const authStore = useAuthStore();
   const { showSuccess, showError, showWarning, showInfo } = useCustomToast();
 
   // State
@@ -54,6 +56,10 @@
   // Computed
   const loading = computed(() => payrollStore.loading);
   const payrollPeriods = computed(() => payrollStore.payrollPeriods);
+  const userRole = computed(() => authStore.userRole);
+  const canTakeActions = computed(
+    () => userRole.value !== 'Board of Directors'
+  );
 
   // Available years for custom month picker (current year ± 2 years)
   const availableYears = computed(() => {
@@ -233,6 +239,7 @@
   };
 
   const submitToFinance = (period) => {
+    if (!canTakeActions.value) return;
     showConfirmation(
       'Submit Payroll to Finance',
       `Are you sure you want to submit "${period.period_name}" to Finance for approval? This action cannot be undone.`,
@@ -251,6 +258,7 @@
   };
 
   const deletePeriod = (period) => {
+    if (!canTakeActions.value) return;
     showConfirmation(
       'Delete Payroll Period',
       `Are you sure you want to delete "${period.period_name}"? This action cannot be undone and will remove all payroll records associated with this period.`,
@@ -292,7 +300,7 @@
         return 'bg-warning/10 text-warning border-none';
       case 'approved':
         return 'bg-info/10 text-info border-none';
-              case 'budget_released':
+      case 'budget_released':
         return 'bg-info/10 text-info border-none';
       case 'paid':
         return 'bg-success/10 text-success border-none';
@@ -323,7 +331,7 @@
 </script>
 
 <template>
-  <div class=" mx-auto p-4 sm:p-6 ">
+  <div class="mx-auto p-4 sm:p-6">
     <!-- Header -->
     <div class="mb-4 sm:mb-6">
       <div class="flex items-center gap-3">
@@ -504,7 +512,7 @@
                   <font-awesome-icon icon="fa-solid fa-peso-sign" />
                   {{ formatCurrency(period.total_gross_amount) }}
                 </td>
-                <td class="text-sm font-medium ">
+                <td class="text-sm font-medium">
                   <font-awesome-icon icon="fa-solid fa-peso-sign" />
                   {{ formatCurrency(period.total_net_amount) }}
                 </td>
@@ -527,9 +535,9 @@
                       <Eye class="w-4 h-4" />
                     </button>
 
-                    <!-- Submit (draft only) -->
+                    <!-- Submit (draft only, hidden for Board Members) -->
                     <button
-                      v-if="period.status === 'draft'"
+                      v-if="canTakeActions && period.status === 'draft'"
                       class="btn btn-xs bg-primaryColor/10 text-primaryColor hover:bg-primaryColor/20 border-none"
                       @click="submitToFinance(period)"
                       :disabled="actionLoading"
@@ -538,9 +546,9 @@
                       <Send class="w-4 h-4" />
                     </button>
 
-                    <!-- Delete (draft only) -->
+                    <!-- Delete (draft only, hidden for Board Members) -->
                     <button
-                      v-if="period.status === 'draft'"
+                      v-if="canTakeActions && period.status === 'draft'"
                       class="btn btn-xs bg-error/10 text-error hover:bg-error/20 border-none"
                       @click="deletePeriod(period)"
                       :disabled="actionLoading"

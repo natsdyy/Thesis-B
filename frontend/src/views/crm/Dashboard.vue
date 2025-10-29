@@ -24,7 +24,6 @@
         </div>
       </div>
 
-
       <div class="bg-white rounded-lg shadow p-6">
         <div class="flex items-center">
           <div class="p-3 rounded-full bg-yellow-100 text-yellow-600">
@@ -54,8 +53,11 @@
       </div>
     </div>
 
-    <!-- Quick Actions -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    <!-- Quick Actions and Recent Ratings (hidden for Board Members) -->
+    <div
+      class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8"
+      v-if="!isBoardMember"
+    >
       <div class="bg-white rounded-lg shadow p-6">
         <h3 class="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
         <div class="space-y-3">
@@ -88,7 +90,6 @@
               <p class="text-sm text-gray-600">Customer insights and reports</p>
             </div>
           </router-link>
-
         </div>
       </div>
 
@@ -135,7 +136,7 @@
       </div>
     </div>
 
-    <!-- Recent Ratings Detailed List -->
+    <!-- Recent Ratings Detailed List (hidden for Board Members) -->
     <div class="bg-white rounded-lg shadow">
       <div class="px-6 py-4 border-b border-gray-200">
         <h3 class="text-lg font-medium text-gray-900">Latest Ratings</h3>
@@ -206,6 +207,7 @@
     faThumbsUp,
   } from '@fortawesome/free-solid-svg-icons';
   import { useFeedbackStore } from '@/stores/feedbackStore';
+  import { useAuthStore } from '@/stores/authStore';
 
   library.add(
     faUsers,
@@ -220,6 +222,7 @@
 
   // Store
   const feedbackStore = useFeedbackStore();
+  const authStore = useAuthStore();
 
   // Reactive data from feedback
   const feedbackStats = computed(() => feedbackStore.stats || {});
@@ -234,6 +237,11 @@
       .slice(0, 10);
   });
   const loading = computed(() => feedbackStore.loading);
+  const isBoardMember = computed(
+    () =>
+      authStore.userRole === 'Board of Directors' ||
+      authStore.userRole === 'Chairman of the Board'
+  );
 
   // Methods
   const loadFeedback = async () => {

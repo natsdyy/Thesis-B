@@ -115,6 +115,13 @@
     () => productionStore.productionInventoryStats
   );
 
+  // Role-based UI control
+  const isBoardMember = computed(
+    () =>
+      authStore.userRole === 'Board of Directors' ||
+      authStore.userRole === 'Chairman of the Board'
+  );
+
   // Calculate real-time statistics from current inventory data
   const realTimeStats = computed(() => {
     const items = productionInventory.value || [];
@@ -1307,7 +1314,7 @@
 </script>
 
 <template>
-  <div class=" mx-auto p-2 sm:p-4 lg:p-6 ">
+  <div class="mx-auto p-2 sm:p-4 lg:p-6">
     <!-- Header -->
     <div class="text-center mb-4 sm:mb-6 lg:mb-8">
       <h1
@@ -1864,7 +1871,7 @@
                         <Eye class="w-4 h-4" />
                       </button>
                       <button
-                        v-if="isReadyToProduce(item)"
+                        v-if="!isBoardMember && isReadyToProduce(item)"
                         @click.stop="configureInventory(item)"
                         class="text-warning hover:text-warning/80 p-1"
                         title="Proceed to Execution"
@@ -2010,7 +2017,7 @@
                           <Eye class="w-4 h-4" />
                         </button>
                         <button
-                          v-if="isReadyToProduce(item)"
+                          v-if="!isBoardMember && isReadyToProduce(item)"
                           @click.stop="configureInventory(item)"
                           class="text-warning hover:text-warning/80"
                           title="Proceed to Execution"
@@ -3858,8 +3865,6 @@
                 {{ formatCurrency(selectedItem?.unit_cost) }}
               </div>
             </div>
-
-
 
             <div class="form-control">
               <label class="label mb-1">

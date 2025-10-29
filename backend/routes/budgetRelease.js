@@ -3,6 +3,7 @@ const express = require("express");
 const router = express.Router();
 const BudgetRelease = require("../models/BudgetRelease");
 const SupplyRequest = require("../models/SupplyRequest");
+const { db } = require("../config/database");
 
 /**
  * @swagger
@@ -527,6 +528,29 @@ router.post("/payroll", async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Amount must be greater than 0",
+      });
+    }
+
+    // Verify chairman approval on the payroll period
+    const payrollPeriod = await db("payroll_periods")
+      .where("id", payroll_period_id)
+      .first();
+
+    if (!payrollPeriod) {
+      return res.status(400).json({
+        success: false,
+        message: "Payroll period not found",
+      });
+    }
+
+    if (
+      !payrollPeriod.chairman_approved_by ||
+      !payrollPeriod.chairman_approved_at
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Chairman approval is required before releasing payroll budget.",
       });
     }
 

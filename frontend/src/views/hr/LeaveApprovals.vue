@@ -1110,9 +1110,32 @@
   // Computed properties
   const activeBranches = computed(() => branchStore.activeBranches || []);
   const currentUser = computed(() => authStore.user);
+  const isBoardMember = computed(
+    () =>
+      authStore.userRole === 'Board of Directors' ||
+      authStore.userRole === 'Chairman of the Board'
+  );
 
   const filteredLeaveRequests = computed(() => {
     let filtered = [...allLeaveRequests.value];
+
+    // For Board Members: show only HR department requests, and prefer HR Manager when role metadata exists
+    if (isBoardMember.value) {
+      filtered = filtered.filter((req) => {
+        const isHR = (req.department || '').toLowerCase() === 'human resource';
+        const roleFields = [
+          req.role,
+          req.requestor_role,
+          req.employee_role,
+          req.job_title,
+        ]
+          .filter(Boolean)
+          .map((r) => String(r).toLowerCase());
+        const hasRoleMetadata = roleFields.length > 0;
+        const isManager = roleFields.some((r) => r.includes('manager'));
+        return isHR && (!hasRoleMetadata || isManager);
+      });
+    }
 
     // For HR Leave Approvals, exclude rejected requests by default
     // Only show them if specifically filtering by rejected status
@@ -1204,6 +1227,24 @@
   // History computed properties
   const filteredHistoryRequests = computed(() => {
     let filtered = [...allHistoryRequests.value];
+
+    // For Board Members: show only HR department requests in history, prefer HR Manager when metadata exists
+    if (isBoardMember.value) {
+      filtered = filtered.filter((req) => {
+        const isHR = (req.department || '').toLowerCase() === 'human resource';
+        const roleFields = [
+          req.role,
+          req.requestor_role,
+          req.employee_role,
+          req.job_title,
+        ]
+          .filter(Boolean)
+          .map((r) => String(r).toLowerCase());
+        const hasRoleMetadata = roleFields.length > 0;
+        const isManager = roleFields.some((r) => r.includes('manager'));
+        return isHR && (!hasRoleMetadata || isManager);
+      });
+    }
 
     // Apply date range filter
     if (historyFilters.value.dateRange !== 'all') {

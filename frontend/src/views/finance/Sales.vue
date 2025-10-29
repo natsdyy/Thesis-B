@@ -8,6 +8,7 @@
   import RemittancesModal from '../../components/finance/RemittancesModal.vue';
   import { usePOSStore } from '../../stores/posStore';
   import { useBranchStore } from '../../stores/branchStore';
+  import { useAuthStore } from '../../stores/authStore';
   import { useCustomToast } from '../../composables/useCustomToast.js';
   import {
     createPhilippineDate,
@@ -18,8 +19,14 @@
   const branchStore = useBranchStore();
   const posStore = usePOSStore();
   const { showToast } = useCustomToast();
+  const authStore = useAuthStore();
 
   const isSuperAdmin = computed(() => branchContext.isSuperAdmin);
+  const isBoardMember = computed(
+    () =>
+      authStore.userRole === 'Board of Directors' ||
+      authStore.userRole === 'Chairman of the Board'
+  );
   const availableBranches = computed(
     () => branchContext.availableBranches || []
   );
@@ -1343,6 +1350,7 @@
         <!-- Review Button -->
         <div class="ml-auto">
           <button
+            v-if="!isBoardMember"
             class="btn btn-sm font-thin hover:bg-gray-100 relative"
             @click="showFinanceRemittances = true"
           >

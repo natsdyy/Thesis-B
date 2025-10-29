@@ -165,9 +165,7 @@
               </tr>
               <tr class="font-bold border-t-2 border-gray-400">
                 <td class="p-2 text-gray-800">Total Gross Salary</td>
-                <td class="p-2 text-center text-gray-800">
-      
-                </td>
+                <td class="p-2 text-center text-gray-800"></td>
                 <td class="p-2 text-right text-gray-900">
                   {{ formatCurrency(recordData?.gross_salary) }}
                 </td>
@@ -655,6 +653,20 @@
     SSS: recordData.value?.sss_employee_share,
     PhilHealth: recordData.value?.philhealth_employee_share,
     'Pag-IBIG': recordData.value?.pagibig_employee_share,
+    'Withholding Tax': recordData.value?.withholding_tax,
+    ...(Number(recordData.value?.previous_balance_applied || 0) !== 0
+      ? {
+          'Previous Balance Applied':
+            recordData.value?.previous_balance_applied,
+        }
+      : {}),
+    ...(Number(recordData.value?.new_balance_carryover || 0) !== 0
+      ? {
+          'Carry Balance': Math.abs(
+            Number(recordData.value?.new_balance_carryover || 0)
+          ),
+        }
+      : {}),
   }));
 </script>
 

@@ -358,7 +358,10 @@
                 </div>
                 <div class="flex justify-between items-center">
                   <span class="text-xs text-gray-600">Deductions:</span>
-                  <span class="text-sm font-medium text-gray-900">
+                  <span
+                    class="text-sm font-medium text-gray-900"
+                    :title="getDeductionsTooltip(record)"
+                  >
                     <i class="fas fa-peso-sign mr-1"></i
                     >{{ formatCurrency(record.total_deductions) }}
                   </span>
@@ -489,8 +492,10 @@
                 <td
                   class="px-4 py-3 text-sm text-right font-medium text-gray-700"
                 >
-                  <i class="fas fa-peso-sign mr-1"></i
-                  >{{ formatCurrency(record.total_deductions) }}
+                  <span :title="getDeductionsTooltip(record)">
+                    <i class="fas fa-peso-sign mr-1"></i
+                    >{{ formatCurrency(record.total_deductions) }}
+                  </span>
                 </td>
                 <td
                   class="px-4 py-3 text-sm text-right font-bold text-gray-700"
@@ -540,7 +545,9 @@
       <!-- Footer Actions -->
       <div class="px-3 sm:px-6 py-3 sm:py-4 bg-gray-50">
         <!-- Action Buttons -->
-        <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 !justify-end !items-end">
+        <div
+          class="flex flex-col sm:flex-row gap-2 sm:gap-3 !justify-end !items-end"
+        >
           <!-- Close Button - Always visible -->
           <button
             @click="closeModal"
@@ -552,6 +559,26 @@
 
           <!-- Action Buttons -->
           <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 flex-1">
+            <button
+              v-if="canChairmanApprove"
+              @click="chairmanApprove"
+              :disabled="actionLoading"
+              class="btn bg-primaryColor text-white hover:bg-primaryColor/90 font-medium transition-colors px-4 sm:px-6 py-2 btn-sm flex-1 sm:flex-none"
+            >
+              <span
+                v-if="
+                  actionLoading &&
+                  actionLoadingText === 'Recording Chairman Approval...'
+                "
+                class="loading loading-spinner loading-xs mr-2"
+              ></span>
+              {{
+                actionLoading &&
+                actionLoadingText === 'Recording Chairman Approval...'
+                  ? 'Approving...'
+                  : 'Chairman Approve'
+              }}
+            </button>
             <button
               v-if="canSubmitToFinance"
               @click="submitToFinance"
@@ -665,6 +692,7 @@
   import { useAuthStore } from '@/stores/authStore';
   import { useFinanceBalanceStore } from '@/stores/financeBalanceStore';
   import { useCustomToast } from '@/composables/useCustomToast.js';
+  import { getApiUrl } from '@/config/api.js';
   import PayrollRecordDetailsModal from './PayrollRecordDetailsModal.vue';
   import PayrollRecordEditModal from './PayrollRecordEditModal.vue';
   import PayslipPrintModal from './PayslipPrintModal.vue';
@@ -709,6 +737,7 @@
         { status: 'draft', label: 'Draft' },
         { status: 'pending_approval', label: 'Pending Approval' },
         { status: 'approved', label: 'Approved' },
+        { status: 'chairman_approved', label: 'Chairman Approved' },
         { status: 'budget_released', label: 'Budget Released' },
         { status: 'paid', label: 'Paid' },
       ];
@@ -748,10 +777,20 @@
       });
 
       const isStepActive = (status) => {
+        if (status === 'chairman_approved') {
+          return !!payrollPeriod.value?.chairman_approved_at;
+        }
         const currentIndex = statusSteps.findIndex(
           (s) => s.status === payrollPeriod.value?.status
         );
         const stepIndex = statusSteps.findIndex((s) => s.status === status);
+        // Treat chairman as between approved and budget_released
+        if (
+          status === 'budget_released' &&
+          !payrollPeriod.value?.chairman_approved_at
+        ) {
+          return false;
+        }
         return stepIndex <= currentIndex;
       };
 
@@ -779,9 +818,80 @@
       const canSendToBudgetRelease = computed(() => {
         return (
           authStore.userDepartment === 'Finance' &&
-          payrollPeriod.value?.status === 'approved'
+          payrollPeriod.value?.status === 'approved' &&
+          !!payrollPeriod.value?.chairman_approved_at
         );
       });
+
+      const canChairmanApprove = computed(() => {
+        const rawPosition = (
+          authStore.user?.position ||
+          authStore.userInfo?.position ||
+          authStore.userRole ||
+          ''
+        )
+          .toString()
+          .toLowerCase()
+          .trim();
+
+        const titleMatches =
+          authStore.isChairman ||
+          rawPosition === 'chairman of the board' ||
+          rawPosition === 'chairman' ||
+          rawPosition.includes('chairman');
+
+        return (
+          titleMatches &&
+          payrollPeriod.value?.status === 'approved' &&
+          !payrollPeriod.value?.chairman_approved_at
+        );
+      });
+      const chairmanApprove = async () => {
+        actionLoading.value = true;
+        actionLoadingText.value = 'Recording Chairman Approval...';
+        try {
+          const approverId = authStore.user?.id || authStore.userInfo?.id;
+          if (typeof payrollStore.chairmanApprove === 'function') {
+            await payrollStore.chairmanApprove(
+              payrollPeriod.value.id,
+              approverId
+            );
+          } else {
+            // Fallback: call API directly if action not available (e.g., HMR cache)
+            const response = await fetch(
+              getApiUrl(
+                `/payroll/periods/${payrollPeriod.value.id}/chairman-approve`
+              ),
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${localStorage.getItem('token')}`,
+                },
+                body: JSON.stringify({ approved_by: approverId }),
+              }
+            );
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+              throw new Error(
+                data.message || 'Failed to record chairman approval'
+              );
+            }
+          }
+          showSuccess('Chairman approval recorded', 'Approved');
+          emit('refresh');
+        } catch (error) {
+          console.error('Error in chairman approval:', error);
+          showError(
+            'Failed to record chairman approval: ' +
+              (error.response?.data?.message || error.message),
+            'Approval Failed'
+          );
+        } finally {
+          actionLoading.value = false;
+          actionLoadingText.value = '';
+        }
+      };
 
       const canRelease = computed(() => {
         return (
@@ -819,6 +929,27 @@
           paid: 'bg-info/10 text-info',
         };
         return classes[status] || 'bg-gray-100 text-gray-800';
+      };
+
+      const getDeductionsTooltip = (record) => {
+        if (!record) return '';
+        const rows = [
+          `SSS: ₱${formatCurrency(record.sss_employee_share)}`,
+          `PhilHealth: ₱${formatCurrency(record.philhealth_employee_share)}`,
+          `Pag-IBIG: ₱${formatCurrency(record.pagibig_employee_share)}`,
+          `Withholding Tax: ₱${formatCurrency(record.withholding_tax)}`,
+        ];
+        const prevApplied = Number(record.previous_balance_applied || 0);
+        const carry = Number(record.new_balance_carryover || 0);
+        if (prevApplied) {
+          rows.push(
+            `Previous Balance Applied: ₱${formatCurrency(prevApplied)}`
+          );
+        }
+        if (carry) {
+          rows.push(`New Balance Carryover: ₱${formatCurrency(carry)}`);
+        }
+        return rows.join('\n');
       };
 
       const viewRecordDetails = (record) => {
@@ -905,8 +1036,8 @@
         try {
           await payrollStore.sendToBudgetRelease(payrollPeriod.value.id);
           showSuccess(
-            'Payroll sent to Budget Release successfully!',
-            'Sent to Budget Release'
+            'Payroll Budget Released successfully!',
+            'Budget Released'
           );
           emit('refresh');
         } catch (error) {
@@ -1014,6 +1145,7 @@
         formatDate,
         formatDateRange,
         getStatusBadgeClass,
+        getDeductionsTooltip,
         viewRecordDetails,
         editRecord,
         printPayslip,
@@ -1021,6 +1153,8 @@
         submitToFinance,
         approvePayroll,
         sendToBudgetRelease,
+        canChairmanApprove,
+        chairmanApprove,
         releasePayroll,
         closeModal,
         showRecordDetails,

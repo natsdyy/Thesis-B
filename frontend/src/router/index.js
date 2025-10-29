@@ -523,8 +523,10 @@ router.beforeEach(async (to, from, next) => {
 
     // Check department-specific access for managers
     const routeDepartment = getDepartmentFromRoute(to.path);
+    // Managers can access HR manager routes (e.g., Employee Schedules) across departments
     if (
       routeDepartment &&
+      routeDepartment !== 'Human Resource' &&
       routeDepartment !== userDepartment &&
       userRole !== 'Super Admin' &&
       userRole !== 'Chairman of the Board'
@@ -557,6 +559,8 @@ router.beforeEach(async (to, from, next) => {
       return;
     }
   }
+
+  // Note: Board members can access HR routes; UI controls will hide specific actions/menu items.
 
   // If Super Admin or Board members navigate to /dashboard, redirect to executive dashboard
   if (to.path === '/dashboard' || to.name === 'Home') {

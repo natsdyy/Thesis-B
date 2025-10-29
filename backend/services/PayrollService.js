@@ -370,8 +370,23 @@ class PayrollService {
       employee
     );
 
-    // Calculate net salary
-    const netSalary = grossSalary - deductions.totalEmployeeShare;
+    // Calculate net salary before any carryover balance
+    const netBeforeBalance = grossSalary - deductions.totalEmployeeShare;
+
+    // Fetch existing employee balance (negative means employee owes company)
+    const previousBalance = await this.getEmployeePayrollBalance(employee.id);
+
+    // Apply previous negative balance to current net
+    // Logic: netAfter = netBefore + previousBalance (previousBalance may be negative)
+    // - If netAfter < 0 → pay 0 this period; carry the remaining negative
+    // - If netAfter >= 0 → pay netAfter; clear balance
+    const netAfterBalance = netBeforeBalance + previousBalance;
+    const previousBalanceApplied =
+      previousBalance < 0
+        ? Math.min(-previousBalance, Math.max(0, netBeforeBalance))
+        : 0;
+    const newBalanceCarryover = netAfterBalance < 0 ? netAfterBalance : 0;
+    const netSalary = Math.max(0, netAfterBalance);
 
     return {
       employee_id: employee.id,
@@ -408,12 +423,27 @@ class PayrollService {
       sss_employer_share: deductions.sssEmployer,
       philhealth_employer_share: deductions.philhealthEmployer,
       pagibig_employer_share: deductions.pagibigEmployer,
+      withholding_tax: deductions.withholdingTax,
       total_deductions: deductions.totalEmployeeShare,
       total_employer_contributions: deductions.totalEmployerShare,
       gross_salary: grossSalary,
       net_salary: netSalary,
+      previous_balance_applied: previousBalanceApplied,
+      new_balance_carryover: newBalanceCarryover,
       status: "pending",
     };
+  }
+
+  /**
+   * Get current payroll balance for employee (negative means owes company)
+   * @param {number} employeeId
+   * @returns {Promise<number>}
+   */
+  static async getEmployeePayrollBalance(employeeId) {
+    const row = await db("employee_payroll_balances")
+      .where("employee_id", employeeId)
+      .first();
+    return Number(row?.balance || 0);
   }
 
   /**
@@ -694,8 +724,17 @@ class PayrollService {
       pagibigEmployer = 100; // Fixed ₱100
     }
 
+    // Withholding Tax (TRAIN, Monthly)
+    // Taxable income = gross - mandatory contributions (employee share)
+    const taxableIncome =
+      monthlySalary - (sssEmployee + philhealthEmployee + pagibigEmployee);
+
+    const withholdingTax = Number(
+      PayrollService.calculateWithholdingTax(taxableIncome).toFixed(2)
+    );
+
     const totalEmployeeShare =
-      sssEmployee + philhealthEmployee + pagibigEmployee;
+      sssEmployee + philhealthEmployee + pagibigEmployee + withholdingTax;
     const totalEmployerShare =
       sssEmployer + philhealthEmployer + pagibigEmployer;
 
@@ -708,7 +747,24 @@ class PayrollService {
       pagibigEmployer: Number(pagibigEmployer.toFixed(2)),
       totalEmployeeShare: Number(totalEmployeeShare.toFixed(2)),
       totalEmployerShare: Number(totalEmployerShare.toFixed(2)),
+      withholdingTax,
     };
+  }
+
+  /**
+   * Compute PH withholding tax (TRAIN monthly table, 2025)
+   * Uses taxable monthly income (after SSS/PhilHealth/Pag-IBIG employee shares)
+   * @param {number} taxableIncome
+   * @returns {number}
+   */
+  static calculateWithholdingTax(taxableIncome) {
+    if (!taxableIncome || taxableIncome <= 20833) return 0;
+    if (taxableIncome <= 33333) return (taxableIncome - 20833) * 0.15;
+    if (taxableIncome <= 66667) return 1875 + (taxableIncome - 33333) * 0.2;
+    if (taxableIncome <= 166667) return 8541.8 + (taxableIncome - 66667) * 0.25;
+    if (taxableIncome <= 666667)
+      return 33541.8 + (taxableIncome - 166667) * 0.3;
+    return 183541.8 + (taxableIncome - 666667) * 0.35;
   }
 
   /**

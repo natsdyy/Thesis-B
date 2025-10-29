@@ -69,9 +69,11 @@ router.delete("/:id", async (req, res) => {
     if (!allowWrite(role)) {
       return res.status(403).json({ success: false, message: "Forbidden" });
     }
+    const reason = req.body?.reason || req.query?.reason || null;
     const node = await OrgChartPosition.remove(
       req.params.id,
-      req.user?.id || null
+      req.user?.id || null,
+      reason
     );
     if (!node)
       return res.status(404).json({ success: false, message: "Not found" });

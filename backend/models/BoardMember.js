@@ -75,7 +75,12 @@ class BoardMember {
         };
       }
 
-      const member = await this.findByEmail(email);
+      // Fetch the account by email WITHOUT status filters so we can return
+      // accurate messages for deactivated/deleted accounts
+      const member = await db("board_members")
+        .select("*")
+        .where({ email })
+        .first();
 
       if (!member) {
         return {
@@ -85,7 +90,16 @@ class BoardMember {
         };
       }
 
-      // Check if account is active
+      // Deleted (soft-deactivated)
+      if (member.deleted_at) {
+        return {
+          success: false,
+          message: "Your board member account has been deactivated.",
+          code: "ACCOUNT_DEACTIVATED",
+        };
+      }
+
+      // Explicitly inactive
       if (!member.is_active) {
         return {
           success: false,
@@ -229,18 +243,41 @@ class BoardMember {
   }
 
   // Soft delete board member
-  static async delete(id) {
+  static async delete(id, reason = null) {
     try {
-      const [deletedMember] = await db("board_members")
-        .where("id", id)
-        .whereNull("deleted_at")
-        .update({
-          deleted_at: db.fn.now(),
-          is_active: false,
-          updated_at: db.fn.now(),
-        })
-        .returning("*");
+      const tryUpdate = async () =>
+        db("board_members")
+          .where("id", id)
+          .whereNull("deleted_at")
+          .update(
+            {
+              deleted_at: db.fn.now(),
+              is_active: false,
+              deactivation_reason: reason || db.raw("deactivation_reason"),
+              updated_at: db.fn.now(),
+            },
+            "*"
+          );
 
+      let deletedRows;
+      try {
+        deletedRows = await tryUpdate();
+      } catch (err) {
+        // If deactivation_reason column is missing, add it then retry
+        if (
+          String(err?.code) === "42703" ||
+          /deactivation_reason/.test(err?.message || "")
+        ) {
+          await db.schema.alterTable("board_members", (table) => {
+            table.text("deactivation_reason").nullable();
+          });
+          deletedRows = await tryUpdate();
+        } else {
+          throw err;
+        }
+      }
+
+      const deletedMember = deletedRows?.[0] || null;
       return deletedMember;
     } catch (error) {
       console.error("Error deleting board member:", error);

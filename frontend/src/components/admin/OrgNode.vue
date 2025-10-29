@@ -2,14 +2,21 @@
   <div class="flex flex-col items-center relative">
     <!-- Node Card -->
     <div
-      class="group bg-white/95 border border-gray-200 hover:border-primaryColor/50 shadow-sm hover:shadow-md rounded-2xl px-4 sm:px-6 py-4 sm:py-5 w-[16rem] sm:w-72 md:w-80 text-center transition-all duration-300"
+      class="group bg-white/95 border border-gray-200 hover:border-primaryColor/50 shadow-sm hover:shadow-md rounded-2xl px-4 sm:px-6 py-4 sm:py-5 w-[16rem] sm:w-72 md:w-80 text-center transition-all duration-300 cursor-pointer"
+      @click="$emit('edit-node', node)"
     >
       <!-- Avatar / Logo -->
       <div
         class="mx-auto mb-2 sm:mb-3 h-12 w-12 sm:h-14 sm:w-14 rounded-full bg-gradient-to-br from-primaryColor/10 to-primaryColor/5 flex items-center justify-center overflow-hidden shadow-sm"
       >
         <img
-          v-if="isRoot"
+          v-if="node.board_photo_url"
+          :src="formatPhoto(node.board_photo_url)"
+          alt="Board member"
+          class="h-full w-full object-cover"
+        />
+        <img
+          v-else-if="isRoot"
           src="/logo1.png"
           alt="logo"
           class="h-10 w-10 object-contain"
@@ -29,33 +36,7 @@
         {{ node.person_name || 'Unassigned' }}
       </div>
 
-      <!-- Action Buttons -->
-      <!-- <div
-        v-if="canModify"
-        class="mt-3 sm:mt-4 flex items-center justify-center gap-2 opacity-90 group-hover:opacity-100 transition-all"
-      >
-        <button
-          class="h-8 w-8 flex items-center justify-center rounded-full bg-primaryColor/10 text-primaryColor hover:bg-primaryColor/20 transition"
-          title="Add child"
-          @click="$emit('add-child', node.id)"
-        >
-          <Plus class="h-4 w-4" />
-        </button>
-        <button
-          class="h-8 w-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 transition"
-          title="Edit"
-          @click="$emit('edit-node', node)"
-        >
-          <Pencil class="h-4 w-4" />
-        </button>
-        <button
-          class="h-8 w-8 flex items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100 transition"
-          title="Delete"
-          @click="$emit('delete-node', node)"
-        >
-          <Trash2 class="h-4 w-4" />
-        </button>
-      </div> -->
+      <!-- Card is clickable to edit; action buttons removed per spec -->
     </div>
 
     <!-- Connectors & Children -->
@@ -97,6 +78,7 @@
 
 <script>
   import { User2, Plus, Pencil, Trash2 } from 'lucide-vue-next';
+  import { formatImageUrl } from '../../config/api.js';
 
   export default {
     name: 'OrgNode',
@@ -109,5 +91,12 @@
     },
     emits: ['add-child', 'edit-node', 'delete-node'],
     components: { User2, Plus, Pencil, Trash2 },
+    methods: {
+      formatPhoto(url) {
+        if (!url) return null;
+        if (/^https?:\/\//i.test(url)) return url;
+        return formatImageUrl(url);
+      },
+    },
   };
 </script>

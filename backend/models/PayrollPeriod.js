@@ -76,6 +76,17 @@ class PayrollPeriod {
       }
     }
 
+    // Chairman approver name (if recorded)
+    if (period.chairman_approved_by) {
+      // Try employees table first; if you store board in a different table, adjust here
+      const chair = await db("employees")
+        .where("id", period.chairman_approved_by)
+        .first();
+      if (chair) {
+        period.chairman_approved_by_name = `${chair.first_name} ${chair.last_name}`;
+      }
+    }
+
     const generator = await db("employees")
       .where("id", period.generated_by)
       .first();

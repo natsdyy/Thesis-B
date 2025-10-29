@@ -558,6 +558,8 @@ router.beforeEach(async (to, from, next) => {
     }
   }
 
+  // Note: Board members can access HR routes; UI controls will hide specific actions/menu items.
+
   // If Super Admin or Board members navigate to /dashboard, redirect to executive dashboard
   if (to.path === '/dashboard' || to.name === 'Home') {
     if (

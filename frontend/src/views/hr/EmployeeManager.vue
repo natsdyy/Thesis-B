@@ -26,6 +26,7 @@
   import { useAttendanceStore } from '../../stores/attendanceStore.js';
   import { apiConfig } from '../../config/api.js';
   import { useBranchStore } from '../../stores/branchStore.js';
+  import { useAuthStore } from '../../stores/authStore.js';
   import PayrollGenerationModal from '../../components/payroll/PayrollGenerationModal.vue';
   import EmployeeAttendanceViewer from '../../components/hr/EmployeeAttendanceViewer.vue';
   import EmployeeTransferApprovalsComponent from '../../components/hr/EmployeeTransferApprovalsComponent.vue';
@@ -43,6 +44,7 @@
   const positionsStore = usePositionsStore();
   const attendanceStore = useAttendanceStore();
   const branchStore = useBranchStore();
+  const authStore = useAuthStore();
 
   // UI state
   const searchQuery = ref('');
@@ -51,6 +53,14 @@
   const currentPage = ref(1);
   const itemsPerPage = ref(10);
   const showDeletedEmployees = ref(false);
+
+  // Role-based UI controls
+  const isBoardMember = computed(
+    () =>
+      authStore.userRole === 'Board of Directors' ||
+      authStore.userRole === 'Chairman of the Board'
+  );
+  const canGeneratePayroll = computed(() => !isBoardMember.value);
 
   // Tab state
   const activeTab = ref('all');
@@ -975,7 +985,7 @@
               Showing employees from {{ selectedDepartment }} department
             </div>
             <button
-              v-if="selectedDepartment"
+              v-if="selectedDepartment && canGeneratePayroll"
               @click="openPayrollGenerationModal('department')"
               class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/90 border-none font-thin whitespace-nowrap"
             >
@@ -1024,7 +1034,7 @@
               Showing employees from {{ getBranchName(selectedBranch) }} branch
             </div>
             <button
-              v-if="selectedBranch"
+              v-if="selectedBranch && canGeneratePayroll"
               @click="openPayrollGenerationModal('branch')"
               class="btn btn-sm bg-primaryColor text-white hover:bg-primaryColor/90 border-none font-thin whitespace-nowrap"
             >

@@ -35,6 +35,52 @@ export const usePayrollStore = defineStore('payroll', {
 
   actions: {
     /**
+     * Chairman approval for a payroll period
+     * @param {number} id
+     * @param {number} approvedBy
+     */
+    async chairmanApprove(id, approvedBy = null) {
+      this.loading = true;
+      this.error = null;
+
+      try {
+        const response = await fetch(
+          `${apiConfig.baseURL}/payroll/periods/${id}/chairman-approve`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${localStorage.getItem('token')}`,
+            },
+            body: JSON.stringify({ approved_by: approvedBy }),
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to record chairman approval');
+        }
+
+        if (data.success) {
+          if (this.selectedPeriod && this.selectedPeriod.id === id) {
+            this.selectedPeriod = { ...this.selectedPeriod, ...data.data };
+          }
+          // Also update list
+          const index = this.payrollPeriods.findIndex((p) => p.id === id);
+          if (index !== -1) this.payrollPeriods[index] = data.data;
+          return data.data;
+        } else {
+          throw new Error(data.message || 'Failed to record chairman approval');
+        }
+      } catch (error) {
+        this.error = error.message;
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+    /**
      * Generate payroll for department or branch
      * @param {Object} payload - Payroll generation parameters
      * @param {string} payload.type - 'department' or 'branch'
@@ -289,11 +335,31 @@ export const usePayrollStore = defineStore('payroll', {
         }
 
         // Get user ID from token if not provided
-        const userId =
-          releasedBy ||
-          JSON.parse(atob(localStorage.getItem('token').split('.')[1])).id;
+        const userId = (() => {
+          try {
+            if (releasedBy) return releasedBy;
+            const token = localStorage.getItem('token');
+            if (!token) return null;
+            const payload = JSON.parse(atob(token.split('.')[1] || ''));
+            return payload?.id || null;
+          } catch (_) {
+            return releasedBy || null;
+          }
+        })();
 
         // Calculate total amount (net salary + employer contributions)
+        const employerContrib = (period.records || []).reduce(
+          (sum, r) => sum + Number(r.total_employer_contributions || 0),
+          0
+        );
+        const totalAmount =
+          (Number(period.total_net_amount) || 0) + employerContrib;
+
+        if (!id || !userId || !totalAmount || totalAmount <= 0) {
+          throw new Error(
+            'Invalid payload: payroll_period_id, amount (> 0), and released_by are required'
+          );
+        }
         const response = await fetch(
           `${apiConfig.baseURL}/budget-releases/payroll`,
           {
@@ -304,7 +370,7 @@ export const usePayrollStore = defineStore('payroll', {
             },
             body: JSON.stringify({
               payroll_period_id: id,
-              amount: Number(period.total_net_amount) || 0,
+              amount: totalAmount,
               released_by: userId,
             }),
           }

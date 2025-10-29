@@ -9,6 +9,8 @@ const FinanceBalance = require("../models/FinanceBalance");
 const EmailService = require("../services/emailService");
 const NotificationService = require("../services/NotificationService");
 const { formatForDatabase } = require("../utils/timezoneUtils");
+const BoardMember = require("../models/BoardMember");
+const { db } = require("../config/database");
 
 // POST /api/payroll/generate - Generate payroll for department or branch
 router.post("/generate", authenticateToken, async (req, res) => {
@@ -390,6 +392,76 @@ router.post("/periods/:id/approve", authenticateToken, async (req, res) => {
   }
 });
 
+// POST /api/payroll/periods/:id/chairman-approve - Chairman approval checkpoint
+router.post(
+  "/periods/:id/chairman-approve",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { approved_by } = req.body;
+
+      const period = await PayrollPeriod.getById(parseInt(id));
+
+      if (period.status !== "approved") {
+        return res.status(400).json({
+          success: false,
+          message: "Chairman approval is allowed only after Finance approval",
+        });
+      }
+
+      // Enforce chairman role (from board_members)
+      const approverId = approved_by || req.user.id;
+      let isChairman = false;
+      try {
+        const chair = await BoardMember.getById(approverId);
+        isChairman = !!chair && /chairman/i.test(chair.position || "");
+      } catch (e) {
+        isChairman = false;
+      }
+
+      if (!isChairman) {
+        return res.status(403).json({
+          success: false,
+          message: "Only the Chairman of the Board can approve this step",
+        });
+      }
+
+      const updates = {
+        chairman_approved_by: approverId,
+        chairman_approved_at: formatForDatabase(new Date()),
+      };
+
+      const updatedPeriod = await PayrollPeriod.update(parseInt(id), updates);
+
+      // Notify Finance and HR that chairman approved
+      try {
+        await NotificationService.createPayrollNotification(
+          parseInt(id),
+          "chairman_approved"
+        );
+      } catch (notificationError) {
+        console.error(
+          "Error creating chairman approval notification:",
+          notificationError
+        );
+      }
+
+      res.json({
+        success: true,
+        data: updatedPeriod,
+        message: "Chairman approval recorded",
+      });
+    } catch (error) {
+      console.error("Error setting chairman approval:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to set chairman approval",
+      });
+    }
+  }
+);
+
 // POST /api/payroll/periods/:id/reject - Reject payroll with remarks
 router.post("/periods/:id/reject", authenticateToken, async (req, res) => {
   try {
@@ -469,6 +541,9 @@ router.post("/periods/:id/release", authenticateToken, async (req, res) => {
 
     // Record cash movements
     await recordPayrollCashMovements(period);
+
+    // Update employee carryover balances
+    await updateEmployeeBalances(period);
 
     // Send email notifications to employees and update record status
     const emailResults = {
@@ -684,6 +759,32 @@ async function recordPayrollCashMovements(period) {
     notes: `Employee contributions withheld - ${period.period_name}`,
     occurred_at: period.paid_at,
   });
+}
+
+/**
+ * Helper: upsert employee balances from the period's records
+ * Stores `new_balance_carryover` per employee so next period can apply it.
+ */
+async function updateEmployeeBalances(period) {
+  const records = period.records || [];
+  const upserts = records.map((r) => {
+    const carry = Number(r.new_balance_carryover || 0);
+    return db("employee_payroll_balances")
+      .insert({
+        employee_id: r.employee_id,
+        balance: carry,
+        created_at: formatForDatabase(new Date()),
+        updated_at: formatForDatabase(new Date()),
+      })
+      .onConflict("employee_id")
+      .merge({
+        balance: carry,
+        updated_at: formatForDatabase(new Date()),
+      });
+  });
+  if (upserts.length) {
+    await Promise.all(upserts);
+  }
 }
 
 module.exports = router;

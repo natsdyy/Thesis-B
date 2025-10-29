@@ -680,6 +680,11 @@
 
   // Current user
   const currentUser = computed(() => authStore.user);
+  const isBoardMember = computed(
+    () =>
+      authStore.userRole === 'Board of Directors' ||
+      authStore.userRole === 'Chairman of the Board'
+  );
 
   // Reactive data
   const isLoading = ref(false);
@@ -721,9 +726,31 @@
   const itemsPerPage = ref(10);
 
   // Computed
-  const pendingRequests = computed(() =>
-    (overtimeRequests.value || []).filter((r) => r.status === 'pending')
-  );
+  const pendingRequests = computed(() => {
+    let list = (overtimeRequests.value || []).filter(
+      (r) => r.status === 'pending'
+    );
+
+    // For Board Members: show only HR department requests, prefer HR Manager when role metadata exists
+    if (isBoardMember.value) {
+      list = list.filter((r) => {
+        const isHR = (r.department || '').toLowerCase() === 'human resource';
+        const roleFields = [
+          r.role,
+          r.requestor_role,
+          r.employee_role,
+          r.job_title,
+        ]
+          .filter(Boolean)
+          .map((v) => String(v).toLowerCase());
+        const hasRoleMetadata = roleFields.length > 0;
+        const isManager = roleFields.some((v) => v.includes('manager'));
+        return isHR && (!hasRoleMetadata || isManager);
+      });
+    }
+
+    return list;
+  });
 
   const totalPages = computed(() =>
     Math.max(1, Math.ceil(pendingRequests.value.length / itemsPerPage.value))
@@ -779,9 +806,26 @@
   const historyRows = computed(() => {
     const desiredStatus = historyStatus.value;
     const { start, end } = startEndForPreset(historyPreset.value);
-    const rows = (overtimeRequests.value || []).filter(
+    let rows = (overtimeRequests.value || []).filter(
       (r) => r.status === desiredStatus
     );
+    // For Board Members: limit history to HR department (prefer manager when available)
+    if (isBoardMember.value) {
+      rows = rows.filter((r) => {
+        const isHR = (r.department || '').toLowerCase() === 'human resource';
+        const roleFields = [
+          r.role,
+          r.requestor_role,
+          r.employee_role,
+          r.job_title,
+        ]
+          .filter(Boolean)
+          .map((v) => String(v).toLowerCase());
+        const hasRoleMetadata = roleFields.length > 0;
+        const isManager = roleFields.some((v) => v.includes('manager'));
+        return isHR && (!hasRoleMetadata || isManager);
+      });
+    }
     return rows.filter((r) => {
       // r.date is YYYY-MM-DD
       const d = new Date(`${r.date}T12:00:00`); // noon to avoid TZ shift

@@ -48,6 +48,7 @@ class PayrollRecord {
         sss_employer_share: data.sss_employer_share || 0,
         philhealth_employer_share: data.philhealth_employer_share || 0,
         pagibig_employer_share: data.pagibig_employer_share || 0,
+        withholding_tax: data.withholding_tax || 0,
         total_deductions: data.total_deductions || 0,
         total_employer_contributions: data.total_employer_contributions || 0,
         gross_salary: data.gross_salary || 0,

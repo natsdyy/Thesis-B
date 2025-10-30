@@ -1491,6 +1491,38 @@
             Delete Application
           </button>
         </div>
+      </div>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
+    </div>
+
+    <!-- Action Confirmation Modal (Hire/Reject, etc.) -->
+    <div v-if="showActionConfirmModal" class="fixed inset-0 backdrop-blur-md bg-transparent flex items-center justify-center z-50">
+      <div class="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+        <div class="flex items-center justify-between px-5 py-4"
+             :class="actionConfirmData.type === 'danger' ? 'bg-red-50' : 'bg-green-50'">
+          <h3 class="text-lg font-semibold" :class="actionConfirmData.type === 'danger' ? 'text-red-800' : 'text-green-800'">
+            {{ actionConfirmData.title }}
+          </h3>
+          <button @click="cancelActionConfirm" class="text-gray-400 hover:text-gray-600 transition-colors">
+            <X class="w-5 h-5" />
+          </button>
+        </div>
+        <div class="px-6 py-5">
+          <p class="text-gray-700">{{ actionConfirmData.message }}</p>
+        </div>
+        <div class="px-6 py-4 bg-gray-50 flex justify-end gap-3">
+          <button
+            @click="cancelActionConfirm"
+            class="btn btn-ghost"
+          >
+            {{ actionConfirmData.cancelText || 'Cancel' }}
+          </button>
+          <button
+            @click="confirmActionConfirm"
+            :class="actionConfirmData.type === 'danger' ? 'btn btn-error' : 'btn btn-success'"
+          >
+            {{ actionConfirmData.confirmText || 'Confirm' }}
+          </button>
+        </div>
       </div>
     </div>
 
@@ -1700,7 +1732,7 @@ export default {
     const { showSuccess, showError, showWarning, showInfo } = useCustomToast()
     
     // Active tab - default to position-tracker for public access
-    const activeTab = ref('position-tracker')
+    const activeTab = ref('new-applications')
     
     // Active department for filtering
     const activeDepartment = ref('All')
@@ -1809,6 +1841,44 @@ export default {
       title: '',
       message: ''
     })
+    
+    // Generic action confirmation modal (for Hire/Reject)
+    const showActionConfirmModal = ref(false)
+    const actionConfirmData = ref({
+      title: '',
+      message: '',
+      confirmText: 'Confirm',
+      cancelText: 'Cancel',
+      type: 'success', // 'success' | 'danger'
+      onConfirm: null
+    })
+
+    const openActionConfirm = (opts) => {
+      actionConfirmData.value = {
+        title: opts.title || 'Are you sure?',
+        message: opts.message || '',
+        confirmText: opts.confirmText || 'Confirm',
+        cancelText: opts.cancelText || 'Cancel',
+        type: opts.type || 'success',
+        onConfirm: typeof opts.onConfirm === 'function' ? opts.onConfirm : null
+      }
+      showActionConfirmModal.value = true
+    }
+
+    const cancelActionConfirm = () => {
+      showActionConfirmModal.value = false
+      actionConfirmData.value.onConfirm = null
+    }
+
+    const confirmActionConfirm = async () => {
+      try {
+        if (actionConfirmData.value.onConfirm) {
+          await actionConfirmData.value.onConfirm()
+        }
+      } finally {
+        cancelActionConfirm()
+      }
+    }
     const isLoadingApplications = ref(false)
 
     // Modal state
@@ -3005,11 +3075,7 @@ export default {
     }
 
     // Hire or reject candidate functions
-    const hireCandidate = async (candidate) => {
-      if (!confirm(`Are you sure you want to hire ${candidate.applicant_name} for ${candidate.position_title}?`)) {
-        return
-      }
-      
+    const performHire = async (candidate) => {
       try {
         isProcessingHiring.value = true
         
@@ -3056,12 +3122,18 @@ export default {
         isProcessingHiring.value = false
       }
     }
+
+    const hireCandidate = (candidate) => {
+      openActionConfirm({
+        title: 'Confirm Hire',
+        message: `Are you sure you want to hire ${candidate.applicant_name} for ${candidate.position_title}?`,
+        confirmText: 'Hire',
+        type: 'success',
+        onConfirm: () => performHire(candidate)
+      })
+    }
     
-    const rejectCandidate = async (candidate) => {
-      if (!confirm(`Are you sure you want to reject ${candidate.applicant_name}?`)) {
-        return
-      }
-      
+    const performReject = async (candidate) => {
       try {
         isProcessingHiring.value = true
         
@@ -3107,6 +3179,16 @@ export default {
       } finally {
         isProcessingHiring.value = false
       }
+    }
+
+    const rejectCandidate = (candidate) => {
+      openActionConfirm({
+        title: 'Confirm Rejection',
+        message: `Are you sure you want to reject ${candidate.applicant_name}?`,
+        confirmText: 'Reject',
+        type: 'danger',
+        onConfirm: () => performReject(candidate)
+      })
     }
     
     const confirmInterviewDelete = async () => {
@@ -4055,6 +4137,11 @@ export default {
       selectedInterview,
       showNotificationModal,
       notificationData,
+      // Action confirm modal
+      showActionConfirmModal,
+      actionConfirmData,
+      confirmActionConfirm,
+      cancelActionConfirm,
       showNotification,
       handleTabClick,
       clearFilters,

@@ -5,6 +5,7 @@ const fs = require("fs");
 const axios = require("axios");
 const JobApplication = require("../models/JobApplication");
 const Interview = require("../models/Interview");
+const EmailService = require("../services/emailService");
 const router = express.Router();
 
 // Configure multer for file uploads
@@ -276,6 +277,43 @@ router.post("/interviews", async (req, res) => {
     const result = await Interview.create(interviewData);
 
     if (result.success) {
+      // Fire-and-forget: email the applicant their interview schedule
+      (async () => {
+        try {
+          if (interviewData.applicationId) {
+            const appResult = await JobApplication.getById(interviewData.applicationId);
+            if (appResult && appResult.success && appResult.data && appResult.data.email) {
+              const applicant = appResult.data;
+              const dateStr = new Date(interviewData.interviewDate).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
+              const timeStr = interviewData.interviewTime || "TBD";
+              const typeStr = interviewData.interviewType ? (interviewData.interviewType.replace(/-/g, ' ')) : 'In-Person';
+              const locationStr = interviewData.location || interviewData.meetingLink || 'To be provided';
+
+              const subject = `Interview Scheduled - ${applicant.position_title || 'Your Application'}`;
+              const messageHtml = `
+                <p>Hello ${applicant.full_name || 'Applicant'},</p>
+                <p>Your interview has been scheduled. Here are the details:</p>
+                <ul>
+                  <li><strong>Date:</strong> ${dateStr}</li>
+                  <li><strong>Time:</strong> ${timeStr}</li>
+                  <li><strong>Type:</strong> ${typeStr}</li>
+                  <li><strong>Location/Link:</strong> ${locationStr}</li>
+                </ul>
+                <p>Please be available 10 minutes before the scheduled time.</p>
+              `;
+
+              await EmailService.sendNotificationEmail(
+                applicant.email,
+                subject,
+                messageHtml
+              );
+            }
+          }
+        } catch (e) {
+          console.warn('Email send failed for interview schedule:', e.message);
+        }
+      })();
+
       res.status(201).json(result);
     } else {
       res.status(400).json(result);

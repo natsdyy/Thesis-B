@@ -460,12 +460,6 @@ class Roles {
         .orderBy("department", "asc")
         .orderBy("role", "asc");
 
-      // Log positions to see their is_active status
-      console.log('getAllPositions - Sample positions with is_active:')
-      positions.slice(0, 3).forEach(p => {
-        console.log(`  - ${p.role} (${p.department}): is_active = ${p.is_active}`)
-      })
-
       // Group positions by department
       const groupedPositions = {};
       positions.forEach((position) => {
@@ -565,8 +559,6 @@ class Roles {
             .select("id", "position_title", "rate_per_hour")
             .limit(10);
           
-          console.log(`\n🔍 DEBUG: Looking for branch positions with title "${currentRole.role}"`);
-          console.log(`   Sample branch positions in DB:`, allBranchPositions.map(p => ({ id: p.id, title: p.position_title, rate: p.rate_per_hour })));
           
           // Try multiple matching strategies
           // 1. Exact case-insensitive match

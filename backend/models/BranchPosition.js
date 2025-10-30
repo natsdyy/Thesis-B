@@ -185,12 +185,6 @@ class BranchPosition {
       // Execute query and get raw results
       const branchPositions = await query;
       
-      // Log detailed information about what was queried and returned
-      console.log(`\n========== BranchPosition.getAll Debug ==========`)
-      console.log(`Filters applied:`, JSON.stringify(filters, null, 2))
-      console.log(`Raw SQL query would filter by deleted_at only`)
-      console.log(`BranchPosition.getAll - Found ${branchPositions.length} branch positions from database`)
-      console.log(`Found ${departmentPositions.length} department positions`)
       
       // Log detailed breakdown of branch positions
       if (branchPositions.length > 0) {
@@ -222,30 +216,9 @@ class BranchPosition {
           branchIdCounts[p.branch_id] = (branchIdCounts[p.branch_id] || 0) + 1;
         });
         
-        console.log('Branch position counts by branch:', branchCounts);
-        console.log('Status distribution:', statusCounts);
-        console.log('is_active distribution:', isActiveCounts);
-        console.log('Counts by branch_id:', branchIdCounts);
-        
-        // Log sample positions
-        console.log('Sample positions (first 5):', branchPositions.slice(0, 5).map(p => ({
-          id: p.id,
-          branch_id: p.branch_id,
-          branch_name: p.branch_name,
-          position_title: p.position_title,
-          is_active: p.is_active,
-          status: p.status,
-          job_status: p.job_status,
-          deleted_at: p.deleted_at
-        })));
+
       } else {
-        console.warn('⚠️ WARNING: No branch positions found in database!')
-        console.warn('This could mean:')
-        console.warn('  1. No positions have been created yet')
-        console.warn('  2. All positions are soft-deleted (deleted_at is set)')
-        console.warn('  3. There are no active branches')
       }
-      console.log(`================================================\n`)
       
       // If filtering by a specific department, combine appropriately
       // Otherwise, return branch positions only (not department positions)
@@ -257,7 +230,6 @@ class BranchPosition {
         const filteredBranchByDept = branchPositions.filter(p => p.department === filters.department);
         const filteredDeptByDept = departmentPositions.filter(p => p.department === filters.department);
         allPositions = [...filteredBranchByDept, ...filteredDeptByDept];
-        console.log(`Filtered for department ${filters.department}: ${allPositions.length} positions`)
       } else if (filters.department === 'Branch') {
         // For Branch, only return actual branch positions, not department roles
         // Include all branch positions regardless of department value (some might be NULL)
@@ -265,7 +237,6 @@ class BranchPosition {
           // Include if it's explicitly Branch department OR if it has a branch_id (actual branch position)
           return (p.department === 'Branch' || !p.department || p.department === null) && p.branch_id;
         });
-        console.log(`Filtered for Branch: ${allPositions.length} positions (from ${branchPositions.length} total branch positions)`)
       } else {
         // No department filter - return all branch positions only
         // Include ALL positions with a branch_id (even if branch_name is null due to deleted branch)
@@ -290,7 +261,6 @@ class BranchPosition {
           return hasValidBranchId;
         });
         
-        console.log(`No department filter - returning ${allPositions.length} branch positions (from ${branchPositions.length} total)`)
         
         // Log detailed branch distribution
         const branchDistribution = {};
@@ -301,18 +271,7 @@ class BranchPosition {
           }
           branchDistribution[branchName].count++;
           branchDistribution[branchName].positions.push(p.position_title);
-        });
-        console.log('Branch distribution:', branchDistribution);
-        
-        console.log('Sample branch positions:', allPositions.slice(0, 5).map(p => ({ 
-          id: p.id, 
-          branch_id: p.branch_id, 
-          branch_name: p.branch_name || 'NULL',
-          position_title: p.position_title,
-          is_active: p.is_active,
-          status: p.status,
-          job_status: p.job_status
-        })))
+        });        
       }
       
       return allPositions;
@@ -376,7 +335,6 @@ class BranchPosition {
    */
   static async update(id, updateData, updatedBy = null) {
     try {
-      console.log(`BranchPosition.update called - id: ${id}, updateData:`, updateData)
       
       // Get current position to check status before update
       const currentPosition = await db("branch_positions")
@@ -408,7 +366,6 @@ class BranchPosition {
           updateData.is_active = false;
         }
         
-        console.log(`Status sync: status=${newStatus}, job_status=${updateData.job_status}, is_active=${updateData.is_active}`)
       }
       
       // Also handle if job_status is updated directly (sync status and is_active)
@@ -422,7 +379,6 @@ class BranchPosition {
           updateData.is_active = false;
         }
         
-        console.log(`Job status sync: job_status=${newJobStatus}, status=${updateData.status}, is_active=${updateData.is_active}`)
       }
 
       updateData.updated_at = db.fn.now();
@@ -433,11 +389,6 @@ class BranchPosition {
         .update(updateData)
         .returning("*");
 
-      console.log(`BranchPosition updated:`, updatedPosition)
-      console.log(`Status after update: ${updatedPosition?.status}`)
-      console.log(`Job status after update: ${updatedPosition?.job_status}`)
-      console.log(`Is active after update: ${updatedPosition?.is_active}`)
-
       if (!updatedPosition) {
         throw new Error("Position not found");
       }
@@ -447,7 +398,6 @@ class BranchPosition {
         .where("id", id)
         .select("id", "position_title", "status", "job_status", "is_active")
         .first();
-      console.log(`Verification read from DB:`, verification)
 
       // Ensure the returned position has the synced fields
       if (verification) {

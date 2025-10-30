@@ -435,14 +435,9 @@ router.put("/:id", authenticateToken, async (req, res) => {
     const updateData = req.body;
     const updatedBy = req.user?.id || null;
 
-    console.log('PUT /branch-positions/:id called')
-    console.log('id:', id)
-    console.log('updateData:', updateData)
-    console.log('status being set to:', updateData.status)
 
     const updatedPosition = await BranchPosition.update(id, updateData, updatedBy);
 
-    console.log('Backend returning updated position with status:', updatedPosition.status)
 
     res.json({
       success: true,

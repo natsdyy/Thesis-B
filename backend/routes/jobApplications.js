@@ -328,6 +328,56 @@ router.post("/interviews", async (req, res) => {
   }
 });
 
+// Send hire link to applicant's email with prefilled details
+router.post("/:id/send-hire-link", async (req, res) => {
+  try {
+    const applicationId = req.params.id;
+
+    // Fetch the application details
+    const appResult = await JobApplication.getById(applicationId);
+    if (!appResult.success || !appResult.data) {
+      return res.status(404).json({ success: false, message: "Application not found" });
+    }
+
+    const app = appResult.data;
+    const applicantEmail = app.email || app.applicant_email;
+    const applicantName = app.full_name || app.applicant_name || "Applicant";
+    const department = app.department || app.department_name || "";
+    const roleName = app.position_title || app.role || app.role_name || "";
+    const employeeType = "Full-time"; // default for onboarding
+
+    if (!applicantEmail) {
+      return res.status(400).json({ success: false, message: "Applicant email not available" });
+    }
+
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:8080";
+    const link = `${frontendUrl}/hr/add-employee?dept=${encodeURIComponent(
+      department
+    )}&role_name=${encodeURIComponent(roleName)}&employee_type=${encodeURIComponent(
+      employeeType
+    )}`;
+
+    const subject = `You're Hired! Complete your onboarding - Countryside Steak House`;
+    const message = `Dear ${applicantName},\n\nCongratulations! You have been hired for the ${roleName} position in the ${department} department.\n\nTo complete your onboarding, please click the link below to fill out your employee information form:\n\n${link}\n\nIf the link does not work, copy and paste it into your browser.\n\nWelcome to Countryside Steak House!`;
+
+    try {
+      const emailResult = await EmailService.sendNotificationEmail(
+        applicantEmail,
+        subject,
+        message
+      );
+
+      return res.status(200).json({ success: true, emailResult });
+    } catch (err) {
+      console.error("Failed to send hire link email:", err);
+      return res.status(500).json({ success: false, message: "Failed to send email" });
+    }
+  } catch (error) {
+    console.error("Error sending hire link:", error);
+    res.status(500).json({ success: false, message: "Internal server error", error: error.message });
+  }
+});
+
 // GET /api/job-applications/interviews - Get all interviews
 router.get("/interviews", async (req, res) => {
   try {

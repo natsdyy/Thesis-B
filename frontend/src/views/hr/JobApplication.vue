@@ -1896,13 +1896,25 @@ export default {
     
     // Filter candidates for hiring (only those who passed interviews)
     const hiringCandidates = computed(() => {
-      return interviews.value.filter(interview => 
-        // Show all completed interviews (date passed or marked done), regardless of result
-        interview.status === 'completed' &&
-        // Only include if application status is still not hired/rejected
-        (!interview.application_status || 
-         (interview.application_status !== 'hired' && interview.application_status !== 'rejected'))
+      const hiredIds = new Set(
+        (applications.value || [])
+          .filter(a => a.status === 'hired')
+          .map(a => a.id)
       )
+      const rejectedIds = new Set(
+        (applications.value || [])
+          .filter(a => a.status === 'rejected')
+          .map(a => a.id)
+      )
+
+      return interviews.value.filter(interview => {
+        if (interview.status !== 'completed') return false
+        const appId = interview.application_id || interview.applicationId || interview.app_id
+        if (hiredIds.has(appId) || rejectedIds.has(appId)) return false
+        const st = interview.application_status
+        if (st === 'hired' || st === 'rejected') return false
+        return true
+      })
     })
 
     // Position management state
@@ -3107,6 +3119,19 @@ export default {
             interviews.value[interviewIndex].application_status = 'hired'
           }
           
+          // Fire-and-forget: send onboarding link to candidate's email
+          try {
+            await fetch(`/api/job-applications/${candidate.application_id}/send-hire-link`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                'Content-Type': 'application/json'
+              }
+            })
+          } catch (e) {
+            console.warn('Failed to send hire link email:', e)
+          }
+
           // Reload data
           await loadApplications()
           await loadInterviews()
@@ -3165,11 +3190,26 @@ export default {
             interviews.value[interviewIndex].application_status = 'rejected'
           }
           
+          // Hard delete the application after marking as rejected
+          try {
+            const delRes = await fetch(`/api/job-applications/${candidate.application_id}`, {
+              method: 'DELETE',
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+              }
+            })
+            if (!delRes.ok) {
+              console.warn('Failed to delete rejected application')
+            }
+          } catch (e) {
+            console.warn('Error deleting rejected application:', e)
+          }
+
           // Reload data
           await loadApplications()
           await loadInterviews()
           
-          showNotification('success', 'Success!', `${candidate.applicant_name} has been rejected.`)
+          showNotification('success', 'Success!', `${candidate.applicant_name} has been rejected and removed.`)
         } else {
           throw new Error(result.message || 'Failed to reject candidate')
         }
@@ -3184,7 +3224,7 @@ export default {
     const rejectCandidate = (candidate) => {
       openActionConfirm({
         title: 'Confirm Rejection',
-        message: `Are you sure you want to reject ${candidate.applicant_name}?`,
+        message: `Are you sure you want to reject ${candidate.applicant_name}? This will remove their application.`,
         confirmText: 'Reject',
         type: 'danger',
         onConfirm: () => performReject(candidate)

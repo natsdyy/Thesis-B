@@ -1,5 +1,6 @@
 <script setup>
-  import { ref, computed, onMounted, watch } from 'vue';
+  import { ref, computed, onMounted, watch, nextTick } from 'vue';
+  import { useRoute } from 'vue-router';
   import {
     User,
     Users,
@@ -37,6 +38,7 @@
   const branchStore = useBranchStore();
   const positionsStore = usePositionsStore();
   const { showSuccess, showError, showInfo, showWarning } = useCustomToast();
+  const route = useRoute();
 
   // Reactive state
   const currentStep = ref(0);
@@ -107,6 +109,7 @@
   // Departments and roles data
   const departmentsWithRoles = ref({});
   const departments = computed(() => Object.keys(departmentsWithRoles.value));
+  const prefillLocks = ref({ department: false, role: false, employee_type: false });
 
   const civilStatuses = ['Single', 'Married'];
 
@@ -141,6 +144,37 @@
       ? departmentsWithRoles.value[employeeForm.value.department] || []
       : [];
   });
+
+  // Prefill from query params (dept, role_name, employee_type)
+  const tryPrefillFromQuery = async () => {
+    const q = route?.query || {};
+    const dept = typeof q.dept === 'string' ? q.dept : '';
+    const roleName = typeof q.role_name === 'string' ? q.role_name : '';
+    const empType = typeof q.employee_type === 'string' ? q.employee_type : '';
+
+    if (dept && departments.value.includes(dept)) {
+      employeeForm.value.department = dept;
+      prefillLocks.value.department = true;
+      await nextTick();
+
+      // wait a tick for availableRoles to compute
+      const roles = availableRoles.value || [];
+      if (roleName) {
+        const match = roles.find((r) =>
+          (r.role || '').toLowerCase() === roleName.toLowerCase()
+        );
+        if (match) {
+          employeeForm.value.role_id = match.role_id;
+          prefillLocks.value.role = true;
+        }
+      }
+    }
+
+    if (empType) {
+      employeeForm.value.employee_type = empType;
+      prefillLocks.value.employee_type = true;
+    }
+  };
 
   // Wizard navigation computed properties
   const currentStepData = computed(() => steps[currentStep.value]);
@@ -663,6 +697,8 @@
 
       if (data.success) {
         departmentsWithRoles.value = data.data;
+        // After departments/roles load, attempt to prefill
+        await tryPrefillFromQuery();
       } else {
         throw new Error(
           data.message || 'Failed to fetch departments with roles'
@@ -1106,11 +1142,12 @@
                 <Building
                   class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"
                 />
-                <select
-                  v-model="employeeForm.department"
+              <select
+                v-model="employeeForm.department"
                   class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor pl-10"
-                  :class="{ 'select-error': formErrors.department }"
-                  required
+                :class="{ 'select-error': formErrors.department }"
+                :disabled="prefillLocks.department"
+                required
                 >
                   <option value="">Select department</option>
                   <option v-for="dept in departments" :key="dept" :value="dept">
@@ -1138,7 +1175,7 @@
                 v-model="employeeForm.role_id"
                 class="select select-sm sm:select-md select-bordered w-full bg-white border-primaryColor/30 text-black/70 focus:border-primaryColor"
                 :class="{ 'select-error': formErrors.role_id }"
-                :disabled="!employeeForm.department"
+                :disabled="!employeeForm.department || prefillLocks.role"
                 required
               >
                 <option value="">Select role</option>
@@ -1213,6 +1250,7 @@
                     type="radio"
                     value="Full-time"
                     class="radio checked:text-primaryColor radio-sm border-black/50"
+                    :disabled="prefillLocks.employee_type"
                   />
                   <span class="label-text ml-2">Full-time</span>
                 </label>

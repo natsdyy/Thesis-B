@@ -483,9 +483,9 @@ class POSOrder {
       const discountType = (orderData.discount_type || "NONE").toUpperCase();
       const isDiscount = discountType === "SC" || discountType === "PWD";
 
-      // Determine gross from posted items (unit_price already promo-adjusted by client).
-      // If SC/PWD is applied, ignore promo prices and recompute using original price if provided; else use provided totals.
+      // Determine gross from items. If SC/PWD is applied, ignore promos by using original prices.
       let gross = 0;
+      let highestOriginalUnit = 0; // for one-meal-only discount
       const normalizedItems = (orderData.items || []).map((it) => {
         const qty = parseFloat(it.quantity || 0);
         const postedUnit = parseFloat(it.unit_price || it.price || 0);
@@ -495,6 +495,9 @@ class POSOrder {
         const useUnit = isDiscount ? originalUnit : postedUnit; // promos excluded when SC/PWD
         const total = useUnit * qty;
         gross += total;
+        if (qty > 0 && originalUnit > highestOriginalUnit) {
+          highestOriginalUnit = originalUnit;
+        }
         return {
           ...it,
           unit_price: useUnit,
@@ -510,11 +513,19 @@ class POSOrder {
       let isVatExempt = false;
 
       if (isDiscount) {
+        // One-meal-only discount: apply to the highest-priced single unit only; rest remain regular price.
         isVatExempt = true;
-        const netOfVat = gross / (1 + VAT_RATE);
-        vatExemptSales = Number(netOfVat.toFixed(2));
-        discountAmount = Number((0.2 * netOfVat).toFixed(2));
-        netAmount = Number((netOfVat - discountAmount).toFixed(2));
+        const eligibleUnit = highestOriginalUnit || 0;
+        const eligibleBase =
+          eligibleUnit > 0 ? eligibleUnit / (1 + VAT_RATE) : 0; // net-of-VAT for one unit
+        vatExemptSales = Number(eligibleBase.toFixed(2));
+        discountAmount = Number((eligibleBase * 0.2).toFixed(2));
+        const adjustedEligible = Number(
+          (vatExemptSales - discountAmount).toFixed(2)
+        );
+        netAmount = Number(
+          (gross - eligibleUnit + adjustedEligible).toFixed(2)
+        );
         outputVat = 0;
       } else {
         // Non-discounted: keep existing totals from client to preserve current behavior
@@ -524,6 +535,20 @@ class POSOrder {
         outputVat = Number((orderData.tax_amount || 0).toFixed(2));
       }
 
+      // Compute final payable total and change
+      // Keep client subtotal (typically gross) for intuitive display even with discounts
+      const finalSubtotal = Number((orderData.subtotal || gross).toFixed(2));
+      const finalTax = isDiscount
+        ? 0
+        : Number((orderData.tax_amount || 0).toFixed(2));
+      const finalTotal = isDiscount
+        ? netAmount
+        : Number((orderData.total_amount || gross).toFixed(2));
+      const amountPaid = Number((orderData.amount_paid || 0).toFixed(2));
+      const changeAmount = Number(
+        Math.max(0, amountPaid - finalTotal).toFixed(2)
+      );
+
       // Create the order
       const [order] = await trx("pos_sales_orders")
         .insert({
@@ -532,11 +557,11 @@ class POSOrder {
           cashier_id: orderData.cashier_id,
           manager_id: orderData.manager_id || null,
           order_type: orderData.order_type || "Dine In",
-          subtotal: isDiscount ? vatExemptSales : orderData.subtotal,
-          tax_amount: isDiscount ? 0 : orderData.tax_amount || 0,
-          total_amount: isDiscount ? netAmount : orderData.total_amount,
-          amount_paid: orderData.amount_paid,
-          change_amount: orderData.change_amount,
+          subtotal: finalSubtotal,
+          tax_amount: finalTax,
+          total_amount: finalTotal,
+          amount_paid: amountPaid,
+          change_amount: changeAmount,
           status: "pending",
           notes: orderData.notes || null,
           // SC/PWD fields
@@ -552,7 +577,7 @@ class POSOrder {
           gross_amount: gross,
           vat_exempt_sales: vatExemptSales,
           discount_amount: discountAmount,
-          net_amount: isDiscount ? netAmount : orderData.total_amount,
+          net_amount: isDiscount ? netAmount : finalTotal,
           output_vat: outputVat,
         })
         .returning("*");

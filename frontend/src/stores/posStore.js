@@ -107,16 +107,59 @@ export const usePOSStore = defineStore('pos', () => {
     }, 0);
   });
 
+  // SC/PWD VAT-exempt + 20% discount handling (frontend preview)
+  const isScPwd = computed(
+    () => discountType.value === 'SC' || discountType.value === 'PWD'
+  );
+
   const orderTax = computed(() => {
-    return 0; // VAT not included in POS total
+    return 0; // VAT not included directly; SC/PWD handled via net-of-VAT discount logic
+  });
+
+  const scVatExemptSales = computed(() => {
+    if (!isScPwd.value) return 0;
+    const VAT_RATE = 0.12;
+    // One-meal-only: find highest unit price (ignoring promos)
+    let highestUnit = 0;
+    for (const it of currentOrder.value.items) {
+      const originalUnit = parseFloat(it.price || 0);
+      if (it.quantity > 0 && originalUnit > highestUnit)
+        highestUnit = originalUnit;
+    }
+    const eligibleBase = highestUnit > 0 ? highestUnit / (1 + VAT_RATE) : 0;
+    return Number(eligibleBase.toFixed(2));
+  });
+
+  const scDiscountAmount = computed(() => {
+    if (!isScPwd.value) return 0;
+    return Number((scVatExemptSales.value * 0.2).toFixed(2));
   });
 
   const orderTotal = computed(() => {
-    return orderSubtotal.value + orderTax.value;
+    if (isScPwd.value) {
+      // One-meal-only: adjust only the highest-priced single unit
+      let highestUnit = 0;
+      for (const it of currentOrder.value.items) {
+        const originalUnit = parseFloat(it.price || 0);
+        if (it.quantity > 0 && originalUnit > highestUnit)
+          highestUnit = originalUnit;
+      }
+      const adjustedEligible = Number(
+        (scVatExemptSales.value - scDiscountAmount.value).toFixed(2)
+      );
+      const gross = orderSubtotal.value; // subtotal is VAT-inclusive sum in UI
+      const final = Math.max(0, gross - highestUnit + adjustedEligible);
+      return Number(final.toFixed(2));
+    }
+    return Number((orderSubtotal.value + orderTax.value).toFixed(2));
   });
 
   const orderChange = computed(() => {
-    return Math.max(0, currentOrder.value.amountPaid - orderTotal.value);
+    const change = Math.max(
+      0,
+      parseFloat(currentOrder.value.amountPaid || 0) - orderTotal.value
+    );
+    return Number(change.toFixed(2));
   });
 
   const isOrderValid = computed(() => {

@@ -307,29 +307,15 @@
             </div>
           </div>
 
-          <!-- Contact Info -->
-          <div class="bg-blue-50 rounded-xl p-4 mb-6">
-            <p class="text-sm text-blue-800">
-              <font-awesome-icon icon="fa-solid fa-envelope" class="mr-2" />
-              Questions? Contact us at
-              <strong>hr@countryside-steakhouse.com</strong>
-            </p>
-          </div>
+
 
           <!-- Action Buttons -->
           <div class="flex gap-3">
             <button
               @click="closeSuccessModal"
-              class="flex-1 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 flex items-center justify-center gap-2 hover-lift"
+              class="btn btn-sm bg-green-600 text-white hover:bg-green-700 border-none shadow-none"
             >
-              <font-awesome-icon icon="fa-solid fa-check" class="w-4 h-4" />
               Got It!
-            </button>
-            <button
-              @click="closeSuccessModal"
-              class="px-6 py-3 text-gray-600 border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors font-medium"
-            >
-              Close
             </button>
           </div>
         </div>

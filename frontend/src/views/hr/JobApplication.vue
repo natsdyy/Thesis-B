@@ -1081,6 +1081,19 @@
                     />
                     {{ isLoadingPositions ? 'Loading...' : 'Refresh' }}
                   </button>
+                  <!-- Show Closed toggle -->
+                  <button
+                    @click="showClosedPositions = !showClosedPositions"
+                    class="btn btn-sm w-full sm:w-auto"
+                    :class="showClosedPositions ? 'btn-warning' : 'btn-outline'"
+                    title="Toggle to include closed positions so you can reopen them"
+                  >
+                    {{
+                      showClosedPositions
+                        ? 'Showing Open + Closed'
+                        : 'Show Closed'
+                    }}
+                  </button>
                 </div>
               </div>
             </div>
@@ -3643,6 +3656,7 @@
 
       // Active department for filtering
       const activeDepartment = ref('All');
+      const showClosedPositions = ref(false);
 
       // View mode - grid (default) or card
       const viewMode = ref('grid'); // 'grid' or 'card'
@@ -3968,12 +3982,17 @@
         ];
       });
 
-      // Filter positions by department (only show active/open positions for Job Listing)
+      // Filter positions by department (optionally include closed positions for reopening)
       const filteredPositions = computed(() => {
-        // In Job Listing tab, only show active/open positions
-        let filtered = positions.value.filter(
-          (p) => p.is_active === true && !p.deleted_at
-        );
+        // Default: only show active/open positions. When toggled, include closed/inactive too
+        let filtered = positions.value.filter((p) => {
+          const notDeleted = !p.deleted_at;
+          if (!notDeleted) return false;
+          if (showClosedPositions.value) {
+            return true; // include all non-deleted positions when toggle is on
+          }
+          return p.is_active === true;
+        });
 
         // Apply department filter from tabs
         if (activeDepartment.value !== 'All') {
@@ -7097,6 +7116,7 @@
         departments,
         filteredPositions,
         filteredPositionsByDepartment,
+        showClosedPositions,
         setActiveDepartment,
         viewMode,
         // Grid view

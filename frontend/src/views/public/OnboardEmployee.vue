@@ -169,6 +169,16 @@
       employeeForm.value.employee_type = data.data.employee_type || 'Full-time';
       employeeForm.value.branch_id = data.data.branch_id;
       employeeForm.value.email = data.data.email;
+      // Pre-fill data from job application
+      if (data.data.birthday) {
+        employeeForm.value.birthday = data.data.birthday;
+      }
+      if (data.data.phone_number) {
+        employeeForm.value.phone_number = data.data.phone_number;
+      }
+      if (data.data.address) {
+        employeeForm.value.address = data.data.address;
+      }
 
       // If this is a resubmission, pre-fill all existing employee data
       if (data.isResubmission) {
@@ -1384,7 +1394,6 @@
                       @change="onValidIdSelected"
                     />
                     <button
-                    
                       v-if="validIdFile"
                       type="button"
                       @click="
@@ -1788,35 +1797,32 @@
                 </div>
               </div>
 
-              <!-- Emergency Contact Address and Email -->
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <!-- Emergency Contact Address -->
-                <div class="form-control">
-                  <label class="label">
-                    <span class="label-text"
-                      >Emergency Contact Address
-                      <span class="text-red-500">*</span></span
-                    >
-                  </label>
-                  <textarea
-                    v-model="employeeForm.emergency_contact_address"
-                    placeholder="Enter emergency contact address"
-                    class="textarea textarea-bordered h-24"
-                  ></textarea>
-                </div>
+              <!-- Emergency Contact Address -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text"
+                    >Emergency Contact Address
+                    <span class="text-red-500">*</span></span
+                  >
+                </label>
+                <textarea
+                  v-model="employeeForm.emergency_contact_address"
+                  placeholder="Enter emergency contact address"
+                  class="textarea textarea-bordered h-24"
+                ></textarea>
+              </div>
 
-                <!-- Emergency Contact Email -->
-                <div class="form-control">
-                  <label class="label">
-                    <span class="label-text">Emergency Contact Email</span>
-                  </label>
-                  <input
-                    v-model="employeeForm.emergency_contact_email"
-                    type="email"
-                    placeholder="Enter emergency contact email (optional)"
-                    class="input input-bordered w-full"
-                  />
-                </div>
+              <!-- Emergency Contact Email -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Emergency Contact Email</span>
+                </label>
+                <input
+                  v-model="employeeForm.emergency_contact_email"
+                  type="email"
+                  placeholder="Enter emergency contact email (optional)"
+                  class="input input-bordered w-full"
+                />
               </div>
             </div>
 
@@ -1836,7 +1842,7 @@
                 <button
                   v-if="currentStep > 0"
                   @click="prevStep"
-                  class="btn btn-sm  !font-thin text-gray-700 hover:bg-gray-50"
+                  class="btn btn-sm !font-thin text-gray-700 hover:bg-gray-50"
                 >
                   <ChevronLeft class="w-4 h-4 mr-1" />
                   Previous

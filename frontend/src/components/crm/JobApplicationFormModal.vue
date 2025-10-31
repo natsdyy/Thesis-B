@@ -280,7 +280,7 @@
                     accept=".pdf,.doc,.docx"
                     @change="handleResumeChange"
                     required
-                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-600 file:text-white hover:file:bg-green-700 file:cursor-pointer"
+                    class="w-full px-4 py-3 border border-gray-300  focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-600 file:text-white hover:file:bg-green-700 file:cursor-pointer"
                   />
                 </div>
                 <p v-if="resumeFile" class="mt-2 text-sm text-gray-600">
@@ -359,7 +359,7 @@
             <button
               type="button"
               @click="closeModal"
-              class="px-6 py-3 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium cursor-pointer"
+              class="btn btn-sm !cursor-pointer"
             >
               Cancel
             </button>
@@ -367,7 +367,7 @@
               type="button"
               @click="showConfirmation"
               :disabled="!isFormValid"
-              class="px-8 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center gap-2 cursor-pointer"
+              class="btn btn-sm !bg-green-600 text-white font-thin !cursor-pointer"
             >
               <font-awesome-icon icon="fa-solid fa-paper-plane" class="mr-2" />
               Submit Application
@@ -505,14 +505,14 @@
         <div class="flex gap-3 justify-center">
           <button
             @click="closeConfirmationModal"
-            class="px-6 py-3 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium cursor-pointer"
+            class="btn btn-sm cursor-pointer"
           >
             Cancel
           </button>
           <button
             @click="confirmSubmission"
             :disabled="isSubmitting"
-            class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center gap-2 cursor-pointer"
+            class="btn btn-sm !bg-green-600 text-white font-thin cursor-pointer"
           >
             <span
               v-if="isSubmitting"

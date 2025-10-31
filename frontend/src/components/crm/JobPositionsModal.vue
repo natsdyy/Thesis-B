@@ -308,29 +308,14 @@
             </div>
           </div>
 
-          <!-- Contact Info -->
-          <div class="bg-blue-50 rounded-lg sm:rounded-xl p-3 sm:p-4 mb-4 sm:mb-6">
-            <p class="text-xs sm:text-sm text-blue-800">
-              <font-awesome-icon icon="fa-solid fa-envelope" class="mr-2" />
-              Questions? Contact us at
-              <strong class="break-all">hr@countryside-steakhouse.com</strong>
-            </p>
-          </div>
 
           <!-- Action Buttons -->
           <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
             <button
               @click="closeSuccessModal"
-              class="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg sm:rounded-xl font-medium transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 flex items-center justify-center gap-2 hover-lift text-sm sm:text-base"
+              class="btn btn-sm bg-green-600 text-white hover:bg-green-700 border-none shadow-none"
             >
-              <font-awesome-icon icon="fa-solid fa-check" class="w-3 h-3 sm:w-4 sm:h-4" />
               Got It!
-            </button>
-            <button
-              @click="closeSuccessModal"
-              class="px-4 sm:px-6 py-2.5 sm:py-3 text-gray-600 border border-gray-300 rounded-lg sm:rounded-xl hover:bg-gray-50 transition-colors font-medium text-sm sm:text-base"
-            >
-              Close
             </button>
           </div>
         </div>
@@ -356,12 +341,40 @@
   const emit = defineEmits(['close']);
 
   // State
-  const positions = ref([]); // Positions from branch_positions table
+  const branchPositions = ref([]); // All positions from API (includes branch_positions and user_roles)
   const isLoading = ref(false);
   const activeDepartment = ref('All');
   const isApplicationFormOpen = ref(false);
   const selectedPosition = ref(null);
   const showSuccessModal = ref(false);
+
+  // Computed - use only branch positions from API (which already includes department roles)
+  const positions = computed(() => {
+    // Branch positions from /api/branch-positions already include both branch_positions and user_roles
+    // No need to merge with store - the API does it for us
+    return branchPositions.value.filter((p) => {
+      // Get status values (prefer job_status, fallback to status)
+      const jobStatus = p.job_status || p.status;
+      const status = p.status || p.job_status || 'open';
+
+      // Position must be open (not closed, filled, or on-hold)
+      // If either status or job_status indicates closed/filled/on-hold, exclude it
+      const closedStatuses = ['closed', 'filled', 'on-hold'];
+      const isClosed =
+        closedStatuses.includes(jobStatus) || closedStatuses.includes(status);
+
+      // Position must be explicitly open
+      const isOpen = (jobStatus === 'open' || status === 'open') && !isClosed;
+
+      // Must be active (strict check - only true or 1)
+      const isActive = p.is_active === true || p.is_active === 1;
+
+      // Must not be deleted
+      const notDeleted = !p.deleted_at;
+
+      return isOpen && isActive && notDeleted;
+    });
+  });
 
   const departments = computed(() => {
     // Default departments we always want to show as tabs
@@ -518,6 +531,11 @@ ${position.requirements || 'No specific requirements listed'}
       const result = await response.json();
 
       if (result.success && result.data) {
+        console.log(
+          `📦 Raw API returned ${result.data.length} positions:`,
+          result.data
+        );
+
         // Filter to only open positions - be strict about excluding closed positions
         // The backend should already filter by job_status=open, but we double-check on frontend
         positions.value = result.data.filter((p) => {
@@ -545,12 +563,24 @@ ${position.requirements || 'No specific requirements listed'}
           return isOpen && isActive && notDeleted;
         });
 
-        console.log(`Loaded ${positions.value.length} positions from branch_positions table`);
+        console.log(
+          `✅ After filtering: ${branchPositions.value.length} positions`
+        );
+        console.log(
+          `🚫 Filtered out: ${result.data.length - branchPositions.value.length} positions`
+        );
+
+        // Log main branch positions for debugging
+        const mainBranchPositions = branchPositions.value.filter(
+          (p) =>
+            p.branch_id === null || p.branch_id === undefined || !p.branch_id
+        );
+
+        console.log(`🏢 Main branch positions: ${mainBranchPositions.length}`);
       } else {
         console.warn('Branch positions API returned no data');
         positions.value = [];
       }
-
     } catch (error) {
       console.error('Error loading positions:', error);
       positions.value = [];

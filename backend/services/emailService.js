@@ -799,7 +799,7 @@ class EmailService {
               </div>
               
               <div style="text-align: center; color: #666; font-size: 12px; margin-top: 20px;">
-                <p>© 2024 Countryside Steak House. All rights reserved.</p>
+                <p>© 2025 Countryside Steak House. All rights reserved.</p>
                 <p>This is an automated message, please do not reply to this email.</p>
               </div>
             </div>
@@ -919,7 +919,7 @@ class EmailService {
               </div>
               
               <div style="text-align: center; color: #666; font-size: 12px; margin-top: 20px;">
-                <p>© 2024 Countryside Steak House. All rights reserved.</p>
+                <p>© 2025 Countryside Steak House. All rights reserved.</p>
               </div>
             </div>
           `,

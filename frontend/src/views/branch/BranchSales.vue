@@ -774,7 +774,7 @@
             <div class="item">
               <div class="item-name">${item.menu_item_name || item.item_name}</div>
               <div class="item-qty">${item.quantity}x</div>
-              <div class="item-price">₱${(parseFloat(item.price) || 0).toFixed(2)}</div>
+              <div class="item-price">₱${(parseFloat(item.unit_price ?? item.price) || 0).toFixed(2)}</div>
             </div>
            `
                   )
@@ -994,7 +994,7 @@
             <div class="item">
               <div class="item-name">${item.menu_item_name || item.item_name}</div>
               <div class="item-qty">${item.quantity}x</div>
-              <div class="item-price">₱${(parseFloat(item.price) || 0).toFixed(2)}</div>
+            <div class="item-price">₱${(parseFloat(item.unit_price ?? item.price) || 0).toFixed(2)}</div>
             </div>
            `
                   )
@@ -2462,7 +2462,9 @@
                   <span class="text-gray-500 ml-2">x{{ item.quantity }}</span>
                 </div>
                 <div class="text-right">
-                  ₱{{ (parseFloat(item.price) || 0).toFixed(2) }}
+                  ₱{{
+                    (parseFloat(item.unit_price ?? item.price) || 0).toFixed(2)
+                  }}
                 </div>
               </div>
             </div>

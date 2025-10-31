@@ -1753,6 +1753,532 @@ class EmailService {
     console.error("❌ All attempts failed for notification email");
     return { success: false, error: lastError.message };
   }
+
+  /**
+   * Send interview scheduled email with styled template
+   * @param {string} to - Recipient email address
+   * @param {Object} interviewData - Interview details
+   * @param {string} interviewData.applicantName - Applicant's name
+   * @param {string} interviewData.positionTitle - Position title
+   * @param {Date|string} interviewData.interviewDate - Interview date
+   * @param {string} interviewData.interviewTime - Interview time
+   * @param {string} interviewData.interviewType - Interview type (in-person, video, phone)
+   * @param {string} interviewData.location - Interview location (for in-person)
+   * @param {string} interviewData.meetingLink - Meeting link (for video)
+   * @param {string} interviewData.notes - Additional notes
+   */
+  static async sendInterviewScheduledEmail(to, interviewData) {
+    try {
+      const frontendUrl =
+        process.env.FRONTEND_URL ||
+        (process.env.NODE_ENV === "production"
+          ? "https://www.countryside-steakhouse.site"
+          : "http://localhost:8080");
+
+      const dateStr = new Date(interviewData.interviewDate).toLocaleDateString(
+        "en-PH",
+        { year: "numeric", month: "long", day: "numeric", weekday: "long" }
+      );
+      const timeStr = interviewData.interviewTime || "TBD";
+      const typeStr = interviewData.interviewType
+        ? interviewData.interviewType.replace(/-/g, " ")
+        : "In-Person";
+      const locationStr =
+        interviewData.location || interviewData.meetingLink || "To be provided";
+
+      const emailData = {
+        to: to,
+        subject: `Interview Scheduled - ${interviewData.positionTitle || "Your Application"}`,
+        html: `
+          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
+            <!-- Main Email Container -->
+            <div style="background-color: white; border-radius: 12px; padding: 0; box-shadow: 0 4px 20px rgba(0,0,0,0.1); overflow: hidden;">
+              
+              <!-- Header with Gradient -->
+              <div style="background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); padding: 30px; text-align: center; color: white;">
+                <h1 style="margin: 0; font-size: 28px; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                  Countryside Steak House
+                </h1>
+                <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.95;">
+                  Ang Paborito ng Bayan
+                </p>
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.3);">
+                  <h2 style="margin: 0; font-size: 22px; font-weight: 600;">
+                    Interview Scheduled
+                  </h2>
+                </div>
+              </div>
+              
+              <!-- Main Content -->
+              <div style="padding: 30px;">
+                <p style="color: #2c3e50; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+                  Hello <strong>${interviewData.applicantName || "Applicant"}</strong>,
+                </p>
+                
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
+                  Thank you for your interest in joining Countryside Steak House! We are pleased to inform you that 
+                  an interview has been scheduled for your application for the <strong>${interviewData.positionTitle || "position"}</strong> role.
+                </p>
+                
+                <!-- Interview Details Box -->
+                <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 2px solid #16a34a; border-radius: 10px; padding: 25px; margin: 25px 0;">
+                  <h3 style="color: #16a34a; margin: 0 0 20px 0; font-size: 20px; font-weight: bold; display: flex; align-items: center;">
+                    <span style="background: #16a34a; color: white; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-right: 12px; font-size: 18px;">📅</span>
+                    Interview Details
+                  </h3>
+                  
+                  <div style="background: white; border-radius: 8px; padding: 20px; margin-bottom: 15px;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                      <tr>
+                        <td style="padding: 10px 0; color: #374151; font-weight: 600; width: 140px;">Date:</td>
+                        <td style="padding: 10px 0; color: #2c3e50; font-size: 16px;"><strong>${dateStr}</strong></td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 10px 0; color: #374151; font-weight: 600;">Time:</td>
+                        <td style="padding: 10px 0; color: #2c3e50; font-size: 16px;"><strong>${timeStr}</strong></td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 10px 0; color: #374151; font-weight: 600;">Type:</td>
+                        <td style="padding: 10px 0; color: #2c3e50; font-size: 16px;"><strong>${typeStr}</strong></td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 10px 0; color: #374151; font-weight: 600;">
+                          ${interviewData.interviewType === "video" ? "Meeting Link:" : "Location:"}
+                        </td>
+                        <td style="padding: 10px 0; color: #2c3e50; font-size: 16px;">
+                          <strong>
+                            ${interviewData.interviewType === "video" && interviewData.meetingLink 
+                              ? `<a href="${interviewData.meetingLink}" style="color: #16a34a; text-decoration: none; word-break: break-all;">${interviewData.meetingLink}</a>` 
+                              : locationStr}
+                          </strong>
+                        </td>
+                      </tr>
+                    </table>
+                  </div>
+                </div>
+                
+                ${interviewData.notes ? `
+                <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; border-radius: 6px; margin: 20px 0;">
+                  <h4 style="color: #856404; margin: 0 0 8px 0; font-size: 14px; font-weight: bold;">Additional Notes:</h4>
+                  <p style="color: #856404; margin: 0; font-size: 14px; line-height: 1.5;">${interviewData.notes}</p>
+                </div>
+                ` : ""}
+                
+                <!-- Important Instructions -->
+                <div style="background: #e8f4f8; border-left: 4px solid #3498db; padding: 15px; border-radius: 6px; margin: 20px 0;">
+                  <p style="color: #155724; margin: 0; font-size: 14px; line-height: 1.5;">
+                    <strong>📌 Important:</strong> Please arrive 10 minutes before the scheduled time. 
+                    ${interviewData.interviewType === "video" 
+                      ? "Ensure you have a stable internet connection and test your camera/microphone beforehand." 
+                      : "Bring a copy of your resume and any required documents."}
+                  </p>
+                </div>
+                
+                <p style="color: #555; font-size: 15px; line-height: 1.6; margin: 25px 0 0 0;">
+                  We look forward to meeting you and discussing this opportunity with you!
+                </p>
+                
+                <p style="color: #555; font-size: 15px; line-height: 1.6; margin: 15px 0 0 0;">
+                  Best regards,<br>
+                  <strong style="color: #16a34a;">Countryside Steak House HR Team</strong>
+                </p>
+              </div>
+              
+              <!-- Footer -->
+              <div style="background: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e5e7eb;">
+                <p style="color: #666; font-size: 12px; margin: 0;">
+                  © 2025 Countryside Steak House. All rights reserved.
+                </p>
+                <p style="color: #999; font-size: 11px; margin: 5px 0 0 0;">
+                  This is an automated message. Please do not reply to this email.
+                </p>
+              </div>
+            </div>
+          </div>
+        `,
+        text: `
+          Interview Scheduled - Countryside Steak House
+          
+          Hello ${interviewData.applicantName || "Applicant"},
+          
+          Thank you for your interest in joining Countryside Steak House! We are pleased to inform you that 
+          an interview has been scheduled for your application for the ${interviewData.positionTitle || "position"} role.
+          
+          Interview Details:
+          - Date: ${dateStr}
+          - Time: ${timeStr}
+          - Type: ${typeStr}
+          - ${interviewData.interviewType === "video" ? "Meeting Link" : "Location"}: ${locationStr}
+          
+          ${interviewData.notes ? `Additional Notes: ${interviewData.notes}\n` : ""}
+          
+          Important: Please arrive 10 minutes before the scheduled time.
+          
+          We look forward to meeting you!
+          
+          Best regards,
+          Countryside Steak House HR Team
+          
+          © 2025 Countryside Steak House. All rights reserved.
+        `,
+      };
+
+      const result = await this.sendEmailWithFallback(emailData);
+      return result;
+    } catch (error) {
+      console.error("❌ Error sending interview scheduled email:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Send hire onboarding email with styled template and onboarding link
+   * @param {string} to - Recipient email address
+   * @param {Object} hireData - Hire details
+   * @param {string} hireData.applicantName - Applicant's name
+   * @param {string} hireData.positionTitle - Position title
+   * @param {string} hireData.department - Department
+   * @param {string} hireData.onboardingLink - Onboarding link with token
+   */
+  static async sendHireOnboardingEmail(to, hireData) {
+    try {
+      const frontendUrl =
+        process.env.FRONTEND_URL ||
+        (process.env.NODE_ENV === "production"
+          ? "https://www.countryside-steakhouse.site"
+          : "http://localhost:8080");
+
+      const emailData = {
+        to: to,
+        subject: `Congratulations! You're Hired - Countryside Steak House`,
+        html: `
+          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
+            <!-- Main Email Container -->
+            <div style="background-color: white; border-radius: 12px; padding: 0; box-shadow: 0 4px 20px rgba(0,0,0,0.1); overflow: hidden;">
+              
+              <!-- Header with Celebration -->
+              <div style="background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); padding: 40px 30px; text-align: center; color: white; position: relative;">
+                <div style="font-size: 48px; margin-bottom: 15px;">🎉</div>
+                <h1 style="margin: 0; font-size: 28px; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                  Countryside Steak House
+                </h1>
+                <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.95;">
+                  Ang Paborito ng Bayan
+                </p>
+                <div style="margin-top: 25px; padding-top: 25px; border-top: 1px solid rgba(255,255,255,0.3);">
+                  <h2 style="margin: 0; font-size: 24px; font-weight: 700;">
+                    Congratulations! You're Hired!
+                  </h2>
+                </div>
+              </div>
+              
+              <!-- Main Content -->
+              <div style="padding: 30px;">
+                <p style="color: #2c3e50; font-size: 18px; line-height: 1.6; margin: 0 0 20px 0;">
+                  Hello <strong>${hireData.applicantName || "Applicant"}</strong>,
+                </p>
+                
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
+                  We are thrilled to inform you that you have been selected for the position of 
+                  <strong style="color: #16a34a;"> ${hireData.positionTitle || "position"}</strong> 
+                  in the <strong>${hireData.department || "department"}</strong> department!
+                </p>
+                
+                <!-- Position Details Box -->
+                <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 2px solid #16a34a; border-radius: 10px; padding: 25px; margin: 25px 0;">
+                  <h3 style="color: #16a34a; margin: 0 0 20px 0; font-size: 20px; font-weight: bold; display: flex; align-items: center;">
+                    <span style="background: #16a34a; color: white; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-right: 12px; font-size: 18px;">💼</span>
+                    Position Details
+                  </h3>
+                  
+                  <div style="background: white; border-radius: 8px; padding: 20px;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                      <tr>
+                        <td style="padding: 10px 0; color: #374151; font-weight: 600; width: 140px;">Position:</td>
+                        <td style="padding: 10px 0; color: #2c3e50; font-size: 16px;"><strong>${hireData.positionTitle || "N/A"}</strong></td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 10px 0; color: #374151; font-weight: 600;">Department:</td>
+                        <td style="padding: 10px 0; color: #2c3e50; font-size: 16px;"><strong>${hireData.department || "N/A"}</strong></td>
+                      </tr>
+                    </table>
+                  </div>
+                </div>
+                
+                <!-- Onboarding CTA -->
+                <div style="background: white; border: 2px solid #16a34a; border-radius: 10px; padding: 30px; margin: 25px 0; text-align: center;">
+                  <h3 style="color: #2c3e50; margin: 0 0 15px 0; font-size: 20px; font-weight: bold;">
+                    Complete Your Onboarding
+                  </h3>
+                  <p style="color: #555; font-size: 15px; line-height: 1.6; margin: 0 0 25px 0;">
+                    To get started, please complete your employee information by clicking the button below:
+                  </p>
+                  
+                  <a href="${hireData.onboardingLink}" 
+                     style="background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: white; padding: 16px 40px; 
+                            text-decoration: none; border-radius: 8px; font-weight: bold; 
+                            display: inline-block; font-size: 16px; box-shadow: 0 4px 12px rgba(22,163,74,0.3);
+                            transition: transform 0.2s, box-shadow 0.2s;">
+                    Start Onboarding →
+                  </a>
+                  
+                  <p style="color: #666; font-size: 13px; margin: 20px 0 0 0; line-height: 1.5;">
+                    Or copy and paste this link into your browser:<br>
+                    <a href="${hireData.onboardingLink}" style="color: #16a34a; word-break: break-all; text-decoration: underline;">${hireData.onboardingLink}</a>
+                  </p>
+                </div>
+                
+                <!-- Required Documents Section -->
+                <div style="background: #fff3cd; border: 2px solid #ffc107; border-radius: 10px; padding: 25px; margin: 25px 0;">
+                  <h3 style="color: #856404; margin: 0 0 15px 0; font-size: 18px; font-weight: bold; display: flex; align-items: center;">
+                    <span style="background: #ffc107; color: white; width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-right: 10px; font-size: 16px;">📋</span>
+                    Required Documents for Onboarding
+                  </h3>
+                  <p style="color: #856404; font-size: 14px; line-height: 1.6; margin: 0 0 15px 0;">
+                    Please prepare and attach the following documents when completing your onboarding form:
+                  </p>
+                  <div style="background: white; border-radius: 8px; padding: 15px; margin-top: 10px;">
+                    <ul style="margin: 0; padding-left: 20px; color: #856404; font-size: 14px; line-height: 2;">
+                      <li style="margin-bottom: 8px;"><strong>Valid ID</strong> - Any government-issued ID (e.g., Driver's License, Passport, Postal ID, PhilSys ID)</li>
+                      <li style="margin-bottom: 8px;"><strong>Medical Certificate or Pre-employment Medical Exam</strong> - Must be issued within the last 6 months</li>
+                      <li style="margin-bottom: 8px;"><strong>Barangay Clearance, Police Clearance or NBI Clearance</strong> - Any one of these clearances is acceptable</li>
+                      <li style="margin-bottom: 8px;"><strong>SSS Number</strong> - Social Security System number (will be provided in the form)</li>
+                      <li style="margin-bottom: 8px;"><strong>PAG-IBIG Number</strong> - Home Development Mutual Fund number (will be provided in the form)</li>
+                      <li><strong>PhilHealth Number</strong> - Philippine Health Insurance Corporation number (will be provided in the form)</li>
+                    </ul>
+                  </div>
+                  <div style="background: #f8f9fa; border-left: 4px solid #ffc107; padding: 12px; border-radius: 4px; margin-top: 15px;">
+                    <p style="color: #856404; margin: 0; font-size: 13px; line-height: 1.5;">
+                      <strong>Important:</strong> All documents must be clear, readable, and in PDF or image format (JPG, PNG). 
+                      Maximum file size per document is 5MB. Ensure all information matches your employment records.
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Welcome Message -->
+                <div style="background: #e8f4f8; border-left: 4px solid #3498db; padding: 20px; border-radius: 6px; margin: 25px 0;">
+                  <h4 style="color: #155724; margin: 0 0 10px 0; font-size: 16px; font-weight: bold;">Welcome to the Team! 🎊</h4>
+                  <p style="color: #155724; margin: 0; font-size: 14px; line-height: 1.6;">
+                    We are excited to have you join the Countryside Steak House family! Your skills and experience will be a 
+                    valuable addition to our team. We look forward to working with you and contributing to our shared success.
+                  </p>
+                </div>
+                
+                <p style="color: #555; font-size: 15px; line-height: 1.6; margin: 25px 0 0 0;">
+                  If you have any questions, please don't hesitate to reach out to our HR department.
+                </p>
+                
+                <p style="color: #555; font-size: 15px; line-height: 1.6; margin: 15px 0 0 0;">
+                  Welcome aboard!<br>
+                  <strong style="color: #16a34a;">Countryside Steak House HR Team</strong>
+                </p>
+              </div>
+              
+              <!-- Footer -->
+              <div style="background: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e5e7eb;">
+                <p style="color: #666; font-size: 12px; margin: 0;">
+                  © 2025 Countryside Steak House. All rights reserved.
+                </p>
+                <p style="color: #999; font-size: 11px; margin: 5px 0 0 0;">
+                  This is an automated message. Please do not reply to this email.
+                </p>
+              </div>
+            </div>
+          </div>
+        `,
+        text: `
+          Congratulations! You're Hired - Countryside Steak House
+          
+          Hello ${hireData.applicantName || "Applicant"},
+          
+          We are thrilled to inform you that you have been selected for the position of 
+          ${hireData.positionTitle || "position"} in the ${hireData.department || "department"} department!
+          
+          Position Details:
+          - Position: ${hireData.positionTitle || "N/A"}
+          - Department: ${hireData.department || "N/A"}
+          
+          To get started, please complete your employee information by visiting:
+          ${hireData.onboardingLink}
+          
+          Required Documents for Onboarding:
+          Please prepare and attach the following documents when completing your onboarding form:
+          - Valid ID - Any government-issued ID (e.g., Driver's License, Passport, Postal ID, PhilSys ID)
+          - Medical Certificate or Pre-employment Medical Exam - Must be issued within the last 6 months
+          - Barangay Clearance, Police Clearance or NBI Clearance - Any one of these clearances is acceptable
+          - SSS Number - Social Security System number (will be provided in the form)
+          - PAG-IBIG Number - Home Development Mutual Fund number (will be provided in the form)
+          - PhilHealth Number - Philippine Health Insurance Corporation number (will be provided in the form)
+          
+          Important: All documents must be clear, readable, and in PDF or image format (JPG, PNG). Maximum file size per document is 5MB. Ensure all information matches your employment records.
+          
+          Welcome to the Team! We are excited to have you join the Countryside Steak House family!
+          
+          If you have any questions, please don't hesitate to reach out to our HR department.
+          
+          Welcome aboard!
+          Countryside Steak House HR Team
+          
+          © 2025 Countryside Steak House. All rights reserved.
+        `,
+      };
+
+      const result = await this.sendEmailWithFallback(emailData);
+      return result;
+    } catch (error) {
+      console.error("❌ Error sending hire onboarding email:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Send resubmission request email with styled template
+   * @param {string} to - Recipient email address
+   * @param {Object} resubmissionData - Resubmission details
+   * @param {string} resubmissionData.applicantName - Applicant's name
+   * @param {string} resubmissionData.positionTitle - Position title
+   * @param {string} resubmissionData.feedback - HR feedback on what needs to be corrected
+   * @param {string} resubmissionData.resubmissionLink - Resubmission link with pre-filled token
+   */
+  static async sendResubmissionRequestEmail(to, resubmissionData) {
+    try {
+      const frontendUrl =
+        process.env.FRONTEND_URL ||
+        (process.env.NODE_ENV === "production"
+          ? "https://www.countryside-steakhouse.site"
+          : "http://localhost:8080");
+
+      const emailData = {
+        from: `Countryside Steak House HR <${EMAIL_CONFIG.user}>`,
+        to: to,
+        subject: `Action Required: Please Resubmit Your Onboarding Form - ${resubmissionData.positionTitle || "Position"}`,
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Resubmission Request</title>
+          </head>
+          <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f5f5;">
+            <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+              <!-- Header with Gradient Background -->
+              <div style="background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); padding: 40px 30px; text-align: center; color: white;">
+                <h1 style="margin: 0; font-size: 28px; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                  Countryside Steak House
+                </h1>
+                <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.95;">
+                  Ang Paborito ng Bayan
+                </p>
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.3);">
+                  <h2 style="margin: 0; font-size: 22px; font-weight: 600;">
+                    Resubmission Required
+                  </h2>
+                </div>
+              </div>
+              
+              <!-- Main Content -->
+              <div style="padding: 30px;">
+                <p style="color: #2c3e50; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+                  Hello <strong>${resubmissionData.applicantName || "Applicant"}</strong>,
+                </p>
+                
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
+                  Thank you for submitting your onboarding form for the <strong>${resubmissionData.positionTitle || "position"}</strong> role. 
+                  After reviewing your submission, we need you to make some corrections before we can proceed with your onboarding.
+                </p>
+                
+                <!-- Feedback Box -->
+                <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 2px solid #16a34a; border-radius: 10px; padding: 25px; margin: 25px 0;">
+                  <h3 style="color: #16a34a; margin: 0 0 15px 0; font-size: 20px; font-weight: bold; display: flex; align-items: center;">
+                    <span style="background: #16a34a; color: white; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-right: 12px; font-size: 18px;">⚠️</span>
+                    Feedback & Corrections Needed
+                  </h3>
+                  
+                  <div style="background: white; border-radius: 8px; padding: 20px; margin-bottom: 15px;">
+                    <p style="color: #15803d; font-size: 15px; line-height: 1.8; margin: 0; white-space: pre-wrap;">${resubmissionData.feedback.replace(/\n/g, '<br>')}</p>
+                  </div>
+                </div>
+
+                <!-- Resubmission Instructions -->
+                <div style="background: #f0fdf4; border-left: 4px solid #16a34a; padding: 15px; border-radius: 6px; margin: 20px 0;">
+                  <p style="color: #15803d; margin: 0; font-size: 14px; line-height: 1.5;">
+                    <strong>📌 Important:</strong> Please use the link below to resubmit your onboarding form. 
+                    Your form will be pre-filled with your previous information, so you can easily correct the issues mentioned above.
+                  </p>
+                </div>
+                
+                <!-- CTA Button -->
+                <div style="text-align: center; margin: 30px 0;">
+                  <a
+                    href="${resubmissionData.resubmissionLink}"
+                    style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: white; padding: 16px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 12px rgba(22,163,74,0.3); transition: transform 0.2s, box-shadow 0.2s;"
+                  >
+                    🔄 Resubmit Onboarding Form
+                  </a>
+                </div>
+                
+                <p style="color: #555; font-size: 15px; line-height: 1.6; margin: 25px 0 0 0;">
+                  Once you've made the corrections, please resubmit your form using the link above. We'll review it again and get back to you shortly.
+                </p>
+                
+                <p style="color: #555; font-size: 15px; line-height: 1.6; margin: 15px 0 0 0;">
+                  If you have any questions or concerns, please feel free to contact our HR department.
+                </p>
+                
+                <p style="color: #555; font-size: 15px; line-height: 1.6; margin: 15px 0 0 0;">
+                  Best regards,<br>
+                  <strong style="color: #16a34a;">Countryside Steak House HR Team</strong>
+                </p>
+              </div>
+              
+              <!-- Footer -->
+              <div style="background: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e5e7eb;">
+                <p style="color: #666; font-size: 12px; margin: 0;">
+                  © 2025 Countryside Steak House. All rights reserved.
+                </p>
+                <p style="color: #999; font-size: 11px; margin: 5px 0 0 0;">
+                  This is an automated message. Please do not reply to this email.
+                </p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `,
+        text: `
+          Resubmission Required - Countryside Steak House
+          
+          Hello ${resubmissionData.applicantName || "Applicant"},
+          
+          Thank you for submitting your onboarding form for the ${resubmissionData.positionTitle || "position"} role. 
+          After reviewing your submission, we need you to make some corrections before we can proceed with your onboarding.
+          
+          Feedback & Corrections Needed:
+          ${resubmissionData.feedback}
+          
+          Important: Please use the link below to resubmit your onboarding form. 
+          Your form will be pre-filled with your previous information, so you can easily correct the issues mentioned above.
+          
+          Resubmit your form here: ${resubmissionData.resubmissionLink}
+          
+          Once you've made the corrections, please resubmit your form using the link above. We'll review it again and get back to you shortly.
+          
+          If you have any questions or concerns, please feel free to contact our HR department.
+          
+          Best regards,
+          Countryside Steak House HR Team
+          
+          © 2025 Countryside Steak House. All rights reserved.
+        `,
+      };
+
+      const result = await this.sendEmailWithFallback(emailData);
+      return result;
+    } catch (error) {
+      console.error("❌ Error sending resubmission request email:", error);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 module.exports = EmailService;

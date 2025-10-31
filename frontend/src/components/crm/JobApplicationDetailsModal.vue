@@ -106,13 +106,22 @@
                     <p class="text-sm text-gray-500">Required document</p>
                   </div>
                 </div>
-                <button
-                  @click="downloadFile(application.resume_path, 'resume')"
-                  class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors text-sm"
-                >
-                  <font-awesome-icon icon="fa-solid fa-download" class="mr-2" />
-                  Download
-                </button>
+                <div class="flex gap-2">
+                  <button
+                    @click="viewFile(application.resume_path, 'resume', 'Resume')"
+                    class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors text-sm"
+                  >
+                    <font-awesome-icon icon="fa-solid fa-eye" class="mr-2" />
+                    View
+                  </button>
+                  <button
+                    @click="downloadFile(application.resume_path, 'resume')"
+                    class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors text-sm"
+                  >
+                    <font-awesome-icon icon="fa-solid fa-download" class="mr-2" />
+                    Download
+                  </button>
+                </div>
               </div>
 
               <!-- Additional Documents -->
@@ -124,13 +133,22 @@
                     <p class="text-sm text-gray-500">Optional documents</p>
                   </div>
                 </div>
-                <button
-                  @click="downloadFile(application.additional_documents_path, 'additional')"
-                  class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors text-sm"
-                >
-                  <font-awesome-icon icon="fa-solid fa-download" class="mr-2" />
-                  Download
-                </button>
+                <div class="flex gap-2">
+                  <button
+                    @click="viewFile(application.additional_documents_path, 'additional', 'Additional Documents')"
+                    class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors text-sm"
+                  >
+                    <font-awesome-icon icon="fa-solid fa-eye" class="mr-2" />
+                    View
+                  </button>
+                  <button
+                    @click="downloadFile(application.additional_documents_path, 'additional')"
+                    class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors text-sm"
+                  >
+                    <font-awesome-icon icon="fa-solid fa-download" class="mr-2" />
+                    Download
+                  </button>
+                </div>
               </div>
 
               <!-- No Documents Message -->
@@ -178,6 +196,123 @@
         </div>
       </div>
     </div>
+
+    <!-- Document Preview Modal -->
+    <div
+      v-if="showDocumentPreview && previewingDocument"
+      class="fixed inset-0 backdrop-blur-md bg-black/50 flex items-center justify-center z-[60]"
+      @click.self="closeDocumentPreview"
+    >
+      <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+        <!-- Header -->
+        <div class="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
+          <div class="flex items-center gap-3">
+            <font-awesome-icon 
+              :icon="isPdfFile(previewingDocument.url) ? 'fa-solid fa-file-pdf' : 'fa-solid fa-file'" 
+              class="w-5 h-5 text-green-600" 
+            />
+            <h3 class="text-lg font-semibold text-gray-900">
+              {{ previewingDocument.type === 'resume' ? 'Resume/CV' : 'Additional Documents' }}
+            </h3>
+            <span class="text-sm text-gray-500">- {{ previewingDocument.name }}</span>
+          </div>
+          <button
+            @click="closeDocumentPreview"
+            class="text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <font-awesome-icon icon="fa-solid fa-times" class="w-5 h-5" />
+          </button>
+        </div>
+
+        <!-- Document Content -->
+        <div class="flex-1 overflow-auto p-6 bg-gray-100 flex items-center justify-center">
+          <!-- Image Preview -->
+          <div v-if="isImageFile(previewingDocument.url)" class="w-full">
+            <img
+              :src="previewDocumentUrl"
+              :alt="previewingDocument.name"
+              class="max-w-full max-h-[70vh] mx-auto rounded-lg shadow-lg"
+              @error="() => console.error('Error loading image')"
+            />
+          </div>
+
+          <!-- PDF Preview -->
+          <div v-else-if="isPdfFile(previewingDocument.url)" class="w-full">
+            <div class="w-full bg-gray-100 rounded-lg overflow-hidden" style="height: 70vh;">
+              <!-- Use iframe for better PDF rendering -->
+              <iframe
+                :src="previewDocumentUrl"
+                class="w-full h-full border-0"
+                frameborder="0"
+                type="application/pdf"
+                style="min-height: 100%;"
+              >
+                <div class="p-8 text-center">
+                  <font-awesome-icon icon="fa-solid fa-file-pdf" class="w-16 h-16 mx-auto text-gray-400 mb-4" />
+                  <p class="text-gray-600 font-medium mb-2">PDF Preview</p>
+                  <p class="text-sm text-gray-500 mb-4">
+                    Your browser doesn't support PDF preview or the file couldn't be loaded.
+                  </p>
+                  <a
+                    :href="previewingDocument.url"
+                    target="_blank"
+                    class="px-4 py-2 bg-green-600 text-white rounded-lg inline-block"
+                  >
+                    Open PDF in New Tab
+                  </a>
+                </div>
+              </iframe>
+            </div>
+          </div>
+
+          <!-- Unsupported File Type -->
+          <div v-else class="text-center">
+            <font-awesome-icon icon="fa-solid fa-file" class="w-24 h-24 text-gray-400 mx-auto mb-4" />
+            <p class="text-gray-700 font-medium mb-2">{{ previewingDocument.name }}</p>
+            <p class="text-gray-600 mb-4">Preview not available for this file type</p>
+            <a
+              :href="previewingDocument.url"
+              :download="previewingDocument.name"
+              class="px-4 py-2 bg-green-600 text-white rounded-lg inline-block"
+            >
+              <font-awesome-icon icon="fa-solid fa-download" class="mr-2" />
+              Download File
+            </a>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="flex justify-between items-center p-4 border-t border-gray-200 bg-gray-50">
+          <div class="text-sm text-gray-600">
+            <span class="font-medium">File:</span> {{ previewingDocument.name }}
+          </div>
+          <div class="flex gap-2">
+            <a
+              :href="previewingDocument.url"
+              target="_blank"
+              class="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              <font-awesome-icon icon="fa-solid fa-external-link" class="mr-1" />
+              Open in New Tab
+            </a>
+            <a
+              :href="previewingDocument.url"
+              :download="previewingDocument.name"
+              class="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              <font-awesome-icon icon="fa-solid fa-download" class="mr-1" />
+              Download
+            </a>
+            <button
+              @click="closeDocumentPreview"
+              class="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -203,6 +338,9 @@ const emit = defineEmits(['close'])
 // State
 const application = ref(null)
 const isLoading = ref(false)
+const showDocumentPreview = ref(false)
+const previewingDocument = ref(null)
+const previewDocumentUrl = ref('')
 
 // Methods
 const closeModal = () => {
@@ -244,9 +382,76 @@ const loadApplicationDetails = async () => {
 const buildFileUrl = (path) => {
   if (!path) return ''
   if (/^https?:\/\//i.test(path)) return path
-  // Build backend origin from API base (remove trailing /api)
-  const backendBase = apiConfig.baseURL.replace(/\/api\/?$/, '')
-  return `${backendBase}${path.startsWith('/') ? path : '/' + path}`
+  
+  // For local dev: serve uploads from backend port directly
+  let backendUrl = 'http://localhost:5000'
+  
+  // Determine backend URL based on current location
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.origin.includes(':8080')) {
+    backendUrl = 'http://localhost:5000'
+  } else if (window.location.origin.includes('countryside-steakhouse.site')) {
+    backendUrl = 'https://www.countryside-steakhouse.site'
+  } else if (import.meta.env.VITE_API_BASE_URL) {
+    backendUrl = import.meta.env.VITE_API_BASE_URL.replace('/api', '')
+  } else {
+    // Fallback: construct from current origin but change port to 5000
+    const protocol = window.location.protocol
+    const hostname = window.location.hostname
+    backendUrl = `${protocol}//${hostname}:5000`
+  }
+  
+  // Ensure path starts with / and is properly formatted
+  // Path should be like /uploads/job-applications/filename.pdf
+  const cleanPath = path.startsWith('/') ? path : `/${path}`
+  
+  // Log for debugging
+  const finalUrl = `${backendUrl}${cleanPath}`
+  console.log('Building file URL:', { path, cleanPath, backendUrl, finalUrl })
+  
+  return finalUrl
+}
+
+const buildViewUrl = (filePath) => {
+  if (!filePath) return ''
+  const url = buildFileUrl(filePath)
+  // Return URL that will display inline (add #view parameter for PDFs)
+  return url + (url.toLowerCase().endsWith('.pdf') ? '#view=FitH' : '')
+}
+
+const viewFile = (filePath, type, fileName) => {
+  if (!filePath) return
+  
+  // Use API endpoint that serves files with proper headers (bypasses auth and download managers)
+  const applicationId = props.applicationId
+  
+  if (!applicationId) {
+    console.error('No application ID available')
+    return
+  }
+  
+  // Build URL using the view endpoint
+  const backendUrl = apiConfig.baseURL.replace('/api', '') || 'http://localhost:5000'
+  const docType = type === 'resume' ? 'resume' : 'additional'
+  const viewUrl = `${backendUrl}/api/job-applications/documents/${applicationId}/view?type=${docType}&t=${Date.now()}`
+  
+  // Also keep the direct URL for download/fallback
+  const directUrl = buildFileUrl(filePath)
+  
+  previewDocumentUrl.value = viewUrl + (viewUrl.toLowerCase().includes('.pdf') ? '#view=FitH' : '')
+  previewingDocument.value = {
+    type: type,
+    name: fileName || (filePath.split('/').pop() || `${type}_document`),
+    url: directUrl
+  }
+  showDocumentPreview.value = true
+  
+  console.log('Viewing file:', { filePath, applicationId, viewUrl, directUrl })
+}
+
+const closeDocumentPreview = () => {
+  showDocumentPreview.value = false
+  previewingDocument.value = null
+  previewDocumentUrl.value = ''
 }
 
 const downloadFile = (filePath, type) => {
@@ -264,6 +469,18 @@ const downloadFile = (filePath, type) => {
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
+}
+
+const isPdfFile = (filePath) => {
+  if (!filePath) return false
+  return filePath.toLowerCase().endsWith('.pdf')
+}
+
+const isImageFile = (filePath) => {
+  if (!filePath) return false
+  const lowerPath = filePath.toLowerCase()
+  return lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg') || 
+         lowerPath.endsWith('.png') || lowerPath.endsWith('.gif')
 }
 
 const formatDate = (dateString) => {

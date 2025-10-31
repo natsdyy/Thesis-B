@@ -85,6 +85,13 @@ const routes = [
     component: ResetPassword,
     meta: { title: 'Reset Password' },
   },
+  // Public onboarding route
+  {
+    path: '/onboard',
+    name: 'OnboardEmployee',
+    component: () => import('../views/public/OnboardEmployee.vue'),
+    meta: { title: 'Employee Onboarding', public: true },
+  },
   // Supplier routes
   {
     path: '/supplier/login',

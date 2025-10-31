@@ -65,6 +65,7 @@ const adminOrgChartRoutes = require("./routes/adminOrgChart");
 const notificationRoutes = require("./routes/notifications");
 const branchPositionRoutes = require("./routes/branchPositions");
 const jobApplicationRoutes = require("./routes/jobApplications");
+const onboardingRoutes = require("./routes/onboarding");
 
 const app = express();
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 5000;
@@ -146,16 +147,43 @@ const corsConfig = {
 
 app.use(cors(corsConfig));
 app.use(express.json());
-// Serve uploads with proper CORS headers for images
+// Serve uploads with proper CORS headers and content-type detection
 app.use(
   "/uploads",
+  // CORS middleware
   (req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Methods", "GET");
+    res.header("Access-Control-Allow-Methods", "GET, OPTIONS");
     res.header("Access-Control-Allow-Headers", "Content-Type");
     next();
   },
-  express.static(require("path").join(__dirname, "uploads"))
+  // Static file serving with inline content-disposition for PDFs and images
+  express.static(require("path").join(__dirname, "uploads"), {
+    setHeaders: (res, filePath) => {
+      const path = require("path");
+      const ext = path.extname(filePath).toLowerCase();
+      const basename = path.basename(filePath);
+      
+      // For PDFs: ensure they display inline in browser (not download)
+      if (ext === '.pdf') {
+        res.setHeader('Content-Type', 'application/pdf');
+        // Critical: inline makes browser display, attachment makes it download
+        res.setHeader('Content-Disposition', `inline; filename="${basename}"`);
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+      } 
+      // For images: display inline
+      else if (['.jpg', '.jpeg'].includes(ext)) {
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Content-Disposition', 'inline');
+      } else if (ext === '.png') {
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Content-Disposition', 'inline');
+      } else if (ext === '.gif') {
+        res.setHeader('Content-Type', 'image/gif');
+        res.setHeader('Content-Disposition', 'inline');
+      }
+    }
+  })
 );
 
 // Proxy for serving any uploaded files with consistent prefix used by finance route
@@ -231,6 +259,7 @@ app.use("/api/admin/org-chart", adminOrgChartRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/branch-positions", branchPositionRoutes);
 app.use("/api/job-applications", jobApplicationRoutes);
+app.use("/api/onboarding", onboardingRoutes);
 
 // Auto-expire job
 async function autoExpireJob() {

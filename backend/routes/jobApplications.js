@@ -3,10 +3,14 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const axios = require("axios");
+const jwt = require("jsonwebtoken");
 const JobApplication = require("../models/JobApplication");
 const Interview = require("../models/Interview");
 const EmailService = require("../services/emailService");
+const { db } = require("../config/database");
 const router = express.Router();
+
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -221,6 +225,121 @@ router.post("/", upload.fields([
   }
 });
 
+// Serve job application document file with proper inline headers (bypasses download managers and auth)
+// IMPORTANT: This route must come BEFORE /:id route to avoid route conflicts
+router.get("/documents/:applicationId/view", async (req, res) => {
+  console.log("📄 Document view route hit:", req.params, req.query);
+  try {
+    const { applicationId } = req.params;
+    const { type } = req.query; // 'resume' or 'additional'
+    
+    if (!type || !['resume', 'additional'].includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: "Document type is required (resume or additional)",
+      });
+    }
+    
+    // Get application from database to get file path
+    const application = await db("job_applications")
+      .where("id", applicationId)
+      .first();
+    
+    if (!application) {
+      return res.status(404).json({
+        success: false,
+        message: "Application not found",
+      });
+    }
+    
+    // Get the file path based on type
+    const filePathField = type === 'resume' ? 'resume_path' : 'additional_documents_path';
+    const filePath = application[filePathField];
+    
+    if (!filePath) {
+      return res.status(404).json({
+        success: false,
+        message: `${type === 'resume' ? 'Resume' : 'Additional documents'} not found for this application`,
+      });
+    }
+    
+    // Construct full file path
+    // filePath is like /uploads/job-applications/resume-xxx.pdf
+    // Remove leading slash and join with backend root
+    const relativePath = filePath.startsWith('/') ? filePath.substring(1) : filePath;
+    const fullPath = path.join(__dirname, "..", relativePath);
+    
+    console.log('Document view request:', {
+      applicationId,
+      type,
+      filePathField,
+      filePath,
+      relativePath,
+      fullPath,
+      exists: fs.existsSync(fullPath)
+    });
+    
+    // Check if file exists, try alternative paths if not found
+    let finalPath = fullPath;
+    if (!fs.existsSync(fullPath)) {
+      console.error(`File not found at primary path: ${fullPath}`);
+      console.error(`Original filePath from DB: ${filePath}`);
+      
+      // Try alternative: just filename in job-applications folder
+      const filename = path.basename(filePath);
+      const altPath = path.join(__dirname, "..", "uploads", "job-applications", filename);
+      
+      if (fs.existsSync(altPath)) {
+        console.log(`Found file at alternative path: ${altPath}`);
+        finalPath = altPath;
+      } else {
+        console.error(`File also not found at: ${altPath}`);
+        return res.status(404).json({
+          success: false,
+          message: "File not found on server. The file may have been deleted or moved.",
+          debug: {
+            filePath,
+            fullPath,
+            altPath,
+            exists: false
+          }
+        });
+      }
+    }
+    
+    // Get file extension and determine content type
+    const ext = path.extname(finalPath).toLowerCase();
+    const basename = path.basename(finalPath);
+    
+    let contentType = 'application/octet-stream';
+    if (ext === '.pdf') {
+      contentType = 'application/pdf';
+    } else if (['.jpg', '.jpeg'].includes(ext)) {
+      contentType = 'image/jpeg';
+    } else if (ext === '.png') {
+      contentType = 'image/png';
+    } else if (ext === '.doc' || ext === '.docx') {
+      contentType = 'application/msword';
+    }
+    
+    // Set headers to force inline display
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Disposition", `inline; filename="${basename}"`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    
+    // Stream the file
+    res.sendFile(finalPath);
+  } catch (error) {
+    console.error("Error serving job application document:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error serving document",
+      error: error.message,
+    });
+  }
+});
+
 // GET /api/job-applications - Get all job applications (with optional filters)
 router.get("/", async (req, res) => {
   try {
@@ -277,35 +396,26 @@ router.post("/interviews", async (req, res) => {
     const result = await Interview.create(interviewData);
 
     if (result.success) {
-      // Fire-and-forget: email the applicant their interview schedule
+      // Fire-and-forget: email the applicant their interview schedule with styled template
       (async () => {
         try {
           if (interviewData.applicationId) {
             const appResult = await JobApplication.getById(interviewData.applicationId);
             if (appResult && appResult.success && appResult.data && appResult.data.email) {
               const applicant = appResult.data;
-              const dateStr = new Date(interviewData.interviewDate).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
-              const timeStr = interviewData.interviewTime || "TBD";
-              const typeStr = interviewData.interviewType ? (interviewData.interviewType.replace(/-/g, ' ')) : 'In-Person';
-              const locationStr = interviewData.location || interviewData.meetingLink || 'To be provided';
-
-              const subject = `Interview Scheduled - ${applicant.position_title || 'Your Application'}`;
-              const messageHtml = `
-                <p>Hello ${applicant.full_name || 'Applicant'},</p>
-                <p>Your interview has been scheduled. Here are the details:</p>
-                <ul>
-                  <li><strong>Date:</strong> ${dateStr}</li>
-                  <li><strong>Time:</strong> ${timeStr}</li>
-                  <li><strong>Type:</strong> ${typeStr}</li>
-                  <li><strong>Location/Link:</strong> ${locationStr}</li>
-                </ul>
-                <p>Please be available 10 minutes before the scheduled time.</p>
-              `;
-
-              await EmailService.sendNotificationEmail(
+              
+              await EmailService.sendInterviewScheduledEmail(
                 applicant.email,
-                subject,
-                messageHtml
+                {
+                  applicantName: applicant.full_name || applicant.applicant_name,
+                  positionTitle: applicant.position_title || applicant.role || '',
+                  interviewDate: interviewData.interviewDate,
+                  interviewTime: interviewData.interviewTime,
+                  interviewType: interviewData.interviewType,
+                  location: interviewData.location,
+                  meetingLink: interviewData.meetingLink,
+                  notes: interviewData.notes
+                }
               );
             }
           }
@@ -350,21 +460,52 @@ router.post("/:id/send-hire-link", async (req, res) => {
       return res.status(400).json({ success: false, message: "Applicant email not available" });
     }
 
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:8080";
-    const link = `${frontendUrl}/hr/add-employee?dept=${encodeURIComponent(
-      department
-    )}&role_name=${encodeURIComponent(roleName)}&employee_type=${encodeURIComponent(
-      employeeType
-    )}`;
+    // Generate onboarding token
+    let onboardingToken = null;
+    try {
+      onboardingToken = jwt.sign(
+        {
+          application_id: applicationId,
+          email: applicantEmail,
+          type: "onboarding"
+        },
+        JWT_SECRET,
+        { expiresIn: "30d" }
+      );
+    } catch (error) {
+      console.error("Error generating onboarding token:", error);
+    }
 
-    const subject = `You're Hired! Complete your onboarding - Countryside Steak House`;
-    const message = `Dear ${applicantName},\n\nCongratulations! You have been hired for the ${roleName} position in the ${department} department.\n\nTo complete your onboarding, please click the link below to fill out your employee information form:\n\n${link}\n\nIf the link does not work, copy and paste it into your browser.\n\nWelcome to Countryside Steak House!`;
+    const frontendUrl = process.env.FRONTEND_URL || 
+      (process.env.NODE_ENV === "production"
+        ? "https://www.countryside-steakhouse.site"
+        : "http://localhost:8080");
+    
+    let onboardingLink;
+    
+    if (onboardingToken) {
+      // Use tokenized onboarding link
+      onboardingLink = `${frontendUrl}/onboard?token=${encodeURIComponent(onboardingToken)}`;
+    } else {
+      // Fallback to old link format (should not happen, but just in case)
+      onboardingLink = `${frontendUrl}/hr/add-employee?dept=${encodeURIComponent(
+        department
+      )}&role_name=${encodeURIComponent(roleName)}&employee_type=${encodeURIComponent(
+        employeeType
+      )}`;
+      console.warn('Onboarding token generation failed, using fallback link');
+    }
 
     try {
-      const emailResult = await EmailService.sendNotificationEmail(
+      // Use styled hire onboarding email
+      const emailResult = await EmailService.sendHireOnboardingEmail(
         applicantEmail,
-        subject,
-        message
+        {
+          applicantName: applicantName,
+          positionTitle: roleName,
+          department: department,
+          onboardingLink: onboardingLink
+        }
       );
 
       return res.status(200).json({ success: true, emailResult });

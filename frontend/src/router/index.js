@@ -36,6 +36,8 @@ import SupplierProducts from '../views/supplier/SupplierProducts.vue';
 import FullMenu from '../components/crm/FullMenu.vue';
 import Homepage from '../components/crm/homepage.vue';
 import StoreDirectory from '../components/crm/StoreDirectory.vue';
+import JoinUs from '../components/crm/JoinUs.vue';
+import FAQ from '../components/crm/FAQ.vue';
 const routes = [
   // crm route
   {
@@ -64,6 +66,20 @@ const routes = [
     name: 'StoreDirectory',
     component: StoreDirectory,
     meta: { title: 'Store Directory' },
+  },
+  // Join Us route
+  {
+    path: '/join-us',
+    name: 'JoinUs',
+    component: JoinUs,
+    meta: { title: 'Join Our Team' },
+  },
+  // FAQ route
+  {
+    path: '/faq',
+    name: 'FAQ',
+    component: FAQ,
+    meta: { title: 'Frequently Asked Questions' },
   },
   // Add login route
   {
@@ -450,6 +466,8 @@ router.beforeEach(async (to, from, next) => {
     '/home',
     '/menu',
     '/stores',
+    '/join-us',
+    '/faq',
     '/rate-order',
     '/supplier/login',
   ];

@@ -80,6 +80,8 @@
   const selectedAddress = ref('');
   const selectedLat = ref(null);
   const selectedLng = ref(null);
+  const manualLat = ref(null);
+  const manualLng = ref(null);
   const mapContainer = ref(null);
   const map = ref(null);
   const marker = ref(null);
@@ -293,6 +295,14 @@
       locationSearch.value = branchForm.value.address;
     }
 
+    // Pre-fill manual coordinates if available
+    if (branchForm.value.latitude && branchForm.value.longitude) {
+      manualLat.value = branchForm.value.latitude;
+      manualLng.value = branchForm.value.longitude;
+      selectedLat.value = branchForm.value.latitude;
+      selectedLng.value = branchForm.value.longitude;
+    }
+
     // Reset selected address
     selectedAddress.value = '';
 
@@ -302,6 +312,20 @@
     // Initialize map after modal opens
     setTimeout(() => {
       initMap();
+      // If we have existing coordinates, place marker on map
+      if (
+        Number.isFinite(branchForm.value.latitude) &&
+        Number.isFinite(branchForm.value.longitude)
+      ) {
+        placeMarker(
+          {
+            lat: branchForm.value.latitude,
+            lng: branchForm.value.longitude,
+          },
+          false,
+          { preserveSelectedAddress: true }
+        );
+      }
     }, 100);
   };
 
@@ -708,13 +732,19 @@
   const applySelectedAddress = () => {
     if (selectedAddress.value.trim()) {
       branchForm.value.address = selectedAddress.value.trim();
-      // If coordinates were picked on the map, include them
+      // If coordinates were picked on the map or entered manually, include them
       if (
         Number.isFinite(selectedLat.value) &&
         Number.isFinite(selectedLng.value)
       ) {
         branchForm.value.latitude = selectedLat.value;
         branchForm.value.longitude = selectedLng.value;
+      } else if (
+        Number.isFinite(manualLat.value) &&
+        Number.isFinite(manualLng.value)
+      ) {
+        branchForm.value.latitude = manualLat.value;
+        branchForm.value.longitude = manualLng.value;
       }
 
       // If we have individual address components, use them
@@ -746,6 +776,102 @@
     }
   };
 
+  // Debounce timer for manual coordinate updates
+  let coordinateUpdateTimer = null;
+
+  // Update map marker and address when manual coordinates are entered
+  const updateCoordinatesFromManual = async () => {
+    // Clear previous timer
+    if (coordinateUpdateTimer) {
+      clearTimeout(coordinateUpdateTimer);
+    }
+
+    // Debounce the update to avoid feedback loops
+    coordinateUpdateTimer = setTimeout(async () => {
+      if (
+        Number.isFinite(manualLat.value) &&
+        Number.isFinite(manualLng.value) &&
+        map.value
+      ) {
+        const lat = manualLat.value;
+        const lng = manualLng.value;
+        
+        // Validate Philippines bounds
+        if (lat >= 4.5 && lat <= 21.1 && lng >= 116.9 && lng <= 127.0) {
+          // Only update if different from current selected coordinates
+          if (
+            !selectedLat.value ||
+            !selectedLng.value ||
+            Math.abs(selectedLat.value - lat) > 0.0001 ||
+            Math.abs(selectedLng.value - lng) > 0.0001
+          ) {
+            // Update selected coordinates
+            selectedLat.value = lat;
+            selectedLng.value = lng;
+            
+            // Get address using reverse geocoding
+            try {
+              const response = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+                {
+                  headers: {
+                    'User-Agent': 'CountrysideSteakhouse/1.0',
+                  },
+                }
+              );
+
+              if (response.ok) {
+                const data = await response.json();
+                if (data.display_name) {
+                  // Auto-populate the address field
+                  selectedAddress.value = data.display_name;
+
+                  // Auto-populate individual address fields
+                  if (data.address) {
+                    branchForm.value.city =
+                      data.address.city ||
+                      data.address.town ||
+                      data.address.village ||
+                      data.address.county ||
+                      '';
+                    branchForm.value.state =
+                      data.address.state || data.address.province || '';
+                    branchForm.value.postal_code = data.address.postcode || '';
+                    branchForm.value.country = data.address.country || '';
+                  }
+                } else {
+                  // Fallback to coordinates if no address found
+                  selectedAddress.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+                }
+              } else {
+                // Fallback to coordinates if geocoding fails
+                selectedAddress.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+              }
+            } catch (error) {
+              console.error('Reverse geocoding failed:', error);
+              // Fallback to coordinates
+              selectedAddress.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            }
+            
+            // Update map marker
+            placeMarker({ lat, lng }, false, { preserveSelectedAddress: true });
+            
+            // Show feedback
+            showToast(
+              'success',
+              `Location updated: ${lat.toFixed(6)}, ${lng.toFixed(6)}. Address auto-filled.`
+            );
+          }
+        } else {
+          showToast(
+            'warning',
+            'Coordinates outside Philippines bounds. Please use valid coordinates.'
+          );
+        }
+      }
+    }, 800); // 800ms debounce
+  };
+
   // Close Google Maps modal
   const closeGoogleMapsModal = () => {
     googleMapsModal.value = false;
@@ -753,6 +879,8 @@
     selectedAddress.value = '';
     selectedLat.value = null;
     selectedLng.value = null;
+    manualLat.value = null;
+    manualLng.value = null;
 
     // Clean up map resources
     // Remove Countryside markers
@@ -793,6 +921,9 @@
     // Save selected coordinates
     selectedLat.value = latLng.lat;
     selectedLng.value = latLng.lng;
+    // Update manual input fields
+    manualLat.value = latLng.lat;
+    manualLng.value = latLng.lng;
 
     // Get address for this location using reverse geocoding
     try {
@@ -911,6 +1042,9 @@
               // Save coordinates from current location
               selectedLat.value = latitude;
               selectedLng.value = longitude;
+              // Update manual input fields
+              manualLat.value = latitude;
+              manualLng.value = longitude;
 
               // Auto-populate individual address fields
               if (data.address) {
@@ -2055,6 +2189,60 @@
             rows="3"
             placeholder="Paste the address from Google Maps here..."
           ></textarea>
+        </div>
+
+        <!-- Latitude and Longitude Input Fields -->
+        <div class="mb-4 grid grid-cols-2 gap-3">
+          <div>
+            <label class="label pb-2">
+              <span
+                :class="[
+                  'label-text font-medium',
+                  themeStore.themeClasses.textSecondary,
+                ]"
+                >Latitude</span
+              >
+            </label>
+            <input
+              v-model.number="manualLat"
+              type="number"
+              step="any"
+              :class="[
+                'input input-bordered w-full transition-colors duration-300',
+                themeStore.themeClasses.input,
+              ]"
+              placeholder="e.g. 14.3297"
+              @input="updateCoordinatesFromManual"
+            />
+            <p class="text-xs text-gray-500 mt-1">
+              Auto-fills when you click the map
+            </p>
+          </div>
+          <div>
+            <label class="label pb-2">
+              <span
+                :class="[
+                  'label-text font-medium',
+                  themeStore.themeClasses.textSecondary,
+                ]"
+                >Longitude</span
+              >
+            </label>
+            <input
+              v-model.number="manualLng"
+              type="number"
+              step="any"
+              :class="[
+                'input input-bordered w-full transition-colors duration-300',
+                themeStore.themeClasses.input,
+              ]"
+              placeholder="e.g. 120.9369"
+              @input="updateCoordinatesFromManual"
+            />
+            <p class="text-xs text-gray-500 mt-1">
+              Auto-fills when you click the map
+            </p>
+          </div>
         </div>
 
         <div class="modal-action">

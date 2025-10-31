@@ -106,6 +106,24 @@
                 class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
               ></span>
             </router-link>
+            <router-link
+              to="/join-us"
+              class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
+            >
+              <span class="relative z-10">Join Us</span>
+              <span
+                class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
+              ></span>
+            </router-link>
+            <router-link
+              to="/faq"
+              class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
+            >
+              <span class="relative z-10">FAQ</span>
+              <span
+                class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
+              ></span>
+            </router-link>
             <a
               href="#contact"
               class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
@@ -177,6 +195,32 @@
               class="w-4 h-4 sm:w-5 sm:h-5 mr-3"
             />
             Store's
+          </span>
+        </router-link>
+        <router-link
+          to="/join-us"
+          @click="closeMobileMenu()"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <font-awesome-icon
+              icon="fa-solid fa-user-plus"
+              class="w-4 h-4 sm:w-5 sm:h-5 mr-3"
+            />
+            Join Us
+          </span>
+        </router-link>
+        <router-link
+          to="/faq"
+          @click="closeMobileMenu()"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <font-awesome-icon
+              icon="fa-solid fa-circle-question"
+              class="w-4 h-4 sm:w-5 sm:h-5 mr-3"
+            />
+            FAQ
           </span>
         </router-link>
         <a
@@ -684,41 +728,45 @@
         </div>
 
         <!-- Delivery Content with Video on Right -->
-        <div class="grid lg:grid-cols-2 gap-12 items-center px-10">
+        <div class="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center px-4 sm:px-6 lg:px-10">
           <!-- Left Side - Delivery Options -->
-          <div class="space-y-8">
+          <div class="space-y-6 lg:space-y-8">
             <div class="text-center lg:text-left">
-              <h3 class="text-2xl font-bold text-white mb-1">
+              <h3 class="text-xl sm:text-2xl font-bold text-white mb-2">
                 Choose Your Delivery Platform
               </h3>
-              <p class="text-green-100">
+              <p class="text-sm sm:text-base text-green-100">
                 We partner with the best delivery services to bring Countryside
                 to your doorstep
               </p>
             </div>
 
-            <!-- Delivery Cards -->
-            <div class="grid grid-cols-2 gap-3 sm:gap-6">
+            <!-- Delivery Cards - Vertical Mobile-First Design -->
+            <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:gap-6">
               <!-- Foodpanda Card -->
               <div
-                class="bg-orange-500 rounded-2xl p-6 text-white text-center transition-all duration-300 shadow-lg card-hover cursor-pointer"
+                class="bg-orange-500 rounded-2xl p-4 sm:p-5 lg:p-6 text-white text-center transition-all duration-300 shadow-lg card-hover cursor-pointer flex flex-col justify-between min-h-[280px] sm:min-h-[320px] lg:min-h-[360px]"
               >
-                <div
-                  class="w-20 h-20 bg-white bg-opacity-20 rounded-full mx-auto mb-4 flex items-center justify-center"
-                >
-                  <img
-                    src="/src/assets/crm/Foodpanda.png"
-                    alt="Foodpanda Logo"
-                    class="w-14 h-14 object-contain"
-                  />
+                <div class="flex-1 flex flex-col justify-center">
+                  <div
+                    class="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 bg-white bg-opacity-20 rounded-full mx-auto mb-4 flex items-center justify-center"
+                  >
+                    <img
+                      src="/src/assets/crm/Foodpanda.png"
+                      alt="Foodpanda Logo"
+                      class="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 object-contain"
+                    />
+                  </div>
+                  <h3 class="text-xl sm:text-2xl lg:text-3xl font-bold mb-2 sm:mb-3">
+                    Foodpanda
+                  </h3>
+                  <p class="text-xs sm:text-sm lg:text-base mb-4 opacity-90 leading-relaxed px-2">
+                    Order your favorite Countryside dishes through Foodpanda
+                  </p>
                 </div>
-                <h3 class="text-2xl font-bold mb-3">Foodpanda</h3>
-                <p class="text-base mb-4 opacity-90">
-                  Order your favorite Countryside dishes through Foodpanda
-                </p>
                 <button
                   @click="openFoodpandaModal"
-                  class="bg-white text-orange-500 px-6 py-2 rounded-lg font-thin hover:bg-gray-100 transition-colors w-full cursor-pointer"
+                  class="bg-white text-orange-500 px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium hover:bg-gray-100 transition-colors w-full cursor-pointer text-sm sm:text-base shadow-md hover:shadow-lg"
                 >
                   Order on Foodpanda
                 </button>
@@ -726,24 +774,28 @@
 
               <!-- Grabfood Card -->
               <div
-                class="bg-green-600 rounded-2xl p-6 text-white text-center transition-all duration-300 shadow-lg card-hover cursor-pointer"
+                class="bg-green-600 rounded-2xl p-4 sm:p-5 lg:p-6 text-white text-center transition-all duration-300 shadow-lg card-hover cursor-pointer flex flex-col justify-between min-h-[280px] sm:min-h-[320px] lg:min-h-[360px]"
               >
-                <div
-                  class="w-20 h-20 bg-white bg-opacity-20 rounded-full mx-auto mb-4 flex items-center justify-center"
-                >
-                  <img
-                    src="/src/assets/crm/GrabFood.png"
-                    alt="GrabFood Logo"
-                    class="w-14 h-14 object-contain"
-                  />
+                <div class="flex-1 flex flex-col justify-center">
+                  <div
+                    class="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 bg-white bg-opacity-20 rounded-full mx-auto mb-4 flex items-center justify-center"
+                  >
+                    <img
+                      src="/src/assets/crm/GrabFood.png"
+                      alt="GrabFood Logo"
+                      class="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 object-contain"
+                    />
+                  </div>
+                  <h3 class="text-xl sm:text-2xl lg:text-3xl font-bold mb-2 sm:mb-3">
+                    Grabfood
+                  </h3>
+                  <p class="text-xs sm:text-sm lg:text-base mb-4 opacity-90 leading-relaxed px-2">
+                    Get your Countryside favorites delivered by Grab
+                  </p>
                 </div>
-                <h3 class="text-2xl font-bold mb-3">Grabfood</h3>
-                <p class="text-base mb-4 opacity-90">
-                  Get your Countryside favorites delivered by Grab
-                </p>
                 <button
                   @click="openGrabfoodModal"
-                  class="bg-white text-green-600 px-6 py-2 rounded-lg font-thin hover:bg-gray-100 transition-colors w-full cursor-pointer"
+                  class="bg-white text-green-600 px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium hover:bg-gray-100 transition-colors w-full cursor-pointer text-sm sm:text-base shadow-md hover:shadow-lg"
                 >
                   Order on Grabfood
                 </button>
@@ -752,11 +804,11 @@
           </div>
 
           <!-- Right Side - Video -->
-          <div class="flex justify-center lg:justify-end">
+          <div class="flex justify-center lg:justify-end order-3 lg:order-2 mt-6 lg:mt-0">
             <div class="max-w-lg w-full">
-              <div class="relative rounded-2xl overflow-hidden shadow-2xl">
+              <div class="relative rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl">
                 <video
-                  class="w-full h-auto rounded-2xl"
+                  class="w-full h-auto rounded-xl sm:rounded-2xl"
                   loop
                   playsinline
                   ref="deliveryVideo"
@@ -769,12 +821,12 @@
                 <!-- Play/Pause Button for Delivery Video -->
                 <button
                   @click="toggleDeliveryVideo"
-                  class="absolute top-4 left-4 bg-black/70 hover:bg-black/90 text-white p-3 rounded-full transition-all duration-300 hover:scale-110 backdrop-blur-sm z-20"
+                  class="absolute top-2 left-2 sm:top-4 sm:left-4 bg-black/70 hover:bg-black/90 text-white p-2 sm:p-3 rounded-full transition-all duration-300 hover:scale-110 backdrop-blur-sm z-20"
                   :title="isDeliveryVideoPlaying ? 'Pause' : 'Play'"
                 >
                   <svg
                     v-if="isDeliveryVideoPlaying"
-                    class="w-5 h-5"
+                    class="w-4 h-4 sm:w-5 sm:h-5"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -788,7 +840,7 @@
                   </svg>
                   <svg
                     v-else
-                    class="w-5 h-5"
+                    class="w-4 h-4 sm:w-5 sm:h-5"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -805,7 +857,7 @@
 
               <!-- Video Caption -->
               <p
-                class="text-sm text-gray-200 mt-3 italic text-center lg:text-right"
+                class="text-xs sm:text-sm text-gray-200 mt-2 sm:mt-3 italic text-center lg:text-right"
               >
                 Experience the convenience of food delivery with Countryside
                 Steakhouse
@@ -867,54 +919,138 @@
           <div class="loading loading-spinner loading-lg text-green-600"></div>
         </div>
 
-        <!-- Branches Grid -->
-        <div v-else-if="branches.length > 0" class="grid md:grid-cols-3 gap-8">
-          <div
-            v-for="branch in branches.slice(0, 3)"
-            :key="branch.id"
-            class="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover"
-          >
-            <div class="h-48 overflow-hidden">
-              <img
-                :src="
-                  resolvePublicUrl(branch.image_url) ||
-                  '/src/assets/crm/default-branch.png'
-                "
-                :alt="branch.name"
-                class="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
-              />
-            </div>
-            <div class="p-6">
-              <h3 class="text-xl font-bold text-green-800 mb-2">
-                {{ branch.name }}
-              </h3>
+        <!-- Branches - Horizontal Scroll on Mobile, Grid on Desktop -->
+        <div v-else-if="branches.length > 0" class="relative">
+          <!-- Mobile: Horizontal Scrollable -->
+          <div class="md:hidden overflow-x-auto pb-4 -mx-6 px-6 scrollbar-hide snap-x snap-mandatory">
+            <div class="flex gap-4">
               <div
-                class="flex items-start text-sm text-gray-600 mb-3 leading-tight"
+                v-for="branch in branches"
+                :key="branch.id"
+                class="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover flex-shrink-0 w-[85vw] max-w-[320px] snap-start"
               >
-                <font-awesome-icon
-                  icon="fa-solid fa-location-dot"
-                  class="mr-2 text-green-600 mt-1"
-                />
-                <span class="whitespace-normal">{{ branch.address }}</span>
-              </div>
+                <div class="h-40 sm:h-48 overflow-hidden">
+                  <img
+                    :src="
+                      resolvePublicUrl(branch.image_url) ||
+                      '/src/assets/crm/default-branch.png'
+                    "
+                    :alt="branch.name"
+                    class="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
+                  />
+                </div>
+                <div class="p-4 sm:p-6">
+                  <h3 class="text-lg sm:text-xl font-bold text-green-800 mb-2">
+                    {{ branch.name }}
+                  </h3>
+                  <div
+                    class="flex items-start text-xs sm:text-sm text-gray-600 mb-3 leading-tight"
+                  >
+                    <font-awesome-icon
+                      icon="fa-solid fa-location-dot"
+                      class="mr-2 text-green-600 mt-1 flex-shrink-0"
+                    />
+                    <span class="whitespace-normal break-words">{{ branch.address }}</span>
+                  </div>
 
-              <div
-                class="flex items-center text-sm text-gray-600 mb-4"
-                v-if="branch.phone"
-              >
-                <font-awesome-icon
-                  icon="fa-solid fa-phone"
-                  class="mr-2 text-green-600"
-                />
-                <span>{{ branch.phone }}</span>
+                  <div
+                    class="flex items-center text-xs sm:text-sm text-gray-600 mb-4"
+                    v-if="branch.phone"
+                  >
+                    <font-awesome-icon
+                      icon="fa-solid fa-phone"
+                      class="mr-2 text-green-600 flex-shrink-0"
+                    />
+                    <span>{{ branch.phone }}</span>
+                  </div>
+                  <button
+                    class="w-full bg-green-600 text-white py-2 sm:py-2.5 rounded-lg hover:bg-green-700 transition-colors text-sm sm:text-base font-medium"
+                    @click="getDirections(branch)"
+                  >
+                    Get Directions
+                  </button>
+                </div>
               </div>
-              <button
-                class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
-                @click="getDirections(branch)"
-              >
-                Get Directions
-              </button>
             </div>
+          </div>
+
+          <!-- Desktop: Grid Layout -->
+          <div class="hidden md:grid md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
+            <div
+              v-for="branch in branches.slice(0, 6)"
+              :key="branch.id"
+              class="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover"
+            >
+              <div class="h-48 sm:h-56 overflow-hidden">
+                <img
+                  :src="
+                    resolvePublicUrl(branch.image_url) ||
+                    '/src/assets/crm/default-branch.png'
+                  "
+                  :alt="branch.name"
+                  class="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
+                />
+              </div>
+              <div class="p-4 sm:p-6">
+                <h3 class="text-lg sm:text-xl font-bold text-green-800 mb-2">
+                  {{ branch.name }}
+                </h3>
+                <div
+                  class="flex items-start text-xs sm:text-sm text-gray-600 mb-3 leading-tight"
+                >
+                  <font-awesome-icon
+                    icon="fa-solid fa-location-dot"
+                    class="mr-2 text-green-600 mt-1 flex-shrink-0"
+                  />
+                  <span class="whitespace-normal break-words">{{ branch.address }}</span>
+                </div>
+
+                <div
+                  class="flex items-center text-xs sm:text-sm text-gray-600 mb-4"
+                  v-if="branch.phone"
+                >
+                  <font-awesome-icon
+                    icon="fa-solid fa-phone"
+                    class="mr-2 text-green-600 flex-shrink-0"
+                  />
+                  <span>{{ branch.phone }}</span>
+                </div>
+                <button
+                  class="w-full bg-green-600 text-white py-2 sm:py-2.5 rounded-lg hover:bg-green-700 transition-colors text-sm sm:text-base font-medium"
+                  @click="getDirections(branch)"
+                >
+                  Get Directions
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- View All Button -->
+          <div v-if="branches.length > 6" class="hidden md:flex justify-center mt-8">
+            <router-link
+              to="/stores"
+              class="btn bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg font-semibold transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1 flex items-center"
+            >
+              <span>View All Branches</span>
+              <font-awesome-icon
+                icon="fa-solid fa-arrow-right"
+                class="ml-2 transition-transform group-hover:translate-x-1"
+              />
+            </router-link>
+          </div>
+
+          <!-- Mobile: View All Button (shown if more than visible branches) -->
+          <div v-if="branches.length > 3" class="md:hidden flex justify-center mt-6">
+            <router-link
+              to="/stores"
+              class="btn bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-lg font-semibold transition-all duration-300 shadow-lg hover:shadow-xl flex items-center text-sm"
+            >
+              <span>View All Branches</span>
+              <font-awesome-icon
+                icon="fa-solid fa-arrow-right"
+                class="ml-2 transition-transform group-hover:translate-x-1"
+              />
+            </router-link>
           </div>
         </div>
 
@@ -926,151 +1062,65 @@
     </section>
 
     <!-- Job Application Section -->
-    <section class="py-20 bg-green-800">
+    <section id="join-us" class="py-20 bg-green-800">
       <div class="container mx-auto px-6">
-        <div class="text-center mb-16">
+        <div class="text-center max-w-4xl mx-auto">
+          <!-- Title -->
           <div class="flex items-center justify-center mb-6">
             <div class="w-20 h-0.5 bg-orange-400"></div>
-            <h2 class="text-4xl font-bold text-white mx-6">Join Our Team</h2>
+            <h2 class="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mx-6">Join Our Team</h2>
             <div class="w-20 h-0.5 bg-orange-400"></div>
           </div>
-          <p class="text-xl text-green-100 max-w-2xl mx-auto">
-            Be part of the Countryside family! We're always looking for passionate individuals to join our growing team.
+          
+          <!-- Description -->
+          <p class="text-lg sm:text-xl text-green-100 mb-8 leading-relaxed">
+            Be part of the Countryside family! We're always looking for passionate individuals to join our growing team. Explore our current job openings and find the perfect role that matches your skills and passion.
           </p>
-        </div>
 
-        <!-- Job Application Cards -->
-        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
-          <!-- Available Positions Card -->
-          <div class="bg-white rounded-2xl p-8 text-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover">
-            <div class="w-20 h-20 bg-green-100 rounded-full mx-auto mb-6 flex items-center justify-center">
-              <font-awesome-icon icon="fa-solid fa-briefcase" class="text-green-600 text-3xl" />
+          <!-- Job Type Info Cards -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-8">
+            <!-- Full-time Card -->
+            <div class="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20 hover:bg-white/20 transition-all duration-300">
+              <div class="flex flex-col items-center">
+                <div class="w-12 h-12 sm:w-14 sm:h-14 bg-blue-500/20 rounded-full flex items-center justify-center mb-3">
+                  <Clock :size="24" class="text-blue-300" />
+                </div>
+                <h3 class="text-white font-semibold text-lg sm:text-xl mb-2">Full-time</h3>
+                <p class="text-green-100 text-sm sm:text-base">40+ hours per week</p>
+              </div>
             </div>
-            <h3 class="text-2xl font-bold text-green-800 mb-4">Available Positions</h3>
-            <p class="text-gray-600 mb-6 leading-relaxed">
-              Explore our current job openings and find the perfect role that matches your skills and passion.
-            </p>
-            <button
-              @click="openJobPositionsModal"
-              class="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg font-medium transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md"
-            >
-              <span>View Positions</span>
-              <font-awesome-icon
-                icon="fa-solid fa-arrow-right"
-                class="ml-2 group-hover:translate-x-1 transition-transform"
-              />
-            </button>
-          </div>
 
-          <!-- Apply Now Card -->
-          <div class="bg-white rounded-2xl p-8 text-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover">
-            <div class="w-20 h-20 bg-orange-100 rounded-full mx-auto mb-6 flex items-center justify-center">
-              <font-awesome-icon icon="fa-solid fa-file-pen" class="text-orange-600 text-3xl" />
+            <!-- Part-time Card -->
+            <div class="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20 hover:bg-white/20 transition-all duration-300">
+              <div class="flex flex-col items-center">
+                <div class="w-12 h-12 sm:w-14 sm:h-14 bg-orange-500/20 rounded-full flex items-center justify-center mb-3">
+                  <Briefcase :size="24" class="text-orange-300" />
+                </div>
+                <h3 class="text-white font-semibold text-lg sm:text-xl mb-2">Part-time</h3>
+                <p class="text-green-100 text-sm sm:text-base">Flexible hours available</p>
+              </div>
             </div>
-            <h3 class="text-2xl font-bold text-green-800 mb-4">Apply Now</h3>
-            <p class="text-gray-600 mb-6 leading-relaxed">
-              Ready to start your journey with us? Submit your application and let us know why you'd be a great fit.
-            </p>
-            <button
-              @click="openJobPositionsModal"
-              class="bg-orange-500 hover:bg-orange-400 text-white px-8 py-3 rounded-lg font-medium transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md"
-            >
-              <span>Apply Today</span>
-              <font-awesome-icon
-                icon="fa-solid fa-paper-plane"
-                class="ml-2 group-hover:translate-x-1 transition-transform"
-              />
-            </button>
-          </div>
 
-          <!-- Why Work With Us Card -->
-          <div class="bg-white rounded-2xl p-8 text-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover">
-            <div class="w-20 h-20 bg-blue-100 rounded-full mx-auto mb-6 flex items-center justify-center">
-              <font-awesome-icon icon="fa-solid fa-heart" class="text-blue-600 text-3xl" />
+            <!-- Available Positions Card -->
+            <div class="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20 hover:bg-white/20 transition-all duration-300">
+              <div class="flex flex-col items-center">
+                <div class="w-12 h-12 sm:w-14 sm:h-14 bg-green-500/20 rounded-full flex items-center justify-center mb-3">
+                  <Users :size="24" class="text-green-300" />
+                </div>
+                <h3 class="text-white font-semibold text-lg sm:text-xl mb-2">Open Positions</h3>
+                <p class="text-green-100 text-sm sm:text-base">Multiple roles available</p>
+              </div>
             </div>
-            <h3 class="text-2xl font-bold text-green-800 mb-4">Why Countryside?</h3>
-            <p class="text-gray-600 mb-6 leading-relaxed">
-              Join a family-oriented company with 40+ years of tradition, competitive benefits, and growth opportunities.
-            </p>
-            <button
-              @click="scrollToBenefits"
-              class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md mx-auto"
-            >
-              <span>Learn More</span>
-              <font-awesome-icon
-                icon="fa-solid fa-info-circle"
-                class="ml-2 group-hover:translate-x-1 transition-transform"
-              />
-            </button>
-          </div>
-        </div>
-
-        <!-- Benefits Section -->
-        <div id="benefits" class="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/30">
-          <div class="text-center mb-8">
-            <h3 class="text-3xl font-bold text-white mb-4">Employee Benefits</h3>
-            <p class="text-green-100 text-lg">We value our team members and offer comprehensive benefits</p>
           </div>
           
-          <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div class="text-center">
-              <div class="w-16 h-16 bg-orange-500 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <font-awesome-icon icon="fa-solid fa-money-bill-wave" class="text-white text-xl" />
-              </div>
-              <h4 class="text-white font-semibold mb-2">Competitive Salary</h4>
-              <p class="text-green-100 text-sm">Fair compensation based on experience and performance</p>
-            </div>
-            
-            <div class="text-center">
-              <div class="w-16 h-16 bg-green-500 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <font-awesome-icon icon="fa-solid fa-calendar-check" class="text-white text-xl" />
-              </div>
-              <h4 class="text-white font-semibold mb-2">Flexible Schedule</h4>
-              <p class="text-green-100 text-sm">Work-life balance with flexible working hours</p>
-            </div>
-            
-            <div class="text-center">
-              <div class="w-16 h-16 bg-blue-500 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <font-awesome-icon icon="fa-solid fa-graduation-cap" class="text-white text-xl" />
-              </div>
-              <h4 class="text-white font-semibold mb-2">Training & Development</h4>
-              <p class="text-green-100 text-sm">Continuous learning and career advancement opportunities</p>
-            </div>
-            
-            <div class="text-center">
-              <div class="w-16 h-16 bg-purple-500 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <font-awesome-icon icon="fa-solid fa-users" class="text-white text-xl" />
-              </div>
-              <h4 class="text-white font-semibold mb-2">Team Environment</h4>
-              <p class="text-green-100 text-sm">Join a supportive and collaborative work family</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Call to Action -->
-        <div class="text-center mt-12">
-          <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/30 max-w-4xl mx-auto">
-            <h3 class="text-2xl font-bold text-white mb-4">Ready to Start Your Career Journey?</h3>
-            <p class="text-green-100 mb-6 text-lg">
-              Don't wait! Join the Countryside family and be part of our 40+ year legacy of serving delicious food and creating memorable experiences.
-            </p>
-            <div class="flex flex-col sm:flex-row gap-4 justify-center">
-              <button
-                @click="openJobPositionsModal"
-                class="bg-orange-500 hover:bg-orange-400 text-white px-8 py-4 rounded-lg font-medium transition-all duration-300 shadow-lg flex items-center justify-center btn btn-lg"
-              >
-                <font-awesome-icon icon="fa-solid fa-briefcase" class="mr-3" />
-                Browse Open Positions
-              </button>
-              <button
-                @click="openJobPositionsModal"
-                class="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-lg font-medium transition-all duration-300 shadow-lg flex items-center justify-center btn btn-lg"
-              >
-                <font-awesome-icon icon="fa-solid fa-paper-plane" class="mr-3" />
-                Submit Application
-              </button>
-            </div>
-          </div>
+          <!-- Button -->
+          <button
+            @click="openJobPositionsModal"
+            class="bg-orange-500 hover:bg-orange-400 text-white px-8 sm:px-12 py-4 sm:py-5 rounded-lg font-semibold text-lg sm:text-xl transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1 flex items-center justify-center mx-auto"
+          >
+            <font-awesome-icon icon="fa-solid fa-user-plus" class="mr-3" />
+            <span>Join Us - Check Available Jobs</span>
+          </button>
         </div>
       </div>
     </section>
@@ -1100,118 +1150,235 @@
           <div class="loading loading-spinner loading-lg text-orange-500"></div>
         </div>
 
-        <!-- Signature Dishes Grid -->
-        <div
-          v-else-if="signatureDishes.length > 0"
-          class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8 cursor-pointer"
-        >
-          <div
-            v-for="item in signatureDishes"
-            :key="item.name"
-            class="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover relative"
-          >
-            <!-- Modern Promo Badge -->
-            <div v-if="item.hasPromo" class="absolute top-4 right-4 z-10">
+        <!-- Signature Dishes - Horizontal Scroll on Mobile, Grid on Desktop -->
+        <div v-else-if="signatureDishes.length > 0" class="relative">
+          <!-- Mobile: Horizontal Scrollable -->
+          <div class="md:hidden overflow-x-auto pb-4 -mx-6 px-6 scrollbar-hide snap-x snap-mandatory">
+            <div class="flex gap-4">
               <div
-                class="bg-gradient-to-br from-red-500 to-orange-500 rounded-xl px-3 py-2 shadow-lg backdrop-blur-sm border border-white/20 relative overflow-hidden hover:scale-105 transition-all duration-300 hover:shadow-xl"
+                v-for="item in signatureDishes"
+                :key="item.name"
+                class="bg-white rounded-xl sm:rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover relative flex-shrink-0 w-[75vw] max-w-[280px] snap-start"
               >
-                <!-- Shimmer Effect -->
-                <div
-                  class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full animate-[shimmer_2s_infinite]"
-                ></div>
+                <!-- Modern Promo Badge -->
+                <div v-if="item.hasPromo" class="absolute top-3 right-3 sm:top-4 sm:right-4 z-10">
+                  <div
+                    class="bg-gradient-to-br from-red-500 to-orange-500 rounded-lg sm:rounded-xl px-2 py-1.5 sm:px-3 sm:py-2 shadow-lg backdrop-blur-sm border border-white/20 relative overflow-hidden hover:scale-105 transition-all duration-300 hover:shadow-xl"
+                  >
+                    <!-- Shimmer Effect -->
+                    <div
+                      class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full animate-[shimmer_2s_infinite]"
+                    ></div>
 
-                <div class="relative z-10 text-center">
-                  <div
-                    class="text-white text-sm font-thin leading-none drop-shadow-sm"
-                  >
-                    {{
-                      item.promoInfo.discount_type === 'percentage'
-                        ? '-' + item.promoInfo.discount_percentage + '%'
-                        : '-₱' + item.promoInfo.discount_amount
-                    }}
+                    <div class="relative z-10 text-center">
+                      <div
+                        class="text-white text-xs sm:text-sm font-thin leading-none drop-shadow-sm"
+                      >
+                        {{
+                          item.promoInfo.discount_type === 'percentage'
+                            ? '-' + item.promoInfo.discount_percentage + '%'
+                            : '-₱' + item.promoInfo.discount_amount
+                        }}
+                      </div>
+                      <div
+                        class="text-white/90 text-[10px] sm:text-xs font-thin uppercase tracking-wide mt-0.5 sm:mt-1"
+                      >
+                        OFF
+                      </div>
+                    </div>
                   </div>
+                </div>
+
+                <div class="h-40 sm:h-48 overflow-hidden group relative">
+                  <img
+                    :src="item.image"
+                    :alt="item.name"
+                    class="w-full h-full object-cover transform transition-transform duration-500 ease-in-out group-hover:scale-110"
+                  />
+
+                  <!-- Promo Overlay -->
                   <div
-                    class="text-white/90 text-xs font-thin uppercase tracking-wide mt-1"
-                  >
-                    OFF
+                    v-if="item.hasPromo"
+                    class="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                  ></div>
+                </div>
+
+                <div class="p-4 sm:p-6">
+                  <h3 class="text-lg sm:text-xl font-bold text-green-800 mb-2">
+                    {{ item.name }}
+                  </h3>
+
+                  <!-- Price Section with Promo -->
+                  <div class="flex justify-between items-center">
+                    <div class="flex flex-col">
+                      <!-- Original Price (crossed out if promo) -->
+                      <span
+                        v-if="item.hasPromo"
+                        class="text-gray-400 text-xs sm:text-sm line-through"
+                      >
+                        <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                        {{ item.originalPrice.toFixed(2) }}
+                      </span>
+
+                      <!-- Current Price -->
+                      <span
+                        :class="[
+                          'font-bold text-base sm:text-lg',
+                          item.hasPromo ? 'text-red-500' : 'text-orange-500',
+                        ]"
+                      >
+                        <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                        {{
+                          item.discountedPrice
+                            ? item.discountedPrice.toFixed(2)
+                            : item.price.toFixed(2)
+                        }}
+                      </span>
+
+                      <!-- Discount Amount -->
+                      <span
+                        v-if="
+                          item.hasPromo &&
+                          item.promoInfo.discount_type === 'percentage'
+                        "
+                        class="text-[10px] sm:text-xs text-green-600 font-semibold"
+                      >
+                        {{ item.promoInfo.discount_percentage }}% OFF
+                      </span>
+                      <span
+                        v-else-if="
+                          item.hasPromo &&
+                          item.promoInfo.discount_type === 'fixed_amount'
+                        "
+                        class="text-[10px] sm:text-xs text-green-600 font-semibold"
+                      >
+                        ₱{{ item.promoInfo.discount_amount }} OFF
+                      </span>
+                    </div>
+
+                    <!-- Promo Icon -->
+                    <div
+                      v-if="item.hasPromo"
+                      class="flex items-center justify-center w-5 h-5 sm:w-6 sm:h-6 bg-gradient-to-br from-red-500 to-orange-500 text-white rounded-full shadow-md hover:scale-110 hover:shadow-lg transition-all duration-300"
+                    >
+                      <font-awesome-icon icon="fa-solid fa-bolt" class="text-[10px] sm:text-xs" />
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
+          </div>
 
-            <div class="h-48 overflow-hidden group relative">
-              <img
-                :src="item.image"
-                :alt="item.name"
-                class="w-full h-full object-cover transform transition-transform duration-500 ease-in-out group-hover:scale-110"
-              />
+          <!-- Desktop: Grid Layout -->
+          <div class="hidden md:grid md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8 cursor-pointer">
+            <div
+              v-for="item in signatureDishes"
+              :key="item.name"
+              class="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover relative"
+            >
+              <!-- Modern Promo Badge -->
+              <div v-if="item.hasPromo" class="absolute top-4 right-4 z-10">
+                <div
+                  class="bg-gradient-to-br from-red-500 to-orange-500 rounded-xl px-3 py-2 shadow-lg backdrop-blur-sm border border-white/20 relative overflow-hidden hover:scale-105 transition-all duration-300 hover:shadow-xl"
+                >
+                  <!-- Shimmer Effect -->
+                  <div
+                    class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full animate-[shimmer_2s_infinite]"
+                  ></div>
 
-              <!-- Promo Overlay -->
-              <div
-                v-if="item.hasPromo"
-                class="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-              ></div>
-            </div>
-
-            <div class="p-6">
-              <h3 class="text-xl font-bold text-green-800 mb-2">
-                {{ item.name }}
-              </h3>
-
-              <!-- Price Section with Promo -->
-              <div class="flex justify-between items-center">
-                <div class="flex flex-col">
-                  <!-- Original Price (crossed out if promo) -->
-                  <span
-                    v-if="item.hasPromo"
-                    class="text-gray-400 text-sm line-through"
-                  >
-                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                    {{ item.originalPrice.toFixed(2) }}
-                  </span>
-
-                  <!-- Current Price -->
-                  <span
-                    :class="[
-                      'font-bold text-lg',
-                      item.hasPromo ? 'text-red-500' : 'text-orange-500',
-                    ]"
-                  >
-                    <font-awesome-icon icon="fa-solid fa-peso-sign" />
-                    {{
-                      item.discountedPrice
-                        ? item.discountedPrice.toFixed(2)
-                        : item.price.toFixed(2)
-                    }}
-                  </span>
-
-                  <!-- Discount Amount -->
-                  <span
-                    v-if="
-                      item.hasPromo &&
-                      item.promoInfo.discount_type === 'percentage'
-                    "
-                    class="text-xs text-green-600 font-semibold"
-                  >
-                    {{ item.promoInfo.discount_percentage }}% OFF
-                  </span>
-                  <span
-                    v-else-if="
-                      item.hasPromo &&
-                      item.promoInfo.discount_type === 'fixed_amount'
-                    "
-                    class="text-xs text-green-600 font-semibold"
-                  >
-                    ₱{{ item.promoInfo.discount_amount }} OFF
-                  </span>
+                  <div class="relative z-10 text-center">
+                    <div
+                      class="text-white text-sm font-thin leading-none drop-shadow-sm"
+                    >
+                      {{
+                        item.promoInfo.discount_type === 'percentage'
+                          ? '-' + item.promoInfo.discount_percentage + '%'
+                          : '-₱' + item.promoInfo.discount_amount
+                      }}
+                    </div>
+                    <div
+                      class="text-white/90 text-xs font-thin uppercase tracking-wide mt-1"
+                    >
+                      OFF
+                    </div>
+                  </div>
                 </div>
+              </div>
 
-                <!-- Promo Icon -->
+              <div class="h-48 overflow-hidden group relative">
+                <img
+                  :src="item.image"
+                  :alt="item.name"
+                  class="w-full h-full object-cover transform transition-transform duration-500 ease-in-out group-hover:scale-110"
+                />
+
+                <!-- Promo Overlay -->
                 <div
                   v-if="item.hasPromo"
-                  class="flex items-center justify-center w-6 h-6 bg-gradient-to-br from-red-500 to-orange-500 text-white rounded-full shadow-md hover:scale-110 hover:shadow-lg transition-all duration-300"
-                >
-                  <font-awesome-icon icon="fa-solid fa-bolt" class="text-xs" />
+                  class="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                ></div>
+              </div>
+
+              <div class="p-6">
+                <h3 class="text-xl font-bold text-green-800 mb-2">
+                  {{ item.name }}
+                </h3>
+
+                <!-- Price Section with Promo -->
+                <div class="flex justify-between items-center">
+                  <div class="flex flex-col">
+                    <!-- Original Price (crossed out if promo) -->
+                    <span
+                      v-if="item.hasPromo"
+                      class="text-gray-400 text-sm line-through"
+                    >
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{ item.originalPrice.toFixed(2) }}
+                    </span>
+
+                    <!-- Current Price -->
+                    <span
+                      :class="[
+                        'font-bold text-lg',
+                        item.hasPromo ? 'text-red-500' : 'text-orange-500',
+                      ]"
+                    >
+                      <font-awesome-icon icon="fa-solid fa-peso-sign" />
+                      {{
+                        item.discountedPrice
+                          ? item.discountedPrice.toFixed(2)
+                          : item.price.toFixed(2)
+                      }}
+                    </span>
+
+                    <!-- Discount Amount -->
+                    <span
+                      v-if="
+                        item.hasPromo &&
+                        item.promoInfo.discount_type === 'percentage'
+                      "
+                      class="text-xs text-green-600 font-semibold"
+                    >
+                      {{ item.promoInfo.discount_percentage }}% OFF
+                    </span>
+                    <span
+                      v-else-if="
+                        item.hasPromo &&
+                        item.promoInfo.discount_type === 'fixed_amount'
+                      "
+                      class="text-xs text-green-600 font-semibold"
+                    >
+                      ₱{{ item.promoInfo.discount_amount }} OFF
+                    </span>
+                  </div>
+
+                  <!-- Promo Icon -->
+                  <div
+                    v-if="item.hasPromo"
+                    class="flex items-center justify-center w-6 h-6 bg-gradient-to-br from-red-500 to-orange-500 text-white rounded-full shadow-md hover:scale-110 hover:shadow-lg transition-all duration-300"
+                  >
+                    <font-awesome-icon icon="fa-solid fa-bolt" class="text-xs" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -1684,6 +1851,7 @@
   import branchService from '../../services/branchService.js';
   import menuService from '../../services/menuService.js';
   import { formatImageUrl, apiConfig } from '../../config/api.js';
+  import { Clock, Briefcase, Users } from 'lucide-vue-next';
 
   // Backend base derived from api config (strip /api)
   const API_BASE_URL = (apiConfig?.baseURL || '').replace(/\/?api\/?$/, '');
@@ -2965,6 +3133,37 @@
     }
     100% {
       width: 100%;
+    }
+  }
+
+  /* Horizontal Scroll Styles for Mobile */
+  .scrollbar-hide {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;  /* Chrome, Safari and Opera */
+  }
+
+  /* Snap scrolling for better mobile experience */
+  .snap-x {
+    scroll-snap-type: x mandatory;
+  }
+
+  .snap-start {
+    scroll-snap-align: start;
+  }
+
+  .snap-mandatory {
+    scroll-snap-type: x mandatory;
+  }
+
+  /* Smooth scrolling for horizontal sections */
+  @media (max-width: 767px) {
+    .scrollbar-hide {
+      -webkit-overflow-scrolling: touch;
+      scroll-behavior: smooth;
     }
   }
 </style>

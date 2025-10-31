@@ -14,14 +14,17 @@
   } from 'lucide-vue-next';
   import { apiConfig } from '../../config/api.js';
   import Logo from '../../assets/crm/Logo.png';
+  import { useCustomToast } from '../../composables/useCustomToast.js';
 
   const route = useRoute();
   const router = useRouter();
+  const { showError, showWarning } = useCustomToast();
 
   // Reactive state
   const currentStep = ref(0);
   const loading = ref(true);
   const saving = ref(false);
+  const hasSubmitted = ref(false);
   const onboardingToken = ref('');
   const onboardingData = ref(null);
   const errorMessage = ref('');
@@ -654,8 +657,14 @@
 
   // Submit form
   const handleSubmit = async () => {
+    // Prevent duplicate submissions
+    if (hasSubmitted.value) {
+      showWarning('You have already completed onboarding.');
+      return;
+    }
+
     if (!isFormValid.value) {
-      alert('Please fill in all required fields');
+      showError('Please fill in all required fields');
       return;
     }
 
@@ -794,11 +803,14 @@
         );
       }
 
+      // Mark as submitted to prevent duplicate submissions
+      hasSubmitted.value = true;
+
       // Show completion notice modal instead of immediate redirect
       showCompletionNotice.value = true;
     } catch (error) {
       console.error('Error submitting onboarding form:', error);
-      alert(error.message || 'Failed to submit form. Please try again.');
+      showError(error.message || 'Failed to submit form. Please try again.');
     } finally {
       saving.value = false;
     }
@@ -1449,7 +1461,7 @@
                         )
                       "
                       @mouseleave="hideHoverPreview"
-                      class="btn btn-sm btn-outline btn-primary relative w-full sm:w-auto"
+                      class="btn btn-sm relative w-full sm:w-auto"
                     >
                       <Info class="w-4 h-4 mr-1" />
                       Preview
@@ -1823,7 +1835,7 @@
                 <button
                   v-if="currentStep > 0"
                   @click="prevStep"
-                  class="btn btn-outline hover:bg-gray-50 font-medium border-gray-300 text-gray-700 w-full sm:w-auto"
+                  class="btn btn-sm  !font-thin text-gray-700 hover:bg-gray-50"
                 >
                   <ChevronLeft class="w-4 h-4 mr-1" />
                   Previous
@@ -1831,7 +1843,7 @@
                 <button
                   v-if="currentStep < steps.length - 1"
                   @click="nextStep"
-                  class="btn bg-primaryColor hover:bg-green-700 text-white font-semibold shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed border-0 w-full sm:w-auto"
+                  class="btn btn-sm bg-primaryColor !font-thin text-white hover:bg-primaryColor/80"
                   :disabled="!isFormValid"
                 >
                   Next
@@ -1840,8 +1852,8 @@
                 <button
                   v-else
                   @click="handleSubmit"
-                  class="btn bg-green-600 hover:bg-green-700 text-white font-semibold shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed border-0 w-full sm:w-auto"
-                  :disabled="!isFormValid || saving"
+                  class="btn btn-sm bg-primaryColor !font-thin text-white hover:bg-primaryColor/80"
+                  :disabled="!isFormValid || saving || hasSubmitted"
                 >
                   <CheckCircle class="w-5 h-5 mr-2" />
                   {{ saving ? 'Submitting...' : 'Complete Onboarding' }}

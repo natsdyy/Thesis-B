@@ -548,26 +548,21 @@ class Roles {
           ]);
 
         // Also update matching positions in branch_positions table
-        // Match by position_title (role name) - e.g., "Cashier", "Cook", "Manager", etc.
-        // Only update branch positions if the role is in "Branch" department
-        let matchingBranchPositions = [];
-        
-        if (currentRole.department === "Branch" || currentRole.department === "branch") {
-          // Debug: Check what branch positions exist
-          const allBranchPositions = await trx("branch_positions")
-            .whereNull("deleted_at")
-            .select("id", "position_title", "rate_per_hour")
-            .limit(10);
-          
-          
-          // Try multiple matching strategies
-          // 1. Exact case-insensitive match
+        // Priority 1: Match by role_id (for positions copied from user_roles)
+        let matchingBranchPositions = await trx("branch_positions")
+          .where("role_id", role_id)
+          .whereNull("deleted_at")
+          .select("id", "hours_per_month", "position_title", "branch_id", "rate_per_hour");
+
+        // Priority 2: If no role_id match and it's a Branch department role, try matching by position_title
+        if (matchingBranchPositions.length === 0 && (currentRole.department === "Branch" || currentRole.department === "branch")) {
+          // Try exact case-insensitive match by position_title
           matchingBranchPositions = await trx("branch_positions")
             .whereRaw("LOWER(TRIM(position_title)) = LOWER(TRIM(?))", [currentRole.role])
             .whereNull("deleted_at")
             .select("id", "hours_per_month", "position_title", "branch_id", "rate_per_hour");
 
-          // 2. If no exact match, try LIKE match (handles any extra spaces or variations)
+          // If no exact match, try LIKE match (handles any extra spaces or variations)
           if (matchingBranchPositions.length === 0) {
             console.log(`   No exact match found, trying LIKE match...`);
             const likeMatch = await trx("branch_positions")
@@ -580,40 +575,39 @@ class Roles {
               matchingBranchPositions = likeMatch;
             }
           }
+        }
 
-          if (matchingBranchPositions.length > 0) {
-            console.log(`\n🔄 Syncing rates for ${matchingBranchPositions.length} branch position(s) with position_title matching "${currentRole.role}"`);
-            console.log(`   Role: ${currentRole.role} (${currentRole.department}), New Rate: ₱${parsedRate}/hour`);
+        // Update all matching branch positions
+        if (matchingBranchPositions.length > 0) {
+          console.log(`\n🔄 Syncing rates for ${matchingBranchPositions.length} branch position(s) linked to role_id ${role_id}`);
+          console.log(`   Role: ${currentRole.role} (${currentRole.department}), New Rate: ₱${parsedRate}/hour`);
+          
+          // Update each matching branch position
+          let updatedCount = 0;
+          for (const branchPosition of matchingBranchPositions) {
+            const hoursPerMonth = branchPosition.hours_per_month || 160; // Default to 160 if not set
+            const monthlySalary = parsedRate * hoursPerMonth;
             
-            // Update each matching branch position
-            let updatedCount = 0;
-            for (const branchPosition of matchingBranchPositions) {
-              const hoursPerMonth = branchPosition.hours_per_month || 160; // Default to 160 if not set
-              const monthlySalary = parsedRate * hoursPerMonth;
-              
-              const updated = await trx("branch_positions")
-                .where("id", branchPosition.id)
-                .update({
-                  rate_per_hour: parsedRate,
-                  monthly_salary: monthlySalary,
-                  updated_at: db.fn.now(),
-                });
-              
-              if (updated > 0) {
-                updatedCount++;
-                console.log(`   ✓ Updated branch position ID ${branchPosition.id} ("${branchPosition.position_title}")`);
-                console.log(`     Old Rate: ₱${branchPosition.rate_per_hour || 'N/A'}/hr → New Rate: ₱${parsedRate}/hr`);
-                console.log(`     Monthly Salary: ₱${monthlySalary.toFixed(2)}`);
-              }
+            const updated = await trx("branch_positions")
+              .where("id", branchPosition.id)
+              .update({
+                rate_per_hour: parsedRate,
+                monthly_salary: monthlySalary,
+                updated_at: db.fn.now(),
+              });
+            
+            if (updated > 0) {
+              updatedCount++;
+              console.log(`   ✓ Updated branch position ID ${branchPosition.id} ("${branchPosition.position_title}")`);
+              console.log(`     Old Rate: ₱${branchPosition.rate_per_hour || 'N/A'}/hr → New Rate: ₱${parsedRate}/hr`);
+              console.log(`     Monthly Salary: ₱${monthlySalary.toFixed(2)}`);
             }
-            
-            console.log(`✅ Successfully updated ${updatedCount} of ${matchingBranchPositions.length} branch position(s) to match main branch rate\n`);
-          } else {
-            console.log(`⚠️  No branch positions found matching position_title "${currentRole.role}"`);
-            console.log(`   This role's rate will only apply to Position Management, not branch_positions\n`);
           }
+          
+          console.log(`✅ Successfully updated ${updatedCount} of ${matchingBranchPositions.length} branch position(s) to match user_roles rate\n`);
         } else {
-          console.log(`ℹ️  Role "${currentRole.role}" is in "${currentRole.department}" department - skipping branch_positions sync (department roles don't need branch sync)`);
+          console.log(`ℹ️  No branch positions found linked to role_id ${role_id} or matching position_title "${currentRole.role}"`);
+          console.log(`   This role's rate will only apply to Position Management (user_roles table)\n`);
         }
 
         await trx.commit();

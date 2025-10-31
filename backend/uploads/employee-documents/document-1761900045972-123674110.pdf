@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script type="module" src="/@id/virtual:vue-devtools-path:overlay.js"></script>
+    <script type="module" src="/@id/virtual:vue-inspector-path:load.js"></script>
+
+    <script type="module" src="/@vite/client"></script>
+
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/logo1.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Countryside Steak House</title>
+    <!-- Leaflet CSS and JS for OpenStreetMap (Free, no API key required) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js?t=1761719631540"></script>
+  </body>
+</html>

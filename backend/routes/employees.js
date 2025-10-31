@@ -6,6 +6,7 @@ const path = require("path");
 const fs = require("fs");
 const { authenticateToken } = require("../middleware/rbac");
 const EmailService = require("../services/emailService");
+const { db } = require("../config/database");
 
 /**
  * @swagger
@@ -107,7 +108,6 @@ router.get("/me", authenticateToken, async (req, res) => {
     }
 
     // Get role information by joining with user_roles table
-    const { db } = require("../config/database");
     const employeeWithRole = await db("employees")
       .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
       .select(
@@ -438,6 +438,95 @@ router.get("/roles/:department", async (req, res) => {
  *       404:
  *         description: Employee not found
  */
+// Get employee documents (MUST come before /:id route)
+// Serve document file with proper inline headers (bypasses download managers)
+router.get("/:id/documents/:documentId/view", async (req, res) => {
+  try {
+    const { id, documentId } = req.params;
+    
+    // Get document from database
+    const document = await db("employee_documents")
+      .where("id", documentId)
+      .where("employee_id", id)
+      .whereNull("deleted_at")
+      .first();
+    
+    if (!document) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+      });
+    }
+    
+    // Construct file path
+    const filePath = require("path").join(
+      __dirname,
+      "..",
+      "uploads",
+      "employee-documents",
+      document.filename
+    );
+    
+    // Check if file exists
+    if (!require("fs").existsSync(filePath)) {
+      return res.status(404).json({
+        success: false,
+        message: "File not found on server",
+      });
+    }
+    
+    // Set headers to force inline display
+    res.setHeader("Content-Type", document.mime_type || "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${document.original_filename}"`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    
+    // Stream the file
+    res.sendFile(filePath);
+  } catch (error) {
+    console.error("Error serving document:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error serving document",
+      error: error.message,
+    });
+  }
+});
+
+router.get("/:id/documents", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify employee exists
+    const employee = await db("employees").where("id", id).whereNull("deleted_at").first();
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found",
+      });
+    }
+
+    // Fetch all documents for this employee
+    const documents = await db("employee_documents")
+      .where("employee_id", id)
+      .whereNull("deleted_at")
+      .orderBy("uploaded_at", "desc")
+      .select("*");
+
+    res.json({
+      success: true,
+      data: documents,
+    });
+  } catch (error) {
+    console.error("Error fetching documents:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching documents",
+      error: error.message,
+    });
+  }
+});
+
 router.get("/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -637,6 +726,39 @@ const upload = multer({
       return cb(new Error("Only image uploads are allowed"));
     }
     cb(null, true);
+  },
+});
+
+// Document upload storage (for onboarding documents)
+const documentsDir = path.join(__dirname, "..", "uploads", "employee-documents");
+if (!fs.existsSync(documentsDir)) {
+  fs.mkdirSync(documentsDir, { recursive: true });
+}
+
+const documentStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, documentsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname) || '.pdf'; // Default to .pdf if no extension
+    // Preserve original extension, sanitize fieldname
+    const sanitizedFieldname = file.fieldname.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `${sanitizedFieldname}-${uniqueSuffix}${ext}`;
+    console.log(`Document upload: original='${file.originalname}', ext='${ext}', generated='${filename}'`);
+    cb(null, filename);
+  },
+});
+
+const documentUpload = multer({
+  storage: documentStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+    if (allowedMimes.includes(file.mimetype)) {
+      return cb(null, true);
+    }
+    return cb(new Error("Only PDF and image files are allowed"));
   },
 });
 
@@ -1261,6 +1383,100 @@ router.patch("/:id/restore-terminated", authenticateToken, async (req, res) => {
   }
 });
 
+// Upload employee documents (for onboarding)
+router.post(
+  "/:id/documents",
+  documentUpload.single("document"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { document_type } = req.body;
+
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: "No document file uploaded",
+        });
+      }
+
+      if (!document_type) {
+        return res.status(400).json({
+          success: false,
+          message: "Document type is required",
+        });
+      }
+
+      // Verify employee exists
+      const employee = await db("employees").where("id", id).whereNull("deleted_at").first();
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message: "Employee not found",
+        });
+      }
+
+      const documentUrl = `/uploads/employee-documents/${req.file.filename}`;
+
+      // Check if a document of this type already exists for this employee
+      const existingDoc = await db("employee_documents")
+        .where("employee_id", id)
+        .where("document_type", document_type)
+        .whereNull("deleted_at")
+        .first();
+
+      let document;
+      if (existingDoc) {
+        // Update existing document
+        [document] = await db("employee_documents")
+          .where("id", existingDoc.id)
+          .update({
+            filename: req.file.filename,
+            original_filename: req.file.originalname,
+            file_path: documentUrl,
+            mime_type: req.file.mimetype,
+            file_size: req.file.size,
+            uploaded_at: new Date(),
+            deleted_at: null,
+          })
+          .returning("*");
+      } else {
+        // Create new document record
+        [document] = await db("employee_documents")
+          .insert({
+            employee_id: id,
+            document_type: document_type,
+            filename: req.file.filename,
+            original_filename: req.file.originalname,
+            file_path: documentUrl,
+            mime_type: req.file.mimetype,
+            file_size: req.file.size,
+            uploaded_at: new Date(),
+          })
+          .returning("*");
+      }
+
+      res.json({
+        success: true,
+        message: "Document uploaded successfully",
+        data: {
+          id: document.id,
+          document_type: document_type,
+          document_url: documentUrl,
+          filename: req.file.filename,
+          original_filename: req.file.originalname,
+        },
+      });
+    } catch (error) {
+      console.error("Error uploading document:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error uploading document",
+        error: error.message,
+      });
+    }
+  }
+);
+
 // Upload profile picture endpoint
 router.post(
   "/me/upload-photo",
@@ -1280,7 +1496,6 @@ router.post(
       const photoUrl = `/uploads/employee-photos/${req.file.filename}`;
 
       // Update employee record with new photo URL
-      const { db } = require("../config/database");
       await db("employees").where("id", userId).update({
         photo_url: photoUrl,
         updated_at: new Date(),

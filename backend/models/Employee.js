@@ -597,14 +597,24 @@ class Employee {
       const employeeId = await this.generateEmployeeId();
 
       // Set default password as last name if not provided
+      // Determine if account should be active and if password should be set
+      // If onboarding_status is 'pending', account starts as inactive and no password set
+      // Otherwise (direct employee creation), account is active and password is set
+      const isOnboardingPending = data.onboarding_status === 'pending';
+      const shouldBeActive = !data.onboarding_status || !isOnboardingPending;
+      
       let hashedPassword = null;
-      if (data.password) {
-        hashedPassword = await this.hashPassword(data.password);
-      } else {
-        // Use last name as default password
-        const defaultPassword = data.last_name.trim();
-        hashedPassword = await this.hashPassword(defaultPassword);
+      // Only set password if not onboarding pending (password will be set on approval)
+      if (!isOnboardingPending) {
+        if (data.password) {
+          hashedPassword = await this.hashPassword(data.password);
+        } else {
+          // Use last name as default password
+          const defaultPassword = data.last_name.trim();
+          hashedPassword = await this.hashPassword(defaultPassword);
+        }
       }
+      // For onboarding pending: password stays null until approval
 
       // Validate role exists and is active
       const role = await db("user_roles")
@@ -647,8 +657,8 @@ class Employee {
           middle_name: data.middle_name?.trim() || null,
           last_name: data.last_name.trim(),
           email: data.email?.trim().toLowerCase() || null,
-          password: hashedPassword,
-          is_active: true,
+          password: hashedPassword, // null for onboarding pending, will be set on approval
+          is_active: shouldBeActive, // Inactive if pending onboarding, active otherwise
           phone_number: data.phone_number.trim(),
           address: data.address.trim(),
           postal_code: data.postal_code.trim(),
@@ -672,8 +682,9 @@ class Employee {
           emergency_contact_address: data.emergency_contact_address.trim(),
           emergency_contact_email:
             data.emergency_contact_email?.trim().toLowerCase() || null,
-          status: "Active",
+          status: shouldBeActive ? "Active" : "Inactive", // Set status based on is_active
           photo_url: data.photo_url || null,
+          onboarding_status: data.onboarding_status || null, // Track onboarding review status
           created_by: createdBy,
           created_at: new Date(),
           updated_at: new Date(),

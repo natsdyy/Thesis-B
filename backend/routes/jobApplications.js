@@ -10,7 +10,8 @@ const EmailService = require("../services/emailService");
 const { db } = require("../config/database");
 const router = express.Router();
 
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
+const JWT_SECRET =
+  process.env.JWT_SECRET || "your-secret-key-change-in-production";
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -22,208 +23,302 @@ const storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname));
-  }
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(
+      null,
+      file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname)
+    );
+  },
 });
 
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
+    fileSize: 5 * 1024 * 1024, // 5MB limit
   },
   fileFilter: (req, file, cb) => {
     const allowedTypes = {
-      resume: ['.pdf', '.doc', '.docx'],
-      additional: ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png']
+      resume: [".pdf", ".doc", ".docx"],
+      additional: [".pdf", ".doc", ".docx", ".jpg", ".jpeg", ".png"],
     };
-    
+
     const fileExtension = path.extname(file.originalname).toLowerCase();
     const fieldName = file.fieldname;
-    
-    if (allowedTypes[fieldName] && allowedTypes[fieldName].includes(fileExtension)) {
+
+    if (
+      allowedTypes[fieldName] &&
+      allowedTypes[fieldName].includes(fileExtension)
+    ) {
       cb(null, true);
     } else {
-      cb(new Error(`Invalid file type for ${fieldName}. Allowed types: ${allowedTypes[fieldName].join(', ')}`), false);
+      cb(
+        new Error(
+          `Invalid file type for ${fieldName}. Allowed types: ${allowedTypes[fieldName].join(", ")}`
+        ),
+        false
+      );
     }
-  }
+  },
 });
 
 // Helper function to verify reCAPTCHA token
 const verifyRecaptcha = async (token) => {
   try {
     const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
-    
+
     if (!token) {
-      return { success: false, error: 'No reCAPTCHA token provided' };
+      return { success: false, error: "No reCAPTCHA token provided" };
     }
 
     if (!RECAPTCHA_SECRET_KEY) {
-      console.warn('RECAPTCHA_SECRET_KEY not found in environment variables');
+      console.warn("RECAPTCHA_SECRET_KEY not found in environment variables");
       // In development, if no key is set, allow the request (for testing)
-      if (process.env.NODE_ENV !== 'production') {
-        console.warn('Skipping reCAPTCHA verification in development mode (no secret key)');
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(
+          "Skipping reCAPTCHA verification in development mode (no secret key)"
+        );
         return { success: true, error: null };
       }
-      return { success: false, error: 'reCAPTCHA secret key not configured' };
+      return { success: false, error: "reCAPTCHA secret key not configured" };
     }
 
-    console.log('Verifying reCAPTCHA token with secret key:', RECAPTCHA_SECRET_KEY.substring(0, 10) + '...');
+    console.log(
+      "Verifying reCAPTCHA token with secret key:",
+      RECAPTCHA_SECRET_KEY.substring(0, 10) + "..."
+    );
 
-    const response = await axios.post('https://www.google.com/recaptcha/api/siteverify', null, {
-      params: {
-        secret: RECAPTCHA_SECRET_KEY,
-        response: token
+    const response = await axios.post(
+      "https://www.google.com/recaptcha/api/siteverify",
+      null,
+      {
+        params: {
+          secret: RECAPTCHA_SECRET_KEY,
+          response: token,
+        },
       }
-    });
+    );
 
-    console.log('reCAPTCHA verification response:', {
+    console.log("reCAPTCHA verification response:", {
       success: response.data.success,
-      errorCodes: response.data['error-codes'],
-      hostname: response.data.hostname
+      errorCodes: response.data["error-codes"],
+      hostname: response.data.hostname,
     });
 
-    if (response.data['error-codes'] && response.data['error-codes'].includes('invalid-input-secret')) {
-      console.error('Invalid reCAPTCHA secret key. Please check your RECAPTCHA_SECRET_KEY in .env file.');
-      return { 
-        success: false, 
-        error: 'Invalid reCAPTCHA secret key. Please contact the administrator.' 
+    if (
+      response.data["error-codes"] &&
+      response.data["error-codes"].includes("invalid-input-secret")
+    ) {
+      console.error(
+        "Invalid reCAPTCHA secret key. Please check your RECAPTCHA_SECRET_KEY in .env file."
+      );
+      return {
+        success: false,
+        error:
+          "Invalid reCAPTCHA secret key. Please contact the administrator.",
       };
     }
 
-    if (response.data['error-codes'] && response.data['error-codes'].includes('invalid-input-response')) {
-      console.error('Invalid reCAPTCHA token. Token may be expired or invalid.');
-      return { 
-        success: false, 
-        error: 'reCAPTCHA verification failed. Please complete the verification again.' 
+    if (
+      response.data["error-codes"] &&
+      response.data["error-codes"].includes("invalid-input-response")
+    ) {
+      console.error(
+        "Invalid reCAPTCHA token. Token may be expired or invalid."
+      );
+      return {
+        success: false,
+        error:
+          "reCAPTCHA verification failed. Please complete the verification again.",
       };
     }
 
     return {
       success: response.data.success === true,
-      error: response.data['error-codes'] || null
+      error: response.data["error-codes"] || null,
     };
   } catch (error) {
-    console.error('reCAPTCHA verification error:', error);
-    return { success: false, error: 'Failed to verify reCAPTCHA: ' + error.message };
+    console.error("reCAPTCHA verification error:", error);
+    return {
+      success: false,
+      error: "Failed to verify reCAPTCHA: " + error.message,
+    };
   }
 };
 
 // POST /api/job-applications - Submit a new job application
-router.post("/", upload.fields([
-  { name: 'resume', maxCount: 1 },
-  { name: 'additional', maxCount: 1 }
-]), async (req, res) => {
-  try {
-    const applicationData = req.body;
-    
-    // Verify reCAPTCHA token
-    if (!applicationData.recaptchaToken) {
-      return res.status(400).json({
-        success: false,
-        message: 'reCAPTCHA verification required. Please complete the security verification.',
-        error: 'Missing reCAPTCHA token'
-      });
-    }
+router.post(
+  "/",
+  upload.fields([
+    { name: "resume", maxCount: 1 },
+    { name: "additional", maxCount: 1 },
+  ]),
+  async (req, res) => {
+    try {
+      const applicationData = req.body;
 
-    const recaptchaVerification = await verifyRecaptcha(applicationData.recaptchaToken);
-    if (!recaptchaVerification.success) {
-      // Provide more helpful error messages
-      let errorMessage = 'reCAPTCHA verification failed. Please try again.';
-      if (recaptchaVerification.error) {
-        if (Array.isArray(recaptchaVerification.error)) {
-          if (recaptchaVerification.error.includes('invalid-keys')) {
-            errorMessage = 'reCAPTCHA configuration error. Please contact the administrator.';
-          } else if (recaptchaVerification.error.includes('invalid-input-secret')) {
-            errorMessage = 'reCAPTCHA configuration error. Please contact the administrator.';
-          } else if (recaptchaVerification.error.includes('invalid-input-response')) {
-            errorMessage = 'reCAPTCHA verification expired. Please complete the verification again.';
+      // Verify reCAPTCHA token
+      if (!applicationData.recaptchaToken) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "reCAPTCHA verification required. Please complete the security verification.",
+          error: "Missing reCAPTCHA token",
+        });
+      }
+
+      const recaptchaVerification = await verifyRecaptcha(
+        applicationData.recaptchaToken
+      );
+      if (!recaptchaVerification.success) {
+        // Provide more helpful error messages
+        let errorMessage = "reCAPTCHA verification failed. Please try again.";
+        if (recaptchaVerification.error) {
+          if (Array.isArray(recaptchaVerification.error)) {
+            if (recaptchaVerification.error.includes("invalid-keys")) {
+              errorMessage =
+                "reCAPTCHA configuration error. Please contact the administrator.";
+            } else if (
+              recaptchaVerification.error.includes("invalid-input-secret")
+            ) {
+              errorMessage =
+                "reCAPTCHA configuration error. Please contact the administrator.";
+            } else if (
+              recaptchaVerification.error.includes("invalid-input-response")
+            ) {
+              errorMessage =
+                "reCAPTCHA verification expired. Please complete the verification again.";
+            }
           }
         }
+
+        // Clean up any files that multer may have already saved before verification
+        try {
+          if (req.files) {
+            const uploadedFiles = Object.values(req.files).flat();
+            uploadedFiles.forEach((file) => {
+              // Prefer file.path provided by multer; fallback to constructing from filename
+              const filePath =
+                file.path ||
+                path.join(
+                  __dirname,
+                  "../uploads/job-applications",
+                  file.filename
+                );
+              if (filePath && fs.existsSync(filePath)) {
+                try {
+                  fs.unlinkSync(filePath);
+                } catch (unlinkErr) {
+                  console.warn(
+                    "Failed to delete uploaded file after reCAPTCHA failure:",
+                    unlinkErr.message
+                  );
+                }
+              }
+            });
+          }
+        } catch (cleanupErr) {
+          console.warn(
+            "Cleanup error after reCAPTCHA failure:",
+            cleanupErr.message
+          );
+        }
+
+        return res.status(400).json({
+          success: false,
+          message: errorMessage,
+          error: recaptchaVerification.error,
+        });
       }
-      
-      return res.status(400).json({
+
+      // Handle file uploads
+      let resumePath = null;
+      let additionalDocumentsPath = null;
+
+      if (req.files) {
+        if (req.files.resume && req.files.resume[0]) {
+          resumePath = `/uploads/job-applications/${req.files.resume[0].filename}`;
+        }
+        if (req.files.additional && req.files.additional[0]) {
+          additionalDocumentsPath = `/uploads/job-applications/${req.files.additional[0].filename}`;
+        }
+      }
+
+      // Prepare application data
+      // Coerce types safely for numeric fields that arrive as strings via multipart/form-data
+      const normalizedExperienceYears = Number.parseInt(
+        applicationData.experienceYears ?? "0",
+        10
+      );
+      const normalizedExpectedSalary =
+        applicationData.expectedSalary === undefined ||
+        applicationData.expectedSalary === null ||
+        applicationData.expectedSalary === "" ||
+        applicationData.expectedSalary === "null"
+          ? null
+          : Number.parseFloat(applicationData.expectedSalary);
+      const normalizedPositionId =
+        applicationData.positionId === undefined ||
+        applicationData.positionId === null ||
+        applicationData.positionId === "" ||
+        applicationData.positionId === "null"
+          ? null
+          : Number.parseInt(applicationData.positionId, 10);
+
+      // Extract branchId if provided (for branch positions)
+      const normalizedBranchId =
+        applicationData.branchId === undefined ||
+        applicationData.branchId === null ||
+        applicationData.branchId === "" ||
+        applicationData.branchId === "null"
+          ? null
+          : Number.parseInt(applicationData.branchId, 10);
+
+      const jobApplicationData = {
+        fullName: applicationData.fullName,
+        email: applicationData.email,
+        phone: applicationData.phone,
+        dateOfBirth: applicationData.dateOfBirth,
+        address: applicationData.address,
+        positionTitle: applicationData.positionTitle,
+        department: applicationData.department,
+        experienceYears: Number.isNaN(normalizedExperienceYears)
+          ? 0
+          : normalizedExperienceYears,
+        expectedSalary: Number.isNaN(normalizedExpectedSalary)
+          ? null
+          : normalizedExpectedSalary,
+        skills: applicationData.skills,
+        motivation: applicationData.motivation || null,
+        availability: applicationData.availability || null,
+        additionalNotes: applicationData.additionalNotes || null,
+        resumePath: resumePath || null,
+        additionalDocumentsPath: additionalDocumentsPath || null,
+        positionId: Number.isNaN(normalizedPositionId)
+          ? null
+          : normalizedPositionId,
+        branchId: Number.isNaN(normalizedBranchId) ? null : normalizedBranchId,
+        applicationDate:
+          applicationData.applicationDate || new Date().toISOString(),
+        status: "new",
+      };
+
+      const result = await JobApplication.create(jobApplicationData);
+
+      if (result.success) {
+        res.status(201).json(result);
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (error) {
+      console.error("Error in job application submission:", error);
+      res.status(500).json({
         success: false,
-        message: errorMessage,
-        error: recaptchaVerification.error
+        message: "Internal server error",
+        error: error.message,
       });
     }
-    
-    // Handle file uploads
-    let resumePath = null;
-    let additionalDocumentsPath = null;
-    
-    if (req.files) {
-      if (req.files.resume && req.files.resume[0]) {
-        resumePath = `/uploads/job-applications/${req.files.resume[0].filename}`;
-      }
-      if (req.files.additional && req.files.additional[0]) {
-        additionalDocumentsPath = `/uploads/job-applications/${req.files.additional[0].filename}`;
-      }
-    }
-
-    // Prepare application data
-    // Coerce types safely for numeric fields that arrive as strings via multipart/form-data
-    const normalizedExperienceYears = Number.parseInt(applicationData.experienceYears ?? '0', 10);
-    const normalizedExpectedSalary = (applicationData.expectedSalary === undefined ||
-                                      applicationData.expectedSalary === null ||
-                                      applicationData.expectedSalary === '' ||
-                                      applicationData.expectedSalary === 'null')
-      ? null
-      : Number.parseFloat(applicationData.expectedSalary);
-    const normalizedPositionId = (applicationData.positionId === undefined ||
-                                  applicationData.positionId === null ||
-                                  applicationData.positionId === '' ||
-                                  applicationData.positionId === 'null')
-      ? null
-      : Number.parseInt(applicationData.positionId, 10);
-
-    // Extract branchId if provided (for branch positions)
-    const normalizedBranchId = (applicationData.branchId === undefined ||
-                                applicationData.branchId === null ||
-                                applicationData.branchId === '' ||
-                                applicationData.branchId === 'null')
-      ? null
-      : Number.parseInt(applicationData.branchId, 10);
-
-    const jobApplicationData = {
-      fullName: applicationData.fullName,
-      email: applicationData.email,
-      phone: applicationData.phone,
-      dateOfBirth: applicationData.dateOfBirth,
-      address: applicationData.address,
-      positionTitle: applicationData.positionTitle,
-      department: applicationData.department,
-      experienceYears: Number.isNaN(normalizedExperienceYears) ? 0 : normalizedExperienceYears,
-      expectedSalary: Number.isNaN(normalizedExpectedSalary) ? null : normalizedExpectedSalary,
-      skills: applicationData.skills,
-      motivation: applicationData.motivation || null,
-      availability: applicationData.availability || null,
-      additionalNotes: applicationData.additionalNotes || null,
-      resumePath: resumePath || null,
-      additionalDocumentsPath: additionalDocumentsPath || null,
-      positionId: Number.isNaN(normalizedPositionId) ? null : normalizedPositionId,
-      branchId: Number.isNaN(normalizedBranchId) ? null : normalizedBranchId,
-      applicationDate: applicationData.applicationDate || new Date().toISOString(),
-      status: 'new'
-    };
-
-    const result = await JobApplication.create(jobApplicationData);
-
-    if (result.success) {
-      res.status(201).json(result);
-    } else {
-      res.status(400).json(result);
-    }
-  } catch (error) {
-    console.error("Error in job application submission:", error);
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error.message
-    });
   }
-});
+);
 
 // Serve job application document file with proper inline headers (bypasses download managers and auth)
 // IMPORTANT: This route must come BEFORE /:id route to avoid route conflicts
@@ -232,63 +327,72 @@ router.get("/documents/:applicationId/view", async (req, res) => {
   try {
     const { applicationId } = req.params;
     const { type } = req.query; // 'resume' or 'additional'
-    
-    if (!type || !['resume', 'additional'].includes(type)) {
+
+    if (!type || !["resume", "additional"].includes(type)) {
       return res.status(400).json({
         success: false,
         message: "Document type is required (resume or additional)",
       });
     }
-    
+
     // Get application from database to get file path
     const application = await db("job_applications")
       .where("id", applicationId)
       .first();
-    
+
     if (!application) {
       return res.status(404).json({
         success: false,
         message: "Application not found",
       });
     }
-    
+
     // Get the file path based on type
-    const filePathField = type === 'resume' ? 'resume_path' : 'additional_documents_path';
+    const filePathField =
+      type === "resume" ? "resume_path" : "additional_documents_path";
     const filePath = application[filePathField];
-    
+
     if (!filePath) {
       return res.status(404).json({
         success: false,
-        message: `${type === 'resume' ? 'Resume' : 'Additional documents'} not found for this application`,
+        message: `${type === "resume" ? "Resume" : "Additional documents"} not found for this application`,
       });
     }
-    
+
     // Construct full file path
     // filePath is like /uploads/job-applications/resume-xxx.pdf
     // Remove leading slash and join with backend root
-    const relativePath = filePath.startsWith('/') ? filePath.substring(1) : filePath;
+    const relativePath = filePath.startsWith("/")
+      ? filePath.substring(1)
+      : filePath;
     const fullPath = path.join(__dirname, "..", relativePath);
-    
-    console.log('Document view request:', {
+
+    console.log("Document view request:", {
       applicationId,
       type,
       filePathField,
       filePath,
       relativePath,
       fullPath,
-      exists: fs.existsSync(fullPath)
+      exists: fs.existsSync(fullPath),
     });
-    
+
     // Check if file exists, try alternative paths if not found
     let finalPath = fullPath;
     if (!fs.existsSync(fullPath)) {
       console.error(`File not found at primary path: ${fullPath}`);
       console.error(`Original filePath from DB: ${filePath}`);
-      
+
       // Try alternative: just filename in job-applications folder
       const filename = path.basename(filePath);
-      const altPath = path.join(__dirname, "..", "uploads", "job-applications", filename);
-      
+      const altPath = path.join(
+        __dirname,
+        "..",
+        "uploads",
+        "job-applications",
+        filename
+      );
+
       if (fs.existsSync(altPath)) {
         console.log(`Found file at alternative path: ${altPath}`);
         finalPath = altPath;
@@ -296,38 +400,39 @@ router.get("/documents/:applicationId/view", async (req, res) => {
         console.error(`File also not found at: ${altPath}`);
         return res.status(404).json({
           success: false,
-          message: "File not found on server. The file may have been deleted or moved.",
+          message:
+            "File not found on server. The file may have been deleted or moved.",
           debug: {
             filePath,
             fullPath,
             altPath,
-            exists: false
-          }
+            exists: false,
+          },
         });
       }
     }
-    
+
     // Get file extension and determine content type
     const ext = path.extname(finalPath).toLowerCase();
     const basename = path.basename(finalPath);
-    
-    let contentType = 'application/octet-stream';
-    if (ext === '.pdf') {
-      contentType = 'application/pdf';
-    } else if (['.jpg', '.jpeg'].includes(ext)) {
-      contentType = 'image/jpeg';
-    } else if (ext === '.png') {
-      contentType = 'image/png';
-    } else if (ext === '.doc' || ext === '.docx') {
-      contentType = 'application/msword';
+
+    let contentType = "application/octet-stream";
+    if (ext === ".pdf") {
+      contentType = "application/pdf";
+    } else if ([".jpg", ".jpeg"].includes(ext)) {
+      contentType = "image/jpeg";
+    } else if (ext === ".png") {
+      contentType = "image/png";
+    } else if (ext === ".doc" || ext === ".docx") {
+      contentType = "application/msword";
     }
-    
+
     // Set headers to force inline display
     res.setHeader("Content-Type", contentType);
     res.setHeader("Content-Disposition", `inline; filename="${basename}"`);
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "public, max-age=3600");
-    
+
     // Stream the file
     res.sendFile(finalPath);
   } catch (error) {
@@ -346,7 +451,7 @@ router.get("/", async (req, res) => {
     const filters = {
       status: req.query.status,
       department: req.query.department,
-      positionId: req.query.positionId
+      positionId: req.query.positionId,
     };
 
     const result = await JobApplication.getAll(filters);
@@ -361,7 +466,7 @@ router.get("/", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message
+      error: error.message,
     });
   }
 });
@@ -381,7 +486,7 @@ router.get("/stats", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message
+      error: error.message,
     });
   }
 });
@@ -400,27 +505,31 @@ router.post("/interviews", async (req, res) => {
       (async () => {
         try {
           if (interviewData.applicationId) {
-            const appResult = await JobApplication.getById(interviewData.applicationId);
-            if (appResult && appResult.success && appResult.data && appResult.data.email) {
+            const appResult = await JobApplication.getById(
+              interviewData.applicationId
+            );
+            if (
+              appResult &&
+              appResult.success &&
+              appResult.data &&
+              appResult.data.email
+            ) {
               const applicant = appResult.data;
-              
-              await EmailService.sendInterviewScheduledEmail(
-                applicant.email,
-                {
-                  applicantName: applicant.full_name || applicant.applicant_name,
-                  positionTitle: applicant.position_title || applicant.role || '',
-                  interviewDate: interviewData.interviewDate,
-                  interviewTime: interviewData.interviewTime,
-                  interviewType: interviewData.interviewType,
-                  location: interviewData.location,
-                  meetingLink: interviewData.meetingLink,
-                  notes: interviewData.notes
-                }
-              );
+
+              await EmailService.sendInterviewScheduledEmail(applicant.email, {
+                applicantName: applicant.full_name || applicant.applicant_name,
+                positionTitle: applicant.position_title || applicant.role || "",
+                interviewDate: interviewData.interviewDate,
+                interviewTime: interviewData.interviewTime,
+                interviewType: interviewData.interviewType,
+                location: interviewData.location,
+                meetingLink: interviewData.meetingLink,
+                notes: interviewData.notes,
+              });
             }
           }
         } catch (e) {
-          console.warn('Email send failed for interview schedule:', e.message);
+          console.warn("Email send failed for interview schedule:", e.message);
         }
       })();
 
@@ -433,7 +542,7 @@ router.post("/interviews", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message
+      error: error.message,
     });
   }
 });
@@ -446,7 +555,9 @@ router.post("/:id/send-hire-link", async (req, res) => {
     // Fetch the application details
     const appResult = await JobApplication.getById(applicationId);
     if (!appResult.success || !appResult.data) {
-      return res.status(404).json({ success: false, message: "Application not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Application not found" });
     }
 
     const app = appResult.data;
@@ -457,7 +568,9 @@ router.post("/:id/send-hire-link", async (req, res) => {
     const employeeType = "Full-time"; // default for onboarding
 
     if (!applicantEmail) {
-      return res.status(400).json({ success: false, message: "Applicant email not available" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Applicant email not available" });
     }
 
     // Generate onboarding token
@@ -467,7 +580,7 @@ router.post("/:id/send-hire-link", async (req, res) => {
         {
           application_id: applicationId,
           email: applicantEmail,
-          type: "onboarding"
+          type: "onboarding",
         },
         JWT_SECRET,
         { expiresIn: "30d" }
@@ -476,13 +589,14 @@ router.post("/:id/send-hire-link", async (req, res) => {
       console.error("Error generating onboarding token:", error);
     }
 
-    const frontendUrl = process.env.FRONTEND_URL || 
+    const frontendUrl =
+      process.env.FRONTEND_URL ||
       (process.env.NODE_ENV === "production"
         ? "https://www.countryside-steakhouse.site"
         : "http://localhost:8080");
-    
+
     let onboardingLink;
-    
+
     if (onboardingToken) {
       // Use tokenized onboarding link
       onboardingLink = `${frontendUrl}/onboard?token=${encodeURIComponent(onboardingToken)}`;
@@ -493,7 +607,7 @@ router.post("/:id/send-hire-link", async (req, res) => {
       )}&role_name=${encodeURIComponent(roleName)}&employee_type=${encodeURIComponent(
         employeeType
       )}`;
-      console.warn('Onboarding token generation failed, using fallback link');
+      console.warn("Onboarding token generation failed, using fallback link");
     }
 
     try {
@@ -504,18 +618,24 @@ router.post("/:id/send-hire-link", async (req, res) => {
           applicantName: applicantName,
           positionTitle: roleName,
           department: department,
-          onboardingLink: onboardingLink
+          onboardingLink: onboardingLink,
         }
       );
 
       return res.status(200).json({ success: true, emailResult });
     } catch (err) {
       console.error("Failed to send hire link email:", err);
-      return res.status(500).json({ success: false, message: "Failed to send email" });
+      return res
+        .status(500)
+        .json({ success: false, message: "Failed to send email" });
     }
   } catch (error) {
     console.error("Error sending hire link:", error);
-    res.status(500).json({ success: false, message: "Internal server error", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
   }
 });
 
@@ -525,7 +645,7 @@ router.get("/interviews", async (req, res) => {
     const filters = {
       status: req.query.status,
       interviewDate: req.query.interviewDate,
-      interviewerEmail: req.query.interviewerEmail
+      interviewerEmail: req.query.interviewerEmail,
     };
 
     const result = await Interview.getAll(filters);
@@ -540,7 +660,7 @@ router.get("/interviews", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message
+      error: error.message,
     });
   }
 });
@@ -560,7 +680,7 @@ router.get("/interviews/upcoming", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message
+      error: error.message,
     });
   }
 });
@@ -581,7 +701,7 @@ router.get("/interviews/:id", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message
+      error: error.message,
     });
   }
 });
@@ -604,7 +724,7 @@ router.put("/interviews/:id", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message
+      error: error.message,
     });
   }
 });
@@ -618,23 +738,28 @@ router.put("/interviews/:id/status", async (req, res) => {
     if (!status) {
       return res.status(400).json({
         success: false,
-        message: "Status is required"
+        message: "Status is required",
       });
     }
 
-    const validStatuses = ['scheduled', 'completed', 'cancelled', 'rescheduled'];
+    const validStatuses = [
+      "scheduled",
+      "completed",
+      "cancelled",
+      "rescheduled",
+    ];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
+        message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
       });
     }
 
     // Validate result if provided
-    if (result && !['passed', 'failed'].includes(result)) {
+    if (result && !["passed", "failed"].includes(result)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid result. Must be 'passed' or 'failed'"
+        message: "Invalid result. Must be 'passed' or 'failed'",
       });
     }
 
@@ -650,7 +775,7 @@ router.put("/interviews/:id/status", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message
+      error: error.message,
     });
   }
 });
@@ -671,7 +796,7 @@ router.delete("/interviews/:id", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message
+      error: error.message,
     });
   }
 });
@@ -692,7 +817,7 @@ router.get("/:id", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message
+      error: error.message,
     });
   }
 });
@@ -706,15 +831,21 @@ router.put("/:id/status", async (req, res) => {
     if (!status) {
       return res.status(400).json({
         success: false,
-        message: "Status is required"
+        message: "Status is required",
       });
     }
 
-    const validStatuses = ['new', 'reviewing', 'interview-scheduled', 'rejected', 'hired'];
+    const validStatuses = [
+      "new",
+      "reviewing",
+      "interview-scheduled",
+      "rejected",
+      "hired",
+    ];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
+        message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
       });
     }
 
@@ -730,7 +861,7 @@ router.put("/:id/status", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message
+      error: error.message,
     });
   }
 });
@@ -751,7 +882,7 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message
+      error: error.message,
     });
   }
 });

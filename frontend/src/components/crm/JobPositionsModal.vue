@@ -342,7 +342,6 @@
   import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
   import { formatImageUrl, apiConfig } from '../../config/api.js';
   import JobApplicationFormModal from './JobApplicationFormModal.vue';
-  import { usePositionsStore } from '../../stores/positionsStore.js';
 
   // Props
   const props = defineProps({
@@ -356,48 +355,18 @@
   const emit = defineEmits(['close']);
 
   // State
-  const positionsStore = usePositionsStore();
-  const branchPositions = ref([]); // Separate branch positions from API
+  const branchPositions = ref([]); // All positions from API (includes branch_positions and user_roles)
   const isLoading = ref(false);
   const activeDepartment = ref('All');
   const isApplicationFormOpen = ref(false);
   const selectedPosition = ref(null);
   const showSuccessModal = ref(false);
 
-  // Computed - merge branch positions with store positions (department roles)
+  // Computed - use only branch positions from API (which already includes department roles)
   const positions = computed(() => {
-    // Get department positions from store (grouped by department)
-    const storePositions = [];
-    for (const department in positionsStore.positions) {
-      const deptPositions = positionsStore.positions[department] || [];
-      deptPositions.forEach((role) => {
-        // Only include active positions
-        if (role.is_active) {
-          storePositions.push({
-            id: `dept-${role.role_id}`,
-            position_title: role.role,
-            position_code: role.role_code || '',
-            department: role.department || 'Department',
-            position_type: 'Full-time',
-            rate_per_hour: parseFloat(role.rate_per_hour) || 0,
-            status: role.is_active ? 'open' : 'closed',
-            is_active: !!role.is_active,
-            description: role.description || '',
-            requirements: role.requirements || '',
-            role_id: role.role_id,
-            branch_id: null, // Department roles don't have a branch
-            branch_name: null,
-          });
-        }
-      });
-    }
-
-    // Merge with branch positions and filter out closed positions
-    // Branch positions already have branch_id and branch_name from the API
-    const allPositions = [...branchPositions.value, ...storePositions];
-    // Final filtering: only show truly open and active positions
-    // Exclude any position that is closed, filled, or on-hold
-    return allPositions.filter((p) => {
+    // Branch positions from /api/branch-positions already include both branch_positions and user_roles
+    // No need to merge with store - the API does it for us
+    return branchPositions.value.filter((p) => {
       // Get status values (prefer job_status, fallback to status)
       const jobStatus = p.job_status || p.status;
       const status = p.status || p.job_status || 'open';
@@ -575,6 +544,11 @@ ${position.requirements || 'No specific requirements listed'}
       const result = await response.json();
 
       if (result.success && result.data) {
+        console.log(
+          `📦 Raw API returned ${result.data.length} positions:`,
+          result.data
+        );
+
         // Filter to only open positions - be strict about excluding closed positions
         // The backend should already filter by job_status=open, but we double-check on frontend
         branchPositions.value = result.data.filter((p) => {
@@ -602,45 +576,23 @@ ${position.requirements || 'No specific requirements listed'}
           return isOpen && isActive && notDeleted;
         });
 
+        console.log(
+          `✅ After filtering: ${branchPositions.value.length} positions`
+        );
+        console.log(
+          `🚫 Filtered out: ${result.data.length - branchPositions.value.length} positions`
+        );
+
         // Log main branch positions for debugging
         const mainBranchPositions = branchPositions.value.filter(
           (p) =>
             p.branch_id === null || p.branch_id === undefined || !p.branch_id
         );
 
-        // Log any filtered out positions for debugging
-        const closedCount = result.data.length - branchPositions.value.length;
+        console.log(`🏢 Main branch positions: ${mainBranchPositions.length}`);
       } else {
         console.warn('Branch positions API returned no data');
         branchPositions.value = [];
-      }
-
-      // Load department positions from store (this will sync with Position Management)
-      try {
-        await positionsStore.fetchPositions();
-        console.log('Loaded positions from store');
-
-        // Log main branch positions from store (positions from user_roles table)
-        const storeMainBranchPositions = [];
-        for (const department in positionsStore.positions) {
-          const deptPositions = positionsStore.positions[department] || [];
-          deptPositions.forEach((role) => {
-            if (role.is_active) {
-              storeMainBranchPositions.push({
-                id: `dept-${role.role_id}`,
-                title: role.role,
-                department: role.department,
-              });
-            }
-          });
-        }
-        if (storeMainBranchPositions.length > 0) {
-          console.log(
-            `Found ${storeMainBranchPositions.length} main branch positions from store`
-          );
-        }
-      } catch (err) {
-        console.warn('Error loading positions from store:', err);
       }
     } catch (error) {
       console.error('Error loading positions:', error);

@@ -1384,6 +1384,7 @@
                       @change="onValidIdSelected"
                     />
                     <button
+                    
                       v-if="validIdFile"
                       type="button"
                       @click="
@@ -1398,7 +1399,7 @@
                         )
                       "
                       @mouseleave="hideHoverPreview"
-                      class="btn btn-sm btn-outline btn-primary relative w-full sm:w-auto"
+                      class="btn btn-sm !font-thin relative w-full sm:w-auto"
                     >
                       <Info class="w-4 h-4 mr-1" />
                       Preview
@@ -1461,7 +1462,7 @@
                         )
                       "
                       @mouseleave="hideHoverPreview"
-                      class="btn btn-sm relative w-full sm:w-auto"
+                      class="btn btn-sm !font-thin relative w-full sm:w-auto"
                     >
                       <Info class="w-4 h-4 mr-1" />
                       Preview
@@ -1524,7 +1525,7 @@
                         )
                       "
                       @mouseleave="hideHoverPreview"
-                      class="btn btn-sm btn-outline btn-primary relative w-full sm:w-auto"
+                      class="btn btn-sm !font-thin relative w-full sm:w-auto"
                     >
                       <Info class="w-4 h-4 mr-1" />
                       Preview

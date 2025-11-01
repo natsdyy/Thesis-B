@@ -358,7 +358,10 @@
     if (activeTab.value === 'department' && selectedDepartment.value) {
       list = list.filter((e) => e.department === selectedDepartment.value);
     } else if (activeTab.value === 'branch' && selectedBranch.value) {
-      list = list.filter((e) => e.branch_id === selectedBranch.value);
+      // Filter by branch_id AND ensure department is Branch
+      list = list.filter(
+        (e) => e.branch_id === selectedBranch.value && e.department === 'Branch'
+      );
     }
 
     // Apply general filters (skip department filter if already filtering by tab)
@@ -813,7 +816,7 @@
     }
   };
 
-  // Watch for department changes to reset role
+  // Watch for department changes to reset role and branch_id
   watch(
     () => employeeForm.value.department,
     (newDepartment) => {
@@ -823,9 +826,14 @@
         departmentsWithRoles.value[newDepartment]
       );
 
-      // Only reset role if we're not editing an existing employee
+      // Reset role if we're not editing an existing employee
       if (!employeeForm.value.isEditing) {
         employeeForm.value.role_id = '';
+      }
+
+      // Clear branch_id if department is not Branch (always, even when editing)
+      if (newDepartment && newDepartment !== 'Branch') {
+        employeeForm.value.branch_id = '';
       }
     }
   );

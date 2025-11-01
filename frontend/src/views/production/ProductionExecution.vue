@@ -487,12 +487,13 @@
         const currentStock = item.available_quantity || 0;
         const reorderPoint = item.reorder_point || 0;
 
-        // Show if: zero stock OR below reorder point OR no reorder point set (default to show all)
-        return (
-          currentStock === 0 ||
-          currentStock <= reorderPoint ||
-          reorderPoint === 0
-        );
+        // If no reorder point is set (0), only show when stock is 0
+        if (reorderPoint === 0) {
+          return currentStock === 0;
+        }
+
+        // If reorder point is set, show when stock is at or below reorder point
+        return currentStock <= reorderPoint;
       });
     } catch (err) {
       error.value = 'Failed to load production inventory';
@@ -647,7 +648,7 @@
 </script>
 
 <template>
-  <div class=" mx-auto p-2 sm:p-4 lg:p-6">
+  <div class="mx-auto p-2 sm:p-4 lg:p-6">
     <!-- Header -->
     <div class="text-center mb-4 sm:mb-6 lg:mb-8">
       <h1

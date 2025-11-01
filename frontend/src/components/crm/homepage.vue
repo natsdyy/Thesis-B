@@ -348,7 +348,7 @@
             >
               <router-link
                 to="/menu"
-                class="btn  bg-orange-500 hover:bg-orange-400 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-md !font-thin text-sm sm:text-base transition-all duration-300 flex items-center justify-center btn btn-md shadow-none"
+                class=" bg-orange-500 hover:bg-orange-400 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-md !font-thin text-sm sm:text-base transition-all duration-300 flex items-center justify-center btn btn-md shadow-none"
               >
                 <span>View Menu</span>
                 <font-awesome-icon
@@ -358,7 +358,7 @@
               </router-link>
               <router-link
                 to="/stores"
-                class="btn  bg-white/20 hover:bg-white/30 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-md !font-thin text-sm sm:text-base transition-all duration-300 flex items-center justify-center btn btn-md shadow-none"
+                class=" bg-white/20 hover:bg-white/30 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-md !font-thin text-sm sm:text-base transition-all duration-300 flex items-center justify-center btn btn-md shadow-none"
               >
                 <span>Find Stores</span>
                 <font-awesome-icon
@@ -441,7 +441,11 @@
                 <button
                   @click="toggleHeroVideoMute"
                   class="absolute top-4 right-4 bg-black/70 hover:bg-black/90 backdrop-blur-sm rounded-full p-2.5 text-white hover:text-orange-400 transition-all duration-300 z-20"
-                  :title="isHeroVideoMuted ? 'Unmute (Click to enable sound)' : 'Mute (Click to disable sound)'"
+                  :title="
+                    isHeroVideoMuted
+                      ? 'Unmute (Click to enable sound)'
+                      : 'Mute (Click to disable sound)'
+                  "
                 >
                   <font-awesome-icon
                     v-if="isHeroVideoMuted"
@@ -706,7 +710,7 @@
             <div class="flex flex-col sm:flex-row gap-3 sm:gap-4">
               <router-link
                 to="/menu"
-                class="btn bg-green-800 hover:bg-green-700 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg !font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md text-sm sm:text-base"
+                class=" bg-green-800 hover:bg-green-700 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg !font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md text-sm sm:text-base"
               >
                 <span>Explore our menu</span>
                 <font-awesome-icon
@@ -717,7 +721,7 @@
 
               <router-link
                 to="/stores"
-                class="btn bg-orange-500 hover:bg-orange-400 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg !font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md text-sm sm:text-base"
+                class=" bg-orange-500 hover:bg-orange-400 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg !font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md text-sm sm:text-base"
               >
                 <span>Find your branch</span>
                 <font-awesome-icon
@@ -749,7 +753,9 @@
         </div>
 
         <!-- Delivery Content with Video on Right -->
-        <div class="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center px-4 sm:px-6 lg:px-10">
+        <div
+          class="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center px-4 sm:px-6 lg:px-10"
+        >
           <!-- Left Side - Delivery Options -->
           <div class="space-y-6 lg:space-y-8">
             <div class="text-center lg:text-left">
@@ -778,10 +784,14 @@
                       class="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 object-contain"
                     />
                   </div>
-                  <h3 class="text-xl sm:text-2xl lg:text-3xl font-bold mb-2 sm:mb-3">
+                  <h3
+                    class="text-xl sm:text-2xl lg:text-3xl font-bold mb-2 sm:mb-3"
+                  >
                     Foodpanda
                   </h3>
-                  <p class="text-xs sm:text-sm lg:text-base mb-4 opacity-90 leading-relaxed px-2">
+                  <p
+                    class="text-xs sm:text-sm lg:text-base mb-4 opacity-90 leading-relaxed px-2"
+                  >
                     Order your favorite Countryside dishes through Foodpanda
                   </p>
                 </div>
@@ -807,10 +817,14 @@
                       class="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 object-contain"
                     />
                   </div>
-                  <h3 class="text-xl sm:text-2xl lg:text-3xl font-bold mb-2 sm:mb-3">
+                  <h3
+                    class="text-xl sm:text-2xl lg:text-3xl font-bold mb-2 sm:mb-3"
+                  >
                     Grabfood
                   </h3>
-                  <p class="text-xs sm:text-sm lg:text-base mb-4 opacity-90 leading-relaxed px-2">
+                  <p
+                    class="text-xs sm:text-sm lg:text-base mb-4 opacity-90 leading-relaxed px-2"
+                  >
                     Get your Countryside favorites delivered by Grab
                   </p>
                 </div>
@@ -825,9 +839,13 @@
           </div>
 
           <!-- Right Side - Video -->
-          <div class="flex justify-center lg:justify-end order-3 lg:order-2 mt-6 lg:mt-0">
+          <div
+            class="flex justify-center lg:justify-end order-3 lg:order-2 mt-6 lg:mt-0"
+          >
             <div class="max-w-lg w-full">
-              <div class="relative rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl">
+              <div
+                class="relative rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl"
+              >
                 <video
                   class="w-full h-auto rounded-xl sm:rounded-2xl"
                   loop
@@ -879,7 +897,11 @@
                 <button
                   @click="toggleDeliveryVideoMute"
                   class="absolute top-2 right-2 sm:top-4 sm:right-4 bg-black/70 hover:bg-black/90 backdrop-blur-sm rounded-full p-2 sm:p-2.5 text-white hover:text-orange-400 transition-all duration-300 z-20"
-                  :title="isDeliveryVideoMuted ? 'Unmute (Click to enable sound)' : 'Mute (Click to disable sound)'"
+                  :title="
+                    isDeliveryVideoMuted
+                      ? 'Unmute (Click to enable sound)'
+                      : 'Mute (Click to disable sound)'
+                  "
                 >
                   <font-awesome-icon
                     v-if="isDeliveryVideoMuted"
@@ -971,7 +993,9 @@
         <!-- Branches - Horizontal Scroll on Mobile, Grid on Desktop -->
         <div v-else-if="branches.length > 0" class="relative">
           <!-- Mobile: Horizontal Scrollable -->
-          <div class="md:hidden overflow-x-auto pb-4 -mx-6 px-6 scrollbar-hide snap-x snap-mandatory">
+          <div
+            class="md:hidden overflow-x-auto pb-4 -mx-6 px-6 scrollbar-hide snap-x snap-mandatory"
+          >
             <div class="flex gap-4">
               <div
                 v-for="branch in branches"
@@ -999,7 +1023,9 @@
                       icon="fa-solid fa-location-dot"
                       class="mr-2 text-green-600 mt-1 flex-shrink-0"
                     />
-                    <span class="whitespace-normal break-words">{{ branch.address }}</span>
+                    <span class="whitespace-normal break-words">{{
+                      branch.address
+                    }}</span>
                   </div>
 
                   <div
@@ -1024,7 +1050,9 @@
           </div>
 
           <!-- Desktop: Grid Layout -->
-          <div class="hidden md:grid md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
+          <div
+            class="hidden md:grid md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8"
+          >
             <div
               v-for="branch in branches.slice(0, 6)"
               :key="branch.id"
@@ -1051,7 +1079,9 @@
                     icon="fa-solid fa-location-dot"
                     class="mr-2 text-green-600 mt-1 flex-shrink-0"
                   />
-                  <span class="whitespace-normal break-words">{{ branch.address }}</span>
+                  <span class="whitespace-normal break-words">{{
+                    branch.address
+                  }}</span>
                 </div>
 
                 <div
@@ -1075,7 +1105,10 @@
           </div>
 
           <!-- View All Button -->
-          <div v-if="branches.length > 6" class="hidden md:flex justify-center mt-8">
+          <div
+            v-if="branches.length > 6"
+            class="hidden md:flex justify-center mt-8"
+          >
             <router-link
               to="/stores"
               class="btn bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg font-semibold transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1 flex items-center"
@@ -1089,7 +1122,10 @@
           </div>
 
           <!-- Mobile: View All Button (shown if more than visible branches) -->
-          <div v-if="branches.length > 3" class="md:hidden flex justify-center mt-6">
+          <div
+            v-if="branches.length > 3"
+            class="md:hidden flex justify-center mt-6"
+          >
             <router-link
               to="/stores"
               class="btn bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-lg font-semibold transition-all duration-300 shadow-lg hover:shadow-xl flex items-center text-sm"
@@ -1117,58 +1153,96 @@
           <!-- Title -->
           <div class="flex items-center justify-center mb-6">
             <div class="w-20 h-0.5 bg-orange-400"></div>
-            <h2 class="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mx-6">Join Our Team</h2>
+            <h2
+              class="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mx-6"
+            >
+              Join Our Team
+            </h2>
             <div class="w-20 h-0.5 bg-orange-400"></div>
           </div>
-          
+
           <!-- Description -->
           <p class="text-lg sm:text-xl text-green-100 mb-8 leading-relaxed">
-            Be part of the Countryside family! We're always looking for passionate individuals to join our growing team. Explore our current job openings and find the perfect role that matches your skills and passion.
+            Be part of the Countryside family! We're always looking for
+            passionate individuals to join our growing team. Explore our current
+            job openings and find the perfect role that matches your skills and
+            passion.
           </p>
 
           <!-- Job Type Info Cards -->
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-8">
             <!-- Full-time Card -->
-            <div class="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20 hover:bg-white/20 transition-all duration-300">
+            <div
+              class="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20 hover:bg-white/20 transition-all duration-300"
+            >
               <div class="flex flex-col items-center">
-                <div class="w-12 h-12 sm:w-14 sm:h-14 bg-blue-500/20 rounded-full flex items-center justify-center mb-3">
+                <div
+                  class="w-12 h-12 sm:w-14 sm:h-14 bg-blue-500/20 rounded-full flex items-center justify-center mb-3"
+                >
                   <Clock :size="24" class="text-blue-300" />
                 </div>
-                <h3 class="text-white font-semibold text-lg sm:text-xl mb-2">Full-time</h3>
-                <p class="text-green-100 text-sm sm:text-base">40+ hours per week</p>
+                <h3 class="text-white font-semibold text-lg sm:text-xl mb-2">
+                  Full-time
+                </h3>
+                <p class="text-green-100 text-sm sm:text-base">
+                  40+ hours per week
+                </p>
               </div>
             </div>
 
             <!-- Part-time Card -->
-            <div class="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20 hover:bg-white/20 transition-all duration-300">
+            <div
+              class="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20 hover:bg-white/20 transition-all duration-300"
+            >
               <div class="flex flex-col items-center">
-                <div class="w-12 h-12 sm:w-14 sm:h-14 bg-orange-500/20 rounded-full flex items-center justify-center mb-3">
+                <div
+                  class="w-12 h-12 sm:w-14 sm:h-14 bg-orange-500/20 rounded-full flex items-center justify-center mb-3"
+                >
                   <Briefcase :size="24" class="text-orange-300" />
                 </div>
-                <h3 class="text-white font-semibold text-lg sm:text-xl mb-2">Part-time</h3>
-                <p class="text-green-100 text-sm sm:text-base">Flexible hours available</p>
+                <h3 class="text-white font-semibold text-lg sm:text-xl mb-2">
+                  Part-time
+                </h3>
+                <p class="text-green-100 text-sm sm:text-base">
+                  Flexible hours available
+                </p>
               </div>
             </div>
 
             <!-- Available Positions Card -->
-            <div class="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20 hover:bg-white/20 transition-all duration-300">
+            <div
+              class="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20 hover:bg-white/20 transition-all duration-300"
+            >
               <div class="flex flex-col items-center">
-                <div class="w-12 h-12 sm:w-14 sm:h-14 bg-green-500/20 rounded-full flex items-center justify-center mb-3">
+                <div
+                  class="w-12 h-12 sm:w-14 sm:h-14 bg-green-500/20 rounded-full flex items-center justify-center mb-3"
+                >
                   <Users :size="24" class="text-green-300" />
                 </div>
-                <h3 class="text-white font-semibold text-lg sm:text-xl mb-2">Open Positions</h3>
-                <p class="text-green-100 text-sm sm:text-base">Multiple roles available</p>
+                <h3 class="text-white font-semibold text-lg sm:text-xl mb-2">
+                  Open Positions
+                </h3>
+                <p class="text-green-100 text-sm sm:text-base">
+                  Multiple roles available
+                </p>
               </div>
             </div>
           </div>
-          
+
           <!-- Button -->
           <button
             @click="openJobPositionsModal"
-            class="bg-orange-500 hover:bg-orange-400 text-white px-8 sm:px-12 py-4 sm:py-5 rounded-lg font-semibold text-lg sm:text-xl transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1 flex items-center justify-center mx-auto"
+            class="bg-orange-500 hover:bg-orange-400 text-white px-4 sm:px-6 md:px-8 lg:px-12 py-2.5 sm:py-3 md:py-4 rounded-lg font-medium sm:font-semibold text-sm sm:text-base md:text-lg transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 flex items-center justify-center mx-auto max-w-xs sm:max-w-none"
           >
-            <font-awesome-icon icon="fa-solid fa-user-plus" class="mr-3" />
-            <span>Join Us - Check Available Jobs</span>
+            <font-awesome-icon
+              icon="fa-solid fa-user-plus"
+              class="mr-2 sm:mr-3 text-sm sm:text-base"
+            />
+            <span class="whitespace-nowrap"
+              >Join Us<span class="hidden sm:inline">
+                - Check Available Jobs</span
+              ></span
+            >
           </button>
         </div>
       </div>
@@ -1202,7 +1276,9 @@
         <!-- Signature Dishes - Horizontal Scroll on Mobile, Grid on Desktop -->
         <div v-else-if="signatureDishes.length > 0" class="relative">
           <!-- Mobile: Horizontal Scrollable -->
-          <div class="md:hidden overflow-x-auto pb-4 -mx-6 px-6 scrollbar-hide snap-x snap-mandatory">
+          <div
+            class="md:hidden overflow-x-auto pb-4 -mx-6 px-6 scrollbar-hide snap-x snap-mandatory"
+          >
             <div class="flex gap-4">
               <div
                 v-for="item in signatureDishes"
@@ -1210,7 +1286,10 @@
                 class="bg-white rounded-xl sm:rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover relative flex-shrink-0 w-[75vw] max-w-[280px] snap-start"
               >
                 <!-- Modern Promo Badge -->
-                <div v-if="item.hasPromo" class="absolute top-3 right-3 sm:top-4 sm:right-4 z-10">
+                <div
+                  v-if="item.hasPromo"
+                  class="absolute top-3 right-3 sm:top-4 sm:right-4 z-10"
+                >
                   <div
                     class="bg-gradient-to-br from-red-500 to-orange-500 rounded-lg sm:rounded-xl px-2 py-1.5 sm:px-3 sm:py-2 shadow-lg backdrop-blur-sm border border-white/20 relative overflow-hidden hover:scale-105 transition-all duration-300 hover:shadow-xl"
                   >
@@ -1310,7 +1389,10 @@
                       v-if="item.hasPromo"
                       class="flex items-center justify-center w-5 h-5 sm:w-6 sm:h-6 bg-gradient-to-br from-red-500 to-orange-500 text-white rounded-full shadow-md hover:scale-110 hover:shadow-lg transition-all duration-300"
                     >
-                      <font-awesome-icon icon="fa-solid fa-bolt" class="text-[10px] sm:text-xs" />
+                      <font-awesome-icon
+                        icon="fa-solid fa-bolt"
+                        class="text-[10px] sm:text-xs"
+                      />
                     </div>
                   </div>
                 </div>
@@ -1319,7 +1401,9 @@
           </div>
 
           <!-- Desktop: Grid Layout -->
-          <div class="hidden md:grid md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8 cursor-pointer">
+          <div
+            class="hidden md:grid md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8 cursor-pointer"
+          >
             <div
               v-for="item in signatureDishes"
               :key="item.name"
@@ -1426,7 +1510,10 @@
                     v-if="item.hasPromo"
                     class="flex items-center justify-center w-6 h-6 bg-gradient-to-br from-red-500 to-orange-500 text-white rounded-full shadow-md hover:scale-110 hover:shadow-lg transition-all duration-300"
                   >
-                    <font-awesome-icon icon="fa-solid fa-bolt" class="text-xs" />
+                    <font-awesome-icon
+                      icon="fa-solid fa-bolt"
+                      class="text-xs"
+                    />
                   </div>
                 </div>
               </div>
@@ -1441,20 +1528,19 @@
           </p>
         </div>
 
-<!-- Full Menu Button -->
-<div class="mt-12 flex justify-center lg:justify-end">
-  <router-link
-    to="/menu"
-    class="btn btn-sm border-none bg-orange-500 hover:bg-orange-400 text-white px-8 py-3 rounded-md !font-thin shadow-none"
-  >
-    <span>View Full Menu</span>
-    <font-awesome-icon
-      icon="fa-solid fa-arrow-right"
-      class="ml-2 transition-transform group-hover:translate-x-1"
-    />
-  </router-link>
-</div>
-
+        <!-- Full Menu Button -->
+        <div class="mt-12 flex justify-center lg:justify-end">
+          <router-link
+            to="/menu"
+            class="btn btn-sm border-none bg-orange-500 hover:bg-orange-400 text-white px-8 py-3 rounded-md !font-thin shadow-none"
+          >
+            <span>View Full Menu</span>
+            <font-awesome-icon
+              icon="fa-solid fa-arrow-right"
+              class="ml-2 transition-transform group-hover:translate-x-1"
+            />
+          </router-link>
+        </div>
       </div>
     </section>
 
@@ -1480,9 +1566,7 @@
 
         <!-- Contact Info - 2 Column Layout -->
         <div class="max-w-5xl mx-auto">
-          <h3
-            class="text-2xl font-bold text-green-800 mb-8 text-center"
-          >
+          <h3 class="text-2xl font-bold text-green-800 mb-8 text-center">
             Contact Information
           </h3>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12">
@@ -1542,7 +1626,9 @@
             </div>
 
             <!-- Right Column: Social Media -->
-            <div class="flex flex-col items-center md:items-start justify-center md:justify-start">
+            <div
+              class="flex flex-col items-center md:items-start justify-center md:justify-start"
+            >
               <div class="flex items-center mb-6">
                 <div
                   class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4 flex-shrink-0"
@@ -1553,7 +1639,9 @@
                   />
                 </div>
                 <div>
-                  <div class="font-semibold text-gray-800 text-lg">Follow Us</div>
+                  <div class="font-semibold text-gray-800 text-lg">
+                    Follow Us
+                  </div>
                 </div>
               </div>
               <div class="space-y-4 w-full">
@@ -1564,7 +1652,9 @@
                   rel="noopener noreferrer"
                   class="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-all duration-300 shadow-sm hover:shadow-md group"
                 >
-                  <div class="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center mr-3 flex-shrink-0 group-hover:bg-green-700 transition-colors">
+                  <div
+                    class="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center mr-3 flex-shrink-0 group-hover:bg-green-700 transition-colors"
+                  >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       width="18"
@@ -1580,7 +1670,9 @@
                     </svg>
                   </div>
                   <div class="flex-1">
-                    <div class="font-semibold text-gray-800 text-sm">Countryside Steakhouse - Main Branch</div>
+                    <div class="font-semibold text-gray-800 text-sm">
+                      Countryside Steakhouse - Main Branch
+                    </div>
                     <div class="text-gray-600 text-xs">Facebook</div>
                   </div>
                 </a>
@@ -1592,7 +1684,9 @@
                   rel="noopener noreferrer"
                   class="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-all duration-300 shadow-sm hover:shadow-md group"
                 >
-                  <div class="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center mr-3 flex-shrink-0 group-hover:bg-green-700 transition-colors">
+                  <div
+                    class="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center mr-3 flex-shrink-0 group-hover:bg-green-700 transition-colors"
+                  >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       width="18"
@@ -1608,7 +1702,9 @@
                     </svg>
                   </div>
                   <div class="flex-1">
-                    <div class="font-semibold text-gray-800 text-sm">Countryside Steakhouse - Silang Branch</div>
+                    <div class="font-semibold text-gray-800 text-sm">
+                      Countryside Steakhouse - Silang Branch
+                    </div>
                     <div class="text-gray-600 text-xs">Facebook</div>
                   </div>
                 </a>
@@ -1620,7 +1716,9 @@
                   rel="noopener noreferrer"
                   class="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-all duration-300 shadow-sm hover:shadow-md group"
                 >
-                  <div class="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center mr-3 flex-shrink-0 group-hover:bg-green-700 transition-colors">
+                  <div
+                    class="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center mr-3 flex-shrink-0 group-hover:bg-green-700 transition-colors"
+                  >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       width="18"
@@ -1636,7 +1734,9 @@
                     </svg>
                   </div>
                   <div class="flex-1">
-                    <div class="font-semibold text-gray-800 text-sm">Countryside Steakhouse - Tanza</div>
+                    <div class="font-semibold text-gray-800 text-sm">
+                      Countryside Steakhouse - Tanza
+                    </div>
                     <div class="text-gray-600 text-xs">Facebook</div>
                   </div>
                 </a>
@@ -2167,23 +2267,23 @@
 
   const handleScroll = () => {
     isScrolled.value = window.scrollY > 50;
-    
+
     // Clear previous timeout
     if (scrollTimeout) {
       clearTimeout(scrollTimeout);
     }
-    
+
     // Debounce video pause - pause immediately on scroll
     if (videoPlayer.value && isHeroVideoPlaying.value) {
       videoPlayer.value.pause();
       isHeroVideoPlaying.value = false;
     }
-    
+
     if (deliveryVideo.value && isDeliveryVideoPlaying.value) {
       deliveryVideo.value.pause();
       isDeliveryVideoPlaying.value = false;
     }
-    
+
     // Reset timeout for scroll end (if needed for future enhancements)
     scrollTimeout = setTimeout(() => {
       // Could add logic here to resume videos after scroll stops
@@ -2983,12 +3083,12 @@
 
   /* Horizontal Scroll Styles for Mobile */
   .scrollbar-hide {
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
   }
 
   .scrollbar-hide::-webkit-scrollbar {
-    display: none;  /* Chrome, Safari and Opera */
+    display: none; /* Chrome, Safari and Opera */
   }
 
   /* Snap scrolling for better mobile experience */
@@ -3013,20 +3113,20 @@
   }
 
   /* Volume slider styling */
-  input[type="range"] {
+  input[type='range'] {
     -webkit-appearance: none;
     appearance: none;
     background: transparent;
     cursor: pointer;
   }
 
-  input[type="range"]::-webkit-slider-track {
+  input[type='range']::-webkit-slider-track {
     background: rgba(255, 255, 255, 0.2);
     height: 4px;
     border-radius: 2px;
   }
 
-  input[type="range"]::-webkit-slider-thumb {
+  input[type='range']::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
     background: #f97316;
@@ -3038,18 +3138,18 @@
     transition: all 0.2s ease;
   }
 
-  input[type="range"]::-webkit-slider-thumb:hover {
+  input[type='range']::-webkit-slider-thumb:hover {
     background: #fb923c;
     transform: scale(1.2);
   }
 
-  input[type="range"]::-moz-range-track {
+  input[type='range']::-moz-range-track {
     background: rgba(255, 255, 255, 0.2);
     height: 4px;
     border-radius: 2px;
   }
 
-  input[type="range"]::-moz-range-thumb {
+  input[type='range']::-moz-range-thumb {
     background: #f97316;
     height: 12px;
     width: 12px;
@@ -3059,7 +3159,7 @@
     transition: all 0.2s ease;
   }
 
-  input[type="range"]::-moz-range-thumb:hover {
+  input[type='range']::-moz-range-thumb:hover {
     background: #fb923c;
     transform: scale(1.2);
   }

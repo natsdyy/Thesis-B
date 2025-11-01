@@ -209,7 +209,7 @@
               'border-warning': s.priority === 'high',
               'border-error': s.type === 'investigate',
               'border-primaryColor': s.priority === 'medium',
-              'border-secondary': s.priority === 'low',
+              'border-warning ': s.priority === 'low',
             }"
           >
             <div class="flex items-start justify-between">
@@ -233,7 +233,7 @@
                   'bg-error/10 text-error': s.type === 'investigate',
                   'bg-primaryColor/10 text-primaryColor':
                     s.priority === 'medium',
-                  'bg-gray-100 text-gray-800': s.priority === 'low',
+                  'bg-warning/10 text-warning': s.priority === 'low',
                 }"
               >
                 {{ s.priority.toUpperCase() }}

@@ -72,6 +72,9 @@
   const branchStatus = ref('Open');
   const isUpdatingStatus = ref(false);
   const isFullscreen = ref(false);
+  const showStatusConfirmationModal = ref(false);
+  const pendingStatusChange = ref(null);
+  const displayToggleState = ref(true); // For visual toggle display
 
   // POS UI state
   const showOrderCompleteModal = ref(false);
@@ -828,34 +831,68 @@
     }
   };
 
-  // Update branch status
-  const updateBranchStatus = async (newStatus) => {
+  // Handle branch status toggle - show confirmation first
+  const handleStatusToggle = (event) => {
+    // Prevent the toggle from changing visually until confirmed
+    event.preventDefault();
+
+    const newStatus = branchStatus.value === 'Open' ? 'Closed' : 'Open';
+
+    // If already in the requested status, don't do anything
+    if (branchStatus.value === newStatus) {
+      return;
+    }
+
+    pendingStatusChange.value = newStatus;
+    showStatusConfirmationModal.value = true;
+  };
+
+  // Confirm branch status change
+  const confirmStatusChange = async () => {
+    if (!pendingStatusChange.value || isUpdatingStatus.value) return;
+
     const branchId = currentBranch.value?.id || user.value?.branch_id;
-    
-    if (!branchId || isUpdatingStatus.value) return;
-    
+    if (!branchId) {
+      closeStatusConfirmationModal();
+      return;
+    }
+
     isUpdatingStatus.value = true;
     try {
       // Fetch the full branch data first
       const fullBranch = await branchStore.fetchBranchById(branchId);
-      
+
       // Update with the new status
       await branchStore.updateBranch(branchId, {
         ...fullBranch,
-        status: newStatus
+        status: pendingStatusChange.value,
       });
-      branchStatus.value = newStatus;
+      branchStatus.value = pendingStatusChange.value;
+      displayToggleState.value = pendingStatusChange.value === 'Open';
       // Update the branch context to reflect the new status
       if (branchContextStore.currentBranch) {
-        branchContextStore.currentBranch.status = newStatus;
+        branchContextStore.currentBranch.status = pendingStatusChange.value;
       }
-      showSuccess(`Branch status updated to: ${newStatus}`, 'Status Updated');
+      showSuccess(
+        `Branch status updated to: ${pendingStatusChange.value}`,
+        'Status Updated'
+      );
+      closeStatusConfirmationModal();
     } catch (error) {
       console.error('Error updating branch status:', error);
-      showError('Failed to update branch status. Please try again.', 'Update Failed');
+      showError(
+        'Failed to update branch status. Please try again.',
+        'Update Failed'
+      );
     } finally {
       isUpdatingStatus.value = false;
     }
+  };
+
+  // Close status confirmation modal
+  const closeStatusConfirmationModal = () => {
+    showStatusConfirmationModal.value = false;
+    pendingStatusChange.value = null;
   };
 
   // Placeholder data
@@ -897,6 +934,7 @@
     // Initialize branch status
     if (currentBranch.value?.status) {
       branchStatus.value = currentBranch.value.status;
+      displayToggleState.value = currentBranch.value.status === 'Open';
     }
 
     // Set up fullscreen change listener
@@ -1123,43 +1161,35 @@
                 )
               </p>
             </div>
-            <!-- Branch Status Radio Buttons (Manager only) -->
+            <!-- Branch Status Toggle (Manager only) -->
             <div
               v-if="userRole === 'Manager' && isManagerSessionActive"
               class="flex items-center gap-3 border-l border-gray-300 pl-4"
             >
               <span class="text-xs font-medium text-gray-700">Status:</span>
-              <div class="flex gap-2">
-                <label class="cursor-pointer label gap-1">
-                  <input
-                    type="radio"
-                    :value="'Open'"
-                    v-model="branchStatus"
-                    @change="updateBranchStatus('Open')"
-                    :disabled="isUpdatingStatus"
-                    class="radio radio-sm"
-                    style="accent-color: #466114;"
-                  />
-                  <span class="text-xs font-medium" style="color: #466114;">Open</span>
-                </label>
-                <label class="cursor-pointer label gap-1">
-                  <input
-                    type="radio"
-                    :value="'Closed'"
-                    v-model="branchStatus"
-                    @change="updateBranchStatus('Closed')"
-                    :disabled="isUpdatingStatus"
-                    class="radio radio-sm"
-                    style="accent-color: #466114;"
-                  />
-                  <span class="text-xs font-medium" style="color: #466114;">Closed</span>
-                </label>
+              <div class="flex items-center gap-2">
+                <span
+                  class="text-xs font-medium"
+                  :class="
+                    branchStatus === 'Open' ? 'text-green-600' : 'text-red-600'
+                  "
+                >
+                  {{ branchStatus }}
+                </span>
+                <input
+                  type="checkbox"
+                  class="toggle toggle-sm"
+                  :class="
+                    branchStatus === 'Open' ? 'checked:text-white' : 'toggle-error'
+                  "
+                  :checked="displayToggleState"
+                  @click="handleStatusToggle"
+                  :disabled="isUpdatingStatus"
+                />
               </div>
             </div>
           </div>
-          <div
-            class="flex items-center justify-center space-x-2 sm:space-x-4"
-          >
+          <div class="flex items-center justify-center space-x-2 sm:space-x-4">
             <div class="text-center">
               <p class="text-base font-medium">
                 {{ user?.name }} ({{ userRole }})
@@ -1178,7 +1208,10 @@
                   class="btn btn-sm"
                   :title="isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'"
                 >
-                  <component :is="isFullscreen ? Minimize2 : Maximize2" class="w-4 h-4" />
+                  <component
+                    :is="isFullscreen ? Minimize2 : Maximize2"
+                    class="w-4 h-4"
+                  />
                 </button>
                 <button
                   v-if="userRole === 'Manager' && isManagerSessionActive"
@@ -2351,24 +2384,99 @@
       @reopen="reopenTransactionModal"
       @refresh="refreshPOSData"
     />
+
+    <!-- Branch Status Confirmation Modal -->
+    <div
+      v-if="showStatusConfirmationModal"
+      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
+    >
+      <div
+        class="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
+      >
+        <div class="text-center mb-6">
+          <AlertCircle
+            class="w-12 h-12 sm:w-16 sm:h-16 text-amber-500 mx-auto mb-3 sm:mb-4"
+          />
+          <h3 class="text-lg sm:text-xl font-semibold text-gray-900 mb-2">
+            Confirm Branch Status Change
+          </h3>
+          <p class="text-sm sm:text-base text-gray-600">
+            Are you sure you want to change the branch status from
+            <strong>{{ branchStatus }}</strong> to
+            <strong>{{ pendingStatusChange }}</strong
+            >?
+          </p>
+        </div>
+
+        <!-- Branch Details -->
+        <div class="space-y-4 mb-6">
+          <div class="bg-gray-50 rounded-lg p-4">
+            <div class="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span class="font-medium text-gray-600">Branch:</span>
+                <p class="font-semibold">
+                  {{ currentBranch?.name || 'N/A' }}
+                </p>
+              </div>
+              <div>
+                <span class="font-medium text-gray-600">Current Status:</span>
+                <p
+                  class="font-semibold"
+                  :class="
+                    branchStatus === 'Open' ? 'text-green-600' : 'text-red-600'
+                  "
+                >
+                  {{ branchStatus }}
+                </p>
+              </div>
+              <div class="col-span-2">
+                <span class="font-medium text-gray-600">New Status:</span>
+                <p
+                  class="font-semibold"
+                  :class="
+                    pendingStatusChange === 'Open'
+                      ? 'text-green-600'
+                      : 'text-red-600'
+                  "
+                >
+                  {{ pendingStatusChange }}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div
+          class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3"
+        >
+          <button
+            @click="closeStatusConfirmationModal"
+            class="flex-1 btn btn-sm sm:btn-md touch-manipulation font-thin"
+            :disabled="isUpdatingStatus"
+          >
+            Cancel
+          </button>
+          <button
+            @click="confirmStatusChange"
+            class="flex-1 btn btn-sm sm:btn-md touch-manipulation font-thin"
+            :class="
+              pendingStatusChange === 'Open'
+                ? 'bg-green-600 text-white hover:bg-green-700'
+                : 'bg-red-600 text-white hover:bg-red-700'
+            "
+            :disabled="isUpdatingStatus"
+          >
+            <span v-if="isUpdatingStatus">Updating...</span>
+            <span v-else>Confirm Change</span>
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-  /* Custom radio button styling for branch status */
-  input[type="radio"].radio-sm {
-    accent-color: #466114 !important;
-  }
-
-  input[type="radio"].radio-sm:checked {
-    background-color: #466114;
-    border-color: #466114;
-  }
-
-  input[type="radio"].radio-sm:checked::before {
-    background-color: #466114 !important;
-  }
-
   /* Hide scrollbar for category navigation */
   .scrollbar-hide {
     -ms-overflow-style: none; /* Internet Explorer 10+ */

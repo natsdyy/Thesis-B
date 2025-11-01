@@ -38,7 +38,7 @@
   const loading = ref(false);
   const trendLabels = ref([]);
   const trendData = ref([]);
-  const chartMode = ref('sum');
+  const chartMode = ref('perMenu');
   const perMenuLabels = ref([]);
   const perMenuData = ref([]);
   const perMenuDaily = ref({});
@@ -1650,8 +1650,9 @@
               class="select select-bordered select-xs"
               v-model="chartMode"
             >
+                        <option value="perMenu">Per Menu (Bar)</option>
               <option value="sum">Daily Sum (Line)</option>
-              <option value="perMenu">Per Menu (Bar)</option>
+  
             </select>
           </div>
         </div>

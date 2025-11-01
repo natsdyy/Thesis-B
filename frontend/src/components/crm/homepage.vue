@@ -262,13 +262,6 @@
             backgroundPosition: 'center',
           }"
         >
-          <!-- Fallback content if image fails to load -->
-          <div
-            v-if="!image.loaded"
-            class="absolute inset-0 flex items-center justify-center bg-gray-900 text-white"
-          >
-            <p>Image Loading Failed</p>
-          </div>
         </div>
       </div>
 

@@ -334,6 +334,12 @@
     posStore.setAmountPaid(value);
   };
 
+  const handleEnterKeyDown = (event) => {
+    if (event.key === 'Enter' || event.key === 'Return') {
+      event.target.blur();
+    }
+  };
+
   const processOrder = async () => {
     if (posStore.currentOrder.items.length === 0) {
       alert('Please add items to the order');
@@ -1099,7 +1105,7 @@
     </div>
 
     <!-- POS Interface (only shown if access granted) -->
-    <div v-else class="min-h-screen flex flex-col bg-gray-50">
+    <div v-else class="h-screen flex flex-col bg-gray-50 overflow-hidden">
       <!-- Header -->
       <div class="bg-white shadow-sm border-b px-4 sm:px-6 py-3 sm:py-4">
         <div class="flex flex-row items-center justify-between gap-2">
@@ -1742,6 +1748,7 @@
                       type="text"
                       placeholder="Full name"
                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primaryColor focus:border-transparent text-sm"
+                      @keydown="handleEnterKeyDown"
                     />
                   </div>
                   <div>
@@ -1751,6 +1758,7 @@
                       type="text"
                       placeholder="SC/PWD ID No."
                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primaryColor focus:border-transparent text-sm"
+                      @keydown="handleEnterKeyDown"
                     />
                   </div>
                 </div>
@@ -1815,6 +1823,7 @@
                     placeholder="0.00"
                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primaryColor focus:border-transparent text-sm"
                     @input="handlePaymentInput($event.target.value)"
+                    @keydown="handleEnterKeyDown"
                   />
                 </div>
 
@@ -2285,6 +2294,7 @@
                 :max="selectedMenuItem?.stock_quantity || 999"
                 class="w-20 text-center text-lg font-semibold border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primaryColor focus:border-transparent"
                 @input="validateQuantity"
+                @keydown="handleEnterKeyDown"
               />
 
               <button

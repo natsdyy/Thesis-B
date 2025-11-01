@@ -3,7 +3,7 @@
 </script>
 
 <template>
-  <div class="min-h-screen bg-base-100">
+  <div class="bg-base-100">
     <!-- Remove the Demo Role Switcher -->
 
     <!-- Router View -->

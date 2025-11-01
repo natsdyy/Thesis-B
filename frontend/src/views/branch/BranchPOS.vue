@@ -1200,7 +1200,7 @@
                   class="btn btn-sm"
                   title="View Recent Transactions"
                 >
-                  <Receipt class="w-4 h-4 mr-1" />
+                 <font-awesome-icon icon="fa-solid fa-receipt" />
                   Transactions
                 </button>
                 <button

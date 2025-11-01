@@ -95,7 +95,7 @@
           )
       );
     }
-    return rows.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    return rows.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   });
 
   const pendingCount = computed(
@@ -418,7 +418,7 @@
                           v-if="actionLoadingId === o.id"
                           class="loading loading-spinner loading-xs mr-2"
                         ></span>
-                        <CheckCircle class="w-4 h-4 mr-1" /> Complete
+                        <CheckCircle class="w-4 h-4 mr-1" /> Mark as Completed
                       </button>
                     </div>
                   </div>

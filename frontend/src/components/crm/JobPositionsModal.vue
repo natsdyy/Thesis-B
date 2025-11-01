@@ -4,47 +4,55 @@
     class="fixed inset-0 backdrop-blur-md bg-black/60 z-50 overflow-y-auto"
     @click.self="closeModal"
   >
-    <div class="min-h-full flex items-center justify-center p-3 sm:p-4 md:p-8 pt-24 sm:pt-28 md:pt-15 pb-12 sm:pb-30 md:">
+    <div
+      class="min-h-full flex items-center justify-center p-3 sm:p-4 md:p-8 pt-24 sm:pt-28 md:pt-15 pb-12 sm:pb-30 md:"
+    >
       <div
         class="bg-white rounded-xl sm:rounded-2xl w-full max-w-6xl max-h-[calc(100vh-9rem)] sm:max-h-[calc(100vh-10rem)] md:max-h-[calc(100vh-12rem)] min-h-0 flex flex-col shadow-2xl overflow-hidden"
       >
         <!-- Modal Header -->
         <div
-          class="bg-gradient-to-r from-green-600 to-green-700 text-white p-5 sm:p-6 md:p-8 flex-shrink-0 sticky top-0 z-10"
+          class="bg-gradient-to-r from-green-600 to-green-700 text-white p-3 sm:p-4 flex-shrink-0 sticky top-0 z-10"
         >
-          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 md:gap-6">
+          <div class="flex items-center justify-between gap-3">
             <div class="flex-1 min-w-0">
-              <h2 class="text-xl sm:text-2xl md:text-3xl font-bold mb-2 sm:mb-2 md:mb-3 leading-tight">Open Job Positions</h2>
-              <p class="text-xs sm:text-sm md:text-base text-green-100 leading-relaxed mt-1 md:mt-2">
+              <h2 class="text-lg sm:text-xl font-bold leading-tight">
+                Open Job Positions
+              </h2>
+              <p
+                class="text-xs text-green-100 leading-relaxed mt-0.5 hidden sm:block"
+              >
                 Explore our current job openings and find the perfect role for
                 you
               </p>
             </div>
-            <div class="flex items-center gap-2 flex-shrink-0">
+            <div class="flex items-center gap-1.5 flex-shrink-0">
               <button
                 @click="loadPositions"
                 :disabled="isLoading"
-                class="text-white hover:text-green-200 transition-colors p-2 sm:p-2 rounded-full hover:bg-white/10 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                class="text-white hover:text-green-200 transition-colors p-1.5 rounded-full hover:bg-white/10 min-w-[36px] min-h-[36px] flex items-center justify-center"
                 title="Refresh positions"
               >
                 <font-awesome-icon
                   icon="fa-solid fa-rotate"
-                  :class="['w-4 h-4 sm:w-5 sm:h-5', isLoading ? 'animate-spin' : '']"
+                  :class="['w-4 h-4', isLoading ? 'animate-spin' : '']"
                 />
               </button>
               <button
                 @click="closeModal"
-                class="text-white hover:text-green-200 transition-colors p-2 sm:p-2 rounded-full hover:bg-white/10 cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center"
+                class="text-white hover:text-green-200 transition-colors p-1.5 rounded-full hover:bg-white/10 cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center"
                 aria-label="Close modal"
               >
-                <font-awesome-icon icon="fa-solid fa-times" class="w-5 h-5 sm:w-6 sm:h-6" />
+                <font-awesome-icon icon="fa-solid fa-times" class="w-4 h-4" />
               </button>
             </div>
           </div>
         </div>
 
         <!-- Modal Content -->
-        <div class="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 pb-6 sm:pb-8 md:pb-10 max-h-[calc(100vh-12rem)] sm:max-h-[calc(100vh-14rem)] md:max-h-[calc(100vh-16rem)]">
+        <div
+          class="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 pb-6 sm:pb-8 md:pb-10 max-h-[calc(100vh-12rem)] sm:max-h-[calc(100vh-14rem)] md:max-h-[calc(100vh-16rem)]"
+        >
           <!-- Loading State -->
           <div v-if="isLoading" class="flex justify-center items-center py-12">
             <div
@@ -72,22 +80,21 @@
           <!-- Positions Grid -->
           <div v-else>
             <!-- Department Filter Tabs -->
-            <div class="mb-4 sm:mb-6 md:mb-8">
-              <div class="flex flex-wrap gap-2 md:gap-3 justify-center">
+            <div class="mb-4">
+              <div class="flex flex-wrap gap-1.5 sm:gap-2 justify-center">
                 <button
                   v-for="department in departments"
                   :key="department"
                   @click="setActiveDepartment(department)"
                   :class="[
-                    'px-3 sm:px-4 md:px-5 py-1.5 sm:py-2 md:py-2.5 rounded-lg text-xs sm:text-sm md:text-base font-medium transition-all duration-300',
+                    'btn btn-xs sm:btn-sm font-thin text-xs',
                     activeDepartment === department
-                      ? 'bg-green-600 text-white shadow-lg scale-105'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:scale-105',
+                      ? 'bg-green-600 text-white hover:bg-green-600/80'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 ',
                   ]"
                 >
-                  <font-awesome-icon icon="fa-solid fa-building" class="mr-1 sm:mr-2 text-xs sm:text-sm md:text-base" />
                   {{ department }}
-                  <span class="ml-1 sm:ml-2 md:ml-3 bg-white/20 px-1.5 sm:px-2 md:px-2.5 py-0.5 sm:py-1 md:py-1.5 rounded-full text-[10px] sm:text-xs md:text-sm font-semibold">
+                  <span class="badge badge-xs ml-1">
                     {{ getDepartmentCount(department) }}
                   </span>
                 </button>
@@ -95,14 +102,18 @@
             </div>
 
             <!-- Positions Cards -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
+            <div
+              class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4 sm:gap-6 md:gap-8"
+            >
               <div
                 v-for="position in filteredPositions"
                 :key="position.id"
                 class="bg-white border border-gray-200 rounded-lg sm:rounded-xl md:rounded-2xl p-4 sm:p-6 md:p-8 hover:shadow-xl transition-all duration-300 hover:border-green-300 hover:-translate-y-1 group"
               >
                 <!-- Position Header -->
-                <div class="flex justify-between items-start mb-3 sm:mb-4 md:mb-5">
+                <div
+                  class="flex justify-between items-start mb-3 sm:mb-4 md:mb-5"
+                >
                   <div class="flex-1 min-w-0">
                     <h3
                       class="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 mb-1 md:mb-2 group-hover:text-green-700 transition-colors truncate"
@@ -120,7 +131,9 @@
                           icon="fa-solid fa-map-marker-alt"
                           class="mr-1 sm:mr-2 text-[10px] sm:text-xs md:text-sm"
                         />
-                        <span class="truncate">{{ getDisplayBranchName(position) }}</span>
+                        <span class="truncate">{{
+                          getDisplayBranchName(position)
+                        }}</span>
                       </p>
                     </div>
                   </div>
@@ -128,10 +141,16 @@
                 </div>
 
                 <!-- Position Details -->
-                <div class="space-y-2 sm:space-y-3 md:space-y-4 mb-3 sm:mb-4 md:mb-5">
+                <div
+                  class="space-y-2 sm:space-y-3 md:space-y-4 mb-3 sm:mb-4 md:mb-5"
+                >
                   <div class="flex justify-between items-center">
-                    <span class="text-xs sm:text-sm md:text-base text-gray-600">Rate per Hour:</span>
-                    <span class="font-bold text-green-600 text-xs sm:text-sm md:text-base">
+                    <span class="text-xs sm:text-sm md:text-base text-gray-600"
+                      >Rate per Hour:</span
+                    >
+                    <span
+                      class="font-bold text-green-600 text-xs sm:text-sm md:text-base"
+                    >
                       ₱{{
                         (parseFloat(position.rate_per_hour) || 0).toFixed(2)
                       }}
@@ -139,8 +158,12 @@
                   </div>
 
                   <div class="flex justify-between items-center">
-                    <span class="text-xs sm:text-sm md:text-base text-gray-600">Monthly Salary:</span>
-                    <span class="font-semibold text-gray-900 text-xs sm:text-sm md:text-base">
+                    <span class="text-xs sm:text-sm md:text-base text-gray-600"
+                      >Monthly Salary:</span
+                    >
+                    <span
+                      class="font-semibold text-gray-900 text-xs sm:text-sm md:text-base"
+                    >
                       {{
                         calculateMonthlySalaryRange(position.rate_per_hour)
                           .display
@@ -149,8 +172,12 @@
                   </div>
 
                   <div class="flex justify-between items-center">
-                    <span class="text-xs sm:text-sm md:text-base text-gray-600">Work Type:</span>
-                    <span class="text-xs sm:text-sm md:text-base font-medium text-gray-900">
+                    <span class="text-xs sm:text-sm md:text-base text-gray-600"
+                      >Work Type:</span
+                    >
+                    <span
+                      class="text-xs sm:text-sm md:text-base font-medium text-gray-900"
+                    >
                       {{ position.position_type || 'Full-time' }}
                     </span>
                   </div>
@@ -158,7 +185,9 @@
 
                 <!-- Description -->
                 <div class="mb-3 sm:mb-4 md:mb-5">
-                  <p class="text-xs sm:text-sm md:text-base text-gray-700 line-clamp-3 leading-relaxed">
+                  <p
+                    class="text-xs sm:text-sm md:text-base text-gray-700 line-clamp-3 leading-relaxed"
+                  >
                     {{
                       position.description ||
                       `${position.department} ${position.position_title} position`
@@ -202,7 +231,9 @@
             </div>
 
             <!-- Footer Stats -->
-            <div class="mt-6 sm:mt-8 md:mt-10 mb-4 sm:mb-6 md:mb-8 bg-gray-50 rounded-lg md:rounded-xl p-3 sm:p-4 md:p-6">
+            <div
+              class="mt-6 sm:mt-8 md:mt-10 mb-4 sm:mb-6 md:mb-8 bg-gray-50 rounded-lg md:rounded-xl p-3 sm:p-4 md:p-6"
+            >
               <div
                 class="flex flex-col sm:flex-row justify-between items-center gap-2 sm:gap-0 md:gap-4 text-xs sm:text-sm md:text-base text-gray-600"
               >
@@ -267,7 +298,9 @@
                 class="w-8 h-8 sm:w-10 sm:h-10 text-white"
               />
             </div>
-            <h2 class="text-xl sm:text-2xl font-bold mb-2">Application Submitted!</h2>
+            <h2 class="text-xl sm:text-2xl font-bold mb-2">
+              Application Submitted!
+            </h2>
             <p class="text-green-100 text-xs sm:text-sm">
               Your application has been successfully submitted
             </p>
@@ -277,7 +310,9 @@
         <!-- Success Content -->
         <div class="p-4 sm:p-6 lg:p-8 text-center">
           <div class="mb-4 sm:mb-6">
-            <h3 class="text-lg sm:text-xl font-semibold text-gray-900 mb-2 sm:mb-3">
+            <h3
+              class="text-lg sm:text-xl font-semibold text-gray-900 mb-2 sm:mb-3"
+            >
               Thank You for Your Interest!
             </h3>
             <p class="text-sm sm:text-base text-gray-600 leading-relaxed">
@@ -291,7 +326,9 @@
           </div>
 
           <!-- Next Steps -->
-          <div class="bg-gray-50 rounded-lg sm:rounded-xl p-4 sm:p-6 mb-4 sm:mb-6">
+          <div
+            class="bg-gray-50 rounded-lg sm:rounded-xl p-4 sm:p-6 mb-4 sm:mb-6"
+          >
             <h4
               class="font-semibold text-gray-900 mb-2 sm:mb-3 flex items-center justify-center text-sm sm:text-base"
             >
@@ -301,13 +338,14 @@
               />
               What's Next?
             </h4>
-            <div class="space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-gray-600">
+            <div
+              class="space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-gray-600"
+            >
               <p>• We'll review your application within 3-5 business days</p>
               <p>• You'll receive an email confirmation shortly</p>
               <p>• Qualified candidates will be contacted for interviews</p>
             </div>
           </div>
-
 
           <!-- Action Buttons -->
           <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
@@ -377,20 +415,23 @@
   });
 
   const departments = computed(() => {
-    // Default departments we always want to show as tabs
-    const defaultDepartments = [
-      'Branch',
-      'Human Resource',
-      'Finance',
-      'SCM',
-      'Production',
-      'CRM',
-    ];
-    const deptSet = new Set([
-      ...defaultDepartments,
-      ...positions.value.map((p) => p.department).filter(Boolean),
-    ]);
-    return ['All', ...Array.from(deptSet).sort((a, b) => a.localeCompare(b))];
+    // Get all unique departments from positions that actually have open positions
+    const departmentsWithPositions = new Set(
+      positions.value.map((p) => p.department).filter(Boolean)
+    );
+
+    // Filter to only show departments that have at least 1 open position
+    const departmentsWithCount = Array.from(departmentsWithPositions).filter(
+      (dept) => {
+        const count = positions.value.filter(
+          (p) => p.department === dept
+        ).length;
+        return count > 0;
+      }
+    );
+
+    // Always include "All" at the beginning, then sorted departments
+    return ['All', ...departmentsWithCount.sort((a, b) => a.localeCompare(b))];
   });
 
   const filteredPositions = computed(() => {
@@ -540,9 +581,7 @@ ${position.requirements || 'No specific requirements listed'}
         // The computed 'positions' property will filter them automatically
         branchPositions.value = result.data;
 
-        console.log(
-          `📦 Total positions from API: ${result.data.length}`
-        );
+        console.log(`📦 Total positions from API: ${result.data.length}`);
         console.log(
           `✅ Open positions (after filtering): ${positions.value.length}`
         );
@@ -721,9 +760,10 @@ ${position.requirements || 'No specific requirements listed'}
     .overflow-y-auto {
       -webkit-overflow-scrolling: touch;
     }
-    
+
     /* Better touch targets on mobile */
-    button, .cursor-pointer {
+    button,
+    .cursor-pointer {
       min-height: 44px;
       min-width: 44px;
     }

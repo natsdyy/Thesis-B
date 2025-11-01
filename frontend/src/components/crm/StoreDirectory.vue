@@ -113,8 +113,8 @@
             </a>
           </nav>
 
-          <!-- Login Button -->
-          <div class="flex items-center space-x-2 sm:space-x-4">
+          <!-- Login Button (hidden on mobile, shown on md+) -->
+          <div class="hidden md:flex items-center space-x-2 sm:space-x-4">
             <button
               @click="goToLogin"
               class="border border-white text-white px-3 sm:px-4 md:px-6 py-1.5 sm:py-2 rounded-sm cursor-pointer transition-all duration-300 shadow-md font-thin text-sm sm:text-base"
@@ -136,6 +136,19 @@
       ]"
     >
       <nav class="py-3 sm:py-4 px-3 sm:px-4 space-y-1 sm:space-y-2">
+        <router-link
+          to="/login"
+          @click="closeMobileMenu()"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <font-awesome-icon
+              icon="fa-solid fa-right-to-bracket"
+              class="w-4 h-4 sm:w-5 sm:h-5 mr-3"
+            />
+            Login
+          </span>
+        </router-link>
         <router-link
           to="/menu"
           @click="closeMobileMenu()"
@@ -264,7 +277,7 @@
           <div
             v-for="branch in branches"
             :key="branch.id"
-            class="bg-white rounded-xl sm:rounded-2xl shadow-md sm:shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 sm:hover:-translate-y-2 border border-gray-100"
+            class="bg-white rounded-xl sm:rounded-2xl shadow-md sm:shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 sm:hover:-translate-y-2 border border-gray-100 flex flex-col"
           >
             <!-- Branch Image (if available) -->
             <div
@@ -301,7 +314,7 @@
             </div>
 
             <!-- Branch Details -->
-            <div class="p-3 sm:p-4 md:p-6">
+            <div class="p-3 sm:p-4 md:p-6 flex flex-col flex-1">
               <h3
                 class="text-sm sm:text-base md:text-lg lg:text-xl font-bold text-green-800 mb-2 sm:mb-3 md:mb-4 line-clamp-2"
               >
@@ -377,7 +390,7 @@
               </div>
 
               <!-- Action Buttons -->
-              <div class="flex flex-col gap-2 sm:gap-2.5 md:gap-3">
+              <div class="flex flex-col gap-2 sm:gap-2.5 md:gap-3 mt-auto">
                 <button
                   @click="getDirections(branch)"
                   class="w-full bg-green-600 text-white py-2 sm:py-2.5 md:py-3 rounded-lg hover:bg-green-700 transition-colors font-medium flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm md:text-base"

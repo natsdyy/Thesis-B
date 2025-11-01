@@ -261,8 +261,7 @@
             backgroundSize: 'cover',
             backgroundPosition: 'center',
           }"
-        >
-        </div>
+        ></div>
       </div>
 
       <!-- Enhanced Background Overlay -->
@@ -348,7 +347,7 @@
             >
               <router-link
                 to="/menu"
-                class=" bg-orange-500 hover:bg-orange-400 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-md !font-thin text-sm sm:text-base transition-all duration-300 flex items-center justify-center btn btn-md shadow-none"
+                class="bg-orange-500 hover:bg-orange-400 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-md border-none !font-thin text-sm sm:text-base transition-all duration-300 flex items-center justify-center btn btn-md shadow-none"
               >
                 <span>View Menu</span>
                 <font-awesome-icon
@@ -358,7 +357,7 @@
               </router-link>
               <router-link
                 to="/stores"
-                class=" bg-white/20 hover:bg-white/30 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-md !font-thin text-sm sm:text-base transition-all duration-300 flex items-center justify-center btn btn-md shadow-none"
+                class="bg-white/20 hover:bg-white/30 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-md !font-thin text-sm sm:text-base transition-all duration-300 flex items-center justify-center btn btn-md shadow-none"
               >
                 <span>Find Stores</span>
                 <font-awesome-icon
@@ -374,7 +373,7 @@
             >
               <div class="text-center">
                 <div class="text-xl sm:text-2xl font-bold text-orange-400">
-                  40+
+                  {{ yearsOfExcellence }}+
                 </div>
                 <div class="text-xs sm:text-sm text-white/70">
                   Years of Excellence
@@ -382,13 +381,13 @@
               </div>
               <div class="text-center">
                 <div class="text-xl sm:text-2xl font-bold text-orange-400">
-                  3
+                  {{ totalBranches }}
                 </div>
                 <div class="text-xs sm:text-sm text-white/70">Branches</div>
               </div>
               <div class="text-center">
                 <div class="text-xl sm:text-2xl font-bold text-orange-400">
-                  1000+
+                  {{ happyCustomersCount }}
                 </div>
                 <div class="text-xs sm:text-sm text-white/70">
                   Happy Customers
@@ -602,7 +601,9 @@
               class="absolute -bottom-2 -right-2 sm:-bottom-4 sm:-right-4 lg:-bottom-6 lg:-right-6 bg-orange-500 text-white px-3 py-2 sm:px-4 sm:py-2.5 lg:px-6 lg:py-3 rounded-full shadow-lg"
             >
               <div class="text-center">
-                <div class="text-sm sm:text-lg lg:text-2xl font-bold">40+</div>
+                <div class="text-sm sm:text-lg lg:text-2xl font-bold">
+                  {{ yearsOfExcellence }}+
+                </div>
                 <div class="text-xs sm:text-sm">Years of Excellence</div>
               </div>
             </div>
@@ -710,7 +711,7 @@
             <div class="flex flex-col sm:flex-row gap-3 sm:gap-4">
               <router-link
                 to="/menu"
-                class=" bg-green-800 hover:bg-green-700 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg !font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md text-sm sm:text-base"
+                class="bg-green-800 hover:bg-green-700 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg !font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md text-sm sm:text-base"
               >
                 <span>Explore our menu</span>
                 <font-awesome-icon
@@ -721,7 +722,7 @@
 
               <router-link
                 to="/stores"
-                class=" bg-orange-500 hover:bg-orange-400 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg !font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md text-sm sm:text-base"
+                class="bg-orange-500 hover:bg-orange-400 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-lg !font-thin transition-all duration-300 shadow-lg flex items-center justify-center btn btn-md text-sm sm:text-base"
               >
                 <span>Find your branch</span>
                 <font-awesome-icon
@@ -1000,7 +1001,7 @@
               <div
                 v-for="branch in branches"
                 :key="branch.id"
-                class="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover flex-shrink-0 w-[85vw] max-w-[320px] snap-start"
+                class="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover flex-shrink-0 w-[85vw] max-w-[320px] snap-start flex flex-col"
               >
                 <div class="h-40 sm:h-48 overflow-hidden">
                   <img
@@ -1012,7 +1013,7 @@
                     class="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
                   />
                 </div>
-                <div class="p-4 sm:p-6">
+                <div class="p-4 sm:p-6 flex flex-col flex-1">
                   <h3 class="text-lg sm:text-xl font-bold text-green-800 mb-2">
                     {{ branch.name }}
                   </h3>
@@ -1039,7 +1040,7 @@
                     <span>{{ branch.phone }}</span>
                   </div>
                   <button
-                    class="w-full bg-green-600 text-white py-2 sm:py-2.5 rounded-lg hover:bg-green-700 transition-colors text-sm sm:text-base font-medium"
+                    class="w-full bg-green-600 text-white py-2 sm:py-2.5 rounded-lg hover:bg-green-700 transition-colors text-sm sm:text-base font-medium mt-auto"
                     @click="getDirections(branch)"
                   >
                     Get Directions
@@ -1056,7 +1057,7 @@
             <div
               v-for="branch in branches.slice(0, 6)"
               :key="branch.id"
-              class="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover"
+              class="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover flex flex-col"
             >
               <div class="h-48 sm:h-56 overflow-hidden">
                 <img
@@ -1068,7 +1069,7 @@
                   class="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
                 />
               </div>
-              <div class="p-4 sm:p-6">
+              <div class="p-4 sm:p-6 flex flex-col flex-1">
                 <h3 class="text-lg sm:text-xl font-bold text-green-800 mb-2">
                   {{ branch.name }}
                 </h3>
@@ -1095,7 +1096,7 @@
                   <span>{{ branch.phone }}</span>
                 </div>
                 <button
-                  class="w-full bg-green-600 text-white py-2 sm:py-2.5 rounded-lg hover:bg-green-700 transition-colors text-sm sm:text-base font-medium"
+                  class="w-full bg-green-600 text-white py-2 sm:py-2.5 rounded-lg hover:bg-green-700 transition-colors text-sm sm:text-base font-medium mt-auto"
                   @click="getDirections(branch)"
                 >
                   Get Directions
@@ -1111,7 +1112,7 @@
           >
             <router-link
               to="/stores"
-              class="btn bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg font-semibold transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1 flex items-center"
+              class="btn bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg shadow-lg hover:shadow-xl flex items-center !font-medium"
             >
               <span>View All Branches</span>
               <font-awesome-icon
@@ -1128,7 +1129,7 @@
           >
             <router-link
               to="/stores"
-              class="btn bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-lg font-semibold transition-all duration-300 shadow-lg hover:shadow-xl flex items-center text-sm"
+              class="btn bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-lg font-semibold shadow-lg hover:shadow-xl flex items-center text-sm"
             >
               <span>View All Branches</span>
               <font-awesome-icon
@@ -1203,9 +1204,7 @@
                 <h3 class="text-white font-semibold text-lg sm:text-xl mb-2">
                   Part-time
                 </h3>
-                <p class="text-green-100 text-sm sm:text-base">
-                  Flexible hours available
-                </p>
+                <p class="text-green-100 text-sm sm:text-base">(coming soon)</p>
               </div>
             </div>
 
@@ -1232,13 +1231,13 @@
           <!-- Button -->
           <button
             @click="openJobPositionsModal"
-            class="bg-orange-500 hover:bg-orange-400 text-white px-4 sm:px-6 md:px-8 lg:px-12 py-2.5 sm:py-3 md:py-4 rounded-lg font-medium sm:font-semibold text-sm sm:text-base md:text-lg transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 flex items-center justify-center mx-auto max-w-xs sm:max-w-none"
+            class="bg-orange-500 hover:bg-orange-400 text-white px-4 sm:px-6 md:px-8 lg:px-12 py-2.5 sm:py-3 md:py-4 rounded-lg font-medium sm:font-semibold text-sm sm:text-base md:text-lg shadow-md hover:shadow-lg flex items-center justify-center mx-auto max-w-xs sm:max-w-none cursor-pointer"
           >
             <font-awesome-icon
               icon="fa-solid fa-user-plus"
               class="mr-2 sm:mr-3 text-sm sm:text-base"
             />
-            <span class="whitespace-nowrap"
+            <span class="whitespace-nowrap font-medium"
               >Join Us<span class="hidden sm:inline">
                 - Check Available Jobs</span
               ></span
@@ -1873,11 +1872,13 @@
   import menuService from '../../services/menuService.js';
   import { formatImageUrl, apiConfig } from '../../config/api.js';
   import { Clock, Briefcase, Users } from 'lucide-vue-next';
+  import { useFeedbackStore } from '../../stores/feedbackStore.js';
 
   // Backend base derived from api config (strip /api)
   const API_BASE_URL = (apiConfig?.baseURL || '').replace(/\/?api\/?$/, '');
 
   const router = useRouter();
+  const feedbackStore = useFeedbackStore();
   const isScrolled = ref(false);
   const currentHeroIndex = ref(0);
 
@@ -1960,6 +1961,27 @@
 
   // Computed property for current reel
   const currentReel = computed(() => reels[currentReelIndex.value].src);
+
+  // Computed properties for Quick Stats
+  const yearsOfExcellence = computed(() => {
+    const foundingYear = 1984;
+    const currentYear = new Date().getFullYear();
+    return currentYear - foundingYear;
+  });
+
+  const totalBranches = computed(() => {
+    return branches.value.length || 0;
+  });
+
+  const happyCustomersCount = computed(() => {
+    const totalRatings = feedbackStore.stats?.total_ratings || 0;
+    if (totalRatings === 0) return '1000+'; // Fallback to default
+    // Format the number with K for thousands
+    if (totalRatings >= 1000) {
+      return `${(totalRatings / 1000).toFixed(1)}K+`;
+    }
+    return `${totalRatings}+`;
+  });
 
   // Helper functions
   const getReelTitle = (index) => {
@@ -2362,6 +2384,9 @@
     // Fetch real data from API
     fetchBranches();
     fetchMenuItems();
+
+    // Fetch feedback stats for happy customers count
+    feedbackStore.fetchOrderRatingStats();
 
     // Add user interaction listener for video autoplay
     const enableVideoAutoplay = () => {

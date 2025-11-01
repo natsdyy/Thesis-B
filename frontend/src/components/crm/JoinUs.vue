@@ -252,10 +252,10 @@
                   :key="department"
                   @click="setActiveDepartment(department)"
                   :class="[
-                    'btn btn-sm',
+                    'btn btn-sm font-thin',
                     activeDepartment === department
-                      ? 'btn-active bg-orange-500 text-white border-orange-500'
-                      : 'btn-outline',
+                      ? 'btn-active bg-orange-500 border-0 text-white'
+                      : '',
                   ]"
                 >
                   {{ department }}
@@ -286,7 +286,7 @@
                     </p>
                   </div>
                   <div class="my-4">
-                    <div class="badge badge-success badge-lg">
+                    <div class="badge bg-success/20 text-green-800 badge-lg rounded-full">
                       {{ position.position_type || position.employment_type || 'Full-time' }}
                     </div>
                   </div>
@@ -307,7 +307,7 @@
                   <div class="card-actions">
                     <button
                       @click="applyForPosition(position)"
-                      class="btn btn-primary btn-block bg-green-600 hover:bg-green-700 text-white border-none"
+                      class="btn btn-primary btn-block bg-green-600 hover:bg-green-700 text-white border-none shadow-none font-medium"
                     >
                       Apply Now
                     </button>

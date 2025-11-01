@@ -2211,16 +2211,23 @@
           branch_name:
             branches.value.find((b) => b.id === cart.branch_id)?.name ||
             'Branch',
-          items: cart.items.map((x) => ({
-            key: x.key,
-            name: x.name,
-            source: x.source,
-            qty: Number(x.quantity || 0),
-            unit: x.unit,
-            price: Number(x.unit_price || 0),
-            amount: Number(x.unit_price || 0) * Number(x.quantity || 0),
-            expiry_date: x.item?.expiry_date || null,
-          })),
+          items: cart.items.map((x) => {
+            const availableStock =
+              x.source === 'production'
+                ? x.item?.available_quantity || 0
+                : parseFloat(x.item?.quantity || 0);
+            return {
+              key: x.key,
+              name: x.name,
+              source: x.source,
+              qty: Number(x.quantity || 0),
+              unit: x.unit,
+              price: Number(x.unit_price || 0),
+              amount: Number(x.unit_price || 0) * Number(x.quantity || 0),
+              expiry_date: x.item?.expiry_date || null,
+              available_stock: availableStock,
+            };
+          }),
           total: cart.items.reduce(
             (s, x) => s + Number(x.unit_price || 0) * Number(x.quantity || 0),
             0
@@ -2390,6 +2397,51 @@
       }
     } catch (err) {
       showToast('error', err.message || 'Failed to remove item');
+    }
+  };
+
+  // Update quantity for an item in the confirm modal
+  const updateItemQuantityInConfirm = (key, newQuantity) => {
+    try {
+      if (!key || newQuantity === undefined || newQuantity === null) return;
+
+      const quantity = Number(newQuantity);
+      if (isNaN(quantity) || quantity <= 0) {
+        showToast('error', 'Quantity must be greater than 0');
+        return;
+      }
+
+      // Update cart item using store method
+      inventoryStore.updateCartItem(key, { quantity });
+
+      // Recompute confirm details from updated cart
+      const cart = inventoryStore.distributionCart;
+      if (!confirmModal.value?.details) return;
+
+      confirmModal.value.details.items = cart.items.map((x) => {
+        const availableStock =
+          x.source === 'production'
+            ? x.item?.available_quantity || 0
+            : parseFloat(x.item?.quantity || 0);
+        return {
+          key: x.key,
+          name: x.name,
+          source: x.source,
+          qty: Number(x.quantity || 0),
+          unit: x.unit,
+          price: Number(x.unit_price || 0),
+          amount: Number(x.unit_price || 0) * Number(x.quantity || 0),
+          expiry_date: x.item?.expiry_date || null,
+          available_stock: availableStock,
+        };
+      });
+
+      confirmModal.value.details.total = cart.items.reduce(
+        (s, x) => s + Number(x.unit_price || 0) * Number(x.quantity || 0),
+        0
+      );
+    } catch (err) {
+      showToast('error', err.message || 'Failed to update quantity');
     }
   };
 
@@ -4138,94 +4190,287 @@
             </div>
           </div>
 
-          <!-- Inventory Items Grid -->
-          <div
-            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6"
-          >
-            <div
-              v-for="item in paginatedDistributionInventory"
-              :key="item.id"
-              class="card bg-white border border-gray-200 hover:shadow-xl duration-300"
-            >
-              <div class="card-body p-4 flex flex-col h-full">
+          <!-- Inventory Items List -->
+          <div class="bg-white rounded-lg shadow overflow-hidden">
+            <div class="overflow-x-auto">
+              <!-- Mobile Card Layout (hidden on larger screens) -->
+              <div class="block sm:hidden space-y-3 p-4">
                 <div
-                  class="flex justify-between items-start mb-2"
-                  style="min-height: 40px"
+                  v-for="item in paginatedDistributionInventory"
+                  :key="item.id"
+                  class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
                 >
-                  <h3
-                    class="card-title text-sm sm:text-base font-semibold text-primaryColor"
-                  >
-                    {{
-                      distributionInventoryType === 'production'
-                        ? item.item_name || item.menu_item_name
-                        : item.item_name || item.item_type_name
-                    }}
-                  </h3>
-                  <div
-                    class="badge badge-xs sm:badge-sm border"
-                    :class="{
-                      'bg-success/20 text-success border-success/30':
-                        (distributionInventoryType === 'production'
-                          ? item.available_quantity
-                          : parseFloat(item.quantity)) > 50,
-                      'bg-warning/20 text-warning border-warning/30':
-                        (distributionInventoryType === 'production'
-                          ? item.available_quantity
-                          : parseFloat(item.quantity)) <= 50 &&
-                        (distributionInventoryType === 'production'
-                          ? item.available_quantity
-                          : parseFloat(item.quantity)) > 10,
-                      'bg-error/20 text-error border-error/30':
-                        (distributionInventoryType === 'production'
-                          ? item.available_quantity
-                          : parseFloat(item.quantity)) <= 10,
-                    }"
-                  >
-                    {{
-                      distributionInventoryType === 'production'
-                        ? (item.available_quantity || 0).toLocaleString()
-                        : (parseFloat(item.quantity) || 0).toLocaleString()
-                    }}
-                    {{ item.unit_of_measure || 'units' }}
-                  </div>
-                </div>
+                  <div class="flex items-start space-x-3">
+                    <!-- Item Icon -->
+                    <div class="flex-shrink-0">
+                      <div
+                        class="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center"
+                        :class="{
+                          'bg-success/10':
+                            (distributionInventoryType === 'production'
+                              ? item.available_quantity
+                              : parseFloat(item.quantity)) > 50,
+                          'bg-warning/10':
+                            (distributionInventoryType === 'production'
+                              ? item.available_quantity
+                              : parseFloat(item.quantity)) <= 50 &&
+                            (distributionInventoryType === 'production'
+                              ? item.available_quantity
+                              : parseFloat(item.quantity)) > 10,
+                          'bg-error/10':
+                            (distributionInventoryType === 'production'
+                              ? item.available_quantity
+                              : parseFloat(item.quantity)) <= 10,
+                        }"
+                      >
+                        <Package
+                          class="w-5 h-5 sm:w-6 sm:h-6"
+                          :class="{
+                            'text-success':
+                              (distributionInventoryType === 'production'
+                                ? item.available_quantity
+                                : parseFloat(item.quantity)) > 50,
+                            'text-warning':
+                              (distributionInventoryType === 'production'
+                                ? item.available_quantity
+                                : parseFloat(item.quantity)) <= 50 &&
+                              (distributionInventoryType === 'production'
+                                ? item.available_quantity
+                                : parseFloat(item.quantity)) > 10,
+                            'text-error':
+                              (distributionInventoryType === 'production'
+                                ? item.available_quantity
+                                : parseFloat(item.quantity)) <= 10,
+                          }"
+                        />
+                      </div>
+                    </div>
 
-                <div
-                  class="text-xs text-gray-600 mb-2"
-                  style="min-height: 36px"
-                >
-                  <div v-if="item.category || item.category_name" class="mb-1">
-                    {{ item.category || item.category_name }}
-                  </div>
-                  <div
-                    v-if="
-                      distributionInventoryType === 'production' &&
-                      item.selling_price
-                    "
-                    class="mb-1"
-                  >
-                    ₱{{ parseFloat(item.selling_price).toLocaleString() }}
-                  </div>
-                </div>
+                    <!-- Item Details -->
+                    <div class="flex-1 min-w-0">
+                      <h3 class="text-sm font-medium text-gray-900 truncate">
+                        {{
+                          distributionInventoryType === 'production'
+                            ? item.item_name || item.menu_item_name
+                            : item.item_name || item.item_type_name
+                        }}
+                      </h3>
+                      <p class="text-xs text-gray-500 truncate">
+                        {{
+                          distributionInventoryType === 'production'
+                            ? (item.available_quantity || 0).toLocaleString()
+                            : (parseFloat(item.quantity) || 0).toLocaleString()
+                        }}
+                        {{ item.unit_of_measure || 'units' }}
+                      </p>
 
-                <div
-                  class="card-actions justify-end mt-auto"
-                  v-if="!isBoardMember"
-                >
-                  <button
-                    @click="openDistributionModal(item)"
-                    class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
-                    :disabled="
-                      (distributionInventoryType === 'production'
-                        ? item.available_quantity
-                        : parseFloat(item.quantity)) <= 0
-                    "
-                  >
-                    <Truck class="w-4 h-4 mr-1" />
-                    Distribute
-                  </button>
+                      <!-- Additional Info -->
+                      <div class="mt-2 space-y-1">
+                        <div
+                          v-if="item.category || item.category_name"
+                          class="flex items-center justify-between text-xs"
+                        >
+                          <span class="text-gray-600">Category:</span>
+                          <span class="font-medium">{{
+                            item.category || item.category_name
+                          }}</span>
+                        </div>
+                        <div
+                          v-if="
+                            distributionInventoryType === 'production' &&
+                            item.selling_price
+                          "
+                          class="flex items-center justify-between text-xs"
+                        >
+                          <span class="text-gray-600">Price:</span>
+                          <span class="font-medium"
+                            >₱{{
+                              parseFloat(item.selling_price).toLocaleString()
+                            }}</span
+                          >
+                        </div>
+                        <div
+                          v-if="!isBoardMember"
+                          class="flex items-center justify-end mt-3"
+                        >
+                          <button
+                            @click="openDistributionModal(item)"
+                            class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
+                            :disabled="
+                              (distributionInventoryType === 'production'
+                                ? item.available_quantity
+                                : parseFloat(item.quantity)) <= 0
+                            "
+                          >
+                            <Truck class="w-4 h-4 mr-1" />
+                            Distribute
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
+
+              <!-- Desktop Table Layout (hidden on mobile) -->
+              <table
+                class="min-w-full divide-y divide-gray-200 hidden sm:table"
+              >
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Item Name
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Category
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell"
+                    >
+                      Quantity
+                    </th>
+                    <th
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell"
+                    >
+                      {{
+                        distributionInventoryType === 'production'
+                          ? 'Price'
+                          : 'Unit'
+                      }}
+                    </th>
+                    <th
+                      v-if="!isBoardMember"
+                      class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                  <tr
+                    v-for="item in paginatedDistributionInventory"
+                    :key="item.id"
+                    class="hover:bg-gray-50"
+                  >
+                    <td class="px-3 sm:px-6 py-4 whitespace-nowrap">
+                      <div class="flex items-center">
+                        <div class="flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10">
+                          <div
+                            class="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center"
+                            :class="{
+                              'bg-success/10':
+                                (distributionInventoryType === 'production'
+                                  ? item.available_quantity
+                                  : parseFloat(item.quantity)) > 50,
+                              'bg-warning/10':
+                                (distributionInventoryType === 'production'
+                                  ? item.available_quantity
+                                  : parseFloat(item.quantity)) <= 50 &&
+                                (distributionInventoryType === 'production'
+                                  ? item.available_quantity
+                                  : parseFloat(item.quantity)) > 10,
+                              'bg-error/10':
+                                (distributionInventoryType === 'production'
+                                  ? item.available_quantity
+                                  : parseFloat(item.quantity)) <= 10,
+                            }"
+                          >
+                            <Package
+                              class="w-4 h-4 sm:w-5 sm:h-5"
+                              :class="{
+                                'text-success':
+                                  (distributionInventoryType === 'production'
+                                    ? item.available_quantity
+                                    : parseFloat(item.quantity)) > 50,
+                                'text-warning':
+                                  (distributionInventoryType === 'production'
+                                    ? item.available_quantity
+                                    : parseFloat(item.quantity)) <= 50 &&
+                                  (distributionInventoryType === 'production'
+                                    ? item.available_quantity
+                                    : parseFloat(item.quantity)) > 10,
+                                'text-error':
+                                  (distributionInventoryType === 'production'
+                                    ? item.available_quantity
+                                    : parseFloat(item.quantity)) <= 10,
+                              }"
+                            />
+                          </div>
+                        </div>
+                        <div class="ml-3 sm:ml-4">
+                          <div
+                            class="text-sm font-medium text-gray-900 truncate"
+                          >
+                            {{
+                              distributionInventoryType === 'production'
+                                ? item.item_name || item.menu_item_name
+                                : item.item_name || item.item_type_name
+                            }}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="px-3 sm:px-6 py-4 whitespace-nowrap">
+                      <div class="text-sm text-gray-900">
+                        {{ item.category || item.category_name || 'N/A' }}
+                      </div>
+                    </td>
+                    <td
+                      class="px-3 sm:px-6 py-4 whitespace-nowrap hidden md:table-cell"
+                    >
+                      <div class="text-sm font-medium text-gray-900">
+                        {{
+                          distributionInventoryType === 'production'
+                            ? (item.available_quantity || 0).toLocaleString()
+                            : (parseFloat(item.quantity) || 0).toLocaleString()
+                        }}
+                      </div>
+                      <div class="text-xs text-gray-500">
+                        {{ item.unit_of_measure || 'units' }}
+                      </div>
+                    </td>
+                    <td
+                      class="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 hidden lg:table-cell"
+                    >
+                      <div v-if="distributionInventoryType === 'production'">
+                        {{
+                          item.selling_price
+                            ? '₱' +
+                              parseFloat(item.selling_price).toLocaleString()
+                            : 'N/A'
+                        }}
+                      </div>
+                      <div v-else>{{ item.unit_of_measure || 'N/A' }}</div>
+                    </td>
+                    <td v-if="!isBoardMember" class="px-3 sm:px-6 py-4">
+                      <button
+                        @click="openDistributionModal(item)"
+                        class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
+                        :disabled="
+                          (distributionInventoryType === 'production'
+                            ? item.available_quantity
+                            : parseFloat(item.quantity)) <= 0
+                        "
+                      >
+                        <Truck class="w-4 h-4 mr-1" />
+                        Distribute
+                      </button>
+                    </td>
+                  </tr>
+                  <tr v-if="paginatedDistributionInventory.length === 0">
+                    <td
+                      :colspan="!isBoardMember ? 5 : 4"
+                      class="text-center text-gray-400 py-6"
+                    >
+                      No items available for distribution
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -4331,7 +4576,6 @@
 
                       <th>Branch</th>
                       <th>Prepared By</th>
-                      <th class="text-right">Total</th>
                       <th>Status</th>
                       <th>Actions</th>
                     </tr>
@@ -4347,21 +4591,6 @@
 
                       <td>{{ dist.branch_name || 'Branch' }}</td>
                       <td>{{ dist.prepared_by }}</td>
-                      <td class="text-right">
-                        <font-awesome-icon
-                          icon="fa-solid fa-peso-sign"
-                          class="mr-1"
-                        />
-                        {{
-                          Number(dist.total_amount || 0).toLocaleString(
-                            'en-PH',
-                            {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            }
-                          )
-                        }}
-                      </td>
 
                       <td>
                         <span
@@ -4503,7 +4732,25 @@
                   <td>{{ idx + 1 }}</td>
                   <td>{{ x.name }}</td>
                   <td>{{ x.source.toUpperCase() }}</td>
-                  <td class="text-right">{{ x.qty.toLocaleString() }}</td>
+                  <td class="text-right">
+                    <input
+                      type="number"
+                      :value="x.qty"
+                      :max="x.available_stock || undefined"
+                      @change="
+                        (e) =>
+                          updateItemQuantityInConfirm(x.key, e.target.value)
+                      "
+                      @blur="
+                        (e) =>
+                          updateItemQuantityInConfirm(x.key, e.target.value)
+                      "
+                      min="0.01"
+                      step="0.01"
+                      class="input input-xs input-bordered text-right w-20 max-w-full"
+                      :title="`Max: ${(x.available_stock || 0).toLocaleString()} ${x.unit}`"
+                    />
+                  </td>
                   <td>{{ x.unit }}</td>
                   <td class="text-right">₱{{ x.price.toLocaleString() }}</td>
                   <td class="text-right">₱{{ x.amount.toLocaleString() }}</td>
@@ -4521,6 +4768,7 @@
                   <td class="text-right font-semibold">
                     ₱{{ confirmModal.details.total.toLocaleString() }}
                   </td>
+                  <td></td>
                 </tr>
               </tbody>
             </table>
@@ -4731,14 +4979,18 @@
 
     <!-- Rejection Notification Modal -->
     <dialog :class="{ 'modal-open': rejectionNotification.show }" class="modal">
-      <div class="modal-box max-w-2xl">
-        <div class="flex items-center gap-3 mb-4">
+      <div
+        class="modal-box max-w-2xl w-full mx-4 sm:mx-auto max-h-[90vh] overflow-y-auto"
+      >
+        <div
+          class="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-4"
+        >
           <div class="flex-shrink-0">
             <div
-              class="w-12 h-12 bg-error/20 rounded-full flex items-center justify-center"
+              class="w-10 h-10 sm:w-12 sm:h-12 bg-error/20 rounded-full flex items-center justify-center"
             >
               <svg
-                class="w-6 h-6 text-error"
+                class="w-5 h-5 sm:w-6 sm:h-6 text-error"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -4752,9 +5004,11 @@
               </svg>
             </div>
           </div>
-          <div>
-            <h3 class="font-bold text-lg text-error">Distribution Rejected</h3>
-            <p class="text-sm text-gray-600">
+          <div class="flex-1 min-w-0">
+            <h3 class="font-bold text-base sm:text-lg text-error">
+              Distribution Rejected
+            </h3>
+            <p class="text-xs sm:text-sm text-gray-600 truncate">
               Reference: {{ rejectionNotification.distribution?.reference }}
             </p>
           </div>
@@ -4762,18 +5016,28 @@
 
         <div v-if="rejectionNotification.distribution" class="space-y-4">
           <!-- Rejection Details -->
-          <div class="bg-error/5 border border-error/20 rounded-lg p-4">
-            <h4 class="font-semibold text-error mb-2">Rejection Details</h4>
-            <div class="space-y-2 text-sm">
-              <div>
-                <span class="font-medium">Rejected by:</span>
-                <span class="ml-2">{{
+          <div class="bg-error/5 border border-error/20 rounded-lg p-3 sm:p-4">
+            <h4 class="font-semibold text-error mb-2 text-sm sm:text-base">
+              Rejection Details
+            </h4>
+            <div class="space-y-2 text-xs sm:text-sm">
+              <div
+                class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2"
+              >
+                <span class="font-medium min-w-[100px] sm:min-w-[120px]"
+                  >Rejected by:</span
+                >
+                <span class="break-words">{{
                   rejectionNotification.distribution.rejected_by || 'Unknown'
                 }}</span>
               </div>
-              <div>
-                <span class="font-medium">Rejected at:</span>
-                <span class="ml-2">
+              <div
+                class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2"
+              >
+                <span class="font-medium min-w-[100px] sm:min-w-[120px]"
+                  >Rejected at:</span
+                >
+                <span class="break-words">
                   {{
                     new Date(
                       rejectionNotification.distribution.rejected_at ||
@@ -4782,30 +5046,55 @@
                   }}
                 </span>
               </div>
-              <div>
+              <div class="flex flex-col gap-1 sm:gap-2">
                 <span class="font-medium">Reason:</span>
-                <p class="mt-1 text-gray-700 bg-white p-2 rounded border">
+                <p
+                  class="text-gray-700 bg-white p-2 rounded border break-words"
+                >
                   {{
                     rejectionNotification.distribution.rejection_reason ||
                     'No reason provided'
                   }}
                 </p>
               </div>
-              <div v-if="rejectionNotification.distribution.rejection_notes">
+              <div
+                v-if="rejectionNotification.distribution.rejection_notes"
+                class="flex flex-col gap-1 sm:gap-2"
+              >
                 <span class="font-medium">Notes:</span>
-                <p class="mt-1 text-gray-700 bg-white p-2 rounded border">
-                  {{ rejectionNotification.distribution.rejection_notes }}
-                </p>
+                <div
+                  class="mt-1 text-gray-700 bg-white p-2 rounded border overflow-hidden"
+                >
+                  <div
+                    v-html="
+                      sanitizeHtml(
+                        rejectionNotification.distribution.rejection_notes
+                      )
+                    "
+                    class="prose prose-sm max-w-none"
+                    style="word-wrap: break-word"
+                  ></div>
+                </div>
               </div>
-              <div v-if="rejectionNotification.distribution.acknowledged_by">
-                <span class="font-medium">Acknowledged by:</span>
-                <span class="ml-2 text-green-700 font-medium">{{
+              <div
+                v-if="rejectionNotification.distribution.acknowledged_by"
+                class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2"
+              >
+                <span class="font-medium min-w-[100px] sm:min-w-[120px]"
+                  >Acknowledged by:</span
+                >
+                <span class="text-green-700 font-medium break-words">{{
                   rejectionNotification.distribution.acknowledged_by
                 }}</span>
               </div>
-              <div v-if="rejectionNotification.distribution.acknowledged_at">
-                <span class="font-medium">Acknowledged at:</span>
-                <span class="ml-2 text-green-700">
+              <div
+                v-if="rejectionNotification.distribution.acknowledged_at"
+                class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2"
+              >
+                <span class="font-medium min-w-[100px] sm:min-w-[120px]"
+                  >Acknowledged at:</span
+                >
+                <span class="text-green-700 break-words">
                   {{
                     new Date(
                       rejectionNotification.distribution.acknowledged_at
@@ -4817,32 +5106,40 @@
           </div>
 
           <!-- Distribution Items -->
-          <div class="bg-gray-50 rounded-lg p-4">
-            <h4 class="font-semibold mb-3">Items in Distribution</h4>
+          <div class="bg-gray-50 rounded-lg p-3 sm:p-4">
+            <h4 class="font-semibold mb-3 text-sm sm:text-base">
+              Items in Distribution
+            </h4>
             <div class="space-y-2">
               <div
                 v-for="item in rejectionNotification.distribution.items || []"
                 :key="item.id"
-                class="flex justify-between items-center bg-white p-2 rounded border"
+                class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 bg-white p-2 sm:p-3 rounded border"
               >
-                <div>
-                  <span class="font-medium">{{ item.name }}</span>
-                  <span class="text-sm text-gray-500 ml-2"
-                    >({{ item.source }})</span
+                <div class="flex-1 min-w-0">
+                  <span
+                    class="font-medium text-sm sm:text-base block sm:inline"
+                    >{{ item.name }}</span
+                  >
+                  <span
+                    class="text-xs sm:text-sm text-gray-500 sm:ml-2 block sm:inline"
+                    >({{ item.source.toUpperCase() }})</span
                   >
                 </div>
-                <div class="text-right">
-                  <div class="font-medium">
+                <div class="text-left sm:text-right flex-shrink-0">
+                  <div class="font-medium text-sm sm:text-base">
                     {{ Number(item.qty).toFixed(2) }} {{ item.unit }}
                   </div>
-                  <div class="text-sm text-gray-500">
+                  <div class="text-xs sm:text-sm text-gray-500">
                     ₱{{ Number(item.amount).toFixed(2) }}
                   </div>
                 </div>
               </div>
             </div>
             <div class="mt-3 pt-3 border-t border-gray-200">
-              <div class="flex justify-between items-center font-semibold">
+              <div
+                class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 font-semibold text-sm sm:text-base"
+              >
                 <span>Total Amount:</span>
                 <span
                   >₱{{
@@ -4858,11 +5155,11 @@
           <!-- Action Notice -->
           <div
             v-if="!rejectionNotification.distribution?.acknowledged_by"
-            class="bg-warning/10 border border-warning/30 rounded-lg p-4"
+            class="bg-warning/10 border border-warning/30 rounded-lg p-3 sm:p-4"
           >
-            <div class="flex items-start gap-3">
+            <div class="flex items-start gap-2 sm:gap-3">
               <svg
-                class="w-5 h-5 text-warning mt-0.5 flex-shrink-0"
+                class="w-4 h-4 sm:w-5 sm:h-5 text-warning mt-0.5 flex-shrink-0"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -4874,9 +5171,13 @@
                   d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              <div>
-                <h4 class="font-semibold text-warning mb-1">Action Required</h4>
-                <p class="text-sm text-gray-700">
+              <div class="flex-1 min-w-0">
+                <h4
+                  class="font-semibold text-warning mb-1 text-sm sm:text-base"
+                >
+                  Action Required
+                </h4>
+                <p class="text-xs sm:text-sm text-gray-700 break-words">
                   The quantities for these items have been automatically
                   returned to the main inventory. Please acknowledge this
                   rejection to confirm the inventory adjustment.
@@ -4887,11 +5188,11 @@
           <!-- Acknowledgment Confirmation -->
           <div
             v-else
-            class="bg-green-50 border border-green-200 rounded-lg p-4"
+            class="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4"
           >
-            <div class="flex items-start gap-3">
+            <div class="flex items-start gap-2 sm:gap-3">
               <svg
-                class="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0"
+                class="w-4 h-4 sm:w-5 sm:h-5 text-green-600 mt-0.5 flex-shrink-0"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -4903,9 +5204,13 @@
                   d="M5 13l4 4L19 7"
                 />
               </svg>
-              <div>
-                <h4 class="font-semibold text-green-800 mb-1">Acknowledged</h4>
-                <p class="text-sm text-gray-700">
+              <div class="flex-1 min-w-0">
+                <h4
+                  class="font-semibold text-green-800 mb-1 text-sm sm:text-base"
+                >
+                  Acknowledged
+                </h4>
+                <p class="text-xs sm:text-sm text-gray-700 break-words">
                   This rejection has been acknowledged and the inventory
                   adjustment has been confirmed.
                 </p>
@@ -4915,9 +5220,11 @@
         </div>
 
         <!-- Modal Actions -->
-        <div class="modal-action">
+        <div
+          class="modal-action flex-col sm:flex-row gap-2 sm:gap-2 justify-end mt-4"
+        >
           <button
-            class="btn btn-sm bg-gray-200 font-thin text-black/50 border border-none hover:bg-gray-300"
+            class="btn btn-sm w-full sm:w-auto bg-gray-200 font-thin text-black/50 border border-none hover:bg-gray-300"
             @click="closeRejectionNotification"
             :disabled="rejectionNotification.acknowledging"
           >
@@ -4925,7 +5232,7 @@
           </button>
           <button
             v-if="!rejectionNotification.distribution?.acknowledged_by"
-            class="btn btn-sm bg-primaryColor font-thin text-white border border-none hover:bg-primaryColor/80"
+            class="btn btn-sm w-full sm:w-auto bg-primaryColor font-thin text-white border border-none hover:bg-primaryColor/80"
             @click="acknowledgeRejection"
             :disabled="rejectionNotification.acknowledging"
             :class="{ loading: rejectionNotification.acknowledging }"
@@ -4944,15 +5251,20 @@
                 d="M5 13l4 4L19 7"
               />
             </svg>
-            {{
+            <span class="hidden sm:inline">{{
               rejectionNotification.acknowledging
                 ? 'Acknowledging...'
                 : 'Acknowledge & Return to Inventory'
-            }}
+            }}</span>
+            <span class="sm:hidden">{{
+              rejectionNotification.acknowledging
+                ? 'Acknowledging...'
+                : 'Acknowledge'
+            }}</span>
           </button>
           <div
             v-else
-            class="btn btn-sm bg-green-100 font-thin text-green-800 border border-green-300 cursor-default"
+            class="btn btn-sm w-full sm:w-auto bg-green-100 font-thin text-green-800 border border-green-300 cursor-default text-xs sm:text-sm"
           >
             <svg
               class="w-4 h-4 mr-2"
@@ -4967,8 +5279,11 @@
                 d="M5 13l4 4L19 7"
               />
             </svg>
-            Acknowledged by
-            {{ rejectionNotification.distribution.acknowledged_by }}
+            <span class="hidden sm:inline"
+              >Acknowledged by
+              {{ rejectionNotification.distribution.acknowledged_by }}</span
+            >
+            <span class="sm:hidden">Acknowledged</span>
           </div>
         </div>
       </div>
@@ -5005,6 +5320,20 @@
 
   .toast {
     z-index: 9999;
+  }
+
+  /* Rejection notes image styling */
+  .prose img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 0.5rem 0;
+    border-radius: 0.375rem;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  }
+
+  .prose p {
+    margin: 0;
   }
 
   @media (max-width: 640px) {

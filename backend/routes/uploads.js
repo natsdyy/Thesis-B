@@ -3,6 +3,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const { formatPhilippineTime } = require("../utils/timezoneUtils");
+const { authenticateToken } = require("../middleware/rbac");
 
 const router = express.Router();
 
@@ -38,7 +39,7 @@ const upload = multer({
 });
 
 // TinyMCE-compatible response: { location: "/uploads/proofs/YYYY/MM/filename" }
-router.post("/proofs", upload.single("file"), (req, res) => {
+router.post("/proofs", authenticateToken, upload.single("file"), (req, res) => {
   if (!req.file) {
     return res
       .status(400)

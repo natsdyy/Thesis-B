@@ -443,21 +443,21 @@ router.get("/roles/:department", async (req, res) => {
 router.get("/:id/documents/:documentId/view", async (req, res) => {
   try {
     const { id, documentId } = req.params;
-    
+
     // Get document from database
     const document = await db("employee_documents")
       .where("id", documentId)
       .where("employee_id", id)
       .whereNull("deleted_at")
       .first();
-    
+
     if (!document) {
       return res.status(404).json({
         success: false,
         message: "Document not found",
       });
     }
-    
+
     // Construct file path
     const filePath = require("path").join(
       __dirname,
@@ -466,7 +466,7 @@ router.get("/:id/documents/:documentId/view", async (req, res) => {
       "employee-documents",
       document.filename
     );
-    
+
     // Check if file exists
     if (!require("fs").existsSync(filePath)) {
       return res.status(404).json({
@@ -474,13 +474,16 @@ router.get("/:id/documents/:documentId/view", async (req, res) => {
         message: "File not found on server",
       });
     }
-    
+
     // Set headers to force inline display
     res.setHeader("Content-Type", document.mime_type || "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename="${document.original_filename}"`);
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${document.original_filename}"`
+    );
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "public, max-age=3600");
-    
+
     // Stream the file
     res.sendFile(filePath);
   } catch (error) {
@@ -498,7 +501,10 @@ router.get("/:id/documents", authenticateToken, async (req, res) => {
     const { id } = req.params;
 
     // Verify employee exists
-    const employee = await db("employees").where("id", id).whereNull("deleted_at").first();
+    const employee = await db("employees")
+      .where("id", id)
+      .whereNull("deleted_at")
+      .first();
     if (!employee) {
       return res.status(404).json({
         success: false,
@@ -730,7 +736,12 @@ const upload = multer({
 });
 
 // Document upload storage (for onboarding documents)
-const documentsDir = path.join(__dirname, "..", "uploads", "employee-documents");
+const documentsDir = path.join(
+  __dirname,
+  "..",
+  "uploads",
+  "employee-documents"
+);
 if (!fs.existsSync(documentsDir)) {
   fs.mkdirSync(documentsDir, { recursive: true });
 }
@@ -740,12 +751,14 @@ const documentStorage = multer.diskStorage({
     cb(null, documentsDir);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname) || '.pdf'; // Default to .pdf if no extension
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname) || ".pdf"; // Default to .pdf if no extension
     // Preserve original extension, sanitize fieldname
-    const sanitizedFieldname = file.fieldname.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const sanitizedFieldname = file.fieldname.replace(/[^a-zA-Z0-9_-]/g, "_");
     const filename = `${sanitizedFieldname}-${uniqueSuffix}${ext}`;
-    console.log(`Document upload: original='${file.originalname}', ext='${ext}', generated='${filename}'`);
+    console.log(
+      `Document upload: original='${file.originalname}', ext='${ext}', generated='${filename}'`
+    );
     cb(null, filename);
   },
 });
@@ -754,7 +767,12 @@ const documentUpload = multer({
   storage: documentStorage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (req, file, cb) => {
-    const allowedMimes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+    const allowedMimes = [
+      "application/pdf",
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+    ];
     if (allowedMimes.includes(file.mimetype)) {
       return cb(null, true);
     }
@@ -870,6 +888,15 @@ router.put("/:id", authenticateToken, async (req, res) => {
     // Get current user ID from request
     const updatedBy = req.user?.id || null;
 
+    // Get current employee data before update to check for branch changes
+    const currentEmployee = await Employee.getById(id);
+    if (!currentEmployee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found",
+      });
+    }
+
     const updatedEmployee = await Employee.update(id, employeeData, updatedBy);
 
     if (!updatedEmployee) {
@@ -877,6 +904,172 @@ router.put("/:id", authenticateToken, async (req, res) => {
         success: false,
         message: "Employee not found",
       });
+    }
+
+    // Check if branch_id, role, or department has changed and send email notification
+    const hasBranchChanged =
+      employeeData.branch_id !== undefined &&
+      currentEmployee.branch_id !== updatedEmployee.branch_id;
+
+    const hasRoleChanged =
+      employeeData.role_id !== undefined &&
+      currentEmployee.role_id !== updatedEmployee.role_id;
+
+    const hasDepartmentChanged =
+      employeeData.department !== undefined &&
+      currentEmployee.department !== updatedEmployee.department;
+
+    const shouldSendEmail =
+      (hasBranchChanged || hasRoleChanged || hasDepartmentChanged) &&
+      updatedEmployee.email;
+
+    if (shouldSendEmail) {
+      try {
+        // Get branch names from database (if branch changed)
+        let fromBranchName = "Unassigned";
+        let toBranchName = "Unassigned";
+
+        if (hasBranchChanged) {
+          const branches = await db("branches")
+            .whereIn("id", [
+              currentEmployee.branch_id,
+              updatedEmployee.branch_id,
+            ])
+            .whereNull("deleted_at")
+            .select("id", "name", "code");
+
+          const fromBranch = branches.find(
+            (b) => b.id === currentEmployee.branch_id
+          );
+          const toBranch = branches.find(
+            (b) => b.id === updatedEmployee.branch_id
+          );
+
+          fromBranchName = fromBranch
+            ? `${fromBranch.name} (${fromBranch.code})`
+            : "Unassigned";
+          toBranchName = toBranch
+            ? `${toBranch.name} (${toBranch.code})`
+            : "Unassigned";
+        } else {
+          // If no branch change but role/department changed, keep current branch info
+          if (updatedEmployee.branch_id) {
+            const currentBranch = await db("branches")
+              .where("id", updatedEmployee.branch_id)
+              .whereNull("deleted_at")
+              .select("name", "code")
+              .first();
+
+            if (currentBranch) {
+              fromBranchName =
+                toBranchName = `${currentBranch.name} (${currentBranch.code})`;
+            }
+          }
+        }
+
+        // Get role information (if role changed)
+        let fromRoleName = currentEmployee.role || "Current Role";
+        let toRoleName = updatedEmployee.role || "New Role";
+
+        if (hasRoleChanged) {
+          const roles = await db("user_roles")
+            .whereIn("role_id", [
+              currentEmployee.role_id,
+              updatedEmployee.role_id,
+            ])
+            .whereNull("deleted_at")
+            .select("role_id", "role");
+
+          const fromRole = roles.find(
+            (r) => r.role_id === currentEmployee.role_id
+          );
+          const toRole = roles.find(
+            (r) => r.role_id === updatedEmployee.role_id
+          );
+
+          fromRoleName = fromRole ? fromRole.role : fromRoleName;
+          toRoleName = toRole ? toRole.role : toRoleName;
+        }
+
+        // Get department names
+        const fromDeptName = currentEmployee.department || "Current Department";
+        const toDeptName = updatedEmployee.department || "New Department";
+
+        // Get manager name who made the change
+        const manager =
+          updatedBy &&
+          (await db("employees")
+            .where("id", updatedBy)
+            .select("first_name", "last_name")
+            .first());
+        const managerName = manager
+          ? `${manager.first_name} ${manager.last_name}`
+          : "System Administrator";
+
+        const employeeName = `${updatedEmployee.first_name} ${updatedEmployee.last_name}`;
+        const transferDate = new Date();
+
+        // Create a descriptive transfer message based on what changed
+        let transferSubject = "Employee Role/Department Update";
+        let transferMessage = "";
+
+        if (hasBranchChanged) {
+          transferSubject = "Branch Transfer Notification";
+          transferMessage = `Your branch assignment has been updated from ${fromBranchName} to ${toBranchName}.`;
+          if (hasRoleChanged || hasDepartmentChanged) {
+            transferMessage += ` Additionally, `;
+          }
+        }
+
+        if (hasDepartmentChanged) {
+          transferSubject = "Department Transfer Notification";
+          if (!transferMessage) {
+            transferMessage = `Your department assignment has been updated from ${fromDeptName} to ${toDeptName}.`;
+          } else {
+            transferMessage += `your department has been updated from ${fromDeptName} to ${toDeptName}.`;
+          }
+          if (hasRoleChanged) {
+            transferMessage += ` Additionally, `;
+          }
+        }
+
+        if (hasRoleChanged) {
+          if (!transferMessage) {
+            transferMessage = `Your role has been updated from ${fromRoleName} to ${toRoleName}.`;
+          } else {
+            transferMessage += `your role has been updated from ${fromRoleName} to ${toRoleName}.`;
+          }
+        }
+
+        // Send transfer notification email
+        const emailResult = await EmailService.sendEmployeeTransferNotification(
+          updatedEmployee.email,
+          employeeName,
+          fromBranchName,
+          toBranchName,
+          transferDate,
+          managerName,
+          transferMessage,
+          transferSubject
+        );
+
+        if (emailResult.success) {
+          console.log(
+            `✅ Transfer notification email sent to ${updatedEmployee.email}`
+          );
+        } else {
+          console.error(
+            `❌ Failed to send transfer notification email:`,
+            emailResult.error
+          );
+        }
+      } catch (emailError) {
+        console.error(
+          "❌ Error sending transfer notification email:",
+          emailError
+        );
+        // Don't fail the update if email fails
+      }
     }
 
     res.json({
@@ -1407,7 +1600,10 @@ router.post(
       }
 
       // Verify employee exists
-      const employee = await db("employees").where("id", id).whereNull("deleted_at").first();
+      const employee = await db("employees")
+        .where("id", id)
+        .whereNull("deleted_at")
+        .first();
       if (!employee) {
         return res.status(404).json({
           success: false,

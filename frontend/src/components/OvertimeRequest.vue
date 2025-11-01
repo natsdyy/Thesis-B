@@ -65,14 +65,33 @@
         <div class="flex justify-between items-center mb-4">
           <h3 class="card-title">
             My Overtime Requests
-            <span v-if="myOtRequests.length > 0" class="badge badge-ghost ml-2">
-              {{ myOtRequests.length }} records
+            <span
+              v-if="filteredMyOtRequests.length > 0"
+              class="badge badge-ghost ml-2"
+            >
+              {{ filteredMyOtRequests.length }} records
             </span>
           </h3>
+          <div class="flex items-center gap-2">
+            <label class="label label-text text-sm">Filter by Month:</label>
+            <select
+              v-model="selectedMonthFilter"
+              class="select select-bordered select-sm"
+            >
+              <option value="">All Months</option>
+              <option
+                v-for="month in availableMonths"
+                :key="month.value"
+                :value="month.value"
+              >
+                {{ month.label }}
+              </option>
+            </select>
+          </div>
         </div>
 
         <div
-          v-if="myOtRequests.length === 0"
+          v-if="filteredMyOtRequests.length === 0"
           class="text-center py-8 text-gray-500"
         >
           <div class="flex flex-col items-center space-y-2">
@@ -258,13 +277,52 @@
   const myOtRequests = ref([]);
   const otCurrentPage = ref(1);
   const otItemsPerPage = ref(5);
+  // Month filter for My Overtime Requests
+  const selectedMonthFilter = ref('');
+
+  // Generate all 12 months of the current year
+  const availableMonths = computed(() => {
+    const currentYear = new Date().getFullYear();
+    const months = [];
+
+    // Create all 12 months for the current year
+    for (let month = 0; month < 12; month++) {
+      const date = new Date(currentYear, month, 1);
+      const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const monthLabel = date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+      });
+      months.push({ value: yearMonth, label: monthLabel });
+    }
+
+    // Sort descending (newest month first, which is December)
+    return months.sort((a, b) => b.value.localeCompare(a.value));
+  });
+
+  // Filter My Overtime Requests by selected month
+  const filteredMyOtRequests = computed(() => {
+    if (!selectedMonthFilter.value) {
+      return myOtRequests.value;
+    }
+
+    return myOtRequests.value.filter((req) => {
+      const date = new Date(req.date);
+      const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      return yearMonth === selectedMonthFilter.value;
+    });
+  });
+
   const otTotalPages = computed(() =>
-    Math.max(1, Math.ceil(myOtRequests.value.length / otItemsPerPage.value))
+    Math.max(
+      1,
+      Math.ceil(filteredMyOtRequests.value.length / otItemsPerPage.value)
+    )
   );
   const paginatedMyOtRequests = computed(() => {
     const start = (otCurrentPage.value - 1) * otItemsPerPage.value;
     const end = start + otItemsPerPage.value;
-    return myOtRequests.value.slice(start, end);
+    return filteredMyOtRequests.value.slice(start, end);
   });
 
   // Debug computed property for button state
@@ -537,6 +595,11 @@
       console.log('Modal opened, otError value:', otError.value);
       console.log('Modal opened, isSubmittingOT value:', isSubmittingOT.value);
     }
+  });
+
+  // Watch for month filter changes to reset pagination
+  watch(selectedMonthFilter, () => {
+    otCurrentPage.value = 1;
   });
 
   // Lifecycle

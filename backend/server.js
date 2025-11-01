@@ -163,26 +163,26 @@ app.use(
       const path = require("path");
       const ext = path.extname(filePath).toLowerCase();
       const basename = path.basename(filePath);
-      
+
       // For PDFs: ensure they display inline in browser (not download)
-      if (ext === '.pdf') {
-        res.setHeader('Content-Type', 'application/pdf');
+      if (ext === ".pdf") {
+        res.setHeader("Content-Type", "application/pdf");
         // Critical: inline makes browser display, attachment makes it download
-        res.setHeader('Content-Disposition', `inline; filename="${basename}"`);
-        res.setHeader('X-Content-Type-Options', 'nosniff');
-      } 
-      // For images: display inline
-      else if (['.jpg', '.jpeg'].includes(ext)) {
-        res.setHeader('Content-Type', 'image/jpeg');
-        res.setHeader('Content-Disposition', 'inline');
-      } else if (ext === '.png') {
-        res.setHeader('Content-Type', 'image/png');
-        res.setHeader('Content-Disposition', 'inline');
-      } else if (ext === '.gif') {
-        res.setHeader('Content-Type', 'image/gif');
-        res.setHeader('Content-Disposition', 'inline');
+        res.setHeader("Content-Disposition", `inline; filename="${basename}"`);
+        res.setHeader("X-Content-Type-Options", "nosniff");
       }
-    }
+      // For images: display inline
+      else if ([".jpg", ".jpeg"].includes(ext)) {
+        res.setHeader("Content-Type", "image/jpeg");
+        res.setHeader("Content-Disposition", "inline");
+      } else if (ext === ".png") {
+        res.setHeader("Content-Type", "image/png");
+        res.setHeader("Content-Disposition", "inline");
+      } else if (ext === ".gif") {
+        res.setHeader("Content-Type", "image/gif");
+        res.setHeader("Content-Disposition", "inline");
+      }
+    },
   })
 );
 
@@ -260,6 +260,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/branch-positions", branchPositionRoutes);
 app.use("/api/job-applications", jobApplicationRoutes);
 app.use("/api/onboarding", onboardingRoutes);
+app.use("/api/uploads", uploadRoutes);
 
 // Auto-expire job
 async function autoExpireJob() {

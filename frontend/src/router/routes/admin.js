@@ -16,7 +16,12 @@ export default [
     meta: {
       title: 'Branch Management',
       permission: 'Manage Branch Management',
-      superAdminOnly: true,
+      requiresAuth: true,
+      requiresRole: [
+        'Super Admin',
+        'Chairman of the Board',
+        'Board of Directors',
+      ],
     },
   },
   {

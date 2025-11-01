@@ -76,8 +76,33 @@
     // Only show the explicit upload image button; remove overflow/ellipsis
     toolbar: 'uploadimage',
     toolbar_mode: 'wrap',
-    automatic_uploads: true,
-    images_upload_url: '/api/uploads/proofs',
+    automatic_uploads: false, // Disable automatic uploads, use custom handler
+    images_upload_handler: async (blobInfo, progress) => {
+      return new Promise((resolve, reject) => {
+        const token = localStorage.getItem('token');
+        const formData = new FormData();
+        formData.append('file', blobInfo.blob(), blobInfo.filename());
+
+        fetch(getApiUrl('/uploads/proofs'), {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.location) {
+              resolve(formatImageUrl(data.location));
+            } else {
+              reject(data.message || 'Upload failed');
+            }
+          })
+          .catch((error) => {
+            reject(error.message || 'Upload failed');
+          });
+      });
+    },
     file_picker_types: 'image',
     // Make editor images responsive to avoid oversized previews
     content_style:
@@ -126,8 +151,12 @@
         const fd = new FormData();
         fd.append('file', file);
         try {
+          const token = localStorage.getItem('token');
           const res = await fetch(getApiUrl('/uploads/proofs'), {
             method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
             body: fd,
           });
           const json = await res.json();

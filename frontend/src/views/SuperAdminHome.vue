@@ -10,7 +10,6 @@
     CheckCircle,
   } from 'lucide-vue-next';
   import SalesAnalytics from '../components/finance/SalesAnalytics.vue';
-  import MenuRemittedInventory from '../components/finance/MenuRemittedInventory.vue';
   import CrmAnalytics from './crm/Analytics.vue';
   import ExecutiveOverview from '../components/admin/ExecutiveOverview.vue';
   import {
@@ -308,12 +307,6 @@
       >
       <a
         class="tab"
-        :class="{ 'tab-active': activeTab === 'inventory' }"
-        @click="activeTab = 'inventory'"
-        >Menu Inventory Demand</a
-      >
-      <a
-        class="tab"
         :class="{ 'tab-active': activeTab === 'crm' }"
         @click="activeTab = 'crm'"
         >CRM Analytics</a
@@ -346,11 +339,6 @@
           :analyticsData="analyticsData"
           :loading="analyticsLoading"
         />
-      </div>
-
-      <!-- MENU INVENTORY DEMAND TAB -->
-      <div v-show="activeTab === 'inventory'" class="space-y-6">
-        <MenuRemittedInventory :loading="analyticsLoading" />
       </div>
 
       <!-- CRM ANALYTICS TAB -->

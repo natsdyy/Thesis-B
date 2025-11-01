@@ -3,6 +3,7 @@
   import { useBranchStore } from '../../stores/branchStore';
   import { useUserStore } from '../../stores/userStore';
   import { useThemeStore } from '../../stores/themeStore';
+  import { useAuthStore } from '../../stores/authStore';
   import { openaiService } from '../../services/openaiService';
   import { apiConfig } from '../../config/api.js';
   import {
@@ -29,6 +30,7 @@
   const branchStore = useBranchStore();
   const userStore = useUserStore();
   const themeStore = useThemeStore();
+  const authStore = useAuthStore();
 
   // Reactive data
   const searchQuery = ref('');
@@ -102,10 +104,10 @@
   // Cavite-only geocoding bounds (left, top, right, bottom)
   // These coordinates cover Cavite province generously
   const CAVITE_BOUNDS = {
-    left: 120.60, // min lon
-    top: 14.60, // max lat
-    right: 121.10, // max lon
-    bottom: 13.80, // min lat
+    left: 120.6, // min lon
+    top: 14.6, // max lat
+    right: 121.1, // max lon
+    bottom: 13.8, // min lat
   };
 
   const buildSearchUrl = (q, limit = 10) => {
@@ -119,6 +121,9 @@
 
   // Statistics
   const branchStats = computed(() => branchStore.stats);
+
+  // Check if user is Board Director
+  const isBoardDirector = computed(() => authStore.isBoardDirector);
 
   // Form data
   const branchForm = ref({
@@ -359,67 +364,70 @@
 
     try {
       console.log('Loading Countryside Steakhouse locations...');
-      
+
       // Hardcoded Countryside Steakhouse locations with geocoded coordinates
       const countrysideLocations = [
         {
-          name: "Countryside Steakhouse Tanza",
-          address: "9VV3+6CR, Tanza, Cavite",
+          name: 'Countryside Steakhouse Tanza',
+          address: '9VV3+6CR, Tanza, Cavite',
           lat: 14.4056,
-          lng: 120.8531
+          lng: 120.8531,
         },
         {
-          name: "Countryside Steakhouse Malihan",
-          address: "14 Malihan St, Dasmariñas, 4114 Cavite",
+          name: 'Countryside Steakhouse Malihan',
+          address: '14 Malihan St, Dasmariñas, 4114 Cavite',
           lat: 14.3297,
-          lng: 120.9369
+          lng: 120.9369,
         },
         {
-          name: "Countryside Steakhouse Silang",
-          address: "6XFF+XMX, Silang, 4118 Cavite",
+          name: 'Countryside Steakhouse Silang',
+          address: '6XFF+XMX, Silang, 4118 Cavite',
           lat: 14.2306,
-          lng: 120.9742
+          lng: 120.9742,
         },
         {
-          name: "Countryside Burgerhouse Cantimbuhan",
-          address: "Zone 4, Cantimbuhan Building, Cantimbuhan St, Poblacion, Dasmariñas, 4114 Cavite",
+          name: 'Countryside Burgerhouse Cantimbuhan',
+          address:
+            'Zone 4, Cantimbuhan Building, Cantimbuhan St, Poblacion, Dasmariñas, 4114 Cavite',
           lat: 14.3297,
-          lng: 120.9369
+          lng: 120.9369,
         },
         {
-          name: "Countryside Steakhouse Noveleta",
-          address: "Lotto Bldg Dr. J, M. Salud Rd, Noveleta, Cavite",
+          name: 'Countryside Steakhouse Noveleta',
+          address: 'Lotto Bldg Dr. J, M. Salud Rd, Noveleta, Cavite',
           lat: 14.4292,
-          lng: 120.8769
+          lng: 120.8769,
         },
         {
-          name: "Countryside Steakhouse - P & N Countryside Steakhouse",
-          address: "CW7R+8GJ, Ground Floor Robinson Place Imus, Imus, 4103 Cavite",
+          name: 'Countryside Steakhouse - P & N Countryside Steakhouse',
+          address:
+            'CW7R+8GJ, Ground Floor Robinson Place Imus, Imus, 4103 Cavite',
           lat: 14.4297,
-          lng: 120.9369
+          lng: 120.9369,
         },
         {
-          name: "Countryside Steakhouse Poblacion Imus",
-          address: "Castaneda Street, Imus Branch, Carsadang Bago, Imus, Cavite",
+          name: 'Countryside Steakhouse Poblacion Imus',
+          address:
+            'Castaneda Street, Imus Branch, Carsadang Bago, Imus, Cavite',
           lat: 14.4297,
-          lng: 120.9369
+          lng: 120.9369,
         },
         {
-          name: "Countryside Binakayan",
-          address: "Riverside Building, Covelandia Rd, Kawit, Cavite",
+          name: 'Countryside Binakayan',
+          address: 'Riverside Building, Covelandia Rd, Kawit, Cavite',
           lat: 14.4442,
-          lng: 120.9019
+          lng: 120.9019,
         },
         {
-          name: "Countryside Steakhouse Burol Main",
-          address: "Congressional Rd, Dasmariñas, Cavite",
+          name: 'Countryside Steakhouse Burol Main',
+          address: 'Congressional Rd, Dasmariñas, Cavite',
           lat: 14.3297,
-          lng: 120.9369
-        }
+          lng: 120.9369,
+        },
       ];
 
       // Clear existing markers first
-      countrysideMarkers.value.forEach(marker => {
+      countrysideMarkers.value.forEach((marker) => {
         if (map.value) {
           map.value.removeLayer(marker);
         }
@@ -428,10 +436,12 @@
 
       // Add markers for each location
       countrysideLocations.forEach((location, index) => {
-        console.log(`Adding marker for ${location.name} at ${location.lat}, ${location.lng}`);
-        
+        console.log(
+          `Adding marker for ${location.name} at ${location.lat}, ${location.lng}`
+        );
+
         let marker;
-        
+
         try {
           // Create custom icon for Countryside Steakhouse
           const customIcon = L.divIcon({
@@ -454,7 +464,7 @@
             `,
             iconSize: [30, 30],
             iconAnchor: [15, 15],
-            popupAnchor: [0, -15]
+            popupAnchor: [0, -15],
           });
 
           marker = L.marker([location.lat, location.lng], { icon: customIcon });
@@ -463,19 +473,19 @@
           // Fallback to default marker with red color
           marker = L.marker([location.lat, location.lng], {
             icon: L.icon({
-              iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-red.png',
-              shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+              iconUrl:
+                'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-red.png',
+              shadowUrl:
+                'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
               iconSize: [25, 41],
               iconAnchor: [12, 41],
               popupAnchor: [1, -34],
-              shadowSize: [41, 41]
-            })
+              shadowSize: [41, 41],
+            }),
           });
         }
 
-        marker
-          .addTo(map.value)
-          .bindPopup(`
+        marker.addTo(map.value).bindPopup(`
             <div style="min-width: 250px;">
               <h3 style="margin: 0 0 8px 0; color: #dc2626; font-weight: bold;">
                 🥩 ${location.name}
@@ -492,8 +502,13 @@
         countrysideMarkers.value.push(marker);
       });
 
-      console.log(`Successfully added ${countrysideMarkers.value.length} Countryside markers to map`);
-      showToast('success', `Loaded ${countrysideLocations.length} Countryside Steakhouse locations in Cavite`);
+      console.log(
+        `Successfully added ${countrysideMarkers.value.length} Countryside markers to map`
+      );
+      showToast(
+        'success',
+        `Loaded ${countrysideLocations.length} Countryside Steakhouse locations in Cavite`
+      );
     } catch (error) {
       console.error('Failed to load Countryside locations:', error);
       showToast('warning', 'Could not load existing Countryside locations');
@@ -522,7 +537,8 @@
         return (
           (a.state && String(a.state).toLowerCase().includes('cavite')) ||
           (a.province && String(a.province).toLowerCase().includes('cavite')) ||
-          (r.display_name && String(r.display_name).toLowerCase().includes('cavite'))
+          (r.display_name &&
+            String(r.display_name).toLowerCase().includes('cavite'))
         );
       });
       suggestions.value = results.map((r) => ({
@@ -570,7 +586,8 @@
         return (
           (a.state && String(a.state).toLowerCase().includes('cavite')) ||
           (a.province && String(a.province).toLowerCase().includes('cavite')) ||
-          (r.display_name && String(r.display_name).toLowerCase().includes('cavite'))
+          (r.display_name &&
+            String(r.display_name).toLowerCase().includes('cavite'))
         );
       });
       const mapped = data.map((r) => ({
@@ -599,7 +616,9 @@
       map.value.setView([item.lat, item.lon], 16);
     }
     // Place marker but preserve our formatted address (avoid overwriting with POI-rich reverse geocode)
-    placeMarker({ lat: item.lat, lng: item.lon }, true, { preserveSelectedAddress: true });
+    placeMarker({ lat: item.lat, lng: item.lon }, true, {
+      preserveSelectedAddress: true,
+    });
     selectedAddress.value = formatSuggestionAddress(item, locationSearch.value);
 
     // Populate form fields
@@ -617,15 +636,16 @@
   const getSuggestionTitle = (s) => {
     const a = s.address || {};
     const name = s.display_name || '';
-    
+
     // If it's a Countryside Steakhouse, show it prominently
-    if (name.toLowerCase().includes('countryside') && name.toLowerCase().includes('steakhouse')) {
+    if (
+      name.toLowerCase().includes('countryside') &&
+      name.toLowerCase().includes('steakhouse')
+    ) {
       return name;
     }
-    
-    return (
-      a.village || a.suburb || a.neighbourhood || a.town || a.city || name
-    );
+
+    return a.village || a.suburb || a.neighbourhood || a.town || a.city || name;
   };
 
   const getSuggestionSubtitle = (s) => {
@@ -639,29 +659,50 @@
   const highlightMatch = (text) => {
     const q = locationSearch.value.trim();
     if (!q) return text;
-    const re = new RegExp(`(${q.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'ig');
+    const re = new RegExp(
+      `(${q.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')})`,
+      'ig'
+    );
     return text.replace(re, '<span class="font-semibold">$1</span>');
   };
 
   // Utilities: rank and format results to prefer exact Salawag-like matches
   const rankSuggestions = (queryText, items) => {
     const q = queryText.trim().toLowerCase();
-    const adminTypes = new Set(['city', 'town', 'village', 'suburb', 'neighbourhood', 'hamlet', 'municipality', 'county', 'province']);
+    const adminTypes = new Set([
+      'city',
+      'town',
+      'village',
+      'suburb',
+      'neighbourhood',
+      'hamlet',
+      'municipality',
+      'county',
+      'province',
+    ]);
     const poiClasses = new Set(['amenity', 'shop', 'tourism', 'office']);
 
     const score = (s) => {
       const name = (s.display_name || '').toLowerCase();
       const a = s.address || {};
-      const parts = [a.city, a.town, a.village, a.suburb, a.neighbourhood, a.hamlet]
+      const parts = [
+        a.city,
+        a.town,
+        a.village,
+        a.suburb,
+        a.neighbourhood,
+        a.hamlet,
+      ]
         .filter(Boolean)
         .map((x) => String(x).toLowerCase());
 
       let sc = 0;
-      
+
       // Boost for Countryside Steakhouse matches
-      if (name.includes('countryside') && name.includes('steakhouse')) sc += 2000;
+      if (name.includes('countryside') && name.includes('steakhouse'))
+        sc += 2000;
       if (name.includes('countryside steakhouse')) sc += 2500;
-      
+
       // Exact match on any admin field
       if (parts.includes(q)) sc += 1000;
       // Starts with query in display_name
@@ -756,7 +797,7 @@
 
     // Clean up map resources
     // Remove Countryside markers
-    countrysideMarkers.value.forEach(marker => {
+    countrysideMarkers.value.forEach((marker) => {
       if (map.value) {
         map.value.removeLayer(marker);
       }
@@ -1259,11 +1300,8 @@
     </div>
 
     <!-- Add Branch Button -->
-    <div class="flex justify-end mb-6">
-      <button
-        @click="openCreateModal"
-        class="btn btn-outline  btn-sm"
-      >
+    <div v-if="!isBoardDirector" class="flex justify-end mb-6">
+      <button @click="openCreateModal" class="btn btn-outline btn-sm">
         <Plus class="w-4 h-4 mr-2" />
         Add Branch
       </button>
@@ -1339,7 +1377,7 @@
         </select>
         <button
           @click="loadBranches"
-          class="btn btn-outline border-gray-300 "
+          class="btn btn-outline border-gray-300"
           :disabled="branchStore.loading"
         >
           <RefreshCw
@@ -1379,17 +1417,14 @@
       <div class="card-body p-0">
         <div class="overflow-x-auto">
           <table
-            :class="[
-              'table transition-colors duration-300',
-              'table-zebra',
-            ]"
+            :class="['table transition-colors duration-300', 'table-zebra']"
           >
             <thead>
               <tr>
                 <th>Branch Info</th>
                 <th>Location</th>
                 <th>Status</th>
-                <th>Actions</th>
+                <th v-if="!isBoardDirector">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1443,7 +1478,7 @@
                     }}
                   </div>
                 </td>
-                <td>
+                <td v-if="!isBoardDirector">
                   <div class="dropdown dropdown-left">
                     <EllipsisVertical
                       class="w-4 h-4 cursor-pointer"
@@ -1506,7 +1541,7 @@
             }}
           </p>
           <button
-            v-if="!searchQuery"
+            v-if="!searchQuery && !isBoardDirector"
             @click="openCreateModal"
             class="btn bg-primaryColor text-white hover:bg-primaryColor/80 border-none"
           >
@@ -1696,26 +1731,31 @@
               />
             </div>
 
-<!-- Radius (meters) -->
-<div class="form-control w-full max-w-md mx-auto sm:max-w-sm md:max-w-md">
-  <label class="label mb-1">
-    <span class="label-text text-sm sm:text-base">Allowed Radius (m)</span>
-  </label>
+            <!-- Radius (meters) -->
+            <div
+              class="form-control w-full max-w-md mx-auto sm:max-w-sm md:max-w-md"
+            >
+              <label class="label mb-1">
+                <span class="label-text text-sm sm:text-base"
+                  >Allowed Radius (m)</span
+                >
+              </label>
 
-  <input
-    v-model.number="branchForm.radius_meters"
-    type="number"
-    min="1"
-    step="0.5"
-    placeholder="e.g., 2"
-    class="input input-sm sm:input-md input-bordered w-full"
-  />
+              <input
+                v-model.number="branchForm.radius_meters"
+                type="number"
+                min="1"
+                step="0.5"
+                placeholder="e.g., 2"
+                class="input input-sm sm:input-md input-bordered w-full"
+              />
 
-  <span class="text-xs text-gray-500 mt-1 block text-center sm:text-left">
-    Used for attendance geofencing tolerance.
-  </span>
-</div>
-
+              <span
+                class="text-xs text-gray-500 mt-1 block text-center sm:text-left"
+              >
+                Used for attendance geofencing tolerance.
+              </span>
+            </div>
           </div>
 
           <!-- Description Section -->
@@ -1914,7 +1954,7 @@
               </button>
               <button
                 @click="getCurrentLocation"
-                class="btn  bg-primaryColor !font-thin hover:bg-primaryColor/80 text-white border-none"
+                class="btn bg-primaryColor !font-thin hover:bg-primaryColor/80 text-white border-none"
                 title="Get your current location"
               >
                 <font-awesome-icon icon="fa-solid fa-location-dot" />
@@ -1936,32 +1976,48 @@
                 @click="selectSuggestion(s)"
               >
                 <div class="flex items-center gap-2">
-                  <span 
+                  <span
                     :class="[
                       'text-primaryColor',
-                      (s.display_name || '').toLowerCase().includes('countryside') && 
-                      (s.display_name || '').toLowerCase().includes('steakhouse') 
-                        ? 'text-red-500' 
-                        : 'text-primaryColor'
+                      (s.display_name || '')
+                        .toLowerCase()
+                        .includes('countryside') &&
+                      (s.display_name || '')
+                        .toLowerCase()
+                        .includes('steakhouse')
+                        ? 'text-red-500'
+                        : 'text-primaryColor',
                     ]"
                   >
-                    {{ (s.display_name || '').toLowerCase().includes('countryside') && 
-                        (s.display_name || '').toLowerCase().includes('steakhouse') 
-                          ? '🥩' 
-                          : '📍' }}
+                    {{
+                      (s.display_name || '')
+                        .toLowerCase()
+                        .includes('countryside') &&
+                      (s.display_name || '')
+                        .toLowerCase()
+                        .includes('steakhouse')
+                        ? '🥩'
+                        : '📍'
+                    }}
                   </span>
                   <div class="flex-1">
-                    <div 
+                    <div
                       :class="[
                         'font-medium',
-                        (s.display_name || '').toLowerCase().includes('countryside') && 
-                        (s.display_name || '').toLowerCase().includes('steakhouse') 
-                          ? 'text-red-600 font-bold' 
-                          : ''
+                        (s.display_name || '')
+                          .toLowerCase()
+                          .includes('countryside') &&
+                        (s.display_name || '')
+                          .toLowerCase()
+                          .includes('steakhouse')
+                          ? 'text-red-600 font-bold'
+                          : '',
                       ]"
                       v-html="highlightMatch(getSuggestionTitle(s))"
                     ></div>
-                    <div class="text-xs opacity-70">{{ getSuggestionSubtitle(s) }}</div>
+                    <div class="text-xs opacity-70">
+                      {{ getSuggestionSubtitle(s) }}
+                    </div>
                   </div>
                 </div>
               </li>

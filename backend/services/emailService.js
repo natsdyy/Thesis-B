@@ -1790,118 +1790,116 @@ class EmailService {
         to: to,
         subject: `Interview Scheduled - ${interviewData.positionTitle || "Your Application"}`,
         html: `
-          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
             <!-- Main Email Container -->
-            <div style="background-color: white; border-radius: 12px; padding: 0; box-shadow: 0 4px 20px rgba(0,0,0,0.1); overflow: hidden;">
+            <div style="background-color: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
               
-              <!-- Header with Gradient -->
-              <div style="background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); padding: 30px; text-align: center; color: white;">
-                <h1 style="margin: 0; font-size: 28px; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-                  Countryside Steak House
-                </h1>
-                <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.95;">
-                  Ang Paborito ng Bayan
-                </p>
-                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.3);">
-                  <h2 style="margin: 0; font-size: 22px; font-weight: 600;">
-                    Interview Scheduled
-                  </h2>
-                </div>
+              <!-- Header -->
+              <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #466114;">
+                <h1 style="color: #2c3e50; margin: 0; font-size: 28px; font-weight: bold;">Countryside Steakhouse</h1>
+                <p style="color: #466114; margin: 5px 0 0 0; font-size: 16px; font-weight: 500;">Ang Paborito ng Bayan</p>
               </div>
               
               <!-- Main Content -->
-              <div style="padding: 30px;">
-                <p style="color: #2c3e50; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+              <div style="margin-bottom: 30px;">
+                <h2 style="color: #2c3e50; margin-bottom: 20px; font-size: 24px; font-weight: bold;">Interview Scheduled</h2>
+                
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
                   Hello <strong>${interviewData.applicantName || "Applicant"}</strong>,
                 </p>
                 
-                <p style="color: #555; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
-                  Thank you for your interest in joining Countryside Steak House! We are pleased to inform you that 
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
+                  Thank you for your interest in joining Countryside Steakhouse! We are pleased to inform you that 
                   an interview has been scheduled for your application for the <strong>${interviewData.positionTitle || "position"}</strong> role.
                 </p>
                 
-                <!-- Interview Details Box -->
-                <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 2px solid #16a34a; border-radius: 10px; padding: 25px; margin: 25px 0;">
-                  <h3 style="color: #16a34a; margin: 0 0 20px 0; font-size: 20px; font-weight: bold; display: flex; align-items: center;">
-                    <span style="background: #16a34a; color: white; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-right: 12px; font-size: 18px;">📅</span>
-                    Interview Details
-                  </h3>
+                <!-- Interview Details Card -->
+                <div style="background-color: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                  <h3 style="color: #2c3e50; margin-top: 0; font-size: 20px; font-weight: bold; margin-bottom: 20px;">Interview Details</h3>
                   
-                  <div style="background: white; border-radius: 8px; padding: 20px; margin-bottom: 15px;">
-                    <table style="width: 100%; border-collapse: collapse;">
-                      <tr>
-                        <td style="padding: 10px 0; color: #374151; font-weight: 600; width: 140px;">Date:</td>
-                        <td style="padding: 10px 0; color: #2c3e50; font-size: 16px;"><strong>${dateStr}</strong></td>
-                      </tr>
-                      <tr>
-                        <td style="padding: 10px 0; color: #374151; font-weight: 600;">Time:</td>
-                        <td style="padding: 10px 0; color: #2c3e50; font-size: 16px;"><strong>${timeStr}</strong></td>
-                      </tr>
-                      <tr>
-                        <td style="padding: 10px 0; color: #374151; font-weight: 600;">Type:</td>
-                        <td style="padding: 10px 0; color: #2c3e50; font-size: 16px;"><strong>${typeStr}</strong></td>
-                      </tr>
-                      <tr>
-                        <td style="padding: 10px 0; color: #374151; font-weight: 600;">
-                          ${interviewData.interviewType === "video" ? "Meeting Link:" : "Location:"}
-                        </td>
-                        <td style="padding: 10px 0; color: #2c3e50; font-size: 16px;">
-                          <strong>
-                            ${interviewData.interviewType === "video" && interviewData.meetingLink 
-                              ? `<a href="${interviewData.meetingLink}" style="color: #16a34a; text-decoration: none; word-break: break-all;">${interviewData.meetingLink}</a>` 
-                              : locationStr}
-                          </strong>
-                        </td>
-                      </tr>
-                    </table>
-                  </div>
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                      <td style="padding: 8px 0; color: #555; font-size: 15px; font-weight: 500;">Date:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${dateStr}
+                      </td>
+                    </tr>
+                    <tr style="border-top: 1px solid #dee2e6;">
+                      <td style="padding: 12px 0; color: #555; font-size: 15px; font-weight: 500;">Time:</td>
+                      <td style="padding: 12px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${timeStr}
+                      </td>
+                    </tr>
+                    <tr style="border-top: 1px solid #dee2e6;">
+                      <td style="padding: 8px 0; color: #555; font-size: 15px; font-weight: 500;">Type:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${typeStr}
+                      </td>
+                    </tr>
+                    <tr style="border-top: 1px solid #dee2e6;">
+                      <td style="padding: 12px 0; color: #555; font-size: 15px; font-weight: 500;">
+                        ${interviewData.interviewType === "video" ? "Meeting Link:" : "Location:"}
+                      </td>
+                      <td style="padding: 12px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${
+                          interviewData.interviewType === "video" &&
+                          interviewData.meetingLink
+                            ? `<a href="${interviewData.meetingLink}" style="color: #466114; text-decoration: none; word-break: break-all;">${interviewData.meetingLink}</a>`
+                            : locationStr
+                        }
+                      </td>
+                    </tr>
+                  </table>
                 </div>
                 
-                ${interviewData.notes ? `
-                <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; border-radius: 6px; margin: 20px 0;">
+                ${
+                  interviewData.notes
+                    ? `
+                <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 20px 0;">
                   <h4 style="color: #856404; margin: 0 0 8px 0; font-size: 14px; font-weight: bold;">Additional Notes:</h4>
                   <p style="color: #856404; margin: 0; font-size: 14px; line-height: 1.5;">${interviewData.notes}</p>
                 </div>
-                ` : ""}
+                `
+                    : ""
+                }
                 
                 <!-- Important Instructions -->
-                <div style="background: #e8f4f8; border-left: 4px solid #3498db; padding: 15px; border-radius: 6px; margin: 20px 0;">
-                  <p style="color: #155724; margin: 0; font-size: 14px; line-height: 1.5;">
-                    <strong>📌 Important:</strong> Please arrive 10 minutes before the scheduled time. 
-                    ${interviewData.interviewType === "video" 
-                      ? "Ensure you have a stable internet connection and test your camera/microphone beforehand." 
-                      : "Bring a copy of your resume and any required documents."}
+                <div style="background-color: rgba(170,211,109,0.1); border-left: 4px solid #466114; padding: 20px; border-radius: 5px; margin: 20px 0;">
+                  <h4 style="color: #466114; margin-top: 0; margin-bottom: 10px; font-size: 16px; font-weight: bold;">Important Instructions</h4>
+                  <p style="color: #2c3e50; margin: 0; font-size: 15px; line-height: 1.6;">
+                    Please arrive 10 minutes before the scheduled time. 
+                    ${
+                      interviewData.interviewType === "video"
+                        ? "Ensure you have a stable internet connection and test your camera/microphone beforehand."
+                        : "Bring a copy of your resume and any required documents."
+                    }
                   </p>
                 </div>
                 
-                <p style="color: #555; font-size: 15px; line-height: 1.6; margin: 25px 0 0 0;">
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin: 25px 0 0 0;">
                   We look forward to meeting you and discussing this opportunity with you!
                 </p>
                 
-                <p style="color: #555; font-size: 15px; line-height: 1.6; margin: 15px 0 0 0;">
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin: 15px 0 0 0;">
                   Best regards,<br>
-                  <strong style="color: #16a34a;">Countryside Steak House HR Team</strong>
+                  <strong style="color: #466114;">Countryside Steakhouse HR Team</strong>
                 </p>
               </div>
               
               <!-- Footer -->
-              <div style="background: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e5e7eb;">
-                <p style="color: #666; font-size: 12px; margin: 0;">
-                  © 2025 Countryside Steak House. All rights reserved.
-                </p>
-                <p style="color: #999; font-size: 11px; margin: 5px 0 0 0;">
-                  This is an automated message. Please do not reply to this email.
-                </p>
+              <div style="text-align: center; color: #666; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                <p style="margin: 0;">©2025 COUNTRYSIDE-STEAKHOUSE. All rights reserved.</p>
+                <p style="margin: 5px 0 0 0;">This is an automated message, please do not reply to this email.</p>
               </div>
             </div>
           </div>
         `,
         text: `
-          Interview Scheduled - Countryside Steak House
+          Interview Scheduled - Countryside Steakhouse
           
           Hello ${interviewData.applicantName || "Applicant"},
           
-          Thank you for your interest in joining Countryside Steak House! We are pleased to inform you that 
+          Thank you for your interest in joining Countryside Steakhouse! We are pleased to inform you that 
           an interview has been scheduled for your application for the ${interviewData.positionTitle || "position"} role.
           
           Interview Details:
@@ -1912,14 +1910,20 @@ class EmailService {
           
           ${interviewData.notes ? `Additional Notes: ${interviewData.notes}\n` : ""}
           
-          Important: Please arrive 10 minutes before the scheduled time.
+          Important Instructions:
+          Please arrive 10 minutes before the scheduled time. ${
+            interviewData.interviewType === "video"
+              ? "Ensure you have a stable internet connection and test your camera/microphone beforehand."
+              : "Bring a copy of your resume and any required documents."
+          }
           
-          We look forward to meeting you!
+          We look forward to meeting you and discussing this opportunity with you!
           
           Best regards,
-          Countryside Steak House HR Team
+          Countryside Steakhouse HR Team
           
-          © 2025 Countryside Steak House. All rights reserved.
+          ©2025 COUNTRYSIDE-STEAKHOUSE. All rights reserved.
+          This is an automated message, please do not reply to this email.
         `,
       };
 
@@ -1950,63 +1954,54 @@ class EmailService {
 
       const emailData = {
         to: to,
-        subject: `Congratulations! You're Hired - Countryside Steak House`,
+        subject: `Congratulations! You're Hired - Countryside Steakhouse`,
         html: `
-          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
             <!-- Main Email Container -->
-            <div style="background-color: white; border-radius: 12px; padding: 0; box-shadow: 0 4px 20px rgba(0,0,0,0.1); overflow: hidden;">
+            <div style="background-color: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
               
-              <!-- Header with Celebration -->
-              <div style="background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); padding: 40px 30px; text-align: center; color: white; position: relative;">
-                <div style="font-size: 48px; margin-bottom: 15px;">🎉</div>
-                <h1 style="margin: 0; font-size: 28px; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-                  Countryside Steak House
-                </h1>
-                <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.95;">
-                  Ang Paborito ng Bayan
-                </p>
-                <div style="margin-top: 25px; padding-top: 25px; border-top: 1px solid rgba(255,255,255,0.3);">
-                  <h2 style="margin: 0; font-size: 24px; font-weight: 700;">
-                    Congratulations! You're Hired!
-                  </h2>
-                </div>
+              <!-- Header -->
+              <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #466114;">
+                <h1 style="color: #2c3e50; margin: 0; font-size: 28px; font-weight: bold;">Countryside Steakhouse</h1>
+                <p style="color: #466114; margin: 5px 0 0 0; font-size: 16px; font-weight: 500;">Ang Paborito ng Bayan</p>
               </div>
               
               <!-- Main Content -->
-              <div style="padding: 30px;">
-                <p style="color: #2c3e50; font-size: 18px; line-height: 1.6; margin: 0 0 20px 0;">
+              <div style="margin-bottom: 30px;">
+                <h2 style="color: #2c3e50; margin-bottom: 20px; font-size: 24px; font-weight: bold;">Congratulations! You're Hired!</h2>
+                
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
                   Hello <strong>${hireData.applicantName || "Applicant"}</strong>,
                 </p>
                 
-                <p style="color: #555; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
                   We are thrilled to inform you that you have been selected for the position of 
-                  <strong style="color: #16a34a;"> ${hireData.positionTitle || "position"}</strong> 
+                  <strong style="color: #466114;">${hireData.positionTitle || "position"}</strong> 
                   in the <strong>${hireData.department || "department"}</strong> department!
                 </p>
                 
-                <!-- Position Details Box -->
-                <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 2px solid #16a34a; border-radius: 10px; padding: 25px; margin: 25px 0;">
-                  <h3 style="color: #16a34a; margin: 0 0 20px 0; font-size: 20px; font-weight: bold; display: flex; align-items: center;">
-                    <span style="background: #16a34a; color: white; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-right: 12px; font-size: 18px;">💼</span>
-                    Position Details
-                  </h3>
+                <!-- Position Details Card -->
+                <div style="background-color: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                  <h3 style="color: #2c3e50; margin-top: 0; font-size: 20px; font-weight: bold; margin-bottom: 20px;">Position Details</h3>
                   
-                  <div style="background: white; border-radius: 8px; padding: 20px;">
-                    <table style="width: 100%; border-collapse: collapse;">
-                      <tr>
-                        <td style="padding: 10px 0; color: #374151; font-weight: 600; width: 140px;">Position:</td>
-                        <td style="padding: 10px 0; color: #2c3e50; font-size: 16px;"><strong>${hireData.positionTitle || "N/A"}</strong></td>
-                      </tr>
-                      <tr>
-                        <td style="padding: 10px 0; color: #374151; font-weight: 600;">Department:</td>
-                        <td style="padding: 10px 0; color: #2c3e50; font-size: 16px;"><strong>${hireData.department || "N/A"}</strong></td>
-                      </tr>
-                    </table>
-                  </div>
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                      <td style="padding: 8px 0; color: #555; font-size: 15px; font-weight: 500;">Position:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${hireData.positionTitle || "N/A"}
+                      </td>
+                    </tr>
+                    <tr style="border-top: 1px solid #dee2e6;">
+                      <td style="padding: 12px 0; color: #555; font-size: 15px; font-weight: 500;">Department:</td>
+                      <td style="padding: 12px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${hireData.department || "N/A"}
+                      </td>
+                    </tr>
+                  </table>
                 </div>
                 
                 <!-- Onboarding CTA -->
-                <div style="background: white; border: 2px solid #16a34a; border-radius: 10px; padding: 30px; margin: 25px 0; text-align: center;">
+                <div style="background-color: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; padding: 30px; margin: 25px 0; text-align: center;">
                   <h3 style="color: #2c3e50; margin: 0 0 15px 0; font-size: 20px; font-weight: bold;">
                     Complete Your Onboarding
                   </h3>
@@ -2015,29 +2010,28 @@ class EmailService {
                   </p>
                   
                   <a href="${hireData.onboardingLink}" 
-                     style="background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: white; padding: 16px 40px; 
-                            text-decoration: none; border-radius: 8px; font-weight: bold; 
-                            display: inline-block; font-size: 16px; box-shadow: 0 4px 12px rgba(22,163,74,0.3);
-                            transition: transform 0.2s, box-shadow 0.2s;">
+                     style="background-color: #466114; color: white; padding: 15px 30px; 
+                            text-decoration: none; border-radius: 5px; font-weight: bold; 
+                            display: inline-block; font-size: 16px; box-shadow: 0 2px 5px rgba(70,97,20,0.3);
+                            transition: background-color 0.3s ease;"
+                     onmouseover="this.style.backgroundColor='#3a5211'"
+                     onmouseout="this.style.backgroundColor='#466114'">
                     Start Onboarding →
                   </a>
                   
                   <p style="color: #666; font-size: 13px; margin: 20px 0 0 0; line-height: 1.5;">
                     Or copy and paste this link into your browser:<br>
-                    <a href="${hireData.onboardingLink}" style="color: #16a34a; word-break: break-all; text-decoration: underline;">${hireData.onboardingLink}</a>
+                    <a href="${hireData.onboardingLink}" style="color: #466114; word-break: break-all; text-decoration: underline;">${hireData.onboardingLink}</a>
                   </p>
                 </div>
                 
                 <!-- Required Documents Section -->
-                <div style="background: #fff3cd; border: 2px solid #ffc107; border-radius: 10px; padding: 25px; margin: 25px 0;">
-                  <h3 style="color: #856404; margin: 0 0 15px 0; font-size: 18px; font-weight: bold; display: flex; align-items: center;">
-                    <span style="background: #ffc107; color: white; width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-right: 10px; font-size: 16px;">📋</span>
-                    Required Documents for Onboarding
-                  </h3>
+                <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 20px; border-radius: 5px; margin: 25px 0;">
+                  <h3 style="color: #856404; margin: 0 0 15px 0; font-size: 18px; font-weight: bold;">Required Documents for Onboarding</h3>
                   <p style="color: #856404; font-size: 14px; line-height: 1.6; margin: 0 0 15px 0;">
                     Please prepare and attach the following documents when completing your onboarding form:
                   </p>
-                  <div style="background: white; border-radius: 8px; padding: 15px; margin-top: 10px;">
+                  <div style="background-color: white; border-radius: 8px; padding: 15px; margin-top: 10px;">
                     <ul style="margin: 0; padding-left: 20px; color: #856404; font-size: 14px; line-height: 2;">
                       <li style="margin-bottom: 8px;"><strong>Valid ID</strong> - Any government-issued ID (e.g., Driver's License, Passport, Postal ID, PhilSys ID)</li>
                       <li style="margin-bottom: 8px;"><strong>Medical Certificate or Pre-employment Medical Exam</strong> - Must be issued within the last 6 months</li>
@@ -2047,7 +2041,7 @@ class EmailService {
                       <li><strong>PhilHealth Number</strong> - Philippine Health Insurance Corporation number (will be provided in the form)</li>
                     </ul>
                   </div>
-                  <div style="background: #f8f9fa; border-left: 4px solid #ffc107; padding: 12px; border-radius: 4px; margin-top: 15px;">
+                  <div style="background-color: #f8f9fa; border-left: 4px solid #ffeaa7; padding: 12px; border-radius: 4px; margin-top: 15px;">
                     <p style="color: #856404; margin: 0; font-size: 13px; line-height: 1.5;">
                       <strong>Important:</strong> All documents must be clear, readable, and in PDF or image format (JPG, PNG). 
                       Maximum file size per document is 5MB. Ensure all information matches your employment records.
@@ -2056,38 +2050,34 @@ class EmailService {
                 </div>
 
                 <!-- Welcome Message -->
-                <div style="background: #e8f4f8; border-left: 4px solid #3498db; padding: 20px; border-radius: 6px; margin: 25px 0;">
-                  <h4 style="color: #155724; margin: 0 0 10px 0; font-size: 16px; font-weight: bold;">Welcome to the Team! 🎊</h4>
-                  <p style="color: #155724; margin: 0; font-size: 14px; line-height: 1.6;">
-                    We are excited to have you join the Countryside Steak House family! Your skills and experience will be a 
+                <div style="background-color: rgba(170,211,109,0.1); border-left: 4px solid #466114; padding: 20px; border-radius: 5px; margin: 25px 0;">
+                  <h4 style="color: #466114; margin-top: 0; margin-bottom: 15px; font-size: 18px; font-weight: bold;">Welcome to the Team!</h4>
+                  <p style="color: #2c3e50; margin: 0; font-size: 15px; line-height: 1.6;">
+                    We are excited to have you join the Countryside Steakhouse family! Your skills and experience will be a 
                     valuable addition to our team. We look forward to working with you and contributing to our shared success.
                   </p>
                 </div>
                 
-                <p style="color: #555; font-size: 15px; line-height: 1.6; margin: 25px 0 0 0;">
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin: 25px 0 0 0;">
                   If you have any questions, please don't hesitate to reach out to our HR department.
                 </p>
                 
-                <p style="color: #555; font-size: 15px; line-height: 1.6; margin: 15px 0 0 0;">
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin: 15px 0 0 0;">
                   Welcome aboard!<br>
-                  <strong style="color: #16a34a;">Countryside Steak House HR Team</strong>
+                  <strong style="color: #466114;">Countryside Steakhouse HR Team</strong>
                 </p>
               </div>
               
               <!-- Footer -->
-              <div style="background: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e5e7eb;">
-                <p style="color: #666; font-size: 12px; margin: 0;">
-                  © 2025 Countryside Steak House. All rights reserved.
-                </p>
-                <p style="color: #999; font-size: 11px; margin: 5px 0 0 0;">
-                  This is an automated message. Please do not reply to this email.
-                </p>
+              <div style="text-align: center; color: #666; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                <p style="margin: 0;">©2025 COUNTRYSIDE-STEAKHOUSE. All rights reserved.</p>
+                <p style="margin: 5px 0 0 0;">This is an automated message, please do not reply to this email.</p>
               </div>
             </div>
           </div>
         `,
         text: `
-          Congratulations! You're Hired - Countryside Steak House
+          Congratulations! You're Hired - Countryside Steakhouse
           
           Hello ${hireData.applicantName || "Applicant"},
           
@@ -2098,7 +2088,7 @@ class EmailService {
           - Position: ${hireData.positionTitle || "N/A"}
           - Department: ${hireData.department || "N/A"}
           
-          To get started, please complete your employee information by visiting:
+          To get started, please complete your employee information by clicking the link below:
           ${hireData.onboardingLink}
           
           Required Documents for Onboarding:
@@ -2112,14 +2102,15 @@ class EmailService {
           
           Important: All documents must be clear, readable, and in PDF or image format (JPG, PNG). Maximum file size per document is 5MB. Ensure all information matches your employment records.
           
-          Welcome to the Team! We are excited to have you join the Countryside Steak House family!
+          Welcome to the Team! We are excited to have you join the Countryside Steakhouse family! Your skills and experience will be a valuable addition to our team. We look forward to working with you and contributing to our shared success.
           
           If you have any questions, please don't hesitate to reach out to our HR department.
           
           Welcome aboard!
-          Countryside Steak House HR Team
+          Countryside Steakhouse HR Team
           
-          © 2025 Countryside Steak House. All rights reserved.
+          ©2025 COUNTRYSIDE-STEAKHOUSE. All rights reserved.
+          This is an automated message, please do not reply to this email.
         `,
       };
 
@@ -2196,7 +2187,7 @@ class EmailService {
                   </h3>
                   
                   <div style="background: white; border-radius: 8px; padding: 20px; margin-bottom: 15px;">
-                    <p style="color: #15803d; font-size: 15px; line-height: 1.8; margin: 0; white-space: pre-wrap;">${resubmissionData.feedback.replace(/\n/g, '<br>')}</p>
+                    <p style="color: #15803d; font-size: 15px; line-height: 1.8; margin: 0; white-space: pre-wrap;">${resubmissionData.feedback.replace(/\n/g, "<br>")}</p>
                   </div>
                 </div>
 

@@ -236,9 +236,12 @@
               <div v-else class="absolute inset-0 flex items-center justify-center">
                 <font-awesome-icon icon="fa-solid fa-store" class="text-white text-6xl opacity-30" />
               </div>
-              <div class="absolute top-3 right-3 sm:top-4 sm:right-4" v-if="branch.is_active">
-                <span class="bg-green-500 text-white text-xs font-semibold px-2.5 sm:px-3 py-1 rounded-full shadow-md">
-                  Open
+              <div class="absolute top-3 right-3 sm:top-4 sm:right-4">
+                <span 
+                  class="text-white text-xs font-semibold px-2.5 sm:px-3 py-1 rounded-full shadow-md"
+                  :class="branch.status === 'Open' ? 'bg-green-500' : 'bg-red-500'"
+                >
+                  {{ branch.status || 'Open' }}
                 </span>
               </div>
             </div>

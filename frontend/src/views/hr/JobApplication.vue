@@ -1070,7 +1070,7 @@
                   <button
                     @click="loadPositions"
                     :disabled="isLoadingPositions"
-                    class="btn btn-outline btn-sm flex items-center gap-2 w-full sm:w-auto"
+                    class="btn btn-sm flex items-center gap-2 w-full sm:w-auto"
                     title="Refresh positions from Position Management"
                   >
                     <RefreshCw
@@ -1085,7 +1085,7 @@
                   <button
                     @click="showClosedPositions = !showClosedPositions"
                     class="btn btn-sm w-full sm:w-auto"
-                    :class="showClosedPositions ? 'btn-warning' : 'btn-outline'"
+                    :class="showClosedPositions ? 'btn-warning' : ''"
                     title="Toggle to include closed positions so you can reopen them"
                   >
                     {{
@@ -1553,9 +1553,11 @@
                               d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
                             ></path>
                           </svg>
-                          <span class="truncate max-w-[200px]">{{
-                            position.branch_name
-                          }}</span>
+                          <span
+                            class="truncate max-w-[200px] cursor-help"
+                            :title="position.branch_name"
+                            >{{ position.branch_name }}</span
+                          >
                         </div>
                         <span
                           v-else-if="position.branch_id"
@@ -2074,8 +2076,7 @@
                   v-else-if="availableBranchesForSelection.length === 0"
                   class="text-xs text-amber-600 mt-1"
                 >
-                  ⚠️ No active branches found. Please ensure branches are
-                  created and active.
+                  ⚠️ No branches found. Please ensure branches are created.
                 </p>
                 <p v-else class="text-xs text-gray-500 mt-1">
                   Select a specific branch for this position ({{
@@ -3213,21 +3214,8 @@
                 type="application/pdf"
                 style="min-height: 100%"
               >
-                <div class="p-8 text-center">
-                  <FileText class="w-16 h-16 mx-auto text-gray-400 mb-4" />
-                  <p class="text-gray-600 font-medium mb-2">PDF Preview</p>
-                  <p class="text-sm text-gray-500 mb-4">
-                    Your browser doesn't support PDF preview or the file
-                    couldn't be loaded.
-                  </p>
-                  <a
-                    :href="getDocumentUrl(selectedDocument)"
-                    target="_blank"
-                    class="btn btn-sm btn-primary"
-                  >
-                    Open PDF in New Tab
-                  </a>
-                </div>
+                Your browser doesn't support PDF preview. Please use the link
+                below to open the PDF in a new tab.
               </iframe>
             </div>
             <div class="mt-2 text-center text-sm text-gray-500">
@@ -3897,10 +3885,8 @@
         if (isMainOfficeDepartment.value) {
           return [];
         }
-        // Filter out deleted branches and show only active ones
-        return branches.value.filter(
-          (b) => b.is_active !== false && !b.deleted_at
-        );
+        // Filter out only deleted branches (include inactive branches)
+        return branches.value.filter((b) => !b.deleted_at);
       });
 
       // Computed properties

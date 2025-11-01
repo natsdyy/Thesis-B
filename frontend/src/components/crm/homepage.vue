@@ -421,7 +421,7 @@
                   loop
                   playsinline
                   ref="videoPlayer"
-                  muted
+                  :muted="isHeroVideoMuted"
                 ></video>
 
                 <!-- Play/Pause Button for Hero Video -->
@@ -431,7 +431,7 @@
                   :title="isHeroVideoPlaying ? 'Pause' : 'Play'"
                 >
                   <font-awesome-icon
-                    v-if="isHeroVideoPlaying"
+                    v-if="!isHeroVideoPlaying"
                     class="w-2 h-2"
                     icon="fa-solid fa-play"
                   >
@@ -442,6 +442,34 @@
                     icon="fa-solid fa-pause"
                   >
                   </font-awesome-icon>
+                </button>
+
+                <!-- Volume Control for Hero Video -->
+                <button
+                  @click="toggleHeroVideoMute"
+                  class="absolute top-4 right-4 bg-black/70 hover:bg-black/90 backdrop-blur-sm rounded-full p-2.5 text-white hover:text-orange-400 transition-all duration-300 z-20"
+                  :title="isHeroVideoMuted ? 'Unmute (Click to enable sound)' : 'Mute (Click to disable sound)'"
+                >
+                  <font-awesome-icon
+                    v-if="isHeroVideoMuted"
+                    icon="fa-solid fa-volume-xmark"
+                    class="w-4 h-4"
+                  />
+                  <font-awesome-icon
+                    v-else-if="heroVideoVolume === 0"
+                    icon="fa-solid fa-volume-off"
+                    class="w-4 h-4"
+                  />
+                  <font-awesome-icon
+                    v-else-if="heroVideoVolume < 0.5"
+                    icon="fa-solid fa-volume-low"
+                    class="w-4 h-4"
+                  />
+                  <font-awesome-icon
+                    v-else
+                    icon="fa-solid fa-volume-high"
+                    class="w-4 h-4"
+                  />
                 </button>
 
                 <!-- Enhanced Video Navigation Controls - Larger and More Visible -->
@@ -812,7 +840,7 @@
                   loop
                   playsinline
                   ref="deliveryVideo"
-                  muted
+                  :muted="isDeliveryVideoMuted"
                 >
                   <source src="/video/foodgrab.mp4" type="video/mp4" />
                   Your browser does not support the video tag.
@@ -852,6 +880,34 @@
                       d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                     ></path>
                   </svg>
+                </button>
+
+                <!-- Volume Control for Delivery Video -->
+                <button
+                  @click="toggleDeliveryVideoMute"
+                  class="absolute top-2 right-2 sm:top-4 sm:right-4 bg-black/70 hover:bg-black/90 backdrop-blur-sm rounded-full p-2 sm:p-2.5 text-white hover:text-orange-400 transition-all duration-300 z-20"
+                  :title="isDeliveryVideoMuted ? 'Unmute (Click to enable sound)' : 'Mute (Click to disable sound)'"
+                >
+                  <font-awesome-icon
+                    v-if="isDeliveryVideoMuted"
+                    icon="fa-solid fa-volume-xmark"
+                    class="w-3 h-3 sm:w-4 sm:h-4"
+                  />
+                  <font-awesome-icon
+                    v-else-if="deliveryVideoVolume === 0"
+                    icon="fa-solid fa-volume-off"
+                    class="w-3 h-3 sm:w-4 sm:h-4"
+                  />
+                  <font-awesome-icon
+                    v-else-if="deliveryVideoVolume < 0.5"
+                    icon="fa-solid fa-volume-low"
+                    class="w-3 h-3 sm:w-4 sm:h-4"
+                  />
+                  <font-awesome-icon
+                    v-else
+                    icon="fa-solid fa-volume-high"
+                    class="w-3 h-3 sm:w-4 sm:h-4"
+                  />
                 </button>
               </div>
 
@@ -1429,18 +1485,18 @@
           </p>
         </div>
 
-        <!-- Grid Layout -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16">
-          <!-- Contact Info -->
-          <div>
-            <h3
-              class="text-2xl font-bold text-green-800 mb-6 text-center lg:text-left"
-            >
-              Contact Information
-            </h3>
+        <!-- Contact Info - 2 Column Layout -->
+        <div class="max-w-5xl mx-auto">
+          <h3
+            class="text-2xl font-bold text-green-800 mb-8 text-center"
+          >
+            Contact Information
+          </h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12">
+            <!-- Left Column: Contact Details -->
             <div class="space-y-5">
               <!-- Phone -->
-              <div class="flex items-center justify-center lg:justify-start">
+              <div class="flex items-center">
                 <div
                   class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4 flex-shrink-0"
                 >
@@ -1449,14 +1505,14 @@
                     class="text-white text-md"
                   />
                 </div>
-                <div class="text-center lg:text-left">
+                <div>
                   <div class="font-semibold text-gray-800">Phone</div>
                   <div class="text-gray-600">+63 912 345 6789</div>
                 </div>
               </div>
 
               <!-- Email -->
-              <div class="flex items-center justify-center lg:justify-start">
+              <div class="flex items-center">
                 <div
                   class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4 flex-shrink-0"
                 >
@@ -1465,7 +1521,7 @@
                     class="text-white text-md"
                   />
                 </div>
-                <div class="text-center lg:text-left">
+                <div>
                   <div class="font-semibold text-gray-800">Email</div>
                   <div class="text-gray-600 break-all">
                     countryside_steakhouse@yahoo.com.ph
@@ -1474,7 +1530,7 @@
               </div>
 
               <!-- Address -->
-              <div class="flex items-center justify-center lg:justify-start">
+              <div class="flex items-center">
                 <div
                   class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4 flex-shrink-0"
                 >
@@ -1483,7 +1539,7 @@
                     class="text-white text-md"
                   />
                 </div>
-                <div class="text-center lg:text-left">
+                <div>
                   <div class="font-semibold text-gray-800">Main Office</div>
                   <div class="text-gray-600">
                     Burol Main Street, Countryside City
@@ -1491,234 +1547,107 @@
                 </div>
               </div>
             </div>
-          </div>
 
-          <!-- Feedback Form -->
-          <div class="bg-white rounded-2xl p-6 sm:p-8 shadow-xl">
-            <h3
-              class="text-2xl font-bold text-green-800 mb-6 text-center lg:text-left"
-            >
-              Send us a Message
-            </h3>
-
-            <form @submit.prevent="submitFeedback" class="space-y-4">
-              <!-- Name -->
-              <input
-                v-model="feedbackForm.name"
-                type="text"
-                placeholder="Your Name"
-                required
-                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
-              />
-
-              <!-- Email -->
-              <input
-                v-model="feedbackForm.email"
-                type="email"
-                placeholder="Your Email"
-                required
-                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
-              />
-
-              <!-- Phone -->
-              <input
-                v-model="feedbackForm.phone"
-                type="tel"
-                placeholder="Your Phone (Optional)"
-                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg placeholder:text-gray-600"
-              />
-
-              <!-- Rating -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-3"
-                  >Rating (Optional)</label
-                >
+            <!-- Right Column: Social Media -->
+            <div class="flex flex-col items-center md:items-start justify-center md:justify-start">
+              <div class="flex items-center mb-6">
                 <div
-                  class="flex flex-wrap items-center space-x-1 star-rating justify-center lg:justify-start"
+                  class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4 flex-shrink-0"
                 >
-                  <button
-                    v-for="star in 5"
-                    :key="star"
-                    type="button"
-                    @click="setRating(star)"
-                    @mouseenter="hoveredRating = star"
-                    @mouseleave="hoveredRating = 0"
-                    :class="[
-                      'relative w-10 h-10 flex items-center justify-center transition-all duration-300 ease-out transform hover:scale-110 focus:outline-none',
-                      feedbackForm.rating >= star || hoveredRating >= star
-                        ? 'text-yellow-400'
-                        : 'text-gray-300',
-                    ]"
-                  >
+                  <font-awesome-icon
+                    icon="fa-solid fa-share-nodes"
+                    class="text-white text-md"
+                  />
+                </div>
+                <div>
+                  <div class="font-semibold text-gray-800 text-lg">Follow Us</div>
+                </div>
+              </div>
+              <div class="space-y-4 w-full">
+                <!-- Main Branch -->
+                <a
+                  href="https://www.facebook.com/PNCountryside"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-all duration-300 shadow-sm hover:shadow-md group"
+                >
+                  <div class="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center mr-3 flex-shrink-0 group-hover:bg-green-700 transition-colors">
                     <svg
-                      class="w-8 h-8 transition-all duration-300"
-                      :class="[
-                        feedbackForm.rating >= star || hoveredRating >= star
-                          ? 'scale-110 drop-shadow-lg'
-                          : 'scale-100',
-                      ]"
-                      fill="currentColor"
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="18"
+                      height="18"
                       viewBox="0 0 24 24"
+                      class="fill-current text-white"
                     >
                       <path
-                        d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                        d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667
+              c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808
+              c-3.596 0-5.192 1.583-5.192 4.615v3.385z"
                       />
                     </svg>
-                  </button>
+                  </div>
+                  <div class="flex-1">
+                    <div class="font-semibold text-gray-800 text-sm">Countryside Steakhouse - Main Branch</div>
+                    <div class="text-gray-600 text-xs">Facebook</div>
+                  </div>
+                </a>
 
-                  <div class="ml-3 text-sm text-gray-600 mt-2 sm:mt-0">
-                    <span
-                      v-if="feedbackForm.rating > 0"
-                      class="font-medium text-green-600"
+                <!-- Silang Branch -->
+                <a
+                  href="https://www.facebook.com/CS.Silang"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-all duration-300 shadow-sm hover:shadow-md group"
+                >
+                  <div class="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center mr-3 flex-shrink-0 group-hover:bg-green-700 transition-colors">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      class="fill-current text-white"
                     >
-                      {{ feedbackForm.rating }}/5 stars
-                    </span>
-                    <span v-else class="text-gray-700">Click to rate</span>
-                  </div>
-                </div>
-
-                <div
-                  v-if="feedbackForm.rating > 0"
-                  class="mt-2 text-xs text-gray-500 text-center lg:text-left"
-                >
-                  <span v-if="feedbackForm.rating === 1">Poor</span>
-                  <span v-else-if="feedbackForm.rating === 2">Fair</span>
-                  <span v-else-if="feedbackForm.rating === 3">Good</span>
-                  <span v-else-if="feedbackForm.rating === 4">Very Good</span>
-                  <span v-else-if="feedbackForm.rating === 5">Excellent</span>
-                </div>
-              </div>
-
-              <!-- Message -->
-              <textarea
-                v-model="feedbackForm.message"
-                rows="4"
-                placeholder="Your Message"
-                required
-                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300 hover:border-green-400 focus:shadow-lg resize-none placeholder:text-gray-600"
-              ></textarea>
-
-              <!-- Image Upload -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-3">
-                  <font-awesome-icon
-                    icon="fa-solid fa-camera"
-                    class="text-green-600 mr-2"
-                  />
-                  Share Your Food Experience
-                </label>
-
-                <div class="space-y-3">
-                  <label
-                    for="feedback-image"
-                    class="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-400 hover:bg-green-50 transition-all duration-300"
-                  >
-                    <div class="text-center">
-                      <svg
-                        class="mx-auto h-8 w-8 text-gray-400 mb-2"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                        ></path>
-                      </svg>
-                      <span class="text-sm text-gray-700">
-                        <span
-                          class="font-medium text-green-600 hover:text-green-500"
-                          >Click to upload</span
-                        >
-                        or drag and drop
-                      </span>
-                      <p class="text-xs text-gray-600 mt-1">
-                        PNG, JPG, GIF up to 5MB
-                      </p>
-                    </div>
-                  </label>
-                  <input
-                    @change="handleImageUpload"
-                    type="file"
-                    accept="image/*"
-                    class="hidden"
-                    ref="imageInput"
-                    id="feedback-image"
-                  />
-
-                  <div
-                    v-if="feedbackForm.image"
-                    class="relative bg-gray-50 rounded-lg p-4 shadow-sm"
-                  >
-                    <div class="flex items-center space-x-3">
-                      <img
-                        :src="feedbackForm.image.preview"
-                        alt="Preview"
-                        class="w-16 h-16 object-cover rounded-lg border border-gray-300"
+                      <path
+                        d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667
+              c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808
+              c-3.596 0-5.192 1.583-5.192 4.615v3.385z"
                       />
-                      <div class="flex-1">
-                        <p class="text-sm font-medium text-gray-900">
-                          {{ feedbackForm.image.name }}
-                        </p>
-                        <p class="text-xs text-gray-500">
-                          {{ formatFileSize(feedbackForm.image.size) }}
-                        </p>
-                      </div>
-                      <button
-                        @click="removeImage"
-                        type="button"
-                        class="text-red-500 hover:text-red-700 transition-colors duration-200"
-                        title="Remove image"
-                      >
-                        <svg
-                          class="w-5 h-5"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M6 18L18 6M6 6l12 12"
-                          />
-                        </svg>
-                      </button>
-                    </div>
+                    </svg>
                   </div>
-                </div>
-              </div>
+                  <div class="flex-1">
+                    <div class="font-semibold text-gray-800 text-sm">Countryside Steakhouse - Silang Branch</div>
+                    <div class="text-gray-600 text-xs">Facebook</div>
+                  </div>
+                </a>
 
-              <!-- Submit Button -->
-              <button
-                type="submit"
-                :disabled="isSubmitting"
-                class="w-full bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-500 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transform hover:scale-[1.02] active:scale-[0.98] shadow-lg hover:shadow-xl cursor-pointer"
-              >
-                <span
-                  v-if="isSubmitting"
-                  class="loading loading-spinner loading-sm mr-2"
-                ></span>
-                <span v-if="isSubmitting" class="animate-pulse"
-                  >Sending...</span
+                <!-- Tanza Branch -->
+                <a
+                  href="https://www.facebook.com/profile.php?id=100057313935213"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-all duration-300 shadow-sm hover:shadow-md group"
                 >
-                <span v-else>Send Message</span>
-              </button>
-            </form>
-
-            <!-- Feedback Messages -->
-            <div
-              v-if="feedbackMessage.show"
-              :class="[
-                'mt-4 p-4 rounded-lg text-center',
-                feedbackMessage.type === 'success'
-                  ? 'bg-green-100 text-green-800 border border-green-200'
-                  : 'bg-red-100 text-red-800 border border-red-200',
-              ]"
-            >
-              {{ feedbackMessage.text }}
+                  <div class="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center mr-3 flex-shrink-0 group-hover:bg-green-700 transition-colors">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      class="fill-current text-white"
+                    >
+                      <path
+                        d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667
+              c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808
+              c-3.596 0-5.192 1.583-5.192 4.615v3.385z"
+                      />
+                    </svg>
+                  </div>
+                  <div class="flex-1">
+                    <div class="font-semibold text-gray-800 text-sm">Countryside Steakhouse - Tanza</div>
+                    <div class="text-gray-600 text-xs">Facebook</div>
+                  </div>
+                </a>
+              </div>
             </div>
           </div>
         </div>
@@ -1847,7 +1776,6 @@
   import FoodpandaOrderModal from './FoodpandaOrderModal.vue';
   import GrabfoodOrderModal from './GrabfoodOrderModal.vue';
   import JobPositionsModal from './JobPositionsModal.vue';
-  import feedbackService from '../../services/feedbackService.js';
   import branchService from '../../services/branchService.js';
   import menuService from '../../services/menuService.js';
   import { formatImageUrl, apiConfig } from '../../config/api.js';
@@ -1898,10 +1826,17 @@
   // Reels carousel state
   const currentReelIndex = ref(0);
   const videoPlayer = ref(null);
+  const deliveryVideo = ref(null);
 
   // Video play/pause state
   const isHeroVideoPlaying = ref(true);
   const isDeliveryVideoPlaying = ref(true);
+
+  // Video volume state
+  const heroVideoVolume = ref(0.5); // Default 50% volume
+  const isHeroVideoMuted = ref(false);
+  const deliveryVideoVolume = ref(0.5); // Default 50% volume
+  const isDeliveryVideoMuted = ref(false);
 
   // Auto-scroll state
   const isReelsAutoScrollActive = ref(true);
@@ -2113,16 +2048,13 @@
 
   const toggleDeliveryVideo = async () => {
     hasUserInteracted.value = true; // Mark user interaction
-    const deliveryVideo =
-      document.querySelector('#deliveryVideo') ||
-      document.querySelector('video[ref="deliveryVideo"]');
-    if (deliveryVideo) {
+    if (deliveryVideo.value) {
       if (isDeliveryVideoPlaying.value) {
-        deliveryVideo.pause();
+        deliveryVideo.value.pause();
         isDeliveryVideoPlaying.value = false;
       } else {
         try {
-          await deliveryVideo.play();
+          await deliveryVideo.value.play();
           isDeliveryVideoPlaying.value = true;
         } catch (error) {
           if (error.name !== 'AbortError') {
@@ -2134,31 +2066,68 @@
     }
   };
 
+  // Volume control functions for Hero Video
+  const setHeroVideoVolume = (volume) => {
+    heroVideoVolume.value = parseFloat(volume);
+    if (videoPlayer.value) {
+      videoPlayer.value.volume = heroVideoVolume.value;
+      // If volume is set above 0, automatically unmute
+      if (heroVideoVolume.value > 0) {
+        isHeroVideoMuted.value = false;
+        videoPlayer.value.muted = false;
+      } else {
+        // If volume is set to 0, mute
+        isHeroVideoMuted.value = true;
+        videoPlayer.value.muted = true;
+      }
+    }
+  };
+
+  const toggleHeroVideoMute = () => {
+    isHeroVideoMuted.value = !isHeroVideoMuted.value;
+    if (videoPlayer.value) {
+      videoPlayer.value.muted = isHeroVideoMuted.value;
+      // When unmuting, ensure volume is set
+      if (!isHeroVideoMuted.value && heroVideoVolume.value === 0) {
+        heroVideoVolume.value = 0.5;
+        videoPlayer.value.volume = 0.5;
+      }
+    }
+  };
+
+  // Volume control functions for Delivery Video
+  const setDeliveryVideoVolume = (volume) => {
+    deliveryVideoVolume.value = parseFloat(volume);
+    if (deliveryVideo.value) {
+      deliveryVideo.value.volume = deliveryVideoVolume.value;
+      // If volume is set above 0, automatically unmute
+      if (deliveryVideoVolume.value > 0) {
+        isDeliveryVideoMuted.value = false;
+        deliveryVideo.value.muted = false;
+      } else {
+        // If volume is set to 0, mute
+        isDeliveryVideoMuted.value = true;
+        deliveryVideo.value.muted = true;
+      }
+    }
+  };
+
+  const toggleDeliveryVideoMute = () => {
+    isDeliveryVideoMuted.value = !isDeliveryVideoMuted.value;
+    if (deliveryVideo.value) {
+      deliveryVideo.value.muted = isDeliveryVideoMuted.value;
+      // When unmuting, ensure volume is set
+      if (!isDeliveryVideoMuted.value && deliveryVideoVolume.value === 0) {
+        deliveryVideoVolume.value = 0.5;
+        deliveryVideo.value.volume = 0.5;
+      }
+    }
+  };
+
   // Modal state
   const isFoodpandaModalOpen = ref(false);
   const isGrabfoodModalOpen = ref(false);
   const isJobPositionsModalOpen = ref(false);
-
-  // Template refs
-  const imageInput = ref(null);
-
-  // Feedback form state
-  const feedbackForm = ref({
-    name: '',
-    email: '',
-    phone: '',
-    rating: 0,
-    message: '',
-    image: null,
-  });
-
-  const hoveredRating = ref(0);
-  const isSubmitting = ref(false);
-  const feedbackMessage = ref({
-    show: false,
-    type: '',
-    text: '',
-  });
 
   // Hero images array
   const heroImages = [
@@ -2201,9 +2170,31 @@
   // Auto-scroll intervals
   let autoScrollInterval = null;
   let reelsAutoScrollInterval = null;
+  let scrollTimeout = null;
 
   const handleScroll = () => {
     isScrolled.value = window.scrollY > 50;
+    
+    // Clear previous timeout
+    if (scrollTimeout) {
+      clearTimeout(scrollTimeout);
+    }
+    
+    // Debounce video pause - pause immediately on scroll
+    if (videoPlayer.value && isHeroVideoPlaying.value) {
+      videoPlayer.value.pause();
+      isHeroVideoPlaying.value = false;
+    }
+    
+    if (deliveryVideo.value && isDeliveryVideoPlaying.value) {
+      deliveryVideo.value.pause();
+      isDeliveryVideoPlaying.value = false;
+    }
+    
+    // Reset timeout for scroll end (if needed for future enhancements)
+    scrollTimeout = setTimeout(() => {
+      // Could add logic here to resume videos after scroll stops
+    }, 150);
   };
 
   // Carousel functions
@@ -2295,12 +2286,17 @@
     // Add video event listeners after component is mounted
     nextTick(() => {
       if (videoPlayer.value) {
+        videoPlayer.value.volume = heroVideoVolume.value;
         videoPlayer.value.addEventListener('play', () => {
           isHeroVideoPlaying.value = true;
         });
         videoPlayer.value.addEventListener('pause', () => {
           isHeroVideoPlaying.value = false;
         });
+      }
+      // Set delivery video volume
+      if (deliveryVideo.value) {
+        deliveryVideo.value.volume = deliveryVideoVolume.value;
       }
     });
   });
@@ -2313,6 +2309,11 @@
     // Clear any pending video changes
     if (videoChangeTimeout) {
       clearTimeout(videoChangeTimeout);
+    }
+
+    // Clear scroll timeout
+    if (scrollTimeout) {
+      clearTimeout(scrollTimeout);
     }
 
     // Remove click outside handler
@@ -2376,155 +2377,6 @@
 
   const closeJobPositionsModal = () => {
     isJobPositionsModalOpen.value = false;
-  };
-
-  // Feedback submission method
-  const submitFeedback = async () => {
-    if (
-      !feedbackForm.value.name ||
-      !feedbackForm.value.email ||
-      !feedbackForm.value.message
-    ) {
-      showFeedbackMessage('error', 'Please fill in all required fields.');
-      return;
-    }
-
-    if (!feedbackForm.value.image || !feedbackForm.value.image.file) {
-      showFeedbackMessage(
-        'error',
-        'Please upload an image of your food experience.'
-      );
-      return;
-    }
-
-    isSubmitting.value = true;
-    feedbackMessage.value.show = false;
-
-    try {
-      // Create FormData for multipart/form-data submission
-      const formData = new FormData();
-      formData.append('name', feedbackForm.value.name);
-      formData.append('email', feedbackForm.value.email);
-      formData.append('phone', feedbackForm.value.phone || '');
-      formData.append('rating', feedbackForm.value.rating || '');
-      formData.append('message', feedbackForm.value.message);
-
-      // Add image if selected
-      if (feedbackForm.value.image && feedbackForm.value.image.file) {
-        formData.append('image', feedbackForm.value.image.file);
-      }
-
-      const response = await feedbackService.submitFeedback(formData);
-
-      if (response.success) {
-        showFeedbackMessage('success', response.message);
-        // Reset form
-        feedbackForm.value = {
-          name: '',
-          email: '',
-          phone: '',
-          rating: 0,
-          message: '',
-          image: null,
-        };
-        // Reset file input
-        if (imageInput.value) {
-          imageInput.value.value = '';
-        }
-      } else {
-        showFeedbackMessage(
-          'error',
-          response.message || 'Failed to submit feedback.'
-        );
-      }
-    } catch (error) {
-      console.error('Error submitting feedback:', error);
-      const errorMessage =
-        error.response?.data?.message ||
-        'Failed to submit feedback. Please try again.';
-      showFeedbackMessage('error', errorMessage);
-    } finally {
-      isSubmitting.value = false;
-    }
-  };
-
-  const showFeedbackMessage = (type, text) => {
-    feedbackMessage.value = {
-      show: true,
-      type,
-      text,
-    };
-
-    // Auto-hide success messages after 5 seconds
-    if (type === 'success') {
-      setTimeout(() => {
-        feedbackMessage.value.show = false;
-      }, 5000);
-    }
-  };
-
-  // Enhanced rating method with animation
-  const setRating = (rating) => {
-    feedbackForm.value.rating = rating;
-    // Add a subtle bounce effect
-    const stars = document.querySelectorAll('.star-rating svg');
-    stars.forEach((star, index) => {
-      if (index < rating) {
-        star.style.animation = 'starBounce 0.3s ease-out';
-        setTimeout(() => {
-          star.style.animation = '';
-        }, 300);
-      }
-    });
-  };
-
-  // Image upload handling
-  const handleImageUpload = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      showFeedbackMessage('error', 'Please select an image file.');
-      return;
-    }
-
-    // Validate file size (5MB limit)
-    if (file.size > 5 * 1024 * 1024) {
-      showFeedbackMessage('error', 'Image size must be less than 5MB.');
-      return;
-    }
-
-    // Create preview URL
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      feedbackForm.value.image = {
-        file: file,
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        preview: e.target.result,
-      };
-    };
-    reader.readAsDataURL(file);
-  };
-
-  // Remove uploaded image
-  const removeImage = () => {
-    feedbackForm.value.image = null;
-    // Reset file input
-    if (imageInput.value) {
-      imageInput.value.value = '';
-    }
-  };
-
-  // Format file size for display
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   // Error handling for image loading
@@ -3165,5 +3017,57 @@
       -webkit-overflow-scrolling: touch;
       scroll-behavior: smooth;
     }
+  }
+
+  /* Volume slider styling */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  input[type="range"]::-webkit-slider-track {
+    background: rgba(255, 255, 255, 0.2);
+    height: 4px;
+    border-radius: 2px;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    background: #f97316;
+    height: 12px;
+    width: 12px;
+    border-radius: 50%;
+    cursor: pointer;
+    margin-top: -4px;
+    transition: all 0.2s ease;
+  }
+
+  input[type="range"]::-webkit-slider-thumb:hover {
+    background: #fb923c;
+    transform: scale(1.2);
+  }
+
+  input[type="range"]::-moz-range-track {
+    background: rgba(255, 255, 255, 0.2);
+    height: 4px;
+    border-radius: 2px;
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    background: #f97316;
+    height: 12px;
+    width: 12px;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  input[type="range"]::-moz-range-thumb:hover {
+    background: #fb923c;
+    transform: scale(1.2);
   }
 </style>

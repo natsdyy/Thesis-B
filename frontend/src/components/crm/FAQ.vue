@@ -100,8 +100,8 @@
               ></span>
             </router-link>
             <a
-              href="#contact"
-              class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
+              @click="goToContact"
+              class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium cursor-pointer"
             >
               <span class="relative z-10">Contact Us</span>
               <span
@@ -199,9 +199,8 @@
           </span>
         </router-link>
         <a
-          href="#contact"
-          @click="closeMobileMenu"
-          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+          @click="goToContact"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg cursor-pointer"
         >
           <span class="flex items-center">
             <font-awesome-icon
@@ -230,20 +229,29 @@
 
       <!-- FAQ Section -->
       <section class="py-12 sm:py-16 bg-gray-50">
-        <div class="container mx-auto px-6 max-w-4xl">
-          <!-- DaisyUI Collapse/Accordion -->
-          <div class="join join-vertical w-full space-y-4">
+        <div class="container mx-auto px-6 max-w-6xl">
+          <!-- 2 Column Grid Layout -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
             <div
               v-for="(faq, index) in faqs"
               :key="index"
-              class="collapse collapse-arrow join-item border border-base-300 bg-base-100 shadow-md"
+              class="collapse collapse-plus bg-base-100 border border-base-300 shadow-md hover:shadow-lg transition-shadow duration-300 rounded-lg"
             >
-              <input type="radio" name="faq-accordion" :checked="index === 0" />
-              <div class="collapse-title text-xl font-medium text-green-800">
-                {{ faq.question }}
+              <input 
+                type="checkbox" 
+                :ref="el => setCheckboxRef(el, index)"
+                :checked="openFaqIndex === index"
+                @change="toggleFaq(index)"
+              />
+              <div 
+                class="collapse-title text-lg font-semibold text-green-800 flex items-center gap-3 py-4 cursor-pointer"
+                @click="toggleFaq(index)"
+              >
+                <component :is="faq.icon" class="w-5 h-5 text-green-600 flex-shrink-0" />
+                <span class="flex-1">{{ faq.question }}</span>
               </div>
               <div class="collapse-content">
-                <p class="text-gray-700 leading-relaxed">{{ faq.answer }}</p>
+                <p class="text-gray-700 leading-relaxed pt-2 pb-4">{{ faq.answer }}</p>
               </div>
             </div>
           </div>
@@ -270,7 +278,7 @@
 </template>
 
 <script setup>
-  import { ref, onMounted } from 'vue';
+  import { ref, onMounted, nextTick } from 'vue';
   import { useRouter } from 'vue-router';
   import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
   import { library } from '@fortawesome/fontawesome-svg-core';
@@ -282,6 +290,14 @@
     faCircleQuestion,
     faPhone,
   } from '@fortawesome/free-solid-svg-icons';
+  import {
+    Clock,
+    Truck,
+    Star,
+    CreditCard,
+    Briefcase,
+    RefreshCw,
+  } from 'lucide-vue-next';
 
   library.add(
     faRightToBracket,
@@ -294,45 +310,62 @@
 
   const router = useRouter();
   const isMobileMenuOpen = ref(false);
+  const openFaqIndex = ref(null);
+  const checkboxRefs = ref([]);
+
+  const setCheckboxRef = (el, index) => {
+    if (el) {
+      checkboxRefs.value[index] = el;
+    }
+  };
+
+  const toggleFaq = (index) => {
+    // If clicking the same tab that's already open, close it
+    if (openFaqIndex.value === index) {
+      openFaqIndex.value = null;
+    } else {
+      // Otherwise, open the clicked tab (closes any previously open tab)
+      openFaqIndex.value = index;
+    }
+    
+    // Update checkbox states to ensure DaisyUI responds
+    nextTick(() => {
+      checkboxRefs.value.forEach((checkbox, idx) => {
+        if (checkbox) {
+          checkbox.checked = openFaqIndex.value === idx;
+        }
+      });
+    });
+  };
 
   const faqs = ref([
     {
+      icon: Clock,
       question: 'What are your operating hours?',
-      answer: 'We are open Monday to Sunday from 10:00 AM to 10:00 PM. Our hours may vary during holidays, so please check with your nearest branch for specific holiday hours.',
+      answer: 'We are open Monday to Sunday, but specific hours vary by branch. Please check the schedule for your nearest location in our Store Directory page. For special holiday hours, please check our social media page for the latest announcements.',
     },
     {
+      icon: Truck,
       question: 'Do you offer delivery services?',
-      answer: 'Yes! We partner with Foodpanda and Grabfood for delivery. You can also call your nearest branch to place an order for pickup or delivery.',
+      answer: 'Yes! We only offer delivery through our partners, Foodpanda and GrabFood.',
     },
     {
-      question: 'Do you accept reservations?',
-      answer: 'Yes, we accept reservations for parties of 6 or more. Please call your preferred branch at least 24 hours in advance to make a reservation.',
+      icon: Star,
+      question: 'How do I rate the food?',
+      answer: 'After you purchase your food, you can find instructions on how to rate us on your receipt.',
     },
     {
+      icon: CreditCard,
       question: 'What payment methods do you accept?',
-      answer: 'We accept cash, credit cards, debit cards, and mobile payment methods such as GCash and PayMaya. All major credit cards are welcome.',
+      answer: 'We accept Cash for in-store purchases. For delivery orders, payment is handled directly through the Foodpanda or Grab apps, where you can typically use options like GCash, PayMaya, and GrabPay.',
     },
     {
-      question: 'Do you have vegetarian or vegan options?',
-      answer: 'While we specialize in steak, we do offer some vegetarian-friendly options. Please inform your server about any dietary restrictions, and we\'ll do our best to accommodate you.',
-    },
-    {
-      question: 'Is there parking available?',
-      answer: 'Yes, all our branches have parking facilities. Parking availability varies by location, so please check with your specific branch.',
-    },
-    {
-      question: 'Do you host private events or parties?',
-      answer: 'Yes! We can accommodate private events and parties. Please contact us at least one week in advance to discuss your event needs and make arrangements.',
-    },
-    {
+      icon: Briefcase,
       question: 'Are you hiring?',
-      answer: 'We\'re always looking for passionate individuals to join our team! Visit our "Join Us" page to see current job openings and submit your application.',
+      answer: 'Yes, we are! Hiring depends on the specific needs and available slots at each branch. You can visit the "Join Us" page on our website to see all open jobs and submit your application. We look forward to hearing from you!',
     },
     {
-      question: 'Do you offer catering services?',
-      answer: 'Yes, we offer catering services for events, meetings, and celebrations. Please contact our catering team to discuss your needs and get a quote.',
-    },
-    {
+      icon: RefreshCw,
       question: 'What is your return or refund policy?',
       answer: 'If you\'re not satisfied with your meal, please let us know immediately and we\'ll make it right. We stand behind the quality of our food and service.',
     },
@@ -348,6 +381,30 @@
 
   const goToLogin = () => {
     router.push('/login');
+  };
+
+  const goToContact = () => {
+    closeMobileMenu();
+    // Navigate to homepage and then scroll to contact
+    if (router.currentRoute.value.path === '/') {
+      // Already on homepage, just scroll
+      setTimeout(() => {
+        const contactSection = document.getElementById('contact');
+        if (contactSection) {
+          contactSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    } else {
+      // Navigate to homepage and then scroll to contact
+      router.push('/').then(() => {
+        setTimeout(() => {
+          const contactSection = document.getElementById('contact');
+          if (contactSection) {
+            contactSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 300);
+      });
+    }
   };
 
   onMounted(() => {

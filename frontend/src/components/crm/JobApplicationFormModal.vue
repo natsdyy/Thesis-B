@@ -423,12 +423,12 @@
           </div>
 
           <!-- Success Content -->
-          <div class="p-8 text-center">
-            <div class="mb-6">
-              <h3 class="text-xl font-semibold text-gray-900 mb-3">
+          <div class="p-4 sm:p-6 lg:p-8 text-center">
+            <div class="mb-4 sm:mb-6">
+              <h3 class="text-lg sm:text-xl font-semibold text-gray-900 mb-2 sm:mb-3">
                 Thank You for Your Interest!
               </h3>
-              <p class="text-gray-600 leading-relaxed">
+              <p class="text-sm sm:text-base text-gray-600 leading-relaxed">
                 We've received your application for
                 <strong class="text-green-600">{{
                   selectedPosition?.position_title
@@ -439,9 +439,9 @@
             </div>
 
             <!-- Next Steps -->
-            <div class="bg-gray-50 rounded-xl p-6 mb-6">
+            <div class="bg-gray-50 rounded-lg sm:rounded-xl p-4 sm:p-6 mb-4 sm:mb-6">
               <h4
-                class="font-semibold text-gray-900 mb-3 flex items-center justify-center"
+                class="font-semibold text-gray-900 mb-2 sm:mb-3 flex items-center justify-center text-sm sm:text-base"
               >
                 <font-awesome-icon
                   icon="fa-solid fa-clock"
@@ -449,26 +449,17 @@
                 />
                 What's Next?
               </h4>
-              <div class="space-y-2 text-sm text-gray-600">
+              <div class="space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-gray-600">
                 <p>• We'll review your application within 3-5 business days</p>
-                <p>• You'll receive an email confirmation shortly</p>
+                <p>• Please check your email or spam folder for our response and interview schedule</p>
                 <p>• Qualified candidates will be contacted for interviews</p>
               </div>
-            </div>
-
-            <!-- Contact Info -->
-            <div class="bg-blue-50 rounded-xl p-4 mb-6">
-              <p class="text-sm text-blue-800">
-                <font-awesome-icon icon="fa-solid fa-envelope" class="mr-2" />
-                Questions? Contact us at
-                <strong>hr@countryside-steakhouse.com</strong>
-              </p>
             </div>
 
             <!-- Action Button -->
             <button
               @click="closeSuccessMessage"
-              class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 flex items-center justify-center gap-2 hover-lift"
+              class="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 flex items-center justify-center gap-2"
             >
               <font-awesome-icon icon="fa-solid fa-check" class="w-4 h-4" />
               Got It!
@@ -533,6 +524,7 @@
 
 <script setup>
   import { ref, computed, watch, nextTick, onMounted } from 'vue';
+  import { useCustomToast } from '../../composables/useCustomToast.js';
 
   // Props
   const props = defineProps({
@@ -548,6 +540,9 @@
 
   // Emits
   const emit = defineEmits(['close', 'application-submitted']);
+
+  // Toasts
+  const { showSuccess, showError: showErrorToast, showWarning } = useCustomToast();
 
   // State
   const isSubmitting = ref(false);
@@ -855,9 +850,10 @@
         !allowedTypes.includes(file.type) &&
         !allowedExtensions.includes(fileExtension)
       ) {
-        errorMessage.value =
-          'Invalid file type. Please upload PDF, DOC, or DOCX files only.';
+        const errorMsg = 'Invalid file type. Please upload PDF, DOC, or DOCX files only.';
+        errorMessage.value = errorMsg;
         showError.value = true;
+        showErrorToast(errorMsg, 'Invalid File Type');
         resumeInput.value.value = '';
         resumeFile.value = null;
         return;
@@ -866,9 +862,10 @@
       // Validate file size (5MB max)
       const maxSize = 5 * 1024 * 1024; // 5MB in bytes
       if (file.size > maxSize) {
-        errorMessage.value =
-          'File size too large. Please upload a file smaller than 5MB.';
+        const errorMsg = 'File size too large. Please upload a file smaller than 5MB.';
+        errorMessage.value = errorMsg;
         showError.value = true;
+        showErrorToast(errorMsg, 'File Too Large');
         resumeInput.value.value = '';
         resumeFile.value = null;
         return;
@@ -897,10 +894,11 @@
 
       // Validate reCAPTCHA
       if (!recaptchaToken.value) {
-        errorMessage.value =
-          'Please complete the security verification before submitting';
+        const errorMsg = 'Please complete the security verification before submitting';
+        errorMessage.value = errorMsg;
         showError.value = true;
         captchaError.value = 'Please complete the reCAPTCHA verification';
+        showWarning(errorMsg, 'Security Verification Required');
         isSubmitting.value = false;
         return;
       }
@@ -967,6 +965,10 @@
 
       if (result.success) {
         showSuccessMessage.value = true;
+        showSuccess(
+          'Your application has been submitted successfully!',
+          'Application Submitted'
+        );
         emit('application-submitted', result.data);
 
         // Reset form after successful submission
@@ -996,6 +998,7 @@
 
       errorMessage.value = errorMsg;
       showError.value = true;
+      showErrorToast(errorMsg, 'Application Submission Failed');
     } finally {
       isSubmitting.value = false;
     }

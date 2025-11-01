@@ -84,6 +84,16 @@
               </div>
             </div>
 
+            <!-- Forgot Password Link -->
+            <div class="text-right mt-2">
+              <router-link
+                to="/supplier/forgot-password"
+                class="text-sm text-primaryColor hover:text-primaryColor/80"
+              >
+                Forgot Password?
+              </router-link>
+            </div>
+
             <!-- Login Button -->
             <button
               type="submit"

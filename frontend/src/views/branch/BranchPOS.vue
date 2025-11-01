@@ -16,21 +16,27 @@
     X,
     Receipt,
     ShoppingCart,
+    Maximize2,
+    Minimize2,
   } from 'lucide-vue-next';
   import { useBranchContextStore } from '../../stores/branchContextStore';
+  import { useBranchStore } from '../../stores/branchStore';
   import { useAuthStore } from '../../stores/authStore';
   import { usePOSSessionStore } from '../../stores/posSessionStore';
   import { usePOSStore } from '../../stores/posStore';
+  import { useCustomToast } from '../../composables/useCustomToast';
   import axios from 'axios';
   import { apiConfig } from '../../config/api.js';
   import QRCodeGenerator from '../../components/common/QRCodeGenerator.vue';
   import POSTransactionModal from '../../components/branch/POSTransactionModal.vue';
 
   const branchContextStore = useBranchContextStore();
+  const branchStore = useBranchStore();
   const authStore = useAuthStore();
   const posSessionStore = usePOSSessionStore();
   const posStore = usePOSStore();
   const router = useRouter();
+  const { showSuccess, showError } = useCustomToast();
   const API_BASE_URL = apiConfig.baseURL;
 
   // Function to get the correct base URL for QR codes
@@ -63,6 +69,9 @@
     activeOrders: 0,
   });
   const statsLoading = ref(false);
+  const branchStatus = ref('Open');
+  const isUpdatingStatus = ref(false);
+  const isFullscreen = ref(false);
 
   // POS UI state
   const showOrderCompleteModal = ref(false);
@@ -798,6 +807,51 @@
     }
   };
 
+  // Toggle fullscreen mode
+  const toggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        isFullscreen.value = true;
+      } else {
+        await document.exitFullscreen();
+        isFullscreen.value = false;
+      }
+    } catch (error) {
+      console.error('Error toggling fullscreen:', error);
+    }
+  };
+
+  // Update branch status
+  const updateBranchStatus = async (newStatus) => {
+    const branchId = currentBranch.value?.id || user.value?.branch_id;
+    
+    if (!branchId || isUpdatingStatus.value) return;
+    
+    isUpdatingStatus.value = true;
+    try {
+      // Fetch the full branch data first
+      const fullBranch = await branchStore.fetchBranchById(branchId);
+      
+      // Update with the new status
+      await branchStore.updateBranch(branchId, {
+        ...fullBranch,
+        status: newStatus
+      });
+      branchStatus.value = newStatus;
+      // Update the branch context to reflect the new status
+      if (branchContextStore.currentBranch) {
+        branchContextStore.currentBranch.status = newStatus;
+      }
+      showSuccess(`Branch status updated to: ${newStatus}`, 'Status Updated');
+    } catch (error) {
+      console.error('Error updating branch status:', error);
+      showError('Failed to update branch status. Please try again.', 'Update Failed');
+    } finally {
+      isUpdatingStatus.value = false;
+    }
+  };
+
   // Placeholder data
   onMounted(async () => {
     // Validate access first
@@ -833,6 +887,20 @@
     if (!branchContextStore.currentBranch) {
       await branchContextStore.initializeBranchContext();
     }
+
+    // Initialize branch status
+    if (currentBranch.value?.status) {
+      branchStatus.value = currentBranch.value.status;
+    }
+
+    // Set up fullscreen change listener
+    const handleFullscreenChange = () => {
+      isFullscreen.value = !!document.fullscreenElement;
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    onUnmounted(() => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    });
 
     // Set up session timeout monitoring
     sessionTimeoutInterval = setInterval(checkSessionTimeout, 60000); // Check every minute
@@ -1034,45 +1102,87 @@
     <div v-else class="min-h-screen flex flex-col bg-gray-50">
       <!-- Header -->
       <div class="bg-white shadow-sm border-b px-4 sm:px-6 py-3 sm:py-4">
-        <div
-          class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4"
-        >
-          <div class="flex flex-row items-center gap-2">
-            <h1 class="text-xl sm:text-2xl font-bold text-gray-900">
-              Point of Sale
-            </h1>
-            <p class="text-sm sm:text-base text-gray-600">
-              ({{
-                currentBranch?.name ||
-                user?.branch_name ||
-                `Branch ${user?.branch_id || 'Unknown'}`
-              }}
-              )
-            </p>
+        <div class="flex flex-row items-center justify-between gap-2">
+          <div class="flex flex-row items-center gap-4">
+            <div class="flex flex-row items-center gap-2">
+              <h1 class="text-xl sm:text-2xl font-bold text-gray-900">
+                Point of Sale
+              </h1>
+              <p class="text-sm sm:text-base text-gray-600">
+                ({{
+                  currentBranch?.name ||
+                  user?.branch_name ||
+                  `Branch ${user?.branch_id || 'Unknown'}`
+                }}
+                )
+              </p>
+            </div>
+            <!-- Branch Status Radio Buttons (Manager only) -->
+            <div
+              v-if="userRole === 'Manager' && isManagerSessionActive"
+              class="flex items-center gap-3 border-l border-gray-300 pl-4"
+            >
+              <span class="text-xs font-medium text-gray-700">Status:</span>
+              <div class="flex gap-2">
+                <label class="cursor-pointer label gap-1">
+                  <input
+                    type="radio"
+                    :value="'Open'"
+                    v-model="branchStatus"
+                    @change="updateBranchStatus('Open')"
+                    :disabled="isUpdatingStatus"
+                    class="radio radio-sm"
+                    style="accent-color: #466114;"
+                  />
+                  <span class="text-xs font-medium" style="color: #466114;">Open</span>
+                </label>
+                <label class="cursor-pointer label gap-1">
+                  <input
+                    type="radio"
+                    :value="'Closed'"
+                    v-model="branchStatus"
+                    @change="updateBranchStatus('Closed')"
+                    :disabled="isUpdatingStatus"
+                    class="radio radio-sm"
+                    style="accent-color: #466114;"
+                  />
+                  <span class="text-xs font-medium" style="color: #466114;">Closed</span>
+                </label>
+              </div>
+            </div>
           </div>
           <div
-            class="flex items-center justify-between sm:justify-end space-x-2 sm:space-x-4"
+            class="flex items-center justify-center space-x-2 sm:space-x-4"
           >
-            <div class="text-left sm:text-right">
-              <p class="text-sm sm:text-base font-medium">
+            <div class="text-center">
+              <p class="text-base font-medium">
                 {{ user?.name }} ({{ userRole }})
               </p>
-              <button
-                @click="showTransactions"
-                class="btn btn-xs mt-1"
-                title="View Recent Transactions"
-              >
-                <Receipt class="w-3 h-3 mr-1" />
-                Transactions
-              </button>
+              <div class="flex gap-2 justify-center mt-2">
+                <button
+                  @click="showTransactions"
+                  class="btn btn-sm"
+                  title="View Recent Transactions"
+                >
+                  <Receipt class="w-4 h-4 mr-1" />
+                  Transactions
+                </button>
+                <button
+                  @click="toggleFullscreen"
+                  class="btn btn-sm"
+                  :title="isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'"
+                >
+                  <component :is="isFullscreen ? Minimize2 : Maximize2" class="w-4 h-4" />
+                </button>
+                <button
+                  v-if="userRole === 'Manager' && isManagerSessionActive"
+                  @click="handleManagerLogout"
+                  class="btn btn-sm btn-outline btn-error"
+                >
+                  End Session
+                </button>
+              </div>
             </div>
-            <button
-              v-if="userRole === 'Manager' && isManagerSessionActive"
-              @click="handleManagerLogout"
-              class="btn btn-xs sm:btn-sm btn-outline btn-error"
-            >
-              End Session
-            </button>
           </div>
         </div>
       </div>
@@ -2205,6 +2315,20 @@
 </template>
 
 <style scoped>
+  /* Custom radio button styling for branch status */
+  input[type="radio"].radio-sm {
+    accent-color: #466114 !important;
+  }
+
+  input[type="radio"].radio-sm:checked {
+    background-color: #466114;
+    border-color: #466114;
+  }
+
+  input[type="radio"].radio-sm:checked::before {
+    background-color: #466114 !important;
+  }
+
   /* Hide scrollbar for category navigation */
   .scrollbar-hide {
     -ms-overflow-style: none; /* Internet Explorer 10+ */

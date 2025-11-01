@@ -536,38 +536,18 @@ ${position.requirements || 'No specific requirements listed'}
           result.data
         );
 
-        // Filter to only open positions - be strict about excluding closed positions
-        // The backend should already filter by job_status=open, but we double-check on frontend
-        positions.value = result.data.filter((p) => {
-          // Get status values (prefer job_status, fallback to status)
-          const jobStatus = p.job_status || p.status;
-          const status = p.status || p.job_status || 'open';
-
-          // Position must be open (not closed, filled, or on-hold)
-          // If either status or job_status indicates closed/filled/on-hold, exclude it
-          const closedStatuses = ['closed', 'filled', 'on-hold'];
-          const isClosed =
-            closedStatuses.includes(jobStatus) ||
-            closedStatuses.includes(status);
-
-          // Position must be explicitly open
-          const isOpen =
-            (jobStatus === 'open' || status === 'open') && !isClosed;
-
-          // Must be active (strict check)
-          const isActive = p.is_active === true || p.is_active === 1;
-
-          // Must not be deleted
-          const notDeleted = !p.deleted_at;
-
-          return isOpen && isActive && notDeleted;
-        });
+        // Store all positions from API in branchPositions ref
+        // The computed 'positions' property will filter them automatically
+        branchPositions.value = result.data;
 
         console.log(
-          `✅ After filtering: ${branchPositions.value.length} positions`
+          `📦 Total positions from API: ${result.data.length}`
         );
         console.log(
-          `🚫 Filtered out: ${result.data.length - branchPositions.value.length} positions`
+          `✅ Open positions (after filtering): ${positions.value.length}`
+        );
+        console.log(
+          `🚫 Filtered out: ${result.data.length - positions.value.length} positions`
         );
 
         // Log main branch positions for debugging
@@ -579,11 +559,11 @@ ${position.requirements || 'No specific requirements listed'}
         console.log(`🏢 Main branch positions: ${mainBranchPositions.length}`);
       } else {
         console.warn('Branch positions API returned no data');
-        positions.value = [];
+        branchPositions.value = [];
       }
     } catch (error) {
       console.error('Error loading positions:', error);
-      positions.value = [];
+      branchPositions.value = [];
     } finally {
       isLoading.value = false;
     }

@@ -152,8 +152,10 @@ export const useBranchStore = defineStore('branch', {
           this.getAuthHeaders()
         );
 
-        this.currentBranch = response.data;
-        return response.data;
+        // Extract the actual branch data from the response wrapper
+        const branchData = response.data.success ? response.data.data : response.data;
+        this.currentBranch = branchData;
+        return branchData;
       } catch (error) {
         this.setError(error.response?.data?.error || 'Failed to fetch branch');
         throw error;

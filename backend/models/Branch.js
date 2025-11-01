@@ -213,6 +213,7 @@ class Branch {
         country: branchData.country?.trim() || null,
         is_active:
           branchData.is_active !== undefined ? branchData.is_active : true,
+        status: branchData.status || 'Open',
         opening_hours: branchData.opening_hours || null,
         description: branchData.description?.trim() || null,
         image_url: branchData.image_url || null,
@@ -306,6 +307,7 @@ class Branch {
           branchData.is_active !== undefined
             ? branchData.is_active
             : existingBranch.is_active,
+        status: branchData.status !== undefined ? branchData.status : existingBranch.status,
         opening_hours: branchData.opening_hours || null,
         description: branchData.description?.trim() || null,
         image_url:

@@ -100,8 +100,8 @@
               ></span>
             </router-link>
             <a
-              href="#contact"
-              class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
+              @click="goToContact"
+              class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium cursor-pointer"
             >
               <span class="relative z-10">Contact Us</span>
               <span
@@ -199,9 +199,8 @@
           </span>
         </router-link>
         <a
-          href="#contact"
-          @click="closeMobileMenu"
-          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+          @click="goToContact"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg cursor-pointer"
         >
           <span class="flex items-center">
             <font-awesome-icon
@@ -320,6 +319,14 @@
         </div>
       </section>
     </main>
+
+    <!-- Job Application Form Modal -->
+    <JobApplicationFormModal
+      :isOpen="isApplicationModalOpen"
+      :selectedPosition="selectedPosition"
+      @close="closeApplicationModal"
+      @application-submitted="handleApplicationSubmitted"
+    />
   </div>
 </template>
 
@@ -329,6 +336,7 @@
   import { apiConfig } from '../../config/api.js';
   import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
   import { library } from '@fortawesome/fontawesome-svg-core';
+  import JobApplicationFormModal from './JobApplicationFormModal.vue';
   import {
     faBriefcase,
     faBuilding,
@@ -362,6 +370,10 @@
   const isLoading = ref(false);
   const positions = ref([]);
   const activeDepartment = ref('All');
+  
+  // Job Application Modal State
+  const isApplicationModalOpen = ref(false);
+  const selectedPosition = ref(null);
 
   const departments = computed(() => {
     const depts = new Set(positions.value.map((p) => p.department));
@@ -426,11 +438,20 @@
   };
 
   const applyForPosition = (position) => {
-    // Open the job application modal or navigate to application form
-    router.push({
-      path: '/',
-      query: { apply: position.id },
-    });
+    // Open the job application modal
+    selectedPosition.value = position;
+    isApplicationModalOpen.value = true;
+  };
+
+  const closeApplicationModal = () => {
+    isApplicationModalOpen.value = false;
+    selectedPosition.value = null;
+  };
+
+  const handleApplicationSubmitted = (applicationData) => {
+    // Reload positions after successful application submission
+    loadPositions();
+    closeApplicationModal();
   };
 
   const toggleMobileMenu = () => {
@@ -443,6 +464,30 @@
 
   const goToLogin = () => {
     router.push('/login');
+  };
+
+  const goToContact = () => {
+    closeMobileMenu();
+    // Navigate to homepage and then scroll to contact
+    if (router.currentRoute.value.path === '/') {
+      // Already on homepage, just scroll
+      setTimeout(() => {
+        const contactSection = document.getElementById('contact');
+        if (contactSection) {
+          contactSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    } else {
+      // Navigate to homepage and then scroll to contact
+      router.push('/').then(() => {
+        setTimeout(() => {
+          const contactSection = document.getElementById('contact');
+          if (contactSection) {
+            contactSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 300);
+      });
+    }
   };
 
   onMounted(() => {

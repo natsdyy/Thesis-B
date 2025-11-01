@@ -5220,20 +5220,21 @@
       // Helper function to show notification (use toast instead of modal)
       const showNotification = (type, title, message) => {
         const msg = message || title || '';
+        const ttl = message ? title : undefined; // Use title only if message is provided
         const t = String(type || 'info').toLowerCase();
         if (t === 'success') {
-          showSuccess(msg);
+          showSuccess(msg, ttl);
           return;
         }
         if (t === 'warning') {
-          showWarning(msg);
+          showWarning(msg, ttl);
           return;
         }
         if (t === 'error') {
-          showError(msg);
+          showError(msg, ttl);
           return;
         }
-        showInfo(msg);
+        showInfo(msg, ttl);
       };
 
       const cancelInterview = (interview) => {

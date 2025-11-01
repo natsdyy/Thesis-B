@@ -27,6 +27,8 @@ import ResetPassword from '../views/ResetPassword.vue';
 
 // Import supplier components
 import SupplierLogin from '../views/supplier/SupplierLogin.vue';
+import ForgotPasswordSupplier from '../views/supplier/ForgotPasswordSupplier.vue';
+import ResetPasswordSupplier from '../views/supplier/ResetPasswordSupplier.vue';
 import SupplierDashboard from '../views/supplier/SupplierDashboard.vue';
 import SupplierOrders from '../views/supplier/SupplierOrders.vue';
 import SupplierProfile from '../views/supplier/SupplierProfile.vue';
@@ -114,6 +116,18 @@ const routes = [
     name: 'SupplierLogin',
     component: SupplierLogin,
     meta: { title: 'Supplier Login' },
+  },
+  {
+    path: '/supplier/forgot-password',
+    name: 'ForgotPasswordSupplier',
+    component: ForgotPasswordSupplier,
+    meta: { title: 'Forgot Password' },
+  },
+  {
+    path: '/supplier/reset-password',
+    name: 'ResetPasswordSupplier',
+    component: ResetPasswordSupplier,
+    meta: { title: 'Reset Password' },
   },
   {
     path: '/supplier',
@@ -470,6 +484,8 @@ router.beforeEach(async (to, from, next) => {
     '/faq',
     '/rate-order',
     '/supplier/login',
+    '/supplier/forgot-password',
+    '/supplier/reset-password',
   ];
 
   if (publicRoutes.includes(to.path)) {

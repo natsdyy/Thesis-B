@@ -796,7 +796,7 @@
       <!-- Overview Tab -->
       <template v-if="activeTab === 'overview'">
         <!-- Stats Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div class="card bg-white shadow-lg">
             <div class="card-body">
               <div class="flex items-center justify-between">
@@ -808,22 +808,6 @@
                 </div>
                 <div class="p-3 bg-primaryColor/10 rounded-full">
                   <Users class="w-6 h-6 text-primaryColor" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="card bg-white shadow-lg">
-            <div class="card-body">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm text-gray-600">Active</p>
-                  <p class="text-2xl font-bold text-primaryColor">
-                    {{ employeeStats.activeEmployees }}
-                  </p>
-                </div>
-                <div class="p-3 bg-primaryColor/10 rounded-full">
-                  <UserCheck class="w-6 h-6 text-primaryColor" />
                 </div>
               </div>
             </div>
@@ -918,7 +902,6 @@
                       <th>Contact</th>
 
                       <th>Attendance</th>
-                      <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -985,16 +968,6 @@
                           <span class="text-sm">{{
                             employee.attendance_today
                           }}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div
-                          :class="[
-                            'badge badge-sm border-none font-medium',
-                            getStatusBadge(employee.status).class,
-                          ]"
-                        >
-                          {{ getStatusBadge(employee.status).text }}
                         </div>
                       </td>
                     </tr>
@@ -1222,22 +1195,8 @@
       <!-- Leave Approvals Tab -->
       <template v-else-if="activeTab === 'leave'">
         <!-- Leave Stats Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div class="card bg-white shadow-lg">
-            <div class="card-body">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm text-gray-600">Total Requests</p>
-                  <p class="text-2xl font-bold text-primaryColor">
-                    {{ leaveStats.totalRequests }}
-                  </p>
-                </div>
-                <div class="p-3 bg-primaryColor/10 rounded-full">
-                  <FileText class="w-6 h-6 text-primaryColor" />
-                </div>
-              </div>
-            </div>
-          </div>
+        <div class="grid grid-cols-1 md:grid-cols-1 gap-6">
+
 
           <div class="card bg-white shadow-lg">
             <div class="card-body">
@@ -1255,37 +1214,6 @@
             </div>
           </div>
 
-          <div class="card bg-white shadow-lg">
-            <div class="card-body">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm text-gray-600">Manager Approved</p>
-                  <p class="text-2xl font-bold text-info">
-                    {{ leaveStats.managerApprovedRequests }}
-                  </p>
-                </div>
-                <div class="p-3 bg-info/10 rounded-full">
-                  <UserCheck2 class="w-6 h-6 text-info" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="card bg-white shadow-lg">
-            <div class="card-body">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm text-gray-600">HR Approved</p>
-                  <p class="text-2xl font-bold text-success">
-                    {{ leaveStats.hrApprovedRequests }}
-                  </p>
-                </div>
-                <div class="p-3 bg-success/10 rounded-full">
-                  <UserCheck class="w-6 h-6 text-success" />
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
 
         <!-- Search and Filters -->

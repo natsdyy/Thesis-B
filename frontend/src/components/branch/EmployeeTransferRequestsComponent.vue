@@ -63,7 +63,9 @@
 
   // Modal states
   const showConfirmationModal = ref(false);
+  const showDetailsModal = ref(false);
   const selectedRequest = ref(null);
+  const detailedRequest = ref(null);
 
   // Use props instead of computed properties to reduce reactive dependencies
 
@@ -170,6 +172,27 @@
       transferForm.value.from_branch_id = '';
       transferForm.value.to_branch_id = props.currentBranch?.id;
     }
+  };
+
+  const openDetailsModal = async (request) => {
+    loading.value = true;
+    try {
+      const detailed = await transferRequestStore.fetchTransferRequestById(
+        request.id
+      );
+      detailedRequest.value = detailed;
+      showDetailsModal.value = true;
+    } catch (error) {
+      console.error('Error fetching request details:', error);
+      showError('Failed to load request details', 'Error');
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const closeDetailsModal = () => {
+    showDetailsModal.value = false;
+    detailedRequest.value = null;
   };
 
   const validateForm = () => {
@@ -365,7 +388,9 @@
                 <span class="label-text font-medium">Transfer Type</span>
               </label>
               <div class="flex flex-col sm:flex-row gap-3 sm:gap-4">
-                <label class="cursor-pointer flex items-start sm:items-center gap-2">
+                <label
+                  class="cursor-pointer flex items-start sm:items-center gap-2"
+                >
                   <input
                     v-model="transferForm.transfer_type"
                     type="radio"
@@ -377,7 +402,9 @@
                     >Transfer In (to this branch)</span
                   >
                 </label>
-                <label class="cursor-pointer flex items-start sm:items-center gap-2">
+                <label
+                  class="cursor-pointer flex items-start sm:items-center gap-2"
+                >
                   <input
                     v-model="transferForm.transfer_type"
                     type="radio"
@@ -619,11 +646,7 @@
                   <td>
                     <div class="flex space-x-2">
                       <button
-                        @click="
-                          transferRequestStore.fetchTransferRequestById(
-                            request.id
-                          )
-                        "
+                        @click="openDetailsModal(request)"
                         class="btn btn-xs btn-ghost"
                         title="View Details"
                       >
@@ -647,6 +670,134 @@
         </div>
       </div>
     </template>
+
+    <!-- Details Modal -->
+    <div v-if="showDetailsModal" class="modal modal-open">
+      <div class="modal-box max-w-2xl max-h-[90vh] overflow-y-auto">
+        <h3 class="font-bold text-lg mb-4 text-primaryColor">
+          <Eye class="w-5 h-5 inline mr-2" />
+          Transfer Request Details
+        </h3>
+
+        <div v-if="detailedRequest" class="space-y-4">
+          <!-- Main Information -->
+          <div class="bg-gray-50 p-4 rounded-lg">
+            <div class="space-y-3">
+              <div class="flex justify-between items-start">
+                <span class="font-medium text-gray-600">
+                  {{
+                    detailedRequest.transfer_type === 'transfer_in'
+                      ? 'Role/Employee:'
+                      : 'Employee:'
+                  }}
+                </span>
+                <span class="text-right">
+                  {{
+                    detailedRequest.transfer_type === 'transfer_in'
+                      ? detailedRequest.employee_role || 'Role Request'
+                      : detailedRequest.employee_name || 'Unknown Employee'
+                  }}
+                </span>
+              </div>
+              <div class="flex justify-between">
+                <span class="font-medium text-gray-600">Transfer Type:</span>
+                <span
+                  :class="[
+                    'badge badge-sm border-none font-medium',
+                    getTransferTypeBadge(detailedRequest.transfer_type).class,
+                  ]"
+                >
+                  {{ getTransferTypeBadge(detailedRequest.transfer_type).text }}
+                </span>
+              </div>
+              <div class="flex justify-between">
+                <span class="font-medium text-gray-600">From Branch:</span>
+                <span>{{ detailedRequest.from_branch_name || 'N/A' }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="font-medium text-gray-600">To Branch:</span>
+                <span>{{ detailedRequest.to_branch_name }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="font-medium text-gray-600">Status:</span>
+                <span
+                  :class="[
+                    'badge badge-sm border-none font-medium',
+                    getStatusBadge(detailedRequest.status).class,
+                  ]"
+                >
+                  {{ getStatusBadge(detailedRequest.status).text }}
+                </span>
+              </div>
+              <div class="flex justify-between">
+                <span class="font-medium text-gray-600">Requested By:</span>
+                <span>{{ detailedRequest.requested_by_name }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="font-medium text-gray-600">Date Requested:</span>
+                <span>{{ formatDate(detailedRequest.created_at) }}</span>
+              </div>
+              <div
+                v-if="detailedRequest.approved_by"
+                class="flex justify-between"
+              >
+                <span class="font-medium text-gray-600">
+                  {{
+                    detailedRequest.status === 'rejected'
+                      ? 'Rejected By:'
+                      : 'Approved By:'
+                  }}
+                </span>
+                <span>{{ detailedRequest.approved_by_name }}</span>
+              </div>
+              <div
+                v-if="detailedRequest.approved_at"
+                class="flex justify-between"
+              >
+                <span class="font-medium text-gray-600">
+                  {{
+                    detailedRequest.status === 'rejected'
+                      ? 'Rejected At:'
+                      : 'Approved At:'
+                  }}
+                </span>
+                <span>{{ formatDate(detailedRequest.approved_at) }}</span>
+              </div>
+              <div
+                v-if="detailedRequest.approval_notes"
+                class="mt-3 pt-3 border-t border-gray-300"
+              >
+                <div class="font-medium text-gray-600 mb-2">
+                  {{
+                    detailedRequest.status === 'rejected'
+                      ? 'Rejection Notes:'
+                      : 'Approval Notes:'
+                  }}
+                </div>
+                <p class="text-sm text-gray-700 bg-white p-3 rounded border">
+                  {{ detailedRequest.approval_notes }}
+                </p>
+              </div>
+              <div class="mt-3 pt-3 border-t border-gray-300">
+                <div class="font-medium text-gray-600 mb-2">Reason:</div>
+                <p class="text-sm text-gray-700 bg-white p-3 rounded border">
+                  {{ detailedRequest.reason }}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-action">
+          <button
+            @click="closeDetailsModal"
+            class="btn btn-sm font-thin bg-gray-200 text-black/50 border-none hover:bg-gray-300"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- Confirmation Modal -->
     <div v-if="showConfirmationModal" class="modal modal-open">

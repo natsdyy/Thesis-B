@@ -351,9 +351,13 @@
                 step="0.01"
                 min="0.01"
                 placeholder="Enter transfer price"
-                class="input input-sm sm:input-md input-bordered w-full bg-white"
-                :class="{ 'input-error': formErrors.transfer_price }"
-                
+                :readonly="inventoryType === 'production'"
+                class="input input-sm sm:input-md input-bordered w-full"
+                :class="{
+                  'input-error': formErrors.transfer_price,
+                  'bg-gray-50': inventoryType === 'production',
+                  'bg-white': inventoryType !== 'production',
+                }"
               />
             </div>
             <label v-if="formErrors.transfer_price" class="label">

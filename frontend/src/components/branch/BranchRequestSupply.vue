@@ -1950,7 +1950,6 @@
                   <th class="text-right">Unit Price</th>
                   <th>Category</th>
                   <th>Source</th>
-                  <th class="text-right">Amount</th>
                 </tr>
               </thead>
               <tbody>
@@ -1969,39 +1968,9 @@
                   <td>
                     {{ item.item_type || selectedRequest.source_type || '-' }}
                   </td>
-                  <td class="text-right">
-                    {{
-                      item.unit_price != null
-                        ? (
-                            Number(item.unit_price) *
-                            Number(item.item_quantity || 0)
-                          ).toFixed(2)
-                        : '-'
-                    }}
-                  </td>
                 </tr>
               </tbody>
             </table>
-          </div>
-          <div
-            class="mt-3 text-right text-sm text-gray-700"
-            v-if="selectedRequest && selectedRequest.items"
-          >
-            <span class="font-medium mr-2">Total Amount:</span>
-            <span>
-              {{
-                selectedRequest.items
-                  .reduce(
-                    (s, it) =>
-                      s +
-                      (it.unit_price
-                        ? Number(it.unit_price) * Number(it.item_quantity || 0)
-                        : 0),
-                    0
-                  )
-                  .toFixed(2)
-              }}
-            </span>
           </div>
         </div>
 

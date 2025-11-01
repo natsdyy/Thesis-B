@@ -1006,6 +1006,8 @@ class SendGridService {
    * @param {string} toBranchName - Destination branch name
    * @param {Date} transferDate - Date when transfer takes effect
    * @param {string} managerName - Name of manager who requested transfer
+   * @param {string} customMessage - Optional custom message about what changed
+   * @param {string} customSubject - Optional custom email subject
    */
   static async sendEmployeeTransferNotification(
     to,
@@ -1013,7 +1015,9 @@ class SendGridService {
     fromBranchName,
     toBranchName,
     transferDate,
-    managerName
+    managerName,
+    customMessage = null,
+    customSubject = null
   ) {
     try {
       if (!this.isConfigured()) {
@@ -1031,7 +1035,9 @@ class SendGridService {
           email: "mailcountrysidesteakhouse@gmail.com",
           name: "Countryside Steakhouse",
         },
-        subject: "Employee Transfer Notification - Countryside Steakhouse",
+        subject:
+          customSubject ||
+          "Employee Transfer Notification - Countryside Steakhouse",
         trackingSettings: {
           clickTracking: {
             enable: false,
@@ -1061,8 +1067,7 @@ class SendGridService {
                 </p>
                 
                 <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
-                  We are writing to inform you that your branch assignment has been updated as part of our organizational restructuring. 
-                  Your transfer has been approved and is now effective.
+                  ${customMessage || "We are writing to inform you that your branch assignment has been updated as part of our organizational restructuring. Your transfer has been approved and is now effective."}
                 </p>
                 
                 <!-- Transfer Details Card -->
@@ -1141,12 +1146,11 @@ class SendGridService {
           </div>
         `,
         text: `
-          Countryside Steakhouse - Employee Transfer Notification
+          ${customSubject || "Countryside Steakhouse - Employee Transfer Notification"}
           
           Dear ${employeeName},
           
-          We are writing to inform you that your branch assignment has been updated as part of our organizational restructuring. 
-          Your transfer has been approved and is now effective.
+          ${customMessage || "We are writing to inform you that your branch assignment has been updated as part of our organizational restructuring. Your transfer has been approved and is now effective."}
           
           TRANSFER DETAILS:
           Employee: ${employeeName}

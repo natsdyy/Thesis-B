@@ -1221,6 +1221,17 @@
                   'opacity-60 border-red-300 bg-red-50': item.is_expired,
                   'border-orange-300 bg-orange-50':
                     item.is_expiring_soon && !item.is_expired,
+                  'border-green-300 !bg-green-50':
+                    !item.is_expired &&
+                    !item.is_expiring_soon &&
+                    item.promo_info &&
+                    item.promo_info.is_active,
+                  'border-yellow-300 bg-yellow-50':
+                    !item.is_expired &&
+                    !item.is_expiring_soon &&
+                    (!item.promo_info || !item.promo_info.is_active) &&
+                    parseFloat(item.stock_quantity || 0) > 0 &&
+                    parseFloat(item.stock_quantity || 0) <= 10,
                   'cursor-not-allowed': item.is_expired,
                 }"
                 @click="
@@ -1253,7 +1264,7 @@
                   class="absolute inset-0 bg-red-500/20 flex items-center justify-center z-10"
                 >
                   <div
-                    class="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold"
+                    class="bg-red-500 text-white px-3 md:px-4 py-1 md:py-2 rounded-full text-sm md:text-base font-bold"
                   >
                     EXPIRED
                   </div>
@@ -1262,29 +1273,68 @@
                 <!-- Expiring Soon Warning -->
                 <div
                   v-if="item.is_expiring_soon && !item.is_expired"
-                  class="absolute top-2 right-2 z-10"
+                  class="absolute top-2 md:top-3 right-2 md:right-3 z-10"
                 >
                   <div
-                    class="bg-orange-500 text-white px-2 py-1 rounded-full text-xs font-bold"
+                    class="bg-orange-500 text-white px-2 md:px-3 py-1 md:py-1.5 rounded-full text-xs md:text-sm font-bold"
                   >
                     EXPIRES SOON
                   </div>
                 </div>
+
+                <!-- Promo Warning -->
+                <div
+                  v-if="
+                    !item.is_expired &&
+                    !item.is_expiring_soon &&
+                    item.promo_info &&
+                    item.promo_info.is_active
+                  "
+                  class="absolute top-2 md:top-3 right-2 md:right-3 z-10"
+                >
+                  <div
+                    class="bg-success text-white px-2 md:px-3 py-1 md:py-1.5 rounded-full text-xs md:text-sm font-bold"
+                  >
+                    PROMO
+                  </div>
+                </div>
+
+                <!-- Low Stock Warning -->
+                <div
+                  v-if="
+                    !item.is_expired &&
+                    !item.is_expiring_soon &&
+                    (!item.promo_info || !item.promo_info.is_active) &&
+                    parseFloat(item.stock_quantity || 0) > 0 &&
+                    parseFloat(item.stock_quantity || 0) <= 10
+                  "
+                  class="absolute top-2 md:top-3 right-2 md:right-3 z-10"
+                >
+                  <div
+                    class="bg-yellow-500 text-white px-2 md:px-3 py-1 md:py-1.5 rounded-full text-xs md:text-sm font-bold"
+                  >
+                    LOW STOCK
+                  </div>
+                </div>
                 <!-- Item Details (Bottom) -->
                 <div class="flex-1 w-full pt-3 flex flex-col">
-                  <div class="flex items-center justify-between">
-                    <h2 class="font-semibold text-gray-900 text-md truncate">
+                  <div class="flex items-center justify-between gap-2">
+                    <h2
+                      class="font-semibold text-gray-900 text-sm md:text-base truncate flex-1 min-w-0"
+                    >
                       {{ item.name }}
                     </h2>
                     <!-- Stock Badge -->
                     <span
-                      class="badge badge-sm border-none"
+                      class="badge badge-sm md:badge-md border-none text-xs md:text-sm font-medium whitespace-nowrap"
                       :class="
                         item.is_expired
                           ? 'bg-red-500/20 text-red-600'
-                          : item.stock_quantity > 0
-                            ? 'bg-success/20 text-success'
-                            : 'bg-error/20 text-error'
+                          : parseFloat(item.stock_quantity || 0) === 0
+                            ? 'bg-error/20 text-error'
+                            : parseFloat(item.stock_quantity || 0) <= 10
+                              ? 'bg-warning/20 text-warning'
+                              : 'bg-success/20 text-success'
                       "
                     >
                       {{
@@ -1292,32 +1342,12 @@
                           ? 'EXPIRED'
                           : item.is_expiring_soon
                             ? 'EXPIRES SOON'
-                            : `Stock: ${item.stock_quantity}`
+                            : parseFloat(item.stock_quantity || 0) === 0
+                              ? 'OUT OF STOCK'
+                              : parseFloat(item.stock_quantity || 0) <= 10
+                                ? `LOW STOCK: ${item.stock_quantity}`
+                                : `Stock: ${item.stock_quantity}`
                       }}
-                    </span>
-                  </div>
-
-                  <!-- Promo Badge (optional) -->
-                  <div class="mt-2">
-                    <span
-                      v-if="item.promo_info"
-                      class="badge badge-sm border-none"
-                      :class="
-                        item.promo_info.is_active
-                          ? 'bg-warning/20 text-warning'
-                          : 'bg-gray/20 text-gray-600'
-                      "
-                      :title="
-                        item.promo_info.is_active
-                          ? `${item.promo_info.description || 'Active promotional discount available'} - ${item.promo_info.discount_type === 'percentage' ? item.promo_info.discount_percentage + '% off' : 'Fixed amount discount'}`
-                          : 'Promotional discount (inactive)'
-                      "
-                    >
-                      <font-awesome-icon
-                        icon="fa-solid fa-star"
-                        class="w-3 h-3 mr-1"
-                      />
-                      PROMO
                     </span>
                   </div>
 

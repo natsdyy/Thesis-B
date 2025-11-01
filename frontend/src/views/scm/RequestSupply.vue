@@ -3913,18 +3913,7 @@
                               >Process</a
                             >
                           </li>
-                          <li
-                            class="hover:bg-black/10"
-                            v-if="request.status === 'Acknowledged'"
-                          >
-                            <a
-                              @click="
-                                markBranchRequestInProgress(request.request_id)
-                              "
-                              class="text-warning"
-                              >Mark In Progress</a
-                            >
-                          </li>
+
                           <li
                             class="hover:bg-black/10"
                             v-if="request.status === 'In Progress'"
@@ -3933,20 +3922,6 @@
                               @click="completeBranchRequest(request.request_id)"
                               class="text-success"
                               >Complete</a
-                            >
-                          </li>
-                          <li
-                            class="hover:bg-black/10"
-                            v-if="
-                              ['Sent', 'Acknowledged', 'In Progress'].includes(
-                                request.status
-                              )
-                            "
-                          >
-                            <a
-                              @click="cancelBranchRequest(request.request_id)"
-                              class="text-error"
-                              >Cancel</a
                             >
                           </li>
                         </ul>
@@ -5849,7 +5824,6 @@
                 <th class="!font-thin text-right">Unit Price</th>
                 <th class="!font-thin">Category</th>
                 <th class="!font-thin">Source</th>
-                <th class="!font-thin text-right">Amount</th>
               </tr>
             </thead>
             <tbody>
@@ -5872,39 +5846,9 @@
                     item.item_type || selectedBranchRequest.source_type || '-'
                   }}
                 </td>
-                <td class="text-right">
-                  {{
-                    item.unit_price != null
-                      ? (
-                          Number(item.unit_price) *
-                          Number(item.item_quantity || 0)
-                        ).toFixed(2)
-                      : '-'
-                  }}
-                </td>
               </tr>
             </tbody>
           </table>
-          <div
-            class="mt-3 text-right text-sm text-gray-700"
-            v-if="selectedBranchRequest && selectedBranchRequest.items"
-          >
-            <span class="font-medium mr-2">Total Amount:</span>
-            <span>
-              {{
-                selectedBranchRequest.items
-                  .reduce(
-                    (s, it) =>
-                      s +
-                      (it.unit_price
-                        ? Number(it.unit_price) * Number(it.item_quantity || 0)
-                        : 0),
-                    0
-                  )
-                  .toFixed(2)
-              }}
-            </span>
-          </div>
         </div>
       </div>
 

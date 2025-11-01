@@ -573,9 +573,7 @@ class BranchDistribution {
    * @returns {Promise<Object>} Updated distribution
    */
   static async rejectDistribution(id, rejectionData) {
-    const trx = await db.transaction();
-
-    try {
+    return await db.transaction(async (trx) => {
       // Get the distribution with items
       const distribution = await trx("branch_distributions")
         .leftJoin("branches", "branch_distributions.branch_id", "branches.id")
@@ -609,7 +607,7 @@ class BranchDistribution {
             reference_number: distribution.reference,
             reason: "Branch Distribution Rejection",
             notes:
-              `Distribution rejected by branch: ${rejectionData.rejection_reason}. ${rejectionData.rejection_notes || ""}`.trim(),
+              `Distribution rejected by branch: ${rejectionData.rejection_reason || ""}. ${rejectionData.rejection_notes || ""}`.trim(),
             performed_by: rejectionData.rejected_by || "Branch Manager",
             transaction_date: db.fn.now(),
             adjustment_type: "rejection",
@@ -632,7 +630,7 @@ class BranchDistribution {
               reference_number: distribution.reference,
               reason: "Branch Distribution Rejection",
               notes:
-                `Distribution rejected by branch: ${rejectionData.rejection_reason}. ${rejectionData.rejection_notes || ""}`.trim(),
+                `Distribution rejected by branch: ${rejectionData.rejection_reason || ""}. ${rejectionData.rejection_notes || ""}`.trim(),
               performed_by: rejectionData.rejected_by || "Branch Manager",
               transaction_date: db.fn.now(),
               adjustment_type: "rejection",
@@ -669,14 +667,10 @@ class BranchDistribution {
         updated_at: db.fn.now(),
       });
 
-      await trx.commit();
-
-      // Return updated distribution
-      return await this.findByIdWithItems(id);
-    } catch (error) {
-      await trx.rollback();
-      throw error;
-    }
+      // Return updated distribution (query outside transaction to ensure fresh data)
+      const updatedDistribution = await this.findByIdWithItems(id);
+      return updatedDistribution;
+    });
   }
 
   /**

@@ -504,18 +504,6 @@
                         </button>
                       </template>
 
-                      <!-- View details for all requests -->
-                      <button
-                        @click="
-                          transferRequestStore.fetchTransferRequestById(
-                            request.id
-                          )
-                        "
-                        class="btn btn-xs btn-ghost"
-                        title="View Details"
-                      >
-                        <Eye class="w-4 h-4" />
-                      </button>
                     </div>
                   </td>
                 </tr>

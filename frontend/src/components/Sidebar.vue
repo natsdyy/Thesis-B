@@ -333,15 +333,15 @@
       return filtered;
     } else if (isBoardDirector || isChairman) {
       // Board Members (Chairman and Board of Directors)
-      // 1) Administration: restrict to selected items (same as existing Board of Directors rule)
-      // Board of Directors: Only Administration menus and only select items
+      // Board Directors can only access Administration menus from Executive Dashboard to Branch Management
       const adminMenus = (menusByDepartment['Administration'] || []).filter(
         (menu) => {
-          // Allow Executive Dashboard, Financial Statement, Organizational Chart
+          // Allow Executive Dashboard, Financial Statement, Organizational Chart, Branch Management
           const allowedRoutes = [
             '/super-admin',
             '/super-admin/financial-statement',
             '/admin/organizational-chart',
+            '/admin/branch-manager',
           ];
           const isAllowed = allowedRoutes.includes(menu.route);
           const isEmployeeSchedules =
@@ -350,24 +350,10 @@
           return isAllowed && !isEmployeeSchedules;
         }
       );
-      // 2) Human Resource: hide only Schedules and Manage Employee under Employee Management
-      const hrMenusRaw = menusByDepartment['Human Resource'] || [];
-      const hrMenus = hrMenusRaw.map((menu) => {
-        if (
-          menu.name === 'Employee Management' &&
-          Array.isArray(menu.subItems)
-        ) {
-          const filteredSub = menu.subItems.filter(
-            (s) => s.name !== 'Schedules' && s.name !== 'Manage Employee'
-          );
-          return { ...menu, subItems: filteredSub };
-        }
-        return menu;
-      });
 
       const result = {};
       if (adminMenus.length) result['Administration'] = adminMenus;
-      if (hrMenus.length) result['Human Resource'] = hrMenus;
+      // Board Directors should NOT see Human Resource or any other departments
       return result;
     } else if (userDepartment) {
       // Regular users see only their department, excluding super admin only items

@@ -50,6 +50,24 @@
   const canSwitchBranches = computed(
     () => branchContextStore.canSwitchBranches
   );
+
+  // Check if current branch is inactive
+  const isBranchInactive = computed(() => {
+    // Check if branch exists and is inactive (is_active === false)
+    if (!currentBranch.value) return false;
+    return currentBranch.value.is_active === false;
+  });
+
+  // Check if user is on inactive route or allowed routes when branch is inactive
+  const isOnInactiveRoute = computed(() => {
+    // If branch is inactive and user is not Super Admin
+    if (isBranchInactive.value && !canSwitchBranches.value) {
+      // Hide navigation on inactive route and allowed routes (profile only)
+      const allowedInactiveRoutes = ['BranchInactive', 'BranchProfile'];
+      return allowedInactiveRoutes.includes(route.name);
+    }
+    return false;
+  });
   const availableOperations = computed(() => {
     // Filter out 'pos' from navigation since it's a separate page with its own access control
     const ops = branchContextStore.availableOperations.filter(
@@ -202,6 +220,19 @@
     }
   });
 
+  // Watch for inactive branch and redirect if needed
+  watch([currentBranch, isBranchInactive], ([branch, isInactive]) => {
+    // Only redirect if branch exists, is inactive, not a Super Admin, and not already on allowed routes
+    if (
+      branch &&
+      isInactive &&
+      !canSwitchBranches.value &&
+      !['BranchInactive', 'BranchProfile'].includes(route.name)
+    ) {
+      router.push('/branch/inactive');
+    }
+  });
+
   // Initialize on mount
   onMounted(async () => {
     await initializeBranchContext();
@@ -209,6 +240,16 @@
     // Restore branch context for Super Admin
     if (canSwitchBranches.value) {
       await branchContextStore.restoreBranchContext();
+    }
+
+    // Check if branch is inactive after initialization
+    if (
+      currentBranch.value &&
+      isBranchInactive.value &&
+      !canSwitchBranches.value &&
+      !['BranchInactive', 'BranchProfile'].includes(route.name)
+    ) {
+      router.push('/branch/inactive');
     }
   });
 </script>
@@ -322,7 +363,7 @@
                   </router-link>
                 </li>
 
-                <li>
+                <li v-if="!isBranchInactive || canSwitchBranches">
                   <router-link
                     :to="{ path: '/branch/attendance', query: { tab: 'ot' } }"
                     class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
@@ -331,7 +372,7 @@
                     <span class="text-sm">Apply Overtime</span>
                   </router-link>
                 </li>
-                <li>
+                <li v-if="!isBranchInactive || canSwitchBranches">
                   <router-link
                     :to="{
                       path: '/branch/attendance',
@@ -344,7 +385,7 @@
                   </router-link>
                 </li>
 
-                <li>
+                <li v-if="!isBranchInactive || canSwitchBranches">
                   <router-link
                     to="/branch/attendance"
                     class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
@@ -475,7 +516,7 @@
                   </router-link>
                 </li>
 
-                <li>
+                <li v-if="!isBranchInactive || canSwitchBranches">
                   <router-link
                     :to="{ path: '/branch/attendance', query: { tab: 'ot' } }"
                     class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
@@ -484,7 +525,7 @@
                     <span class="text-sm">Apply Overtime</span>
                   </router-link>
                 </li>
-                <li>
+                <li v-if="!isBranchInactive || canSwitchBranches">
                   <router-link
                     :to="{
                       path: '/branch/attendance',
@@ -497,7 +538,7 @@
                   </router-link>
                 </li>
 
-                <li>
+                <li v-if="!isBranchInactive || canSwitchBranches">
                   <router-link
                     to="/branch/attendance"
                     class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-50 transition-colors"
@@ -525,7 +566,10 @@
     </div>
 
     <!-- Branch Navigation -->
-    <div class="bg-white border-b border-gray-200 shadow-sm">
+    <div
+      v-if="!isOnInactiveRoute"
+      class="bg-white border-b border-gray-200 shadow-sm"
+    >
       <div class="w-full px-4">
         <nav class="flex justify-between items-center">
           <!-- Desktop Navigation -->

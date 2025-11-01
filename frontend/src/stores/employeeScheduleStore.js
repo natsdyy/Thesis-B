@@ -93,6 +93,7 @@ export const useEmployeeScheduleStore = defineStore('employeeSchedule', () => {
           },
           notes: schedule.notes || '',
           is_active: schedule.is_active,
+          is_rest_day_override: schedule.is_rest_day_override || false,
           created_at: schedule.created_at,
           updated_at: schedule.updated_at,
         };
@@ -185,6 +186,7 @@ export const useEmployeeScheduleStore = defineStore('employeeSchedule', () => {
         },
         notes: newSchedule.notes || '',
         is_active: newSchedule.is_active,
+        is_rest_day_override: newSchedule.is_rest_day_override || false,
         created_at: newSchedule.created_at,
         updated_at: newSchedule.updated_at,
       };
@@ -248,6 +250,10 @@ export const useEmployeeScheduleStore = defineStore('employeeSchedule', () => {
         },
         notes: updatedSchedule.notes || existing.notes || '',
         is_active: updatedSchedule.is_active ?? existing.is_active,
+        is_rest_day_override:
+          updatedSchedule.is_rest_day_override ??
+          existing.is_rest_day_override ??
+          false,
         created_at: existing.created_at,
         updated_at: updatedSchedule.updated_at,
       };

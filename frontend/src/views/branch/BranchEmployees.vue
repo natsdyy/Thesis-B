@@ -47,7 +47,8 @@
   const departmentFilter = ref('');
   const statusFilter = ref('');
   const otStatusFilter = ref('');
-  const leaveStatusFilter = ref('');
+  const leaveStatusFilter = ref('pending');
+  const leaveMonthFilter = ref('');
   const currentPage = ref(1);
   const itemsPerPage = ref(10);
   const loading = ref(false);
@@ -121,6 +122,22 @@
       (branch) => branch.id !== currentBranch.value?.id
     )
   );
+
+  // Available months - generate list for current year
+  const availableMonths = computed(() => {
+    const currentYear = new Date().getFullYear();
+    const months = [];
+    for (let month = 0; month < 12; month++) {
+      const date = new Date(currentYear, month, 1);
+      const monthStr = date.toLocaleString('default', {
+        month: 'long',
+        year: 'numeric',
+      });
+      months.push(monthStr);
+    }
+    // Reverse to show most recent first (December to January)
+    return months.slice().reverse();
+  });
 
   const filteredEmployees = computed(() => {
     let employees = branchEmployees.value;
@@ -199,6 +216,18 @@
       requests = requests.filter(
         (req) => req.status === leaveStatusFilter.value
       );
+    }
+
+    // Filter by month if needed
+    if (leaveMonthFilter.value && leaveMonthFilter.value !== '') {
+      requests = requests.filter((req) => {
+        const fromDate = new Date(req.from_date);
+        const fromDateStr = fromDate.toLocaleString('default', {
+          month: 'long',
+          year: 'numeric',
+        });
+        return fromDateStr === leaveMonthFilter.value;
+      });
     }
 
     // Filter by search query
@@ -553,10 +582,14 @@
     try {
       // Only fetch if leave requests array is empty to prevent continuous refetching
       // OR if forceRefresh is true (after approve/reject actions)
-      if (leaveStore.pendingManagerApprovals.length === 0 || forceRefresh) {
-        await leaveStore.fetchPendingManagerApprovals(currentBranch.value?.id);
+      if (leaveStore.allLeaveRequests.length === 0 || forceRefresh) {
+        await leaveStore.fetchAllLeaveRequests({
+          branch_id: currentBranch.value?.id,
+          page: 1,
+          limit: 500,
+        });
       }
-      leaveRequests.value = leaveStore.pendingManagerApprovals;
+      leaveRequests.value = leaveStore.allLeaveRequests;
       updateLeaveStats();
     } catch (error) {
       console.error('Error loading leave requests:', error);
@@ -1196,8 +1229,6 @@
       <template v-else-if="activeTab === 'leave'">
         <!-- Leave Stats Cards -->
         <div class="grid grid-cols-1 md:grid-cols-1 gap-6">
-
-
           <div class="card bg-white shadow-lg">
             <div class="card-body">
               <div class="flex items-center justify-between">
@@ -1213,7 +1244,6 @@
               </div>
             </div>
           </div>
-
         </div>
 
         <!-- Search and Filters -->
@@ -1245,6 +1275,18 @@
                 <option value="approved_by_manager">Manager Approved</option>
                 <option value="approved_by_hr">HR Approved</option>
                 <option value="rejected">Rejected</option>
+              </select>
+
+              <!-- Month Filter -->
+              <select v-model="leaveMonthFilter" class="select select-bordered">
+                <option value="">All Months</option>
+                <option
+                  v-for="month in availableMonths"
+                  :key="month"
+                  :value="month"
+                >
+                  {{ month }}
+                </option>
               </select>
             </div>
           </div>

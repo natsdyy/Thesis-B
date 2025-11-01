@@ -50,7 +50,7 @@
                   <div v-if="silCredits !== null" class="text-sm">
                     <span class="font-medium">Available SIL Credits:</span>
                     <span class="ml-1"
-                      >{{ silCredits.available_credits }} days</span
+                      >{{ formatSILCredits(silCredits.available_credits) }} days</span
                     >
                   </div>
                 </div>
@@ -96,7 +96,7 @@
                 v-if="
                   useSIL &&
                   silCredits !== null &&
-                  silCredits.available_credits < calculateSILDays()
+                  parseFloat(silCredits.available_credits || 0) < calculateSILDays()
                 "
                 class="mt-3 p-3 bg-warning/10 rounded-lg"
               >
@@ -114,7 +114,7 @@
                   </svg>
                   <span class="text-warning">
                     Insufficient SIL credits. You have
-                    {{ silCredits.available_credits }} days available but need
+                    {{ formatSILCredits(silCredits.available_credits) }} days available but need
                     {{ calculateSILDays() }} days.
                   </span>
                 </div>
@@ -213,6 +213,7 @@
                 <th>To Date</th>
                 <th>Leave Type</th>
                 <th>Reason</th>
+                <th>SIL</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -229,6 +230,14 @@
                   <div class="max-w-xs truncate" :title="req.reason">
                     {{ req.reason }}
                   </div>
+                </td>
+                <td>
+                  <div v-if="req.use_sil && parseFloat(req.sil_days || 0) > 0">
+                    <span class="badge badge-sm bg-info/20 text-info ">
+                      {{ formatSILDays(req.sil_days) }} days
+                    </span>
+                  </div>
+                  <span v-else class="text-gray-400 text-sm">—</span>
                 </td>
                 <td>
                   <div
@@ -390,7 +399,9 @@
 
   // SIL related computed properties
   const canUseSIL = computed(() => {
-    return silCredits.value !== null && silCredits.value.available_credits > 0;
+    if (!silCredits.value) return false;
+    const credits = parseFloat(silCredits.value.available_credits || 0);
+    return !isNaN(credits) && credits > 0;
   });
 
   // Calculate SIL days needed for the leave request
@@ -480,9 +491,10 @@
         showError('Unable to load SIL credits. Please try again.');
         return;
       }
-      if (silCredits.value.available_credits < silDaysNeeded) {
+      const availableCredits = parseFloat(silCredits.value.available_credits || 0);
+      if (isNaN(availableCredits) || availableCredits < silDaysNeeded) {
         showError(
-          `Insufficient SIL credits. You need ${silDaysNeeded} days but only have ${silCredits.value.available_credits} days available.`
+          `Insufficient SIL credits. You need ${silDaysNeeded} days but only have ${formatSILCredits(silCredits.value.available_credits)} days available.`
         );
         return;
       }
@@ -564,6 +576,18 @@
       month: 'short',
       day: 'numeric',
     });
+  };
+
+  const formatSILDays = (silDays) => {
+    if (!silDays && silDays !== 0) return '0';
+    const days = parseFloat(silDays);
+    return isNaN(days) ? '0' : days.toFixed(2);
+  };
+
+  const formatSILCredits = (credits) => {
+    if (credits === null || credits === undefined) return '0.00';
+    const credit = parseFloat(credits);
+    return isNaN(credit) ? '0.00' : credit.toFixed(2);
   };
 
   const getLeaveBadgeClass = (status) => {

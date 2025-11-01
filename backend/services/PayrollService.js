@@ -43,11 +43,28 @@ class PayrollService {
     }
 
     // Get all employees in the department
+    // Include Active employees OR Terminated employees whose last_working_day is AFTER the payroll period start
+    // (meaning they worked during the payroll period)
     const employees = await db("employees as e")
       .leftJoin("user_roles as r", "e.role_id", "r.role_id")
+      .leftJoin("employee_terminations as et", "e.id", "et.employee_id")
       .where("e.department", department)
-      .where("e.status", "Active")
       .whereNull("e.deleted_at")
+      .where(function () {
+        this.where("e.status", "Active").orWhere(function () {
+          this.where("e.status", "Terminated").andWhere(function () {
+            // Include terminated employees if their last_working_day is on or after the period start
+            // This means they worked during the payroll period (from period start until their last day)
+            // Example: Employee with last_working_day = Nov 1 should be included in October payroll
+            // The actual payroll calculation will cap attendance at their last_working_day
+            this.whereNotNull("et.last_working_day").andWhere(
+              "et.last_working_day",
+              ">=",
+              formatForDatabase(dateFrom)
+            );
+          });
+        });
+      })
       .select("e.*", "r.role as role_name", "r.rate_per_hour");
 
     if (!employees.length) {
@@ -136,11 +153,28 @@ class PayrollService {
     }
 
     // Get all employees in the branch
+    // Include Active employees OR Terminated employees whose last_working_day is AFTER the payroll period start
+    // (meaning they worked during the payroll period)
     const employees = await db("employees as e")
       .leftJoin("user_roles as r", "e.role_id", "r.role_id")
+      .leftJoin("employee_terminations as et", "e.id", "et.employee_id")
       .where("e.branch_id", branchId)
-      .where("e.status", "Active")
       .whereNull("e.deleted_at")
+      .where(function () {
+        this.where("e.status", "Active").orWhere(function () {
+          this.where("e.status", "Terminated").andWhere(function () {
+            // Include terminated employees if their last_working_day is on or after the period start
+            // This means they worked during the payroll period (from period start until their last day)
+            // Example: Employee with last_working_day = Nov 1 should be included in October payroll
+            // The actual payroll calculation will cap attendance at their last_working_day
+            this.whereNotNull("et.last_working_day").andWhere(
+              "et.last_working_day",
+              ">=",
+              formatForDatabase(dateFrom)
+            );
+          });
+        });
+      })
       .select("e.*", "r.role as role_name", "r.rate_per_hour");
 
     if (!employees.length) {
@@ -201,18 +235,37 @@ class PayrollService {
     const employeeType = employee.employee_type || "Full-time";
     const hoursPerDay = employeeType === "Full-time" ? 8 : 4;
 
-    // Get attendance records for the period
+    // Check if employee is terminated and get last working day
+    let lastWorkingDay = null;
+    if (employee.status === "Terminated") {
+      const termination = await db("employee_terminations")
+        .where("employee_id", employee.id)
+        .select("last_working_day")
+        .first();
+
+      if (termination && termination.last_working_day) {
+        lastWorkingDay = new Date(termination.last_working_day);
+      }
+    }
+
+    // Determine the effective end date for attendance calculation
+    // If employee was terminated, only count attendance up to last_working_day
+    const effectiveDateTo =
+      lastWorkingDay && lastWorkingDay < dateTo ? lastWorkingDay : dateTo;
+
+    // Get attendance records for the period (up to last_working_day if terminated)
     const attendanceRecords = await db("attendance_records")
       .where("employee_id", employee.id)
       .whereBetween("created_at", [
         formatForDatabase(dateFrom),
-        formatForDatabase(dateTo),
+        formatForDatabase(effectiveDateTo),
       ])
       .select("*");
 
     // Calculate hours worked and overtime
     let totalHoursWorked = 0;
     let totalOvertimeHours = 0;
+    let holidayOvertimeHours = 0; // Track OT hours on holidays separately
     let totalNightDiffHours = 0;
     let totalNightDiffPay = 0;
     let lateCount = 0;
@@ -221,6 +274,9 @@ class PayrollService {
     let specialHolidayPay = 0;
     let doubleHolidayPay = 0;
     let holidayHoursWorked = 0;
+    let restDayPay = 0; // Track rest day premium separately
+    let regularRestDayPay = 0; // Track regular rest day premium (non-holiday)
+    let holidayRestDayPay = 0; // Track holiday+rest day premium (already included in holiday pay, tracked for transparency)
 
     // Get Philippine holidays in the period
     const holidays = this.getPhilippineHolidays(dateFrom, dateTo);
@@ -231,6 +287,24 @@ class PayrollService {
 
     for (const record of attendanceRecords) {
       const recordDate = new Date(record.created_at);
+
+      // Skip attendance records after last working day (if terminated)
+      // Compare at date level (ignoring time) to include the full last working day
+      if (lastWorkingDay) {
+        const recordDateOnly = new Date(
+          recordDate.getFullYear(),
+          recordDate.getMonth(),
+          recordDate.getDate()
+        );
+        const lastWorkingDayOnly = new Date(
+          lastWorkingDay.getFullYear(),
+          lastWorkingDay.getMonth(),
+          lastWorkingDay.getDate()
+        );
+        if (recordDateOnly > lastWorkingDayOnly) {
+          continue;
+        }
+      }
       const holiday = holidays.find(
         (h) =>
           formatPhilippineTime(h.date, "date") ===
@@ -286,11 +360,30 @@ class PayrollService {
         switch (holiday.type) {
           case "regular":
             if (hoursWorked > 0) {
-              // Worked on regular holiday: 200% of daily rate
-              regularHolidayPay += dailyRate * 2;
-              // Add OT if applicable (30% on top of 200%)
-              if (overtimeHours > 0) {
-                regularHolidayPay += hourlyRate * overtimeHours * 0.3;
+              // Check if this is a rest day (Day Off shift)
+              const isRestDay = await this.isRestDay(employee.id, recordDate);
+
+              if (isRestDay) {
+                // Worked on regular holiday + rest day: 200% × 130% = 260%
+                const holidayBasePay = dailyRate * 2; // 200% for regular holiday
+                const restDayPremium = dailyRate * 0.6; // 60% rest day premium (260% - 200%)
+                regularHolidayPay += holidayBasePay + restDayPremium;
+                holidayRestDayPay += restDayPremium; // Track holiday+rest day premium separately (for transparency)
+
+                // OT on regular holiday + rest day: 200% × 130% × 130% = 338%
+                if (overtimeHours > 0) {
+                  const holidayOTBase = hourlyRate * overtimeHours * 2.6; // 200% × 130%
+                  const restDayOTPremium = hourlyRate * overtimeHours * 0.78; // 338% - 260% = 78%
+                  regularHolidayPay += holidayOTBase + restDayOTPremium;
+                  holidayRestDayPay += restDayOTPremium; // Track holiday+rest day OT premium
+                }
+              } else {
+                // Worked on regular holiday: 200% of daily rate
+                regularHolidayPay += dailyRate * 2;
+                // OT on regular holiday: 200% × 130% = 260% per hour (DOLE standard)
+                if (overtimeHours > 0) {
+                  regularHolidayPay += hourlyRate * overtimeHours * 2.6;
+                }
               }
             } else {
               // Did not work: 100% of daily rate
@@ -300,11 +393,30 @@ class PayrollService {
 
           case "special_non_working":
             if (hoursWorked > 0) {
-              // Worked on special non-working: 130% of daily rate
-              specialHolidayPay += dailyRate * 1.3;
-              // Add OT if applicable (30% on top of 130%)
-              if (overtimeHours > 0) {
-                specialHolidayPay += hourlyRate * overtimeHours * 0.3;
+              // Check if this is a rest day (Day Off shift)
+              const isRestDay = await this.isRestDay(employee.id, recordDate);
+
+              if (isRestDay) {
+                // Worked on special non-working + rest day: 150% for first 8 hrs
+                const holidayBasePay = dailyRate * 1.3; // 130% for special holiday
+                const restDayPremium = dailyRate * 0.2; // 20% rest day premium (150% - 130%)
+                specialHolidayPay += holidayBasePay + restDayPremium;
+                holidayRestDayPay += restDayPremium; // Track holiday+rest day premium
+
+                // OT on special non-working + rest day: 150% × 130% = 195%
+                if (overtimeHours > 0) {
+                  const holidayOTBase = hourlyRate * overtimeHours * 1.69; // 130% × 130%
+                  const restDayOTPremium = hourlyRate * overtimeHours * 0.26; // 195% - 169% = 26%
+                  specialHolidayPay += holidayOTBase + restDayOTPremium;
+                  holidayRestDayPay += restDayOTPremium; // Track holiday+rest day OT premium
+                }
+              } else {
+                // Worked on special non-working: 130% of daily rate
+                specialHolidayPay += dailyRate * 1.3;
+                // OT on special non-working: 130% × 130% = 169% per hour (DOLE standard)
+                if (overtimeHours > 0) {
+                  specialHolidayPay += hourlyRate * overtimeHours * 1.69;
+                }
               }
             }
             // If did not work: no pay (unless company policy states otherwise)
@@ -317,11 +429,30 @@ class PayrollService {
 
           case "double":
             if (hoursWorked > 0) {
-              // Worked on double holiday: 300% of daily rate
-              doubleHolidayPay += dailyRate * 3;
-              // Add OT if applicable (30% on top of 300%)
-              if (overtimeHours > 0) {
-                doubleHolidayPay += hourlyRate * overtimeHours * 0.3;
+              // Check if this is a rest day (Day Off shift)
+              const isRestDay = await this.isRestDay(employee.id, recordDate);
+
+              if (isRestDay) {
+                // Worked on double holiday + rest day: 300% × 130% = 390%
+                const holidayBasePay = dailyRate * 3; // 300% for double holiday
+                const restDayPremium = dailyRate * 0.9; // 90% rest day premium (390% - 300%)
+                doubleHolidayPay += holidayBasePay + restDayPremium;
+                holidayRestDayPay += restDayPremium; // Track holiday+rest day premium
+
+                // OT on double holiday + rest day: 300% × 130% × 130% = 507%
+                if (overtimeHours > 0) {
+                  const holidayOTBase = hourlyRate * overtimeHours * 3.9; // 300% × 130%
+                  const restDayOTPremium = hourlyRate * overtimeHours * 1.17; // 507% - 390% = 117%
+                  doubleHolidayPay += holidayOTBase + restDayOTPremium;
+                  holidayRestDayPay += restDayOTPremium; // Track holiday+rest day OT premium
+                }
+              } else {
+                // Worked on double holiday: 300% of daily rate
+                doubleHolidayPay += dailyRate * 3;
+                // OT on double holiday: 300% × 130% = 390% per hour (DOLE standard)
+                if (overtimeHours > 0) {
+                  doubleHolidayPay += hourlyRate * overtimeHours * 3.9;
+                }
               }
             } else {
               // Did not work: 200% of daily rate
@@ -330,9 +461,33 @@ class PayrollService {
             break;
         }
 
+        // Track holiday OT hours separately (already paid in holiday pay calculation)
+        holidayOvertimeHours += overtimeHours;
+        // Still add to totalOvertimeHours for reporting (but won't calculate regular OT pay on it)
         totalOvertimeHours += overtimeHours;
       } else {
-        // Regular workday
+        // Regular workday - check if it's a rest day (Day Off or rest day override)
+        const isRestDay = await this.isRestDay(employee.id, recordDate);
+
+        if (isRestDay && hoursWorked > 0) {
+          // Working on regular rest day (non-holiday): 130% of daily rate
+          // Calculate rest day premium: 30% premium (130% - 100% = 30%)
+          const dailyRate = hourlyRate * hoursPerDay;
+          const regularPay = hourlyRate * hoursWorked; // 100% for regular hours
+          const restDayPremium = dailyRate * 0.3 * (hoursWorked / hoursPerDay); // 30% premium
+          regularRestDayPay += restDayPremium; // Track regular rest day premium separately
+
+          // For overtime on regular rest day: 130% × 130% = 169% per hour
+          // Regular OT on rest day: 125% × 130% = 162.5% per hour
+          // Premium for OT on rest day: 162.5% - 125% = 37.5% per hour
+          if (overtimeHours > 0) {
+            const regularOTPay = hourlyRate * overtimeHours * 1.25; // Regular OT rate
+            const restDayOTPremium = hourlyRate * overtimeHours * 0.375; // 37.5% premium
+            regularRestDayPay += restDayOTPremium; // Track regular rest day OT premium
+            // Note: regularOTPay is included in overtimePay calculation below
+          }
+        }
+
         totalHoursWorked += hoursWorked;
         totalOvertimeHours += overtimeHours;
       }
@@ -344,17 +499,38 @@ class PayrollService {
     // Calculate basic salary
     const basicSalary = totalHoursWorked * hourlyRate;
 
-    // Calculate overtime pay (1.25x for first 8 hours of OT)
-    const overtimePay = totalOvertimeHours * hourlyRate * 1.25;
+    // Calculate overtime pay (1.25x for regular OT only)
+    // Holiday OT is already calculated in holiday pay, so exclude it from regular OT calculation
+    const regularOvertimeHours = totalOvertimeHours - holidayOvertimeHours;
+    // Note: Rest day OT premium is tracked separately in restDayPay
+    // Regular OT rate is 1.25x, but on rest days it becomes 1.625x (125% × 130%)
+    // The 0.375x premium is already added to restDayPay above
+    const overtimePay = regularOvertimeHours * hourlyRate * 1.25;
 
-    // Calculate SIL conversion if applicable
-    const silConversionPay = await this.calculateSILConversion(
+    // Calculate SIL used days from approved leave requests in this period
+    const silUsedDays = await this.calculateSILUsedDays(
+      employee.id,
+      dateFrom,
+      dateTo
+    );
+
+    // Calculate SIL leave pay (employee gets paid for SIL days used)
+    const dailyRate = hourlyRate * hoursPerDay;
+    const silLeavePay = silUsedDays * dailyRate;
+
+    // Calculate SIL conversion if applicable (for unused credits at year-end)
+    const silConversionResult = await this.calculateSILConversion(
       employee.id,
       dateFrom,
       dateTo
     );
 
     // Calculate gross salary
+    // Note: holidayRestDayPay is already included in holiday pay amounts (tracked separately for transparency only)
+    // regularRestDayPay needs to be added separately for regular rest days (non-holiday)
+    // Combine both for reporting purposes in rest_day_pay field
+    restDayPay = regularRestDayPay + holidayRestDayPay; // Total rest day pay for reporting
+
     const grossSalary =
       basicSalary +
       overtimePay +
@@ -362,7 +538,9 @@ class PayrollService {
       regularHolidayPay +
       specialHolidayPay +
       doubleHolidayPay +
-      silConversionPay;
+      silLeavePay +
+      silConversionResult.conversionPay +
+      regularRestDayPay; // Add regular rest day pay (premium for non-holiday rest days only)
 
     // Calculate government deductions
     const deductions = this.calculateGovernmentDeductions(
@@ -408,15 +586,17 @@ class PayrollService {
       late_count: lateCount,
       absent_from_lates: absentFromLates,
       leave_days: leaveDays,
-      sil_used_days: 0, // TODO: Track from leave system
-      sil_converted_days: silConversionPay > 0 ? 5 : 0,
+      sil_used_days: silUsedDays,
+      sil_converted_days: silConversionResult.convertedDays,
       basic_salary: basicSalary,
       regular_holiday_pay: regularHolidayPay,
       special_holiday_pay: specialHolidayPay,
       double_holiday_pay: doubleHolidayPay,
       holiday_hours_worked: holidayHoursWorked,
+      rest_day_pay: restDayPay, // Rest day premium (tracked separately for transparency)
       overtime_pay: overtimePay,
-      sil_conversion_pay: silConversionPay,
+      sil_leave_pay: silLeavePay,
+      sil_conversion_pay: silConversionResult.conversionPay,
       sss_employee_share: deductions.sssEmployee,
       philhealth_employee_share: deductions.philhealthEmployee,
       pagibig_employee_share: deductions.pagibigEmployee,
@@ -432,6 +612,46 @@ class PayrollService {
       new_balance_carryover: newBalanceCarryover,
       status: "pending",
     };
+  }
+
+  /**
+   * Check if a date is an employee's rest day (Day Off)
+   * This includes days that were originally Day Off but overridden with working shifts
+   * @param {number} employeeId
+   * @param {Date} date
+   * @returns {Promise<boolean>}
+   */
+  static async isRestDay(employeeId, date) {
+    try {
+      // Normalize date to YYYY-MM-DD format
+      const normalizeDate = (d) => {
+        const dateObj = d instanceof Date ? d : new Date(d);
+        const year = dateObj.getFullYear();
+        const month = String(dateObj.getMonth() + 1).padStart(2, "0");
+        const day = String(dateObj.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+      };
+
+      const dateStr = normalizeDate(date);
+      const schedule = await db("employee_schedules")
+        .where("employee_id", employeeId)
+        .whereRaw("DATE(schedule_date) = ?", [dateStr])
+        .where("is_active", true)
+        .first();
+
+      if (!schedule) {
+        return false;
+      }
+
+      // Check if shift name is "Day Off" OR if it was originally Day Off (rest day override)
+      return (
+        schedule.shift_name === "Day Off" ||
+        schedule.is_rest_day_override === true
+      );
+    } catch (error) {
+      console.error("Error checking rest day:", error);
+      return false; // Default to not a rest day on error
+    }
   }
 
   /**
@@ -768,30 +988,139 @@ class PayrollService {
   }
 
   /**
-   * Calculate SIL conversion to cash
+   * Calculate SIL used days from approved leave requests in payroll period
    * @param {number} employeeId
    * @param {Date} dateFrom
    * @param {Date} dateTo
    * @returns {Promise<number>}
    */
+  static async calculateSILUsedDays(employeeId, dateFrom, dateTo) {
+    try {
+      // Get approved leave requests that overlap with the payroll period
+      // and have use_sil = true
+      const leaveRequests = await db("leave_requests")
+        .where("employee_id", employeeId)
+        .where("status", "approved_by_hr")
+        .where("use_sil", true)
+        .where("sil_days", ">", 0)
+        .whereNull("deleted_at")
+        .select("from_date", "to_date", "sil_days");
+
+      if (!leaveRequests || leaveRequests.length === 0) {
+        return 0;
+      }
+
+      let totalSilUsed = 0;
+
+      // Normalize dates to date-only (ignore time) for comparison
+      const normalizeDate = (date) => {
+        const d = date instanceof Date ? date : new Date(date);
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      };
+
+      const payrollStart = normalizeDate(dateFrom);
+      const payrollEnd = normalizeDate(dateTo);
+
+      for (const leave of leaveRequests) {
+        const leaveStart = normalizeDate(leave.from_date);
+        const leaveEnd = normalizeDate(leave.to_date);
+        const leaveSilDays = parseFloat(leave.sil_days || 0);
+
+        if (leaveSilDays <= 0) continue;
+
+        // Check if leave overlaps with payroll period
+        // Overlap exists if: leaveStart <= payrollEnd AND leaveEnd >= payrollStart
+        if (leaveStart <= payrollEnd && leaveEnd >= payrollStart) {
+          // Calculate overlap range
+          const overlapStart =
+            leaveStart > payrollStart ? leaveStart : payrollStart;
+          const overlapEnd = leaveEnd < payrollEnd ? leaveEnd : payrollEnd;
+
+          if (overlapStart <= overlapEnd) {
+            // Calculate overlap days (inclusive)
+            const overlapDays =
+              Math.ceil((overlapEnd - overlapStart) / (1000 * 60 * 60 * 24)) +
+              1;
+
+            // Calculate total leave days (inclusive)
+            const totalLeaveDays =
+              Math.ceil((leaveEnd - leaveStart) / (1000 * 60 * 60 * 24)) + 1;
+
+            // If leave is fully within payroll period, use full SIL days
+            // Otherwise, proportionally calculate based on overlap
+            if (
+              leaveStart >= payrollStart &&
+              leaveEnd <= payrollEnd &&
+              totalLeaveDays > 0
+            ) {
+              // Leave is fully within payroll period - use all SIL days
+              totalSilUsed += leaveSilDays;
+            } else if (totalLeaveDays > 0) {
+              // Partial overlap - calculate proportional SIL days
+              const proportionalSilDays =
+                (overlapDays / totalLeaveDays) * leaveSilDays;
+              totalSilUsed += proportionalSilDays;
+            }
+          }
+        }
+      }
+
+      return parseFloat(totalSilUsed.toFixed(2));
+    } catch (error) {
+      console.error("Error calculating SIL used days:", error);
+      return 0; // Return 0 on error to not break payroll calculation
+    }
+  }
+
+  /**
+   * Calculate SIL conversion to cash for unused credits at year-end
+   * @param {number} employeeId
+   * @param {Date} dateFrom
+   * @param {Date} dateTo
+   * @returns {Promise<Object>} { conversionPay: number, convertedDays: number }
+   */
   static async calculateSILConversion(employeeId, dateFrom, dateTo) {
     // Check if this is a year-end payroll
+    // Year-end conversion should happen when the payroll period includes December 31st
+    // This ensures we only convert once at the definitive end of the year
     const endDate = new Date(dateTo);
-    const isYearEnd = endDate.getMonth() === 11 && endDate.getDate() === 31;
+    const startDate = new Date(dateFrom);
+    const endYear = endDate.getFullYear();
 
-    if (!isYearEnd) {
-      return 0; // SIL conversion only happens at year-end
+    // Normalize dates to date-only for comparison
+    const normalizeDate = (date) => {
+      const d = date instanceof Date ? date : new Date(date);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    };
+
+    const normalizedStart = normalizeDate(startDate);
+    const normalizedEnd = normalizeDate(endDate);
+
+    // Check if this payroll period includes December 31st of the year
+    const dec31 = new Date(endYear, 11, 31); // December 31st (month 11 = December)
+    const includesDec31 = normalizedStart <= dec31 && normalizedEnd >= dec31;
+
+    if (!includesDec31) {
+      return { conversionPay: 0, convertedDays: 0 };
     }
 
     // Get employee SIL credits for the year
-    const year = endDate.getFullYear();
+    const year = endYear;
     const silRecord = await db("employee_sil_credits")
       .where("employee_id", employeeId)
       .where("year", year)
       .first();
 
-    if (!silRecord || silRecord.available_credits <= 0) {
-      return 0;
+    if (!silRecord) {
+      return { conversionPay: 0, convertedDays: 0 };
+    }
+
+    // Check if credits have already been converted (available_credits should be 0 if converted)
+    const availableCredits = parseFloat(silRecord.available_credits || 0);
+
+    if (availableCredits <= 0) {
+      // Credits already converted or none available
+      return { conversionPay: 0, convertedDays: 0 };
     }
 
     // Get employee hourly rate
@@ -802,17 +1131,20 @@ class PayrollService {
       .first();
 
     if (!employee) {
-      return 0;
+      return { conversionPay: 0, convertedDays: 0 };
     }
 
     const hourlyRate = Number(employee.rate_per_hour || 0);
     const hoursPerDay = employee.employee_type === "Full-time" ? 8 : 4;
     const dailyRate = hourlyRate * hoursPerDay;
 
-    // Calculate cash equivalent
-    const silConversionPay = silRecord.available_credits * dailyRate;
+    // Calculate cash equivalent for unused SIL credits
+    // Formula: available_credits (days) × daily_rate
+    const silConversionPay = availableCredits * dailyRate;
+    const convertedDays = availableCredits;
 
-    // Update SIL credits to show they've been converted
+    // Update SIL credits to show they've been converted to cash
+    // This prevents double conversion if payroll is regenerated
     await db("employee_sil_credits")
       .where("id", silRecord.id)
       .update({
@@ -821,7 +1153,10 @@ class PayrollService {
         updated_at: formatForDatabase(getCurrentPhilippineTime()),
       });
 
-    return silConversionPay;
+    return {
+      conversionPay: parseFloat(silConversionPay.toFixed(2)),
+      convertedDays: parseFloat(convertedDays.toFixed(2)),
+    };
   }
 }
 

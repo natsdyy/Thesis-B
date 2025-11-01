@@ -299,9 +299,39 @@ class Employee {
   // Authenticate employee
   static async authenticate(email, password) {
     try {
+      // First check if employee exists regardless of status (before password validation)
+      // This allows us to show specific messages for terminated accounts
+      const employeeExists = await db("employees")
+        .where("email", email)
+        .whereNull("deleted_at")
+        .select("id", "status", "email")
+        .first();
+
+      // Check if employee is terminated (case-insensitive check)
+      if (employeeExists) {
+        const status = (employeeExists.status || "").trim();
+        if (status.toLowerCase() === "terminated") {
+          console.log(
+            `[AUTH] Terminated employee login attempt: ${email} (status: ${status})`
+          );
+          return {
+            success: false,
+            message:
+              "This employee account has been terminated. Please contact HR for assistance.",
+            code: "ACCOUNT_TERMINATED",
+          };
+        }
+      }
+
       const employee = await this.findByEmail(email);
 
       if (!employee) {
+        // If employee doesn't exist as active, check if they exist at all (for better error messaging)
+        if (!employeeExists) {
+          return { success: false, message: "Invalid email or password" };
+        }
+        // If employee exists but isn't active (not terminated, since we checked above)
+        // This means they might be inactive or on leave
         return { success: false, message: "Invalid email or password" };
       }
 
@@ -600,19 +630,19 @@ class Employee {
       // Determine if account should be active and if password should be set
       // If onboarding_status is 'pending', account starts as inactive and no password set
       // Otherwise (direct employee creation), account is active and password is set
-      const isOnboardingPending = data.onboarding_status === 'pending';
+      const isOnboardingPending = data.onboarding_status === "pending";
       const shouldBeActive = !data.onboarding_status || !isOnboardingPending;
-      
+
       let hashedPassword = null;
       // Only set password if not onboarding pending (password will be set on approval)
       if (!isOnboardingPending) {
-      if (data.password) {
-        hashedPassword = await this.hashPassword(data.password);
-      } else {
-        // Use last name as default password
-        const defaultPassword = data.last_name.trim();
-        hashedPassword = await this.hashPassword(defaultPassword);
-      }
+        if (data.password) {
+          hashedPassword = await this.hashPassword(data.password);
+        } else {
+          // Use last name as default password
+          const defaultPassword = data.last_name.trim();
+          hashedPassword = await this.hashPassword(defaultPassword);
+        }
       }
       // For onboarding pending: password stays null until approval
 
@@ -1058,22 +1088,22 @@ class Employee {
 
       const termination = await db("employee_terminations")
         .leftJoin(
-          "employees",
+          "employees as emp",
           "employee_terminations.employee_id",
-          "employees.id"
+          "emp.id"
         )
         .leftJoin(
-          "employees",
+          "employees as terminator",
           "employee_terminations.terminated_by",
-          "employees.id"
+          "terminator.id"
         )
         .select(
           "employee_terminations.*",
-          "employees.first_name",
-          "employees.last_name",
-          "employees.employee_id as emp_id",
-          "employees.first_name as terminated_by_first_name",
-          "employees.last_name as terminated_by_last_name"
+          "emp.first_name",
+          "emp.last_name",
+          "emp.employee_id as emp_id",
+          "terminator.first_name as terminated_by_first_name",
+          "terminator.last_name as terminated_by_last_name"
         )
         .where("employee_terminations.employee_id", employeeId)
         .first();

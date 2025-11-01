@@ -49,7 +49,7 @@
   // UI state
   const searchQuery = ref('');
   const departmentFilter = ref('');
-  const statusFilter = ref('');
+  const statusFilter = ref('Active');
   const currentPage = ref(1);
   const itemsPerPage = ref(10);
   const showDeletedEmployees = ref(false);
@@ -69,6 +69,9 @@
 
   // View employee modal tab state
   const viewEmployeeTab = ref('details'); // 'details' or 'attendance'
+
+  // Termination data for viewing terminated employees
+  const terminationRecord = ref(null);
 
   // Attendance data
   const attendanceData = ref({});
@@ -486,13 +489,29 @@
   const gotoAddEmployee = () => router.push({ name: 'HRAddEmployee' });
   // View modal state
   const selectedEmployee = ref(null);
-  const openView = (emp) => {
+  const openView = async (emp) => {
     selectedEmployee.value = emp;
+
+    // Fetch termination record if employee is terminated
+    if (emp.status === 'Terminated') {
+      try {
+        terminationRecord.value = await employeeStore.getTerminationRecord(
+          emp.id
+        );
+      } catch (error) {
+        console.error('Error fetching termination record:', error);
+        terminationRecord.value = null;
+      }
+    } else {
+      terminationRecord.value = null;
+    }
+
     document.getElementById('view_employee_modal')?.showModal();
   };
   const closeView = () => {
     document.getElementById('view_employee_modal')?.close();
     selectedEmployee.value = null;
+    terminationRecord.value = null;
     viewEmployeeTab.value = 'details'; // Reset to details tab
   };
 
@@ -1091,7 +1110,6 @@
             >
               <option value="">All Status</option>
               <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
               <option value="On Leave">On Leave</option>
               <option value="Terminated">Terminated</option>
             </select>
@@ -2202,6 +2220,92 @@
             </div>
           </div>
         </div>
+
+        <!-- Termination Details (only for terminated employees) -->
+        <div
+          v-if="selectedEmployee.status === 'Terminated' && terminationRecord"
+          class="bg-red-50 border border-red-200 p-4 rounded-lg"
+        >
+          <h4 class="font-semibold text-red-800 mb-3 flex items-center">
+            <UserX class="w-5 h-5 mr-2" />
+            Termination Details
+          </h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="space-y-2">
+              <div class="flex justify-between">
+                <span class="text-gray-700 font-medium"
+                  >Termination Reason:</span
+                >
+                <span class="font-medium text-red-800">{{
+                  terminationRecord.termination_reason || '—'
+                }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-700 font-medium">Last Working Day:</span>
+                <span class="font-medium">{{
+                  formatDateLong(terminationRecord.last_working_day) || '—'
+                }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-700 font-medium">Terminated Date:</span>
+                <span class="font-medium">{{
+                  formatDateLong(terminationRecord.terminated_at) || '—'
+                }}</span>
+              </div>
+            </div>
+            <div class="space-y-2">
+              <div class="flex justify-between items-center">
+                <span class="text-gray-700 font-medium"
+                  >Final Payroll Processing:</span
+                >
+                <span
+                  :class="[
+                    'badge badge-sm',
+                    terminationRecord.final_payroll_processed
+                      ? 'bg-success text-white border-none'
+                      : 'bg-warning text-warning-content border-none',
+                  ]"
+                >
+                  {{
+                    terminationRecord.final_payroll_processed
+                      ? '✓ Completed'
+                      : '✗ Pending'
+                  }}
+                </span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-gray-700 font-medium"
+                  >System Access Revoked:</span
+                >
+                <span
+                  :class="[
+                    'badge badge-sm',
+                    terminationRecord.system_access_revoked
+                      ? 'bg-success text-white border-none'
+                      : 'bg-warning text-warning-content border-none',
+                  ]"
+                >
+                  {{
+                    terminationRecord.system_access_revoked
+                      ? '✓ Revoked'
+                      : '✗ Pending'
+                  }}
+                </span>
+              </div>
+              <div
+                v-if="terminationRecord.handover_notes"
+                class="mt-3 pt-3 border-t border-red-300"
+              >
+                <div class="text-gray-700 font-medium mb-1">
+                  Handover Notes:
+                </div>
+                <div class="text-sm text-gray-600 bg-white p-2 rounded">
+                  {{ terminationRecord.handover_notes }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Attendance Tab Content -->
@@ -2739,34 +2843,50 @@
           </p>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <label class="flex items-center gap-3 cursor-pointer">
+            <label
+              class="flex items-center gap-3 cursor-pointer hover:bg-gray-100 p-2 rounded transition-colors"
+            >
               <input
                 v-model="terminationModal.finalPayroll"
                 type="checkbox"
-                class="checkbox checkbox-sm border-red-300 checked:bg-red-500"
+                class="checkbox checkbox-sm border-2 border-red-300 checked:bg-red-500 checked:border-red-500 focus:ring-2 focus:ring-red-300 focus:ring-offset-2"
               />
-              <div>
+              <div class="flex-1">
                 <div class="font-medium text-gray-800">
                   Final Payroll Processing
                 </div>
                 <div class="text-xs text-gray-600">
                   Calculate final salary, benefits, and deductions
                 </div>
+                <div
+                  v-if="terminationModal.finalPayroll"
+                  class="text-xs text-red-600 font-medium mt-1"
+                >
+                  ✓ Confirmed
+                </div>
               </div>
             </label>
 
-            <label class="flex items-center gap-3 cursor-pointer">
+            <label
+              class="flex items-center gap-3 cursor-pointer hover:bg-gray-100 p-2 rounded transition-colors"
+            >
               <input
                 v-model="terminationModal.systemAccess"
                 type="checkbox"
-                class="checkbox checkbox-sm border-red-300 checked:bg-red-500"
+                class="checkbox checkbox-sm border-2 border-red-300 checked:bg-red-500 checked:border-red-500 focus:ring-2 focus:ring-red-300 focus:ring-offset-2"
               />
-              <div>
+              <div class="flex-1">
                 <div class="font-medium text-gray-800">
                   System Access Revocation
                 </div>
                 <div class="text-xs text-gray-600">
                   Disable all company system accounts
+                </div>
+                <div
+                  v-if="terminationModal.systemAccess"
+                  class="text-xs text-red-600 font-medium mt-1"
+                >
+                  ✓ Confirmed
                 </div>
               </div>
             </label>
@@ -2836,6 +2956,7 @@
     :scope-id="payrollGenerationModal.scopeId"
     :scope-name="payrollGenerationModal.scopeName"
     :estimated-employee-count="payrollGenerationModal.estimatedEmployeeCount"
+    :employees="filteredEmployees"
     @close="closePayrollGenerationModal"
     @generated="handlePayrollGenerated"
   />

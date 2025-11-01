@@ -431,6 +431,8 @@
           return 'Your account has been deactivated. Please contact your administrator.';
         case 'ACCOUNT_INACTIVE':
           return 'Your account is currently inactive. Please contact your administrator.';
+        case 'ACCOUNT_TERMINATED':
+          return 'This employee account has been terminated. Please contact HR for assistance.';
         case 'NO_ROLE_ASSIGNED':
           return 'No role has been assigned to your account. Please contact your administrator.';
         case 'ROLE_DELETED':
@@ -1104,7 +1106,7 @@
               <button
                 type="submit"
                 :disabled="isLoading"
-                class="btn bg-primaryColor border-none hover:bg-primaryColor/80 font-poppins disabled:bg-primaryColor/50 text-white font-medium py-3 px-6 rounded-full transition-colors flex items-center justify-center shadow-lg cursor-pointer w-full sm:w-[80%] lg:w-[60%] xl:w-[50%] "
+                class="btn bg-primaryColor border-none hover:bg-primaryColor/80 font-poppins disabled:bg-primaryColor/50 text-white font-medium py-3 px-6 rounded-full transition-colors flex items-center justify-center shadow-lg cursor-pointer w-full sm:w-[80%] lg:w-[60%] xl:w-[50%]"
               >
                 <template v-if="isLoading">
                   <span

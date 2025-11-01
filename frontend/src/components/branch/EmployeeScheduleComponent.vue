@@ -173,13 +173,17 @@
 
   const openAddShiftModal = (employee, date) => {
     // All days are working days - no restrictions
+    // Check if there's an existing schedule (e.g., Day Off) that will be replaced
+    const existingSchedule = getShiftForEmployee(employee.id, date.dateString);
+
     selectedEmployee.value = employee;
     selectedDate.value = date;
+    editingShift.value = existingSchedule || null; // Set if exists to allow override
     shiftForm.value = {
       employeeId: employee.id,
       date: date.dateString,
       shiftId: null,
-      notes: '',
+      notes: existingSchedule?.notes || '',
     };
     showAddShiftModal.value = true;
   };
@@ -189,10 +193,15 @@
     selectedEmployee.value = employee;
     selectedDate.value = date;
     editingShift.value = schedule;
+
+    // Find the shift type ID by matching the shift name
+    const shiftType = shiftTypesStore.getShiftTypeByName(schedule.shift.name);
+    const shiftTypeId = shiftType ? shiftType.id : null;
+
     shiftForm.value = {
       employeeId: employee.id,
       date: date.dateString,
-      shiftId: schedule.shift.id,
+      shiftId: shiftTypeId,
       notes: schedule.notes || '',
     };
     showEditShiftModal.value = true;
@@ -219,15 +228,25 @@
         notes: shiftForm.value.notes,
       };
 
-      if (editingShift.value) {
-        // Update existing schedule
-        await scheduleStore.updateSchedule(editingShift.value.shift.id, {
+      // Check if there's an existing schedule for this date (e.g., Day Off to override)
+      const existingSchedule = getShiftForEmployee(
+        shiftForm.value.employeeId,
+        shiftForm.value.date
+      );
+
+      if (existingSchedule) {
+        // Update existing schedule (e.g., changing Day Off to working shift)
+        await scheduleStore.updateSchedule(existingSchedule.id, {
           shift_name: selectedShift.name,
           start_time: selectedShift.start_time,
           end_time: selectedShift.end_time,
           notes: shiftForm.value.notes,
         });
-        showSuccess('Shift updated successfully');
+        showSuccess(
+          existingSchedule.shift.name === 'Day Off'
+            ? 'Working shift assigned (Day Off overridden)'
+            : 'Shift updated successfully'
+        );
       } else {
         // Create new schedule
         await scheduleStore.createSchedule(scheduleData);
@@ -255,8 +274,9 @@
         const { employeeId, dateString } = shiftToDelete.value;
         const schedule = getShiftForEmployee(employeeId, dateString);
 
-        if (schedule && schedule.shift.id !== 'day-off') {
-          await scheduleStore.deleteSchedule(schedule.shift.id);
+        if (schedule) {
+          // Allow deletion of all shifts, including Day Off
+          await scheduleStore.deleteSchedule(schedule.id);
           showSuccess('Shift removed successfully');
           emit('schedule-updated');
         }
@@ -303,8 +323,7 @@
     return leaveRequests.some(
       (request) =>
         request.employee_id === employeeId &&
-        (request.status === 'approved_by_hr' ||
-          request.status === 'approved_by_manager') &&
+        request.status === 'approved_by_hr' && // Only show "On Leave" when fully approved by HR
         new Date(request.from_date) <= date &&
         new Date(request.to_date) >= date
     );
@@ -468,63 +487,121 @@
                         getShiftForEmployee(employee.id, day.dateString)
                       "
                     >
-                      <div
-                        class="badge badge-sm mb-1"
-                        :class="
-                          getShiftForEmployee(employee.id, day.dateString).shift
-                            .color
-                        "
-                      >
-                        {{
-                          getShiftForEmployee(employee.id, day.dateString).shift
-                            .name
-                        }}
-                      </div>
-                      <div
+                      <!-- Day Off Display -->
+                      <template
                         v-if="
                           getShiftForEmployee(employee.id, day.dateString).shift
-                            .name !== 'Day Off'
+                            .name === 'Day Off'
                         "
-                        class="text-xs text-gray-600"
                       >
-                        {{
-                          getShiftForEmployee(employee.id, day.dateString).shift
-                            .startTime
-                        }}
-                        -
-                        {{
-                          getShiftForEmployee(employee.id, day.dateString).shift
-                            .endTime
-                        }}
-                      </div>
+                        <div
+                          class="badge badge-sm mb-1 bg-gray-200 text-gray-700 font-semibold"
+                        >
+                          Day Off
+                        </div>
+                        <div class="text-xs text-gray-500 italic">
+                          No work scheduled
+                        </div>
+                      </template>
+
+                      <!-- Working Shift Display -->
+                      <template v-else>
+                        <div
+                          class="badge badge-sm mb-1"
+                          :class="
+                            getShiftForEmployee(employee.id, day.dateString)
+                              .shift.color
+                          "
+                        >
+                          {{
+                            getShiftForEmployee(employee.id, day.dateString)
+                              .shift.name
+                          }}
+                        </div>
+                        <div class="text-xs text-gray-600 font-mono">
+                          {{
+                            getShiftForEmployee(employee.id, day.dateString)
+                              .shift.startTime
+                          }}
+                          -
+                          {{
+                            getShiftForEmployee(employee.id, day.dateString)
+                              .shift.endTime
+                          }}
+                        </div>
+                        <!-- Rest Day Override Indicator -->
+                        <div
+                          v-if="
+                            getShiftForEmployee(employee.id, day.dateString)
+                              .is_rest_day_override
+                          "
+                          class="text-xs text-primaryColor font-medium mt-0.5"
+                        >
+                          (Rest Day Pay)
+                        </div>
+                      </template>
 
                       <!-- Action Buttons -->
                       <div
                         class="flex space-x-1 mt-1"
                         v-if="canEditSchedule(day)"
                       >
-                        <button
-                          @click="
-                            openEditShiftModal(
-                              employee,
-                              day,
-                              getShiftForEmployee(employee.id, day.dateString)
-                            )
+                        <!-- For Day Off: Show "Add Working Shift" button to override with working shift -->
+                        <template
+                          v-if="
+                            getShiftForEmployee(employee.id, day.dateString)
+                              .shift.name === 'Day Off'
                           "
-                          class="btn btn-ghost btn-xs"
-                          title="Edit shift"
                         >
-                          <Edit class="w-3 h-3" />
-                        </button>
-                        <button
-                          @click="
-                            openDeleteConfirmModal(employee.id, day.dateString)
-                          "
-                          class="btn btn-ghost btn-xs text-error"
-                          title="Remove shift"
-                        >
-                          <Trash2 class="w-3 h-3" />
-                        </button>
+                          <button
+                            @click="openAddShiftModal(employee, day)"
+                            class="btn btn-ghost btn-xs text-primaryColor"
+                            title="Add working shift (override Day Off)"
+                          >
+                            <Plus class="w-3 h-3 mr-1" />
+                            Work
+                          </button>
+                          <button
+                            @click="
+                              openDeleteConfirmModal(
+                                employee.id,
+                                day.dateString
+                              )
+                            "
+                            class="btn btn-ghost btn-xs text-error"
+                            title="Remove Day Off"
+                          >
+                            <Trash2 class="w-3 h-3" />
+                          </button>
+                        </template>
+                        <!-- For Regular Shifts: Show Edit and Delete -->
+                        <template v-else>
+                          <button
+                            @click="
+                              openEditShiftModal(
+                                employee,
+                                day,
+                                getShiftForEmployee(employee.id, day.dateString)
+                              )
+                            "
+                            class="btn btn-ghost btn-xs"
+                            title="Edit shift"
+                          >
+                            <Edit class="w-3 h-3" />
+                          </button>
+                          <button
+                            @click="
+                              openDeleteConfirmModal(
+                                employee.id,
+                                day.dateString
+                              )
+                            "
+                            class="btn btn-ghost btn-xs text-error"
+                            title="Remove shift"
+                          >
+                            <Trash2 class="w-3 h-3" />
+                          </button>
+                        </template>
                       </div>
                     </template>
 
@@ -556,9 +633,29 @@
     <div v-if="showAddShiftModal" class="modal modal-open">
       <div class="modal-box">
         <h3 class="font-bold text-lg mb-4">
-          Assign Shift - {{ selectedEmployee?.first_name }}
-          {{ selectedEmployee?.last_name }}
+          <template
+            v-if="editingShift && editingShift.shift.name === 'Day Off'"
+          >
+            Add Working Shift (Override Day Off) -
+            {{ selectedEmployee?.first_name }}
+            {{ selectedEmployee?.last_name }}
+          </template>
+          <template v-else>
+            Assign Shift - {{ selectedEmployee?.first_name }}
+            {{ selectedEmployee?.last_name }}
+          </template>
         </h3>
+        <div
+          v-if="editingShift && editingShift.shift.name === 'Day Off'"
+          class="alert bg-info/10 border-info/50 mb-4"
+        >
+          <AlertCircle class="w-5 h-5" />
+          <span>
+            This employee has a Day Off scheduled. Adding a working shift will
+            override it. The employee will be eligible for rest day pay rates in
+            payroll.
+          </span>
+        </div>
 
         <div class="space-y-4">
           <div>

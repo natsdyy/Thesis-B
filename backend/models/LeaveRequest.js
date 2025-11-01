@@ -3,6 +3,7 @@ const {
   getCurrentPhilippineDate,
   formatForDatabase,
 } = require("../utils/timezoneUtils");
+const SILCredits = require("./SILCredits");
 
 class LeaveRequest {
   // Create a new leave request
@@ -455,6 +456,46 @@ class LeaveRequest {
           updated_at: formatForDatabase(),
         })
         .returning("*");
+
+      // Restore SIL credits if they were used
+      if (leaveRequest.use_sil && leaveRequest.sil_days > 0) {
+        try {
+          // Extract year from from_date (handle both Date objects and strings)
+          const fromDate =
+            leaveRequest.from_date instanceof Date
+              ? leaveRequest.from_date
+              : new Date(leaveRequest.from_date);
+          const currentYear = fromDate.getFullYear();
+
+          if (isNaN(currentYear)) {
+            throw new Error(
+              `Invalid from_date for year extraction: ${leaveRequest.from_date}`
+            );
+          }
+
+          await SILCredits.restoreCredits(
+            leaveRequest.employee_id,
+            currentYear,
+            parseFloat(leaveRequest.sil_days)
+          );
+
+          console.log(
+            `✅ Restored ${leaveRequest.sil_days} SIL credits for employee ${leaveRequest.employee_id}, year ${currentYear}`
+          );
+        } catch (silError) {
+          console.error(
+            "Error restoring SIL credits after rejection:",
+            silError.message,
+            {
+              leave_id: id,
+              employee_id: leaveRequest.employee_id,
+              from_date: leaveRequest.from_date,
+              sil_days: leaveRequest.sil_days,
+            }
+          );
+          // Don't fail the rejection if SIL restore fails, but log it
+        }
+      }
 
       return updated;
     } catch (error) {

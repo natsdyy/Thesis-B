@@ -163,6 +163,40 @@
                   {{ formatCurrency(recordData?.sil_conversion_pay) }}
                 </td>
               </tr>
+              <tr
+                v-if="Number(recordData?.rest_day_pay || 0) > 0"
+                class="border-b border-gray-200 bg-primaryColor/5"
+              >
+                <td class="p-2">
+                  <div class="flex items-center gap-2">
+                    <svg
+                      class="w-4 h-4 text-primaryColor"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      ></path>
+                    </svg>
+                    <span class="font-medium text-primaryColor"
+                      >Rest Day Premium</span
+                    >
+                    <span
+                      class="text-xs text-gray-600 italic"
+                      title="Additional pay for working on rest days (Day Off)"
+                      >(Rest Day)</span
+                    >
+                  </div>
+                </td>
+                <td class="p-2 text-center text-gray-600">-</td>
+                <td class="p-2 text-right font-medium text-primaryColor">
+                  {{ formatCurrency(recordData?.rest_day_pay) }}
+                </td>
+              </tr>
               <tr class="font-bold border-t-2 border-gray-400">
                 <td class="p-2 text-gray-800">Total Gross Salary</td>
                 <td class="p-2 text-center text-gray-800"></td>
@@ -647,6 +681,7 @@
     'Special Holiday Pay': recordData.value?.special_holiday_pay,
     'Night Differential': recordData.value?.night_diff_pay,
     'SIL Conversion Pay': recordData.value?.sil_conversion_pay,
+    'Rest Day Premium': recordData.value?.rest_day_pay,
   }));
 
   const deductionsList = computed(() => ({

@@ -112,9 +112,24 @@ router.post("/login", async (req, res) => {
     const authResult = await Employee.authenticate(trimmedEmail, password);
 
     if (!authResult.success) {
+      // Check if it's a terminated account - this must be checked BEFORE generic invalid credentials
+      if (authResult.code === "ACCOUNT_TERMINATED") {
+        console.log(
+          `[AUTH ROUTE] Returning ACCOUNT_TERMINATED for: ${trimmedEmail}`
+        );
+        return res.status(403).json({
+          success: false,
+          message:
+            authResult.message ||
+            "This employee account has been terminated. Please contact HR for assistance.",
+          code: "ACCOUNT_TERMINATED",
+        });
+      }
+
+      // All other authentication failures
       return res.status(401).json({
         success: false,
-        message: authResult.message,
+        message: authResult.message || "Invalid email or password",
         code: "INVALID_CREDENTIALS",
       });
     }

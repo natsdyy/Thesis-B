@@ -90,6 +90,21 @@
                   </div>
                 </div>
 
+                <!-- Rest Day Override Notice -->
+                <div
+                  v-if="scheduleInfo.schedule.is_rest_day_override"
+                  class="text-xs bg-primaryColor/10 border border-primaryColor/20 text-primaryColor p-2 rounded"
+                >
+                  <div class="flex items-start space-x-2">
+                    <AlertCircle class="w-3 h-3 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <strong>Rest Day Override:</strong> You are working on
+                      your scheduled Day Off. Rest day pay rates will apply in
+                      your payroll.
+                    </div>
+                  </div>
+                </div>
+
                 <!-- Notes -->
                 <div
                   v-if="scheduleInfo.schedule.notes"

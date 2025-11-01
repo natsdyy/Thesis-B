@@ -975,6 +975,29 @@
             ></textarea>
           </div>
 
+          <!-- SIL Credit Restoration Notice -->
+          <div
+            v-if="selectedRequest.use_sil && selectedRequest.sil_days > 0"
+            class="alert bg-info/10 text-info shadow-none border border-info/20"
+          >
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fill-rule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                clip-rule="evenodd"
+              ></path>
+            </svg>
+            <div class="text-sm">
+              <p class="font-medium">
+                SIL Credits will be automatically restored
+              </p>
+              <p class="text-xs mt-1 opacity-80">
+                {{ selectedRequest.sil_days }} SIL day(s) used in this request
+                will be returned to the employee's available credits.
+              </p>
+            </div>
+          </div>
+
           <div class="alert bg-warning/10 text-warning shadow-none">
             <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
               <path
@@ -1804,10 +1827,14 @@
         selectedRequest.value.id,
         rejectionReason.value
       );
-      showSuccess(
-        `Leave request for ${selectedRequest.value.first_name} ${selectedRequest.value.last_name} has been rejected.`,
-        'Leave Request Rejected'
-      );
+
+      // Success message with SIL credit restoration info if applicable
+      let successMessage = `Leave request for ${selectedRequest.value.first_name} ${selectedRequest.value.last_name} has been rejected.`;
+      if (selectedRequest.value.use_sil && selectedRequest.value.sil_days > 0) {
+        successMessage += ` ${selectedRequest.value.sil_days} SIL day(s) have been automatically restored to the employee's account.`;
+      }
+
+      showSuccess(successMessage, 'Leave Request Rejected');
 
       closeRejectionModal();
       await fetchLeaveRequests();

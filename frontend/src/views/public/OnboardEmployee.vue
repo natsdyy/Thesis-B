@@ -313,14 +313,19 @@
     const dailyRate = hourlyRate * hoursPerDay;
     const monthlyRate = dailyRate * workingDaysPerMonth;
 
+    // Helper function to format currency with comma separators
+    const formatCurrency = (amount) => {
+      return `₱${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    };
+
     return {
       hourly: hourlyRate,
       daily: dailyRate,
       monthly: monthlyRate,
       formatted: {
-        hourly: `₱${hourlyRate.toFixed(2)}`,
-        daily: `₱${dailyRate.toFixed(2)}`,
-        monthly: `₱${monthlyRate.toFixed(2)}`,
+        hourly: formatCurrency(hourlyRate),
+        daily: formatCurrency(dailyRate),
+        monthly: formatCurrency(monthlyRate),
       },
     };
   });
@@ -932,7 +937,7 @@
           </div>
           <div class="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
             <div
-              class="bg-gradient-to-r from-primaryColor to-green-600 h-2.5 rounded-full transition-all duration-500 ease-out"
+              class="bg-gradient-to-r from-primaryColor to-primaryColor/80 h-2.5 rounded-full transition-all duration-500 ease-out"
               :style="{ width: completionPercentage + '%' }"
             ></div>
           </div>
@@ -961,7 +966,7 @@
             class="w-full bg-gray-200 rounded-full h-2.5 mb-6 sm:mb-8 overflow-hidden"
           >
             <div
-              class="bg-gradient-to-r from-primaryColor to-green-600 h-2.5 rounded-full transition-all duration-500 ease-out"
+              class="bg-gradient-to-r from-primaryColor to-primaryColor/80 h-2.5 rounded-full transition-all duration-500 ease-out"
               :style="{ width: ((currentStep + 1) / steps.length) * 100 + '%' }"
             ></div>
           </div>
@@ -977,7 +982,7 @@
               <div
                 class="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center mb-2 sm:mb-3 transition-all duration-300 shadow-md"
                 :class="{
-                  'bg-gradient-to-br from-primaryColor to-green-600 text-white shadow-lg shadow-primaryColor/30 scale-105':
+                  'bg-gradient-to-br from-primaryColor to-primaryColor/80 text-white shadow-lg shadow-primaryColor/30 scale-105':
                     index <= currentStep,
                   'bg-gray-200 text-gray-400 group-hover:bg-gray-300':
                     index > currentStep,
@@ -1187,7 +1192,7 @@
               </div>
 
               <!-- Address -->
-              <div class="form-control">
+              <div class="grid grid-cols-1 gap-2">
                 <label class="label">
                   <span class="label-text"
                     >Address <span class="text-red-500">*</span></span
@@ -1196,7 +1201,7 @@
                 <textarea
                   v-model="employeeForm.address"
                   placeholder="Enter complete address"
-                  class="textarea textarea-bordered h-24 focus:input-primary focus:ring-2 focus:ring-primaryColor/50 transition-all"
+                  class="textarea textarea-bordered h-24 focus:input-primary focus:ring-2 focus:ring-primaryColor/50 transition-all w-full"
                 ></textarea>
               </div>
 
@@ -1251,7 +1256,6 @@
                     <option value="">Select sex</option>
                     <option value="Male">Male</option>
                     <option value="Female">Female</option>
-                    <option value="Other">Other</option>
                   </select>
                 </div>
 
@@ -1579,7 +1583,7 @@
             <div v-if="currentStep === 1" class="space-y-6">
               <!-- Base Salary Information -->
               <div
-                class="bg-gradient-to-br from-primaryColor/10 to-green-50 p-6 rounded-2xl shadow-lg border-2 border-primaryColor/30"
+                class="bg-gradient-to-br from-primaryColor/10 to-primaryColor/5 p-6 rounded-2xl shadow-lg border-2 border-primaryColor/30"
               >
                 <h3
                   class="font-bold text-xl mb-6 text-gray-800 flex items-center"
@@ -1693,9 +1697,7 @@
               </div>
 
               <!-- Info Alert -->
-              <div
-                class="alert alert-success shadow-lg border-2 border-green-200"
-              >
+              <div class="alert alert-success shadow-lg border-none">
                 <CheckCircle class="w-6 h-6" />
                 <span class="font-medium"
                   >Please ensure all government benefit numbers are accurate and
@@ -1798,7 +1800,7 @@
               </div>
 
               <!-- Emergency Contact Address -->
-              <div class="form-control">
+              <div class="grid grid-cols-1 gap-2">
                 <label class="label">
                   <span class="label-text"
                     >Emergency Contact Address
@@ -1808,7 +1810,7 @@
                 <textarea
                   v-model="employeeForm.emergency_contact_address"
                   placeholder="Enter emergency contact address"
-                  class="textarea textarea-bordered h-24"
+                  class="textarea textarea-bordered h-24 w-full"
                 ></textarea>
               </div>
 
@@ -1927,7 +1929,7 @@
                   v-if="previewModal.file && getPdfPreviewUrl"
                   :href="getPdfPreviewUrl"
                   target="_blank"
-                  class="btn btn-xs btn-outline btn-primary"
+                  class="btn btn-xs "
                 >
                   Open in New Tab
                 </a>
@@ -1983,7 +1985,7 @@
         </div>
 
         <div class="modal-action">
-          <button @click="closePreview" class="btn btn-primary">Close</button>
+          <button @click="closePreview" class="btn btn-sm">Close</button>
         </div>
       </div>
       <form method="dialog" class="modal-backdrop">
@@ -2010,13 +2012,13 @@
           This form will be reviewed by HR. Please wait for approval. If you
           have concerns, please email
           <a
-            href="mailto:hr@countryside-steakhouse.site"
+            href="mailto:mailcountrysidesteakhouse@gmail.com"
             class="text-primaryColor underline"
-            >hr@countryside-steakhouse.site</a
+            >mailcountrysidesteakhouse@gmail.com</a
           >.
         </p>
         <div class="modal-action justify-center mt-6">
-          <button class="btn btn-primary" @click="closeCompletionNotice">
+          <button class="btn bg-green-500 text-white font-thin" @click="closeCompletionNotice">
             OK
           </button>
         </div>

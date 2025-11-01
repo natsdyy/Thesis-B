@@ -40,7 +40,9 @@ class PayrollRecord {
         special_holiday_pay: data.special_holiday_pay || 0,
         double_holiday_pay: data.double_holiday_pay || 0,
         holiday_hours_worked: data.holiday_hours_worked || 0,
+        rest_day_pay: data.rest_day_pay || 0, // Rest day premium (tracked separately)
         overtime_pay: data.overtime_pay || 0,
+        sil_leave_pay: data.sil_leave_pay || 0,
         sil_conversion_pay: data.sil_conversion_pay || 0,
         sss_employee_share: data.sss_employee_share || 0,
         philhealth_employee_share: data.philhealth_employee_share || 0,

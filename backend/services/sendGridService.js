@@ -1321,6 +1321,760 @@ class SendGridService {
       };
     }
   }
+
+  /**
+   * Send employee termination notification email using SendGrid
+   * @param {string} to - Employee email address
+   * @param {string} employeeName - Employee's full name
+   * @param {string} terminationReason - Reason for termination
+   * @param {Date} lastWorkingDay - Last working day
+   * @param {string} handoverNotes - Optional handover notes
+   * @param {boolean} finalPayrollProcessed - Whether final payroll is processed
+   * @param {boolean} systemAccessRevoked - Whether system access is revoked
+   * @param {string} terminatedBy - Name of person who terminated the employee
+   */
+  static async sendEmployeeTerminationNotification(
+    to,
+    employeeName,
+    terminationReason,
+    lastWorkingDay,
+    handoverNotes = null,
+    finalPayrollProcessed = false,
+    systemAccessRevoked = false,
+    terminatedBy = "HR Department"
+  ) {
+    try {
+      if (!this.isConfigured()) {
+        console.log("⚠️ SendGrid not configured, skipping email");
+        return {
+          success: false,
+          error: "SendGrid API key not configured",
+          skipEmail: true,
+        };
+      }
+
+      const msg = {
+        to: to,
+        from: {
+          email: "mailcountrysidesteakhouse@gmail.com",
+          name: "Countryside Steakhouse",
+        },
+        subject: "Employee Termination Notice - Countryside Steakhouse",
+        trackingSettings: {
+          clickTracking: {
+            enable: false,
+            enableText: false,
+          },
+          openTracking: {
+            enable: false,
+          },
+        },
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
+            <!-- Main Email Container -->
+            <div style="background-color: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+              
+              <!-- Header -->
+              <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #dc2626;">
+                <h1 style="color: #2c3e50; margin: 0; font-size: 28px; font-weight: bold;">Countryside Steakhouse</h1>
+                <p style="color: #dc2626; margin: 5px 0 0 0; font-size: 16px; font-weight: 500;">Employee Termination Notice</p>
+              </div>
+              
+              <!-- Main Content -->
+              <div style="margin-bottom: 30px;">
+                <h2 style="color: #2c3e50; margin-bottom: 20px; font-size: 24px; font-weight: bold;">Termination Notice</h2>
+                
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
+                  Dear <strong>${employeeName}</strong>,
+                </p>
+                
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
+                  This email is to formally notify you that your employment with Countryside Steakhouse has been terminated, 
+                  effective as of the date specified below.
+                </p>
+                
+                <!-- Termination Details Card -->
+                <div style="background-color: #fef2f2; border: 2px solid #dc2626; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                  <h3 style="color: #991b1b; margin-top: 0; font-size: 20px; font-weight: bold; margin-bottom: 20px;">Termination Details</h3>
+                  
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                      <td style="padding: 8px 0; color: #555; font-size: 15px; font-weight: 500;">Employee:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${employeeName}
+                      </td>
+                    </tr>
+                    <tr style="border-top: 1px solid #fecaca;">
+                      <td style="padding: 12px 0; color: #555; font-size: 15px; font-weight: 500;">Termination Reason:</td>
+                      <td style="padding: 12px 0; text-align: right; font-weight: 600; font-size: 15px; color: #dc2626;">
+                        ${terminationReason}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #555; font-size: 15px; font-weight: 500;">Last Working Day:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${new Date(lastWorkingDay).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #555; font-size: 15px; font-weight: 500;">Terminated By:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${terminatedBy}
+                      </td>
+                    </tr>
+                    <tr style="border-top: 1px solid #fecaca;">
+                      <td style="padding: 12px 0; color: #555; font-size: 15px; font-weight: 500;">Termination Date:</td>
+                      <td style="padding: 12px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+                
+                <!-- Post-Termination Status -->
+                <div style="background-color: #fff7ed; border: 2px solid #fb923c; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                  <h3 style="color: #9a3412; margin-top: 0; font-size: 18px; font-weight: bold; margin-bottom: 15px;">Post-Termination Checklist Status</h3>
+                  
+                  <table style="width: 100%; font-size: 15px;">
+                    <tr>
+                      <td style="padding: 8px 0; color: #555;">Final Payroll Processing:</td>
+                      <td style="padding: 8px 0; text-align: right;">
+                        <span style="
+                          padding: 4px 12px;
+                          border-radius: 4px;
+                          font-weight: 600;
+                          ${
+                            finalPayrollProcessed
+                              ? "background-color: #dcfce7; color: #166534;"
+                              : "background-color: #fef3c7; color: #92400e;"
+                          }"
+                        >
+                          ${finalPayrollProcessed ? "✓ Completed" : "✗ Pending"}
+                        </span>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #555;">System Access Revocation:</td>
+                      <td style="padding: 8px 0; text-align: right;">
+                        <span style="
+                          padding: 4px 12px;
+                          border-radius: 4px;
+                          font-weight: 600;
+                          ${
+                            systemAccessRevoked
+                              ? "background-color: #dcfce7; color: #166534;"
+                              : "background-color: #fef3c7; color: #92400e;"
+                          }"
+                        >
+                          ${systemAccessRevoked ? "✓ Revoked" : "✗ Pending"}
+                        </span>
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+                
+                ${
+                  handoverNotes
+                    ? `
+                <!-- Handover Notes -->
+                <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                  <h3 style="color: #2c3e50; margin-top: 0; font-size: 18px; font-weight: bold; margin-bottom: 15px;">Handover Notes</h3>
+                  <div style="background-color: white; padding: 15px; border-radius: 5px; border-left: 4px solid #466114;">
+                    <p style="color: #555; font-size: 15px; line-height: 1.6; margin: 0; white-space: pre-wrap;">
+                      ${handoverNotes}
+                    </p>
+                  </div>
+                </div>
+                `
+                    : ""
+                }
+                
+                <!-- Important Information -->
+                <div style="background-color: #fee2e2; border-left: 4px solid #dc2626; 
+                            padding: 20px; border-radius: 5px; margin: 20px 0;">
+                  <h4 style="color: #991b1b; margin-top: 0; margin-bottom: 15px; font-size: 16px; font-weight: bold;">Important Information</h4>
+                  <ul style="color: #7f1d1d; margin: 0; padding-left: 20px; font-size: 15px; line-height: 1.8;">
+                    <li>All company property must be returned immediately</li>
+                    <li>Access to company systems and premises has been revoked</li>
+                    ${finalPayrollProcessed ? "<li>Final payroll has been processed and will be disbursed according to company policy</li>" : "<li>Final payroll processing is pending. Please contact HR for details</li>"}
+                    <li>Please ensure all pending work has been properly handed over</li>
+                    <li>For questions or concerns, please contact the HR department</li>
+                  </ul>
+                </div>
+                
+                <p style="color: #555; font-size: 16px; margin-top: 25px; line-height: 1.6;">
+                  We thank you for your service and wish you the best in your future endeavors.<br>
+                  <strong style="color: #dc2626;">Countryside Steakhouse HR Team</strong>
+                </p>
+              </div>
+              
+              <!-- Footer -->
+              <div style="text-align: center; color: #666; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                <p style="margin: 0;">©2025 COUNTRYSIDE-STEAKHOUSE. All rights reserved.</p>
+                <p style="margin: 5px 0 0 0;">This is an automated message, please do not reply to this email.</p>
+              </div>
+            </div>
+          </div>
+        `,
+        text: `
+          Countryside Steakhouse - Employee Termination Notice
+          
+          Dear ${employeeName},
+          
+          This email is to formally notify you that your employment with Countryside Steakhouse has been terminated, 
+          effective as of the date specified below.
+          
+          TERMINATION DETAILS:
+          Employee: ${employeeName}
+          Termination Reason: ${terminationReason}
+          Last Working Day: ${new Date(lastWorkingDay).toLocaleDateString("en-PH")}
+          Terminated By: ${terminatedBy}
+          Termination Date: ${new Date().toLocaleDateString("en-PH")}
+          
+          POST-TERMINATION CHECKLIST STATUS:
+          Final Payroll Processing: ${finalPayrollProcessed ? "✓ Completed" : "✗ Pending"}
+          System Access Revocation: ${systemAccessRevoked ? "✓ Revoked" : "✗ Pending"}
+          
+          ${handoverNotes ? `\nHANDOVER NOTES:\n${handoverNotes}\n` : ""}
+          
+          IMPORTANT INFORMATION:
+          - All company property must be returned immediately
+          - Access to company systems and premises has been revoked
+          - ${finalPayrollProcessed ? "Final payroll has been processed and will be disbursed according to company policy" : "Final payroll processing is pending. Please contact HR for details"}
+          - Please ensure all pending work has been properly handed over
+          - For questions or concerns, please contact the HR department
+          
+          We thank you for your service and wish you the best in your future endeavors.
+          Countryside Steakhouse HR Team
+          
+          ©2025 COUNTRYSIDE-STEAKHOUSE. All rights reserved.
+          This is an automated message, please do not reply to this email.
+        `,
+      };
+
+      console.log(
+        `📧 [SENDGRID] Sending employee termination notification to ${to}`
+      );
+      const response = await sgMail.send(msg);
+
+      console.log(
+        "✅ SendGrid employee termination notification sent:",
+        response[0].headers["x-message-id"]
+      );
+      return {
+        success: true,
+        messageId: response[0].headers["x-message-id"],
+        provider: "SendGrid",
+      };
+    } catch (error) {
+      console.error(
+        "❌ SendGrid employee termination notification error:",
+        error
+      );
+
+      if (error.response) {
+        console.error("SendGrid API Error:", error.response.body);
+        return {
+          success: false,
+          error: `SendGrid API Error: ${error.response.body.errors?.[0]?.message || error.message}`,
+          provider: "SendGrid",
+        };
+      }
+
+      return {
+        success: false,
+        error: error.message,
+        provider: "SendGrid",
+      };
+    }
+  }
+
+  /**
+   * Send leave approval notification email using SendGrid
+   * @param {string} to - Employee email address
+   * @param {string} employeeName - Employee's full name
+   * @param {Object} leaveData - Leave request information
+   * @param {string} approvedBy - Name of person who approved
+   * @param {string} approvalNotes - Optional approval notes
+   */
+  static async sendLeaveApprovalNotification(
+    to,
+    employeeName,
+    leaveData,
+    approvedBy,
+    approvalNotes = null
+  ) {
+    try {
+      if (!this.isConfigured()) {
+        console.log("⚠️ SendGrid not configured, skipping email");
+        return {
+          success: false,
+          error: "SendGrid API key not configured",
+          skipEmail: true,
+        };
+      }
+
+      const msg = {
+        to: to,
+        from: {
+          email: "mailcountrysidesteakhouse@gmail.com",
+          name: "Countryside Steakhouse",
+        },
+        subject: `Leave Request Approved - ${leaveData.leave_type}`,
+        trackingSettings: {
+          clickTracking: {
+            enable: false,
+            enableText: false,
+          },
+          openTracking: {
+            enable: false,
+          },
+        },
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
+            <!-- Main Email Container -->
+            <div style="background-color: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+              
+              <!-- Header -->
+              <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #466114;">
+                <h1 style="color: #2c3e50; margin: 0; font-size: 28px; font-weight: bold;">Countryside Steakhouse</h1>
+                <p style="color: #466114; margin: 5px 0 0 0; font-size: 16px; font-weight: 500;">Ang Paborito ng Bayan</p>
+              </div>
+              
+              <!-- Main Content -->
+              <div style="margin-bottom: 30px;">
+                <div style="text-align: center; margin-bottom: 25px;">
+                  <div style="display: inline-block; background-color: #dcfce7; border-radius: 50%; padding: 20px; margin-bottom: 15px;">
+                    <svg style="width: 48px; height: 48px; color: #16a34a;" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                    </svg>
+                  </div>
+                  <h2 style="color: #16a34a; margin: 0; font-size: 28px; font-weight: bold;">Leave Request Approved!</h2>
+                </div>
+                
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
+                  Dear <strong>${employeeName}</strong>,
+                </p>
+                
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
+                  We are pleased to inform you that your leave request has been <strong style="color: #16a34a;">approved</strong>.
+                </p>
+                
+                <!-- Leave Details Card -->
+                <div style="background-color: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                  <h3 style="color: #2c3e50; margin-top: 0; font-size: 20px; font-weight: bold; margin-bottom: 20px;">Leave Request Details</h3>
+                  
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                      <td style="padding: 8px 0; color: #555; font-size: 15px; font-weight: 500;">Leave Type:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${leaveData.leave_type}
+                      </td>
+                    </tr>
+                    <tr style="border-top: 1px solid #dee2e6;">
+                      <td style="padding: 12px 0; color: #555; font-size: 15px; font-weight: 500;">From Date:</td>
+                      <td style="padding: 12px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${new Date(leaveData.from_date).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #555; font-size: 15px; font-weight: 500;">To Date:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${new Date(leaveData.to_date).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #555; font-size: 15px; font-weight: 500;">Duration:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${leaveData.days || this.calculateDays(leaveData.from_date, leaveData.to_date)} days
+                      </td>
+                    </tr>
+                    <tr style="border-top: 1px solid #dee2e6;">
+                      <td style="padding: 12px 0; color: #555; font-size: 15px; font-weight: 500;">Reason:</td>
+                      <td style="padding: 12px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50; max-width: 200px;">
+                        ${leaveData.reason}
+                      </td>
+                    </tr>
+                    ${
+                      leaveData.use_sil
+                        ? `
+                    <tr style="border-top: 1px solid #dee2e6;">
+                      <td style="padding: 12px 0; color: #555; font-size: 15px; font-weight: 500;">SIL Days Used:</td>
+                      <td style="padding: 12px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${leaveData.sil_days || 0} days
+                      </td>
+                    </tr>
+                    `
+                        : ""
+                    }
+                  </table>
+                </div>
+                
+                <!-- Approval Information -->
+                <div style="background-color: #dcfce7; border: 2px solid #16a34a; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                  <h3 style="color: #166534; margin-top: 0; font-size: 18px; font-weight: bold; margin-bottom: 15px;">Approval Information</h3>
+                  
+                  <table style="width: 100%; font-size: 15px;">
+                    <tr>
+                      <td style="padding: 8px 0; color: #555;">Approved By:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; color: #166534;">
+                        ${approvedBy}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #555;">Approved On:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; color: #166534;">
+                        ${new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })} ${new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" })}
+                      </td>
+                    </tr>
+                  </table>
+                  
+                  ${
+                    approvalNotes
+                      ? `
+                  <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #86efac;">
+                    <p style="color: #166534; font-size: 14px; font-weight: 500; margin-bottom: 8px;">Approval Notes:</p>
+                    <p style="color: #166534; font-size: 15px; line-height: 1.6; margin: 0;">
+                      "${approvalNotes}"
+                    </p>
+                  </div>
+                  `
+                      : ""
+                  }
+                </div>
+                
+                <!-- Information Note -->
+                <div style="background-color: rgba(170,211,109,0.1); border-left: 4px solid #466114; 
+                            padding: 20px; border-radius: 5px; margin: 20px 0;">
+                  <h4 style="color: #466114; margin-top: 0; margin-bottom: 15px; font-size: 16px; font-weight: bold;">Important Reminders</h4>
+                  <ul style="color: #2c3e50; margin: 0; padding-left: 20px; font-size: 15px; line-height: 1.6;">
+                    <li>Please ensure your work is properly handed over before your leave begins</li>
+                    <li>Submit necessary documents or clearances if required</li>
+                    <li>Enjoy your well-deserved time off!</li>
+                  </ul>
+                </div>
+                
+                <p style="color: #555; font-size: 16px; margin-top: 25px; line-height: 1.6;">
+                  We hope you have a restful and enjoyable time off!<br>
+                  <strong style="color: #466114;">Countryside Steakhouse HR Team</strong>
+                </p>
+              </div>
+              
+              <!-- Footer -->
+              <div style="text-align: center; color: #666; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                <p style="margin: 0;">©2025 COUNTRYSIDE-STEAKHOUSE. All rights reserved.</p>
+                <p style="margin: 5px 0 0 0;">This is an automated message, please do not reply to this email.</p>
+              </div>
+            </div>
+          </div>
+        `,
+        text: `
+          Countryside Steakhouse - Leave Request Approved
+          
+          Dear ${employeeName},
+          
+          We are pleased to inform you that your leave request has been approved.
+          
+          LEAVE REQUEST DETAILS:
+          Leave Type: ${leaveData.leave_type}
+          From Date: ${new Date(leaveData.from_date).toLocaleDateString("en-PH")}
+          To Date: ${new Date(leaveData.to_date).toLocaleDateString("en-PH")}
+          Duration: ${leaveData.days || this.calculateDays(leaveData.from_date, leaveData.to_date)} days
+          Reason: ${leaveData.reason}
+          ${leaveData.use_sil ? `SIL Days Used: ${leaveData.sil_days || 0} days` : ""}
+          
+          APPROVAL INFORMATION:
+          Approved By: ${approvedBy}
+          Approved On: ${new Date().toLocaleDateString("en-PH")} ${new Date().toLocaleTimeString("en-PH")}
+          ${approvalNotes ? `Approval Notes: "${approvalNotes}"` : ""}
+          
+          IMPORTANT REMINDERS:
+          - Please ensure your work is properly handed over before your leave begins
+          - Submit necessary documents or clearances if required
+          - Enjoy your well-deserved time off!
+          
+          We hope you have a restful and enjoyable time off!
+          Countryside Steakhouse HR Team
+          
+          ©2025 COUNTRYSIDE-STEAKHOUSE. All rights reserved.
+          This is an automated message, please do not reply to this email.
+        `,
+      };
+
+      console.log(`📧 [SENDGRID] Sending leave approval notification to ${to}`);
+      const response = await sgMail.send(msg);
+
+      console.log(
+        "✅ SendGrid leave approval notification sent:",
+        response[0].headers["x-message-id"]
+      );
+      return {
+        success: true,
+        messageId: response[0].headers["x-message-id"],
+        provider: "SendGrid",
+      };
+    } catch (error) {
+      console.error("❌ SendGrid leave approval notification error:", error);
+
+      if (error.response) {
+        console.error("SendGrid API Error:", error.response.body);
+        return {
+          success: false,
+          error: `SendGrid API Error: ${error.response.body.errors?.[0]?.message || error.message}`,
+          provider: "SendGrid",
+        };
+      }
+
+      return {
+        success: false,
+        error: error.message,
+        provider: "SendGrid",
+      };
+    }
+  }
+
+  /**
+   * Send leave rejection notification email using SendGrid
+   * @param {string} to - Employee email address
+   * @param {string} employeeName - Employee's full name
+   * @param {Object} leaveData - Leave request information
+   * @param {string} rejectedBy - Name of person who rejected
+   * @param {string} rejectionReason - Reason for rejection
+   */
+  static async sendLeaveRejectionNotification(
+    to,
+    employeeName,
+    leaveData,
+    rejectedBy,
+    rejectionReason
+  ) {
+    try {
+      if (!this.isConfigured()) {
+        console.log("⚠️ SendGrid not configured, skipping email");
+        return {
+          success: false,
+          error: "SendGrid API key not configured",
+          skipEmail: true,
+        };
+      }
+
+      const msg = {
+        to: to,
+        from: {
+          email: "mailcountrysidesteakhouse@gmail.com",
+          name: "Countryside Steakhouse",
+        },
+        subject: `Leave Request - ${leaveData.leave_type} Not Approved`,
+        trackingSettings: {
+          clickTracking: {
+            enable: false,
+            enableText: false,
+          },
+          openTracking: {
+            enable: false,
+          },
+        },
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
+            <!-- Main Email Container -->
+            <div style="background-color: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+              
+              <!-- Header -->
+              <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #dc2626;">
+                <h1 style="color: #2c3e50; margin: 0; font-size: 28px; font-weight: bold;">Countryside Steakhouse</h1>
+                <p style="color: #dc2626; margin: 5px 0 0 0; font-size: 16px; font-weight: 500;">Leave Request Decision</p>
+              </div>
+              
+              <!-- Main Content -->
+              <div style="margin-bottom: 30px;">
+                <div style="text-align: center; margin-bottom: 25px;">
+                  <div style="display: inline-block; background-color: #fee2e2; border-radius: 50%; padding: 20px; margin-bottom: 15px;">
+                    <svg style="width: 48px; height: 48px; color: #dc2626;" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                    </svg>
+                  </div>
+                  <h2 style="color: #dc2626; margin: 0; font-size: 28px; font-weight: bold;">Leave Request Not Approved</h2>
+                </div>
+                
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
+                  Dear <strong>${employeeName}</strong>,
+                </p>
+                
+                <p style="color: #555; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
+                  We regret to inform you that your leave request has <strong style="color: #dc2626;">not been approved</strong> at this time.
+                </p>
+                
+                <!-- Leave Details Card -->
+                <div style="background-color: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                  <h3 style="color: #2c3e50; margin-top: 0; font-size: 20px; font-weight: bold; margin-bottom: 20px;">Requested Leave Details</h3>
+                  
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                      <td style="padding: 8px 0; color: #555; font-size: 15px; font-weight: 500;">Leave Type:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${leaveData.leave_type}
+                      </td>
+                    </tr>
+                    <tr style="border-top: 1px solid #dee2e6;">
+                      <td style="padding: 12px 0; color: #555; font-size: 15px; font-weight: 500;">From Date:</td>
+                      <td style="padding: 12px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${new Date(leaveData.from_date).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #555; font-size: 15px; font-weight: 500;">To Date:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${new Date(leaveData.to_date).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #555; font-size: 15px; font-weight: 500;">Duration:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
+                        ${leaveData.days || this.calculateDays(leaveData.from_date, leaveData.to_date)} days
+                      </td>
+                    </tr>
+                    <tr style="border-top: 1px solid #dee2e6;">
+                      <td style="padding: 12px 0; color: #555; font-size: 15px; font-weight: 500;">Reason:</td>
+                      <td style="padding: 12px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50; max-width: 200px;">
+                        ${leaveData.reason}
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+                
+                <!-- Rejection Information -->
+                <div style="background-color: #fee2e2; border: 2px solid #dc2626; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                  <h3 style="color: #991b1b; margin-top: 0; font-size: 18px; font-weight: bold; margin-bottom: 15px;">Rejection Information</h3>
+                  
+                  <div style="margin-bottom: 15px;">
+                    <p style="color: #991b1b; font-size: 14px; font-weight: 500; margin-bottom: 8px;">Rejection Reason:</p>
+                    <div style="background-color: white; padding: 15px; border-radius: 5px; border-left: 4px solid #dc2626;">
+                      <p style="color: #7f1d1d; font-size: 15px; line-height: 1.6; margin: 0; white-space: pre-wrap;">
+                        ${rejectionReason}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <table style="width: 100%; font-size: 15px;">
+                    <tr>
+                      <td style="padding: 8px 0; color: #555;">Rejected By:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; color: #991b1b;">
+                        ${rejectedBy}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #555;">Rejected On:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 600; color: #991b1b;">
+                        ${new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })} ${new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" })}
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+                
+                <!-- Information Note -->
+                <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; 
+                            padding: 20px; border-radius: 5px; margin: 20px 0;">
+                  <h4 style="color: #856404; margin-top: 0; margin-bottom: 15px; font-size: 16px; font-weight: bold;">Next Steps</h4>
+                  <ul style="color: #856404; margin: 0; padding-left: 20px; font-size: 15px; line-height: 1.6;">
+                    <li>You may submit a new leave request with different dates</li>
+                    <li>If you have questions or concerns, please contact your supervisor or HR</li>
+                    <li>Consider discussing your leave plans with your team in advance</li>
+                  </ul>
+                </div>
+                
+                <p style="color: #555; font-size: 16px; margin-top: 25px; line-height: 1.6;">
+                  If you have any questions or concerns, please feel free to reach out to us.<br>
+                  <strong style="color: #466114;">Countryside Steakhouse HR Team</strong>
+                </p>
+              </div>
+              
+              <!-- Footer -->
+              <div style="text-align: center; color: #666; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                <p style="margin: 0;">©2025 COUNTRYSIDE-STEAKHOUSE. All rights reserved.</p>
+                <p style="margin: 5px 0 0 0;">This is an automated message, please do not reply to this email.</p>
+              </div>
+            </div>
+          </div>
+        `,
+        text: `
+          Countryside Steakhouse - Leave Request Not Approved
+          
+          Dear ${employeeName},
+          
+          We regret to inform you that your leave request has not been approved at this time.
+          
+          REQUESTED LEAVE DETAILS:
+          Leave Type: ${leaveData.leave_type}
+          From Date: ${new Date(leaveData.from_date).toLocaleDateString("en-PH")}
+          To Date: ${new Date(leaveData.to_date).toLocaleDateString("en-PH")}
+          Duration: ${leaveData.days || this.calculateDays(leaveData.from_date, leaveData.to_date)} days
+          Reason: ${leaveData.reason}
+          
+          REJECTION INFORMATION:
+          Rejection Reason: ${rejectionReason}
+          Rejected By: ${rejectedBy}
+          Rejected On: ${new Date().toLocaleDateString("en-PH")} ${new Date().toLocaleTimeString("en-PH")}
+          
+          NEXT STEPS:
+          - You may submit a new leave request with different dates
+          - If you have questions or concerns, please contact your supervisor or HR
+          - Consider discussing your leave plans with your team in advance
+          
+          If you have any questions or concerns, please feel free to reach out to us.
+          Countryside Steakhouse HR Team
+          
+          ©2025 COUNTRYSIDE-STEAKHOUSE. All rights reserved.
+          This is an automated message, please do not reply to this email.
+        `,
+      };
+
+      console.log(
+        `📧 [SENDGRID] Sending leave rejection notification to ${to}`
+      );
+      const response = await sgMail.send(msg);
+
+      console.log(
+        "✅ SendGrid leave rejection notification sent:",
+        response[0].headers["x-message-id"]
+      );
+      return {
+        success: true,
+        messageId: response[0].headers["x-message-id"],
+        provider: "SendGrid",
+      };
+    } catch (error) {
+      console.error("❌ SendGrid leave rejection notification error:", error);
+
+      if (error.response) {
+        console.error("SendGrid API Error:", error.response.body);
+        return {
+          success: false,
+          error: `SendGrid API Error: ${error.response.body.errors?.[0]?.message || error.message}`,
+          provider: "SendGrid",
+        };
+      }
+
+      return {
+        success: false,
+        error: error.message,
+        provider: "SendGrid",
+      };
+    }
+  }
+
+  /**
+   * Helper function to calculate days between two dates
+   * @param {string} fromDate - Start date
+   * @param {string} toDate - End date
+   * @returns {number} - Number of days
+   */
+  static calculateDays(fromDate, toDate) {
+    if (!fromDate || !toDate) return 0;
+    const start = new Date(fromDate);
+    const end = new Date(toDate);
+    const diffTime = Math.abs(end - start);
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+  }
 }
 
 module.exports = SendGridService;

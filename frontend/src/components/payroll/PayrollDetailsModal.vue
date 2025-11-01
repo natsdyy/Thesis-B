@@ -347,6 +347,40 @@
                 </div>
               </div>
 
+              <!-- Rest Day Pay Indicator -->
+              <div
+                v-if="Number(record.rest_day_pay || 0) > 0"
+                class="mb-3 bg-primaryColor/10 border border-primaryColor/30 rounded-lg p-2"
+              >
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <svg
+                      class="w-4 h-4 text-primaryColor"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      ></path>
+                    </svg>
+                    <span class="text-xs font-medium text-primaryColor"
+                      >Rest Day Premium</span
+                    >
+                  </div>
+                  <span class="text-sm font-semibold text-primaryColor">
+                    <i class="fas fa-peso-sign mr-1"></i
+                    >{{ formatCurrency(record.rest_day_pay) }}
+                  </span>
+                </div>
+                <p class="text-xs text-gray-600 mt-1">
+                  Additional pay for working on rest days
+                </p>
+              </div>
+
               <!-- Financial Info -->
               <div class="space-y-2 mb-3">
                 <div class="flex justify-between items-center">
@@ -467,11 +501,40 @@
                 class="hover:bg-gray-50"
               >
                 <td class="px-4 py-3">
-                  <div class="text-sm font-medium text-gray-900">
-                    {{ record.employee_name }}
-                  </div>
-                  <div class="text-xs text-gray-500">
-                    {{ record.role_name }}
+                  <div class="flex items-center gap-2">
+                    <div class="flex-1">
+                      <div class="text-sm font-medium text-gray-900">
+                        {{ record.employee_name }}
+                      </div>
+                      <div class="text-xs text-gray-500">
+                        {{ record.role_name }}
+                      </div>
+                    </div>
+                    <div
+                      v-if="Number(record.rest_day_pay || 0) > 0"
+                      class="flex-shrink-0"
+                      :title="`Rest Day Premium: ₱${formatCurrency(record.rest_day_pay)}`"
+                    >
+                      <span
+                        class="badge badge-xs badge-info tooltip"
+                        data-tip="Rest Day Premium"
+                      >
+                        <svg
+                          class="w-3 h-3 mr-1"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                          ></path>
+                        </svg>
+                        Rest Day
+                      </span>
+                    </div>
                   </div>
                 </td>
                 <td class="px-4 py-3 text-sm text-gray-700">
@@ -486,8 +549,21 @@
                 <td
                   class="px-4 py-3 text-sm text-right font-medium text-gray-700"
                 >
-                  <i class="fas fa-peso-sign mr-1"></i
-                  >{{ formatCurrency(record.gross_salary) }}
+                  <div class="flex flex-col items-end">
+                    <div>
+                      <i class="fas fa-peso-sign mr-1"></i
+                      >{{ formatCurrency(record.gross_salary) }}
+                    </div>
+                    <div
+                      v-if="Number(record.rest_day_pay || 0) > 0"
+                      class="text-xs text-primaryColor mt-1"
+                      :title="`Rest Day Premium: ₱${formatCurrency(record.rest_day_pay)}`"
+                    >
+                      <i class="fas fa-peso-sign mr-0.5"></i
+                      >{{ formatCurrency(record.rest_day_pay) }}
+                      <span class="text-gray-500"> Rest Day</span>
+                    </div>
+                  </div>
                 </td>
                 <td
                   class="px-4 py-3 text-sm text-right font-medium text-gray-700"

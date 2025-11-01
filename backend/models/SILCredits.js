@@ -95,8 +95,14 @@ class SILCredits {
         );
       }
 
-      const newUsedCredits = silCredits.used_credits + daysToUse;
-      const newAvailableCredits = silCredits.available_credits - daysToUse;
+      const newUsedCredits = parseFloat(
+        (parseFloat(silCredits.used_credits) + parseFloat(daysToUse)).toFixed(2)
+      );
+      const newAvailableCredits = parseFloat(
+        (
+          parseFloat(silCredits.available_credits) - parseFloat(daysToUse)
+        ).toFixed(2)
+      );
 
       const [updated] = await db("employee_sil_credits")
         .where("id", silCredits.id)
@@ -131,15 +137,29 @@ class SILCredits {
 
       const newUsedCredits = Math.max(
         0,
-        silCredits.used_credits - daysToRestore
+        parseFloat(
+          (
+            parseFloat(silCredits.used_credits) - parseFloat(daysToRestore)
+          ).toFixed(2)
+        )
       );
-      const newAvailableCredits = silCredits.available_credits + daysToRestore;
+      const newAvailableCredits = parseFloat(
+        (
+          parseFloat(silCredits.available_credits) + parseFloat(daysToRestore)
+        ).toFixed(2)
+      );
+
+      // Cap available credits to not exceed total credits
+      const cappedAvailableCredits = Math.min(
+        newAvailableCredits,
+        parseFloat(silCredits.total_credits)
+      );
 
       const [updated] = await db("employee_sil_credits")
         .where("id", silCredits.id)
         .update({
           used_credits: newUsedCredits,
-          available_credits: newAvailableCredits,
+          available_credits: cappedAvailableCredits,
           updated_at: formatForDatabase(getCurrentPhilippineTime()),
         })
         .returning("*");

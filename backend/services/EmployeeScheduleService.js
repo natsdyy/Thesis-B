@@ -38,7 +38,8 @@ class EmployeeScheduleService {
           "start_time",
           "end_time",
           "notes",
-          "is_active"
+          "is_active",
+          "is_rest_day_override"
         )
         .where("employee_id", employeeId)
         .whereRaw("DATE(schedule_date) = ?", [date]) // Use DATE() function to match date part only
@@ -140,7 +141,9 @@ class EmployeeScheduleService {
       }
 
       // Check if employee has "Day Off" shift
-      if (schedule.shift_name === "Day Off") {
+      // If is_rest_day_override is true, it means Day Off was overridden with a working shift
+      // In that case, allow check-in (the shift_name will be a working shift, not "Day Off")
+      if (schedule.shift_name === "Day Off" && !schedule.is_rest_day_override) {
         return {
           isValid: false,
           message: "You are scheduled for Day Off today",
@@ -295,6 +298,7 @@ class EmployeeScheduleService {
           end_time: schedule.end_time,
           date: schedule.schedule_date,
           notes: schedule.notes,
+          is_rest_day_override: schedule.is_rest_day_override || false,
         },
       };
     } catch (error) {

@@ -9,7 +9,7 @@
     >
       <!-- Header -->
       <div
-        class="flex items-center justify-between px-6 py-4 bg-primaryColor text-white border-b border-black/10 "
+        class="flex items-center justify-between px-6 py-4 bg-primaryColor text-white border-b border-black/10"
       >
         <h2 class="text-md font-thin">
           Payroll Details - {{ record?.employee_name }}
@@ -189,6 +189,44 @@
                   >{{ formatCurrency(record?.sil_conversion_pay) }})
                 </p>
               </div>
+              <div
+                v-if="Number(record?.rest_day_pay || 0) > 0"
+                class="col-span-2 bg-primaryColor/10 border border-primaryColor/30 rounded-lg p-3 mt-2"
+              >
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <svg
+                      class="w-4 h-4 text-primaryColor"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      ></path>
+                    </svg>
+                    <p class="text-sm font-medium text-primaryColor">
+                      Rest Day Premium
+                    </p>
+                    <span
+                      class="badge badge-xs badge-info"
+                      title="Additional pay for working on rest days (Day Off)"
+                      >Rest Day</span
+                    >
+                  </div>
+                  <p class="font-semibold text-primaryColor">
+                    <i class="fas fa-peso-sign mr-1"></i
+                    >{{ formatCurrency(record?.rest_day_pay) }}
+                  </p>
+                </div>
+                <p class="text-xs text-gray-600 mt-2">
+                  Additional pay for working on scheduled Day Off or overridden
+                  Day Off shifts
+                </p>
+              </div>
             </div>
           </div>
 
@@ -240,6 +278,38 @@
                 <span class="font-medium text-gray-700"
                   ><i class="fas fa-peso-sign mr-1"></i
                   >{{ formatCurrency(record?.sil_conversion_pay) }}</span
+                >
+              </div>
+              <div
+                v-if="Number(record?.rest_day_pay || 0) > 0"
+                class="flex justify-between items-center bg-primaryColor/5 border border-primaryColor/20 rounded-lg p-2 -mx-1"
+              >
+                <div class="flex items-center gap-2">
+                  <svg
+                    class="w-4 h-4 text-primaryColor"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    ></path>
+                  </svg>
+                  <span class="text-sm font-medium text-primaryColor"
+                    >Rest Day Premium</span
+                  >
+                  <span
+                    class="badge badge-xs badge-info"
+                    title="Additional pay for working on rest days (Day Off)"
+                    >Rest Day</span
+                  >
+                </div>
+                <span class="font-semibold text-primaryColor"
+                  ><i class="fas fa-peso-sign mr-1"></i
+                  >{{ formatCurrency(record?.rest_day_pay) }}</span
                 >
               </div>
               <div class="flex justify-between pt-2 border-t border-black/10">

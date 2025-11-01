@@ -1369,6 +1369,54 @@ router.post("/:id/terminate", authenticateToken, async (req, res) => {
       terminatedBy
     );
 
+    // Send termination notification email
+    if (result.employee && result.employee.email) {
+      try {
+        // Get the name of the person who terminated the employee
+        let terminatedByName = "HR Department";
+        if (terminatedBy) {
+          const terminator = await db("employees")
+            .where("id", terminatedBy)
+            .select("first_name", "last_name")
+            .first();
+          if (terminator) {
+            terminatedByName = `${terminator.first_name} ${terminator.last_name}`;
+          }
+        }
+
+        const employeeName = `${result.employee.first_name} ${result.employee.last_name}`;
+        const emailResult =
+          await SendGridService.sendEmployeeTerminationNotification(
+            result.employee.email,
+            employeeName,
+            terminationData.termination_reason,
+            terminationData.last_working_day,
+            terminationData.handover_notes || null,
+            terminationData.final_payroll_processed || false,
+            terminationData.system_access_revoked || false,
+            terminatedByName
+          );
+
+        if (emailResult.success) {
+          console.log(
+            `✅ Termination notification email sent to ${result.employee.email}`
+          );
+        } else if (!emailResult.skipEmail) {
+          console.error(
+            `❌ Failed to send termination notification email:`,
+            emailResult.error
+          );
+          // Don't fail the termination if email fails
+        }
+      } catch (emailError) {
+        console.error(
+          "❌ Error sending termination notification email:",
+          emailError
+        );
+        // Don't fail the termination if email fails
+      }
+    }
+
     res.json({
       success: true,
       data: result,

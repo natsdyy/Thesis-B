@@ -20,6 +20,8 @@ const { db } = require("../config/database");
 const { authenticateToken } = require("../middleware/rbac");
 const { requireAnyPermission } = require("../middleware/rbac");
 const NotificationService = require("../services/NotificationService");
+const SendGridService = require("../services/sendGridService");
+const Employee = require("../models/Employee");
 
 /**
  * @swagger
@@ -862,6 +864,44 @@ router.post(
         // Don't fail the main request if notification fails
       }
 
+      // Send email notification
+      try {
+        // Get full leave request details with employee info
+        const leaveDetails = await LeaveRequest.getById(id);
+        if (leaveDetails) {
+          // Get employee details for email
+          const employee = await Employee.getById(leaveDetails.employee_id);
+          // Get manager details
+          const manager = await Employee.getById(managerId);
+
+          if (employee && employee.email) {
+            await SendGridService.sendLeaveApprovalNotification(
+              employee.email,
+              `${employee.first_name} ${employee.last_name}`,
+              {
+                leave_type: leaveDetails.leave_type,
+                from_date: leaveDetails.from_date,
+                to_date: leaveDetails.to_date,
+                reason: leaveDetails.reason,
+                use_sil: leaveDetails.use_sil,
+                sil_days: leaveDetails.sil_days,
+                days: SendGridService.calculateDays(
+                  leaveDetails.from_date,
+                  leaveDetails.to_date
+                ),
+              },
+              manager
+                ? `${manager.first_name} ${manager.last_name}`
+                : "Manager",
+              notes
+            );
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending leave approval email:", emailError);
+        // Don't fail the main request if email fails
+      }
+
       res.json({
         success: true,
         data: updated,
@@ -950,6 +990,44 @@ router.post(
           notificationError
         );
         // Don't fail the main request if notification fails
+      }
+
+      // Send email notification
+      try {
+        // Get full leave request details with employee info
+        const leaveDetails = await LeaveRequest.getById(id);
+        if (leaveDetails) {
+          // Get employee details for email
+          const employee = await Employee.getById(leaveDetails.employee_id);
+          // Get HR details
+          const hrStaff = await Employee.getById(hrId);
+
+          if (employee && employee.email) {
+            await SendGridService.sendLeaveApprovalNotification(
+              employee.email,
+              `${employee.first_name} ${employee.last_name}`,
+              {
+                leave_type: leaveDetails.leave_type,
+                from_date: leaveDetails.from_date,
+                to_date: leaveDetails.to_date,
+                reason: leaveDetails.reason,
+                use_sil: leaveDetails.use_sil,
+                sil_days: leaveDetails.sil_days,
+                days: SendGridService.calculateDays(
+                  leaveDetails.from_date,
+                  leaveDetails.to_date
+                ),
+              },
+              hrStaff
+                ? `${hrStaff.first_name} ${hrStaff.last_name}`
+                : "HR Staff",
+              notes
+            );
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending leave approval email:", emailError);
+        // Don't fail the main request if email fails
       }
 
       res.json({
@@ -1070,6 +1148,44 @@ router.post(
           notificationError
         );
         // Don't fail the main request if notification fails
+      }
+
+      // Send email notification
+      try {
+        // Get full leave request details with employee info
+        const leaveDetails = await LeaveRequest.getById(id);
+        if (leaveDetails) {
+          // Get employee details for email
+          const employee = await Employee.getById(leaveDetails.employee_id);
+          // Get rejector details
+          const rejector = await Employee.getById(rejectedById);
+
+          if (employee && employee.email) {
+            await SendGridService.sendLeaveRejectionNotification(
+              employee.email,
+              `${employee.first_name} ${employee.last_name}`,
+              {
+                leave_type: leaveDetails.leave_type,
+                from_date: leaveDetails.from_date,
+                to_date: leaveDetails.to_date,
+                reason: leaveDetails.reason,
+                use_sil: leaveDetails.use_sil,
+                sil_days: leaveDetails.sil_days,
+                days: SendGridService.calculateDays(
+                  leaveDetails.from_date,
+                  leaveDetails.to_date
+                ),
+              },
+              rejector
+                ? `${rejector.first_name} ${rejector.last_name}`
+                : "Manager",
+              rejection_reason
+            );
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending leave rejection email:", emailError);
+        // Don't fail the main request if email fails
       }
 
       res.json({

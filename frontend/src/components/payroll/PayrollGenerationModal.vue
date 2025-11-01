@@ -47,7 +47,7 @@
               <strong>Branch:</strong> {{ scopeName }}
             </p>
             <p class="mt-2">
-              <strong>Estimated Employees:</strong> {{ estimatedEmployeeCount }}
+              <strong>Estimated Employees:</strong> {{ eligibleEmployeeCount }}
             </p>
           </div>
         </div>
@@ -95,7 +95,10 @@
               type="date"
               required
               class="input w-full px-3 py-2"
-              @change="updatePeriodName"
+              :class="{
+                'border-red-500': validationError.includes('date range'),
+              }"
+              @change="handleDateChange"
             />
           </div>
           <div>
@@ -106,8 +109,11 @@
               v-model="formData.dateTo"
               type="date"
               required
-              class=" input w-full px-3 py-2 "
-              @change="updatePeriodName"
+              class="input w-full px-3 py-2"
+              :class="{
+                'border-red-500': validationError.includes('date range'),
+              }"
+              @change="handleDateChange"
             />
           </div>
         </div>
@@ -154,7 +160,7 @@
           <div class="text-sm text-primaryColor space-y-1">
             <p>
               • Payroll will be generated for
-              <strong>{{ estimatedEmployeeCount }} employees</strong>
+              <strong>{{ eligibleEmployeeCount }} employees</strong>
             </p>
             <p>
               • Period:
@@ -196,10 +202,11 @@
 </template>
 
 <script>
-  import { ref, reactive, computed, watch } from 'vue';
+  import { ref, reactive, computed, watch, nextTick } from 'vue';
   import { useRouter } from 'vue-router';
   import { usePayrollStore } from '@/stores/payrollStore';
   import { useAuthStore } from '@/stores/authStore';
+  import { apiConfig } from '@/config/api.js';
 
   export default {
     name: 'PayrollGenerationModal',
@@ -224,6 +231,10 @@
         type: Number,
         default: 0,
       },
+      employees: {
+        type: Array,
+        default: () => [],
+      },
     },
     emits: ['close', 'generated'],
     setup(props, { emit }) {
@@ -233,6 +244,135 @@
 
       const loading = ref(false);
       const validationError = ref('');
+      const terminationRecords = ref({}); // Cache for termination records: { employeeId: terminationData }
+
+      // Fetch termination records for terminated employees
+      const fetchTerminationRecords = async () => {
+        if (!props.employees || props.employees.length === 0) return;
+
+        const terminatedEmployees = props.employees.filter(
+          (emp) => emp.status === 'Terminated'
+        );
+
+        for (const emp of terminatedEmployees) {
+          try {
+            const response = await fetch(
+              `${apiConfig.baseURL}/employees/${emp.id}/termination`,
+              {
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${localStorage.getItem('token')}`,
+                },
+              }
+            );
+
+            if (response.ok) {
+              const data = await response.json();
+              if (data.success && data.data) {
+                terminationRecords.value[emp.id] = data.data;
+              }
+            }
+          } catch (error) {
+            console.error(
+              `Error fetching termination for employee ${emp.id}:`,
+              error
+            );
+          }
+        }
+      };
+
+      // Computed: Eligible employees count based on date range
+      const eligibleEmployeeCount = computed(() => {
+        if (!props.employees || props.employees.length === 0) {
+          return props.estimatedEmployeeCount; // Fallback to prop if no employees list
+        }
+
+        if (!formData.dateFrom || !formData.dateTo) {
+          return props.employees.filter((emp) => emp.status === 'Active')
+            .length;
+        }
+
+        // Parse dates as local dates (not UTC) to avoid timezone shifts
+        // formData.dateFrom/dateTo are in format "YYYY-MM-DD" (from HTML date input)
+        const parseLocalDate = (dateString) => {
+          const [year, month, day] = dateString.split('-').map(Number);
+          return new Date(year, month - 1, day); // month is 0-indexed in JS Date
+        };
+
+        const dateFrom = parseLocalDate(formData.dateFrom);
+        const dateTo = parseLocalDate(formData.dateTo);
+
+        const eligibleEmployees = props.employees.filter((emp) => {
+          // Always include active employees
+          if (emp.status === 'Active') {
+            return true;
+          }
+
+          // For terminated employees, check if their last_working_day falls within the payroll period
+          // They should only be included if they actually worked during the period
+          if (emp.status === 'Terminated') {
+            const termination = terminationRecords.value[emp.id];
+            if (termination && termination.last_working_day) {
+              const lastWorkingDay = new Date(termination.last_working_day);
+              // Normalize dates to midnight local time for proper date-only comparison
+              // Extract date components from the termination date (which may be in UTC)
+              const lastWorkingDayYear = lastWorkingDay.getUTCFullYear();
+              const lastWorkingDayMonth = lastWorkingDay.getUTCMonth();
+              const lastWorkingDayDate = lastWorkingDay.getUTCDate();
+
+              // Create local date objects at midnight for comparison
+              const lastWorkingDayOnly = new Date(
+                lastWorkingDayYear,
+                lastWorkingDayMonth,
+                lastWorkingDayDate
+              );
+              const dateFromOnly = new Date(
+                dateFrom.getFullYear(),
+                dateFrom.getMonth(),
+                dateFrom.getDate()
+              );
+              const dateToOnly = new Date(
+                dateTo.getFullYear(),
+                dateTo.getMonth(),
+                dateTo.getDate()
+              );
+
+              // Include if last_working_day is on or after the period start date
+              // This means they worked during the payroll period (from period start until their last day)
+              // Example: Employee with last_working_day = Nov 1 should be included in October payroll
+              // because they worked from Oct 1 until Nov 1 (during the October period)
+              // The actual payroll calculation will cap at their last_working_day
+              const isWithinPeriod = lastWorkingDayOnly >= dateFromOnly;
+
+              // Debug log - format dates as YYYY-MM-DD for clarity
+              if (process.env.NODE_ENV === 'development') {
+                const formatDate = (date) => {
+                  const year = date.getFullYear();
+                  const month = String(date.getMonth() + 1).padStart(2, '0');
+                  const day = String(date.getDate()).padStart(2, '0');
+                  return `${year}-${month}-${day}`;
+                };
+
+                console.log(
+                  `Employee ${emp.first_name} ${emp.last_name}:`,
+                  `last_working_day=${formatDate(lastWorkingDayOnly)},`,
+                  `period=${formatDate(dateFromOnly)} to ${formatDate(dateToOnly)},`,
+                  `included=${isWithinPeriod}`
+                );
+              }
+
+              return isWithinPeriod;
+            }
+            // If no termination record, exclude (termination data not loaded yet)
+            return false;
+          }
+
+          // Include other statuses (Inactive, On Leave) - adjust as needed
+          return true;
+        });
+
+        return eligibleEmployees.length;
+      });
 
       const periodTypes = [
         {
@@ -270,23 +410,60 @@
         return diffDays;
       });
 
-      // Validate dates
-      watch([() => formData.dateFrom, () => formData.dateTo], () => {
-        validationError.value = '';
+      // Validate dates and period type consistency
+      watch(
+        [
+          () => formData.dateFrom,
+          () => formData.dateTo,
+          () => formData.periodType,
+        ],
+        () => {
+          validationError.value = '';
 
-        if (formData.dateFrom && formData.dateTo) {
-          const from = new Date(formData.dateFrom);
-          const to = new Date(formData.dateTo);
+          if (formData.dateFrom && formData.dateTo) {
+            const from = new Date(formData.dateFrom);
+            const to = new Date(formData.dateTo);
 
-          if (from > to) {
-            validationError.value = 'Date From must be before Date To';
-          } else if (daysInPeriod.value > 62) {
-            validationError.value = 'Period cannot exceed 62 days';
-          } else if (daysInPeriod.value < 7) {
-            validationError.value = 'Period must be at least 7 days';
+            if (from > to) {
+              validationError.value = 'Date From must be before Date To';
+              return;
+            }
+
+            const days = daysInPeriod.value;
+
+            // Validate period type constraints
+            if (formData.periodType !== 'custom') {
+              let expectedDays = 0;
+              let tolerance = 0; // Allow some flexibility
+
+              switch (formData.periodType) {
+                case 'bi-weekly':
+                  expectedDays = 14;
+                  tolerance = 1; // Allow 13-15 days
+                  break;
+                case 'monthly':
+                  expectedDays = 30;
+                  tolerance = 2; // Allow 28-32 days (to account for different month lengths)
+                  break;
+              }
+
+              if (expectedDays > 0) {
+                if (Math.abs(days - expectedDays) > tolerance) {
+                  validationError.value = `${formData.periodType === 'bi-weekly' ? 'Bi-Weekly' : 'Monthly'} period must be ${expectedDays} days (±${tolerance}), but selected range is ${days} days`;
+                  return;
+                }
+              }
+            }
+
+            // General validation
+            if (days > 62) {
+              validationError.value = 'Period cannot exceed 62 days';
+            } else if (days < 7) {
+              validationError.value = 'Period must be at least 7 days';
+            }
           }
         }
-      });
+      );
 
       const handlePeriodTypeChange = () => {
         // Auto-calculate date range based on period type
@@ -300,23 +477,32 @@
             to.setDate(today.getDate() - 1);
             break;
           case 'bi-weekly':
+            // Bi-weekly: 14 days
             from.setDate(today.getDate() - 14);
             to.setDate(today.getDate() - 1);
             break;
           case 'monthly':
+            // Monthly: previous month (first to last day)
             from.setMonth(today.getMonth() - 1);
             from.setDate(1);
             to.setMonth(today.getMonth());
             to.setDate(0); // Last day of previous month
             break;
           case 'custom':
-            // Don't auto-fill for custom
+            // Don't auto-fill for custom, but clear validation
+            validationError.value = '';
             return;
         }
 
         formData.dateFrom = from.toISOString().split('T')[0];
         formData.dateTo = to.toISOString().split('T')[0];
         updatePeriodName();
+      };
+
+      const handleDateChange = () => {
+        updatePeriodName();
+        // Trigger validation by accessing the watch dependencies
+        // The watch will automatically validate the date range against period type
       };
 
       const updatePeriodName = () => {
@@ -394,6 +580,34 @@
         emit('close');
       };
 
+      // Watch for employees prop changes to fetch termination records
+      watch(
+        () => props.employees,
+        async (newEmployees) => {
+          if (newEmployees && newEmployees.length > 0) {
+            await fetchTerminationRecords();
+            // Force reactive update after fetching
+            await nextTick();
+          }
+        },
+        { immediate: true, deep: true }
+      );
+
+      // Watch for date changes to recalculate eligible count
+      watch([() => formData.dateFrom, () => formData.dateTo], async () => {
+        if (
+          props.employees &&
+          props.employees.length > 0 &&
+          formData.dateFrom &&
+          formData.dateTo
+        ) {
+          // Re-fetch termination records if needed
+          if (Object.keys(terminationRecords.value).length === 0) {
+            await fetchTerminationRecords();
+          }
+        }
+      });
+
       // Initialize with default dates
       handlePeriodTypeChange();
 
@@ -403,7 +617,9 @@
         loading,
         validationError,
         daysInPeriod,
+        eligibleEmployeeCount,
         handlePeriodTypeChange,
+        handleDateChange,
         updatePeriodName,
         handleGeneratePayroll,
         closeModal,

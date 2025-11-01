@@ -250,7 +250,9 @@ class BranchPosition {
                                    Number(branchId) > 0;
           
           if (!hasValidBranchId) {
-            console.warn('Position excluded - invalid branch_id:', {
+            // Debug log: positions with null branch_id are expected for department positions
+            // They're correctly excluded when fetching branch positions
+            console.debug('Position excluded - invalid branch_id:', {
               position_id: p.id,
               position_title: p.position_title,
               branch_id: branchId,

@@ -1,90 +1,5 @@
 <template>
   <div class="min-h-screen bg-gray-50">
-    <!-- Schedule Modal for Burol Main Branch -->
-    <div v-if="isScheduleModalOpen" class="fixed inset-0 z-50 overflow-y-auto">
-      <!-- Enhanced Backdrop with Blur -->
-      <div class="fixed inset-0 bg-black/60 backdrop-blur-sm transition-all duration-300" @click="closeScheduleModal"></div>
-      
-      <!-- Modal -->
-      <div class="flex min-h-full items-center justify-center p-4">
-        <div class="relative w-full max-w-md bg-white rounded-2xl shadow-2xl transform transition-all duration-300 animate-in slide-in-from-bottom-4 fade-in-0 zoom-in-95">
-        <!-- Modal Header -->
-        <div class="bg-green-800 text-white p-6 rounded-t-2xl">
-          <div class="flex items-center justify-between">
-            <h2 class="text-2xl font-bold">Burol Main Branch</h2>
-            <button @click="closeScheduleModal" class="text-white hover:text-orange-300 transition-colors">
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-              </svg>
-            </button>
-          </div>
-          <p class="text-green-100 mt-2">COUNTRYSIDE STEAKHOUSE</p>
-        </div>
-        
-        <!-- Modal Content -->
-        <div class="p-6">
-          <!-- Current Status -->
-          <div class="mb-6 p-4 bg-gradient-to-r from-red-50 to-orange-50 rounded-xl border border-red-200">
-            <div class="flex items-center justify-between">
-              <h3 class="text-lg font-semibold text-gray-800">Current Status</h3>
-              <span class="bg-red-500 text-white text-sm font-bold px-4 py-2 rounded-full shadow-md">CLOSED NOW</span>
-            </div>
-            <p class="text-gray-600 text-sm mt-2">We'll be open tomorrow at 11:00 AM</p>
-          </div>
-          
-          <!-- Schedule Details -->
-          <div class="space-y-3">
-            <div class="flex justify-between items-center py-3 px-4 bg-gray-50 rounded-lg border-l-4 border-green-500">
-              <span class="font-medium text-gray-800">Monday</span>
-              <span class="text-green-600 font-semibold">11:00 AM - 9:00 PM</span>
-            </div>
-            <div class="flex justify-between items-center py-3 px-4 bg-gray-50 rounded-lg border-l-4 border-green-500">
-              <span class="font-medium text-gray-800">Tuesday</span>
-              <span class="text-green-600 font-semibold">11:00 AM - 9:00 PM</span>
-            </div>
-            <div class="flex justify-between items-center py-3 px-4 bg-gray-50 rounded-lg border-l-4 border-green-500">
-              <span class="font-medium text-gray-800">Wednesday</span>
-              <span class="text-green-600 font-semibold">11:00 AM - 9:00 PM</span>
-            </div>
-            <div class="flex justify-between items-center py-4 px-4 bg-orange-50 rounded-lg border-l-4 border-orange-500">
-              <span class="font-medium text-gray-800">Thursday</span>
-              <span class="text-orange-600 font-semibold">11:00 AM - 9:00 PM</span>
-            </div>
-            <div class="flex justify-between items-center py-4 px-4 bg-red-50 rounded-lg border-l-4 border-red-500">
-              <span class="font-medium text-gray-800">Friday</span>
-              <span class="text-red-600 font-semibold">11:00 AM - 7:00 PM</span>
-            </div>
-            <div class="flex justify-between items-center py-3 px-4 bg-gray-50 rounded-lg border-l-4 border-green-500">
-              <span class="font-medium text-gray-800">Saturday</span>
-              <span class="text-green-600 font-semibold">11:00 AM - 9:00 PM</span>
-            </div>
-            <div class="flex justify-between items-center py-3 px-4 bg-gray-50 rounded-lg border-l-4 border-green-500">
-              <span class="font-medium text-gray-800">Sunday</span>
-              <span class="text-green-600 font-semibold">11:00 AM - 9:00 PM</span>
-            </div>
-          </div>
-          
-          <!-- Additional Info -->
-          <div class="mt-6 space-y-3">
-            <div class="text-sm text-gray-500">
-              <span class="font-medium">Updated:</span> About 3 years ago
-            </div>
-            <div class="text-sm text-gray-500">
-              <span class="font-medium">Services:</span> In-store pickup
-            </div>
-          </div>
-          
-          <!-- Modal Footer -->
-          <div class="mt-8 flex justify-center">
-            <button @click="closeScheduleModal" class="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg font-semibold transition-colors">
-              Close
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
     <!-- Header -->
     <header class="text-white shadow-lg fixed top-0 left-0 right-0 z-50 bg-green-800 transition-all duration-300">
       <div class="container mx-auto px-3 sm:px-4 py-3 sm:py-4">
@@ -121,10 +36,9 @@
             </button>
 
             <!-- Logo and Brand -->
-            <div
+            <router-link
+              to="/"
               class="flex items-center space-x-2 sm:space-x-4 cursor-pointer group"
-              @click="scrollToHome"
-              title="Click to go to top"
             >
               <div
                 class="w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center transition-transform duration-300 group-hover:scale-110"
@@ -140,12 +54,12 @@
               >
                 Countryside Steakhouse
               </h1>
-            </div>
+            </router-link>
           </div>
 
           <!-- Desktop Navigation -->
-             <nav class="hidden md:flex items-center space-x-10">
-               <router-link
+          <nav class="hidden md:flex items-center space-x-10">
+            <router-link
               to="/menu"
               class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
             >
@@ -164,15 +78,33 @@
                 class="absolute bottom-0 left-0 w-full h-0.5 bg-orange-400"
               ></span>
             </router-link>
-               <a
-                 href="/#contact"
-                 class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
-               >
-                 <span class="relative z-10">Contact Us</span>
-                 <span
-                   class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
-                 ></span>
-               </a>
+            <router-link
+              to="/join-us"
+              class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
+            >
+              <span class="relative z-10">Join Us</span>
+              <span
+                class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
+              ></span>
+            </router-link>
+            <router-link
+              to="/faq"
+              class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
+            >
+              <span class="relative z-10">FAQ</span>
+              <span
+                class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
+              ></span>
+            </router-link>
+            <a
+              href="#contact"
+              class="relative group py-2 px-1 text-white hover:text-orange-300 transition-all duration-300 font-medium"
+            >
+              <span class="relative z-10">Contact Us</span>
+              <span
+                class="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-400 transition-all duration-300 group-hover:w-full"
+              ></span>
+            </a>
           </nav>
 
           <!-- Login Button -->
@@ -216,8 +148,28 @@
             Store's
           </span>
         </router-link>
+        <router-link
+          to="/join-us"
+          @click="closeMobileMenu()"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <font-awesome-icon icon="fa-solid fa-user-plus" class="w-4 h-4 sm:w-5 sm:h-5 mr-3" />
+            Join Us
+          </span>
+        </router-link>
+        <router-link
+          to="/faq"
+          @click="closeMobileMenu()"
+          class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <font-awesome-icon icon="fa-solid fa-circle-question" class="w-4 h-4 sm:w-5 sm:h-5 mr-3" />
+            FAQ
+          </span>
+        </router-link>
            <a
-             href="/#contact"
+             href="#contact"
              @click="closeMobileMenu()"
              class="block py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
            >
@@ -230,171 +182,132 @@
     </div>
 
     <!-- Main Content -->
-    <div class="container mx-auto px-6 py-12 pt-24">
+    <div class="container mx-auto px-4 sm:px-6 py-6 sm:py-8 md:py-12 pt-20 sm:pt-24 md:pt-28">
       <!-- Page Header -->
-      <div class="text-center mb-16">
-        <div class="flex items-center justify-center mb-6">
-          <div class="w-20 h-0.5 bg-orange-400"></div>
-          <h1 class="text-4xl font-bold text-green-800 mx-6">Our Branches</h1>
-          <div class="w-20 h-0.5 bg-orange-400"></div>
+      <div class="text-center mb-6 sm:mb-8 md:mb-12 mt-8 sm:mt-12 md:mt-16">
+        <div class="flex items-center justify-center mb-4 sm:mb-5 md:mb-6">
+          <div class="w-8 sm:w-12 md:w-20 h-0.5 bg-orange-400"></div>
+          <div class="mx-3 sm:mx-4 md:mx-6 flex items-center gap-2 sm:gap-3">
+            <MapPin class="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 text-green-700" />
+            <h1 class="text-2xl sm:text-3xl md:text-4xl font-bold text-green-800">Our Branches</h1>
+            <MapPin class="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 text-green-700" />
+          </div>
+          <div class="w-8 sm:w-12 md:w-20 h-0.5 bg-orange-400"></div>
         </div>
-        <p class="text-xl text-gray-600 max-w-3xl mx-auto">
-          Visit any of our branches to experience the authentic taste that made Countryside Steakhouse famous. 
-          Each location offers the same quality food and warm hospitality.
+        <p class="text-base sm:text-lg md:text-xl text-gray-600 max-w-3xl mx-auto px-4 leading-relaxed">
+          Visit any of our branches to experience the authentic taste that made Countryside Steakhouse famous.
         </p>
       </div>
 
-      <!-- Store Grid -->
-      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
-        <!-- Burol Main Branch -->
-        <div class="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2">
-          <div class="h-64 overflow-hidden">
-            <img src="/src/assets/crm/Countryside Burol Main Branch.png" alt="Countryside Burol Main Branch" class="w-full h-full object-cover hover:scale-110 transition-transform duration-300" />
-          </div>
-          <div class="p-6">
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="text-xl font-bold text-green-800">Burol Main Branch</h3>
-            </div>
-            <p class="text-gray-600 text-sm mb-4 font-medium">COUNTRYSIDE STEAKHOUSE</p>
-            <p class="text-gray-500 text-xs mb-4">T-BONE • CHICKEN WINGS • PORKSTEAK • TAPSILOG • SISIG</p>
-            
-            <div class="space-y-3 mb-6">
-              <div class="flex items-center text-sm text-gray-600">
-                <span class="mr-3 text-lg">📍</span>
-                <span>Burol, Main Street, Countryside City</span>
-              </div>
-              <div class="flex items-center text-sm text-gray-600">
-                <span class="mr-3 text-lg">🕒</span>
-                <span>Mon-Sun: 11:00 AM - 9:00 PM (Fri: 7:00 PM)</span>
-              </div>
-            </div>
-            
-            <div class="flex space-x-3">
-              <button class="flex-1 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition-colors font-medium">
-                Get Directions
-              </button>
-              <button @click="openScheduleModal" class="flex-1 bg-orange-500 text-white py-3 rounded-lg hover:bg-orange-600 transition-colors font-medium">
-                Schedules
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Malihan Branch -->
-        <div class="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2">
-          <div class="h-64 overflow-hidden">
-            <img src="/src/assets/crm/Country Malihan Branch.png" alt="Countryside Malihan Branch" class="w-full h-full object-cover hover:scale-110 transition-transform duration-300" />
-          </div>
-          <div class="p-6">
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="text-xl font-bold text-green-800">Malihan Branch</h3>
-
-            </div>
-            <p class="text-gray-600 text-sm mb-4 font-medium">P&N COUNTRYSIDE STEAKHOUSE</p>
-            <p class="text-gray-500 text-xs mb-4">T-BONE • CHICKEN WINGS • PORKSTEAK • TAPSILOG • SISIG</p>
-            
-            <div class="space-y-3 mb-6">
-              <div class="flex items-center text-sm text-gray-600">
-                <span class="mr-3 text-lg">📍</span>
-                <span>Malihan, Central District, Countryside City</span>
-              </div>
-              <div class="flex items-center text-sm text-gray-600">
-                <span class="mr-3 text-lg">🕒</span>
-                <span>Open Daily 10:00 AM - 10:00 PM</span>
-              </div>
-            </div>
-            
-            <div class="flex space-x-3">
-              <button class="flex-1 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition-colors font-medium">
-                Get Directions
-              </button>
-              <button class="flex-1 bg-orange-500 text-white py-3 rounded-lg hover:bg-orange-600 transition-colors font-medium">
-                Schedules
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Imus Branch -->
-        <div class="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2">
-          <div class="h-64 overflow-hidden">
-            <img src="/src/assets/crm/Countryside Imus Branch.png" alt="Countryside Imus Branch" class="w-full h-full object-cover hover:scale-110 transition-transform duration-300" />
-          </div>
-          <div class="p-6">
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="text-xl font-bold text-green-800">Imus Branch</h3>
-            </div>
-            <p class="text-gray-600 text-sm mb-4 font-medium">COUNTRYSIDE STEAKHOUSE</p>
-            <p class="text-gray-500 text-xs mb-4">T-BONE • CHICKEN WINGS • PORKSTEAK • TAPSILOG • SISIG</p>
-            
-            <div class="space-y-3 mb-6">
-              <div class="flex items-center text-sm text-gray-600">
-                <span class="mr-3 text-lg">📍</span>
-                <span>Imus, Business District, Countryside City</span>
-              </div>
-              <div class="flex items-center text-sm text-gray-600">
-                <span class="mr-3 text-lg">🕒</span>
-                <span>Open Daily 10:00 AM - 10:00 PM</span>
-              </div>
-            </div>
-            
-            <div class="flex space-x-3">
-              <button class="flex-1 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition-colors font-medium">
-                Get Directions
-              </button>
-              <button class="flex-1 bg-orange-500 text-white py-3 rounded-lg hover:bg-orange-600 transition-colors font-medium">
-                Schedules
-              </button>
-            </div>
-          </div>
-        </div>
+      <!-- Leaflet Map -->
+      <div class="mb-8 sm:mb-12 -mx-4 sm:mx-0">
+        <div 
+          id="map" 
+          class="w-full rounded-lg sm:rounded-2xl shadow-xl border-2 sm:border-4 border-white"
+          style="height: 350px; sm:height: 450px; md:height: 500px; z-index: 1;"
+        ></div>
       </div>
 
-      <!-- Branch Features Section -->
-      <div class="bg-green-800 rounded-2xl p-8 text-white mb-16">
-        <div class="text-center mb-8">
-          <h2 class="text-3xl font-bold mb-4">Why Choose Our Branches?</h2>
-          <p class="text-lg text-green-100">Each location offers the same exceptional experience</p>
+      <!-- Branch Cards Grid -->
+      <div class="mb-8 sm:mb-12">
+        <!-- Loading State -->
+        <div v-if="isLoading" class="flex justify-center items-center py-8 sm:py-12">
+          <div class="loading loading-spinner loading-md sm:loading-lg text-green-600"></div>
         </div>
-        
-        <div class="grid md:grid-cols-3 gap-6">
-          <div class="text-center">
-            <div class="w-16 h-16 bg-orange-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span class="text-2xl">🍽️</span>
+
+        <!-- Branch Cards -->
+        <div v-else-if="branches.length > 0" class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 lg:gap-8">
+          <div
+            v-for="branch in branches"
+            :key="branch.id"
+            class="bg-white rounded-xl sm:rounded-2xl shadow-md sm:shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 sm:hover:-translate-y-2 border border-gray-100"
+          >
+            <!-- Branch Image (if available) -->
+            <div class="h-32 sm:h-40 md:h-48 bg-gradient-to-br from-green-600 to-green-800 overflow-hidden relative">
+              <!-- Branch Image -->
+              <img
+                v-if="branch.image_url"
+                :src="getImageUrl(branch.image_url)"
+                :alt="branch.name"
+                class="w-full h-full object-cover"
+                @error="handleImageError($event)"
+              />
+              <!-- Fallback placeholder if no image -->
+              <div v-else class="absolute inset-0 flex items-center justify-center">
+                <font-awesome-icon icon="fa-solid fa-store" class="text-white text-6xl opacity-30" />
+              </div>
+              <div class="absolute top-3 right-3 sm:top-4 sm:right-4">
+                <span 
+                  class="text-white text-xs font-semibold px-2.5 sm:px-3 py-1 rounded-full shadow-md"
+                  :class="branch.status === 'Open' ? 'bg-green-500' : 'bg-red-500'"
+                >
+                  {{ branch.status || 'Open' }}
+                </span>
+              </div>
             </div>
-            <h3 class="text-xl font-bold mb-2">Consistent Quality</h3>
-            <p class="text-green-100">Same great taste and quality across all branches</p>
-          </div>
-          
-          <div class="text-center">
-            <div class="w-16 h-16 bg-orange-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span class="text-2xl">👥</span>
+
+            <!-- Branch Details -->
+            <div class="p-3 sm:p-4 md:p-6">
+              <h3 class="text-sm sm:text-base md:text-lg lg:text-xl font-bold text-green-800 mb-2 sm:mb-3 md:mb-4 line-clamp-2">{{ branch.name }}</h3>
+              
+              <div class="space-y-2 sm:space-y-2.5 md:space-y-3 mb-3 sm:mb-4 md:mb-6">
+                <!-- Address -->
+                <div class="flex items-start text-[10px] sm:text-xs md:text-sm text-gray-600">
+                  <font-awesome-icon icon="fa-solid fa-map-marker-alt" class="mr-1.5 sm:mr-2 md:mr-3 mt-0.5 sm:mt-1 text-green-600 flex-shrink-0 text-[10px] sm:text-xs md:text-sm" />
+                  <span class="break-words leading-relaxed line-clamp-2">{{ branch.address }}</span>
+                </div>
+
+                <!-- Phone -->
+                <div v-if="branch.phone" class="flex items-center text-[10px] sm:text-xs md:text-sm text-gray-600">
+                  <font-awesome-icon icon="fa-solid fa-phone" class="mr-1.5 sm:mr-2 md:mr-3 text-green-600 flex-shrink-0 text-[10px] sm:text-xs md:text-sm" />
+                  <span class="break-all">{{ branch.phone }}</span>
+                </div>
+
+                <!-- Email - Hidden on mobile for space -->
+                <div v-if="branch.email" class="hidden sm:flex items-center text-xs md:text-sm text-gray-600">
+                  <font-awesome-icon icon="fa-solid fa-envelope" class="mr-2 md:mr-3 text-green-600 flex-shrink-0 text-xs md:text-sm" />
+                  <span class="break-all">{{ branch.email }}</span>
+                </div>
+
+                <!-- Opening Hours - Hidden on mobile for space -->
+                <div v-if="branch.opening_hours" class="hidden sm:flex items-start text-xs md:text-sm text-gray-600">
+                  <font-awesome-icon icon="fa-solid fa-clock" class="mr-2 md:mr-3 mt-0.5 sm:mt-1 text-green-600 flex-shrink-0 text-xs md:text-sm" />
+                  <div class="flex-1">
+                    <span v-if="typeof branch.opening_hours === 'string'" class="leading-relaxed">{{ branch.opening_hours }}</span>
+                    <div v-else class="space-y-1">
+                      <div v-for="(hours, day) in branch.opening_hours" :key="day" class="leading-relaxed">
+                        <span class="font-medium">{{ day }}:</span> {{ hours }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Action Buttons -->
+              <div class="flex flex-col gap-2 sm:gap-2.5 md:gap-3">
+                <button
+                  @click="getDirections(branch)"
+                  class="w-full bg-green-600 text-white py-2 sm:py-2.5 md:py-3 rounded-lg hover:bg-green-700 transition-colors font-medium flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm md:text-base"
+                >
+                  <font-awesome-icon icon="fa-solid fa-directions" class="text-[10px] sm:text-xs md:text-sm" />
+                  <span class="truncate">Get Directions</span>
+                </button>
+                <button
+                  v-if="branch.phone"
+                  @click="callBranch(branch.phone)"
+                  class="w-full bg-orange-500 text-white py-2 sm:py-2.5 md:py-3 rounded-lg hover:bg-orange-600 transition-colors font-medium flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm md:text-base"
+                >
+                  <font-awesome-icon icon="fa-solid fa-phone" class="text-[10px] sm:text-xs md:text-sm" />
+                  <span>Call</span>
+                </button>
+              </div>
             </div>
-            <h3 class="text-xl font-bold mb-2">Friendly Staff</h3>
-            <p class="text-green-100">Warm hospitality and excellent service</p>
-          </div>
-          
-          <div class="text-center">
-            <div class="w-16 h-16 bg-orange-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span class="text-2xl">🏆</span>
-            </div>
-            <h3 class="text-xl font-bold mb-2">40+ Years</h3>
-            <p class="text-green-100">Decades of culinary excellence</p>
           </div>
         </div>
-      </div>
 
-
-
-      <!-- Contact Information -->
-      <div class="text-center">
-        <h2 class="text-3xl font-bold text-green-800 mb-6">Need Help Finding Us?</h2>
-        <p class="text-lg text-gray-600 mb-8">Our team is here to assist you with directions and information</p>
-        
-        <div class="flex justify-center">
-          <button class="bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 rounded-lg font-semibold transition-colors">
-            📧 Email Us
-          </button>
+        <!-- No Branches Message -->
+        <div v-else class="text-center py-12">
+          <p class="text-gray-500 text-lg">No branches available at the moment.</p>
         </div>
       </div>
     </div>
@@ -402,20 +315,296 @@
 </template>
 
 <script setup>
+import { ref, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
-import { ref, onMounted, onUnmounted } from 'vue';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import axios from 'axios';
+import { apiConfig, formatImageUrl } from '../../config/api.js';
+import { MapPin } from 'lucide-vue-next';
 
 const router = useRouter();
 
-// Modal state
-const isScheduleModalOpen = ref(false);
-
-// Mobile menu state
+// State
+const branches = ref([]);
+const isLoading = ref(false);
+const map = ref(null);
+const markers = ref([]);
 const isMobileMenuOpen = ref(false);
-const isScrolled = ref(false);
 
-const handleScroll = () => {
-  isScrolled.value = window.scrollY > 50;
+// Default map center (Philippines)
+const defaultCenter = [14.5995, 120.9842]; // Manila coordinates
+const defaultZoom = 11;
+
+// Fetch branches from API
+const fetchBranches = async () => {
+  try {
+    isLoading.value = true;
+    const response = await axios.get(`${apiConfig.baseURL}/branches/public`);
+    
+    if (response.data.success) {
+      branches.value = response.data.data || [];
+    } else if (Array.isArray(response.data)) {
+      branches.value = response.data;
+    } else {
+      branches.value = [];
+    }
+
+    // Initialize map after branches are loaded
+    await nextTick();
+    if (branches.value.length > 0) {
+      await initMap();
+    }
+  } catch (error) {
+    console.error('Error fetching branches:', error);
+    branches.value = [];
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+// Initialize Leaflet map
+const initMap = async () => {
+  // Check if map already exists
+  if (map.value) {
+    map.value.remove();
+  }
+
+  // Create map instance
+  map.value = L.map('map', {
+    center: defaultCenter,
+    zoom: defaultZoom,
+    zoomControl: true,
+  });
+
+  // Add OpenStreetMap tile layer
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 19,
+  }).addTo(map.value);
+
+  // Fix default icon paths for Leaflet
+  const DefaultIcon = L.icon({
+    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41],
+  });
+  L.Marker.prototype.options.icon = DefaultIcon;
+
+  // Create custom green icon for branch markers
+  const greenIcon = L.icon({
+    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41],
+  });
+
+  // Geocode function using OpenStreetMap Nominatim with Philippines focus
+  const geocodeAddress = async (address) => {
+    if (!address) return null;
+    
+    try {
+      const url = 'https://nominatim.openstreetmap.org/search';
+      
+      // Add "Philippines" or "Cavite" to improve accuracy for Philippine addresses
+      let searchQuery = address;
+      if (!address.toLowerCase().includes('philippines') && 
+          !address.toLowerCase().includes('philippine')) {
+        // If address doesn't mention Philippines, add common Philippine location hints
+        if (address.toLowerCase().includes('cavite') || 
+            address.toLowerCase().includes('dasmarinas') ||
+            address.toLowerCase().includes('dasma')) {
+          searchQuery = `${address}, Cavite, Philippines`;
+        } else {
+          searchQuery = `${address}, Philippines`;
+        }
+      }
+      
+      const params = {
+        format: 'json',
+        q: searchQuery,
+        addressdetails: 1,
+        limit: 5, // Get more results to filter
+        countrycodes: 'ph', // Restrict to Philippines only
+      };
+
+      const response = await fetch(`${url}?${new URLSearchParams(params).toString()}`, {
+        headers: {
+          'User-Agent': 'CountrysideSteakhouse/1.0',
+        },
+      });
+
+      const data = await response.json();
+      if (Array.isArray(data) && data.length > 0) {
+        // Find the best match (prefer exact matches or matches in Philippines)
+        let bestMatch = data.find(item => {
+          const displayName = (item.display_name || '').toLowerCase();
+          return displayName.includes('philippines') || 
+                 displayName.includes('cavite') ||
+                 item.address?.country_code === 'ph';
+        }) || data[0];
+        
+        const latitude = parseFloat(bestMatch.lat);
+        const longitude = parseFloat(bestMatch.lon);
+        
+        // Validate coordinates are within Philippines bounds
+        // Philippines approximate bounds: lat 4.5-21.1, lon 116.9-127.0
+        if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+          if (latitude >= 4.5 && latitude <= 21.1 && 
+              longitude >= 116.9 && longitude <= 127.0) {
+            return { latitude, longitude };
+          } else {
+            console.warn('Geocoded coordinates outside Philippines bounds:', 
+                         { latitude, longitude, address });
+            return null;
+          }
+        }
+      }
+      return null;
+    } catch (error) {
+      console.warn('Geocoding failed for address:', address, error);
+      return null;
+    }
+  };
+
+  // Add markers for each branch
+  const bounds = [];
+  markers.value = [];
+
+  // Process branches and geocode if needed
+  for (const branch of branches.value) {
+    // Try to get coordinates from branch data
+    let lat = branch.latitude || branch.lat;
+    let lng = branch.longitude || branch.lng || branch.lon;
+
+    // If no coordinates, geocode the address
+    if ((!lat || !lng) && branch.address) {
+      const geo = await geocodeAddress(branch.address);
+      if (geo) {
+        lat = geo.latitude;
+        lng = geo.longitude;
+        // Update the branch object with geocoded coordinates
+        branch.latitude = lat;
+        branch.longitude = lng;
+      }
+    }
+
+    // Fallback: use default center if still no coordinates
+    if (!lat || !lng) {
+      console.warn(`Could not geocode address for branch: ${branch.name}`);
+      lat = defaultCenter[0];
+      lng = defaultCenter[1];
+    }
+
+    const marker = L.marker([lat, lng], { icon: greenIcon }).addTo(map.value);
+    // Store branch ID in marker for easy lookup
+    marker.branchId = branch.id;
+    
+    // Create popup content with accurate directions URL
+    // Use coordinates if available (more accurate), otherwise use address
+    let directionsUrl;
+    if (lat && lng && !isNaN(lat) && !isNaN(lng) && 
+        lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      // Use coordinates for precise location
+      directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+    } else if (branch.address) {
+      // Fallback to address
+      directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(branch.address)}`;
+    } else {
+      directionsUrl = '#';
+    }
+    
+    const popupContent = `
+      <div style="min-width: 200px;">
+        <h3 style="font-weight: bold; margin-bottom: 8px; color: #166534;">${branch.name}</h3>
+        <p style="margin: 4px 0; color: #666;">${branch.address || ''}</p>
+        ${branch.phone ? `<p style="margin: 4px 0; color: #666;">📞 ${branch.phone}</p>` : ''}
+        <button 
+          onclick="window.open('${directionsUrl}', '_blank')"
+          style="margin-top: 8px; padding: 6px 12px; background: #16a34a; color: white; border: none; border-radius: 4px; cursor: pointer;"
+        >
+          Get Directions
+        </button>
+      </div>
+    `;
+    
+    marker.bindPopup(popupContent);
+    markers.value.push(marker);
+    bounds.push([lat, lng]);
+  }
+
+  // Fit map to show all markers if there are multiple branches
+  if (bounds.length > 0) {
+    if (bounds.length === 1) {
+      map.value.setView(bounds[0], 13);
+    } else {
+      map.value.fitBounds(bounds, { padding: [50, 50] });
+    }
+  }
+};
+
+// Get directions to branch - show location on Leaflet map
+const getDirections = (branch) => {
+  if (!map.value) {
+    console.warn('Map is not initialized yet');
+    return;
+  }
+
+  // Get coordinates for the branch
+  let lat = branch.latitude || branch.lat;
+  let lng = branch.longitude || branch.lng || branch.lon;
+
+  // If no coordinates, use geocoded coordinates or default
+  if (!lat || !lng) {
+    // Try to find the marker for this branch
+    const branchIndex = branches.value.findIndex(b => b.id === branch.id);
+    if (branchIndex !== -1 && branches.value[branchIndex].latitude) {
+      lat = branches.value[branchIndex].latitude;
+      lng = branches.value[branchIndex].longitude;
+    } else {
+      console.warn('Branch coordinates not available:', branch.name);
+      return;
+    }
+  }
+
+  // Validate coordinates
+  lat = parseFloat(lat);
+  lng = parseFloat(lng);
+  
+  if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    console.warn('Invalid coordinates for branch:', branch.name);
+    return;
+  }
+
+  // Center map on branch location and zoom in
+  map.value.setView([lat, lng], 16); // Zoom level 16 for street-level view
+
+  // Find and open the marker popup for this branch using stored branchId
+  const marker = markers.value.find(m => m.branchId === branch.id);
+
+  if (marker) {
+    // Small delay to ensure map has finished animating
+    setTimeout(() => {
+      marker.openPopup();
+    }, 300);
+  }
+
+  // Smooth scroll to map section
+  const mapElement = document.getElementById('map');
+  if (mapElement) {
+    mapElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+};
+
+// Call branch
+const callBranch = (phone) => {
+  window.location.href = `tel:${phone}`;
 };
 
 // Mobile menu functions
@@ -427,7 +616,6 @@ const closeMobileMenu = () => {
   isMobileMenuOpen.value = false;
 };
 
-// Click outside handler for mobile menu
 const handleClickOutside = (event) => {
   if (isMobileMenuOpen.value && !event.target.closest('.mobile-menu-container')) {
     closeMobileMenu();
@@ -435,43 +623,54 @@ const handleClickOutside = (event) => {
 };
 
 // Navigation functions
-const goToHome = () => {
-  window.location.href = '/';
-};
-
 const goToLogin = () => {
   window.location.href = '/login';
 };
 
-// Smooth scroll to home section
-const scrollToHome = () => {
-  window.location.href = '/';
+// Get image URL - handle both absolute URLs and relative paths
+const getImageUrl = (imageUrl) => {
+  if (!imageUrl) return '';
+  return formatImageUrl(imageUrl);
 };
 
-// Modal functions
-const openScheduleModal = () => {
-  isScheduleModalOpen.value = true;
-};
-
-const closeScheduleModal = () => {
-  isScheduleModalOpen.value = false;
+// Handle image load errors
+const handleImageError = (event) => {
+  // Hide the image and show placeholder instead
+  event.target.style.display = 'none';
+  const parent = event.target.parentElement;
+  if (parent && !parent.querySelector('.fa-store')) {
+    parent.innerHTML = `
+      <div class="absolute inset-0 flex items-center justify-center">
+        <font-awesome-icon icon="fa-solid fa-store" class="text-white text-6xl opacity-30"></font-awesome-icon>
+      </div>
+    `;
+  }
 };
 
 onMounted(() => {
-  window.addEventListener('scroll', handleScroll);
   document.addEventListener('click', handleClickOutside);
+  fetchBranches();
 });
 
 onUnmounted(() => {
-  window.removeEventListener('scroll', handleScroll);
   document.removeEventListener('click', handleClickOutside);
+  // Clean up map
+  if (map.value) {
+    map.value.remove();
+    map.value = null;
+  }
 });
 </script>
 
 <style scoped>
-/* Enhanced hover effects */
-.hover\:shadow-xl:hover {
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+/* Fix Leaflet marker icon path */
+:deep(.leaflet-default-icon-path) {
+  background-image: url('https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png');
+}
+
+/* Map container styling */
+#map {
+  border-radius: 1rem;
 }
 
 /* Smooth transitions */
@@ -479,17 +678,8 @@ onUnmounted(() => {
   transition: all 0.3s ease;
 }
 
-/* Enhanced button hover effects */
-button:hover {
-  transform: translateY(-2px);
-}
-
 /* Card hover animations */
-.card-hover {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.card-hover:hover {
+.transform:hover {
   transform: translateY(-8px) scale(1.02);
   box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
 }

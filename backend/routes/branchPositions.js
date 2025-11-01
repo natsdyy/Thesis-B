@@ -44,6 +44,55 @@ const { authenticateToken } = require("../middleware/rbac");
  *       200:
  *         description: Branch positions retrieved successfully
  */
+/**
+ * @swagger
+ * /api/branch-positions/public:
+ *   get:
+ *     summary: Get all open branch positions for public job listings
+ *     tags: [Branch Positions]
+ *     description: Public endpoint that returns only open and active positions from branch_positions table
+ *     parameters:
+ *       - in: query
+ *         name: department
+ *         schema:
+ *           type: string
+ *         description: Filter by department
+ *     responses:
+ *       200:
+ *         description: Open positions retrieved successfully
+ */
+router.get("/public", async (req, res) => {
+  try {
+    const filters = {
+      job_status: 'open',
+      is_active: true,
+      department: req.query.department
+    };
+
+    // Remove undefined filters
+    Object.keys(filters).forEach(key => {
+      if (filters[key] === undefined) {
+        delete filters[key];
+      }
+    });
+
+    const positions = await BranchPosition.getAll(filters);
+
+    res.json({
+      success: true,
+      data: positions,
+      count: positions.length
+    });
+  } catch (error) {
+    console.error("Error fetching public branch positions:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching public branch positions",
+      error: error.message
+    });
+  }
+});
+
 router.get("/", async (req, res) => {
   try {
     const filters = {

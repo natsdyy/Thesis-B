@@ -2,6 +2,9 @@ const express = require("express");
 const router = express.Router();
 const jwt = require("jsonwebtoken");
 const Supplier = require("../models/Supplier");
+const crypto = require("crypto");
+const EmailService = require("../services/emailService");
+const { db } = require("../config/database");
 
 // Middleware to authenticate supplier JWT token
 function authenticateSupplierToken(req, res, next) {
@@ -570,6 +573,377 @@ router.put("/profile", authenticateSupplierToken, async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to update profile. Please try again.",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/supplier-auth/forgot-password:
+ *   post:
+ *     summary: Request password reset via email for suppliers
+ *     tags: [Supplier Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *     responses:
+ *       200:
+ *         description: Password reset email sent
+ *       400:
+ *         description: Bad request
+ *       500:
+ *         description: Server error
+ */
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // Validate email
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email address is required",
+        code: "MISSING_EMAIL",
+      });
+    }
+
+    const trimmedEmail = email.trim().toLowerCase();
+    if (trimmedEmail.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Email address cannot be empty",
+        code: "EMPTY_EMAIL",
+      });
+    }
+
+    // Check if supplier exists
+    const supplier = await Supplier.findByEmail(trimmedEmail);
+    if (!supplier) {
+      // Don't reveal if email exists or not for security
+      return res.json({
+        success: true,
+        message: "If the email exists, a password reset link has been sent",
+        code: "RESET_EMAIL_SENT",
+      });
+    }
+
+    // Check if supplier is active
+    if (supplier.deleted_at || !supplier.is_active || supplier.status !== "Active") {
+      return res.json({
+        success: true,
+        message: "If the email exists, a password reset link has been sent",
+        code: "RESET_EMAIL_SENT",
+      });
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour from now
+
+    // Store reset token in database
+    await db("suppliers").where("id", supplier.id).update({
+      reset_token: resetToken,
+      reset_token_expiry: resetTokenExpiry,
+      updated_at: new Date(),
+    });
+
+    // Send password recovery email with timeout
+    try {
+      // Use supplier-specific reset URL
+      const frontendUrl =
+        process.env.FRONTEND_URL ||
+        (process.env.NODE_ENV === "production"
+          ? "https://www.countryside-steakhouse.site"
+          : "http://localhost:8080");
+      const resetUrl = `${frontendUrl}/supplier/reset-password?token=${resetToken}`;
+
+      // Send email directly with custom reset URL
+      const emailData = {
+        to: trimmedEmail,
+        subject: "Password Recovery - Countryside Steak House",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="text-align: center; margin-bottom: 30px;">
+              <h1 style="color: #2c3e50; margin-bottom: 10px;">Countryside Steak House</h1>
+              <h2 style="color: #e74c3c; margin: 0;">Ang Paborito ng Bayan</h2>
+            </div>
+            
+            <div style="background-color: #f8f9fa; padding: 30px; border-radius: 10px; margin-bottom: 20px;">
+              <h3 style="color: #2c3e50; margin-top: 0;">Password Recovery Request</h3>
+              
+              <p style="color: #555; font-size: 16px; line-height: 1.6;">
+                Hello ${supplier.contact_person || supplier.name},
+              </p>
+              
+              <p style="color: #555; font-size: 16px; line-height: 1.6;">
+                We received a request to reset your password for your Countryside Steak House Supplier Portal account. 
+                If you made this request, click the button below to reset your password:
+              </p>
+              
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${resetUrl}" 
+                   style="background-color: #e74c3c; color: white; padding: 15px 30px; 
+                          text-decoration: none; border-radius: 5px; font-weight: bold; 
+                          display: inline-block; font-size: 16px;">
+                  Reset My Password
+                </a>
+              </div>
+              
+              <p style="color: #666; font-size: 14px; line-height: 1.5;">
+                If the button doesn't work, copy and paste this link into your browser:<br>
+                <a href="${resetUrl}" style="color: #e74c3c; word-break: break-all;">${resetUrl}</a>
+              </p>
+              
+              <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; 
+                          padding: 15px; border-radius: 5px; margin-top: 20px;">
+                <p style="color: #856404; margin: 0; font-size: 14px;">
+                  <strong>Security Note:</strong> This link will expire in 1 hour for your security. 
+                  If you didn't request this password reset, please ignore this email.
+                </p>
+              </div>
+            </div>
+            
+            <div style="text-align: center; color: #666; font-size: 12px; margin-top: 20px;">
+              <p>© 2025 Countryside Steak House. All rights reserved.</p>
+              <p>This is an automated message, please do not reply to this email.</p>
+            </div>
+          </div>
+        `,
+        text: `
+          Password Recovery - Countryside Steak House
+            
+          Hello ${supplier.contact_person || supplier.name},
+            
+          We received a request to reset your password for your Countryside Steak House Supplier Portal account.
+          If you made this request, click the link below to reset your password:
+            
+          ${resetUrl}
+            
+          This link will expire in 1 hour for your security.
+          If you didn't request this password reset, please ignore this email.
+            
+          © 2025 Countryside Steak House. All rights reserved.
+        `,
+      };
+
+      const emailPromise = EmailService.sendEmailWithFallback(emailData);
+
+      // Add 30-second timeout for email sending
+      const emailResult = await Promise.race([
+        emailPromise,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Email sending timeout")), 30000)
+        ),
+      ]);
+
+      if (!emailResult.success) {
+        console.error(
+          "Failed to send password recovery email:",
+          emailResult.error
+        );
+        // Don't reveal email sending failure to user for security
+      }
+    } catch (emailError) {
+      console.error("Email sending failed or timed out:", emailError.message);
+      // Don't reveal email sending failure to user for security
+    }
+
+    res.json({
+      success: true,
+      message: "If the email exists, a password reset link has been sent",
+      code: "RESET_EMAIL_SENT",
+    });
+  } catch (error) {
+    console.error("Supplier forgot password error:", error);
+    res.status(500).json({
+      success: false,
+      message:
+        "Password reset service is temporarily unavailable. Please try again.",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/supplier-auth/validate-reset-token:
+ *   post:
+ *     summary: Validate supplier password reset token
+ *     tags: [Supplier Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *             properties:
+ *               token:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Token is valid
+ *       400:
+ *         description: Bad request - invalid or expired token
+ *       500:
+ *         description: Server error
+ */
+router.post("/validate-reset-token", async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: "Reset token is required",
+        code: "MISSING_TOKEN",
+      });
+    }
+
+    // Find supplier with valid reset token
+    const supplier = await db("suppliers")
+      .where("reset_token", token)
+      .where("reset_token_expiry", ">", new Date())
+      .whereNull("deleted_at")
+      .where("is_active", true)
+      .where("status", "Active")
+      .first();
+
+    if (!supplier) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset token",
+        code: "INVALID_TOKEN",
+      });
+    }
+
+    // Remove password and token from response for security
+    const { password: _, reset_token: __, ...supplierData } = supplier;
+
+    res.json({
+      success: true,
+      message: "Reset token is valid",
+      code: "TOKEN_VALID",
+      data: {
+        email: supplierData.email,
+        name: supplierData.name,
+      },
+    });
+  } catch (error) {
+    console.error("Supplier validate reset token error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to validate reset token. Please try again.",
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/supplier-auth/reset-password:
+ *   post:
+ *     summary: Reset supplier password using token
+ *     tags: [Supplier Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *               - new_password
+ *             properties:
+ *               token:
+ *                 type: string
+ *               new_password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Password reset successfully
+ *       400:
+ *         description: Bad request - invalid or expired token
+ *       500:
+ *         description: Server error
+ */
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { token, new_password } = req.body;
+
+    // Validate input
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: "Reset token is required",
+        code: "MISSING_TOKEN",
+      });
+    }
+
+    if (!new_password) {
+      return res.status(400).json({
+        success: false,
+        message: "New password is required",
+        code: "MISSING_PASSWORD",
+      });
+    }
+
+    if (new_password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be at least 6 characters long",
+        code: "INVALID_PASSWORD",
+      });
+    }
+
+    // Find supplier with valid reset token
+    const supplier = await db("suppliers")
+      .where("reset_token", token)
+      .where("reset_token_expiry", ">", new Date())
+      .whereNull("deleted_at")
+      .where("is_active", true)
+      .where("status", "Active")
+      .first();
+
+    if (!supplier) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset token",
+        code: "INVALID_TOKEN",
+      });
+    }
+
+    // Update password and clear reset token
+    await Supplier.updatePassword(supplier.id, new_password);
+
+    await db("suppliers").where("id", supplier.id).update({
+      reset_token: null,
+      reset_token_expiry: null,
+      updated_at: new Date(),
+    });
+
+    res.json({
+      success: true,
+      message: "Password has been reset successfully",
+      code: "PASSWORD_RESET_SUCCESS",
+    });
+  } catch (error) {
+    console.error("Supplier reset password error:", error);
+    res.status(500).json({
+      success: false,
+      message:
+        "Password reset service is temporarily unavailable. Please try again.",
       code: "INTERNAL_SERVER_ERROR",
     });
   }

@@ -606,13 +606,13 @@ class Employee {
       let hashedPassword = null;
       // Only set password if not onboarding pending (password will be set on approval)
       if (!isOnboardingPending) {
-        if (data.password) {
-          hashedPassword = await this.hashPassword(data.password);
-        } else {
-          // Use last name as default password
-          const defaultPassword = data.last_name.trim();
-          hashedPassword = await this.hashPassword(defaultPassword);
-        }
+      if (data.password) {
+        hashedPassword = await this.hashPassword(data.password);
+      } else {
+        // Use last name as default password
+        const defaultPassword = data.last_name.trim();
+        hashedPassword = await this.hashPassword(defaultPassword);
+      }
       }
       // For onboarding pending: password stays null until approval
 

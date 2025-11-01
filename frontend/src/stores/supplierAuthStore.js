@@ -194,6 +194,54 @@ export const useSupplierAuthStore = defineStore('supplierAuth', () => {
     }
   };
 
+  const validateResetToken = async (token) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.post(
+        `${apiConfig.baseURL}/supplier-auth/validate-reset-token`,
+        { token }
+      );
+
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(response.data.message || 'Invalid reset token');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message || err.message || 'Invalid reset token';
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const resetPassword = async (token, newPassword) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await axios.post(
+        `${apiConfig.baseURL}/supplier-auth/reset-password`,
+        { token, new_password: newPassword }
+      );
+
+      if (response.data.success) {
+        return response.data;
+      } else {
+        throw new Error(response.data.message || 'Password reset failed');
+      }
+    } catch (err) {
+      error.value =
+        err.response?.data?.message || err.message || 'Password reset failed';
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const clearError = () => {
     error.value = null;
   };
@@ -238,6 +286,8 @@ export const useSupplierAuthStore = defineStore('supplierAuth', () => {
     changePassword,
     getProfile,
     updateProfile,
+    validateResetToken,
+    resetPassword,
     clearError,
   };
 });

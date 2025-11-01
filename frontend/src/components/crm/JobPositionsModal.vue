@@ -1,49 +1,50 @@
 <template>
   <div
     v-if="isOpen"
-    class="fixed inset-0 backdrop-blur-md bg-transparent z-50 overflow-y-auto"
+    class="fixed inset-0 backdrop-blur-md bg-black/60 z-50 overflow-y-auto"
     @click.self="closeModal"
   >
-    <div class="min-h-full flex items-center justify-center p-4">
+    <div class="min-h-full flex items-center justify-center p-3 sm:p-4 md:p-8 pt-24 sm:pt-28 md:pt-15 pb-12 sm:pb-30 md:">
       <div
-        class="bg-white rounded-2xl w-full max-w-6xl max-h-[calc(100vh-6rem)] min-h-0 flex flex-col shadow-2xl overflow-hidden"
+        class="bg-white rounded-xl sm:rounded-2xl w-full max-w-6xl max-h-[calc(100vh-9rem)] sm:max-h-[calc(100vh-10rem)] md:max-h-[calc(100vh-12rem)] min-h-0 flex flex-col shadow-2xl overflow-hidden"
       >
         <!-- Modal Header -->
         <div
-          class="bg-gradient-to-r from-green-600 to-green-700 text-white p-6 flex-shrink-0"
+          class="bg-gradient-to-r from-green-600 to-green-700 text-white p-5 sm:p-6 md:p-8 flex-shrink-0 sticky top-0 z-10"
         >
-          <div class="flex justify-between items-center">
-            <div>
-              <h2 class="text-2xl font-bold mb-2">Open Job Positions</h2>
-              <p class="text-green-100">
+          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 md:gap-6">
+            <div class="flex-1 min-w-0">
+              <h2 class="text-xl sm:text-2xl md:text-3xl font-bold mb-2 sm:mb-2 md:mb-3 leading-tight">Open Job Positions</h2>
+              <p class="text-xs sm:text-sm md:text-base text-green-100 leading-relaxed mt-1 md:mt-2">
                 Explore our current job openings and find the perfect role for
                 you
               </p>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 flex-shrink-0">
               <button
                 @click="loadPositions"
                 :disabled="isLoading"
-                class="text-white hover:text-green-200 transition-colors p-2 rounded-full hover:bg-white/10"
+                class="text-white hover:text-green-200 transition-colors p-2 sm:p-2 rounded-full hover:bg-white/10 min-w-[44px] min-h-[44px] flex items-center justify-center"
                 title="Refresh positions"
               >
                 <font-awesome-icon
                   icon="fa-solid fa-rotate"
-                  :class="['w-5 h-5', isLoading ? 'animate-spin' : '']"
+                  :class="['w-4 h-4 sm:w-5 sm:h-5', isLoading ? 'animate-spin' : '']"
                 />
               </button>
               <button
                 @click="closeModal"
-                class="text-white hover:text-green-200 transition-colors p-2 rounded-full hover:bg-white/10 cursor-pointer"
+                class="text-white hover:text-green-200 transition-colors p-2 sm:p-2 rounded-full hover:bg-white/10 cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center"
+                aria-label="Close modal"
               >
-                <font-awesome-icon icon="fa-solid fa-times" class="w-6 h-6" />
+                <font-awesome-icon icon="fa-solid fa-times" class="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
             </div>
           </div>
         </div>
 
         <!-- Modal Content -->
-        <div class="flex-1 overflow-y-auto p-6 max-h-[90vh]">
+        <div class="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 pb-6 sm:pb-8 md:pb-10 max-h-[calc(100vh-12rem)] sm:max-h-[calc(100vh-14rem)] md:max-h-[calc(100vh-16rem)]">
           <!-- Loading State -->
           <div v-if="isLoading" class="flex justify-center items-center py-12">
             <div
@@ -71,22 +72,22 @@
           <!-- Positions Grid -->
           <div v-else>
             <!-- Department Filter Tabs -->
-            <div class="mb-6">
-              <div class="flex flex-wrap gap-2 justify-center">
+            <div class="mb-4 sm:mb-6 md:mb-8">
+              <div class="flex flex-wrap gap-2 md:gap-3 justify-center">
                 <button
                   v-for="department in departments"
                   :key="department"
                   @click="setActiveDepartment(department)"
                   :class="[
-                    'px-4 py-2 rounded-lg font-medium transition-all duration-300',
+                    'px-3 sm:px-4 md:px-5 py-1.5 sm:py-2 md:py-2.5 rounded-lg text-xs sm:text-sm md:text-base font-medium transition-all duration-300',
                     activeDepartment === department
-                      ? 'bg-green-600 text-white shadow-lg'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200',
+                      ? 'bg-green-600 text-white shadow-lg scale-105'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:scale-105',
                   ]"
                 >
-                  <font-awesome-icon icon="fa-solid fa-building" class="mr-2" />
+                  <font-awesome-icon icon="fa-solid fa-building" class="mr-1 sm:mr-2 text-xs sm:text-sm md:text-base" />
                   {{ department }}
-                  <span class="ml-2 bg-white/20 px-2 py-1 rounded-full text-xs">
+                  <span class="ml-1 sm:ml-2 md:ml-3 bg-white/20 px-1.5 sm:px-2 md:px-2.5 py-0.5 sm:py-1 md:py-1.5 rounded-full text-[10px] sm:text-xs md:text-sm font-semibold">
                     {{ getDepartmentCount(department) }}
                   </span>
                 </button>
@@ -94,32 +95,32 @@
             </div>
 
             <!-- Positions Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
               <div
                 v-for="position in filteredPositions"
                 :key="position.id"
-                class="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all duration-300 hover:border-green-300 group"
+                class="bg-white border border-gray-200 rounded-lg sm:rounded-xl md:rounded-2xl p-4 sm:p-6 md:p-8 hover:shadow-xl transition-all duration-300 hover:border-green-300 hover:-translate-y-1 group"
               >
                 <!-- Position Header -->
-                <div class="flex justify-between items-start mb-4">
-                  <div class="flex-1">
+                <div class="flex justify-between items-start mb-3 sm:mb-4 md:mb-5">
+                  <div class="flex-1 min-w-0">
                     <h3
-                      class="text-xl font-bold text-gray-900 mb-1 group-hover:text-green-700 transition-colors"
+                      class="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 mb-1 md:mb-2 group-hover:text-green-700 transition-colors truncate"
                     >
                       {{ position.position_title }}
                     </h3>
-                    <div class="space-y-1">
-                      <p class="text-sm text-gray-600">
+                    <div class="space-y-1 md:space-y-2">
+                      <p class="text-xs sm:text-sm md:text-base text-gray-600">
                         {{ position.department }}
                       </p>
                       <p
-                        class="text-sm font-medium text-green-600 flex items-center"
+                        class="text-xs sm:text-sm md:text-base font-medium text-green-600 flex items-center"
                       >
                         <font-awesome-icon
                           icon="fa-solid fa-map-marker-alt"
-                          class="mr-1 text-xs"
+                          class="mr-1 sm:mr-2 text-[10px] sm:text-xs md:text-sm"
                         />
-                        {{ getDisplayBranchName(position) }}
+                        <span class="truncate">{{ getDisplayBranchName(position) }}</span>
                       </p>
                     </div>
                   </div>
@@ -127,10 +128,10 @@
                 </div>
 
                 <!-- Position Details -->
-                <div class="space-y-3 mb-4">
+                <div class="space-y-2 sm:space-y-3 md:space-y-4 mb-3 sm:mb-4 md:mb-5">
                   <div class="flex justify-between items-center">
-                    <span class="text-sm text-gray-600">Rate per Hour:</span>
-                    <span class="font-bold text-green-600">
+                    <span class="text-xs sm:text-sm md:text-base text-gray-600">Rate per Hour:</span>
+                    <span class="font-bold text-green-600 text-xs sm:text-sm md:text-base">
                       ₱{{
                         (parseFloat(position.rate_per_hour) || 0).toFixed(2)
                       }}
@@ -138,8 +139,8 @@
                   </div>
 
                   <div class="flex justify-between items-center">
-                    <span class="text-sm text-gray-600">Monthly Salary:</span>
-                    <span class="font-semibold text-gray-900">
+                    <span class="text-xs sm:text-sm md:text-base text-gray-600">Monthly Salary:</span>
+                    <span class="font-semibold text-gray-900 text-xs sm:text-sm md:text-base">
                       {{
                         calculateMonthlySalaryRange(position.rate_per_hour)
                           .display
@@ -148,16 +149,16 @@
                   </div>
 
                   <div class="flex justify-between items-center">
-                    <span class="text-sm text-gray-600">Work Type:</span>
-                    <span class="text-sm font-medium text-gray-900">
+                    <span class="text-xs sm:text-sm md:text-base text-gray-600">Work Type:</span>
+                    <span class="text-xs sm:text-sm md:text-base font-medium text-gray-900">
                       {{ position.position_type || 'Full-time' }}
                     </span>
                   </div>
                 </div>
 
                 <!-- Description -->
-                <div class="mb-4">
-                  <p class="text-sm text-gray-700 line-clamp-3">
+                <div class="mb-3 sm:mb-4 md:mb-5">
+                  <p class="text-xs sm:text-sm md:text-base text-gray-700 line-clamp-3 leading-relaxed">
                     {{
                       position.description ||
                       `${position.department} ${position.position_title} position`
@@ -166,7 +167,7 @@
                 </div>
 
                 <!-- Action Buttons -->
-                <div class="flex gap-2">
+                <div class="flex gap-2 md:gap-3">
                   <button
                     @click="applyForPosition(position)"
                     :disabled="
@@ -176,17 +177,17 @@
                       ) || position.is_active === false
                     "
                     :class="[
-                      'flex-1 px-4 py-2 rounded-lg font-medium transition-colors text-sm',
+                      'flex-1 px-3 sm:px-4 md:px-6 py-2 md:py-3 rounded-lg md:rounded-xl font-medium md:font-semibold transition-all duration-300 text-xs sm:text-sm md:text-base',
                       (position.status === 'open' ||
                         position.job_status === 'open') &&
                       position.is_active !== false
-                        ? 'bg-orange-500 hover:bg-orange-600 text-white cursor-pointer'
+                        ? 'bg-orange-500 hover:bg-orange-600 text-white cursor-pointer hover:shadow-lg hover:-translate-y-0.5'
                         : 'bg-gray-300 text-gray-500 cursor-not-allowed opacity-60',
                     ]"
                   >
                     <font-awesome-icon
                       icon="fa-solid fa-paper-plane"
-                      class="mr-2"
+                      class="mr-1 sm:mr-2 md:mr-2"
                     />
                     {{
                       (position.status === 'open' ||
@@ -201,9 +202,9 @@
             </div>
 
             <!-- Footer Stats -->
-            <div class="mt-8 bg-gray-50 rounded-lg p-4">
+            <div class="mt-6 sm:mt-8 md:mt-10 mb-4 sm:mb-6 md:mb-8 bg-gray-50 rounded-lg md:rounded-xl p-3 sm:p-4 md:p-6">
               <div
-                class="flex justify-between items-center text-sm text-gray-600"
+                class="flex flex-col sm:flex-row justify-between items-center gap-2 sm:gap-0 md:gap-4 text-xs sm:text-sm md:text-base text-gray-600"
               >
                 <span
                   >Showing {{ filteredPositions.length }} of
@@ -230,15 +231,15 @@
     <!-- Success Modal -->
     <div
       v-if="showSuccessModal"
-      class="fixed inset-0 backdrop-blur-md bg-transparent flex items-center justify-center z-60 p-4"
+      class="fixed inset-0 backdrop-blur-md bg-black/60 flex items-center justify-center z-60 p-2 sm:p-4"
       @click.self="closeSuccessModal"
     >
       <div
-        class="bg-white rounded-3xl w-full max-w-md mx-4 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-500"
+        class="bg-white rounded-2xl sm:rounded-3xl w-full max-w-md mx-2 sm:mx-4 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-500 max-h-[95vh] overflow-y-auto"
       >
         <!-- Success Header -->
         <div
-          class="bg-gradient-to-r from-green-500 to-emerald-600 text-white p-8 text-center relative overflow-hidden"
+          class="bg-gradient-to-r from-green-500 to-emerald-600 text-white p-6 sm:p-8 text-center relative overflow-hidden"
         >
           <!-- Background Pattern -->
           <div class="absolute inset-0 opacity-10 bg-pattern">
@@ -259,27 +260,27 @@
           <!-- Success Icon -->
           <div class="relative z-10">
             <div
-              class="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm success-icon"
+              class="w-16 h-16 sm:w-20 sm:h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 backdrop-blur-sm success-icon"
             >
               <font-awesome-icon
                 icon="fa-solid fa-check"
-                class="w-10 h-10 text-white"
+                class="w-8 h-8 sm:w-10 sm:h-10 text-white"
               />
             </div>
-            <h2 class="text-2xl font-bold mb-2">Application Submitted!</h2>
-            <p class="text-green-100 text-sm">
+            <h2 class="text-xl sm:text-2xl font-bold mb-2">Application Submitted!</h2>
+            <p class="text-green-100 text-xs sm:text-sm">
               Your application has been successfully submitted
             </p>
           </div>
         </div>
 
         <!-- Success Content -->
-        <div class="p-8 text-center">
-          <div class="mb-6">
-            <h3 class="text-xl font-semibold text-gray-900 mb-3">
+        <div class="p-4 sm:p-6 lg:p-8 text-center">
+          <div class="mb-4 sm:mb-6">
+            <h3 class="text-lg sm:text-xl font-semibold text-gray-900 mb-2 sm:mb-3">
               Thank You for Your Interest!
             </h3>
-            <p class="text-gray-600 leading-relaxed">
+            <p class="text-sm sm:text-base text-gray-600 leading-relaxed">
               We've received your application for
               <strong class="text-green-600">{{
                 selectedPosition?.position_title
@@ -290,9 +291,9 @@
           </div>
 
           <!-- Next Steps -->
-          <div class="bg-gray-50 rounded-xl p-6 mb-6">
+          <div class="bg-gray-50 rounded-lg sm:rounded-xl p-4 sm:p-6 mb-4 sm:mb-6">
             <h4
-              class="font-semibold text-gray-900 mb-3 flex items-center justify-center"
+              class="font-semibold text-gray-900 mb-2 sm:mb-3 flex items-center justify-center text-sm sm:text-base"
             >
               <font-awesome-icon
                 icon="fa-solid fa-clock"
@@ -300,7 +301,7 @@
               />
               What's Next?
             </h4>
-            <div class="space-y-2 text-sm text-gray-600">
+            <div class="space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-gray-600">
               <p>• We'll review your application within 3-5 business days</p>
               <p>• You'll receive an email confirmation shortly</p>
               <p>• Qualified candidates will be contacted for interviews</p>
@@ -308,9 +309,8 @@
           </div>
 
 
-
           <!-- Action Buttons -->
-          <div class="flex gap-3">
+          <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
             <button
               @click="closeSuccessModal"
               class="btn btn-sm bg-green-600 text-white hover:bg-green-700 border-none shadow-none"
@@ -519,7 +519,8 @@ ${position.requirements || 'No specific requirements listed'}
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await fetch('/api/branch-positions?job_status=open', {
+      // Use public endpoint to ensure we get open positions from branch_positions table
+      const response = await fetch('/api/branch-positions/public', {
         headers,
       });
 
@@ -535,38 +536,18 @@ ${position.requirements || 'No specific requirements listed'}
           result.data
         );
 
-        // Filter to only open positions - be strict about excluding closed positions
-        // The backend should already filter by job_status=open, but we double-check on frontend
-        branchPositions.value = result.data.filter((p) => {
-          // Get status values (prefer job_status, fallback to status)
-          const jobStatus = p.job_status || p.status;
-          const status = p.status || p.job_status || 'open';
-
-          // Position must be open (not closed, filled, or on-hold)
-          // If either status or job_status indicates closed/filled/on-hold, exclude it
-          const closedStatuses = ['closed', 'filled', 'on-hold'];
-          const isClosed =
-            closedStatuses.includes(jobStatus) ||
-            closedStatuses.includes(status);
-
-          // Position must be explicitly open
-          const isOpen =
-            (jobStatus === 'open' || status === 'open') && !isClosed;
-
-          // Must be active (strict check)
-          const isActive = p.is_active === true || p.is_active === 1;
-
-          // Must not be deleted
-          const notDeleted = !p.deleted_at;
-
-          return isOpen && isActive && notDeleted;
-        });
+        // Store all positions from API in branchPositions ref
+        // The computed 'positions' property will filter them automatically
+        branchPositions.value = result.data;
 
         console.log(
-          `✅ After filtering: ${branchPositions.value.length} positions`
+          `📦 Total positions from API: ${result.data.length}`
         );
         console.log(
-          `🚫 Filtered out: ${result.data.length - branchPositions.value.length} positions`
+          `✅ Open positions (after filtering): ${positions.value.length}`
+        );
+        console.log(
+          `🚫 Filtered out: ${result.data.length - positions.value.length} positions`
         );
 
         // Log main branch positions for debugging
@@ -733,5 +714,47 @@ ${position.requirements || 'No specific requirements listed'}
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+  }
+
+  /* Mobile responsive improvements */
+  @media (max-width: 640px) {
+    .overflow-y-auto {
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Better touch targets on mobile */
+    button, .cursor-pointer {
+      min-height: 44px;
+      min-width: 44px;
+    }
+
+    /* Ensure modal header is fully visible on mobile */
+    .fixed.inset-0 {
+      padding-top: 0;
+    }
+
+    /* Ensure title is not cut off */
+    .bg-gradient-to-r.from-green-600 {
+      position: relative;
+      z-index: 20;
+    }
+  }
+
+  /* Extra small mobile devices */
+  @media (max-width: 375px) {
+    .bg-white.rounded-xl {
+      margin-top: 1rem;
+      max-height: calc(100vh - 2rem);
+    }
+
+    .bg-gradient-to-r.from-green-600 h2 {
+      font-size: 1.125rem;
+      line-height: 1.4;
+    }
+
+    .bg-gradient-to-r.from-green-600 p {
+      font-size: 0.75rem;
+      line-height: 1.5;
+    }
   }
 </style>

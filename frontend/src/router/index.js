@@ -27,6 +27,8 @@ import ResetPassword from '../views/ResetPassword.vue';
 
 // Import supplier components
 import SupplierLogin from '../views/supplier/SupplierLogin.vue';
+import ForgotPasswordSupplier from '../views/supplier/ForgotPasswordSupplier.vue';
+import ResetPasswordSupplier from '../views/supplier/ResetPasswordSupplier.vue';
 import SupplierDashboard from '../views/supplier/SupplierDashboard.vue';
 import SupplierOrders from '../views/supplier/SupplierOrders.vue';
 import SupplierProfile from '../views/supplier/SupplierProfile.vue';
@@ -36,6 +38,8 @@ import SupplierProducts from '../views/supplier/SupplierProducts.vue';
 import FullMenu from '../components/crm/FullMenu.vue';
 import Homepage from '../components/crm/homepage.vue';
 import StoreDirectory from '../components/crm/StoreDirectory.vue';
+import JoinUs from '../components/crm/JoinUs.vue';
+import FAQ from '../components/crm/FAQ.vue';
 const routes = [
   // crm route
   {
@@ -64,6 +68,20 @@ const routes = [
     name: 'StoreDirectory',
     component: StoreDirectory,
     meta: { title: 'Store Directory' },
+  },
+  // Join Us route
+  {
+    path: '/join-us',
+    name: 'JoinUs',
+    component: JoinUs,
+    meta: { title: 'Join Our Team' },
+  },
+  // FAQ route
+  {
+    path: '/faq',
+    name: 'FAQ',
+    component: FAQ,
+    meta: { title: 'Frequently Asked Questions' },
   },
   // Add login route
   {
@@ -98,6 +116,18 @@ const routes = [
     name: 'SupplierLogin',
     component: SupplierLogin,
     meta: { title: 'Supplier Login' },
+  },
+  {
+    path: '/supplier/forgot-password',
+    name: 'ForgotPasswordSupplier',
+    component: ForgotPasswordSupplier,
+    meta: { title: 'Forgot Password' },
+  },
+  {
+    path: '/supplier/reset-password',
+    name: 'ResetPasswordSupplier',
+    component: ResetPasswordSupplier,
+    meta: { title: 'Reset Password' },
   },
   {
     path: '/supplier',
@@ -450,8 +480,12 @@ router.beforeEach(async (to, from, next) => {
     '/home',
     '/menu',
     '/stores',
+    '/join-us',
+    '/faq',
     '/rate-order',
     '/supplier/login',
+    '/supplier/forgot-password',
+    '/supplier/reset-password',
   ];
 
   if (publicRoutes.includes(to.path)) {

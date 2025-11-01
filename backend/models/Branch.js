@@ -4,19 +4,60 @@ class Branch {
   // Generate unique branch code
   static async generateBranchCode() {
     try {
-      const lastBranch = await db("branches")
+      // Get all existing branch codes that match the BRN### pattern
+      const existingBranches = await db("branches")
         .select("code")
         .whereNotNull("code")
-        .orderBy("id", "desc")
-        .first();
+        .where("code", "like", "BRN%");
 
-      if (!lastBranch) {
+      if (existingBranches.length === 0) {
         return "BRN001";
       }
 
-      const lastCode = lastBranch.code;
-      const numPart = parseInt(lastCode.replace("BRN", "")) + 1;
-      return `BRN${numPart.toString().padStart(3, "0")}`;
+      // Extract all numeric parts from BRN codes
+      const codeNumbers = existingBranches
+        .map((branch) => {
+          const match = branch.code.match(/^BRN(\d+)$/);
+          return match ? parseInt(match[1], 10) : null;
+        })
+        .filter((num) => num !== null && !isNaN(num))
+        .sort((a, b) => b - a); // Sort descending
+
+      // Start from the highest number and find the next available
+      let nextNumber = codeNumbers.length > 0 ? codeNumbers[0] + 1 : 1;
+
+      // Ensure we don't skip any numbers (handle gaps in sequence)
+      // Check if any numbers are missing between 1 and the highest
+      for (let i = 1; i <= codeNumbers[0]; i++) {
+        if (!codeNumbers.includes(i)) {
+          nextNumber = i;
+          break;
+        }
+      }
+
+      // Generate the code and check if it exists
+      let newCode = `BRN${nextNumber.toString().padStart(3, "0")}`;
+      let attempts = 0;
+      const maxAttempts = 1000;
+
+      // Keep checking until we find an available code
+      while (attempts < maxAttempts) {
+        const exists = await db("branches")
+          .where("code", newCode)
+          .first();
+
+        if (!exists) {
+          return newCode;
+        }
+
+        // Code exists, try next number
+        nextNumber++;
+        newCode = `BRN${nextNumber.toString().padStart(3, "0")}`;
+        attempts++;
+      }
+
+      // Fallback if somehow we exhausted all possibilities
+      return `BRN${Date.now().toString().slice(-3)}`;
     } catch (error) {
       console.error("Error generating branch code:", error);
       // Fallback to timestamp-based code
@@ -172,6 +213,7 @@ class Branch {
         country: branchData.country?.trim() || null,
         is_active:
           branchData.is_active !== undefined ? branchData.is_active : true,
+        status: branchData.status || 'Open',
         opening_hours: branchData.opening_hours || null,
         description: branchData.description?.trim() || null,
         image_url: branchData.image_url || null,
@@ -265,6 +307,7 @@ class Branch {
           branchData.is_active !== undefined
             ? branchData.is_active
             : existingBranch.is_active,
+        status: branchData.status !== undefined ? branchData.status : existingBranch.status,
         opening_hours: branchData.opening_hours || null,
         description: branchData.description?.trim() || null,
         image_url:

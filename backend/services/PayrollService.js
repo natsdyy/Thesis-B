@@ -274,9 +274,10 @@ class PayrollService {
     let specialHolidayPay = 0;
     let doubleHolidayPay = 0;
     let holidayHoursWorked = 0;
-    let restDayPay = 0; // Track rest day premium separately
-    let regularRestDayPay = 0; // Track regular rest day premium (non-holiday)
-    let holidayRestDayPay = 0; // Track holiday+rest day premium (already included in holiday pay, tracked for transparency)
+    let restDayPay = 0; // Track total rest day pay (130% of regular rate) - USER-FRIENDLY: shows full compensation
+    let regularRestDayPay = 0; // Track total regular rest day pay (non-holiday) - 130% compensation
+    let holidayRestDayPay = 0; // Track holiday+rest day pay (already included in holiday pay, tracked for transparency)
+    let restDayHours = 0; // Track rest day hours separately (excluded from basic salary)
 
     // Get Philippine holidays in the period
     const holidays = this.getPhilippineHolidays(dateFrom, dateTo);
@@ -469,27 +470,39 @@ class PayrollService {
         // Regular workday - check if it's a rest day (Day Off or rest day override)
         const isRestDay = await this.isRestDay(employee.id, recordDate);
 
+        // Split hours_worked into regular hours (max hoursPerDay) and overtime hours
+        // Some attendance records may have incorrect data where hours_worked includes overtime
+        const regularHoursForDay = Math.min(hoursWorked, hoursPerDay);
+        const excessHoursAsOT = Math.max(0, hoursWorked - hoursPerDay);
+        const effectiveOvertimeHours = overtimeHours + excessHoursAsOT;
+
         if (isRestDay && hoursWorked > 0) {
-          // Working on regular rest day (non-holiday): 130% of daily rate
-          // Calculate rest day premium: 30% premium (130% - 100% = 30%)
-          const dailyRate = hourlyRate * hoursPerDay;
-          const regularPay = hourlyRate * hoursWorked; // 100% for regular hours
-          const restDayPremium = dailyRate * 0.3 * (hoursWorked / hoursPerDay); // 30% premium
-          regularRestDayPay += restDayPremium; // Track regular rest day premium separately
+          // Working on regular rest day (non-holiday): 130% of regular hourly rate (DOLE rule)
+          // USER-FRIENDLY: Calculate TOTAL rest day pay (130%) so users see full compensation
+          // Rest day hourly rate = hourlyRate × 1.3
+          const restDayTotalPay = hourlyRate * regularHoursForDay * 1.3; // 130% of regular rate (total compensation)
+          regularRestDayPay += restDayTotalPay; // Track total regular rest day pay
+          restDayHours += regularHoursForDay; // Track rest day hours (exclude from basic salary)
 
           // For overtime on regular rest day: 130% × 130% = 169% per hour
           // Regular OT on rest day: 125% × 130% = 162.5% per hour
-          // Premium for OT on rest day: 162.5% - 125% = 37.5% per hour
-          if (overtimeHours > 0) {
-            const regularOTPay = hourlyRate * overtimeHours * 1.25; // Regular OT rate
-            const restDayOTPremium = hourlyRate * overtimeHours * 0.375; // 37.5% premium
-            regularRestDayPay += restDayOTPremium; // Track regular rest day OT premium
-            // Note: regularOTPay is included in overtimePay calculation below
+          // Calculate total OT pay on rest day (162.5% total, not just premium)
+          if (effectiveOvertimeHours > 0) {
+            const restDayOTTotalPay =
+              hourlyRate * effectiveOvertimeHours * 1.625; // 162.5% total (125% × 130%)
+            regularRestDayPay += restDayOTTotalPay; // Add total OT pay on rest day
+            // Note: Overtime on rest days is NOT added to regular overtimePay below
           }
+
+          // DO NOT add rest day hours to totalHoursWorked (excluded from basic salary)
+          // DO NOT add rest day OT hours to totalOvertimeHours (included in restDayPay above)
+          continue; // Skip adding to totalHoursWorked and totalOvertimeHours
         }
 
-        totalHoursWorked += hoursWorked;
-        totalOvertimeHours += overtimeHours;
+        // Add only regular hours to totalHoursWorked, not the full hours_worked value
+        // (Rest day hours are tracked separately above and excluded from basic salary)
+        totalHoursWorked += regularHoursForDay;
+        totalOvertimeHours += effectiveOvertimeHours;
       }
     }
 
@@ -526,21 +539,23 @@ class PayrollService {
     );
 
     // Calculate gross salary
+    // USER-FRIENDLY APPROACH:
+    // - basicSalary includes ONLY regular working hours (rest day hours excluded)
+    // - restDayPay shows TOTAL compensation for rest day work (130% of regular rate)
+    // - This makes it clear to users: "Rest Day Pay: ₱286.00" = total compensation for that day
     // Note: holidayRestDayPay is already included in holiday pay amounts (tracked separately for transparency only)
-    // regularRestDayPay needs to be added separately for regular rest days (non-holiday)
-    // Combine both for reporting purposes in rest_day_pay field
-    restDayPay = regularRestDayPay + holidayRestDayPay; // Total rest day pay for reporting
+    restDayPay = regularRestDayPay + holidayRestDayPay; // Total rest day pay (130% compensation) for reporting
 
     const grossSalary =
-      basicSalary +
-      overtimePay +
+      basicSalary + // Regular hours only (rest day hours excluded)
+      overtimePay + // Regular OT only (rest day OT excluded, already in restDayPay)
       totalNightDiffPay +
-      regularHolidayPay +
-      specialHolidayPay +
-      doubleHolidayPay +
+      regularHolidayPay + // Includes holiday+rest day combinations
+      specialHolidayPay + // Includes holiday+rest day combinations
+      doubleHolidayPay + // Includes holiday+rest day combinations
       silLeavePay +
       silConversionResult.conversionPay +
-      regularRestDayPay; // Add regular rest day pay (premium for non-holiday rest days only)
+      regularRestDayPay; // Add total rest day pay (130% compensation) - USER-FRIENDLY: full amount visible
 
     // Calculate government deductions
     const deductions = this.calculateGovernmentDeductions(

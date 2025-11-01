@@ -209,12 +209,12 @@
                       ></path>
                     </svg>
                     <p class="text-sm font-medium text-primaryColor">
-                      Rest Day Premium
+                      Rest Day Pay
                     </p>
                     <span
-                      class="badge badge-xs badge-info"
-                      title="Additional pay for working on rest days (Day Off)"
-                      >Rest Day</span
+                      class="badge badge-sm bg-info/20 text-info border-none font-medium"
+                      title="Total compensation for working on rest days at 130% of regular rate"
+                      >Rest Day (130%)</span
                     >
                   </div>
                   <p class="font-semibold text-primaryColor">
@@ -223,8 +223,8 @@
                   </p>
                 </div>
                 <p class="text-xs text-gray-600 mt-2">
-                  Additional pay for working on scheduled Day Off or overridden
-                  Day Off shifts
+                  Total compensation for working on scheduled Day Off or
+                  overridden Day Off shifts
                 </p>
               </div>
             </div>
@@ -299,12 +299,12 @@
                     ></path>
                   </svg>
                   <span class="text-sm font-medium text-primaryColor"
-                    >Rest Day Premium</span
+                    >Rest Day Pay</span
                   >
                   <span
-                    class="badge badge-xs badge-info"
-                    title="Additional pay for working on rest days (Day Off)"
-                    >Rest Day</span
+                    class="badge badge-xs bg-info/20 text-info border-none font-medium"
+                    title="Total compensation for working on rest days at 130% of regular rate"
+                    >Rest Day (130%)</span
                   >
                 </div>
                 <span class="font-semibold text-primaryColor"

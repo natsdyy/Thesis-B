@@ -368,7 +368,7 @@
                       ></path>
                     </svg>
                     <span class="text-xs font-medium text-primaryColor"
-                      >Rest Day Premium</span
+                      >Rest Day Pay</span
                     >
                   </div>
                   <span class="text-sm font-semibold text-primaryColor">
@@ -377,7 +377,8 @@
                   </span>
                 </div>
                 <p class="text-xs text-gray-600 mt-1">
-                  Additional pay for working on rest days
+                  Total compensation for working on rest days (130% of regular
+                  rate)
                 </p>
               </div>
 
@@ -513,11 +514,11 @@
                     <div
                       v-if="Number(record.rest_day_pay || 0) > 0"
                       class="flex-shrink-0"
-                      :title="`Rest Day Premium: ₱${formatCurrency(record.rest_day_pay)}`"
+                      :title="`Rest Day Pay: ₱${formatCurrency(record.rest_day_pay)} (130% of regular rate)`"
                     >
                       <span
-                        class="badge badge-xs badge-info tooltip"
-                        data-tip="Rest Day Premium"
+                        class="badge badge-xs bg-info/10 text-blue-700 tooltip"
+                        data-tip="Rest Day Pay (130%)"
                       >
                         <svg
                           class="w-3 h-3 mr-1"
@@ -557,11 +558,11 @@
                     <div
                       v-if="Number(record.rest_day_pay || 0) > 0"
                       class="text-xs text-primaryColor mt-1"
-                      :title="`Rest Day Premium: ₱${formatCurrency(record.rest_day_pay)}`"
+                      :title="`Rest Day Pay: ₱${formatCurrency(record.rest_day_pay)} (130% of regular rate)`"
                     >
                       <i class="fas fa-peso-sign mr-0.5"></i
                       >{{ formatCurrency(record.rest_day_pay) }}
-                      <span class="text-gray-500"> Rest Day</span>
+                      <span class="text-gray-500"> Rest Day (130%)</span>
                     </div>
                   </div>
                 </td>

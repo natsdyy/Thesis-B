@@ -183,12 +183,12 @@
                       ></path>
                     </svg>
                     <span class="font-medium text-primaryColor"
-                      >Rest Day Premium</span
+                      >Rest Day Pay</span
                     >
                     <span
                       class="text-xs text-gray-600 italic"
-                      title="Additional pay for working on rest days (Day Off)"
-                      >(Rest Day)</span
+                      title="Total compensation for working on rest days at 130% of regular rate"
+                      >(Rest Day - 130%)</span
                     >
                   </div>
                 </td>
@@ -681,7 +681,7 @@
     'Special Holiday Pay': recordData.value?.special_holiday_pay,
     'Night Differential': recordData.value?.night_diff_pay,
     'SIL Conversion Pay': recordData.value?.sil_conversion_pay,
-    'Rest Day Premium': recordData.value?.rest_day_pay,
+    'Rest Day Pay': recordData.value?.rest_day_pay,
   }));
 
   const deductionsList = computed(() => ({

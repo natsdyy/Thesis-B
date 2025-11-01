@@ -6,6 +6,7 @@ const path = require("path");
 const fs = require("fs");
 const { authenticateToken } = require("../middleware/rbac");
 const EmailService = require("../services/emailService");
+const SendGridService = require("../services/sendGridService");
 const { db } = require("../config/database");
 
 /**
@@ -1042,16 +1043,17 @@ router.put("/:id", authenticateToken, async (req, res) => {
         }
 
         // Send transfer notification email
-        const emailResult = await EmailService.sendEmployeeTransferNotification(
-          updatedEmployee.email,
-          employeeName,
-          fromBranchName,
-          toBranchName,
-          transferDate,
-          managerName,
-          transferMessage,
-          transferSubject
-        );
+        const emailResult =
+          await SendGridService.sendEmployeeTransferNotification(
+            updatedEmployee.email,
+            employeeName,
+            fromBranchName,
+            toBranchName,
+            transferDate,
+            managerName,
+            transferMessage,
+            transferSubject
+          );
 
         if (emailResult.success) {
           console.log(

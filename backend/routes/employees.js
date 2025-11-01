@@ -946,12 +946,8 @@ router.put("/:id", authenticateToken, async (req, res) => {
             (b) => b.id === updatedEmployee.branch_id
           );
 
-          fromBranchName = fromBranch
-            ? `${fromBranch.name} (${fromBranch.code})`
-            : "Unassigned";
-          toBranchName = toBranch
-            ? `${toBranch.name} (${toBranch.code})`
-            : "Unassigned";
+          fromBranchName = fromBranch ? fromBranch.name : "Unassigned";
+          toBranchName = toBranch ? toBranch.name : "Unassigned";
         } else {
           // If no branch change but role/department changed, keep current branch info
           if (updatedEmployee.branch_id) {
@@ -962,8 +958,7 @@ router.put("/:id", authenticateToken, async (req, res) => {
               .first();
 
             if (currentBranch) {
-              fromBranchName =
-                toBranchName = `${currentBranch.name} (${currentBranch.code})`;
+              fromBranchName = toBranchName = currentBranch.name;
             }
           }
         }
@@ -1052,7 +1047,14 @@ router.put("/:id", authenticateToken, async (req, res) => {
             transferDate,
             managerName,
             transferMessage,
-            transferSubject
+            transferSubject,
+            {
+              hasBranchChanged,
+              hasDeptChanged: hasDepartmentChanged,
+              hasRoleChanged,
+              fromDept: fromDeptName,
+              toDept: toDeptName,
+            }
           );
 
         if (emailResult.success) {

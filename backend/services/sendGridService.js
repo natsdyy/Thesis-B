@@ -1008,6 +1008,7 @@ class SendGridService {
    * @param {string} managerName - Name of manager who requested transfer
    * @param {string} customMessage - Optional custom message about what changed
    * @param {string} customSubject - Optional custom email subject
+   * @param {Object} additionalInfo - Optional additional info (fromDept, toDept, fromRole, toRole, hasBranchChanged, hasDeptChanged, hasRoleChanged)
    */
   static async sendEmployeeTransferNotification(
     to,
@@ -1017,7 +1018,8 @@ class SendGridService {
     transferDate,
     managerName,
     customMessage = null,
-    customSubject = null
+    customSubject = null,
+    additionalInfo = {}
   ) {
     try {
       if (!this.isConfigured()) {
@@ -1027,6 +1029,48 @@ class SendGridService {
           error: "SendGrid API key not configured",
           skipEmail: true,
         };
+      }
+
+      // Determine what type of transfer this is and customize messaging
+      const {
+        hasBranchChanged = true,
+        hasDeptChanged = false,
+        hasRoleChanged = false,
+        fromDept,
+        toDept,
+      } = additionalInfo;
+
+      // Customize "What This Means For You" section based on transfer type
+      let whatThisMeans = "";
+      let nextStepsHtml = "";
+
+      if (hasBranchChanged && !hasDeptChanged && !hasRoleChanged) {
+        // Pure branch transfer
+        whatThisMeans = `Your transfer to <strong>${toBranchName}</strong> is now effective. Please report to your new branch location starting from the effective date. All your existing employment benefits and terms remain unchanged. If you have any questions about this transfer, please contact your new branch manager or the HR department.`;
+
+        nextStepsHtml = `
+                    <li>Report to your new branch on the effective date</li>
+                    <li>Introduce yourself to your new branch manager</li>
+                    <li>Familiarize yourself with the new location and procedures</li>
+                    <li>Update your emergency contact information if needed</li>`;
+      } else if (hasDeptChanged && !hasBranchChanged) {
+        // Department change only (no branch change)
+        whatThisMeans = `Your department assignment has been updated to <strong>${toDept}</strong>. Please review your new responsibilities and expectations in your new department. All your existing employment benefits and terms remain unchanged. If you have any questions about this transition, please contact your department head or the HR department.`;
+
+        nextStepsHtml = `
+                    <li>Review your new department responsibilities</li>
+                    <li>Introduce yourself to your new department head</li>
+                    <li>Familiarize yourself with any new procedures or processes</li>
+                    <li>Update your emergency contact information if needed</li>`;
+      } else {
+        // Combined changes (branch + dept or branch + role, etc.)
+        whatThisMeans = `Your transfer is now effective. Please review your new assignment details and prepare accordingly. All your existing employment benefits and terms remain unchanged. If you have any questions about this change, please contact your new supervisor or the HR department.`;
+
+        nextStepsHtml = `
+                    <li>Review your new assignment details</li>
+                    <li>Introduce yourself to your new supervisor or manager</li>
+                    <li>Familiarize yourself with your new role and responsibilities</li>
+                    <li>Update your emergency contact information if needed</li>`;
       }
 
       const msg = {
@@ -1081,6 +1125,11 @@ class SendGridService {
                         ${employeeName}
                       </td>
                     </tr>
+                    ${
+                      hasBranchChanged &&
+                      toBranchName !== "Unassigned" &&
+                      fromBranchName !== "Unassigned"
+                        ? `
                     <tr style="border-top: 1px solid #dee2e6;">
                       <td style="padding: 12px 0; color: #555; font-size: 16px; font-weight: 500;">Previous Branch:</td>
                       <td style="padding: 12px 0; text-align: right; font-weight: 700; color: #dc2626; font-size: 16px;">
@@ -1093,6 +1142,67 @@ class SendGridService {
                         ${toBranchName}
                       </td>
                     </tr>
+                    `
+                        : ""
+                    }
+                    ${
+                      hasDeptChanged && !hasBranchChanged
+                        ? `
+                    <tr style="border-top: 1px solid #dee2e6;">
+                      <td style="padding: 12px 0; color: #555; font-size: 16px; font-weight: 500;">Previous Department:</td>
+                      <td style="padding: 12px 0; text-align: right; font-weight: 700; color: #dc2626; font-size: 16px;">
+                        ${fromDept || "Current Department"}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #555; font-size: 16px; font-weight: 500;">New Department:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 700; color: #466114; font-size: 16px;">
+                        ${toDept || "New Department"}
+                      </td>
+                    </tr>
+                    `
+                        : ""
+                    }
+                    ${
+                      hasDeptChanged &&
+                      hasBranchChanged &&
+                      fromBranchName === "Unassigned"
+                        ? `
+                    <tr style="border-top: 1px solid #dee2e6;">
+                      <td style="padding: 12px 0; color: #555; font-size: 16px; font-weight: 500;">Previous Department:</td>
+                      <td style="padding: 12px 0; text-align: right; font-weight: 700; color: #dc2626; font-size: 16px;">
+                        ${fromDept || "Current Department"}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #555; font-size: 16px; font-weight: 500;">New Department:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 700; color: #466114; font-size: 16px;">
+                        ${toDept || "New Department"}
+                      </td>
+                    </tr>
+                    `
+                        : ""
+                    }
+                    ${
+                      hasDeptChanged &&
+                      hasBranchChanged &&
+                      toBranchName === "Unassigned"
+                        ? `
+                    <tr style="border-top: 1px solid #dee2e6;">
+                      <td style="padding: 12px 0; color: #555; font-size: 16px; font-weight: 500;">Previous Department:</td>
+                      <td style="padding: 12px 0; text-align: right; font-weight: 700; color: #dc2626; font-size: 16px;">
+                        ${fromDept || "Current Department"}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #555; font-size: 16px; font-weight: 500;">New Department:</td>
+                      <td style="padding: 8px 0; text-align: right; font-weight: 700; color: #466114; font-size: 16px;">
+                        ${toDept || "New Department"}
+                      </td>
+                    </tr>
+                    `
+                        : ""
+                    }
                     <tr style="border-top: 1px solid #dee2e6;">
                       <td style="padding: 12px 0; color: #555; font-size: 15px; font-weight: 500;">Effective Date:</td>
                       <td style="padding: 12px 0; text-align: right; font-weight: 600; font-size: 15px; color: #2c3e50;">
@@ -1113,9 +1223,7 @@ class SendGridService {
                             padding: 20px; border-radius: 5px; margin: 20px 0;">
                   <h4 style="color: #466114; margin-top: 0; margin-bottom: 15px; font-size: 16px; font-weight: bold;">What This Means For You</h4>
                   <p style="color: #2c3e50; margin: 0; font-size: 15px; line-height: 1.6;">
-                    Your transfer to <strong>${toBranchName}</strong> is now effective. Please report to your new branch location 
-                    starting from the effective date. All your existing employment benefits and terms remain unchanged. 
-                    If you have any questions about this transfer, please contact your new branch manager or the HR department.
+                    ${whatThisMeans}
                   </p>
                 </div>
                 
@@ -1124,10 +1232,7 @@ class SendGridService {
                             padding: 20px; border-radius: 5px; margin: 20px 0;">
                   <h4 style="color: #856404; margin-top: 0; margin-bottom: 15px; font-size: 16px; font-weight: bold;">Next Steps</h4>
                   <ul style="color: #856404; margin: 0; padding-left: 20px; font-size: 15px; line-height: 1.6;">
-                    <li>Report to your new branch on the effective date</li>
-                    <li>Introduce yourself to your new branch manager</li>
-                    <li>Familiarize yourself with the new location and procedures</li>
-                    <li>Update your emergency contact information if needed</li>
+                    ${nextStepsHtml}
                   </ul>
                 </div>
                 
@@ -1150,25 +1255,30 @@ class SendGridService {
           
           Dear ${employeeName},
           
-          ${customMessage || "We are writing to inform you that your branch assignment has been updated as part of our organizational restructuring. Your transfer has been approved and is now effective."}
+          ${customMessage || "We are writing to inform you that your assignment has been updated. Your transfer has been approved and is now effective."}
           
           TRANSFER DETAILS:
           Employee: ${employeeName}
-          Previous Branch: ${fromBranchName}
-          New Branch: ${toBranchName}
+          ${hasBranchChanged && toBranchName !== "Unassigned" && fromBranchName !== "Unassigned" ? `Previous Branch: ${fromBranchName}\n          New Branch: ${toBranchName}` : ""}
+          ${hasDeptChanged && !hasBranchChanged ? `Previous Department: ${fromDept || "Current Department"}\n          New Department: ${toDept || "New Department"}` : ""}
+          ${hasDeptChanged && hasBranchChanged && fromBranchName === "Unassigned" ? `Previous Department: ${fromDept || "Current Department"}\n          New Department: ${toDept || "New Department"}` : ""}
+          ${hasDeptChanged && hasBranchChanged && toBranchName === "Unassigned" ? `Previous Department: ${fromDept || "Current Department"}\n          New Department: ${toDept || "New Department"}` : ""}
           Effective Date: ${transferDate.toLocaleDateString("en-PH")}
           Requested By: ${managerName}
           
           WHAT THIS MEANS FOR YOU:
-          Your transfer to ${toBranchName} is now effective. Please report to your new branch location 
-          starting from the effective date. All your existing employment benefits and terms remain unchanged. 
-          If you have any questions about this transfer, please contact your new branch manager or the HR department.
+          ${whatThisMeans
+            .replace(/<strong>/g, "")
+            .replace(/<\/strong>/g, "")
+            .replace(/<li>/g, "- ")
+            .replace(/<\/li>/g, "")
+            .replace(/\n\s+/g, "\n")}
           
           NEXT STEPS:
-          - Report to your new branch on the effective date
-          - Introduce yourself to your new branch manager
-          - Familiarize yourself with the new location and procedures
-          - Update your emergency contact information if needed
+          ${nextStepsHtml
+            .replace(/<li>/g, "- ")
+            .replace(/<\/li>/g, "")
+            .replace(/\n\s+/g, "\n")}
           
           We wish you success in your new assignment!
           Countryside Steakhouse HR Team

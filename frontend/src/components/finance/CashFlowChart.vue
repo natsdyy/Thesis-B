@@ -276,13 +276,14 @@
             Operating Activities
           </p>
           <p
-            class="text-lg font-bold"
+            class="text-lg font-bold flex items-center gap-1"
             :class="
               cashFlowSummary.operatingPositive ? 'text-success' : 'text-error'
             "
           >
-            {{ cashFlowSummary.operatingPositive ? '+' : ''
-            }}{{ peso(cashFlowSummary.totalOperating) }}
+            <span>{{ cashFlowSummary.operatingPositive ? '+' : '' }}</span>
+            <font-awesome-icon icon="fa-solid fa-peso-sign" />
+            <span>{{ formatNumber(cashFlowSummary.totalOperating) }}</span>
           </p>
         </div>
 
@@ -301,13 +302,14 @@
             Net Cash Flow
           </p>
           <p
-            class="text-lg font-bold"
+            class="text-lg font-bold flex items-center gap-1"
             :class="
               cashFlowSummary.netFlowPositive ? 'text-success' : 'text-error'
             "
           >
-            {{ cashFlowSummary.netFlowPositive ? '+' : ''
-            }}{{ peso(cashFlowSummary.totalNetFlow) }}
+            <span>{{ cashFlowSummary.netFlowPositive ? '+' : '' }}</span>
+            <font-awesome-icon icon="fa-solid fa-peso-sign" />
+            <span>{{ formatNumber(cashFlowSummary.totalNetFlow) }}</span>
           </p>
         </div>
       </div>

@@ -2011,7 +2011,7 @@
                       <div class="flex space-x-1 sm:space-x-2">
                         <button
                           @click.stop="openDetailsModal(item)"
-                          class="text-primaryColor hover:text-primaryColor/80"
+                          class=""
                           title="View Details"
                         >
                           <Eye class="w-4 h-4" />

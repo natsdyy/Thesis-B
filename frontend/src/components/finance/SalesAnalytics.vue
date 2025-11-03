@@ -316,12 +316,12 @@
     const avgValue = sumY / n;
 
     // Apply trend damping to prevent excessive extrapolation
-    // Limit slope to reasonable bounds (±20% of average value per period)
-    const maxSlope = avgValue * 0.2; // Maximum 20% change per period
-    const minSlope = -avgValue * 0.15; // Maximum 15% decline per period
+    // Limit slope to reasonable bounds (±10% of average value per period for more conservative forecasts)
+    const maxSlope = avgValue * 0.1; // Maximum 10% growth per period
+    const minSlope = -avgValue * 0.1; // Maximum 10% decline per period
 
     // Apply damping factor based on data length (more data = less damping)
-    const dampingFactor = Math.min(1, Math.max(0.3, n / 20)); // 30% damping minimum, full by 20 points
+    const dampingFactor = Math.min(1, Math.max(0.5, n / 30)); // 50% damping minimum, full by 30 points
 
     slope = Math.max(minSlope, Math.min(maxSlope, slope * dampingFactor));
 
@@ -440,13 +440,13 @@
         const dayAvg = sums[i] / counts[i];
         const factor = dayAvg / overallAvg;
 
-        // Apply reasonable bounds (0.3 to 2.5) to prevent extreme seasonality
-        factors[i] = Math.max(0.3, Math.min(2.5, factor));
+        // Apply conservative bounds (0.5 to 1.8) to prevent extreme seasonality variations
+        factors[i] = Math.max(0.5, Math.min(1.8, factor));
         validDays++;
       } else if (counts[i] === 1 && overallAvg > 0) {
         // Single data point - use conservative factor
         const dayAvg = sums[i] / counts[i];
-        const factor = Math.max(0.5, Math.min(1.5, dayAvg / overallAvg));
+        const factor = Math.max(0.6, Math.min(1.4, dayAvg / overallAvg));
         factors[i] = factor;
         validDays++;
       }
@@ -735,13 +735,14 @@
         const blendedValue =
           value * blendFactor + avgRecent * (1 - blendFactor);
 
-        // Apply additional smoothing for low confidence forecasts
+        // Reduced smoothing for low confidence - don't eliminate day-to-day variation
         if (confidence < 70) {
-          // For low confidence, pull forecast closer to recent average
-          const smoothingFactor = 0.7; // 70% weight to recent average
-          return Math.round(
+          // For low confidence, apply lighter smoothing (30% instead of 70%)
+          const smoothingFactor = 0.3; // 30% weight to recent average
+          const result = Math.round(
             blendedValue * (1 - smoothingFactor) + avgRecent * smoothingFactor
           );
+          return result;
         }
 
         return Math.round(blendedValue);
@@ -752,53 +753,6 @@
           ? adjustedForecastValues.reduce((a, b) => a + b, 0)
           : 0
       );
-
-      // Debug: Show detailed calculation steps
-      console.log('Detailed Forecast Calculation:', {
-        // Step 1: Linear Regression Parameters
-        slope: slope,
-        intercept: intercept,
-        deseasonalizedLength: deseasonalized.length,
-
-        // Step 2: Seasonality Factors (day of week)
-        seasonality: seasonality,
-
-        // Step 3: Baseline and Confidence
-        baselineMinimum: baselineMinimum,
-        confidence: confidence,
-        avgRecent: avgRecent,
-
-        // Step 4: Daily Calculations
-        dailyCalculations: forecastLabels.map((label, i) => {
-          const futureDate = new Date(label);
-          const wd = futureDate.getDay();
-          const x = deseasonalized.length + i;
-          const rawPredicted = slope * x + intercept;
-          const seasonalFactor = seasonality[wd] || 1;
-          const withSeasonality = rawPredicted * seasonalFactor;
-          const withBaseline = Math.max(baselineMinimum, withSeasonality);
-          const blendFactor = Math.max(0.3, confidence / 100);
-          const blended =
-            withBaseline * blendFactor + avgRecent * (1 - blendFactor);
-
-          return {
-            day: i + 1,
-            date: label,
-            dayOfWeek: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][wd],
-            x: x,
-            rawPredicted: Math.round(rawPredicted),
-            seasonalFactor: seasonalFactor.toFixed(2),
-            withSeasonality: Math.round(withSeasonality),
-            withBaseline: Math.round(withBaseline),
-            blendFactor: blendFactor.toFixed(2),
-            blended: Math.round(blended),
-            final: adjustedForecastValues[i],
-          };
-        }),
-
-        // Final Result
-        totalForecasted: totalForecasted,
-      });
 
       forecastData.value = {
         historical: { labels: labelsSorted, data: historicalDataArrLocal },
@@ -1196,7 +1150,7 @@
               <option value="month">Monthly</option>
             </select>
             <button
-              class="btn btn-xs btn-outline"
+              class="btn btn-xs "
               :disabled="branchRankLoading"
               @click="generateBranchRemitRank"
             >
@@ -1363,7 +1317,7 @@
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-sm font-medium text-gray-700">Sales Forecast</h3>
             <button
-              class="btn btn-sm btn-outline"
+              class="btn btn-sm "
               @click="generateForecast"
               :disabled="forecastLoading"
             >
@@ -1563,7 +1517,7 @@
               Cash Flow & Remittance Forecast
             </h3>
             <button
-              class="btn btn-sm btn-outline"
+              class="btn btn-sm "
               :disabled="cashFlowLoading"
               @click="generateCashFlowForecast"
             >
@@ -1591,7 +1545,6 @@
                   ₱{{ (cashFlow.totals.daily7 || 0).toLocaleString() }}
                 </div>
               </div>
-
             </div>
 
             <!-- Per-branch table -->
@@ -1601,18 +1554,19 @@
                   <tr>
                     <th class="text-xs">Branch</th>
                     <th class="text-xs">Next 7 Days</th>
-
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="b in cashFlow.byBranch" :key="b.branch_id">
                     <td class="text-xs">{{ b.branch_name }}</td>
-<td class="text-xs font-medium text-right">
-  <i class="fa-solid fa-peso-sign mr-1"></i>
-  {{ Number(b.totals.daily7 || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}
-</td>
-
-
+                    <td class="text-xs font-medium text-right">
+                      <i class="fa-solid fa-peso-sign mr-1"></i>
+                      {{
+                        Number(b.totals.daily7 || 0).toLocaleString('en-PH', {
+                          minimumFractionDigits: 2,
+                        })
+                      }}
+                    </td>
                   </tr>
                 </tbody>
               </table>

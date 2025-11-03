@@ -447,8 +447,8 @@
       showOrderCompleteModal.value = true;
       paymentInput.value = '';
 
-      // Update stats after successful order
-      await fetchTodayStats();
+      // Refresh menu items to update stock quantities reactively
+      await refreshPOSData();
     } catch (error) {
       console.error('Error processing order:', error);
       const errorMessage =
@@ -464,6 +464,8 @@
   const closeOrderCompleteModal = () => {
     showOrderCompleteModal.value = false;
     orderCompleteData.value = null;
+    // Reset order for new transaction
+    resetOrder();
   };
 
   const closeOrderConfirmationModal = () => {
@@ -1180,7 +1182,9 @@
                   type="checkbox"
                   class="toggle toggle-sm"
                   :class="
-                    branchStatus === 'Open' ? 'checked:text-white' : 'toggle-error'
+                    branchStatus === 'Open'
+                      ? 'checked:text-white'
+                      : 'toggle-error'
                   "
                   :checked="displayToggleState"
                   @click="handleStatusToggle"
@@ -1200,7 +1204,7 @@
                   class="btn btn-sm"
                   title="View Recent Transactions"
                 >
-                 <font-awesome-icon icon="fa-solid fa-receipt" />
+                  <font-awesome-icon icon="fa-solid fa-receipt" />
                   Transactions
                 </button>
                 <button
@@ -1255,9 +1259,12 @@
               <div
                 v-for="item in posStore.filteredMenuItems"
                 :key="item.id"
-                class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer flex flex-col p-4 relative"
+                class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col p-4 relative"
                 :class="{
                   'opacity-60 border-red-300 bg-red-50': item.is_expired,
+                  'opacity-60 border-red-300 bg-red-50 cursor-not-allowed':
+                    !item.is_expired &&
+                    parseFloat(item.stock_quantity || 0) === 0,
                   'border-orange-300 bg-orange-50':
                     item.is_expiring_soon && !item.is_expired,
                   'border-green-300 !bg-green-50':
@@ -1271,7 +1278,12 @@
                     (!item.promo_info || !item.promo_info.is_active) &&
                     parseFloat(item.stock_quantity || 0) > 0 &&
                     parseFloat(item.stock_quantity || 0) <= 10,
-                  'cursor-not-allowed': item.is_expired,
+                  'cursor-pointer':
+                    !item.is_expired &&
+                    parseFloat(item.stock_quantity || 0) > 0,
+                  'cursor-not-allowed':
+                    item.is_expired ||
+                    parseFloat(item.stock_quantity || 0) === 0,
                 }"
                 @click="
                   item.stock_quantity > 0 &&
@@ -1306,6 +1318,21 @@
                     class="bg-red-500 text-white px-3 md:px-4 py-1 md:py-2 rounded-full text-sm md:text-base font-bold"
                   >
                     EXPIRED
+                  </div>
+                </div>
+
+                <!-- Out of Stock Overlay -->
+                <div
+                  v-if="
+                    !item.is_expired &&
+                    parseFloat(item.stock_quantity || 0) === 0
+                  "
+                  class="absolute inset-0 bg-red-500/20 flex items-center justify-center z-10"
+                >
+                  <div
+                    class="bg-red-500 text-white px-3 md:px-4 py-1 md:py-2 rounded-full text-sm md:text-base font-bold"
+                  >
+                    OUT OF STOCK
                   </div>
                 </div>
 

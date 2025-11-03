@@ -21,14 +21,14 @@
             Administration leadership hierarchy
           </p>
         </div>
-        <div class="flex items-center gap-2" v-if="!auth.isBoardDirector">
+        <div class="flex items-center gap-2" v-if="auth.isChairman">
           <button
             class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
             @click="fetchChart"
           >
             Refresh
           </button>
-        <!--  <button
+          <!--  <button
             class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
             @click="autoPlaceUnlinked"
           >
@@ -56,7 +56,7 @@
             :children="getChildren(node.id)"
             :getChildren="getChildren"
             :isRoot="true"
-            :canModify="!auth.isBoardDirector"
+            :canModify="auth.isChairman"
             @add-child="openCreate"
             @edit-node="openEdit"
             @delete-node="deleteNode"
@@ -315,6 +315,12 @@
   }
 
   function openCreate(parentId) {
+    if (!auth.isChairman) {
+      showError(
+        'Only the Chairman of the Board can modify the organizational chart.'
+      );
+      return;
+    }
     parentForNew.value = parentId;
     editingNode.value = null;
     form.value = {
@@ -328,6 +334,12 @@
   }
 
   function openEdit(node) {
+    if (!auth.isChairman) {
+      showError(
+        'Only the Chairman of the Board can modify the organizational chart.'
+      );
+      return;
+    }
     editingNode.value = node;
     parentForNew.value = node.parent_id || null;
     form.value = {
@@ -347,6 +359,10 @@
   }
 
   function openCreateBoardMember() {
+    if (!auth.isChairman) {
+      showError('Only the Chairman of the Board can add board members.');
+      return;
+    }
     editingBm.value = null;
     bmForm.value = {
       first_name: '',
@@ -366,6 +382,10 @@
   }
 
   async function saveBoardMember() {
+    if (!auth.isChairman) {
+      showError('Only the Chairman of the Board can modify board members.');
+      return;
+    }
     try {
       if (editingBm.value) {
         const { password, ...rest } = bmForm.value;
@@ -394,6 +414,10 @@
   }
 
   async function confirmDeleteBoardMember() {
+    if (!auth.isChairman) {
+      showError('Only the Chairman of the Board can delete board members.');
+      return;
+    }
     try {
       if (!editingBm.value) return;
       await axios.delete(`/api/board-members/${editingBm.value.id}`, {
@@ -486,9 +510,17 @@
   }
 
   async function save() {
+    if (!auth.isChairman) {
+      showError(
+        'Only the Chairman of the Board can modify the organizational chart.'
+      );
+      return;
+    }
     const payload = {
       ...form.value,
       employee_id: form.value.employee_id || null,
+      // Include role for backend authorization (Chairman/Board)
+      role: auth.userRole,
     };
     try {
       if (editingNode.value) {
@@ -511,6 +543,10 @@
   }
 
   async function deleteNode(node) {
+    if (!auth.isChairman) {
+      showError('Only the Chairman of the Board can delete positions.');
+      return;
+    }
     // legacy quick delete kept for fallback; prefer in-modal delete with reason
     if (!confirm('Delete this position?')) return;
     try {
@@ -535,6 +571,10 @@
   }
 
   async function confirmDelete() {
+    if (!auth.isChairman) {
+      showError('Only the Chairman of the Board can delete positions.');
+      return;
+    }
     if (!editingNode.value) return;
     try {
       // Automatically deactivate linked board member first if linked

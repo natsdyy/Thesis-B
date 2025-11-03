@@ -57,9 +57,11 @@
   const loading = computed(() => payrollStore.loading);
   const payrollPeriods = computed(() => payrollStore.payrollPeriods);
   const userRole = computed(() => authStore.userRole);
-  const canTakeActions = computed(
-    () => userRole.value !== 'Board of Directors'
-  );
+  const canTakeActions = computed(() => {
+    const role = userRole.value;
+    // Hide actions for all Board members (Chairman or Board of Directors)
+    return !(role === 'Board of Directors' || role === 'Chairman of the Board');
+  });
 
   // Available years for custom month picker (current year ± 2 years)
   const availableYears = computed(() => {

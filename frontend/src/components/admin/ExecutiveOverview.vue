@@ -12,6 +12,7 @@
   import SalesTrendsChart from '../branch/SalesTrendsChart.vue';
   import { usePOSStore } from '../../stores/posStore';
   import { useBranchStore } from '../../stores/branchStore';
+  import { useBranchInventoryStore } from '../../stores/branchInventoryStore';
   import { getCurrentPhilippineTime } from '../../utils/timezoneUtils';
 
   const props = defineProps({
@@ -24,6 +25,7 @@
 
   const posStore = usePOSStore();
   const branchStore = useBranchStore();
+  const branchInventoryStore = useBranchInventoryStore();
 
   // Sales trend data
   const salesTrendLoading = ref(false);
@@ -31,6 +33,55 @@
     labels: [],
     data: [],
   });
+
+  // Derived alerts built from live branch inventory data
+  const derivedAlerts = ref([]);
+  const combinedAlerts = computed(() => {
+    const source = [
+      ...(Array.isArray(props.alerts) ? props.alerts : []),
+      ...derivedAlerts.value,
+    ];
+    // Normalize and de-duplicate by (item, branch) keeping highest severity
+    const byKey = new Map();
+    for (const a of source) {
+      if (!a || !a.text) continue;
+      const parsed = normalizeAlert(a.text);
+      if (!parsed) continue;
+      const key = `${parsed.item}|${parsed.branch}`;
+      const prev = byKey.get(key);
+      if (
+        !prev ||
+        severityRank(parsed.severity) > severityRank(prev.severity)
+      ) {
+        byKey.set(key, {
+          level: 'warning',
+          text: formatAlertText(parsed),
+          severity: parsed.severity,
+        });
+      }
+    }
+    return Array.from(byKey.values());
+  });
+
+  const severityRank = (s) => (String(s).toLowerCase().includes('out') ? 2 : 1);
+  const normalizeAlert = (text) => {
+    try {
+      const m = String(text).match(
+        /^(Low stock|Out of stock):\s*([^()]+)\s*\(([^)]+)\)/i
+      );
+      if (!m) return null;
+      const severity = m[1].toLowerCase();
+      const item = m[2].trim();
+      const branch = m[3].trim();
+      return { severity, item, branch };
+    } catch {
+      return null;
+    }
+  };
+  const formatAlertText = ({ severity, item, branch }) => {
+    const label = severity.includes('out') ? 'Out of stock' : 'Low stock';
+    return `${label}: ${item} (${branch})`;
+  };
 
   // Calculate date range based on period
   const getDateRange = () => {
@@ -166,6 +217,7 @@
 
   onMounted(() => {
     fetchSalesTrend();
+    buildAlertsFromInventory();
   });
 
   // Watch for period changes and refetch data
@@ -175,6 +227,172 @@
       fetchSalesTrend();
     }
   );
+
+  // Rebuild inventory-driven alerts whenever active branches change
+  watch(
+    () => branchStore.activeBranches,
+    () => {
+      buildAlertsFromInventory();
+    },
+    { deep: true }
+  );
+
+  // Top branches table: allow toggling between Top and Least by sales
+  const sortMode = ref('top'); // 'top' | 'least'
+  const sortedBranches = computed(() => {
+    const list = Array.isArray(props.topBranches) ? [...props.topBranches] : [];
+    return list.sort((a, b) => {
+      const aSales = Number(a?.sales || 0);
+      const bSales = Number(b?.sales || 0);
+      return sortMode.value === 'least' ? aSales - bSales : bSales - aSales;
+    });
+  });
+
+  // Build alerts from branch inventory (low/out of stock)
+  const buildAlertsFromInventory = async () => {
+    try {
+      const branches = branchStore.activeBranches || [];
+      const alerts = [];
+      for (const b of branches) {
+        const inv = await branchInventoryStore.fetchInventory(b.id);
+        for (const it of inv) {
+          const qty = Number(it.quantity || 0);
+          const min = Number(it.minimum_stock || it.min_stock || 0);
+          if (qty <= 0 || qty <= min) {
+            const level = qty <= 0 ? 'warning' : 'warning';
+            alerts.push({
+              level,
+              text: `${qty <= 0 ? 'Out of stock' : 'Low stock'}: ${it.name || it.item_name || it.item} (${b.name})`,
+            });
+          }
+        }
+      }
+      derivedAlerts.value = alerts;
+    } catch (e) {
+      console.warn('Failed building inventory-driven alerts:', e);
+    }
+  };
+
+  // Tooltip formatter for Out of Stock items
+  const getOosTooltip = (b) => {
+    const raw =
+      b?.oosItems ||
+      b?.oos_items ||
+      b?.outOfStockItems ||
+      b?.oosDetails ||
+      b?.oos_details ||
+      [];
+
+    if (Array.isArray(raw)) {
+      const names = raw
+        .map((it) =>
+          typeof it === 'string' ? it : it?.name || it?.item || it?.title || ''
+        )
+        .filter(Boolean);
+      if (names.length === 0)
+        return tryAlertsFallback(b) || 'No out-of-stock items listed';
+      const preview = names.slice(0, 10);
+      const rest = names.length - preview.length;
+      return rest > 0
+        ? `${preview.join(', ')}, +${rest} more`
+        : preview.join(', ');
+    }
+
+    if (typeof raw === 'string' && raw.trim().length > 0) return raw;
+
+    // Fallback: if we have a numeric count but no item list fields
+    const count = Number(
+      b?.oos ?? b?.out_of_stock ?? b?.oosCount ?? b?.oos_count ?? 0
+    );
+    if (count > 0) {
+      const fromAlerts = tryAlertsFallback(b, count);
+      if (fromAlerts) return fromAlerts;
+      return `${count} item${count === 1 ? '' : 's'} out of stock`;
+    }
+
+    return 'No out-of-stock items listed';
+  };
+
+  // Get list of OOS item names (from row data or alerts fallback)
+  const getOosNames = (b) => {
+    const raw =
+      b?.oosItems ||
+      b?.oos_items ||
+      b?.outOfStockItems ||
+      b?.oosDetails ||
+      b?.oos_details ||
+      [];
+
+    if (Array.isArray(raw)) {
+      const names = raw
+        .map((it) =>
+          typeof it === 'string' ? it : it?.name || it?.item || it?.title || ''
+        )
+        .filter(Boolean);
+      if (names.length > 0) return names;
+    }
+
+    // Fallback to alerts parsing
+    const inferred = extractAlertsNames(b);
+    return Array.isArray(inferred) && inferred.length > 0 ? inferred : [];
+  };
+
+  // Extract names from alerts array for a given branch
+  const extractAlertsNames = (b) => {
+    try {
+      const branchName = String(b?.name || '').trim();
+      if (!branchName) return [];
+      const alerts = combinedAlerts.value;
+      const names = [];
+      for (const a of alerts) {
+        const text = String(a?.text || '');
+        const isStockAlert = /(low stock|out of stock)/i.test(text);
+        const mentionsBranch =
+          text.includes(`(${branchName})`) ||
+          text.toLowerCase().includes(branchName.toLowerCase());
+        if (!isStockAlert || !mentionsBranch) continue;
+        const m = text.match(/:\s*([^()]+)\s*\(/);
+        if (m && m[1]) names.push(m[1].trim());
+      }
+      return names;
+    } catch (_) {
+      return [];
+    }
+  };
+
+  // Try to derive OOS item names from alerts feed when table row lacks details
+  const tryAlertsFallback = (b, totalCountHint = 0) => {
+    try {
+      const branchName = String(b?.name || '').trim();
+      if (!branchName) return '';
+      const alerts = combinedAlerts.value;
+      const names = [];
+      for (const a of alerts) {
+        const text = String(a?.text || '');
+        const isStockAlert = /(low stock|out of stock)/i.test(text);
+        const mentionsBranch =
+          text.includes(`(${branchName})`) ||
+          text.toLowerCase().includes(branchName.toLowerCase());
+        if (!isStockAlert || !mentionsBranch) continue;
+        const m = text.match(/:\s*([^()]+)\s*\(/); // capture item name before (Branch)
+        if (m && m[1]) names.push(m[1].trim());
+      }
+      if (names.length > 0) {
+        const preview = names.slice(0, 10);
+        const inferredRest = Math.max(
+          0,
+          Number(totalCountHint || 0) - names.length
+        );
+        const rest = Math.max(0, names.length - preview.length) + inferredRest;
+        return rest > 0
+          ? `${preview.join(', ')}, +${rest} more`
+          : preview.join(', ');
+      }
+      return '';
+    } catch (_) {
+      return '';
+    }
+  };
 
   watch(
     () => props.customMonth,
@@ -341,12 +559,37 @@
     <div class="card bg-white shadow-lg">
       <div class="card-body">
         <div class="flex items-center justify-between mb-2">
-          <h3 class="font-bold text-lg">Top Branch Performance</h3>
+          <h3 class="font-bold text-lg">Branch Performance</h3>
+          <div class="join">
+            <button
+              class="btn btn-xs join-item"
+              :class="
+                sortMode === 'top'
+                  ? 'bg-primaryColor text-white font-thin'
+                  : 'btn-ghost'
+              "
+              @click="sortMode = 'top'"
+            >
+              Top
+            </button>
+            <button
+              class="btn btn-xs join-item"
+              :class="
+                sortMode === 'least'
+                  ? 'bg-primaryColor text-white font-thin'
+                  : 'btn-ghost'
+              "
+              @click="sortMode = 'least'"
+            >
+              Least
+            </button>
+          </div>
         </div>
         <div class="overflow-x-auto">
           <table class="table table-zebra">
             <thead>
               <tr>
+                <th class="w-16 text-center">Rank</th>
                 <th>Branch</th>
                 <th class="text-right">Sales</th>
                 <th class="text-right">Average Transaction</th>
@@ -355,7 +598,23 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="b in props.topBranches" :key="b.name">
+              <tr v-for="(b, idx) in sortedBranches" :key="b.name">
+                <td class="text-center">
+                  <span
+                    class="px-2 py-0.5 text-xs font-bold rounded-full"
+                    :class="
+                      idx === 0
+                        ? 'bg-yellow-100 text-yellow-700'
+                        : idx === 1
+                          ? 'bg-gray-200 text-gray-700'
+                          : idx === 2
+                            ? 'bg-amber-200 text-amber-800'
+                            : 'bg-gray-100 text-gray-700'
+                    "
+                  >
+                    {{ idx + 1 }}
+                  </span>
+                </td>
                 <td>{{ b.name }}</td>
                 <td class="text-right">
                   ₱{{
@@ -373,7 +632,21 @@
                 >
                   {{ Number(b.growth || 0).toFixed(1) }}%
                 </td>
-                <td class="text-right">{{ b.oos || 0 }}</td>
+                <td class="text-right">
+                  <template v-if="Number(b.oos || 0) > 0">
+                    <div
+                      class="tooltip tooltip-left inline-block"
+                      :data-tip="getOosTooltip(b)"
+                    >
+                      <span class="underline decoration-dotted cursor-help">
+                        {{ Number(b.oos || 0) }}
+                      </span>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <span class="text-gray-500">{{ Number(b.oos || 0) }}</span>
+                  </template>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -395,7 +668,7 @@
         </div>
         <div v-else class="space-y-2">
           <div
-            v-for="(a, idx) in props.alerts"
+            v-for="(a, idx) in combinedAlerts"
             :key="idx"
             class="flex items-start gap-2 p-3 rounded-lg"
             :class="a.level === 'warning' ? 'bg-orange-50' : 'bg-gray-50'"

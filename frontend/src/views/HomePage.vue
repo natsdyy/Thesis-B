@@ -49,6 +49,19 @@
   // Computed
   const currentBranch = computed(() => branchContextStore.currentBranch);
   const userRole = computed(() => branchContextStore.userRole);
+
+  // Display: For branch employees show Branch - Role; for department employees show Department - Role
+  const headerOrgAndRole = computed(() => {
+    const branchName = currentBranch.value?.name || null;
+    const branchRole = userRole.value || null;
+    const dept = authStore.userDepartment || null;
+    const role = authStore.userRole || branchRole || 'User';
+
+    if (branchName) {
+      return `${branchName} - ${branchRole || role}`;
+    }
+    return `${dept || 'Department'} - ${role}`;
+  });
   const availableOperations = computed(
     () => branchContextStore.availableOperations
   );
@@ -244,7 +257,7 @@
       <div>
         <h1 class="text-3xl font-bold text-primaryColor">Employee Dashboard</h1>
         <p class="text-gray-600 mt-1">
-          {{ currentBranch?.name || 'Main Branch' }} - {{ userRole || 'Admin' }}
+          {{ headerOrgAndRole }}
         </p>
       </div>
     </div>

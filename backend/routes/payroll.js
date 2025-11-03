@@ -8,7 +8,10 @@ const CashMovement = require("../models/CashMovement");
 const FinanceBalance = require("../models/FinanceBalance");
 const EmailService = require("../services/emailService");
 const NotificationService = require("../services/NotificationService");
-const { formatForDatabase } = require("../utils/timezoneUtils");
+const {
+  formatForDatabase,
+  parsePhilippineDateString,
+} = require("../utils/timezoneUtils");
 const BoardMember = require("../models/BoardMember");
 const { db } = require("../config/database");
 
@@ -34,8 +37,9 @@ router.post("/generate", authenticateToken, async (req, res) => {
       });
     }
 
-    const dateFrom = new Date(date_from);
-    const dateTo = new Date(date_to);
+    // Parse dates as Philippine timezone to avoid timezone shifts
+    const dateFrom = parsePhilippineDateString(date_from);
+    const dateTo = parsePhilippineDateString(date_to);
     const generatorId = generated_by || req.user.id;
 
     let result;

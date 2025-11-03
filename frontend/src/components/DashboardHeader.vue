@@ -92,7 +92,7 @@
         <!-- Dropdown content -->
         <ul
           tabindex="0"
-          class="dropdown-content menu bg-base-100 rounded-box z-[1] w-80 shadow-lg border border-base-300 max-h-96 overflow-y-auto overflow-x-hidden"
+          class="dropdown-content menu bg-base-100 rounded-box z-[1] w-80 shadow-lg border border-base-300 max-h-[70vh] overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y"
         >
           <!-- Header -->
           <li class="menu-title">
@@ -320,9 +320,7 @@
               class="flex items-center space-x-3 px-3 py-2 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
             >
               <LogOut class="w-4 h-4 text-red-600" />
-              <span class="text-sm text-red-700"
-                >Log Out</span
-              >
+              <span class="text-sm text-red-700">Log Out</span>
             </a>
           </li>
         </ul>

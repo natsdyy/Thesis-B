@@ -139,6 +139,35 @@ function formatForDatabase(date = new Date()) {
 }
 
 /**
+ * Format date for database DATE columns (date-only, no time)
+ * Extracts date components directly without timezone conversion issues
+ * @param {Date} date - Date to format
+ * @returns {string} YYYY-MM-DD formatted string
+ */
+function formatDateOnlyForDatabase(date = new Date()) {
+  if (!date) return "";
+
+  // If it's a string in YYYY-MM-DD format, return it as-is
+  if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return date;
+  }
+
+  const d = date instanceof Date ? date : new Date(date);
+
+  // Use Intl.DateTimeFormat to get Philippine timezone date components
+  // This ensures we get the correct date regardless of the Date object's internal representation
+  const options = {
+    timeZone: PHILIPPINE_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  };
+
+  // Format returns YYYY-MM-DD in en-CA locale
+  return new Intl.DateTimeFormat("en-CA", options).format(d);
+}
+
+/**
  * Format date for database storage with Philippine timezone offset
  * @param {Date} date - Date to format
  * @returns {string} ISO string with Philippine timezone offset (+08:00)
@@ -203,6 +232,25 @@ function parseFromDatabase(dateString) {
   );
 }
 
+/**
+ * Parse YYYY-MM-DD string as Philippine timezone date (midnight)
+ * Used for parsing date inputs from forms/API
+ * @param {string} dateString - YYYY-MM-DD format date string
+ * @returns {Date} Date at midnight in Philippine timezone
+ */
+function parsePhilippineDateString(dateString) {
+  if (!dateString) return new Date();
+
+  // Check if already YYYY-MM-DD format
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    const [year, month, day] = dateString.split("-").map(Number);
+    return createPhilippineDate(year, month, day, 0, 0, 0);
+  }
+
+  // Fallback: parse as regular date and convert
+  return parseFromDatabase(dateString);
+}
+
 module.exports = {
   PHILIPPINE_TIMEZONE,
   getCurrentPhilippineTime,
@@ -215,5 +263,7 @@ module.exports = {
   isInPhilippineTimezone,
   formatForDatabase,
   formatForDatabaseWithTimezone,
+  formatDateOnlyForDatabase,
   parseFromDatabase,
+  parsePhilippineDateString,
 };

@@ -31,10 +31,11 @@ class Notification {
   // Get notifications by employee ID
   static async getByEmployee(employeeId, filters = {}) {
     try {
+      // IMPORTANT: Only return notifications explicitly targeted to this employee.
+      // Department-wide notifications (employee_id = null) are fetched separately
+      // via getByDepartment at the route layer.
       let query = db("notifications")
-        .where(function () {
-          this.where("employee_id", employeeId).orWhere("employee_id", null);
-        })
+        .where("employee_id", employeeId)
         .whereNull("deleted_at")
         .orderBy("created_at", "desc");
 

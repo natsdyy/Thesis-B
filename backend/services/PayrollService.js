@@ -4,6 +4,7 @@ const PayrollRecord = require("../models/PayrollRecord");
 const Holidays = require("date-holidays");
 const {
   formatForDatabase,
+  formatDateOnlyForDatabase,
   getCurrentPhilippineTime,
   formatPhilippineTime,
 } = require("../utils/timezoneUtils");
@@ -93,8 +94,8 @@ class PayrollService {
     const period = await PayrollPeriod.create({
       period_name: periodName || defaultPeriodName,
       period_type: periodType,
-      date_from: formatForDatabase(dateFrom),
-      date_to: formatForDatabase(dateTo),
+      date_from: formatDateOnlyForDatabase(dateFrom),
+      date_to: formatDateOnlyForDatabase(dateTo),
       generated_by: generatedBy,
       total_gross_amount: totals.gross,
       total_deductions: totals.deductions,
@@ -203,8 +204,8 @@ class PayrollService {
     const period = await PayrollPeriod.create({
       period_name: periodName || defaultPeriodName,
       period_type: periodType,
-      date_from: formatForDatabase(dateFrom),
-      date_to: formatForDatabase(dateTo),
+      date_from: formatDateOnlyForDatabase(dateFrom),
+      date_to: formatDateOnlyForDatabase(dateTo),
       generated_by: generatedBy,
       total_gross_amount: totals.gross,
       total_deductions: totals.deductions,
@@ -794,6 +795,21 @@ class PayrollService {
     // Calculate monthly salary for bracket determination
     const monthlySalary = grossSalary;
 
+    // If no earnings in the payroll period, no deductions apply
+    if (monthlySalary <= 0) {
+      return {
+        sssEmployee: 0,
+        sssEmployer: 0,
+        philhealthEmployee: 0,
+        philhealthEmployer: 0,
+        pagibigEmployee: 0,
+        pagibigEmployer: 0,
+        totalEmployeeShare: 0,
+        totalEmployerShare: 0,
+        withholdingTax: 0,
+      };
+    }
+
     // SSS Contribution (2025 rates - Official Schedule)
     // Based on official SSS 2025 schedule: 5% employee, 10% employer, max MSC ₱35,000
     let sssEmployee = 0;
@@ -1100,27 +1116,46 @@ class PayrollService {
     // This ensures we only convert once at the definitive end of the year
     const endDate = new Date(dateTo);
     const startDate = new Date(dateFrom);
-    const endYear = endDate.getFullYear();
 
-    // Normalize dates to date-only for comparison
-    const normalizeDate = (date) => {
+    // Get date components in Philippine timezone using Intl.DateTimeFormat
+    const getDateInPH = (date) => {
       const d = date instanceof Date ? date : new Date(date);
-      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      // Use Intl.DateTimeFormat to get correct date components in Philippine timezone
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Manila",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(d);
+
+      const partsMap = {};
+      parts.forEach((part) => {
+        partsMap[part.type] = part.value;
+      });
+
+      return {
+        year: parseInt(partsMap.year, 10),
+        month: parseInt(partsMap.month, 10) - 1, // Month is 0-indexed in JS
+        date: parseInt(partsMap.day, 10),
+      };
     };
 
-    const normalizedStart = normalizeDate(startDate);
-    const normalizedEnd = normalizeDate(endDate);
+    const startPH = getDateInPH(startDate);
+    const endPH = getDateInPH(endDate);
 
-    // Check if this payroll period includes December 31st of the year
-    const dec31 = new Date(endYear, 11, 31); // December 31st (month 11 = December)
-    const includesDec31 = normalizedStart <= dec31 && normalizedEnd >= dec31;
+    // Check if this payroll period includes December 31st of the year in Philippine timezone
+    const includesDec31 =
+      startPH.year <= endPH.year && // Cross-year periods
+      endPH.year && // Must be after Dec 31st
+      (endPH.month > 11 || (endPH.month === 11 && endPH.date === 31)); // Includes Dec 31
 
     if (!includesDec31) {
       return { conversionPay: 0, convertedDays: 0 };
     }
 
+    const year = endPH.year;
+
     // Get employee SIL credits for the year
-    const year = endYear;
     const silRecord = await db("employee_sil_credits")
       .where("employee_id", employeeId)
       .where("year", year)

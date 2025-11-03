@@ -10,7 +10,7 @@
 
       <!-- Schedule Information -->
       <div class="mb-6">
-        <div class="card bg-base-100 shadow-sm border">
+        <div class="card bg-base-100 shadow-sm border border-gray-100">
           <div class="card-body p-4">
             <div class="flex items-center justify-between mb-2">
               <h4 class="font-semibold text-sm flex items-center">
@@ -20,7 +20,7 @@
               <button
                 @click="refreshScheduleAndValidate"
                 :disabled="scheduleLoading"
-                class="btn btn-xs btn-outline"
+                class="btn btn-xs"
               >
                 <span
                   v-if="scheduleLoading"
@@ -138,14 +138,14 @@
 
       <!-- Location Status -->
       <div class="mb-6">
-        <div class="card bg-base-100 shadow-sm border">
+        <div class="card bg-base-100 shadow-sm border border-gray-100">
           <div class="card-body p-4">
             <div class="flex items-center justify-between mb-2">
               <h4 class="font-semibold text-sm">Location Status</h4>
               <button
                 @click="checkLocation"
                 :disabled="locationChecking"
-                class="btn btn-xs btn-outline"
+                class="btn btn-xs"
               >
                 <svg
                   v-if="!locationChecking"
@@ -415,7 +415,7 @@
                     scheduleValidation.isValid ||
                     allowEarlyTimeIn)
                 ? 'bg-primaryColor hover:bg-primaryColor/80 text-white font-thin  border-none'
-                : 'btn-outline',
+                : '',
             scheduleValidation &&
             !scheduleValidation.isValid &&
             scheduleValidation.reason !== 'NO_SCHEDULE' &&

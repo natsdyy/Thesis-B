@@ -2519,7 +2519,7 @@
                 onboardingCurrentPage = Math.max(1, onboardingCurrentPage - 1)
               "
               :disabled="onboardingCurrentPage === 1"
-              class="btn btn-sm sm:btn-md btn-outline"
+              class="btn btn-sm  btn-outline"
               :class="{ 'btn-disabled': onboardingCurrentPage === 1 }"
             >
               Prev
@@ -2532,7 +2532,7 @@
                 )
               "
               :disabled="onboardingCurrentPage === onboardingTotalPages"
-              class="btn btn-sm sm:btn-md btn-outline"
+              class="btn btn-sm  btn-outline"
               :class="{
                 'btn-disabled': onboardingCurrentPage === onboardingTotalPages,
               }"
@@ -2541,7 +2541,7 @@
             </button>
             <button
               @click="showOnboardingReviewModal = false"
-              class="btn btn-sm sm:btn-md"
+              class="btn btn-sm "
             >
               Close
             </button>

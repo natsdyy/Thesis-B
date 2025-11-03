@@ -2704,6 +2704,11 @@
   // Branch request computed properties
   const allBranchRequests = computed(() => branchRequestStore.requests || []);
 
+  const acknowledgedBranchRequestsCount = computed(
+    () =>
+      allBranchRequests.value.filter((r) => r.status === 'Acknowledged').length
+  );
+
   const filteredBranchRequests = computed(() => {
     let filtered = allBranchRequests.value;
 
@@ -3308,7 +3313,7 @@
             <span
               class="badge badge-sm ml-2 bg-secondaryColor text-primaryColor"
             >
-              {{ allBranchRequests.length }}
+              {{ acknowledgedBranchRequestsCount }}
             </span>
           </button>
           <button

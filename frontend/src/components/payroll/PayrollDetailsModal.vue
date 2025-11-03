@@ -511,31 +511,6 @@
                         {{ record.role_name }}
                       </div>
                     </div>
-                    <div
-                      v-if="Number(record.rest_day_pay || 0) > 0"
-                      class="flex-shrink-0"
-                      :title="`Rest Day Pay: ₱${formatCurrency(record.rest_day_pay)} (130% of regular rate)`"
-                    >
-                      <span
-                        class="badge badge-xs bg-info/10 text-blue-700 tooltip"
-                        data-tip="Rest Day Pay (130%)"
-                      >
-                        <svg
-                          class="w-3 h-3 mr-1"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                          ></path>
-                        </svg>
-                        Rest Day
-                      </span>
-                    </div>
                   </div>
                 </td>
                 <td class="px-4 py-3 text-sm text-gray-700">

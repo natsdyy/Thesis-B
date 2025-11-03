@@ -62,6 +62,20 @@ export function getCurrentPhilippineDate() {
 }
 
 /**
+ * Format date to YYYY-MM-DD string without timezone conversion
+ * @param {Date} date - Date to format
+ * @returns {string} YYYY-MM-DD formatted string
+ */
+export function formatDateOnly(date) {
+  if (!date) return '';
+  const d = date instanceof Date ? date : new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Get current time in HH:MM:SS format in Philippine timezone
  * @returns {string} Current time in HH:MM:SS format
  */
@@ -198,4 +212,5 @@ export default {
   parseFromAPI,
   formatForDisplay,
   formatTimeForDisplay,
+  formatDateOnly,
 };

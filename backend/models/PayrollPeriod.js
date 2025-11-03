@@ -1,6 +1,7 @@
 const { db } = require("../config/database");
 const {
   formatForDatabase,
+  formatDateOnlyForDatabase,
   getCurrentPhilippineTime,
 } = require("../utils/timezoneUtils");
 
@@ -94,8 +95,11 @@ class PayrollPeriod {
       period.generated_by_name = `${generator.first_name} ${generator.last_name}`;
     }
 
+    // Format date fields to YYYY-MM-DD to avoid timezone issues
     return {
       ...period,
+      date_from: formatDateOnlyForDatabase(period.date_from),
+      date_to: formatDateOnlyForDatabase(period.date_to),
       records,
     };
   }
@@ -184,8 +188,15 @@ class PayrollPeriod {
       .limit(limit)
       .offset(offset);
 
+    // Format date fields to YYYY-MM-DD to avoid timezone issues
+    const formattedData = data.map((period) => ({
+      ...period,
+      date_from: formatDateOnlyForDatabase(period.date_from),
+      date_to: formatDateOnlyForDatabase(period.date_to),
+    }));
+
     return {
-      data,
+      data: formattedData,
       total,
       limit,
       offset,
@@ -221,7 +232,14 @@ class PayrollPeriod {
       .update(updates)
       .returning("*");
 
-    return period;
+    // Format date fields in the returned period
+    const formattedPeriod = {
+      ...period,
+      date_from: formatDateOnlyForDatabase(period.date_from),
+      date_to: formatDateOnlyForDatabase(period.date_to),
+    };
+
+    return formattedPeriod;
   }
 
   /**
@@ -231,15 +249,31 @@ class PayrollPeriod {
    * @returns {Promise<Object>}
    */
   static async update(id, data) {
+    // Format date fields if they're being updated
+    const updates = { ...data };
+    if (data.date_from) {
+      updates.date_from = formatDateOnlyForDatabase(data.date_from);
+    }
+    if (data.date_to) {
+      updates.date_to = formatDateOnlyForDatabase(data.date_to);
+    }
+
     const [period] = await db("payroll_periods")
       .where("id", id)
       .update({
-        ...data,
+        ...updates,
         updated_at: formatForDatabase(getCurrentPhilippineTime()),
       })
       .returning("*");
 
-    return period;
+    // Format date fields in the returned period
+    const formattedPeriod = {
+      ...period,
+      date_from: formatDateOnlyForDatabase(period.date_from),
+      date_to: formatDateOnlyForDatabase(period.date_to),
+    };
+
+    return formattedPeriod;
   }
 
   /**

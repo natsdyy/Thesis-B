@@ -6,11 +6,7 @@
     </div>
 
     <!-- Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-      <div class="stat bg-base-100 shadow rounded-lg">
-        <div class="stat-title">Total FAQs</div>
-        <div class="stat-value text-primary">{{ stats.total_faqs }}</div>
-      </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
       <div class="stat bg-base-100 shadow rounded-lg">
         <div class="stat-title">Active FAQs</div>
         <div class="stat-value text-success">{{ stats.active_faqs }}</div>
@@ -19,10 +15,7 @@
         <div class="stat-title">Inactive FAQs</div>
         <div class="stat-value text-warning">{{ stats.inactive_faqs }}</div>
       </div>
-      <div class="stat bg-base-100 shadow rounded-lg">
-        <div class="stat-title">Categories</div>
-        <div class="stat-value text-info">{{ stats.total_categories }}</div>
-      </div>
+
     </div>
 
     <!-- Actions Bar -->
@@ -43,7 +36,7 @@
         </div>
       </div>
       <div class="flex gap-2">
-        <button class="btn text-white hover:opacity-90 active:opacity-80" style="background-color: var(--color-primaryColor); border-color: var(--color-primaryColor);" @click="openCreateModal">
+        <button class="btn text-white hover:opacity-90 active:opacity-80 font-thin" style="background-color: var(--color-primaryColor); border-color: var(--color-primaryColor);" @click="openCreateModal">
           <Plus :size="20" class="mr-2" />
           Add FAQ
         </button>
@@ -97,13 +90,13 @@
                     </div>
                   </td>
                   <td class="w-16">
-                    <span class="badge badge-neutral">{{ faq.display_order || '-' }}</span>
+                    <span class="badge bg-gray-200 badge-sm">{{ faq.display_order || '-' }}</span>
                   </td>
                   <td>
                     <div class="font-medium">{{ truncate(faq.question, 50) }}</div>
                   </td>
                   <td>
-                    <span v-if="faq.category" class="badge badge-outline">
+                    <span v-if="faq.category" class="badge badge-sm  border-gray-300">
                       {{ faq.category }}
                     </span>
                     <span v-else class="text-gray-400">-</span>
@@ -211,13 +204,13 @@
                     </div>
                   </td>
                   <td class="w-16">
-                    <span class="badge badge-success">{{ faq.display_order || '-' }}</span>
+                    <span class="badge bg-success/10 text-success badge-sm font-medium">{{ faq.display_order || '-' }}</span>
                   </td>
                   <td>
                     <div class="font-medium">{{ truncate(faq.question, 50) }}</div>
                   </td>
                   <td>
-                    <span v-if="faq.category" class="badge badge-outline">
+                    <span v-if="faq.category" class="badge  badge-sm border-gray-300">
                       {{ faq.category }}
                     </span>
                     <span v-else class="text-gray-400">-</span>
@@ -393,7 +386,7 @@
           <div class="modal-action">
             <button
               type="button"
-              class="btn btn-ghost"
+              class="btn btn-ghost btn-sm"
               @click="closeModal"
               :disabled="saving"
             >
@@ -401,7 +394,7 @@
             </button>
             <button
               type="submit"
-              class="btn text-white hover:opacity-90 active:opacity-80"
+              class="btn text-white btn-sm bg-primaryColor hover:opacity-90 active:opacity-80 font-thin"
               style="background-color: var(--color-primaryColor); border-color: var(--color-primaryColor);"
               :disabled="saving"
             >

@@ -207,6 +207,7 @@
   import { usePayrollStore } from '@/stores/payrollStore';
   import { useAuthStore } from '@/stores/authStore';
   import { apiConfig } from '@/config/api.js';
+  import { formatDateOnly } from '@/utils/timezoneUtils.js';
 
   export default {
     name: 'PayrollGenerationModal',
@@ -494,8 +495,8 @@
             return;
         }
 
-        formData.dateFrom = from.toISOString().split('T')[0];
-        formData.dateTo = to.toISOString().split('T')[0];
+        formData.dateFrom = formatDateOnly(from);
+        formData.dateTo = formatDateOnly(to);
         updatePeriodName();
       };
 

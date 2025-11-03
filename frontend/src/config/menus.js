@@ -268,6 +268,13 @@ export const menuItems = [
     department: 'Administration',
     superAdminOnly: true,
   },
+  {
+    name: 'FAQ Management',
+    icon: BookOpen,
+    route: '/admin/faq-manager',
+    department: 'Administration',
+    superAdminOnly: true,
+  },
 ];
 
 // Group menu items by department

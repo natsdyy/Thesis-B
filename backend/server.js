@@ -66,6 +66,7 @@ const notificationRoutes = require("./routes/notifications");
 const branchPositionRoutes = require("./routes/branchPositions");
 const jobApplicationRoutes = require("./routes/jobApplications");
 const onboardingRoutes = require("./routes/onboarding");
+const faqRoutes = require("./routes/faqs");
 
 const app = express();
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 5000;
@@ -93,8 +94,10 @@ const defaultAllowedOrigins = [
   "https://countrysides.up.railway.app", // Railway deployment
   "https://thesis-b-frontend-production.up.railway.app", // Railway frontend
   "https://thesis-b-backend-production.up.railway.app", // Railway backend
-  "https://www.countryside-steakhouse.site", // Production domain
-  "http://www.countryside-steakhouse.site", // Production domain (HTTP fallback addons)
+  "https://www.countryside-steakhouse.site", // Production domain (www)
+  "http://www.countryside-steakhouse.site", // Production domain (www HTTP fallback)
+  "https://countryside-steakhouse.site", // Production domain (non-www)
+  "http://countryside-steakhouse.site", // Production domain (non-www HTTP fallback)
 ];
 
 const allowList = [...defaultAllowedOrigins, ...envOrigins];
@@ -260,6 +263,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/branch-positions", branchPositionRoutes);
 app.use("/api/job-applications", jobApplicationRoutes);
 app.use("/api/onboarding", onboardingRoutes);
+app.use("/api/faqs", faqRoutes);
 app.use("/api/uploads", uploadRoutes);
 
 // Auto-expire job

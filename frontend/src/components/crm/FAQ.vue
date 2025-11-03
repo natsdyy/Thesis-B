@@ -230,11 +230,17 @@
       <!-- FAQ Section -->
       <section class="py-12 sm:py-16 bg-gray-50">
         <div class="container mx-auto px-6 max-w-6xl">
-          <!-- 2 Column Grid Layout -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+          <!-- Loading State -->
+          <div v-if="loading" class="text-center py-12">
+            <span class="loading loading-spinner loading-lg text-green-600"></span>
+            <p class="mt-4 text-gray-600">Loading FAQs...</p>
+          </div>
+
+          <!-- FAQ Items -->
+          <div v-else-if="faqs.length > 0" class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
             <div
               v-for="(faq, index) in faqs"
-              :key="index"
+              :key="faq.id || index"
               class="collapse collapse-plus bg-base-100 border border-base-300 shadow-md hover:shadow-lg transition-shadow duration-300 rounded-lg"
             >
               <input 
@@ -254,6 +260,11 @@
                 <p class="text-gray-700 leading-relaxed pt-2 pb-4">{{ faq.answer }}</p>
               </div>
             </div>
+          </div>
+
+          <!-- Empty State -->
+          <div v-else class="text-center py-12">
+            <p class="text-gray-600">No FAQs available at the moment.</p>
           </div>
         </div>
       </section>
@@ -297,7 +308,10 @@
     CreditCard,
     Briefcase,
     RefreshCw,
+    HelpCircle,
   } from 'lucide-vue-next';
+  import axios from 'axios';
+  import { apiConfig } from '../../config/api.js';
 
   library.add(
     faRightToBracket,
@@ -312,6 +326,69 @@
   const isMobileMenuOpen = ref(false);
   const openFaqIndex = ref(null);
   const checkboxRefs = ref([]);
+  const loading = ref(false);
+  const faqs = ref([]);
+
+  // Icon mapping function - assigns icons based on question keywords
+  const getIconForQuestion = (question) => {
+    const lowerQuestion = question.toLowerCase();
+    
+    if (lowerQuestion.includes('hour') || lowerQuestion.includes('open') || lowerQuestion.includes('schedule')) {
+      return Clock;
+    }
+    if (lowerQuestion.includes('delivery') || lowerQuestion.includes('deliver')) {
+      return Truck;
+    }
+    if (lowerQuestion.includes('rate') || lowerQuestion.includes('rating') || lowerQuestion.includes('review')) {
+      return Star;
+    }
+    if (lowerQuestion.includes('payment') || lowerQuestion.includes('pay') || lowerQuestion.includes('accept')) {
+      return CreditCard;
+    }
+    if (lowerQuestion.includes('hiring') || lowerQuestion.includes('job') || lowerQuestion.includes('career') || lowerQuestion.includes('apply')) {
+      return Briefcase;
+    }
+    if (lowerQuestion.includes('return') || lowerQuestion.includes('refund') || lowerQuestion.includes('policy')) {
+      return RefreshCw;
+    }
+    // Default icon
+    return HelpCircle;
+  };
+
+  // Fetch FAQs from API
+  const loadFAQs = async () => {
+    loading.value = true;
+    try {
+      const response = await axios.get(`${apiConfig.baseURL}/faqs/active`);
+      
+      if (response.data.success && response.data.data) {
+        // Map database FAQs to component format with icons
+        faqs.value = response.data.data.map((faq) => ({
+          id: faq.id,
+          question: faq.question,
+          answer: faq.answer,
+          category: faq.category,
+          icon: getIconForQuestion(faq.question),
+        }));
+      } else if (Array.isArray(response.data)) {
+        // Handle case where API returns array directly
+        faqs.value = response.data.map((faq) => ({
+          id: faq.id,
+          question: faq.question,
+          answer: faq.answer,
+          category: faq.category,
+          icon: getIconForQuestion(faq.question),
+        }));
+      } else {
+        faqs.value = [];
+      }
+    } catch (error) {
+      console.error('Error loading FAQs:', error);
+      faqs.value = [];
+    } finally {
+      loading.value = false;
+    }
+  };
 
   const setCheckboxRef = (el, index) => {
     if (el) {
@@ -337,39 +414,6 @@
       });
     });
   };
-
-  const faqs = ref([
-    {
-      icon: Clock,
-      question: 'What are your operating hours?',
-      answer: 'We are open Monday to Sunday, but specific hours vary by branch. Please check the schedule for your nearest location in our Store Directory page. For special holiday hours, please check our social media page for the latest announcements.',
-    },
-    {
-      icon: Truck,
-      question: 'Do you offer delivery services?',
-      answer: 'Yes! We only offer delivery through our partners, Foodpanda and GrabFood.',
-    },
-    {
-      icon: Star,
-      question: 'How do I rate the food?',
-      answer: 'After you purchase your food, you can find instructions on how to rate us on your receipt.',
-    },
-    {
-      icon: CreditCard,
-      question: 'What payment methods do you accept?',
-      answer: 'We accept Cash for in-store purchases. For delivery orders, payment is handled directly through the Foodpanda or Grab apps, where you can typically use options like GCash, PayMaya, and GrabPay.',
-    },
-    {
-      icon: Briefcase,
-      question: 'Are you hiring?',
-      answer: 'Yes, we are! Hiring depends on the specific needs and available slots at each branch. You can visit the "Join Us" page on our website to see all open jobs and submit your application. We look forward to hearing from you!',
-    },
-    {
-      icon: RefreshCw,
-      question: 'What is your return or refund policy?',
-      answer: 'If you\'re not satisfied with your meal, please let us know immediately and we\'ll make it right. We stand behind the quality of our food and service.',
-    },
-  ]);
 
   const toggleMobileMenu = () => {
     isMobileMenuOpen.value = !isMobileMenuOpen.value;
@@ -408,7 +452,7 @@
   };
 
   onMounted(() => {
-    // Component mounted
+    loadFAQs();
   });
 </script>
 

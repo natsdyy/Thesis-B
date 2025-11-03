@@ -40,6 +40,21 @@ export default [
     },
   },
   {
+    path: 'faq-manager',
+    name: 'AdminFAQManager',
+    component: () => import('../../views/admin/FAQManager.vue'),
+    meta: {
+      title: 'FAQ Management',
+      permission: 'Manage FAQ',
+      requiresAuth: true,
+      requiresRole: [
+        'Super Admin',
+        'Chairman of the Board',
+        'Board of Directors',
+      ],
+    },
+  },
+  {
     path: 'attendance',
     name: 'AdminAttendance',
     component: () => import('../../views/common/DepartmentAttendance.vue'),

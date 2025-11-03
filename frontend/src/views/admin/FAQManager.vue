@@ -29,12 +29,12 @@
     <div class="flex flex-col sm:flex-row gap-4 mb-6">
       <div class="flex-1">
         <div class="form-control">
-          <div class="input-group">
+          <div class="input-group flex">
             <input
               v-model="searchQuery"
               type="text"
               placeholder="Search FAQs..."
-              class="input input-bordered w-full"
+              class="input input-bordered flex-1"
             />
             <button class="btn btn-square" @click="loadFAQs">
               <Search :size="20" />
@@ -43,25 +43,6 @@
         </div>
       </div>
       <div class="flex gap-2">
-        <select
-          v-model="statusFilter"
-          class="select select-bordered"
-          @change="loadFAQs"
-        >
-          <option value="all">All Status</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-        </select>
-        <select
-          v-model="categoryFilter"
-          class="select select-bordered"
-          @change="loadFAQs"
-        >
-          <option value="">All Categories</option>
-          <option v-for="cat in categories" :key="cat" :value="cat">
-            {{ cat }}
-          </option>
-        </select>
         <button class="btn text-white hover:opacity-90 active:opacity-80" style="background-color: var(--color-primaryColor); border-color: var(--color-primaryColor);" @click="openCreateModal">
           <Plus :size="20" class="mr-2" />
           Add FAQ
@@ -72,83 +53,240 @@
       </div>
     </div>
 
-    <!-- FAQ Table -->
-    <div class="card bg-base-100 shadow">
-      <div class="card-body p-0">
-        <div class="overflow-x-auto">
-          <table class="table table-zebra">
-            <thead>
-              <tr>
-                <th>Question</th>
-                <th>Category</th>
-                <th>Order</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="loading">
-                <td colspan="6" class="text-center py-8">
-                  <span class="loading loading-spinner loading-lg"></span>
-                </td>
-              </tr>
-              <tr v-else-if="faqs.length === 0">
-                <td colspan="6" class="text-center py-8 text-gray-500">
-                  No FAQs found
-                </td>
-              </tr>
-              <tr v-for="faq in faqs" :key="faq.id">
-                <td>
-                  <div class="font-medium">{{ truncate(faq.question, 60) }}</div>
-                </td>
-                <td>
-                  <span v-if="faq.category" class="badge badge-outline">
-                    {{ faq.category }}
-                  </span>
-                  <span v-else class="text-gray-400">-</span>
-                </td>
-                <td>{{ faq.display_order }}</td>
-                <td>
-                  <span
-                    :class="
-                      faq.is_active
-                        ? 'badge badge-success'
-                        : 'badge badge-error'
-                    "
-                  >
-                    {{ faq.is_active ? 'Active' : 'Inactive' }}
-                  </span>
-                </td>
-                <td>{{ formatDate(faq.created_at) }}</td>
-                <td>
-                  <div class="flex gap-2">
-                    <button
-                      class="btn btn-sm btn-ghost"
-                      @click="openEditModal(faq)"
-                      title="Edit"
-                    >
-                      <Edit :size="16" />
-                    </button>
-                    <button
-                      class="btn btn-sm btn-ghost text-error"
-                      @click="confirmDelete(faq)"
-                      title="Delete"
-                    >
-                      <Trash2 :size="16" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+    <!-- FAQ Tables - Active and Inactive -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Inactive FAQs Table (Left) -->
+      <div class="card bg-base-100 shadow">
+        <div class="card-body p-0">
+          <div class="p-4 border-b border-gray-200">
+            <h2 class="text-xl font-semibold text-gray-700">Inactive FAQs</h2>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="table table-zebra">
+              <thead>
+                <tr>
+                  <th class="w-12"></th>
+                  <th class="w-16">Order</th>
+                  <th>Question</th>
+                  <th>Category</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody ref="inactiveTbody">
+                <tr v-if="loading">
+                  <td colspan="6" class="text-center py-8">
+                    <span class="loading loading-spinner loading-lg"></span>
+                  </td>
+                </tr>
+                <!-- Placeholder row for empty table - must be a real DOM element -->
+                <tr v-if="!loading && inactiveFAQs.length === 0" :data-id="'placeholder-inactive'" class="sortable-placeholder" style="height: 0.1px; line-height: 0.1px; font-size: 0; visibility: hidden; overflow: hidden;">
+                  <td colspan="6" style="padding: 0; height: 0.1px; border: none;"></td>
+                </tr>
+                <tr v-if="!loading && inactiveFAQs.length === 0" class="no-drag">
+                  <td colspan="6" class="text-center py-8 text-gray-500">
+                    No inactive FAQs (drag FAQs here to make them inactive)
+                  </td>
+                </tr>
+                <tr v-for="faq in paginatedInactiveFAQs" :key="faq.id" :data-id="faq.id" class="cursor-move faq-row">
+                  <td class="w-12">
+                    <div class="flex items-center justify-center text-gray-400 hover:text-gray-600 drag-handle" style="cursor: grab; padding: 8px;">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 8h16M4 16h16" />
+                      </svg>
+                    </div>
+                  </td>
+                  <td class="w-16">
+                    <span class="badge badge-neutral">{{ faq.display_order || '-' }}</span>
+                  </td>
+                  <td>
+                    <div class="font-medium">{{ truncate(faq.question, 50) }}</div>
+                  </td>
+                  <td>
+                    <span v-if="faq.category" class="badge badge-outline">
+                      {{ faq.category }}
+                    </span>
+                    <span v-else class="text-gray-400">-</span>
+                  </td>
+                  <td>{{ formatDate(faq.created_at) }}</td>
+                  <td>
+                    <div class="flex gap-2">
+                      <button
+                        class="btn btn-sm btn-ghost"
+                        @click.stop="openEditModal(faq)"
+                        title="Edit"
+                        type="button"
+                      >
+                        <Edit :size="16" />
+                      </button>
+                      <button
+                        class="btn btn-sm btn-ghost text-error"
+                        @click.stop="confirmDelete(faq)"
+                        title="Delete"
+                        type="button"
+                      >
+                        <Trash2 :size="16" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <!-- Pagination for Inactive FAQs -->
+          <div v-if="!loading && inactiveFAQs.length > 0" class="p-4 border-t border-gray-200 flex items-center justify-between">
+            <div class="text-sm text-gray-600">
+              Showing {{ (inactivePage - 1) * itemsPerPage + 1 }} to {{ Math.min(inactivePage * itemsPerPage, inactiveFAQs.length) }} of {{ inactiveFAQs.length }} FAQs
+            </div>
+            <div class="join">
+              <button
+                class="join-item btn btn-sm"
+                :class="{ 'btn-disabled': inactivePage === 1 }"
+                @click="setInactivePage(inactivePage - 1)"
+                :disabled="inactivePage === 1"
+              >
+                «
+              </button>
+              <button
+                v-for="page in inactiveTotalPages"
+                :key="page"
+                class="join-item btn btn-sm"
+                :class="{ 'btn-active': inactivePage === page }"
+                @click="setInactivePage(page)"
+              >
+                {{ page }}
+              </button>
+              <button
+                class="join-item btn btn-sm"
+                :class="{ 'btn-disabled': inactivePage === inactiveTotalPages }"
+                @click="setInactivePage(inactivePage + 1)"
+                :disabled="inactivePage === inactiveTotalPages"
+              >
+                »
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active FAQs Table (Right) -->
+      <div class="card bg-base-100 shadow">
+        <div class="card-body p-0">
+          <div class="p-4 border-b border-gray-200">
+            <h2 class="text-xl font-semibold text-gray-700">Active FAQs</h2>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="table table-zebra">
+              <thead>
+                <tr>
+                  <th class="w-12"></th>
+                  <th class="w-16">Order</th>
+                  <th>Question</th>
+                  <th>Category</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody ref="activeTbody">
+                <tr v-if="loading">
+                  <td colspan="6" class="text-center py-8">
+                    <span class="loading loading-spinner loading-lg"></span>
+                  </td>
+                </tr>
+                <!-- Placeholder row for empty table - must be a real DOM element -->
+                <tr v-if="!loading && activeFAQs.length === 0" :data-id="'placeholder-active'" class="sortable-placeholder" style="height: 0.1px; line-height: 0.1px; font-size: 0; visibility: hidden; overflow: hidden;">
+                  <td colspan="6" style="padding: 0; height: 0.1px; border: none;"></td>
+                </tr>
+                <tr v-if="!loading && activeFAQs.length === 0" class="no-drag">
+                  <td colspan="6" class="text-center py-8 text-gray-500">
+                    No active FAQs (drag FAQs here to make them active)
+                  </td>
+                </tr>
+                <tr v-for="faq in paginatedActiveFAQs" :key="faq.id" :data-id="faq.id" class="cursor-move faq-row">
+                  <td class="w-12">
+                    <div class="flex items-center justify-center text-gray-400 hover:text-gray-600 drag-handle" style="cursor: grab; padding: 8px;">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 8h16M4 16h16" />
+                      </svg>
+                    </div>
+                  </td>
+                  <td class="w-16">
+                    <span class="badge badge-success">{{ faq.display_order || '-' }}</span>
+                  </td>
+                  <td>
+                    <div class="font-medium">{{ truncate(faq.question, 50) }}</div>
+                  </td>
+                  <td>
+                    <span v-if="faq.category" class="badge badge-outline">
+                      {{ faq.category }}
+                    </span>
+                    <span v-else class="text-gray-400">-</span>
+                  </td>
+                  <td>{{ formatDate(faq.created_at) }}</td>
+                  <td>
+                    <div class="flex gap-2">
+                      <button
+                        class="btn btn-sm btn-ghost"
+                        @click.stop="openEditModal(faq)"
+                        title="Edit"
+                        type="button"
+                      >
+                        <Edit :size="16" />
+                      </button>
+                      <button
+                        class="btn btn-sm btn-ghost text-error"
+                        @click.stop="confirmDelete(faq)"
+                        title="Delete"
+                        type="button"
+                      >
+                        <Trash2 :size="16" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <!-- Pagination for Active FAQs -->
+          <div v-if="!loading && activeFAQs.length > 0" class="p-4 border-t border-gray-200 flex items-center justify-between">
+            <div class="text-sm text-gray-600">
+              Showing {{ (activePage - 1) * itemsPerPage + 1 }} to {{ Math.min(activePage * itemsPerPage, activeFAQs.length) }} of {{ activeFAQs.length }} FAQs
+            </div>
+            <div class="join">
+              <button
+                class="join-item btn btn-sm"
+                :class="{ 'btn-disabled': activePage === 1 }"
+                @click="setActivePage(activePage - 1)"
+                :disabled="activePage === 1"
+              >
+                «
+              </button>
+              <button
+                v-for="page in activeTotalPages"
+                :key="page"
+                class="join-item btn btn-sm"
+                :class="{ 'btn-active': activePage === page }"
+                @click="setActivePage(page)"
+              >
+                {{ page }}
+              </button>
+              <button
+                class="join-item btn btn-sm"
+                :class="{ 'btn-disabled': activePage === activeTotalPages }"
+                @click="setActivePage(activePage + 1)"
+                :disabled="activePage === activeTotalPages"
+              >
+                »
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- Create/Edit Modal -->
     <dialog ref="faqModal" class="modal">
-      <div class="modal-box max-w-3xl w-full max-h-[85vh]">
+      <div class="modal-box max-w-xl w-full max-h-[90vh] overflow-y-auto">
         <div class="flex justify-between items-center mb-4 pb-3 border-b border-gray-200">
           <h3 class="font-bold text-xl text-gray-900">
             {{ editingFAQ ? 'Edit FAQ' : 'Create New FAQ' }}
@@ -185,7 +323,7 @@
               </label>
               <textarea
                 v-model="faqForm.question"
-                class="textarea textarea-bordered resize-none min-h-[4rem] h-[4rem]"
+                class="textarea textarea-bordered min-h-[5rem] w-full"
                 placeholder="Enter your question here..."
                 required
               ></textarea>
@@ -199,7 +337,7 @@
               </label>
               <textarea
                 v-model="faqForm.answer"
-                class="textarea textarea-bordered resize-none min-h-[4rem] h-[4rem]"
+                class="textarea textarea-bordered min-h-[6rem] w-full"
                 placeholder="Enter a detailed answer..."
                 required
               ></textarea>
@@ -246,41 +384,9 @@
                       class="text-primaryColor"
                     />
                   </span>
-                  <span v-else class="label-text-alt text-gray-500"
-                    >Optional</span
-                  >
                 </label>
               </div>
 
-              <div class="form-control flex flex-col h-full">
-                <label class="label min-h-[1.75rem] pb-2 pt-0 mb-0 flex items-center">
-                  <span class="label-text font-semibold text-gray-700"
-                    >Display Order</span
-                  >
-                </label>
-                <input
-                  v-model.number="faqForm.display_order"
-                  type="number"
-                  class="input input-bordered w-full h-[2.75rem] min-h-[2.75rem]"
-                  placeholder="0"
-                  min="0"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div class="flex flex-col gap-3">
-            <div class="form-control">
-              <label class="label cursor-pointer justify-start gap-4">
-                <input
-                  v-model="faqForm.is_active"
-                  type="checkbox"
-                  class="toggle"
-                />
-                <span class="label-text font-semibold text-gray-700"
-                  >Active Status</span
-                >
-              </label>
             </div>
           </div>
 
@@ -359,7 +465,8 @@
 </template>
 
 <script setup>
-  import { ref, onMounted, computed } from 'vue';
+  import { ref, onMounted, computed, nextTick } from 'vue';
+  import Sortable from 'sortablejs';
   import {
     Plus,
     Search,
@@ -451,8 +558,6 @@
   });
 
   const searchQuery = ref('');
-  const statusFilter = ref('all');
-  const categoryFilter = ref('');
   const faqModal = ref(null);
   const deleteModal = ref(null);
   const editingFAQ = ref(null);
@@ -462,8 +567,6 @@
     question: '',
     answer: '',
     category: '',
-    display_order: 0,
-    is_active: true,
   });
 
   const toast = ref({ show: false, type: 'success', message: '' });
@@ -1389,6 +1492,52 @@
     setTimeout(() => (toast.value.show = false), 3000);
   };
 
+  const activeSortableInstance = ref(null);
+  const inactiveSortableInstance = ref(null);
+  const isDragging = ref(false);
+  const activeTbody = ref(null);
+  const inactiveTbody = ref(null);
+
+  // Pagination state
+  const itemsPerPage = ref(5);
+  const activePage = ref(1);
+  const inactivePage = ref(1);
+
+  // Computed properties for separated FAQs
+  const activeFAQs = computed(() => {
+    return faqs.value.filter(faq => faq.is_active).sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+  });
+
+  const inactiveFAQs = computed(() => {
+    return faqs.value.filter(faq => !faq.is_active).sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+  });
+
+  // Paginated FAQs
+  const paginatedActiveFAQs = computed(() => {
+    const start = (activePage.value - 1) * itemsPerPage.value;
+    const end = start + itemsPerPage.value;
+    return activeFAQs.value.slice(start, end);
+  });
+
+  const paginatedInactiveFAQs = computed(() => {
+    const start = (inactivePage.value - 1) * itemsPerPage.value;
+    const end = start + itemsPerPage.value;
+    return inactiveFAQs.value.slice(start, end);
+  });
+
+  // Pagination info
+  const activeTotalPages = computed(() => Math.ceil(activeFAQs.value.length / itemsPerPage.value));
+  const inactiveTotalPages = computed(() => Math.ceil(inactiveFAQs.value.length / itemsPerPage.value));
+
+  // Pagination methods
+  const setActivePage = (page) => {
+    activePage.value = Math.max(1, Math.min(page, activeTotalPages.value));
+  };
+
+  const setInactivePage = (page) => {
+    inactivePage.value = Math.max(1, Math.min(page, inactiveTotalPages.value));
+  };
+
   const loadFAQs = async () => {
     loading.value = true;
     try {
@@ -1396,22 +1545,601 @@
       if (searchQuery.value) {
         params.search = searchQuery.value;
       }
-      if (statusFilter.value === 'active') {
-        params.is_active = 'true';
-      } else if (statusFilter.value === 'inactive') {
-        params.is_active = 'false';
-      }
-      if (categoryFilter.value) {
-        params.category = categoryFilter.value;
-      }
+      
+      // Reset pagination when loading new data
+      activePage.value = 1;
+      inactivePage.value = 1;
 
       const response = await axios.get(`${apiConfig.baseURL}/faqs`, { params });
-      faqs.value = response.data.data || [];
+      const loadedFAQs = response.data.data || [];
+      
+      // Normalize display_order to be sequential (1, 2, 3, 4, 5, 6...)
+      // Separate active and inactive
+      const active = loadedFAQs.filter(f => f.is_active).sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+      const inactive = loadedFAQs.filter(f => !f.is_active).sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+      
+      // Check if orders need updating and update backend
+      const orderUpdates = [];
+      active.forEach((faq, index) => {
+        const correctOrder = index + 1;
+        const oldOrder = faq.display_order;
+        if (oldOrder !== correctOrder) {
+          faq.display_order = correctOrder;
+          orderUpdates.push(
+            axios.put(`${apiConfig.baseURL}/faqs/${faq.id}`, { display_order: correctOrder })
+          );
+        }
+      });
+      inactive.forEach((faq, index) => {
+        const correctOrder = index + 1;
+        const oldOrder = faq.display_order;
+        if (oldOrder !== correctOrder) {
+          faq.display_order = correctOrder;
+          orderUpdates.push(
+            axios.put(`${apiConfig.baseURL}/faqs/${faq.id}`, { display_order: correctOrder })
+          );
+        }
+      });
+      
+      // Update backend silently if order was wrong (don't show error if it fails)
+      if (orderUpdates.length > 0) {
+        Promise.all(orderUpdates).catch(err => console.warn('Warning: Some order updates failed:', err));
+      }
+      
+      faqs.value = [...active, ...inactive];
+      
+      // Initialize sortable after FAQs are loaded
+      await nextTick();
+      setTimeout(() => initSortable(), 300);
     } catch (error) {
       console.error('Error loading FAQs:', error);
       showToast('error', error.response?.data?.message || 'Failed to load FAQs');
     } finally {
       loading.value = false;
+    }
+  };
+
+  const initSortable = () => {
+    try {
+      // Don't reinitialize while dragging is in progress
+      if (isDragging.value) {
+        console.log('⏸️ Skipping sortable initialization - drag in progress');
+        return;
+      }
+
+      // Destroy existing instances
+      if (activeSortableInstance?.value) {
+        try {
+          activeSortableInstance.value.destroy();
+        } catch (err) {
+          console.warn('Error destroying active sortable:', err);
+        }
+        activeSortableInstance.value = null;
+      }
+      if (inactiveSortableInstance?.value) {
+        try {
+          inactiveSortableInstance.value.destroy();
+        } catch (err) {
+          console.warn('Error destroying inactive sortable:', err);
+        }
+        inactiveSortableInstance.value = null;
+      }
+
+      if (loading.value) return;
+
+    // Wait for DOM to be ready
+    nextTick(() => {
+      // Ensure placeholders exist before initializing SortableJS
+      const ensurePlaceholder = (tbody, placeholderId) => {
+        if (!tbody) return false;
+        
+        // Always ensure tbody has at least one child for SortableJS
+        const hasItems = Array.from(tbody.children || []).some(n => {
+          const id = n.dataset?.id;
+          return id && !id.includes('placeholder') && !n.classList.contains('no-drag');
+        });
+        
+        const hasPlaceholder = tbody.querySelector(`[data-id="${placeholderId}"]`);
+        
+        // If empty or only has empty message row, ensure placeholder exists
+        if (!hasItems) {
+          if (!hasPlaceholder) {
+            // Create a minimal placeholder to prevent null errors
+            const placeholder = document.createElement('tr');
+            placeholder.setAttribute('data-id', placeholderId);
+            placeholder.className = 'sortable-placeholder';
+            placeholder.style.cssText = 'height: 1px; line-height: 0; font-size: 0; visibility: hidden; overflow: hidden; position: absolute; width: 100%; pointer-events: none;';
+            const td = document.createElement('td');
+            td.colSpan = 6;
+            td.style.cssText = 'padding: 0; height: 1px; border: none;';
+            placeholder.appendChild(td);
+            // Insert before empty message row if it exists, otherwise append
+            const emptyMessageRow = tbody.querySelector('.no-drag');
+            if (emptyMessageRow) {
+              tbody.insertBefore(placeholder, emptyMessageRow);
+            } else {
+              tbody.appendChild(placeholder);
+            }
+            return true;
+          }
+          // If placeholder exists, ensure it's not the only child (add empty message check)
+          const validChildren = Array.from(tbody.children).filter(child => 
+            child.dataset?.id || child.classList.contains('no-drag') || child.classList.contains('sortable-placeholder')
+          );
+          if (validChildren.length === 0) {
+            // No valid children at all - create placeholder
+            const placeholder = document.createElement('tr');
+            placeholder.setAttribute('data-id', placeholderId);
+            placeholder.className = 'sortable-placeholder';
+            placeholder.style.cssText = 'height: 1px; line-height: 0; font-size: 0; visibility: hidden; overflow: hidden; position: absolute; width: 100%; pointer-events: none;';
+            const td = document.createElement('td');
+            td.colSpan = 6;
+            td.style.cssText = 'padding: 0; height: 1px; border: none;';
+            placeholder.appendChild(td);
+            tbody.appendChild(placeholder);
+            return true;
+          }
+        }
+        return false;
+      };
+
+      // Initialize Active FAQs sortable (always initialize so it can accept drops)
+      const activeBodyEl = activeTbody.value;
+      if (activeBodyEl) {
+        try {
+          // Ensure placeholder exists (only if current page is empty)
+          if (paginatedActiveFAQs.value.length === 0) {
+            ensurePlaceholder(activeBodyEl, 'placeholder-active');
+          }
+          
+          // Destroy existing instance first
+          if (activeSortableInstance.value) {
+            activeSortableInstance.value.destroy();
+          }
+          
+          activeSortableInstance.value = Sortable.create(activeBodyEl, {
+            animation: 150,
+            ghostClass: 'sortable-ghost',
+            chosenClass: 'sortable-chosen',
+            group: { 
+              name: 'faqs', 
+              pull: true, 
+              put: true 
+            },
+            draggable: 'tr[data-id]:not(.sortable-placeholder)',
+            filter: '.no-drag, .sortable-placeholder',
+            preventOnFilter: false,
+            fallbackOnBody: true,
+            fallbackTolerance: 0,
+            invalid: (el, handle) => {
+              // Prevent dragging placeholder or empty message rows
+              return !el || !el.dataset?.id || el.dataset.id.includes('placeholder') || el.classList.contains('no-drag');
+            },
+            dragClass: 'sortable-drag',
+            forceFallback: false,
+            swapThreshold: 0.65,
+            emptyInsertThreshold: 50,
+            onMove: (evt) => {
+              try {
+                // Always allow moves - handle null cases gracefully
+                if (!evt.related || !evt.related.parentElement || !evt.dragged) {
+                  return true; // Allow drop into empty table
+                }
+                // Ensure target container exists and has structure
+                const targetContainer = evt.to;
+                if (!targetContainer) {
+                  return true; // No target, allow (will be handled by SortableJS)
+                }
+                if (targetContainer.children.length === 0) {
+                  // Ensure placeholder exists for empty container
+                  ensurePlaceholder(targetContainer, 'placeholder-active');
+                  return true; // Empty container, allow drop
+                }
+                // Ensure target container's lastElementChild is valid
+                try {
+                  const lastChild = targetContainer.lastElementChild;
+                  if (!lastChild) {
+                    ensurePlaceholder(targetContainer, 'placeholder-active');
+                  }
+                } catch (err) {
+                  // If lastElementChild access fails, ensure placeholder exists
+                  ensurePlaceholder(targetContainer, 'placeholder-active');
+                }
+                console.log('🔄 Move event:', { 
+                  related: evt.related?.dataset?.id, 
+                  dragged: evt.dragged?.dataset?.id 
+                });
+                return true;
+              } catch (err) {
+                console.error('Error in onMove:', err);
+                return true; // Always allow move on error
+              }
+            },
+            onStart: (evt) => {
+              isDragging.value = true;
+              console.log('✅✅✅ Drag STARTED - Active Table:', {
+                item: evt.item?.dataset?.id,
+                index: evt.oldIndex
+              });
+              document.body.style.cursor = 'grabbing';
+            },
+            onAdd: (evt) => {
+              try {
+                console.log('➕ Item added to Active table:', evt.item?.dataset?.id);
+                // Ensure target has valid children after add
+                if (evt.to && evt.to.children.length === 0) {
+                  console.warn('Target container empty after add, ensuring placeholder');
+                  ensurePlaceholder(evt.to, 'placeholder-active');
+                }
+                // Schedule the update after SortableJS is done
+                setTimeout(() => {
+                  handleSortChange(evt).catch(err => {
+                    console.error('Error handling sort change:', err);
+                  });
+                }, 100);
+              } catch (err) {
+                console.error('Error in onAdd:', err);
+              }
+            },
+            onUpdate: (evt) => {
+              try {
+                console.log('🔄 Item updated within Active table:', evt.item?.dataset?.id);
+                // Schedule the update after SortableJS is done
+                setTimeout(() => {
+                  handleSortChange(evt).catch(err => {
+                    console.error('Error handling sort change:', err);
+                  });
+                }, 100);
+              } catch (err) {
+                console.error('Error in onUpdate:', err);
+              }
+            },
+            onEnd: (evt) => {
+              try {
+                console.log('✅✅✅ Drag ENDED - Active Table:', {
+                  item: evt.item?.dataset?.id,
+                  oldIndex: evt.oldIndex,
+                  newIndex: evt.newIndex,
+                  from: evt.from === activeBodyEl ? 'Active' : 'Other',
+                  to: evt.to === activeBodyEl ? 'Active' : (evt.to === inactiveTbody.value ? 'Inactive' : 'Other')
+                });
+                document.body.style.cursor = '';
+                // Reset dragging flag after a delay to allow cleanup
+                setTimeout(() => {
+                  isDragging.value = false;
+                }, 200);
+              } catch (err) {
+                console.error('Error in onEnd:', err);
+                document.body.style.cursor = '';
+                isDragging.value = false;
+              }
+            },
+          });
+          console.log('✅ Active sortable initialized successfully!', {
+            element: activeBodyEl,
+            rows: activeBodyEl.querySelectorAll('tr[data-id]').length,
+            instance: activeSortableInstance.value
+          });
+        } catch (err) {
+          console.error('❌ Error creating active sortable:', err);
+        }
+      }
+
+      // Initialize Inactive FAQs sortable (always initialize so it can accept drops)
+      const inactiveBodyEl = inactiveTbody.value;
+      if (inactiveBodyEl) {
+        try {
+          // Ensure placeholder exists (only if current page is empty)
+          if (paginatedInactiveFAQs.value.length === 0) {
+            ensurePlaceholder(inactiveBodyEl, 'placeholder-inactive');
+          }
+          
+          // Destroy existing instance first
+          if (inactiveSortableInstance.value) {
+            inactiveSortableInstance.value.destroy();
+          }
+          
+          inactiveSortableInstance.value = Sortable.create(inactiveBodyEl, {
+            animation: 150,
+            ghostClass: 'sortable-ghost',
+            chosenClass: 'sortable-chosen',
+            group: { 
+              name: 'faqs', 
+              pull: true, 
+              put: true 
+            },
+            draggable: 'tr[data-id]:not(.sortable-placeholder)',
+            filter: '.no-drag, .sortable-placeholder',
+            preventOnFilter: false,
+            fallbackOnBody: true,
+            fallbackTolerance: 0,
+            invalid: (el, handle) => {
+              // Prevent dragging placeholder or empty message rows
+              return !el || !el.dataset?.id || el.dataset.id.includes('placeholder') || el.classList.contains('no-drag');
+            },
+            dragClass: 'sortable-drag',
+            forceFallback: false,
+            swapThreshold: 0.65,
+            emptyInsertThreshold: 50,
+            onMove: (evt) => {
+              try {
+                // Always allow moves - handle null cases gracefully
+                if (!evt.related || !evt.related.parentElement || !evt.dragged) {
+                  return true; // Allow drop into empty table
+                }
+                // Ensure target container exists and has structure
+                const targetContainer = evt.to;
+                if (!targetContainer) {
+                  return true; // No target, allow (will be handled by SortableJS)
+                }
+                if (targetContainer.children.length === 0) {
+                  // Ensure placeholder exists for empty container
+                  ensurePlaceholder(targetContainer, 'placeholder-inactive');
+                  return true; // Empty container, allow drop
+                }
+                // Ensure target container's lastElementChild is valid
+                try {
+                  const lastChild = targetContainer.lastElementChild;
+                  if (!lastChild) {
+                    ensurePlaceholder(targetContainer, 'placeholder-inactive');
+                  }
+                } catch (err) {
+                  // If lastElementChild access fails, ensure placeholder exists
+                  ensurePlaceholder(targetContainer, 'placeholder-inactive');
+                }
+                console.log('🔄 Move event - Inactive:', { 
+                  related: evt.related?.dataset?.id, 
+                  dragged: evt.dragged?.dataset?.id 
+                });
+                return true;
+              } catch (err) {
+                console.error('Error in onMove:', err);
+                return true; // Always allow move on error
+              }
+            },
+            onAdd: (evt) => {
+              try {
+                console.log('➕ Item added to Inactive table:', evt.item?.dataset?.id);
+                // Ensure target has valid children after add
+                if (evt.to && evt.to.children.length === 0) {
+                  console.warn('Target container empty after add, ensuring placeholder');
+                  ensurePlaceholder(evt.to, 'placeholder-inactive');
+                }
+                // Schedule the update after SortableJS is done
+                setTimeout(() => {
+                  handleSortChange(evt).catch(err => {
+                    console.error('Error handling sort change:', err);
+                  });
+                }, 100);
+              } catch (err) {
+                console.error('Error in onAdd:', err);
+              }
+            },
+            onUpdate: (evt) => {
+              try {
+                console.log('🔄 Item updated within Inactive table:', evt.item?.dataset?.id);
+                // Schedule the update after SortableJS is done
+                setTimeout(() => {
+                  handleSortChange(evt).catch(err => {
+                    console.error('Error handling sort change:', err);
+                  });
+                }, 100);
+              } catch (err) {
+                console.error('Error in onUpdate:', err);
+              }
+            },
+            onStart: (evt) => {
+              try {
+                isDragging.value = true;
+                console.log('✅✅✅ Drag STARTED - Inactive Table:', {
+                  item: evt.item?.dataset?.id,
+                  index: evt.oldIndex
+                });
+                document.body.style.cursor = 'grabbing';
+              } catch (err) {
+                console.error('Error in onStart:', err);
+              }
+            },
+            onEnd: (evt) => {
+              try {
+                console.log('✅✅✅ Drag ENDED - Inactive Table:', {
+                  item: evt.item?.dataset?.id,
+                  oldIndex: evt.oldIndex,
+                  newIndex: evt.newIndex,
+                  from: evt.from === inactiveBodyEl ? 'Inactive' : 'Other',
+                  to: evt.to === inactiveBodyEl ? 'Inactive' : (evt.to === activeTbody.value ? 'Active' : 'Other')
+                });
+                document.body.style.cursor = '';
+                // Reset dragging flag after a delay to allow cleanup
+                setTimeout(() => {
+                  isDragging.value = false;
+                }, 200);
+              } catch (err) {
+                console.error('Error in onEnd:', err);
+                document.body.style.cursor = '';
+                isDragging.value = false;
+              }
+            },
+          });
+          console.log('✅ Inactive sortable initialized successfully!', {
+            element: inactiveBodyEl,
+            rows: inactiveBodyEl.querySelectorAll('tr[data-id]').length,
+            instance: inactiveSortableInstance.value
+          });
+        } catch (err) {
+          console.error('❌ Error creating inactive sortable:', err);
+        }
+      }
+    });
+    } catch (error) {
+      console.error('Error initializing sortable:', error);
+    }
+  };
+
+  const handleSortChange = async (evt) => {
+    const { oldIndex, newIndex, item, from, to } = evt;
+    
+    // Validate inputs
+    if (!item || !from || !to) {
+      console.warn('Invalid sort event:', { item, from, to });
+      return;
+    }
+    
+    const movedFAQId = parseInt(item?.dataset?.id);
+    if (!movedFAQId || oldIndex === null) {
+      console.warn('Invalid sort - missing FAQ ID or oldIndex:', { movedFAQId, oldIndex, newIndex });
+      return;
+    }
+    
+    // If newIndex is null, it means we're dropping into an empty table - set to 0
+    if (newIndex === null || newIndex === undefined) {
+      // Check if target table is empty
+      const targetHasItems = Array.from(to.children || []).some(n => {
+        const id = n.dataset?.id;
+        return id && !id.includes('placeholder') && !n.classList.contains('no-drag');
+      });
+      if (!targetHasItems) {
+        // Dropping into empty table - set newIndex to 0
+        evt.newIndex = 0;
+        console.log('📦 Empty table drop detected, setting newIndex to 0');
+      } else {
+        console.warn('Invalid sort - newIndex is null but table has items:', { movedFAQId, oldIndex, newIndex });
+        return;
+      }
+    }
+
+    // Determine source/target lists
+    const movedToActive = to === activeTbody.value;
+    const movedFromActive = from === activeTbody.value;
+    
+    console.log('📦 Handling sort change:', {
+      movedFAQId,
+      from: movedFromActive ? 'Active' : 'Inactive',
+      to: movedToActive ? 'Active' : 'Inactive',
+      oldIndex,
+      newIndex
+    });
+
+    // Prepare lists sorted by order
+    const activeList = [...faqs.value.filter(f => f.is_active)].sort((a,b)=> (a.display_order||0)-(b.display_order||0));
+    const inactiveList = [...faqs.value.filter(f => !f.is_active)].sort((a,b)=> (a.display_order||0)-(b.display_order||0));
+
+    // Helper to get adjusted index inside a container (skip non data rows)
+    const getAdjustedIndex = (container, rawIndex) => {
+      if (!container || !container.children) return 0;
+      const nodes = Array.from(container.children);
+      let idx = -1, seen = 0;
+      
+      // Filter out placeholder, loading, and empty message rows
+      const dataRows = nodes.filter(n => {
+        const id = n.dataset?.id;
+        return id && !id.includes('placeholder') && !n.classList.contains('no-drag');
+      });
+      
+      // If container is empty, return 0
+      if (dataRows.length === 0) return 0;
+      
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        const nodeId = node.dataset?.id;
+        // Skip placeholder, loading, and empty message rows
+        if (nodeId && !nodeId.includes('placeholder') && !node.classList.contains('no-drag')) {
+          if (i === rawIndex) idx = seen;
+          seen++;
+        }
+      }
+      // If dropping after last row, place at end
+      if (idx === -1) idx = seen; 
+      return Math.max(0, idx);
+    };
+
+    const sourceIndex = getAdjustedIndex(from, oldIndex);
+    let targetIndex = getAdjustedIndex(to, newIndex);
+    
+    // If target is empty, set index to 0
+    const targetHasRows = Array.from(to.children || []).some(n => n.dataset?.id);
+    if (!targetHasRows) targetIndex = 0;
+
+    // Remove from source
+    let movedItem;
+    if (movedFromActive) {
+      const realIndex = activeList.findIndex(f => f.id === movedFAQId);
+      if (realIndex === -1) return;
+      movedItem = activeList.splice(realIndex, 1)[0];
+    } else {
+      const realIndex = inactiveList.findIndex(f => f.id === movedFAQId);
+      if (realIndex === -1) return;
+      movedItem = inactiveList.splice(realIndex, 1)[0];
+    }
+
+    // Insert into target
+    if (movedToActive) {
+      movedItem.is_active = true;
+      activeList.splice(Math.min(targetIndex, activeList.length), 0, movedItem);
+    } else {
+      movedItem.is_active = false;
+      inactiveList.splice(Math.min(targetIndex, inactiveList.length), 0, movedItem);
+    }
+
+    // Recompute sequential orders
+    const updates = [];
+    activeList.forEach((f, i) => {
+      const newOrder = i + 1;
+      if (f.display_order !== newOrder || f.is_active !== true) {
+        f.display_order = newOrder;
+        f.is_active = true;
+        updates.push(axios.put(`${apiConfig.baseURL}/faqs/${f.id}`, { display_order: newOrder, is_active: true }));
+      }
+    });
+    inactiveList.forEach((f, i) => {
+      const newOrder = i + 1;
+      if (f.display_order !== newOrder || f.is_active !== false) {
+        f.display_order = newOrder;
+        f.is_active = false;
+        updates.push(axios.put(`${apiConfig.baseURL}/faqs/${f.id}`, { display_order: newOrder, is_active: false }));
+      }
+    });
+
+    try {
+      if (updates.length) {
+        await Promise.all(updates);
+        // Reload stats after status change
+        await loadStats();
+      }
+      faqs.value = [...activeList, ...inactiveList];
+      
+      // Show appropriate message based on what happened
+      if (movedFromActive !== movedToActive) {
+        showToast('success', `FAQ moved to ${movedToActive ? 'Active' : 'Inactive'} and order updated`);
+      } else {
+        showToast('success', 'FAQ order updated');
+      }
+      
+      // Reinitialize sortable to update both tables (after DOM updates)
+      await nextTick();
+      // Wait longer to ensure SortableJS has fully cleaned up and dragging is complete
+      setTimeout(() => {
+        if (!isDragging.value) {
+          try {
+            initSortable();
+          } catch (err) {
+            console.error('Error reinitializing sortable:', err);
+          }
+        } else {
+          // Retry after drag completes
+          setTimeout(() => {
+            try {
+              initSortable();
+            } catch (err) {
+              console.error('Error reinitializing sortable (retry):', err);
+            }
+          }, 500);
+        }
+      }, 400);
+    } catch (error) {
+      console.error('Error updating FAQ order:', error);
+      showToast('error', 'Failed to update FAQ order');
+      await loadFAQs();
     }
   };
 
@@ -1439,8 +2167,6 @@
       question: '',
       answer: '',
       category: '',
-      display_order: 0,
-      is_active: true,
     };
     categoryIconSuggestion.value = null;
     faqModal.value?.showModal();
@@ -1452,8 +2178,6 @@
       question: faq.question,
       answer: faq.answer,
       category: faq.category || '',
-      display_order: faq.display_order,
-      is_active: faq.is_active,
     };
     // Calculate icon suggestion for existing category
     if (faqForm.value.category) {
@@ -1474,17 +2198,42 @@
   const saveFAQ = async () => {
     saving.value = true;
     try {
+      // Prepare data without display_order and is_active
+      // display_order is managed by drag-and-drop position
+      // is_active is managed by which table (Active/Inactive) the FAQ is in
+      const faqData = {
+        question: faqForm.value.question,
+        answer: faqForm.value.answer,
+        category: faqForm.value.category,
+      };
+
       if (editingFAQ.value) {
-        await axios.put(`${apiConfig.baseURL}/faqs/${editingFAQ.value.id}`, faqForm.value);
+        // Editing - preserve existing is_active status and display_order
+        await axios.put(`${apiConfig.baseURL}/faqs/${editingFAQ.value.id}`, faqData);
         showToast('success', 'FAQ updated successfully');
       } else {
-        await axios.post(`${apiConfig.baseURL}/faqs`, faqForm.value);
+        // New FAQs default to active and get the highest order + 1 for active FAQs
+        const activeFAQsMaxOrder = faqs.value.filter(f => f.is_active).length > 0
+          ? Math.max(...faqs.value.filter(f => f.is_active).map(f => f.display_order || 0))
+          : 0;
+        faqData.display_order = activeFAQsMaxOrder + 1;
+        faqData.is_active = true; // New FAQs default to active
+        await axios.post(`${apiConfig.baseURL}/faqs`, faqData);
         showToast('success', 'FAQ created successfully');
       }
       await loadFAQs();
       await loadStats();
       await loadCategories();
       closeModal();
+      // Reinitialize sortable after changes
+      await nextTick();
+      setTimeout(() => {
+        try {
+          initSortable();
+        } catch (err) {
+          console.error('Error reinitializing sortable:', err);
+        }
+      }, 300);
     } catch (error) {
       console.error('Error saving FAQ:', error);
       showToast(
@@ -1517,6 +2266,15 @@
       await loadStats();
       await loadCategories();
       closeDeleteModal();
+      // Reinitialize sortable after deletion
+      await nextTick();
+      setTimeout(() => {
+        try {
+          initSortable();
+        } catch (err) {
+          console.error('Error reinitializing sortable:', err);
+        }
+      }, 300);
     } catch (error) {
       console.error('Error deleting FAQ:', error);
       showToast(
@@ -1580,5 +2338,61 @@
   .toggle:checked {
     --tglbg: var(--color-primaryColor);
     border-color: var(--color-primaryColor);
+  }
+
+  /* Sortable styles */
+  .sortable-ghost {
+    opacity: 0.4;
+    background: #f3f4f6;
+  }
+
+  .sortable-chosen {
+    background: #e5e7eb;
+  }
+
+  .drag-handle {
+    user-select: none;
+    cursor: grab;
+    touch-action: none;
+    pointer-events: auto;
+  }
+
+  .drag-handle:active {
+    cursor: grabbing;
+  }
+
+  .drag-handle:hover {
+    color: var(--color-primaryColor) !important;
+  }
+
+  .cursor-move {
+    cursor: move;
+  }
+
+  .sortable-drag {
+    opacity: 0.8;
+  }
+
+  /* Ensure buttons are always clickable */
+  tr[data-id] button {
+    pointer-events: auto !important;
+    cursor: pointer;
+    z-index: 10;
+    position: relative;
+  }
+
+  /* Only disable buttons during active drag */
+  .sortable-chosen button,
+  .sortable-drag button {
+    pointer-events: none;
+  }
+
+  /* Ensure drag handle is always interactive */
+  .drag-handle {
+    pointer-events: auto !important;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
   }
 </style>

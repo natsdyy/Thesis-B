@@ -371,12 +371,24 @@ class EmailService {
    */
   static async sendViaSendGrid(emailData) {
     try {
+      const fromEmail =
+        process.env.SENDGRID_FROM_EMAIL ||
+        process.env.SENDGRID_SENDER_EMAIL ||
+        emailData.from ||
+        "mailcountrysidesteakhouse@gmail.com";
+
+      const fromName = emailData.fromName || "Countryside Steakhouse";
+
       const msg = {
         to: emailData.to,
-        from: emailData.from || "mailcountrysidesteakhouse@gmail.com",
+        from: { email: fromEmail, name: fromName },
         subject: emailData.subject,
         text: emailData.text,
         html: emailData.html,
+        trackingSettings: {
+          clickTracking: { enable: false, enableText: false },
+          openTracking: { enable: false },
+        },
       };
 
       console.log("📧 Sending email via SendGrid to:", emailData.to);
@@ -1211,6 +1223,96 @@ class EmailService {
   }
 
   /**
+   * Notify employee about position rate change (SendGrid-first with SMTP fallback)
+   */
+  static async sendEmployeeRateChangeNotification(
+    to,
+    employeeName,
+    role,
+    department,
+    oldRate,
+    newRate
+  ) {
+    // Try SendGrid first
+    if (SendGridService.isConfigured()) {
+      const sg = await SendGridService.sendEmployeeRateChangeEmail(
+        to,
+        employeeName,
+        role,
+        department,
+        oldRate,
+        newRate
+      );
+      if (sg.success) return sg;
+      console.log(`⚠️ SendGrid rate change email failed: ${sg.error}`);
+    }
+
+    // SMTP fallback
+    try {
+      const oldVal = Number(oldRate || 0);
+      const newVal = Number(newRate || 0);
+      const diff = newVal - oldVal;
+      const increased = diff > 0;
+      const direction = increased
+        ? "Increased"
+        : diff < 0
+          ? "Decreased"
+          : "Updated";
+      const formatPhp = (v) =>
+        Number(v).toLocaleString("en-PH", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+
+      const subject = `Rate ${direction} for ${role} — ₱ ${formatPhp(newVal)}/hr`;
+
+      const mailOptions = {
+        to,
+        from: {
+          name: "Countryside HR",
+          email: process.env.SMTP_USER || "mailcountrysidesteakhouse@gmail.com",
+        },
+        subject,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; padding: 24px;">
+            <h2 style="margin:0 0 12px 0;">Rate ${direction}</h2>
+            <p>Hello ${employeeName || "Employee"},</p>
+            <p>Your rate for the <strong>${role}</strong> role in <strong>${department}</strong> has been ${direction.toLowerCase()}.</p>
+            <table style="width:100%; border-collapse:collapse; margin-top:12px;">
+              <tr>
+                <td style="padding:8px; color:#6b7280;">Previous</td>
+                <td style="padding:8px; text-align:right; font-weight:600;">₱ ${formatPhp(oldVal)}/hr</td>
+              </tr>
+              <tr>
+                <td style="padding:8px; color:#6b7280;">New</td>
+                <td style="padding:8px; text-align:right; font-weight:700; color:${increased ? "#065f46" : "#7c2d12"};">₱ ${formatPhp(newVal)}/hr</td>
+              </tr>
+              <tr>
+                <td style="padding:8px; color:#6b7280;">Change</td>
+                <td style="padding:8px; text-align:right; font-weight:600;">${increased ? "+" : ""}₱ ${formatPhp(diff)}/hr</td>
+              </tr>
+            </table>
+            <p style="margin-top:16px; color:#374151;">If you have any questions, please contact HR.</p>
+          </div>
+        `,
+        text: `Hello ${employeeName || "Employee"},\n\nYour rate for the ${role} (${department}) position was ${direction.toLowerCase()}.\nPrevious: ₱ ${formatPhp(oldVal)}/hr\nNew: ₱ ${formatPhp(newVal)}/hr\nChange: ${increased ? "+" : ""}${formatPhp(diff)} per hour.\n\nIf you have questions, please contact HR.`,
+      };
+
+      const info = await this.withTimeout(
+        transporter.sendMail(mailOptions),
+        25000
+      );
+      return { success: true, messageId: info.messageId };
+    } catch (error) {
+      console.error(
+        "❌ Error sending employee rate change email via SMTP:",
+        error
+      );
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Send payroll notification email to employee
    * @param {string} to - Employee email address
    * @param {string} employeeName - Employee's full name
@@ -1250,6 +1352,110 @@ class EmailService {
         success: false,
         error: error.message,
       };
+    }
+  }
+
+  /**
+   * Send supplier order notification (used after SCM receipt confirmation)
+   * Tries SendGrid first, falls back to SMTP using existing configuration
+   * @param {string} to - Supplier email
+   * @param {string} supplierName - Supplier or contact name
+   * @param {object} order - { request, items }
+   */
+  static async sendSupplierOrderNotification(to, supplierName, order) {
+    try {
+      const { request = {}, items = [] } = order || {};
+      const requestId = request.request_id || request.id || "-";
+      const totalAmount = Number(request.total_amount || 0).toLocaleString(
+        "en-PH",
+        { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+      );
+
+      const rows = (items || [])
+        .map((it, idx) => {
+          const qty = Number(it.item_quantity || 0);
+          const unit = it.item_unit || "";
+          const unitPrice = Number(it.item_unit_price || 0).toLocaleString(
+            "en-PH",
+            { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+          );
+          const amount = Number(
+            it.item_amount || qty * (it.item_unit_price || 0)
+          ).toLocaleString("en-PH", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
+          return `
+            <tr>
+              <td style="padding:8px; border-bottom:1px solid #eee; color:#2c3e50;">${idx + 1}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee; color:#2c3e50;">${it.item_name || "-"}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee; text-align:right;">${qty} ${unit}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee; text-align:right;">₱ ${unitPrice}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee; text-align:right; font-weight:600;">₱ ${amount}</td>
+            </tr>`;
+        })
+        .join("");
+
+      const html = `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif; color:#2c3e50;">
+          <div style="max-width:680px; margin:0 auto; padding:24px;">
+            <h2 style="margin:0 0 12px 0; font-size:20px; font-weight:700;">New Order</h2>
+            <p style="margin:0 0 16px 0;">Hello ${supplierName || "Supplier"},</p>
+            <p style="margin:0 0 16px 0;">We have confirmed the budget receipt for the following supplier-sourced request and would like to proceed with the order.</p>
+
+            <div style="background:#f8f9fa; border:1px solid #eaecef; border-radius:8px; padding:12px; margin:16px 0;">
+              <div style="display:flex; justify-content:space-between;">
+                <div>
+                  <div style="font-size:13px; color:#6b7280;">Request #</div>
+                  <div style="font-weight:600;">${requestId}</div>
+                </div>
+                <div>
+                  <div style="font-size:13px; color:#6b7280;">Total Amount</div>
+                  <div style="font-weight:700; color:#0f766e;">₱ ${totalAmount}</div>
+                </div>
+              </div>
+            </div>
+
+            <table style="width:100%; border-collapse:collapse; margin-top:8px;">
+              <thead>
+                <tr>
+                  <th style="text-align:left; padding:8px; border-bottom:2px solid #e5e7eb; color:#6b7280;">#</th>
+                  <th style="text-align:left; padding:8px; border-bottom:2px solid #e5e7eb; color:#6b7280;">Item</th>
+                  <th style="text-align:right; padding:8px; border-bottom:2px solid #e5e7eb; color:#6b7280;">Qty</th>
+                  <th style="text-align:right; padding:8px; border-bottom:2px solid #e5e7eb; color:#6b7280;">Unit Price</th>
+                  <th style="text-align:right; padding:8px; border-bottom:2px solid #e5e7eb; color:#6b7280;">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows}
+              </tbody>
+            </table>
+
+            <p style="margin:16px 0 0 0; font-size:14px; color:#374151;">Please confirm receipt of this order and provide expected delivery schedule. If you need clarification, reply to this email.</p>
+            <p style="margin:16px 0 0 0; font-size:12px; color:#6b7280;">This is an automated message from the Countryside SCM system.</p>
+          </div>
+        </div>
+      `;
+
+      const subject = `New Order from Countryside Steakhouse — Request #${requestId}`;
+      const text = `New supplier order for request #${requestId} (Total: ₱ ${totalAmount}). Please confirm and provide delivery schedule.`;
+
+      const emailData = {
+        to: to,
+        subject,
+        html,
+        text,
+        from:
+          EMAIL_CONFIG.user ||
+          process.env.SENDGRID_FROM_EMAIL ||
+          "mailcountrysidesteakhouse@gmail.com",
+        fromName: "Countryside SCM",
+      };
+
+      return await this.sendEmailWithFallback(emailData);
+    } catch (error) {
+      console.error("❌ Error composing supplier order email:", error.message);
+      return { success: false, error: error.message };
     }
   }
 

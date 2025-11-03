@@ -550,8 +550,9 @@ export const usePOSStore = defineStore('pos', () => {
         processedAt: processResponse.data.processed_at,
       });
 
-      // Reset current order
-      resetOrder();
+      // Reset current order WITHOUT restoring local stock quantities,
+      // because the backend has already decremented branch stock.
+      resetOrder(false);
 
       return processResponse.data;
     } catch (err) {
@@ -566,14 +567,17 @@ export const usePOSStore = defineStore('pos', () => {
     }
   };
 
-  const resetOrder = () => {
-    // Restore all stock quantities
-    currentOrder.value.items.forEach((orderItem) => {
-      const menuItem = menuItems.value.find((mi) => mi.id === orderItem.id);
-      if (menuItem) {
-        menuItem.stock_quantity += orderItem.quantity;
-      }
-    });
+  const resetOrder = (restoreStock = true) => {
+    // Optionally restore local stock quantities (used on cancel),
+    // but skip restoration after a successful order.
+    if (restoreStock) {
+      currentOrder.value.items.forEach((orderItem) => {
+        const menuItem = menuItems.value.find((mi) => mi.id === orderItem.id);
+        if (menuItem) {
+          menuItem.stock_quantity += orderItem.quantity;
+        }
+      });
+    }
 
     currentOrder.value = {
       orderNumber: '',
@@ -594,7 +598,8 @@ export const usePOSStore = defineStore('pos', () => {
   };
 
   const cancelOrder = () => {
-    resetOrder();
+    // On cancel, restore local stock back to the shelf
+    resetOrder(true);
   };
 
   const voidOrder = async (orderId, voidReason, lossAmount = 0, flags = {}) => {

@@ -27,7 +27,6 @@
     Clock,
     RefreshCcw,
     Plus,
-    EllipsisVertical,
     X,
     History,
     Send,
@@ -3336,14 +3335,14 @@
             <h2 class="card-title text-primaryColor">Supply Request List</h2>
             <div class="flex gap-2 md:flex-row flex-col">
               <button
-                class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
+                class="btn btn-sm"
                 @click="fetchAllData"
                 :class="{ loading: loading }"
                 :disabled="loading"
               >
                 <RefreshCcw
                   v-if="!loading"
-                  class="w-4 h-4 mr-2 text-primaryColor"
+                  class="w-4 h-4 mr-2"
                 />
                 <span
                   class="loading loading-spinner loading-xs"
@@ -3632,66 +3631,55 @@
                     </div>
                   </td>
                   <td>
-                    <div class="dropdown dropdown-left dropdown-center">
-                      <label
-                        tabindex="0"
-                        class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
+                    <div class="flex gap-1">
+                      <button
+                        title="View Request"
+                        @click="confirmViewRequest(request)"
+                        class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-black/50"
                       >
-                        <EllipsisVertical class="w-4 h-4" />
-                      </label>
-                      <ul
-                        tabindex="0"
-                        class="dropdown-content z-[1] menu p-2 shadow bg-accentColor rounded-box w-52 border border-black/10"
+                        <font-awesome-icon icon="fa-solid fa-eye" />
+                      </button>
+                      <button
+                        title="Edit Request"
+                        v-if="
+                          request.request_status === 'To Request' ||
+                          request.request_status === 'Sent Back'
+                        "
+                        @click="editRequest(request)"
+                        class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-warning"
                       >
-                        <li class="hover:bg-black/10">
-                          <a
-                            @click="confirmViewRequest(request)"
-                            class="text-primary"
-                            >View Request</a
-                          >
-                        </li>
-                        <li
-                          class="hover:bg-black/10"
-                          v-if="
-                            request.request_status === 'To Request' ||
-                            request.request_status === 'Sent Back'
-                          "
-                        >
-                          <a @click="editRequest(request)" class="text-warning"
-                            >Edit</a
-                          >
-                        </li>
-                        <li
-                          class="hover:bg-black/10"
-                          v-if="
-                            request.request_status === 'To Request' ||
-                            request.request_status === 'Sent Back'
-                          "
-                        >
-                          <a @click="confirmSend(request)" class="text-success"
-                            >Send Request</a
-                          >
-                        </li>
-                        <li
-                          class="hover:bg-black/10"
-                          v-if="request.request_status === 'Pending'"
-                        >
-                          <a @click="confirmCancel(request)" class="text-error"
-                            >Cancel Request</a
-                          >
-                        </li>
-                        <li
-                          class="hover:bg-black/10"
-                          v-if="
-                            request.request_status === 'To Request' ||
-                            request.request_status === 'Sent Back'
-                          "
-                        >
-                          <a @click="confirmDelete(request)" class="text-error"
-                            >Delete Request</a
-                          >
-                        </li>
-                      </ul>
+                        <font-awesome-icon icon="fa-solid fa-pen" />
+                      </button>
+                      <button
+                        title="Send Request"
+                        v-if="
+                          request.request_status === 'To Request' ||
+                          request.request_status === 'Sent Back'
+                        "
+                        @click="confirmSend(request)"
+                        class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-success"
+                      >
+                        <font-awesome-icon icon="fa-solid fa-paper-plane" />
+                      </button>
+                      <button
+                        title="Cancel Request"
+                        v-if="request.request_status === 'Pending'"
+                        @click="confirmCancel(request)"
+                        class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-error"
+                      >
+                        <font-awesome-icon icon="fa-solid fa-times-circle" />
+                      </button>
+                      <button
+                        title="Delete Request"
+                        v-if="
+                          request.request_status === 'To Request' ||
+                          request.request_status === 'Sent Back'
+                        "
+                        @click="confirmDelete(request)"
+                        class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-error"
+                      >
+                        <font-awesome-icon icon="fa-solid fa-trash" />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -3880,56 +3868,33 @@
                       </div>
                     </td>
                     <td>
-                      <div class="dropdown dropdown-left">
-                        <label
-                          tabindex="0"
-                          class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
+                      <div class="flex gap-1">
+                        <button
+                          title="View Request"
+                          @click="viewBranchRequestModal(request)"
+                          class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-black/50"
                         >
-                          <EllipsisVertical class="w-4 h-4" />
-                        </label>
-                        <ul
-                          tabindex="0"
-                          class="dropdown-content z-[1] menu p-2 shadow bg-accentColor rounded-box w-52 border border-black/10"
+                          <font-awesome-icon icon="fa-solid fa-eye" />
+                        </button>
+                        <button
+                          title="Process Request"
+                          v-if="
+                            request.status === 'Sent' ||
+                            request.status === 'Acknowledged'
+                          "
+                          @click="processBranchRequest(request)"
+                          class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-success"
                         >
-                          <li class="hover:bg-black/10">
-                            <a
-                              @click="viewBranchRequestModal(request)"
-                              class="text-primary"
-                              >View Request</a
-                            >
-                          </li>
-                          <li
-                            class="hover:bg-black/10"
-                            v-if="request.status === 'Sent'"
-                          >
-                            <a
-                              @click="processBranchRequest(request)"
-                              class="text-success"
-                              >Process</a
-                            >
-                          </li>
-                          <li
-                            class="hover:bg-black/10"
-                            v-if="request.status === 'Acknowledged'"
-                          >
-                            <a
-                              @click="processBranchRequest(request)"
-                              class="text-success"
-                              >Process</a
-                            >
-                          </li>
-
-                          <li
-                            class="hover:bg-black/10"
-                            v-if="request.status === 'In Progress'"
-                          >
-                            <a
-                              @click="completeBranchRequest(request.request_id)"
-                              class="text-success"
-                              >Complete</a
-                            >
-                          </li>
-                        </ul>
+                          <font-awesome-icon icon="fa-solid fa-cog" />
+                        </button>
+                        <button
+                          title="Complete Request"
+                          v-if="request.status === 'In Progress'"
+                          @click="completeBranchRequest(request.request_id)"
+                          class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-success"
+                        >
+                          <font-awesome-icon icon="fa-solid fa-check" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -4076,6 +4041,7 @@
 
                 <div class="flex gap-2 mt-4 lg:mt-0">
                   <button
+                    title="Export to CSV"
                     class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
                     @click="exportToCSV"
                   >
@@ -4103,6 +4069,7 @@
 
                   <div class="flex gap-2">
                     <button
+                      title="Sort by"
                       class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10"
                       @click="toggleSortOrder"
                       :title="`Sort ${requestHistoryFilter.sortOrder === 'asc' ? 'Descending' : 'Ascending'}`"
@@ -4187,6 +4154,7 @@
                       <div class="flex items-center gap-2">
                         <div class="relative">
                           <button
+                            title="Custom month"
                             class="btn btn-sm btn-outline text-primaryColor hover:bg-primaryColor/10 font-thin"
                             @click="toggleCustomMonthPicker"
                           >

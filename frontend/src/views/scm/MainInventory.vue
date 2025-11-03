@@ -3609,7 +3609,7 @@
                         <th>Quantity</th>
                         <th>Expiry Date</th>
                         <th>Received Date</th>
-                        <th>Supplier</th>
+          
 
                         <th>Status</th>
                         <th>Actions</th>
@@ -3660,11 +3660,7 @@
                             {{ formatDate(batch.received_date) }}
                           </span>
                         </td>
-                        <td>
-                          <span class="text-sm">{{
-                            batch.supplier_name || 'N/A'
-                          }}</span>
-                        </td>
+       
 
                         <td>
                           <span

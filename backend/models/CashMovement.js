@@ -46,6 +46,62 @@ class CashMovement {
   }
 
   /**
+   * Helper: record an outflow when a PO actual spend exceeds released budget
+   * @param {Object} params
+   * @param {number|null} params.branch_id
+   * @param {number} params.amount
+   * @param {number|string} params.purchase_order_id
+   * @param {string} [params.notes]
+   * @param {string|Date} [params.occurred_at]
+   */
+  static async recordOutflowForPODeficit({
+    branch_id = null,
+    amount = 0,
+    purchase_order_id = null,
+    notes = null,
+    occurred_at = null,
+  } = {}) {
+    return await CashMovement.create({
+      branch_id,
+      movement_type: "out",
+      amount: Number(amount || 0),
+      source: "po_deficit",
+      reference_id: purchase_order_id,
+      reference_type: "purchase_order",
+      notes: notes || "Budget deficit on PO completion",
+      occurred_at,
+    });
+  }
+
+  /**
+   * Helper: record an inflow when budget is returned due to under-delivery or item returns
+   * @param {Object} params
+   * @param {number|null} params.branch_id
+   * @param {number} params.amount
+   * @param {number|string} params.purchase_order_id
+   * @param {string} [params.notes]
+   * @param {string|Date} [params.occurred_at]
+   */
+  static async recordInflowForBudgetReturn({
+    branch_id = null,
+    amount = 0,
+    purchase_order_id = null,
+    notes = null,
+    occurred_at = null,
+  } = {}) {
+    return await CashMovement.create({
+      branch_id,
+      movement_type: "in",
+      amount: Number(amount || 0),
+      source: "budget_return",
+      reference_id: purchase_order_id,
+      reference_type: "purchase_order",
+      notes: notes || "Budget returned to capital",
+      occurred_at,
+    });
+  }
+
+  /**
    * List cash movements with filters
    * @param {Object} filters
    * @param {number} [filters.branch_id]

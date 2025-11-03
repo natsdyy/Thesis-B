@@ -223,6 +223,154 @@ class SendGridService {
   }
 
   /**
+   * Send supplier order notification when SCM confirms receipt and proceeds with supplier-sourced items
+   * @param {string} to - Supplier email
+   * @param {string} supplierName - Supplier or contact name
+   * @param {object} order - Order payload containing request and items
+   * @param {object} order.request - Supply request header
+   * @param {Array} order.items - Array of items with item_name, item_quantity, item_unit, item_unit_price, item_amount
+   */
+  static async sendSupplierOrderEmail(to, supplierName, order) {
+    try {
+      if (!this.isConfigured()) {
+        console.warn("SendGrid not configured - skipping supplier order email");
+        return { skipped: true };
+      }
+
+      if (!to) {
+        console.warn(
+          "No supplier email provided - skipping supplier order email"
+        );
+        return { skipped: true };
+      }
+
+      const { request = {}, items = [] } = order || {};
+      const requestId = request.request_id || request.id || "-";
+      const totalAmount = Number(request.total_amount || 0).toLocaleString(
+        "en-PH",
+        { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+      );
+
+      const itemsRows = (items || [])
+        .map((it, idx) => {
+          const qty = Number(it.item_quantity || 0);
+          const unit = it.item_unit || "";
+          const unitPrice = Number(it.item_unit_price || 0).toLocaleString(
+            "en-PH",
+            { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+          );
+          const amount = Number(
+            it.item_amount || qty * (it.item_unit_price || 0)
+          ).toLocaleString("en-PH", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
+          return `
+            <tr>
+              <td style="padding:8px; border-bottom:1px solid #eee; color:#2c3e50;">${idx + 1}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee; color:#2c3e50;">${it.item_name || "-"}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee; text-align:right;">${qty} ${unit}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee; text-align:right;">₱ ${unitPrice}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee; text-align:right; font-weight:600;">₱ ${amount}</td>
+            </tr>`;
+        })
+        .join("");
+
+      const fromEmail =
+        process.env.SMTP_USER ||
+        process.env.EMAIL_USER ||
+        process.env.SENDGRID_FROM_EMAIL ||
+        process.env.SENDGRID_SENDER_EMAIL;
+
+      if (!fromEmail) {
+        console.warn(
+          "SendGrid FROM email not configured (prefer SMTP_USER/EMAIL_USER; fallback SENDGRID_FROM_EMAIL/SENDGRID_SENDER_EMAIL). Skipping supplier order email."
+        );
+        return { skipped: true };
+      }
+
+      const msg = {
+        to,
+        from: { email: fromEmail, name: "Countryside SCM" },
+        subject: `New Order from Countryside Steakhouse — Request #${requestId}`,
+        text: `New supplier order for request #${requestId} (Total: ₱ ${totalAmount}). Please confirm and provide delivery schedule.`,
+        trackingSettings: {
+          clickTracking: {
+            enable: false,
+            enableText: false,
+          },
+          openTracking: {
+            enable: false,
+          },
+        },
+        html: `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif; color:#2c3e50;">
+            <div style="max-width:680px; margin:0 auto; padding:24px;">
+              <h2 style="margin:0 0 12px 0; font-size:20px; font-weight:700;">New Order</h2>
+              <p style="margin:0 0 16px 0;">Hello ${supplierName || "Supplier"},</p>
+              <p style="margin:0 0 16px 0;">We have confirmed the budget receipt for the following supplier-sourced request and would like to proceed with the order.</p>
+
+              <div style="background:#f8f9fa; border:1px solid #eaecef; border-radius:8px; padding:12px; margin:16px 0;">
+                <div style="display:flex; justify-content:space-between;">
+                  <div>
+                    <div style="font-size:13px; color:#6b7280;">Request #</div>
+                    <div style="font-weight:600;">${requestId}</div>
+                  </div>
+                  <div>
+                    <div style="font-size:13px; color:#6b7280;">Total Amount</div>
+                    <div style="font-weight:700; color:#0f766e;">₱ ${totalAmount}</div>
+                  </div>
+                </div>
+              </div>
+
+              <table style="width:100%; border-collapse:collapse; margin-top:8px;">
+                <thead>
+                  <tr>
+                    <th style="text-align:left; padding:8px; border-bottom:2px solid #e5e7eb; color:#6b7280;">#</th>
+                    <th style="text-align:left; padding:8px; border-bottom:2px solid #e5e7eb; color:#6b7280;">Item</th>
+                    <th style="text-align:right; padding:8px; border-bottom:2px solid #e5e7eb; color:#6b7280;">Qty</th>
+                    <th style="text-align:right; padding:8px; border-bottom:2px solid #e5e7eb; color:#6b7280;">Unit Price</th>
+                    <th style="text-align:right; padding:8px; border-bottom:2px solid #e5e7eb; color:#6b7280;">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${itemsRows}
+                </tbody>
+              </table>
+
+              <p style="margin:16px 0 0 0; font-size:14px; color:#374151;">Please confirm receipt of this order and provide expected delivery schedule. If you need clarification, reply to this email.</p>
+              <p style="margin:16px 0 0 0; font-size:12px; color:#6b7280;">This is an automated message from the Countryside SCM system.</p>
+            </div>
+          </div>
+        `,
+      };
+
+      console.log(
+        `📧 [SENDGRID] Sending supplier order email for request #${requestId} to ${to}`
+      );
+      const response = await sgMail.send(msg);
+      console.log(
+        "✅ SendGrid supplier order email sent:",
+        response[0]?.headers?.["x-message-id"] || "<no-message-id>"
+      );
+      return { success: true };
+    } catch (error) {
+      const apiErrors = error?.response?.body?.errors;
+      if (apiErrors) {
+        console.error("❌ SendGrid API errors:", JSON.stringify(apiErrors));
+      }
+      console.error(
+        "❌ Error sending supplier order email:",
+        error?.message || error
+      );
+      return {
+        success: false,
+        error: apiErrors || error?.message || String(error),
+      };
+    }
+  }
+
+  /**
    * Send employee welcome email using SendGrid
    * @param {string} to - Recipient email address
    * @param {string} employeeName - Employee's full name
@@ -412,6 +560,109 @@ class SendGridService {
         success: false,
         error: error.message,
         provider: "SendGrid",
+      };
+    }
+  }
+
+  /**
+   * Send employee rate change email using SendGrid
+   */
+  static async sendEmployeeRateChangeEmail(
+    to,
+    employeeName,
+    role,
+    department,
+    oldRate,
+    newRate
+  ) {
+    try {
+      if (!this.isConfigured()) {
+        console.log("⚠️ SendGrid not configured, skipping email");
+        return {
+          success: false,
+          error: "SendGrid API key not configured",
+          skipEmail: true,
+        };
+      }
+
+      const fromEmail =
+        process.env.SMTP_USER ||
+        process.env.EMAIL_USER ||
+        process.env.SENDGRID_FROM_EMAIL ||
+        process.env.SENDGRID_SENDER_EMAIL;
+      if (!fromEmail) {
+        return {
+          success: false,
+          error:
+            "SendGrid FROM email not configured (prefer SMTP_USER/EMAIL_USER; fallback SENDGRID_FROM_EMAIL/SENDGRID_SENDER_EMAIL)",
+        };
+      }
+
+      const oldVal = Number(oldRate || 0);
+      const newVal = Number(newRate || 0);
+      const diff = newVal - oldVal;
+      const increased = diff > 0;
+      const direction = increased
+        ? "Increased"
+        : diff < 0
+          ? "Decreased"
+          : "Updated";
+
+      const formatPhp = (v) =>
+        Number(v).toLocaleString("en-PH", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+
+      const subject = `Rate ${direction} for ${role} — ₱ ${formatPhp(newVal)}/hr`;
+
+      const msg = {
+        to,
+        from: { email: fromEmail, name: "Countryside HR" },
+        subject,
+        text: `Hello ${employeeName || "Employee"},\n\nYour rate for the ${role} (${department}) position was ${direction.toLowerCase()}.\nPrevious: ₱ ${formatPhp(oldVal)}/hr\nNew: ₱ ${formatPhp(newVal)}/hr\nChange: ${increased ? "+" : ""}${formatPhp(diff)} per hour.\n\nIf you have questions, please contact HR.`,
+        html: `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; color:#111827;">
+            <div style="max-width:640px;margin:0 auto;padding:24px;">
+              <h2 style="margin:0 0 12px 0;font-size:20px;font-weight:700;">Rate ${direction}</h2>
+              <p style="margin:0 0 12px 0;">Hello ${employeeName || "Employee"},</p>
+              <p style="margin:0 0 16px 0;">Your rate for the <strong>${role}</strong> role in <strong>${department}</strong> has been ${direction.toLowerCase()}.</p>
+              <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                  <span style="color:#6b7280;">Previous</span>
+                  <strong>₱ ${formatPhp(oldVal)}/hr</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                  <span style="color:#6b7280;">New</span>
+                  <strong style="color:${increased ? "#065f46" : "#7c2d12"};">₱ ${formatPhp(newVal)}/hr</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;">
+                  <span style="color:#6b7280;">Change</span>
+                  <strong>${increased ? "+" : ""}₱ ${formatPhp(diff)}/hr</strong>
+                </div>
+              </div>
+              <p style="margin:16px 0 0 0;font-size:14px;color:#374151;">If you have any questions, please contact HR.</p>
+            </div>
+          </div>
+        `,
+        trackingSettings: {
+          clickTracking: { enable: false, enableText: false },
+          openTracking: { enable: false },
+        },
+      };
+
+      const response = await sgMail.send(msg);
+      return {
+        success: true,
+        messageId: response[0]?.headers?.["x-message-id"],
+      };
+    } catch (error) {
+      const apiErrors = error.response?.body?.errors
+        ?.map((e) => e.message)
+        .join(", ");
+      return {
+        success: false,
+        error: apiErrors || error?.message || String(error),
       };
     }
   }

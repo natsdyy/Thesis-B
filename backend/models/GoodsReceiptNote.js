@@ -208,7 +208,7 @@ class GoodsReceiptNote {
         .insert({
           grn_number: grnNumber,
           purchase_order_id: purchaseOrderId,
-          supplier_id: po.supplier_id,
+          supplier_id: po.supplier_id || null,
           received_by: grnData.received_by,
           received_date: grnData.received_date || new Date(),
           status: "pending_inspection",

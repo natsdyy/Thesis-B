@@ -334,8 +334,10 @@ class PurchaseOrder {
     const trx = await db.transaction();
 
     try {
-      // NEW: Validate supplier before creating PO
-      const supplier = await Supplier.validateForPurchaseOrder(supplierId);
+      // Validate supplier only when provided (manual requests may omit supplier)
+      if (supplierId) {
+        await Supplier.validateForPurchaseOrder(supplierId);
+      }
 
       // Check if PO number can be reused
       const canReuse = await this.canReusePoNumber(poData.po_number);
@@ -367,7 +369,7 @@ class PurchaseOrder {
       const [purchaseOrder] = await trx("purchase_orders")
         .insert({
           po_number: poData.po_number,
-          supplier_id: supplierId,
+          supplier_id: supplierId || null,
           supply_request_id: supplyRequestId,
           status: poData.status || "Draft",
           total_amount: supplyRequestItems.reduce(
@@ -420,8 +422,10 @@ class PurchaseOrder {
     const trx = await db.transaction();
 
     try {
-      // Validate supplier before creating PO
-      const supplier = await Supplier.validateForPurchaseOrder(supplierId);
+      // Validate supplier only when provided (manual requests may omit supplier)
+      if (supplierId) {
+        await Supplier.validateForPurchaseOrder(supplierId);
+      }
 
       // Check if PO number can be reused
       const canReuse = await this.canReusePoNumber(poData.po_number);
@@ -484,7 +488,7 @@ class PurchaseOrder {
       const [purchaseOrder] = await trx("purchase_orders")
         .insert({
           po_number: poData.po_number,
-          supplier_id: supplierId,
+          supplier_id: supplierId || null,
           supply_request_id: supplyRequestId,
           status: poData.status || "Draft",
           total_amount: totalAmount,
@@ -569,10 +573,10 @@ class PurchaseOrder {
     const trx = await db.transaction();
 
     try {
-      // NEW: Validate supplier before creating PO
-      const supplier = await Supplier.validateForPurchaseOrder(
-        poData.supplier_id
-      );
+      // Validate supplier only when provided (manual POs may omit supplier)
+      if (poData.supplier_id) {
+        await Supplier.validateForPurchaseOrder(poData.supplier_id);
+      }
 
       // Check if PO number can be reused
       const canReuse = await this.canReusePoNumber(poData.po_number);
@@ -585,7 +589,7 @@ class PurchaseOrder {
       const [purchaseOrder] = await trx("purchase_orders")
         .insert({
           po_number: poData.po_number,
-          supplier_id: poData.supplier_id,
+          supplier_id: poData.supplier_id || null,
           supply_request_id: poData.supply_request_id || null,
           status: poData.status || "Draft",
           total_amount: items.reduce(
@@ -644,7 +648,7 @@ class PurchaseOrder {
       }
 
       const updateData = {
-        supplier_id: poData.supplier_id,
+        supplier_id: poData.supplier_id || null,
         status: poData.status,
         total_amount: poData.total_amount,
         expected_delivery: poData.expected_delivery,
@@ -690,17 +694,12 @@ class PurchaseOrder {
         }
       }
 
-      // BUDGET RETURN: When PO is completed, calculate under-delivered amount and return unused budget
+      // BUDGET VARIANCE: On first transition to Completed, reconcile actual vs released budget
       if (
         currentOrder.status !== "Completed" &&
-        poData.status === "Completed" &&
-        items
+        poData.status === "Completed"
       ) {
-        await this.handleBudgetReturnForUnderDelivery(
-          trx,
-          updatedPurchaseOrder,
-          items
-        );
+        await this.handleBudgetVarianceOnCompletion(trx, updatedPurchaseOrder);
       }
 
       await trx.commit();
@@ -809,6 +808,119 @@ class PurchaseOrder {
       console.error("Error handling budget return for under-delivery:", error);
       // Don't throw error here to avoid breaking the main transaction
       // Just log the error for debugging
+    }
+  }
+
+  // Handle overall budget variance (excess or deficit) on PO completion
+  static async handleBudgetVarianceOnCompletion(trx, purchaseOrder) {
+    try {
+      // Need a linked supply request and its budget release
+      if (!purchaseOrder?.supply_request_id) return;
+
+      const supplyRequest = await trx("supply_requests")
+        .where("id", purchaseOrder.supply_request_id)
+        .first();
+      if (!supplyRequest) return;
+
+      const budgetRelease = await trx("budget_releases")
+        .where("supply_request_id", supplyRequest.id)
+        .first();
+      if (!budgetRelease) return; // No released budget; nothing to reconcile
+
+      const releasedAmount = Number(budgetRelease.released_amount || 0);
+
+      // Compute actual amount based on received totals (fallback to ordered totals)
+      const poItems = await trx("purchase_order_items").where(
+        "purchase_order_id",
+        purchaseOrder.id
+      );
+
+      const actualAmount = poItems.reduce((sum, item) => {
+        const receivedTotal = item.received_total_price;
+        if (receivedTotal != null) return sum + Number(receivedTotal || 0);
+        const qty =
+          item.received_quantity != null
+            ? item.received_quantity
+            : item.quantity;
+        const unitPrice =
+          item.received_unit_price != null
+            ? item.received_unit_price
+            : item.unit_price;
+        return sum + Number(qty || 0) * Number(unitPrice || 0);
+      }, 0);
+
+      const variance = Number((actualAmount - releasedAmount).toFixed(2));
+      if (variance === 0) return;
+
+      // Get latest finance balance snapshot
+      const currentBalance = await trx("finance_balances")
+        .whereNull("deleted_at")
+        .orderBy("balance_date", "desc")
+        .first();
+
+      const currentCapital = Number(currentBalance?.capital || 0);
+      const currentProfit = Number(currentBalance?.profit || 0);
+      const currentSales = Number(currentBalance?.sales_remittances || 0);
+
+      if (variance < 0) {
+        // Excess budget (released > actual): inflow back to capital
+        const inflow = Math.abs(variance);
+
+        await trx("finance_balances").insert({
+          capital: currentCapital + inflow,
+          profit: currentProfit,
+          sales_remittances: currentSales,
+          total_balance: currentCapital + inflow + currentProfit + currentSales,
+          balance_date: new Date(),
+          created_at: new Date(),
+          updated_at: new Date(),
+        });
+
+        await trx("cash_movements").insert({
+          branch_id: supplyRequest?.branch_id || null,
+          movement_type: "in",
+          amount: inflow,
+          source: "budget_return",
+          reference_id: purchaseOrder.id,
+          reference_type: "purchase_order",
+          notes: `Budget return after PO completion ${purchaseOrder.po_number}. Released: ${releasedAmount}, Actual: ${actualAmount}`,
+          occurred_at: new Date(),
+          created_at: new Date(),
+          updated_at: new Date(),
+        });
+      } else if (variance > 0) {
+        // Insufficient budget (actual > released): outflow to cover deficit
+        const outflow = variance;
+
+        await trx("finance_balances").insert({
+          capital: Math.max(0, currentCapital - outflow),
+          profit: currentProfit,
+          sales_remittances: currentSales,
+          total_balance:
+            Math.max(0, currentCapital - outflow) +
+            currentProfit +
+            currentSales,
+          balance_date: new Date(),
+          created_at: new Date(),
+          updated_at: new Date(),
+        });
+
+        await trx("cash_movements").insert({
+          branch_id: supplyRequest?.branch_id || null,
+          movement_type: "out",
+          amount: outflow,
+          source: "po_deficit",
+          reference_id: purchaseOrder.id,
+          reference_type: "purchase_order",
+          notes: `Budget deficit after PO completion ${purchaseOrder.po_number}. Released: ${releasedAmount}, Actual: ${actualAmount}`,
+          occurred_at: new Date(),
+          created_at: new Date(),
+          updated_at: new Date(),
+        });
+      }
+    } catch (error) {
+      console.error("Error handling budget variance on completion:", error);
+      // Do not throw; keep completion transaction intact
     }
   }
 

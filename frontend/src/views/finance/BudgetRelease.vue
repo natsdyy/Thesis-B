@@ -9,7 +9,6 @@
     Clock,
     RefreshCcw,
     Plus,
-    EllipsisVertical,
     X,
     Send,
     Calendar,
@@ -872,7 +871,7 @@
 </script>
 
 <template>
-  <div class=" mx-auto p-6 ">
+  <div class="mx-auto p-6">
     <!-- Header -->
     <div class="text-center mb-8">
       <h1 class="text-4xl font-bold text-primaryColor mb-2 text-shadow-xs">
@@ -986,14 +985,14 @@
                 </h2>
                 <div class="flex gap-2">
                   <button
-                    class="btn btn-outline btn-sm text-primaryColor hover:bg-primaryColor/10 font-thin hover:border-none hover:shadow-none"
+                    class="btn  btn-sm"
                     @click="fetchData"
                     :class="{ loading: loading }"
                     :disabled="loading"
                   >
                     <RefreshCcw
                       v-if="!loading"
-                      class="w-4 h-4 mr-2 text-primaryColor"
+                      class="w-4 h-4 mr-2"
                     />
                     <span
                       class="loading loading-spinner loading-xs"
@@ -1102,34 +1101,23 @@
                         </div>
                       </td>
                       <td>
-                        <div class="dropdown dropdown-left dropdown-end">
-                          <label
-                            tabindex="0"
-                            class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
+                        <div class="flex gap-1">
+                          <button
+                            title="View Details"
+                            @click="viewRequest(request)"
+                            class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-black/50"
                           >
-                            <EllipsisVertical class="w-4 h-4" />
-                          </label>
-                          <ul
-                            tabindex="0"
-                            class="dropdown-content z-[1] menu p-2 shadow bg-accentColor rounded-box w-52 border border-black/10"
+                            <font-awesome-icon icon="fa-solid fa-eye" />
+                          </button>
+                          <button
+                            title="Release Budget"
+                            @click="releaseBudget(request)"
+                            class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-success"
                           >
-                            <li class="hover:bg-black/10">
-                              <a
-                                @click="viewRequest(request)"
-                                class="text-primary"
-                              >
-                                View Details
-                              </a>
-                            </li>
-                            <li class="hover:bg-black/10">
-                              <a
-                                @click="releaseBudget(request)"
-                                class="text-success"
-                              >
-                                Release Budget
-                              </a>
-                            </li>
-                          </ul>
+                            <font-awesome-icon
+                              icon="fa-solid fa-money-bill-wave"
+                            />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1471,8 +1459,6 @@
 
                       <td class="text-sm">{{ release.released_by_display }}</td>
 
-
-
                       <td class="text-sm">
                         <div v-if="release.receipt_confirmed_at">
                           <span>{{
@@ -1486,7 +1472,7 @@
                         <span v-else>N/A</span>
                       </td>
 
-                                            <td>
+                      <td>
                         <div
                           class="badge badge-sm border-none font-medium"
                           :class="{

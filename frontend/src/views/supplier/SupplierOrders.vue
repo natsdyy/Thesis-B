@@ -769,14 +769,13 @@
             </div>
           </div>
 
-          <!-- Notes Section -->
+          <!-- Notes / Proof Section (rich content) -->
           <div class="mt-4 text-black">
-            <h6 class="text-xs font-medium">Notes:</h6>
-            <textarea
-              class="text-xs w-full h-20 border border-black/30 rounded-md p-2 text-black/50"
-              readonly
-              :value="receiptModal.order.notes || 'No notes provided'"
-            ></textarea>
+            <h6 class="text-xs font-medium">Notes / Proof:</h6>
+            <div
+              class="prose max-w-none text-xs border border-black/30 rounded-md p-2"
+              v-html="receiptModal.order.notes || 'No notes provided'"
+            ></div>
           </div>
 
           <!-- Status and Additional Info -->
@@ -1043,7 +1042,7 @@
         value: 'in progress',
         label: 'In Progress',
         count: statusCounts['in progress'] || 0,
-      }
+      },
     ];
   });
 
@@ -1458,5 +1457,11 @@
   .badge-lg {
     padding: 0.5rem 1rem;
     font-size: 0.875rem;
+  }
+  .prose img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 6px 0;
   }
 </style>

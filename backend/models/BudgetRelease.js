@@ -4,6 +4,8 @@ const { getCurrentPhilippineTime } = require("../utils/timezoneUtils");
 const FinanceBalance = require("./FinanceBalance");
 const CashMovement = require("./CashMovement");
 
+// Email notifications are handled elsewhere (e.g., at PO creation)
+
 class BudgetRelease {
   // Get all budget releases with optional filters
   static async getAll(filters = {}) {

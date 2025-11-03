@@ -261,6 +261,9 @@
           } else if (source === 'payroll_employee_contributions') {
             payrollExpenses.value.employeeContributions += amount;
             payrollExpenses.value.total += amount;
+          } else if (source === 'po_deficit') {
+            // No special bucket; already counted in totalExpenses
+            // Kept for future breakdowns
           }
           // Note: utilities_expense is included in totalExpenses but not tracked separately
         });
@@ -480,7 +483,9 @@
     </div>
   </div>
 
-  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+  <div
+    class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4"
+  >
     <div class="card bg-white shadow border border-black/10">
       <div class="card-body py-4">
         <div class="text-xs text-gray-500">Capital</div>

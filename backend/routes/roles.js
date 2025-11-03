@@ -425,6 +425,18 @@ router.put("/positions/:role_id/rate", async (req, res) => {
       });
     }
 
+    // Get current role to compute change and for email context
+    const currentRole = await Roles.getById(role_id);
+    if (!currentRole) {
+      return res.status(404).json({
+        success: false,
+        message: "Position not found",
+        code: "POSITION_NOT_FOUND",
+      });
+    }
+
+    const oldRate = Number(currentRole.rate_per_hour || 0);
+
     const updatedPosition = await Roles.updateRatePerHour(
       role_id,
       rate_per_hour
@@ -435,6 +447,49 @@ router.put("/positions/:role_id/rate", async (req, res) => {
       data: updatedPosition,
       message: "Rate per hour updated successfully",
     });
+
+    // Fire-and-forget notifications to employees under this role
+    (async () => {
+      try {
+        const { db } = require("../config/database");
+        const EmailService = require("../services/emailService");
+
+        const employees = await db("employees")
+          .leftJoin("user_roles", "employees.role_id", "user_roles.role_id")
+          .select(
+            "employees.id",
+            "employees.first_name",
+            "employees.last_name",
+            "employees.email",
+            "employees.status"
+          )
+          .where("employees.role_id", role_id)
+          .whereNull("employees.deleted_at")
+          .where("employees.status", "Active")
+          .whereNotNull("employees.email");
+
+        if (!employees || employees.length === 0) return;
+
+        for (const emp of employees) {
+          const fullName =
+            [emp.first_name, emp.last_name].filter(Boolean).join(" ") ||
+            "Employee";
+          await EmailService.sendEmployeeRateChangeNotification(
+            emp.email,
+            fullName,
+            updatedPosition.role,
+            updatedPosition.department,
+            oldRate,
+            updatedPosition.rate_per_hour
+          );
+        }
+      } catch (notifyErr) {
+        console.error(
+          "Failed to send rate change notifications:",
+          notifyErr?.message || notifyErr
+        );
+      }
+    })();
   } catch (error) {
     if (error.code === "POSITION_NOT_FOUND") {
       return res.status(404).json({
@@ -500,11 +555,11 @@ router.put("/positions/:role_id/rate", async (req, res) => {
  */
 // Update status for a position
 router.put("/positions/:role_id/status", async (req, res) => {
-  console.log('=== PUT /positions/:role_id/status called ===')
-  console.log('role_id:', req.params.role_id)
-  console.log('body:', req.body)
-  console.log('is_active:', req.body.is_active)
-  
+  console.log("=== PUT /positions/:role_id/status called ===");
+  console.log("role_id:", req.params.role_id);
+  console.log("body:", req.body);
+  console.log("is_active:", req.body.is_active);
+
   try {
     const { role_id } = req.params;
     const { is_active } = req.body;

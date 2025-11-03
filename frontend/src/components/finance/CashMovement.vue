@@ -193,6 +193,7 @@
       remittance: 'Branch Remittance',
       budget_release: 'Budget Release',
       budget_return: 'Budget Return',
+      po_deficit: 'PO Budget Deficit',
       manual: 'Manual Entry',
       loan: 'Loan',
       expense: 'Expense',

@@ -15,7 +15,6 @@
     Clock,
     RefreshCcw,
     Plus,
-    EllipsisVertical,
     X,
     Send,
     Calendar,
@@ -1398,7 +1397,7 @@
 </script>
 
 <template>
-  <div class=" mx-auto p-6">
+  <div class="mx-auto p-6">
     <!-- Header -->
     <div class="text-center mb-8">
       <h1 class="text-4xl font-bold text-primaryColor mb-2 text-shadow-xs">
@@ -1762,46 +1761,35 @@
                       </div>
                     </td>
                     <td>
-                      <div class="dropdown dropdown-left dropdown-center">
-                        <label
-                          tabindex="0"
-                          class="btn btn-ghost btn-xs hover:outline-none hover:bg-white/10 hover:text-black/50 hover:border-none hover:shadow-none"
+                      <div class="flex gap-1">
+                        <button
+                          title="View Details"
+                          @click="viewRequest(request)"
+                          class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-black/50"
                         >
-                          <EllipsisVertical class="w-4 h-4" />
-                        </label>
-                        <ul
-                          tabindex="0"
-                          class="dropdown-content z-[1] menu p-2 shadow bg-accentColor rounded-box w-52 border border-black/10"
+                          <font-awesome-icon icon="fa-solid fa-eye" />
+                        </button>
+                        <button
+                          title="Approve Request"
+                          @click="approveRequest(request)"
+                          class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-success"
                         >
-                          <li class="hover:bg-black/10">
-                            <a
-                              @click="viewRequest(request)"
-                              class="text-primary"
-                              >View Details</a
-                            >
-                          </li>
-                          <li class="hover:bg-black/10">
-                            <a
-                              @click="approveRequest(request)"
-                              class="text-success"
-                              >Approve</a
-                            >
-                          </li>
-                          <li class="hover:bg-black/10">
-                            <a
-                              @click="sendBackRequest(request)"
-                              class="text-info"
-                              >Send Back for Revision</a
-                            >
-                          </li>
-                          <li class="hover:bg-black/10">
-                            <a
-                              @click="rejectRequest(request)"
-                              class="text-error"
-                              >Reject</a
-                            >
-                          </li>
-                        </ul>
+                          <font-awesome-icon icon="fa-solid fa-check-circle" />
+                        </button>
+                        <button
+                          title="Send Back for Revision"
+                          @click="sendBackRequest(request)"
+                          class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-info"
+                        >
+                          <font-awesome-icon icon="fa-solid fa-undo" />
+                        </button>
+                        <button
+                          title="Reject Request"
+                          @click="rejectRequest(request)"
+                          class="btn btn-ghost btn-xs hover:bg-white/10 hover:text-error"
+                        >
+                          <font-awesome-icon icon="fa-solid fa-times-circle" />
+                        </button>
                       </div>
                     </td>
                   </tr>

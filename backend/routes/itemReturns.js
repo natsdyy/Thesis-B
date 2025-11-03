@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const ItemReturn = require("../models/ItemReturn");
+const CashMovement = require("../models/CashMovement");
 
 // GET /api/item-returns - Get all item returns
 router.get("/", async (req, res) => {
@@ -159,6 +160,24 @@ router.put("/:id/complete", async (req, res) => {
         success: false,
         message: "Item return not found",
       });
+    }
+
+    // Post a budget return inflow
+    try {
+      const fresh = await ItemReturn.getById(itemReturn.id);
+      const amount = Number(fresh?.return_value || 0);
+      if (amount > 0) {
+        await CashMovement.recordInflowForBudgetReturn({
+          branch_id: null, // HQ/SCM; adjust if branch context is available
+          amount,
+          purchase_order_id: fresh.purchase_order_id,
+          notes: `Item return #${fresh.id} for PO ${fresh.po_number}`,
+          occurred_at: new Date(),
+        });
+      }
+    } catch (cmErr) {
+      console.error("Failed to record budget return inflow:", cmErr);
+      // Do not fail the main operation
     }
 
     res.json({

@@ -1,5 +1,16 @@
 <script setup>
   import { ref, computed, onMounted, watch } from 'vue';
+  import Editor from '@tinymce/tinymce-vue';
+  import tinymce from 'tinymce/tinymce';
+  import 'tinymce/icons/default';
+  import 'tinymce/themes/silver';
+  import 'tinymce/models/dom/model';
+  import 'tinymce/plugins/link';
+  import 'tinymce/plugins/lists';
+  import 'tinymce/plugins/image';
+  import 'tinymce/plugins/table';
+  import 'tinymce/plugins/code';
+  import 'tinymce/skins/ui/oxide/skin.min.css';
   import {
     FileText,
     Search,
@@ -18,6 +29,7 @@
   } from 'lucide-vue-next';
   import { usePurchaseOrderStore } from '../../stores/purchaseOrderStore.js';
   import { useAuthStore } from '../../stores/authStore.js';
+  import { formatImageUrl, getApiUrl } from '../../config/api.js';
 
   // Props
   const props = defineProps({
@@ -56,6 +68,88 @@
       'Employee'
     );
   });
+
+  try {
+    tinymce?.EditorManager?.overrideDefaults?.({ license_key: 'gpl' });
+  } catch (_) {}
+
+  const tinyMCEConfig = {
+    menubar: false,
+    height: 220,
+    branding: false,
+    statusbar: false,
+    plugins: 'link lists image table code paste',
+    toolbar:
+      'undo redo | bold italic underline | bullist numlist | link image table | uploadimage | removeformat',
+    toolbar_mode: 'wrap',
+    automatic_uploads: false,
+    paste_data_images: true,
+    file_picker_types: 'image',
+    content_style:
+      'html,body{max-width:100%;} img{max-width:100%;height:auto;display:block;margin:6px 0;}',
+    images_upload_handler: async (blobInfo) => {
+      return new Promise((resolve, reject) => {
+        try {
+          const token = localStorage.getItem('token');
+          const formData = new FormData();
+          formData.append('file', blobInfo.blob(), blobInfo.filename());
+          fetch(getApiUrl('/uploads/proofs'), {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData,
+          })
+            .then((r) => r.json())
+            .then((data) => {
+              if (data?.location) {
+                resolve(formatImageUrl(data.location));
+              } else {
+                reject(data?.message || 'Upload failed');
+              }
+            })
+            .catch((e) => reject(e?.message || 'Upload failed'));
+        } catch (e) {
+          reject(e?.message || 'Upload failed');
+        }
+      });
+    },
+    setup: (ed) => {
+      ed.ui.registry.addButton('uploadimage', {
+        text: 'Upload Image',
+        tooltip: 'Upload image',
+        onAction: () => {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = 'image/png,image/jpeg';
+          input.onchange = async () => {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            try {
+              const token = localStorage.getItem('token');
+              const fd = new FormData();
+              fd.append('file', file);
+              const res = await fetch(getApiUrl('/uploads/proofs'), {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: fd,
+              });
+              const json = await res.json();
+              if (res.ok && json.location) {
+                ed.insertContent(
+                  `<img src="${formatImageUrl(json.location)}" />`
+                );
+              } else {
+                alert(json.message || 'Upload failed');
+              }
+            } catch (_) {
+              alert('Upload failed');
+            }
+          };
+          input.click();
+        },
+      });
+    },
+    license_key: 'gpl',
+  };
 
   // Local state
   const loading = ref(false);
@@ -429,13 +523,56 @@
   });
 
   // Statistics
+  // Derive return value when backend field is missing or inaccurate.
+  const getDerivedReturnValue = (returnItem) => {
+    if (!returnItem) return 0;
+    // Prefer computed value from related PO item pricing
+    const po = purchaseOrderStore.purchaseOrders?.find?.(
+      (p) => p.id == returnItem.purchase_order_id
+    );
+    const poItem = (po?.items || []).find(
+      (it) => it.id == returnItem.purchase_order_item_id
+    );
+    const unitPrice = Number(
+      poItem?.received_unit_price ??
+        poItem?.unit_price ??
+        returnItem.unit_price ??
+        0
+    );
+    const qty = Number(returnItem.return_quantity || 0);
+    const computedValue = qty * (isNaN(unitPrice) ? 0 : unitPrice);
+    if (!isNaN(computedValue) && computedValue > 0) return computedValue;
+    // Fallback to explicit value from backend when computation fails
+    const explicit = Number(returnItem.return_value);
+    return isNaN(explicit) ? 0 : explicit;
+  };
+
+  // Helper for template usage in receipt modal
+  const computeReturnValue = (po, returnItem) => {
+    if (!returnItem) return 0;
+    const poItem = (po?.items || []).find(
+      (it) => it.id == returnItem.purchase_order_item_id
+    );
+    const unitPrice = Number(
+      poItem?.received_unit_price ??
+        poItem?.unit_price ??
+        returnItem.unit_price ??
+        0
+    );
+    const qty = Number(returnItem.return_quantity || 0);
+    const val = qty * (isNaN(unitPrice) ? 0 : unitPrice);
+    if (!isNaN(val) && val > 0) return val;
+    const explicit = Number(returnItem.return_value);
+    return isNaN(explicit) ? 0 : explicit;
+  };
+
   const returnStats = computed(() => {
     const returns = itemReturns.value || [];
     return {
       total: returns.length,
       pending: returns.filter((r) => r.status === 'Pending').length,
       completed: returns.filter((r) => r.status === 'Completed').length,
-      totalValue: returns.reduce((sum, r) => sum + (r.return_value || 0), 0),
+      totalValue: returns.reduce((sum, r) => sum + getDerivedReturnValue(r), 0),
     };
   });
 
@@ -650,6 +787,40 @@
     window.print();
   };
 
+  // Notes/Proof editor modal state
+  const notesEditor = ref({ show: false, item: null, content: '' });
+
+  const openNotesEditor = (returnItem) => {
+    notesEditor.value = {
+      show: true,
+      item: returnItem,
+      content: returnItem?.notes || '',
+    };
+    setTimeout(
+      () => document.getElementById('po_notes_editor_modal')?.showModal?.(),
+      0
+    );
+  };
+
+  const closeNotesEditor = () => {
+    document.getElementById('po_notes_editor_modal')?.close?.();
+    notesEditor.value = { show: false, item: null, content: '' };
+  };
+
+  const saveNotesEditor = async () => {
+    if (!notesEditor.value.item) return;
+    try {
+      await purchaseOrderStore.updateItemReturn(notesEditor.value.item.id, {
+        notes: notesEditor.value.content,
+      });
+      showToast('success', 'Notes updated');
+      closeNotesEditor();
+      await loadItemReturns();
+    } catch (e) {
+      showToast('error', e?.message || 'Failed to update notes');
+    }
+  };
+
   // Lifecycle
   onMounted(() => {
     loadItemReturns();
@@ -706,8 +877,6 @@
       <div
         class="stats shadow w-full mb-6 bg-white border border-black/10 stats-vertical lg:stats-horizontal"
       >
-
-
         <div class="stat">
           <div class="stat-figure">
             <Clock class="w-6 h-6 text-warning" />
@@ -718,8 +887,6 @@
             <span v-else class="loading loading-spinner loading-sm"></span>
           </div>
         </div>
-
-
       </div>
 
       <!-- Filters and Actions -->
@@ -889,8 +1056,7 @@
       <div v-else class="overflow-x-auto">
         <table class="table table-zebra w-full table-xs">
           <thead>
-            <tr class="border border-black">
-
+            <tr class="border border-gray-200">
               <th class="text-black font-semibold">Item</th>
               <th class="text-black font-semibold">Quantity</th>
               <th class="text-black font-semibold">Reason</th>
@@ -906,7 +1072,6 @@
               :key="returnItem.id"
               class="border border-black"
             >
- 
               <td>
                 <div class="font-bold">
                   {{ returnItem.item_name || 'N/A' }}
@@ -957,6 +1122,15 @@
                     tabindex="0"
                     class="dropdown-content menu p-2 shadow bg-white rounded-box w-48 border border-black/10"
                   >
+                    <li>
+                      <a
+                        @click="openNotesEditor(returnItem)"
+                        class="text-black/70"
+                      >
+                        <FileText class="w-4 h-4" />
+                        Edit Notes / Proof
+                      </a>
+                    </li>
                     <!-- Send to Supplier (Pending or Processed) -->
                     <li
                       v-if="
@@ -1168,7 +1342,12 @@
                 </td>
                 <td class="border border-black">
                   ₱{{
-                    Number(returnReceiptModal.item.return_value || 0).toFixed(2)
+                    Number(
+                      computeReturnValue(
+                        returnReceiptModal.po,
+                        returnReceiptModal.item
+                      )
+                    ).toFixed(2)
                   }}
                 </td>
               </tr>
@@ -1181,7 +1360,12 @@
                 </td>
                 <td class="font-semibold border border-black">
                   ₱{{
-                    Number(returnReceiptModal.item.return_value || 0).toFixed(2)
+                    Number(
+                      computeReturnValue(
+                        returnReceiptModal.po,
+                        returnReceiptModal.item
+                      )
+                    ).toFixed(2)
                   }}
                 </td>
               </tr>
@@ -1189,14 +1373,13 @@
           </table>
         </div>
 
-        <!-- Notes -->
+        <!-- Notes (rich content) -->
         <div class="mt-4 text-black">
-          <h6 class="text-xs font-medium">Notes:</h6>
-          <textarea
-            class="text-xs w-full h-20 border border-black/30 rounded-md p-2 text-black/50"
-            readonly
-            :value="returnReceiptModal.item.notes || 'No notes provided'"
-          ></textarea>
+          <h6 class="text-xs font-medium">Notes / Proof:</h6>
+          <div
+            class="prose max-w-none text-xs border border-black/30 rounded-md p-2"
+            v-html="returnReceiptModal.item.notes || 'No notes provided'"
+          ></div>
         </div>
 
         <!-- Status -->
@@ -1236,6 +1419,32 @@
           @click="closeReturnReceipt"
         >
           Close
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Notes / Proof Editor Modal -->
+  <dialog id="po_notes_editor_modal" class="modal" :open="notesEditor.show">
+    <div class="modal-box bg-accentColor text-black/70 shadow-lg max-w-2xl">
+      <h3 class="font-bold text-lg text-black mb-2">Edit Notes / Proof</h3>
+      <p class="text-sm text-black/60 mb-3">
+        Attach images or add details about the return. This will appear in the
+        audit trail and receipt.
+      </p>
+      <Editor v-model="notesEditor.content" :init="tinyMCEConfig" />
+      <div class="modal-action">
+        <button
+          class="btn btn-sm bg-gray-200 text-black/60 font-thin border-none hover:bg-gray-300"
+          @click="closeNotesEditor"
+        >
+          Cancel
+        </button>
+        <button
+          class="btn btn-sm bg-primaryColor text-white font-thin border-none hover:bg-primaryColor/80"
+          @click="saveNotesEditor"
+        >
+          Save
         </button>
       </div>
     </div>
@@ -1376,5 +1585,16 @@
         0 0 0 3px var(--primaryColor),
         0 0 0 6px var(--primaryColor);
     }
+  }
+</style>
+
+<style>
+  /* Raise TinyMCE dialogs above DaisyUI modal */
+  .tox,
+  .tox-tinymce-aux,
+  .tox-silver-sink,
+  .tox-dialog-wrap,
+  .tox-dialog {
+    z-index: 99999 !important;
   }
 </style>

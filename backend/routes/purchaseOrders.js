@@ -3,6 +3,7 @@ const router = express.Router();
 const PurchaseOrder = require("../models/PurchaseOrder");
 const Supplier = require("../models/Supplier");
 const NotificationService = require("../services/NotificationService");
+const EmailService = require("../services/emailService");
 const { db } = require("../config/database");
 
 // GET /api/purchase-orders - Get all purchase orders (supports supplier_id filter)
@@ -111,21 +112,22 @@ router.get("/supply-request/:id/items", async (req, res) => {
   }
 });
 
-// POST /api/purchase-orders - Create purchase order from supply request
+// POST /api/purchase-orders/from-supply-request - Create purchase order from supply request
+// Note: supplierId is optional for manual requests (supplier-less)
 router.post("/from-supply-request", async (req, res) => {
   try {
     const { supplyRequestId, supplierId, poData } = req.body;
 
-    if (!supplyRequestId || !supplierId || !poData) {
+    if (!supplyRequestId || !poData) {
       return res.status(400).json({
         success: false,
-        message: "Supply request ID, supplier ID, and PO data are required",
+        message: "Supply request ID and PO data are required",
       });
     }
 
     const poId = await PurchaseOrder.createFromSupplyRequest(
       supplyRequestId,
-      supplierId,
+      supplierId || null,
       poData
     );
 
@@ -146,27 +148,26 @@ router.post("/from-supply-request", async (req, res) => {
 });
 
 // POST /api/purchase-orders/from-supply-request-with-items - Create purchase order from supply request with selected items
+// Note: supplierId is optional for manual requests (supplier-less)
 router.post("/from-supply-request-with-items", async (req, res) => {
   try {
     const { supplyRequestId, supplierId, poData, selectedItems } = req.body;
 
     if (
       !supplyRequestId ||
-      !supplierId ||
       !poData ||
       !selectedItems ||
       selectedItems.length === 0
     ) {
       return res.status(400).json({
         success: false,
-        message:
-          "Supply request ID, supplier ID, PO data, and selected items are required",
+        message: "Supply request ID, PO data, and selected items are required",
       });
     }
 
     const poId = await PurchaseOrder.createFromSupplyRequestWithItems(
       supplyRequestId,
-      supplierId,
+      supplierId || null,
       poData,
       selectedItems
     );
@@ -246,6 +247,56 @@ router.post("/", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error creating purchase order",
+      error: error.message,
+    });
+  }
+});
+
+// POST /api/purchase-orders/:id/notify-supplier - Send supplier order email
+router.post("/:id/notify-supplier", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const po = await PurchaseOrder.getById(id);
+
+    if (!po) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Purchase order not found" });
+    }
+
+    if (!po.supplier_email) {
+      return res.status(400).json({
+        success: false,
+        message: "Supplier email not available for this order",
+      });
+    }
+
+    const result = await EmailService.sendSupplierOrderNotification(
+      po.supplier_email,
+      po.supplier_contact || po.supplier_name || "Supplier",
+      {
+        request: {
+          id: po.id,
+          request_id: po.supply_request_number,
+          total_amount: po.total_amount,
+        },
+        items: po.items || [],
+      }
+    );
+
+    if (result?.success) {
+      return res.json({ success: true, message: "Supplier notified" });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send supplier email",
+      error: result?.error || "Unknown error",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error sending supplier notification",
       error: error.message,
     });
   }

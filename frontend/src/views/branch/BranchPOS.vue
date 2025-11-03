@@ -447,8 +447,10 @@
       showOrderCompleteModal.value = true;
       paymentInput.value = '';
 
-      // Refresh menu items to update stock quantities reactively
-      await refreshPOSData();
+      // Do not re-fetch menu items here; keep locally reserved stock visible
+      // so the UI reflects deducted quantities while the order is Processing.
+      // Only refresh dashboard stats.
+      await fetchTodayStats();
     } catch (error) {
       console.error('Error processing order:', error);
       const errorMessage =

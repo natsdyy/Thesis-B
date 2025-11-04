@@ -14,6 +14,7 @@
   import { useInventoryStore } from '../../stores/inventoryStore.js';
   import { useBranchStore } from '../../stores/branchStore.js';
   import { useSupplierStore } from '../../stores/supplierStore.js';
+  import { useProductionStore } from '../../stores/productionStore.js';
   import cashRequestReceiptModal from '../../components/scm/cashRequestReceiptModal.vue';
   import PikaDay from 'pikaday';
   import 'pikaday/css/pikaday.css';
@@ -61,6 +62,7 @@
   const inventoryStore = useInventoryStore();
   const branchStore = useBranchStore();
   const supplierStore = useSupplierStore();
+  const productionStore = useProductionStore();
 
   // Local state
   const loading = ref(false);
@@ -75,6 +77,126 @@
   const receiptData = ref(null);
   const showBranchRequestModal = ref(false);
   const selectedBranchRequest = ref(null);
+  // SCM availability helper modal state
+  const showAvailabilityModal = ref(false);
+  const isCheckingAvailability = ref(false);
+
+  const openAvailabilityModal = async () => {
+    try {
+      isCheckingAvailability.value = true;
+      const isProductionSource =
+        (selectedBranchRequest.value?.source_type || '')
+          .toString()
+          .toLowerCase() === 'production';
+
+      if (isProductionSource) {
+        if (
+          !Array.isArray(productionStore.productionInventory) ||
+          productionStore.productionInventory.length === 0
+        ) {
+          await productionStore.fetchProductionInventory();
+        }
+      } else {
+        if (
+          !Array.isArray(inventoryStore.currentInventory) ||
+          inventoryStore.currentInventory.length === 0
+        ) {
+          await inventoryStore.fetchCurrentInventory();
+        }
+      }
+      showAvailabilityModal.value = true;
+    } catch (_) {
+      showAvailabilityModal.value = true;
+    } finally {
+      isCheckingAvailability.value = false;
+    }
+  };
+
+  const closeAvailabilityModal = () => {
+    showAvailabilityModal.value = false;
+  };
+
+  const availabilityRows = computed(() => {
+    const request = selectedBranchRequest.value;
+    if (!request || !Array.isArray(request.items)) return [];
+
+    const isProductionSource =
+      (request.source_type || '').toString().toLowerCase() === 'production';
+
+    const scmInv = inventoryStore.currentInventory || [];
+    const prodInv = productionStore.productionInventory || [];
+
+    return request.items.map((it) => {
+      const neededQty = Number(it.item_quantity || 0);
+      const itemSource = (it.item_type || request.source_type || '')
+        .toString()
+        .toLowerCase();
+
+      if (itemSource === 'production' || isProductionSource) {
+        let match = null;
+        if (it.menu_item_id) {
+          match = prodInv.find((x) => x.menu_item_id == it.menu_item_id);
+        }
+        if (!match) {
+          match = prodInv.find(
+            (x) =>
+              (x.item_name || x.menu_item_name || '').toLowerCase() ===
+              (it.item_name || '').toLowerCase()
+          );
+        }
+        const availableQty = match ? Number(match.available_quantity || 0) : 0;
+        const status = match
+          ? availableQty >= neededQty
+            ? 'available'
+            : 'insufficient'
+          : 'missing';
+        return {
+          id: it.id,
+          name: it.item_name,
+          unit: it.item_unit || match?.unit_of_measure || 'servings',
+          needed: neededQty,
+          available: match ? availableQty : null,
+          category:
+            it.category || match?.category || match?.category_name || '-',
+          source: 'Production',
+          status,
+        };
+      }
+
+      let match = null;
+      if (it.inventory_item_id) {
+        match = scmInv.find((x) => x.id == it.inventory_item_id);
+      }
+      if (!match) {
+        if (it.item_type_id) {
+          match = scmInv.find((x) => x.item_type_id == it.item_type_id);
+        }
+        if (!match) {
+          match = scmInv.find(
+            (x) =>
+              (x.item_name || x.item_type_name || '').toLowerCase() ===
+              (it.item_name || '').toLowerCase()
+          );
+        }
+      }
+      const availableQty = match ? Number(match.quantity || 0) : 0;
+      const status = match
+        ? availableQty >= neededQty
+          ? 'available'
+          : 'insufficient'
+        : 'missing';
+      return {
+        id: it.id,
+        name: it.item_name,
+        unit: it.item_unit || match?.unit_of_measure || 'pieces',
+        needed: neededQty,
+        available: match ? availableQty : null,
+        category: it.category || match?.category_name || '-',
+        source: 'SCM',
+        status,
+      };
+    });
+  });
 
   // Supplier integration state
   const selectedSupplierId = ref('');
@@ -3187,9 +3309,10 @@
                 <th>Branch</th>
                 <th>Description</th>
                 <th>Type</th>
-                <th>Priority</th>
+
                 <th>Sent Date</th>
                 <th>Requested By</th>
+                <th>Priority</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -3206,6 +3329,13 @@
                     {{ request.request_type }}
                   </div>
                 </td>
+
+                <td>
+                  <div>
+                    <span>{{ formatManilaDate(request.created_at) }}</span>
+                  </div>
+                </td>
+                <td>{{ request.requested_by }}</td>
                 <td>
                   <div
                     class="badge badge-sm"
@@ -3222,12 +3352,6 @@
                     {{ request.priority }}
                   </div>
                 </td>
-                <td>
-                  <div>
-                    <span>{{ formatManilaDate(request.created_at) }}</span>
-                  </div>
-                </td>
-                <td>{{ request.requested_by }}</td>
                 <td>
                   <div class="flex gap-2">
                     <button
@@ -3340,10 +3464,7 @@
                 :class="{ loading: loading }"
                 :disabled="loading"
               >
-                <RefreshCcw
-                  v-if="!loading"
-                  class="w-4 h-4 mr-2"
-                />
+                <RefreshCcw v-if="!loading" class="w-4 h-4 mr-2" />
                 <span
                   class="loading loading-spinner loading-xs"
                   v-if="loading"
@@ -5786,7 +5907,22 @@
 
       <!-- Requested Items -->
       <div class="mb-6">
-        <h4 class="text-lg font-semibold mb-4">Requested Items</h4>
+        <div class="flex items-center justify-between mb-4">
+          <h4 class="text-lg font-semibold">Requested Items</h4>
+          <button
+            class="btn btn-xs btn-ghost text-primaryColor"
+            @click="openAvailabilityModal"
+            :disabled="isCheckingAvailability"
+            title="Check availability"
+          >
+            <span
+              v-if="isCheckingAvailability"
+              class="loading loading-spinner loading-xs mr-2"
+            ></span>
+            <Info v-else class="w-4 h-4 mr-1" />
+            <span class="hidden sm:inline">Check Availability</span>
+          </button>
+        </div>
         <div class="overflow-x-auto">
           <table class="table table-sm table-zebra">
             <thead>
@@ -5847,6 +5983,69 @@
       </div>
     </div>
     <div class="modal-backdrop" @click="closeBranchRequestModal"></div>
+  </div>
+
+  <!-- SCM Availability Helper Modal -->
+  <div v-if="showAvailabilityModal" class="modal modal-open z-[10000]">
+    <div class="modal-box bg-accentColor text-black/50 shadow-lg max-w-3xl">
+      <h3 class="text-lg font-bold mb-4 text-black">Checking Availability</h3>
+      <div class="overflow-x-auto">
+        <table class="table table-sm table-zebra">
+          <thead>
+            <tr>
+              <th class="!font-thin">Item</th>
+              <th class="!font-thin">Category</th>
+              <th class="!font-thin">Source</th>
+              <th class="!font-thin text-right">Needed</th>
+              <th class="!font-thin text-right">Available</th>
+              <th class="!font-thin">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="r in availabilityRows" :key="r.id">
+              <td class="font-medium">{{ r.name }}</td>
+              <td>{{ r.category }}</td>
+              <td>{{ r.source }}</td>
+              <td class="text-right">{{ r.needed }} {{ r.unit }}</td>
+              <td class="text-right">
+                <span v-if="r.available != null"
+                  >{{ r.available }} {{ r.unit }}</span
+                >
+                <span v-else class="text-gray-400">-</span>
+              </td>
+              <td>
+                <span
+                  class="badge badge-sm"
+                  :class="{
+                    'bg-success/10 text-success': r.status === 'available',
+                    'bg-warning/10 text-warning': r.status === 'insufficient',
+                    'bg-error/10 text-error': r.status === 'missing',
+                  }"
+                >
+                  {{
+                    r.status === 'available'
+                      ? 'Available'
+                      : r.status === 'insufficient'
+                        ? 'Insufficient'
+                        : 'Not in SCM'
+                  }}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="modal-action">
+        <button
+          class="btn btn-sm font-thin bg-gray-200 text-black/50 border-none hover:bg-gray-300 shadow-none"
+          @click="closeAvailabilityModal"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+    <div class="modal-backdrop" @click="closeAvailabilityModal"></div>
   </div>
 </template>
 

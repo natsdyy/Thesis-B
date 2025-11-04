@@ -20,6 +20,7 @@
   import { useSupplyRequestStore } from '../stores/supplyRequestStore.js';
   import { useProductionStore } from '../stores/productionStore.js';
   import { useBranchDistributionStore } from '../stores/branchDistributionStore.js';
+  import { useUtilityExpensesStore } from '../stores/utilityExpensesStore.js';
 
   // Chart components
   import RevenueTrendChart from '../components/finance/RevenueTrendChart.vue';
@@ -51,6 +52,7 @@
   const supplyRequestStore = useSupplyRequestStore();
   const productionStore = useProductionStore();
   const branchDistributionStore = useBranchDistributionStore();
+  const utilityExpensesStore = useUtilityExpensesStore();
 
   // Access menu items for COGS calculation
   const menuItems = computed(() => productionStore.menuItems);
@@ -166,6 +168,9 @@
       netCashFlow: [],
     },
   });
+
+  // Raw expenses data for "other" expenses breakdown
+  const rawExpensesData = ref([]);
 
   const loadStatement = async (immediate = false) => {
     // Clear any existing timeout
@@ -460,8 +465,51 @@
 
       // Load simplified chart data (non-blocking)
       loadChartDataAsync();
+
+      // Load utilities expenses for "other" expenses breakdown
+      loadUtilitiesExpensesData();
     } finally {
       loading.value = false;
+    }
+  };
+
+  // Load utilities expenses and remittances for breakdown
+  const loadUtilitiesExpensesData = async () => {
+    try {
+      const { start, end } = getDateRange();
+      const expenseMonth = `${new Date(start).getFullYear()}-${String(new Date(start).getMonth() + 1).padStart(2, '0')}`;
+
+      // Fetch utilities expenses (main office) and remittances (branches)
+      await Promise.all([
+        utilityExpensesStore.fetchMainOfficeExpenses({
+          expense_month: expenseMonth,
+          limit: 1000,
+        }),
+        utilityExpensesStore.fetchRemittances({
+          expense_month: expenseMonth,
+          status: 'approved', // Only include approved remittances
+          limit: 1000,
+        }),
+      ]);
+
+      // Combine expenses and remittances into raw expenses array
+      const allExpenses = [
+        ...(utilityExpensesStore.mainOfficeExpenses || []).map((exp) => ({
+          ...exp,
+          entity_type: 'department',
+        })),
+        ...(utilityExpensesStore.remittances || [])
+          .filter((r) => r.status === 'approved')
+          .map((rem) => ({
+            ...rem,
+            entity_type: 'branch',
+          })),
+      ];
+
+      rawExpensesData.value = allExpenses;
+    } catch (error) {
+      console.warn('Failed to load utilities expenses data:', error);
+      rawExpensesData.value = [];
     }
   };
 
@@ -1088,7 +1136,11 @@
     <!-- Charts Section -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <RevenueTrendChart :data="chartData.revenueTrend" :height="350" />
-      <ExpensePieChart :data="chartData.expenseBreakdown" :height="350" />
+      <ExpensePieChart
+        :data="chartData.expenseBreakdown"
+        :height="350"
+        :rawExpenses="rawExpensesData"
+      />
       <ProfitMarginChart :data="chartData.profitMargin" :height="350" />
       <CashFlowChart :data="chartData.cashFlow" :height="350" />
     </div>

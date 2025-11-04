@@ -248,13 +248,20 @@
         </p>
       </div>
 
-      <!-- Leaflet Map -->
+      <!-- Google Maps -->
       <div class="mb-8 sm:mb-12 -mx-4 sm:mx-0">
-        <div
-          id="map"
-          class="w-full h-[350px] sm:h-[450px] md:h-[500px] rounded-lg sm:rounded-2xl shadow-xl border-2 sm:border-4 border-white"
-          style="z-index: 1"
-        ></div>
+        <div class="w-full rounded-lg sm:rounded-2xl shadow-xl border-2 sm:border-4 border-white overflow-hidden">
+          <iframe 
+            src="https://www.google.com/maps/embed?pb=!1m12!1m8!1m3!1d123671.66893077499!2d120.8770752!3d14.3844693!3m2!1i1024!2i768!4f13.1!2m1!1scountryside%20steakhouse!5e0!3m2!1sen!2sph!4v1762283427629!5m2!1sen!2sph" 
+            width="100%" 
+            height="450" 
+            style="border:0;" 
+            allowfullscreen="" 
+            loading="lazy" 
+            referrerpolicy="no-referrer-when-downgrade"
+            class="w-full h-[350px] sm:h-[450px] md:h-[500px]"
+          ></iframe>
+        </div>
       </div>
 
       <!-- Branch Cards Grid -->
@@ -392,16 +399,6 @@
               <!-- Action Buttons -->
               <div class="flex flex-col gap-2 sm:gap-2.5 md:gap-3 mt-auto">
                 <button
-                  @click="getDirections(branch)"
-                  class="w-full bg-green-600 text-white py-2 sm:py-2.5 md:py-3 rounded-lg hover:bg-green-700 transition-colors font-medium flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm md:text-base"
-                >
-                  <font-awesome-icon
-                    icon="fa-solid fa-directions"
-                    class="text-[10px] sm:text-xs md:text-sm"
-                  />
-                  <span class="truncate">Get Directions</span>
-                </button>
-                <button
                   v-if="branch.phone"
                   @click="callBranch(branch.phone)"
                   class="w-full bg-orange-500 text-white py-2 sm:py-2.5 md:py-3 rounded-lg hover:bg-orange-600 transition-colors font-medium flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm md:text-base"
@@ -431,8 +428,6 @@
 <script setup>
   import { ref, onMounted, onUnmounted, nextTick } from 'vue';
   import { useRouter } from 'vue-router';
-  import L from 'leaflet';
-  import 'leaflet/dist/leaflet.css';
   import axios from 'axios';
   import { apiConfig, formatImageUrl } from '../../config/api.js';
   import { MapPin } from 'lucide-vue-next';
@@ -442,8 +437,6 @@
   // State
   const branches = ref([]);
   const isLoading = ref(false);
-  const map = ref(null);
-  const markers = ref([]);
   const isMobileMenuOpen = ref(false);
 
   // Default map center (Philippines)
@@ -464,11 +457,7 @@
         branches.value = [];
       }
 
-      // Initialize map after branches are loaded
-      await nextTick();
-      if (branches.value.length > 0) {
-        await initMap();
-      }
+      // Map is now handled by Google Maps iframe
     } catch (error) {
       console.error('Error fetching branches:', error);
       branches.value = [];
@@ -477,8 +466,10 @@
     }
   };
 
-  // Initialize Leaflet map
+  // Map initialization removed - using Google Maps iframe instead
   const initMap = async () => {
+    // This function is no longer used - map is now handled by Google Maps iframe
+    return;
     // Check if map already exists
     if (map.value) {
       map.value.remove();
@@ -693,63 +684,20 @@
     }
   };
 
-  // Get directions to branch - show location on Leaflet map
+  // Get directions to branch - open in Google Maps
   const getDirections = (branch) => {
-    if (!map.value) {
-      console.warn('Map is not initialized yet');
-      return;
-    }
-
     // Get coordinates for the branch
     let lat = branch.latitude || branch.lat;
     let lng = branch.longitude || branch.lng || branch.lon;
 
-    // If no coordinates, use geocoded coordinates or default
-    if (!lat || !lng) {
-      // Try to find the marker for this branch
-      const branchIndex = branches.value.findIndex((b) => b.id === branch.id);
-      if (branchIndex !== -1 && branches.value[branchIndex].latitude) {
-        lat = branches.value[branchIndex].latitude;
-        lng = branches.value[branchIndex].longitude;
-      } else {
-        console.warn('Branch coordinates not available:', branch.name);
-        return;
-      }
-    }
-
-    // Validate coordinates
-    lat = parseFloat(lat);
-    lng = parseFloat(lng);
-
-    if (
-      isNaN(lat) ||
-      isNaN(lng) ||
-      lat < -90 ||
-      lat > 90 ||
-      lng < -180 ||
-      lng > 180
-    ) {
-      console.warn('Invalid coordinates for branch:', branch.name);
-      return;
-    }
-
-    // Center map on branch location and zoom in
-    map.value.setView([lat, lng], 16); // Zoom level 16 for street-level view
-
-    // Find and open the marker popup for this branch using stored branchId
-    const marker = markers.value.find((m) => m.branchId === branch.id);
-
-    if (marker) {
-      // Small delay to ensure map has finished animating
-      setTimeout(() => {
-        marker.openPopup();
-      }, 300);
-    }
-
-    // Smooth scroll to map section
-    const mapElement = document.getElementById('map');
-    if (mapElement) {
-      mapElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Open in Google Maps with coordinates if available
+    if (lat && lng) {
+      const url = `https://www.google.com/maps?q=${lat},${lng}`;
+      window.open(url, '_blank');
+    } else if (branch.address) {
+      // Open in Google Maps with address
+      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(branch.address)}`;
+      window.open(url, '_blank');
     }
   };
 
@@ -808,24 +756,12 @@
 
   onUnmounted(() => {
     document.removeEventListener('click', handleClickOutside);
-    // Clean up map
-    if (map.value) {
-      map.value.remove();
-      map.value = null;
-    }
+    // No cleanup needed for Google Maps iframe
   });
 </script>
 
 <style scoped>
-  /* Fix Leaflet marker icon path */
-  :deep(.leaflet-default-icon-path) {
-    background-image: url('https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png');
-  }
-
-  /* Map container styling */
-  #map {
-    border-radius: 1rem;
-  }
+  /* Map styling - Google Maps iframe is handled in template */
 
   /* Smooth transitions */
   * {

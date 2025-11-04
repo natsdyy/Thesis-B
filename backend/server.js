@@ -67,6 +67,7 @@ const branchPositionRoutes = require("./routes/branchPositions");
 const jobApplicationRoutes = require("./routes/jobApplications");
 const onboardingRoutes = require("./routes/onboarding");
 const faqRoutes = require("./routes/faqs");
+const announcementRoutes = require("./routes/announcements");
 
 const app = express();
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 5000;
@@ -185,6 +186,20 @@ app.use(
         res.setHeader("Content-Type", "image/gif");
         res.setHeader("Content-Disposition", "inline");
       }
+      // For videos: serve with appropriate content type
+      else if (ext === ".mp4") {
+        res.setHeader("Content-Type", "video/mp4");
+        res.setHeader("Content-Disposition", "inline");
+      } else if (ext === ".webm") {
+        res.setHeader("Content-Type", "video/webm");
+        res.setHeader("Content-Disposition", "inline");
+      } else if (ext === ".ogg") {
+        res.setHeader("Content-Type", "video/ogg");
+        res.setHeader("Content-Disposition", "inline");
+      } else if ([".mov", ".qt"].includes(ext)) {
+        res.setHeader("Content-Type", "video/quicktime");
+        res.setHeader("Content-Disposition", "inline");
+      }
     },
   })
 );
@@ -264,6 +279,7 @@ app.use("/api/branch-positions", branchPositionRoutes);
 app.use("/api/job-applications", jobApplicationRoutes);
 app.use("/api/onboarding", onboardingRoutes);
 app.use("/api/faqs", faqRoutes);
+app.use("/api/announcements", announcementRoutes);
 app.use("/api/uploads", uploadRoutes);
 
 // Auto-expire job

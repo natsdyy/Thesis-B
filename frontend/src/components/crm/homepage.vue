@@ -1,5 +1,14 @@
 <template>
   <div class="min-h-screen bg-gray-50">
+    <!-- Announcement Modal -->
+    <Teleport to="body">
+      <AnnouncementModal
+        :isOpen="isAnnouncementModalOpen"
+        :announcements="activeAnnouncements"
+        @close="closeAnnouncementModal"
+      />
+    </Teleport>
+
     <!-- Foodpanda Order Modal -->
     <FoodpandaOrderModal
       :isOpen="isFoodpandaModalOpen"
@@ -135,13 +144,20 @@
             </a>
           </nav>
 
-          <!-- Login Button (hidden on mobile, shown on md+) -->
+          <!-- Login Button and Announcements Icon (hidden on mobile, shown on md+) -->
           <div class="hidden md:flex items-center space-x-2 sm:space-x-4">
             <button
               @click="goToLogin"
               class="border border-white text-white px-3 sm:px-4 md:px-6 py-1.5 sm:py-2 rounded-sm cursor-pointer transition-all duration-300 shadow-md font-thin text-sm sm:text-base"
             >
               Login
+            </button>
+            <button
+              @click="openAnnouncementModal"
+              class="text-white hover:text-orange-300 transition-all duration-300 p-2 rounded-full hover:bg-white/10"
+              title="View Announcements"
+            >
+              <Megaphone class="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -236,6 +252,15 @@
             Contact Us
           </span>
         </a>
+        <button
+          @click="openAnnouncementModal(); closeMobileMenu();"
+          class="block w-full text-left py-3 sm:py-3 px-3 sm:px-4 text-white hover:text-orange-300 hover:bg-green-700 rounded-lg transition-all duration-300 font-medium text-base sm:text-lg"
+        >
+          <span class="flex items-center">
+            <Bell class="w-4 h-4 sm:w-5 sm:h-5 mr-3" />
+            Announcements
+          </span>
+        </button>
       </nav>
     </div>
 
@@ -669,41 +694,25 @@
               <p class="text-sm sm:text-base text-gray-600 mb-3 sm:mb-4">
                 We're proud to serve our community across multiple locations:
               </p>
+              <div v-if="isLoadingBranches" class="flex justify-center py-4">
+                <div class="loading loading-spinner loading-sm text-green-600"></div>
+              </div>
               <div
+                v-else-if="branches.length > 0"
                 class="grid grid-cols-1 sm:grid-cols-2 gap-1 sm:gap-2 text-xs sm:text-sm text-gray-700"
               >
-                <div class="flex items-center">
-                  <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                  Tanza, Philippines
+                <div 
+                  v-for="(branch, index) in branches" 
+                  :key="branch.id"
+                  class="flex items-center animate-fade-in-up"
+                  :style="{ animationDelay: `${index * 0.1}s` }"
+                >
+                  <span class="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
+                  <span class="transition-all duration-300 hover:text-green-600">{{ branch.name }}, Philippines</span>
                 </div>
-                <div class="flex items-center">
-                  <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                  Imus, Philippines
-                </div>
-                <div class="flex items-center">
-                  <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                  Kawit, Philippines
-                </div>
-                <div class="flex items-center">
-                  <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                  Silang, Philippines
-                </div>
-                <div class="flex items-center">
-                  <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                  General Trias, Philippines
-                </div>
-                <div class="flex items-center">
-                  <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                  Bacoor, Philippines
-                </div>
-                <div class="flex items-center">
-                  <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                  Dasmariñas, Philippines
-                </div>
-                <div class="flex items-center">
-                  <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                  Noveleta, Philippines
-                </div>
+              </div>
+              <div v-else class="text-xs sm:text-sm text-gray-500 italic py-2 animate-fade-in">
+                No branches available at the moment.
               </div>
             </div>
 
@@ -999,19 +1008,22 @@
           >
             <div class="flex gap-4">
               <div
-                v-for="branch in branches"
+                v-for="(branch, index) in branches"
                 :key="branch.id"
-                class="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover flex-shrink-0 w-[85vw] max-w-[320px] snap-start flex flex-col"
+                class="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover flex-shrink-0 w-[85vw] max-w-[320px] snap-start flex flex-col animate-fade-in-up"
+                :style="{ animationDelay: `${index * 0.15}s` }"
               >
-                <div class="h-40 sm:h-48 overflow-hidden">
-                  <img
-                    :src="
-                      resolvePublicUrl(branch.image_url) ||
-                      '/src/assets/crm/default-branch.png'
-                    "
-                    :alt="branch.name"
-                    class="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
-                  />
+              <div class="h-40 sm:h-48 overflow-hidden">
+                <img
+                  :src="
+                    resolvePublicUrl(branch.image_url) ||
+                    '/src/assets/crm/default-branch.png'
+                  "
+                  :alt="branch.name"
+                  class="w-full h-full object-cover hover:scale-110 transition-transform duration-300 animate-image-fade-in"
+                  :style="{ animationDelay: `${index * 0.15 + 0.2}s` }"
+                  loading="lazy"
+                />
                 </div>
                 <div class="p-4 sm:p-6 flex flex-col flex-1">
                   <h3 class="text-lg sm:text-xl font-bold text-green-800 mb-2">
@@ -1055,9 +1067,10 @@
             class="hidden md:grid md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8"
           >
             <div
-              v-for="branch in branches.slice(0, 6)"
+              v-for="(branch, index) in branches.slice(0, 6)"
               :key="branch.id"
-              class="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover flex flex-col"
+              class="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 card-hover flex flex-col animate-fade-in-up"
+              :style="{ animationDelay: `${index * 0.1}s` }"
             >
               <div class="h-48 sm:h-56 overflow-hidden">
                 <img
@@ -1066,7 +1079,9 @@
                     '/src/assets/crm/default-branch.png'
                   "
                   :alt="branch.name"
-                  class="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
+                  class="w-full h-full object-cover hover:scale-110 transition-transform duration-300 animate-image-fade-in"
+                  :style="{ animationDelay: `${index * 0.1 + 0.2}s` }"
+                  loading="lazy"
                 />
               </div>
               <div class="p-4 sm:p-6 flex flex-col flex-1">
@@ -1864,14 +1879,16 @@
 
 <script setup>
   import { useRouter } from 'vue-router';
-  import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue';
+  import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
+  import AnnouncementModal from './AnnouncementModal.vue';
   import FoodpandaOrderModal from './FoodpandaOrderModal.vue';
   import GrabfoodOrderModal from './GrabfoodOrderModal.vue';
   import JobPositionsModal from './JobPositionsModal.vue';
   import branchService from '../../services/branchService.js';
   import menuService from '../../services/menuService.js';
+  import announcementService from '../../services/announcementService.js';
   import { formatImageUrl, apiConfig } from '../../config/api.js';
-  import { Clock, Briefcase, Users } from 'lucide-vue-next';
+  import { Clock, Briefcase, Users, Megaphone } from 'lucide-vue-next';
   import { useFeedbackStore } from '../../stores/feedbackStore.js';
 
   // Backend base derived from api config (strip /api)
@@ -1928,9 +1945,9 @@
 
   // Video volume state
   const heroVideoVolume = ref(0.5); // Default 50% volume
-  const isHeroVideoMuted = ref(false);
+  const isHeroVideoMuted = ref(false); // Start unmuted
   const deliveryVideoVolume = ref(0.5); // Default 50% volume
-  const isDeliveryVideoMuted = ref(false);
+  const isDeliveryVideoMuted = ref(false); // Start unmuted
 
   // Auto-scroll state
   const isReelsAutoScrollActive = ref(true);
@@ -2021,6 +2038,8 @@
 
         if (hasUserInteracted.value) {
           try {
+            videoPlayer.value.muted = false; // Ensure unmuted
+            isHeroVideoMuted.value = false; // Update state
             await videoPlayer.value.play();
             isHeroVideoPlaying.value = true;
           } catch (error) {
@@ -2069,6 +2088,8 @@
 
         if (hasUserInteracted.value) {
           try {
+            videoPlayer.value.muted = false; // Ensure unmuted
+            isHeroVideoMuted.value = false; // Update state
             await videoPlayer.value.play();
             isHeroVideoPlaying.value = true;
           } catch (error) {
@@ -2120,6 +2141,8 @@
 
         if (hasUserInteracted.value) {
           try {
+            videoPlayer.value.muted = false; // Ensure unmuted
+            isHeroVideoMuted.value = false; // Update state
             await videoPlayer.value.play();
             isHeroVideoPlaying.value = true;
           } catch (error) {
@@ -2240,9 +2263,29 @@
   };
 
   // Modal state
+  const isAnnouncementModalOpen = ref(false);
   const isFoodpandaModalOpen = ref(false);
   const isGrabfoodModalOpen = ref(false);
   const isJobPositionsModalOpen = ref(false);
+
+  // Announcements state
+  const activeAnnouncements = ref([]);
+
+  // Watch for announcements changes to debug
+  watch(
+    () => isAnnouncementModalOpen.value,
+    (newVal) => {
+      console.log('Announcement modal state changed:', newVal);
+    }
+  );
+
+  watch(
+    () => activeAnnouncements.value,
+    (newVal) => {
+      console.log('Active announcements changed:', newVal);
+    },
+    { deep: true }
+  );
 
   // Hero images array
   const heroImages = [
@@ -2384,6 +2427,7 @@
     // Fetch real data from API
     fetchBranches();
     fetchMenuItems();
+    fetchAnnouncements();
 
     // Fetch feedback stats for happy customers count
     feedbackStore.fetchOrderRatingStats();
@@ -2405,6 +2449,8 @@
     nextTick(() => {
       if (videoPlayer.value) {
         videoPlayer.value.volume = heroVideoVolume.value;
+        videoPlayer.value.muted = false; // Ensure video is unmuted
+        isHeroVideoMuted.value = false; // Update state
         videoPlayer.value.addEventListener('play', () => {
           isHeroVideoPlaying.value = true;
         });
@@ -2415,6 +2461,8 @@
       // Set delivery video volume
       if (deliveryVideo.value) {
         deliveryVideo.value.volume = deliveryVideoVolume.value;
+        deliveryVideo.value.muted = false; // Ensure delivery video is unmuted
+        isDeliveryVideoMuted.value = false; // Update state
       }
     });
   });
@@ -2473,6 +2521,30 @@
   };
 
   // Modal functions
+  const openAnnouncementModal = () => {
+    console.log('Opening announcement modal...', {
+      isOpen: isAnnouncementModalOpen.value,
+      announcementsCount: activeAnnouncements.value.length,
+      announcements: activeAnnouncements.value,
+    });
+    isAnnouncementModalOpen.value = true;
+    console.log('Modal state after opening:', isAnnouncementModalOpen.value);
+  };
+
+  const closeAnnouncementModal = () => {
+    isAnnouncementModalOpen.value = false;
+    if (activeAnnouncements.value.length > 0) {
+      // Mark all shown announcements as seen
+      const seenIds = JSON.parse(sessionStorage.getItem('seenAnnouncementIds') || '[]');
+      activeAnnouncements.value.forEach((announcement) => {
+        if (!seenIds.includes(announcement.id)) {
+          seenIds.push(announcement.id);
+        }
+      });
+      sessionStorage.setItem('seenAnnouncementIds', JSON.stringify(seenIds));
+    }
+  };
+
   const openFoodpandaModal = () => {
     isFoodpandaModalOpen.value = true;
   };
@@ -2522,6 +2594,69 @@
       branches.value = [];
     } finally {
       isLoadingBranches.value = false;
+    }
+  };
+
+  // Fetch announcements
+  const fetchAnnouncements = async () => {
+    try {
+      console.log('Fetching announcements...');
+      const response = await announcementService.getActiveAnnouncements();
+      console.log('Announcements response:', response);
+
+      if (response.success && response.data && response.data.length > 0) {
+        console.log(`Found ${response.data.length} active announcements`);
+        // Resolve image URLs if they exist
+        const allAnnouncements = response.data.map((announcement) => ({
+          ...announcement,
+          image_url: announcement.image_url
+            ? resolvePublicUrl(announcement.image_url)
+            : null,
+        }));
+
+        // Sort announcements by display_order (ascending)
+        const sortedAnnouncements = allAnnouncements.sort((a, b) => {
+          const orderA = a.display_order !== null && a.display_order !== undefined ? a.display_order : 999;
+          const orderB = b.display_order !== null && b.display_order !== undefined ? b.display_order : 999;
+          return orderA - orderB;
+        });
+
+        console.log('Total announcements:', sortedAnnouncements.length);
+        console.log('Announcements sorted by display_order:', sortedAnnouncements.map(a => ({ id: a.id, title: a.title, display_order: a.display_order })));
+
+        // Show all active announcements (ordered by display_order)
+        if (sortedAnnouncements.length > 0) {
+          activeAnnouncements.value = sortedAnnouncements;
+          
+          console.log('Showing all active announcements:', activeAnnouncements.value.map(a => a.title));
+          console.log('Modal will open in 1 second. Current state:', {
+            isAnnouncementModalOpen: isAnnouncementModalOpen.value,
+            announcementsCount: activeAnnouncements.value.length,
+          });
+          // Show modal after a short delay to let page load
+          setTimeout(() => {
+            console.log('Timeout triggered, opening modal now');
+            openAnnouncementModal();
+            // Force a re-check after a moment
+            setTimeout(() => {
+              console.log('Modal state check:', {
+                isOpen: isAnnouncementModalOpen.value,
+                announcements: activeAnnouncements.value,
+              });
+            }, 100);
+          }, 1000);
+        } else {
+          console.log('User has already seen all announcements');
+          activeAnnouncements.value = [];
+        }
+      } else {
+        console.log('No active announcements found');
+        activeAnnouncements.value = [];
+      }
+    } catch (error) {
+      console.error('Error fetching announcements:', error);
+      // Don't show error to user, just silently fail
+      activeAnnouncements.value = [];
     }
   };
 
@@ -2795,7 +2930,25 @@
   }
 
   .animate-fade-in-up {
-    animation: fadeInUp 0.6s ease-out;
+    animation: fadeInUp 0.6s ease-out forwards;
+    opacity: 0;
+  }
+
+  /* Image fade-in animation */
+  @keyframes imageFadeIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .animate-image-fade-in {
+    animation: imageFadeIn 0.8s ease-out forwards;
+    opacity: 0;
   }
 
   .animate-slide-in-left {

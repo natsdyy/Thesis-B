@@ -24,6 +24,12 @@ export default [
     meta: { title: 'Analytics Dashboard' },
   },
   {
+    path: 'announcements',
+    name: 'CRMAnnouncements',
+    component: () => import('../../views/crm/AnnouncementManager.vue'),
+    meta: { title: 'Announcement Management' },
+  },
+  {
     path: 'attendance',
     name: 'CRMAttendance',
     component: () => import('../../views/common/DepartmentAttendance.vue'),

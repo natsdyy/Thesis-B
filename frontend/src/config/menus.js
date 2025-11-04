@@ -17,6 +17,7 @@ import {
   ChefHat,
   UserCheck,
   FileUser,
+  Megaphone,
 } from 'lucide-vue-next';
 
 export const menuItems = [
@@ -218,6 +219,13 @@ export const menuItems = [
     name: 'Analytics',
     icon: BarChart3,
     route: '/crm/analytics',
+    department: 'CRM',
+    managerOnly: true,
+  },
+  {
+    name: 'Announcements',
+    icon: Megaphone,
+    route: '/crm/announcements',
     department: 'CRM',
     managerOnly: true,
   },

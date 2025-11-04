@@ -1288,11 +1288,44 @@
   };
 
          const handleSubmit = () => {
+           // Client-side validation - ensure required fields are filled
+           if (!formData.value.content_format || formData.value.content_format.trim() === '') {
+             alert('Please select a Content Format');
+             return;
+           }
+           if (!formData.value.announcement_type || formData.value.announcement_type.trim() === '') {
+             alert('Please select an Announcement Type');
+             return;
+           }
+           
            // Filter out empty image URLs and prepare data
            const filteredImages = imageList.value.filter(img => img && img.trim());
            
+           // Normalize enum fields - convert empty strings to null
+           const normalizedContentFormat = formData.value.content_format && formData.value.content_format.trim() !== ''
+             ? formData.value.content_format.trim()
+             : null;
+           const normalizedAnnouncementType = formData.value.announcement_type && formData.value.announcement_type.trim() !== ''
+             ? formData.value.announcement_type.trim()
+             : null;
+           
+           // Double-check - if normalization resulted in null but we validated above, something is wrong
+           if (normalizedContentFormat === null) {
+             console.error('Content format is null after normalization! Original value:', formData.value.content_format);
+             alert('Content Format is required. Please select a format.');
+             return;
+           }
+           if (normalizedAnnouncementType === null) {
+             console.error('Announcement type is null after normalization! Original value:', formData.value.announcement_type);
+             alert('Announcement Type is required. Please select a type.');
+             return;
+           }
+           
            const submitData = {
              ...formData.value,
+             // Ensure enum fields are never empty strings - use normalized values
+             content_format: normalizedContentFormat,
+             announcement_type: normalizedAnnouncementType,
              images: filteredImages.length > 0 ? filteredImages : null,
              // Keep image_url for backward compatibility (use first image)
              image_url: filteredImages.length > 0 ? filteredImages[0] : null,

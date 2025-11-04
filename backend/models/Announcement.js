@@ -35,6 +35,47 @@ class Announcement {
         autoDisplayOrder = (activeCount?.count ?? 0) + (maxInactiveOrder?.max_order ?? 0) + 1;
       }
 
+      // Validate enum fields
+      const validContentFormats = ['all', 'text_image', 'video_text', 'text_only', 'image_only', 'video_only'];
+      const validAnnouncementTypes = ['promotional', 'new_feature', 'event', 'job_hiring', 'simple_text', 'promotional_banner'];
+      
+      // Normalize content_format - handle all cases: undefined, null, empty string, whitespace
+      let contentFormat = null;
+      const rawContentFormat = announcementData.content_format;
+      console.log('Raw content_format received:', JSON.stringify(rawContentFormat), 'Type:', typeof rawContentFormat);
+      
+      if (rawContentFormat !== undefined && rawContentFormat !== null) {
+        const format = typeof rawContentFormat === 'string' 
+          ? rawContentFormat.trim() 
+          : String(rawContentFormat).trim();
+        console.log('Processing content_format:', JSON.stringify({ original: rawContentFormat, trimmed: format, isEmpty: format === '' }));
+        if (format !== '' && validContentFormats.includes(format)) {
+          contentFormat = format;
+        } else if (format !== '') {
+          console.error('Invalid content_format value:', format);
+          throw new Error(`Invalid content_format: ${format}. Must be one of: ${validContentFormats.join(', ')}`);
+        }
+        // If format is empty string after trim, contentFormat remains null (which is valid for nullable enum)
+      }
+      console.log('Final content_format value:', contentFormat, 'Will be set to null:', contentFormat === null);
+      
+      // Normalize announcement_type - handle all cases: undefined, null, empty string, whitespace
+      let announcementType = null;
+      if (announcementData.announcement_type !== undefined && announcementData.announcement_type !== null) {
+        const type = typeof announcementData.announcement_type === 'string' 
+          ? announcementData.announcement_type.trim() 
+          : String(announcementData.announcement_type).trim();
+        console.log('Processing announcement_type:', JSON.stringify({ original: announcementData.announcement_type, trimmed: type }));
+        if (type !== '' && validAnnouncementTypes.includes(type)) {
+          announcementType = type;
+        } else if (type !== '') {
+          console.error('Invalid announcement_type value:', type);
+          throw new Error(`Invalid announcement_type: ${type}. Must be one of: ${validAnnouncementTypes.join(', ')}`);
+        }
+        // If type is empty string after trim, announcementType remains null (which is valid for nullable enum)
+      }
+      console.log('Final announcement_type value:', announcementType);
+
       // Handle images: use images array or fallback to image_url
       let imagesJson = null;
       if (announcementData.images && Array.isArray(announcementData.images) && announcementData.images.length > 0) {
@@ -54,8 +95,7 @@ class Announcement {
         images: imagesJson,
         video_url: announcementData.video_url || null,
         promo_details: announcementData.promo_details || null,
-        announcement_type: announcementData.announcement_type || null,
-        content_format: announcementData.content_format || null,
+        announcement_type: announcementType,
         image_display_type: announcementData.image_display_type || 'single',
         promo_position: announcementData.promo_position || 'below',
         content_order: announcementData.content_order 
@@ -83,6 +123,26 @@ class Announcement {
         created_by: announcementData.created_by || null,
       };
 
+      // Always explicitly set content_format to ensure we never send an empty string
+      // CRITICAL: Only set if it's a valid enum value or null - never empty string
+      if (contentFormat === null || contentFormat === '' || contentFormat === undefined) {
+        // For nullable enum columns, we must explicitly set to null, not undefined or empty string
+        insertData.content_format = null;
+      } else {
+        insertData.content_format = contentFormat;
+      }
+      
+      // Final safety check - if somehow an empty string got through, convert to null
+      if (insertData.content_format === '') {
+        console.error('ERROR: Empty string detected in content_format! Converting to null.');
+        insertData.content_format = null;
+      }
+      
+      console.log('Final insertData content_format:', insertData.content_format, 'Type:', typeof insertData.content_format);
+      console.log('Final insertData announcement_type:', insertData.announcement_type, 'Type:', typeof insertData.announcement_type);
+      console.log('Full insertData keys:', Object.keys(insertData));
+      console.log('content_format value check:', insertData.content_format === null ? 'NULL' : insertData.content_format === '' ? 'EMPTY STRING (ERROR!)' : insertData.content_format);
+      
       const [announcement] = await db("announcements")
         .insert(insertData)
         .returning("*");
@@ -257,6 +317,44 @@ class Announcement {
         }
       }
 
+      // Validate enum fields if they're being updated
+      const validContentFormats = ['all', 'text_image', 'video_text', 'text_only', 'image_only', 'video_only'];
+      const validAnnouncementTypes = ['promotional', 'new_feature', 'event', 'job_hiring', 'simple_text', 'promotional_banner'];
+      
+      // Normalize content_format if provided
+      let contentFormat = undefined;
+      if (updateData.content_format !== undefined) {
+        if (updateData.content_format === null || updateData.content_format === '') {
+          contentFormat = null;
+        } else {
+          const format = typeof updateData.content_format === 'string' 
+            ? updateData.content_format.trim() 
+            : updateData.content_format;
+          if (format && validContentFormats.includes(format)) {
+            contentFormat = format;
+          } else {
+            throw new Error(`Invalid content_format: ${format}. Must be one of: ${validContentFormats.join(', ')}`);
+          }
+        }
+      }
+      
+      // Normalize announcement_type if provided
+      let announcementType = undefined;
+      if (updateData.announcement_type !== undefined) {
+        if (updateData.announcement_type === null || updateData.announcement_type === '') {
+          announcementType = null;
+        } else {
+          const type = typeof updateData.announcement_type === 'string' 
+            ? updateData.announcement_type.trim() 
+            : updateData.announcement_type;
+          if (type && validAnnouncementTypes.includes(type)) {
+            announcementType = type;
+          } else {
+            throw new Error(`Invalid announcement_type: ${type}. Must be one of: ${validAnnouncementTypes.join(', ')}`);
+          }
+        }
+      }
+
       // Handle images: use images array or fallback to image_url
       let imagesJson = undefined;
       if (updateData.images !== undefined) {
@@ -280,8 +378,8 @@ class Announcement {
         images: imagesJson,
         video_url: updateData.video_url !== undefined ? (updateData.video_url || null) : undefined,
         promo_details: updateData.promo_details !== undefined ? (updateData.promo_details || null) : undefined,
-        announcement_type: updateData.announcement_type !== undefined ? (updateData.announcement_type || null) : undefined,
-        content_format: updateData.content_format !== undefined ? (updateData.content_format || null) : undefined,
+        announcement_type: announcementType,
+        content_format: contentFormat,
         image_display_type: updateData.image_display_type !== undefined ? (updateData.image_display_type || 'single') : undefined,
         promo_position: updateData.promo_position !== undefined ? (updateData.promo_position || 'below') : undefined,
         content_order: updateData.content_order !== undefined ? (updateData.content_order || JSON.stringify(['description', 'images', 'video'])) : undefined,

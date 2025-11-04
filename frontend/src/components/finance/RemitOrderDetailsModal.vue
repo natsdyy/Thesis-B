@@ -107,29 +107,44 @@
 
   const classifyImpact = (order) => {
     if (order?.status !== 'void') return { label: '—', type: 'none' };
+    // Align classification with BranchSales.vue
+    const refundReasons = [
+      'customer_cancelled',
+      'wrong_order',
+      'duplicate_order',
+      'payment_issue',
+      'system_error',
+      'customer cancelled',
+      'wrong order',
+      'duplicate order',
+      'payment issue',
+      'system error',
+    ];
+    const lossReasons = [
+      'staff_error',
+      'item_damaged',
+      'expired_item',
+      'quality_issue',
+      'preparation_error',
+      'staff error',
+      'item damaged',
+      'expired item',
+      'quality issue',
+      'preparation error',
+      'custom',
+    ];
     const reason = String(order?.void_reason || '').toLowerCase();
-    const isRefund = /customer/.test(reason) || /cancel/.test(reason);
+    const isRefund = refundReasons.includes(reason);
+    const isLoss = lossReasons.includes(reason);
     return isRefund
       ? { label: 'Refund', type: 'refund' }
-      : { label: 'Loss', type: 'loss' };
+      : isLoss
+        ? { label: 'Loss', type: 'loss' }
+        : { label: 'Loss', type: 'loss' };
   };
 
   const summaryTotals = computed(() => {
-    // If we have specific remittance details, use those for accurate totals
-    if (props.remittanceId && remittanceDetails.value) {
-      const remittance = remittanceDetails.value;
-      return {
-        totalSales: Number(remittance.gross_sales) || 0,
-        refunds: Number(remittance.refunded_amount) || 0,
-        loss: Number(remittance.voided_amount) || 0,
-        netSales: Number(remittance.net_sales) || 0,
-        remitted: Number(remittance.remitted_amount) || 0,
-        transactions: orders.value?.length || 0,
-        voidedCount: Number(remittance.disposed) || 0,
-      };
-    }
-
-    // Fallback to calculating from individual orders
+    // Calculate from individual orders (keeps refund/loss classification consistent)
     const totals = {
       totalSales: 0,
       refunds: 0,
@@ -141,6 +156,33 @@
     };
     const list = orders.value || [];
     totals.transactions = list.length;
+    // Align refund/loss classification with BranchSales.vue
+    const refundReasons = new Set([
+      'customer_cancelled',
+      'wrong_order',
+      'duplicate_order',
+      'payment_issue',
+      'system_error',
+      'customer cancelled',
+      'wrong order',
+      'duplicate order',
+      'payment issue',
+      'system error',
+    ]);
+    const lossReasons = new Set([
+      'staff_error',
+      'item_damaged',
+      'expired_item',
+      'quality_issue',
+      'preparation_error',
+      'staff error',
+      'item damaged',
+      'expired item',
+      'quality issue',
+      'preparation error',
+      'custom',
+    ]);
+
     list.forEach((o) => {
       const amt = Number(o.total_amount) || 0;
       if (o.status === 'completed') {
@@ -148,9 +190,14 @@
         totals.netSales += amt;
       } else if (o.status === 'void') {
         const reason = String(o.void_reason || '').toLowerCase();
-        const isRefund = /customer/.test(reason) || /cancel/.test(reason);
-        if (isRefund) totals.refunds += amt;
-        else totals.loss += amt;
+        if (refundReasons.has(reason)) {
+          totals.refunds += amt;
+        } else if (lossReasons.has(reason)) {
+          totals.loss += amt;
+        } else {
+          // Default unknown reasons to loss
+          totals.loss += amt;
+        }
         totals.voidedCount += 1;
       }
     });
@@ -518,13 +565,17 @@
                     {{ formatItems(o) }}
                   </div>
                 </td>
-                <td class="text-xs font-semibold text-right">
-                  <i class="fa-solid fa-peso-sign mr-1"></i>
-                  {{
-                    Number(o.total_amount || 0).toLocaleString('en-PH', {
-                      minimumFractionDigits: 2,
-                    })
-                  }}
+                <td class="text-xs font-semibold">
+                  <div
+                    class="flex items-center justify-end whitespace-nowrap tabular-nums"
+                  >
+                    <i class="fa-solid fa-peso-sign mr-1"></i>
+                    {{
+                      Number(o.total_amount || 0).toLocaleString('en-PH', {
+                        minimumFractionDigits: 2,
+                      })
+                    }}
+                  </div>
                 </td>
 
                 <td class="text-xs">
@@ -602,7 +653,7 @@
       </div>
 
       <div class="modal-action">
-        <button class="btn" @click="closeModal">Close</button>
+        <button class="btn btn-sm" @click="closeModal">Close</button>
       </div>
     </div>
     <form method="dialog" class="modal-backdrop"><button>close</button></form>

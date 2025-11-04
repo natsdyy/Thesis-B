@@ -249,7 +249,7 @@
         <template v-else>
           <div class="flex items-center justify-center h-full text-gray-500">
             <div class="text-center">
-              <div class="text-4xl mb-2">💰</div>
+              <div class="text-4xl mb-2"><font-awesome-icon icon="fa-solid fa-peso-sign" /></div>
               <p>No cash flow data available</p>
               <p class="text-sm">
                 Select a different period or check your data

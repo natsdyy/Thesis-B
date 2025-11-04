@@ -1590,7 +1590,7 @@
                     <td class="text-xs">
                       <div class="flex gap-1">
                         <button
-                          class="btn btn-xs btn-outline text-primaryColor"
+                          class="btn btn-xs"
                           @click.stop="openRemitForBranch(row, entry)"
                         >
                           View Remit

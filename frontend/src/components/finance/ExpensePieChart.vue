@@ -19,6 +19,11 @@
       type: Boolean,
       default: true,
     },
+    // Optional: Raw expense data for "other" expenses breakdown
+    rawExpenses: {
+      type: Array,
+      default: () => [],
+    },
   });
 
   // Predefined color palette for expense categories
@@ -108,20 +113,82 @@
         },
       },
       tooltip: {
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        backgroundColor: 'rgba(0, 0, 0, 0.9)',
         titleColor: '#fff',
         bodyColor: '#fff',
         borderColor: 'rgba(70, 97, 20, 1)',
         borderWidth: 1,
         cornerRadius: 8,
         displayColors: true,
+        padding: 12,
+        titleFont: {
+          size: 14,
+          weight: 'bold',
+        },
+        bodyFont: {
+          size: 12,
+        },
         callbacks: {
           label: (context) => {
             const label = context.label || '';
             const value = context.parsed;
             const total = context.dataset.data.reduce((a, b) => a + b, 0);
             const percentage = ((value / total) * 100).toFixed(1);
-            return `${label}: ${peso(value)} (${percentage}%)`;
+            const labelText = `${label}: ${peso(value)} (${percentage}%)`;
+
+            // Check if this is Utilities category and we have breakdown data
+            const labelLower = label.toLowerCase().trim();
+            const isUtilities =
+              labelLower === 'utilities' || labelLower.includes('utilities');
+
+            if (isUtilities && utilitiesBreakdown.value) {
+              const breakdown = utilitiesBreakdown.value;
+              const breakdownLines = [];
+
+              // Add breakdown lines for each utility type that has an amount
+              if (breakdown.electricity > 0) {
+                const utilPercentage = (
+                  (breakdown.electricity / value) *
+                  100
+                ).toFixed(1);
+                breakdownLines.push(
+                  `  • Electricity: ${peso(breakdown.electricity)} (${utilPercentage}%)`
+                );
+              }
+              if (breakdown.water > 0) {
+                const utilPercentage = (
+                  (breakdown.water / value) *
+                  100
+                ).toFixed(1);
+                breakdownLines.push(
+                  `  • Water: ${peso(breakdown.water)} (${utilPercentage}%)`
+                );
+              }
+              if (breakdown.internet > 0) {
+                const utilPercentage = (
+                  (breakdown.internet / value) *
+                  100
+                ).toFixed(1);
+                breakdownLines.push(
+                  `  • Internet: ${peso(breakdown.internet)} (${utilPercentage}%)`
+                );
+              }
+              if (breakdown.other > 0) {
+                const utilPercentage = (
+                  (breakdown.other / value) *
+                  100
+                ).toFixed(1);
+                breakdownLines.push(
+                  `  • Other: ${peso(breakdown.other)} (${utilPercentage}%)`
+                );
+              }
+
+              if (breakdownLines.length > 0) {
+                return [labelText, '', 'Breakdown:', ...breakdownLines];
+              }
+            }
+
+            return labelText;
           },
           title: () => {
             return 'Expense Category';
@@ -164,6 +231,102 @@
       Number(item.amount) > Number(max.amount) ? item : max
     );
   });
+
+  // Get breakdown of utilities expenses (electricity, water, internet, other)
+  const utilitiesBreakdown = computed(() => {
+    if (!props.rawExpenses || props.rawExpenses.length === 0) return {};
+
+    const breakdown = {
+      electricity: 0,
+      water: 0,
+      internet: 0,
+      other: 0,
+    };
+
+    props.rawExpenses.forEach((expense) => {
+      const expenseType = expense.expense_type?.toLowerCase();
+      const amount = Number(expense.amount || 0);
+
+      if (expenseType === 'electricity') {
+        breakdown.electricity += amount;
+      } else if (expenseType === 'water') {
+        breakdown.water += amount;
+      } else if (expenseType === 'internet') {
+        breakdown.internet += amount;
+      } else if (expenseType === 'other') {
+        breakdown.other += amount;
+      }
+    });
+
+    return breakdown;
+  });
+
+  // Get breakdown of "other" expenses
+  const otherExpensesBreakdown = computed(() => {
+    if (!props.rawExpenses || props.rawExpenses.length === 0) return [];
+
+    // Filter expenses with expense_type === "other"
+    const otherExpenses = props.rawExpenses.filter(
+      (expense) => expense.expense_type === 'other'
+    );
+
+    // Group and aggregate by description (if available)
+    const breakdownMap = {};
+
+    otherExpenses.forEach((expense) => {
+      const description =
+        expense.expense_description ||
+        expense.department ||
+        expense.entity_name ||
+        'Unspecified';
+      const amount = Number(expense.amount || 0);
+
+      if (breakdownMap[description]) {
+        breakdownMap[description].amount += amount;
+        breakdownMap[description].count += 1;
+      } else {
+        breakdownMap[description] = {
+          description: description,
+          amount: amount,
+          count: 1,
+          branch: expense.branch_name || expense.entity_name || 'Main Office',
+        };
+      }
+    });
+
+    // Convert to array and sort by amount (descending)
+    return Object.values(breakdownMap).sort((a, b) => b.amount - a.amount);
+  });
+
+  // Check if "other" category exists in chart data
+  const hasOtherCategory = computed(() => {
+    if (!props.data || props.data.length === 0) return false;
+    const otherCategory = props.data.find((item) => {
+      const nameLower = item.name.toLowerCase().trim();
+      return (
+        nameLower === 'other' ||
+        nameLower.includes('other') ||
+        nameLower === 'others' ||
+        nameLower.includes('others')
+      );
+    });
+    return !!otherCategory;
+  });
+
+  // Get total "other" expenses amount from chart data
+  const otherTotalAmount = computed(() => {
+    if (!hasOtherCategory.value) return 0;
+    const otherCategory = props.data.find((item) => {
+      const nameLower = item.name.toLowerCase().trim();
+      return (
+        nameLower === 'other' ||
+        nameLower.includes('other') ||
+        nameLower === 'others' ||
+        nameLower.includes('others')
+      );
+    });
+    return otherCategory ? Number(otherCategory.amount || 0) : 0;
+  });
 </script>
 
 <template>
@@ -188,7 +351,9 @@
         <template v-else>
           <div class="flex items-center justify-center h-full text-gray-500">
             <div class="text-center">
-              <div class="text-4xl mb-2"><font-awesome-icon icon="fa-solid fa-money-bills" /></div>
+              <div class="text-4xl mb-2">
+                <font-awesome-icon icon="fa-solid fa-money-bills" />
+              </div>
               <p>No expense data available</p>
               <p class="text-sm">
                 Select a different period or check your data
@@ -215,6 +380,77 @@
               }}% of total
             </p>
           </div>
+        </div>
+      </div>
+
+      <!-- Other Expenses Breakdown -->
+      <div
+        v-if="hasOtherCategory && otherExpensesBreakdown.length > 0"
+        class="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200"
+      >
+        <div class="flex items-center justify-between mb-3">
+          <h4 class="font-semibold text-gray-800 flex items-center gap-2">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5 text-blue-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
+            </svg>
+            Other Expenses Breakdown
+          </h4>
+          <div class="text-right">
+            <p class="text-sm text-gray-600">
+              Total:
+              <span class="font-bold text-blue-700">{{
+                peso(otherTotalAmount)
+              }}</span>
+            </p>
+          </div>
+        </div>
+
+        <div class="space-y-2 max-h-48 overflow-y-auto">
+          <div
+            v-for="(item, index) in otherExpensesBreakdown"
+            :key="index"
+            class="bg-white rounded-md p-3 border border-blue-100 hover:border-blue-300 transition-colors"
+          >
+            <div class="flex items-start justify-between">
+              <div class="flex-1 min-w-0">
+                <p class="font-medium text-gray-800 text-sm mb-1">
+                  {{ item.description }}
+                </p>
+                <p class="text-xs text-gray-500">
+                  {{ item.branch }}
+                  <span v-if="item.count > 1" class="ml-2">
+                    ({{ item.count }} entries)
+                  </span>
+                </p>
+              </div>
+              <div class="ml-3 text-right flex-shrink-0">
+                <p class="font-bold text-blue-700 text-sm">
+                  {{ peso(item.amount) }}
+                </p>
+                <p class="text-xs text-gray-500">
+                  {{ ((item.amount / otherTotalAmount) * 100).toFixed(1) }}%
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          v-if="otherExpensesBreakdown.length === 0"
+          class="text-center py-4 text-gray-500 text-sm"
+        >
+          No detailed breakdown available for other expenses
         </div>
       </div>
     </div>
